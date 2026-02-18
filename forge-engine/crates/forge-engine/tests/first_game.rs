@@ -1,0 +1,463 @@
+use forge_engine_core::agent::PlayerAgent;
+use forge_engine_core::card::CardInstance;
+use forge_engine_core::game::GameState;
+use forge_engine_core::game_loop::GameLoop;
+use forge_engine_core::ids::{CardId, PlayerId};
+use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+use rand::SeedableRng;
+
+/// A scripted agent that follows a predetermined sequence of actions.
+struct ScriptedAgent {
+    name: String,
+    /// Actions to take: each call to choose_action pops the next action.
+    /// None = pass, Some(idx) = play the Nth card from the playable list.
+    actions: Vec<Option<usize>>,
+    action_idx: usize,
+    /// Attackers: for each combat, which indices from available to attack with.
+    attack_plan: Vec<Vec<usize>>,
+    attack_idx: usize,
+    /// Block plan: (blocker_idx, attacker_idx) pairs
+    block_plan: Vec<Vec<(usize, usize)>>,
+    block_idx: usize,
+    log: Vec<String>,
+}
+
+impl ScriptedAgent {
+    fn new(name: &str) -> Self {
+        ScriptedAgent {
+            name: name.to_string(),
+            actions: Vec::new(),
+            action_idx: 0,
+            attack_plan: Vec::new(),
+            attack_idx: 0,
+            block_plan: Vec::new(),
+            block_idx: 0,
+            log: Vec::new(),
+        }
+    }
+}
+
+impl PlayerAgent for ScriptedAgent {
+    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+        true // always keep
+    }
+
+    fn choose_action(&mut self, _player: PlayerId, playable: &[CardId]) -> Option<CardId> {
+        if self.action_idx >= self.actions.len() {
+            return None;
+        }
+        let action = self.actions[self.action_idx];
+        self.action_idx += 1;
+        match action {
+            None => None,
+            Some(idx) => {
+                if idx < playable.len() {
+                    Some(playable[idx])
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId]) -> Vec<CardId> {
+        if self.attack_idx >= self.attack_plan.len() {
+            return Vec::new();
+        }
+        let plan = &self.attack_plan[self.attack_idx];
+        self.attack_idx += 1;
+        plan.iter()
+            .filter_map(|&idx| available.get(idx).copied())
+            .collect()
+    }
+
+    fn choose_blockers(
+        &mut self,
+        _player: PlayerId,
+        attackers: &[CardId],
+        available_blockers: &[CardId],
+    ) -> Vec<(CardId, CardId)> {
+        if self.block_idx >= self.block_plan.len() {
+            return Vec::new();
+        }
+        let plan = &self.block_plan[self.block_idx];
+        self.block_idx += 1;
+        plan.iter()
+            .filter_map(|&(b_idx, a_idx)| {
+                let blocker = available_blockers.get(b_idx)?;
+                let attacker = attackers.get(a_idx)?;
+                Some((*blocker, *attacker))
+            })
+            .collect()
+    }
+
+    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+        valid.first().copied()
+    }
+
+    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        valid.first().copied()
+    }
+
+    fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
+        None
+    }
+
+    fn notify(&mut self, message: &str) {
+        self.log.push(format!("[{}] {}", self.name, message));
+    }
+}
+
+fn make_mountain(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Mountain".to_string(),
+        owner,
+        CardTypeLine::parse("Basic Land - Mountain"),
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
+}
+
+fn make_forest(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Forest".to_string(),
+        owner,
+        CardTypeLine::parse("Basic Land - Forest"),
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
+}
+
+fn make_lightning_bolt(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Lightning Bolt".to_string(),
+        owner,
+        CardTypeLine::parse("Instant"),
+        ManaCost::parse("R"),
+        ColorSet::RED,
+        None,
+        None,
+        vec![],
+        vec!["SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3 | SpellDescription$ CARDNAME deals 3 damage to any target.".to_string()],
+    )
+}
+
+fn make_grizzly_bears(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Grizzly Bears".to_string(),
+        owner,
+        CardTypeLine::parse("Creature Bear"),
+        ManaCost::parse("1 G"),
+        ColorSet::GREEN,
+        Some(2),
+        Some(2),
+        vec![],
+        vec![],
+    )
+}
+
+/// Test: Play Mountain -> cast Lightning Bolt -> verify 17 life.
+#[test]
+fn lightning_bolt_deals_3_damage() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Alice's library: Mountain on top, then Lightning Bolt
+    let bolt = game.create_card(make_lightning_bolt(p0));
+    let mountain = game.create_card(make_mountain(p0));
+
+    // Put in library (mountain on top so it's drawn first)
+    game.move_card(bolt, ZoneType::Library, p0);
+    game.move_card(mountain, ZoneType::Library, p0);
+
+    // Bob gets some cards too
+    let forest = game.create_card(make_forest(p1));
+    game.move_card(forest, ZoneType::Library, p1);
+
+    // Draw cards manually (simulating opening hand)
+    game.draw_card(p0); // draws Mountain
+    game.draw_card(p0); // draws Lightning Bolt
+
+    assert_eq!(game.zone(ZoneType::Hand, p0).len(), 2);
+
+    // Create agents
+    let mut alice = ScriptedAgent::new("Alice");
+    // Turn 1: play Mountain (lands appear first in playable), then cast Lightning Bolt
+    alice.actions = vec![
+        Some(0), // play Mountain (the land)
+        Some(0), // cast Lightning Bolt (now the only playable card)
+        None,    // pass
+    ];
+    alice.attack_plan = vec![]; // no creatures
+
+    let bob = ScriptedAgent::new("Bob");
+
+    let mut game_loop = GameLoop::new(2);
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(alice), Box::new(bob)];
+
+    // Run just Alice's main phase
+    game.turn.active_player = p0;
+    game.turn.phase = forge_foundation::PhaseType::Main1;
+    game_loop.step_main_phase(&mut game, &mut agents);
+
+    // Resolve stack
+    game_loop.resolve_stack(&mut game);
+    game.check_state_based_actions();
+
+    // Verify: Bob should be at 17 life
+    assert_eq!(
+        game.player(p1).life,
+        17,
+        "Bob should be at 17 life after Lightning Bolt"
+    );
+
+    // Verify: Lightning Bolt should be in Alice's graveyard
+    assert_eq!(game.zone(ZoneType::Graveyard, p0).len(), 1);
+
+    // Verify: Mountain should be on battlefield
+    assert_eq!(game.zone(ZoneType::Battlefield, p0).len(), 1);
+}
+
+/// Test: Play Forest + Forest -> cast Grizzly Bears -> attack -> verify combat damage.
+#[test]
+fn grizzly_bears_attacks() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Set up Alice's hand: 2 Forests + Grizzly Bears
+    let forest1 = game.create_card(make_forest(p0));
+    let forest2 = game.create_card(make_forest(p0));
+    let bears = game.create_card(make_grizzly_bears(p0));
+
+    game.move_card(forest1, ZoneType::Hand, p0);
+    game.move_card(forest2, ZoneType::Hand, p0);
+    game.move_card(bears, ZoneType::Hand, p0);
+
+    // Give Bob a card in library so he doesn't lose from empty draw
+    let bob_forest = game.create_card(make_forest(p1));
+    game.move_card(bob_forest, ZoneType::Library, p1);
+
+    // ---- Turn 1: Alice plays Forest, passes ----
+    let mut alice = ScriptedAgent::new("Alice");
+    alice.actions = vec![
+        Some(0), // play Forest
+        None,    // pass (can't cast Bears with 1 land)
+    ];
+    alice.attack_plan = vec![vec![]]; // no attackers turn 1
+
+    let bob = ScriptedAgent::new("Bob");
+
+    let mut game_loop = GameLoop::new(2);
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(alice), Box::new(bob)];
+
+    // Turn 1
+    game.turn.turn_number = 1;
+    game.turn.active_player = p0;
+    game.new_turn_for_player(p0);
+
+    game.turn.phase = forge_foundation::PhaseType::Main1;
+    game_loop.step_main_phase(&mut game, &mut agents);
+
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p0).len(),
+        1,
+        "Should have 1 Forest on battlefield"
+    );
+
+    // ---- Turn 2 (simulate): Alice plays Forest, casts Bears ----
+    game.turn.turn_number = 2;
+    game.new_turn_for_player(p0);
+    game_loop.pool_mut(p0).empty();
+
+    // Reset the agent's action index
+    // We need to create a new agent for turn 2
+    drop(agents);
+
+    let mut alice2 = ScriptedAgent::new("Alice");
+    alice2.actions = vec![
+        Some(0), // play Forest (land goes first in playable)
+        Some(0), // cast Grizzly Bears
+        None,    // pass
+    ];
+    alice2.attack_plan = vec![vec![0]]; // attack with bears (index 0 in available)
+
+    let bob2 = ScriptedAgent::new("Bob");
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(alice2), Box::new(bob2)];
+
+    // Main Phase 1
+    game.turn.phase = forge_foundation::PhaseType::Main1;
+    game_loop.step_main_phase(&mut game, &mut agents);
+    game_loop.resolve_stack(&mut game);
+
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p0).len(),
+        3,
+        "Should have 2 Forests + Grizzly Bears on battlefield"
+    );
+
+    // Verify bears are on battlefield
+    let bears_on_bf: Vec<CardId> = game
+        .cards_in_zone(ZoneType::Battlefield, p0)
+        .iter()
+        .filter(|&&cid| game.card(cid).is_creature())
+        .copied()
+        .collect();
+    assert_eq!(bears_on_bf.len(), 1, "Should have 1 creature on battlefield");
+
+    // Bears have summoning sickness, so we need to remove it for the attack test
+    game.card_mut(bears).summoning_sick = false;
+
+    // Combat phase
+    game_loop.step_combat(&mut game, &mut agents);
+
+    // Verify: Bob should be at 18 life (took 2 damage from Grizzly Bears)
+    assert_eq!(
+        game.player(p1).life,
+        18,
+        "Bob should be at 18 life after Grizzly Bears attack"
+    );
+}
+
+/// Test: Full game with basic lands, creatures, and burn spells.
+/// Alice has Mountains + Lightning Bolts. Bob has Forests + Bears.
+/// Tests game runs to completion without panicking.
+#[test]
+fn full_game_runs() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Alice: 7 Mountains + some Bolts
+    for _ in 0..7 {
+        let m = game.create_card(make_mountain(p0));
+        game.move_card(m, ZoneType::Library, p0);
+    }
+    for _ in 0..4 {
+        let b = game.create_card(make_lightning_bolt(p0));
+        game.move_card(b, ZoneType::Library, p0);
+    }
+
+    // Bob: 7 Forests + some Bears
+    for _ in 0..7 {
+        let f = game.create_card(make_forest(p1));
+        game.move_card(f, ZoneType::Library, p1);
+    }
+    for _ in 0..4 {
+        let b = game.create_card(make_grizzly_bears(p1));
+        game.move_card(b, ZoneType::Library, p1);
+    }
+
+    // Simple agents that play the first available card and attack with everything
+    struct SimpleAgent;
+    impl PlayerAgent for SimpleAgent {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+            true
+        }
+        fn choose_action(&mut self, _: PlayerId, playable: &[CardId]) -> Option<CardId> {
+            playable.first().copied()
+        }
+        fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {
+            available.to_vec() // attack with everything
+        }
+        fn choose_blockers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new() // no blocks
+        }
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+            valid.first().copied()
+        }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+            None
+        }
+        fn notify(&mut self, _: &str) {}
+    }
+
+    let mut game_loop = GameLoop::new(2);
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(SimpleAgent), Box::new(SimpleAgent)];
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    let winner = game_loop.run(&mut game, &mut agents, &mut rng, 50);
+
+    assert!(game.game_over, "Game should be over");
+    assert!(winner.is_some(), "There should be a winner");
+
+    let winner_id = winner.unwrap();
+    println!(
+        "Winner: {} (Player {})",
+        game.player(winner_id).name,
+        winner_id.0
+    );
+    println!(
+        "Final life: Alice={}, Bob={}",
+        game.player(p0).life,
+        game.player(p1).life
+    );
+    println!("Game ended on turn {}", game.turn.turn_number);
+}
+
+/// Test: Creature combat with blocking.
+#[test]
+fn creature_combat_with_blocking() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put bears on battlefield for both players
+    let alice_bear = game.create_card(make_grizzly_bears(p0));
+    game.move_card(alice_bear, ZoneType::Battlefield, p0);
+    game.card_mut(alice_bear).summoning_sick = false;
+
+    let bob_bear = game.create_card(make_grizzly_bears(p1));
+    game.move_card(bob_bear, ZoneType::Battlefield, p1);
+    game.card_mut(bob_bear).summoning_sick = false;
+
+    // Alice attacks, Bob blocks
+    let mut alice = ScriptedAgent::new("Alice");
+    alice.attack_plan = vec![vec![0]]; // attack with bear
+
+    let mut bob = ScriptedAgent::new("Bob");
+    bob.block_plan = vec![vec![(0, 0)]]; // block first attacker with first blocker
+
+    let mut game_loop = GameLoop::new(2);
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(alice), Box::new(bob)];
+
+    game.turn.active_player = p0;
+    game_loop.step_combat(&mut game, &mut agents);
+
+    // Both bears should be dead (2 damage each, 2 toughness each)
+    assert_eq!(
+        game.zone(ZoneType::Graveyard, p0).len(),
+        1,
+        "Alice's bear should be in graveyard"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Graveyard, p1).len(),
+        1,
+        "Bob's bear should be in graveyard"
+    );
+
+    // No player damage
+    assert_eq!(game.player(p0).life, 20);
+    assert_eq!(game.player(p1).life, 20);
+}

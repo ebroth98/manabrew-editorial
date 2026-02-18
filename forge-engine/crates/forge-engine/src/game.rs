@@ -1,0 +1,206 @@
+use std::collections::HashMap;
+
+use forge_foundation::ZoneType;
+use serde::{Deserialize, Serialize};
+
+use crate::card::CardInstance;
+use crate::ids::{CardId, PlayerId};
+use crate::phase::TurnState;
+use crate::player::PlayerState;
+use crate::stack::MagicStack;
+use crate::zone::{Zone, ZoneKey};
+
+/// The complete, serializable game state.
+/// All game entities live here — nothing holds references, everything uses IDs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameState {
+    // Arenas
+    pub cards: Vec<CardInstance>,
+    pub players: Vec<PlayerState>,
+
+    // Zones: keyed by (ZoneType, PlayerId)
+    #[serde(skip)]
+    pub zones: HashMap<ZoneKey, Zone>,
+
+    // The stack
+    pub stack: MagicStack,
+
+    // Turn/phase state
+    pub turn: TurnState,
+
+    // Player order (for turn sequence)
+    pub player_order: Vec<PlayerId>,
+
+    // Game over flag
+    pub game_over: bool,
+    pub winner: Option<PlayerId>,
+
+    // Next card ID counter
+    next_card_id: u32,
+}
+
+impl GameState {
+    pub fn new(player_names: &[&str], starting_life: i32) -> Self {
+        let mut players = Vec::new();
+        let mut player_order = Vec::new();
+
+        for (i, name) in player_names.iter().enumerate() {
+            let pid = PlayerId(i as u32);
+            players.push(PlayerState::new(pid, name.to_string(), starting_life));
+            player_order.push(pid);
+        }
+
+        let mut zones = HashMap::new();
+        let zone_types = [
+            ZoneType::Hand,
+            ZoneType::Library,
+            ZoneType::Graveyard,
+            ZoneType::Battlefield,
+            ZoneType::Exile,
+            ZoneType::Command,
+            ZoneType::Stack,
+        ];
+
+        for &pid in &player_order {
+            for &zt in &zone_types {
+                let key = ZoneKey::new(zt, pid);
+                zones.insert(key, Zone::new(zt, pid));
+            }
+        }
+
+        GameState {
+            cards: Vec::new(),
+            players,
+            zones,
+            stack: MagicStack::new(),
+            turn: TurnState::new(player_order[0], player_order.len() as u32),
+            player_order,
+            game_over: false,
+            winner: None,
+            next_card_id: 0,
+        }
+    }
+
+    /// Create a new card instance and return its ID. Does NOT place it in a zone.
+    pub fn create_card(&mut self, mut card: CardInstance) -> CardId {
+        let id = CardId(self.next_card_id);
+        self.next_card_id += 1;
+        card.id = id;
+        self.cards.push(card);
+        id
+    }
+
+    // --- Accessors ---
+
+    pub fn card(&self, id: CardId) -> &CardInstance {
+        &self.cards[id.index()]
+    }
+
+    pub fn card_mut(&mut self, id: CardId) -> &mut CardInstance {
+        &mut self.cards[id.index()]
+    }
+
+    pub fn player(&self, id: PlayerId) -> &PlayerState {
+        &self.players[id.index()]
+    }
+
+    pub fn player_mut(&mut self, id: PlayerId) -> &mut PlayerState {
+        &mut self.players[id.index()]
+    }
+
+    pub fn zone(&self, zone_type: ZoneType, owner: PlayerId) -> &Zone {
+        let key = ZoneKey::new(zone_type, owner);
+        self.zones.get(&key).expect("Zone not found")
+    }
+
+    pub fn zone_mut(&mut self, zone_type: ZoneType, owner: PlayerId) -> &mut Zone {
+        let key = ZoneKey::new(zone_type, owner);
+        self.zones.get_mut(&key).expect("Zone not found")
+    }
+
+    pub fn active_player(&self) -> PlayerId {
+        self.turn.active_player
+    }
+
+    pub fn opponent_of(&self, player: PlayerId) -> PlayerId {
+        for &pid in &self.player_order {
+            if pid != player && self.player(pid).is_alive() {
+                return pid;
+            }
+        }
+        player // no opponent found (shouldn't happen in normal games)
+    }
+
+    pub fn alive_players(&self) -> Vec<PlayerId> {
+        self.player_order
+            .iter()
+            .filter(|&&pid| self.player(pid).is_alive())
+            .copied()
+            .collect()
+    }
+
+    /// Get all cards in a specific zone for a player.
+    pub fn cards_in_zone(&self, zone_type: ZoneType, owner: PlayerId) -> &[CardId] {
+        &self.zone(zone_type, owner).cards
+    }
+
+    /// Get all creatures on the battlefield for a player.
+    pub fn creatures_on_battlefield(&self, player: PlayerId) -> Vec<CardId> {
+        self.cards_in_zone(ZoneType::Battlefield, player)
+            .iter()
+            .filter(|&&cid| self.card(cid).is_creature())
+            .copied()
+            .collect()
+    }
+
+    /// Get all lands on the battlefield for a player.
+    pub fn lands_on_battlefield(&self, player: PlayerId) -> Vec<CardId> {
+        self.cards_in_zone(ZoneType::Battlefield, player)
+            .iter()
+            .filter(|&&cid| self.card(cid).is_land())
+            .copied()
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
+
+    #[test]
+    fn create_game() {
+        let game = GameState::new(&["Alice", "Bob"], 20);
+        assert_eq!(game.players.len(), 2);
+        assert_eq!(game.player(PlayerId(0)).name, "Alice");
+        assert_eq!(game.player(PlayerId(1)).name, "Bob");
+        assert_eq!(game.player(PlayerId(0)).life, 20);
+    }
+
+    #[test]
+    fn create_card_and_zone() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let card = CardInstance::new(
+            CardId(0),
+            "Grizzly Bears".to_string(),
+            PlayerId(0),
+            CardTypeLine::parse("Creature Bear"),
+            ManaCost::parse("1 G"),
+            ColorSet::GREEN,
+            Some(2),
+            Some(2),
+            vec![],
+            vec![],
+        );
+        let cid = game.create_card(card);
+        game.zone_mut(ZoneType::Library, PlayerId(0)).add(cid);
+        assert_eq!(game.zone(ZoneType::Library, PlayerId(0)).len(), 1);
+    }
+
+    #[test]
+    fn opponent_lookup() {
+        let game = GameState::new(&["Alice", "Bob"], 20);
+        assert_eq!(game.opponent_of(PlayerId(0)), PlayerId(1));
+        assert_eq!(game.opponent_of(PlayerId(1)), PlayerId(0));
+    }
+}

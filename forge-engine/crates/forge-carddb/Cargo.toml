@@ -1,0 +1,12 @@
+[package]
+name = "forge-carddb"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+forge-foundation = { path = "../forge-foundation" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+# for integration tests
