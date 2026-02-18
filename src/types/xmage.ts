@@ -7,6 +7,7 @@ export interface Card {
   cardNumber: string;
   color: string;
   manaCost: string;
+  cmc?: number;
   types: string[];
   subtypes: string[];
   supertypes: string[];

@@ -35,13 +35,21 @@ export const useDeckStore = create<DeckState>((set) => ({
       pool: [...state.pool, card],
     })),
   removeFromMain: (cardId) =>
-    set((state) => ({
-      currentDeck: { ...state.currentDeck, cards: state.currentDeck.cards.filter((c) => c.id !== cardId) },
-    })),
+    set((state) => {
+      const index = state.currentDeck.cards.findIndex((c) => c.id === cardId);
+      if (index === -1) return state;
+      const newCards = [...state.currentDeck.cards];
+      newCards.splice(index, 1);
+      return { currentDeck: { ...state.currentDeck, cards: newCards } };
+    }),
   removeFromSide: (cardId) =>
-    set((state) => ({
-      currentDeck: { ...state.currentDeck, sideboard: state.currentDeck.sideboard.filter((c) => c.id !== cardId) },
-    })),
+    set((state) => {
+      const index = state.currentDeck.sideboard.findIndex((c) => c.id === cardId);
+      if (index === -1) return state;
+      const newSide = [...state.currentDeck.sideboard];
+      newSide.splice(index, 1);
+      return { currentDeck: { ...state.currentDeck, sideboard: newSide } };
+    }),
   clearDeck: () => set({ currentDeck: initialDeck }),
   loadDeck: (deck) => set({ currentDeck: deck }),
 }));
