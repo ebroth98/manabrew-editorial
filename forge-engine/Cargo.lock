@@ -18,6 +18,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "forge-cli"
+version = "0.1.0"
+dependencies = [
+ "forge-engine-core",
+ "forge-foundation",
+ "rand",
+]
+
+[[package]]
 name = "forge-engine-core"
 version = "0.1.0"
 dependencies = [

@@ -4,6 +4,7 @@ members = [
     "crates/forge-foundation",
     "crates/forge-carddb",
     "crates/forge-engine",
+    "crates/forge-cli",
 ]
 
 [workspace.dependencies]
