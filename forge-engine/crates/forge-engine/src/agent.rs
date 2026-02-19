@@ -1,5 +1,13 @@
 use crate::ids::{CardId, PlayerId};
 
+/// A target choice that can be a player, a card, or nothing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TargetChoice {
+    Player(PlayerId),
+    Card(CardId),
+    None,
+}
+
 /// Trait for player decision-making. Decouples the engine from UI/AI.
 /// Implementations can be interactive (prompt user), AI, or network-driven.
 pub trait PlayerAgent {
@@ -28,6 +36,14 @@ pub trait PlayerAgent {
 
     /// Choose a target card (e.g. for Lightning Bolt targeting a creature).
     fn choose_target_card(&mut self, player: PlayerId, valid: &[CardId]) -> Option<CardId>;
+
+    /// Choose a target that can be a player or a card (e.g. "any target").
+    fn choose_target_any(
+        &mut self,
+        player: PlayerId,
+        valid_players: &[PlayerId],
+        valid_cards: &[CardId],
+    ) -> TargetChoice;
 
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
@@ -73,6 +89,21 @@ impl PlayerAgent for PassAgent {
 
     fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
         valid.first().copied()
+    }
+
+    fn choose_target_any(
+        &mut self,
+        _player: PlayerId,
+        valid_players: &[PlayerId],
+        valid_cards: &[CardId],
+    ) -> TargetChoice {
+        if let Some(&pid) = valid_players.first() {
+            TargetChoice::Player(pid)
+        } else if let Some(&cid) = valid_cards.first() {
+            TargetChoice::Card(cid)
+        } else {
+            TargetChoice::None
+        }
     }
 
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {

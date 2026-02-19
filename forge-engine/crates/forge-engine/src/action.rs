@@ -83,7 +83,9 @@ impl GameState {
         for cid in battlefield_cards {
             let card = &self.cards[cid.index()];
             if card.is_creature() {
-                let should_die = card.toughness() <= 0 || card.lethal_damage();
+                let should_die = card.toughness() <= 0
+                    || card.lethal_damage()
+                    || (card.damage > 0 && card.has_deathtouch_damage);
                 if should_die {
                     let owner = card.owner;
                     self.move_card(cid, ZoneType::Graveyard, owner);

@@ -1,6 +1,6 @@
 use std::io::{self, Write};
 
-use forge_engine_core::agent::PlayerAgent;
+use forge_engine_core::agent::{PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
@@ -40,6 +40,14 @@ fn card_color(card: &CardInstance) -> &'static str {
     if card.is_land() { DIM } else { WHITE }
 }
 
+fn format_keywords(card: &CardInstance) -> String {
+    if card.keywords.is_empty() {
+        String::new()
+    } else {
+        format!(" {{{}}}", card.keywords.join(", "))
+    }
+}
+
 fn format_card(card: &CardInstance) -> String {
     let color = card_color(card);
     let tapped = if card.tapped { " (T)" } else { "" };
@@ -50,8 +58,9 @@ fn format_card(card: &CardInstance) -> String {
     };
 
     if card.is_creature() {
-        format!("{}{}{} {}/{}{}{}",
-            color, card.card_name, tapped, card.power(), card.toughness(), sick, RESET)
+        let kw = format_keywords(card);
+        format!("{}{}{} {}/{}{}{}{}",
+            color, card.card_name, tapped, card.power(), card.toughness(), kw, sick, RESET)
     } else if card.is_land() {
         format!("{}{}{}{}", color, card.card_name, tapped, RESET)
     } else {
@@ -64,8 +73,9 @@ fn format_card_with_cost(card: &CardInstance) -> String {
     if card.is_land() {
         format!("{}{}{}", color, card.card_name, RESET)
     } else if card.is_creature() {
-        format!("{}{} {}/{} [{}]{}",
-            color, card.card_name, card.power(), card.toughness(), card.mana_cost, RESET)
+        let kw = format_keywords(card);
+        format!("{}{} {}/{}{} [{}]{}",
+            color, card.card_name, card.power(), card.toughness(), kw, card.mana_cost, RESET)
     } else {
         format!("{}{} [{}]{}", color, card.card_name, card.mana_cost, RESET)
     }
@@ -171,9 +181,6 @@ fn read_numbers(prompt: &str, max: usize) -> Vec<usize> {
 }
 
 // ── Interactive Player Agent ─────────────────────────────────────────
-// This agent reads from the GameState directly via a raw pointer that
-// we update before each interaction. This is safe because we control
-// the call pattern: set pointer -> call agent method -> return.
 
 struct InteractiveAgent {
     game_ptr: *const GameState,
@@ -207,7 +214,6 @@ impl PlayerAgent for InteractiveAgent {
     fn choose_action(&mut self, player: PlayerId, playable: &[CardId]) -> Option<CardId> {
         let game = self.game();
 
-        // Display the board each time we're asked for an action
         let opp = game.opponent_of(player);
         display_board(game, player, opp);
 
@@ -237,8 +243,9 @@ impl PlayerAgent for InteractiveAgent {
         println!("\n{}{}Declare Attackers:{}", CYAN, BOLD, RESET);
         for (i, &cid) in available.iter().enumerate() {
             let card = game.card(cid);
-            println!("  {}{}{}: {} {}/{}",
-                BOLD, i, RESET, card.card_name, card.power(), card.toughness());
+            let kw = format_keywords(card);
+            println!("  {}{}{}: {} {}/{}{}",
+                BOLD, i, RESET, card.card_name, card.power(), card.toughness(), kw);
         }
         println!("  {}(numbers separated by spaces, 'all', or 'n' for none){}", DIM, RESET);
 
@@ -260,15 +267,17 @@ impl PlayerAgent for InteractiveAgent {
         println!("\n{}{}Incoming Attackers:{}", RED, BOLD, RESET);
         for (i, &cid) in attackers.iter().enumerate() {
             let card = game.card(cid);
-            println!("  {}{}[A{}]{}: {} {}/{}",
-                RED, BOLD, i, RESET, card.card_name, card.power(), card.toughness());
+            let kw = format_keywords(card);
+            println!("  {}{}[A{}]{}: {} {}/{}{}",
+                RED, BOLD, i, RESET, card.card_name, card.power(), card.toughness(), kw);
         }
 
         println!("{}{}Your Blockers:{}", GREEN, BOLD, RESET);
         for (i, &cid) in available_blockers.iter().enumerate() {
             let card = game.card(cid);
-            println!("  {}{}[B{}]{}: {} {}/{}",
-                GREEN, BOLD, i, RESET, card.card_name, card.power(), card.toughness());
+            let kw = format_keywords(card);
+            println!("  {}{}[B{}]{}: {} {}/{}{}",
+                GREEN, BOLD, i, RESET, card.card_name, card.power(), card.toughness(), kw);
         }
 
         println!("  {}Enter block assignments as 'B0=A0 B1=A0' or 'n' for no blocks{}", DIM, RESET);
@@ -324,6 +333,46 @@ impl PlayerAgent for InteractiveAgent {
         read_number(&format!("{}Target> {}", CYAN, RESET), valid.len()).map(|i| valid[i])
     }
 
+    fn choose_target_any(
+        &mut self,
+        _player: PlayerId,
+        valid_players: &[PlayerId],
+        valid_cards: &[CardId],
+    ) -> TargetChoice {
+        let game = self.game();
+        let total = valid_players.len() + valid_cards.len();
+        if total == 0 {
+            return TargetChoice::None;
+        }
+
+        println!("\n{}{}Choose target (player or creature):{}", CYAN, BOLD, RESET);
+        let mut idx = 0;
+        for &pid in valid_players {
+            let p = game.player(pid);
+            println!("  {}{}{}: {} (life: {})", BOLD, idx, RESET, p.name, p.life);
+            idx += 1;
+        }
+        for &cid in valid_cards {
+            println!("  {}{}{}: {}", BOLD, idx, RESET, format_card(game.card(cid)));
+            idx += 1;
+        }
+
+        match read_number(&format!("{}Target> {}", CYAN, RESET), total) {
+            Some(i) if i < valid_players.len() => TargetChoice::Player(valid_players[i]),
+            Some(i) => TargetChoice::Card(valid_cards[i - valid_players.len()]),
+            None => {
+                // Default to first player if available
+                if let Some(&pid) = valid_players.first() {
+                    TargetChoice::Player(pid)
+                } else if let Some(&cid) = valid_cards.first() {
+                    TargetChoice::Card(cid)
+                } else {
+                    TargetChoice::None
+                }
+            }
+        }
+    }
+
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
         None
     }
@@ -351,7 +400,6 @@ impl PlayerAgent for SimpleAiAgent {
     fn choose_blockers(
         &mut self, _: PlayerId, attackers: &[CardId], available_blockers: &[CardId],
     ) -> Vec<(CardId, CardId)> {
-        // Block biggest attacker with first available blocker
         if !attackers.is_empty() && !available_blockers.is_empty() {
             vec![(available_blockers[0], attackers[0])]
         } else {
@@ -367,6 +415,22 @@ impl PlayerAgent for SimpleAiAgent {
         valid.first().copied()
     }
 
+    fn choose_target_any(
+        &mut self,
+        _player: PlayerId,
+        valid_players: &[PlayerId],
+        valid_cards: &[CardId],
+    ) -> TargetChoice {
+        // AI prefers targeting creatures if available, else players
+        if let Some(&cid) = valid_cards.first() {
+            TargetChoice::Card(cid)
+        } else if let Some(&pid) = valid_players.first() {
+            TargetChoice::Player(pid)
+        } else {
+            TargetChoice::None
+        }
+    }
+
     fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
 
     fn notify(&mut self, message: &str) {
@@ -375,6 +439,8 @@ impl PlayerAgent for SimpleAiAgent {
 }
 
 // ── Card constructors ────────────────────────────────────────────────
+
+// -- Lands --
 
 fn make_mountain(owner: PlayerId) -> CardInstance {
     CardInstance::new(CardId(0), "Mountain".to_string(), owner,
@@ -388,6 +454,26 @@ fn make_forest(owner: PlayerId) -> CardInstance {
         ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
 }
 
+fn make_plains(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Plains".to_string(), owner,
+        CardTypeLine::parse("Basic Land - Plains"),
+        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
+}
+
+fn make_island(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Island".to_string(), owner,
+        CardTypeLine::parse("Basic Land - Island"),
+        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
+}
+
+fn make_swamp(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Swamp".to_string(), owner,
+        CardTypeLine::parse("Basic Land - Swamp"),
+        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
+}
+
+// -- Red spells --
+
 fn make_lightning_bolt(owner: PlayerId) -> CardInstance {
     CardInstance::new(CardId(0), "Lightning Bolt".to_string(), owner,
         CardTypeLine::parse("Instant"),
@@ -395,11 +481,41 @@ fn make_lightning_bolt(owner: PlayerId) -> CardInstance {
         vec!["SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3 | SpellDescription$ CARDNAME deals 3 damage to any target.".to_string()])
 }
 
-fn make_grizzly_bears(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Grizzly Bears".to_string(), owner,
-        CardTypeLine::parse("Creature - Bear"),
-        ManaCost::parse("1 G"), ColorSet::GREEN, Some(2), Some(2), vec![], vec![])
+fn make_shock(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Shock".to_string(), owner,
+        CardTypeLine::parse("Instant"),
+        ManaCost::parse("R"), ColorSet::RED, None, None, vec![],
+        vec!["SP$ DealDamage | ValidTgts$ Any | NumDmg$ 2 | SpellDescription$ CARDNAME deals 2 damage to any target.".to_string()])
 }
+
+// -- Green spells --
+
+fn make_giant_growth(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Giant Growth".to_string(), owner,
+        CardTypeLine::parse("Instant"),
+        ManaCost::parse("G"), ColorSet::GREEN, None, None, vec![],
+        vec!["SP$ Pump | ValidTgts$ Creature | NumAtt$ 3 | NumDef$ 3 | SpellDescription$ Target creature gets +3/+3 until end of turn.".to_string()])
+}
+
+// -- Black spells --
+
+fn make_doom_blade(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Doom Blade".to_string(), owner,
+        CardTypeLine::parse("Instant"),
+        ManaCost::parse("1 B"), ColorSet::BLACK, None, None, vec![],
+        vec!["SP$ Destroy | ValidTgts$ Creature.nonBlack | SpellDescription$ Destroy target nonblack creature.".to_string()])
+}
+
+// -- Blue spells --
+
+fn make_divination(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Divination".to_string(), owner,
+        CardTypeLine::parse("Sorcery"),
+        ManaCost::parse("2 U"), ColorSet::BLUE, None, None, vec![],
+        vec!["SP$ Draw | NumCards$ 2 | SpellDescription$ Draw two cards.".to_string()])
+}
+
+// -- Red creatures --
 
 fn make_grey_ogre(owner: PlayerId) -> CardInstance {
     CardInstance::new(CardId(0), "Gray Ogre".to_string(), owner,
@@ -411,6 +527,14 @@ fn make_hill_giant(owner: PlayerId) -> CardInstance {
     CardInstance::new(CardId(0), "Hill Giant".to_string(), owner,
         CardTypeLine::parse("Creature - Giant"),
         ManaCost::parse("3 R"), ColorSet::RED, Some(3), Some(3), vec![], vec![])
+}
+
+// -- Green creatures --
+
+fn make_grizzly_bears(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Grizzly Bears".to_string(), owner,
+        CardTypeLine::parse("Creature - Bear"),
+        ManaCost::parse("1 G"), ColorSet::GREEN, Some(2), Some(2), vec![], vec![])
 }
 
 fn make_centaur_courser(owner: PlayerId) -> CardInstance {
@@ -425,20 +549,115 @@ fn make_craw_wurm(owner: PlayerId) -> CardInstance {
         ManaCost::parse("4 G G"), ColorSet::GREEN, Some(6), Some(4), vec![], vec![])
 }
 
-// ── Deck building ────────────────────────────────────────────────────
-
-fn build_red_deck(game: &mut GameState, owner: PlayerId) {
-    for _ in 0..17 { let c = game.create_card(make_mountain(owner)); game.move_card(c, ZoneType::Library, owner); }
-    for _ in 0..4 { let c = game.create_card(make_lightning_bolt(owner)); game.move_card(c, ZoneType::Library, owner); }
-    for _ in 0..4 { let c = game.create_card(make_grey_ogre(owner)); game.move_card(c, ZoneType::Library, owner); }
-    for _ in 0..4 { let c = game.create_card(make_hill_giant(owner)); game.move_card(c, ZoneType::Library, owner); }
+fn make_garruks_companion(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Garruk's Companion".to_string(), owner,
+        CardTypeLine::parse("Creature - Beast"),
+        ManaCost::parse("G G"), ColorSet::GREEN, Some(3), Some(2),
+        vec!["Trample".to_string()], vec![])
 }
 
-fn build_green_deck(game: &mut GameState, owner: PlayerId) {
-    for _ in 0..17 { let c = game.create_card(make_forest(owner)); game.move_card(c, ZoneType::Library, owner); }
-    for _ in 0..4 { let c = game.create_card(make_grizzly_bears(owner)); game.move_card(c, ZoneType::Library, owner); }
-    for _ in 0..4 { let c = game.create_card(make_centaur_courser(owner)); game.move_card(c, ZoneType::Library, owner); }
-    for _ in 0..4 { let c = game.create_card(make_craw_wurm(owner)); game.move_card(c, ZoneType::Library, owner); }
+fn make_giant_spider(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Giant Spider".to_string(), owner,
+        CardTypeLine::parse("Creature - Spider"),
+        ManaCost::parse("3 G"), ColorSet::GREEN, Some(2), Some(4),
+        vec!["Reach".to_string()], vec![])
+}
+
+// -- White creatures --
+
+fn make_savannah_lions(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Savannah Lions".to_string(), owner,
+        CardTypeLine::parse("Creature - Cat"),
+        ManaCost::parse("W"), ColorSet::WHITE, Some(2), Some(1), vec![], vec![])
+}
+
+fn make_white_knight(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "White Knight".to_string(), owner,
+        CardTypeLine::parse("Creature - Human Knight"),
+        ManaCost::parse("W W"), ColorSet::WHITE, Some(2), Some(2),
+        vec!["First Strike".to_string()], vec![])
+}
+
+fn make_serra_angel(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Serra Angel".to_string(), owner,
+        CardTypeLine::parse("Creature - Angel"),
+        ManaCost::parse("3 W W"), ColorSet::WHITE, Some(4), Some(4),
+        vec!["Flying".to_string(), "Vigilance".to_string()], vec![])
+}
+
+// -- Black creatures --
+
+fn make_typhoid_rats(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Typhoid Rats".to_string(), owner,
+        CardTypeLine::parse("Creature - Rat"),
+        ManaCost::parse("B"), ColorSet::BLACK, Some(1), Some(1),
+        vec!["Deathtouch".to_string()], vec![])
+}
+
+fn make_vampire_nighthawk(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Vampire Nighthawk".to_string(), owner,
+        CardTypeLine::parse("Creature - Vampire Shaman"),
+        ManaCost::parse("1 B B"), ColorSet::BLACK, Some(2), Some(3),
+        vec!["Flying".to_string(), "Deathtouch".to_string(), "Lifelink".to_string()], vec![])
+}
+
+// -- Defender creatures --
+
+fn make_wall_of_ice(owner: PlayerId) -> CardInstance {
+    CardInstance::new(CardId(0), "Wall of Ice".to_string(), owner,
+        CardTypeLine::parse("Creature - Wall"),
+        ManaCost::parse("2 G"), ColorSet::GREEN, Some(0), Some(7),
+        vec!["Defender".to_string()], vec![])
+}
+
+// ── Deck building ────────────────────────────────────────────────────
+
+fn add_cards(game: &mut GameState, owner: PlayerId, count: usize, make: fn(PlayerId) -> CardInstance) {
+    for _ in 0..count {
+        let c = game.create_card(make(owner));
+        game.move_card(c, ZoneType::Library, owner);
+    }
+}
+
+fn build_red_burn_deck(game: &mut GameState, owner: PlayerId) {
+    // 17 Mountains, 4 Lightning Bolt, 4 Shock, 4 Gray Ogre, 4 Hill Giant = 33
+    add_cards(game, owner, 17, make_mountain);
+    add_cards(game, owner, 4, make_lightning_bolt);
+    add_cards(game, owner, 4, make_shock);
+    add_cards(game, owner, 4, make_grey_ogre);
+    add_cards(game, owner, 4, make_hill_giant);
+}
+
+fn build_green_stompy_deck(game: &mut GameState, owner: PlayerId) {
+    // 17 Forests, 4 Giant Growth, 3 Grizzly Bears, 2 Centaur Courser,
+    // 3 Garruk's Companion, 2 Giant Spider, 2 Wall of Ice, 2 Craw Wurm = 35
+    add_cards(game, owner, 17, make_forest);
+    add_cards(game, owner, 4, make_giant_growth);
+    add_cards(game, owner, 3, make_grizzly_bears);
+    add_cards(game, owner, 2, make_centaur_courser);
+    add_cards(game, owner, 3, make_garruks_companion);
+    add_cards(game, owner, 2, make_giant_spider);
+    add_cards(game, owner, 2, make_wall_of_ice);
+    add_cards(game, owner, 2, make_craw_wurm);
+}
+
+fn build_white_aggro_deck(game: &mut GameState, owner: PlayerId) {
+    // 17 Plains, 4 Savannah Lions, 4 White Knight, 4 Serra Angel = 29
+    add_cards(game, owner, 17, make_plains);
+    add_cards(game, owner, 4, make_savannah_lions);
+    add_cards(game, owner, 4, make_white_knight);
+    add_cards(game, owner, 4, make_serra_angel);
+}
+
+fn build_black_control_deck(game: &mut GameState, owner: PlayerId) {
+    // 13 Swamps, 4 Islands, 4 Doom Blade, 2 Divination,
+    // 4 Typhoid Rats, 4 Vampire Nighthawk = 31
+    add_cards(game, owner, 13, make_swamp);
+    add_cards(game, owner, 4, make_island);
+    add_cards(game, owner, 4, make_doom_blade);
+    add_cards(game, owner, 2, make_divination);
+    add_cards(game, owner, 4, make_typhoid_rats);
+    add_cards(game, owner, 4, make_vampire_nighthawk);
 }
 
 // ── Main ─────────────────────────────────────────────────────────────
@@ -447,32 +666,49 @@ fn main() {
     println!("{}{}", BOLD, CYAN);
     println!(r"  +=========================================+");
     println!(r"  |     FORGE ENGINE  -  MTG CLI            |");
-    println!(r"  |     Vanilla Creatures + Burn            |");
+    println!(r"  |     Keywords + Targeting + Effects       |");
     println!(r"  +=========================================+");
     println!("{}", RESET);
 
     println!("  Choose your deck:");
-    println!("    {}{}1{}: Red Burn (Mountains + Lightning Bolts + Ogres + Hill Giants)", RED, BOLD, RESET);
-    println!("    {}{}2{}: Green Stompy (Forests + Grizzly Bears + Centaurs + Craw Wurms)", GREEN, BOLD, RESET);
+    println!("    {}{}1{}: Red Burn      (Bolts + Shocks + Ogres + Giants)", RED, BOLD, RESET);
+    println!("    {}{}2{}: Green Stompy  (Giant Growth + Trample + Reach + Wurms)", GREEN, BOLD, RESET);
+    println!("    {}{}3{}: White Aggro   (Savannah Lions + First Strike + Flying + Vigilance)", YELLOW, BOLD, RESET);
+    println!("    {}{}4{}: Black Control (Doom Blade + Divination + Deathtouch + Lifelink)", MAGENTA, BOLD, RESET);
     print!("{}> {}", CYAN, RESET);
     let deck_choice = read_line();
-
-    let player_deck_is_red = deck_choice != "2";
 
     let mut game = GameState::new(&["You", "AI Opponent"], 20);
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
 
-    if player_deck_is_red {
-        build_red_deck(&mut game, p0);
-        build_green_deck(&mut game, p1);
-        println!("\n  {}You are playing Red Burn.{}", RED, RESET);
-        println!("  {}AI is playing Green Stompy.{}\n", GREEN, RESET);
-    } else {
-        build_green_deck(&mut game, p0);
-        build_red_deck(&mut game, p1);
-        println!("\n  {}You are playing Green Stompy.{}", GREEN, RESET);
-        println!("  {}AI is playing Red Burn.{}\n", RED, RESET);
+    // Build player deck and pick an AI opponent
+    match deck_choice.as_str() {
+        "2" => {
+            build_green_stompy_deck(&mut game, p0);
+            build_red_burn_deck(&mut game, p1);
+            println!("\n  {}You are playing Green Stompy.{}", GREEN, RESET);
+            println!("  {}AI is playing Red Burn.{}\n", RED, RESET);
+        }
+        "3" => {
+            build_white_aggro_deck(&mut game, p0);
+            build_black_control_deck(&mut game, p1);
+            println!("\n  {}You are playing White Aggro.{}", YELLOW, RESET);
+            println!("  {}AI is playing Black Control.{}\n", MAGENTA, RESET);
+        }
+        "4" => {
+            build_black_control_deck(&mut game, p0);
+            build_white_aggro_deck(&mut game, p1);
+            println!("\n  {}You are playing Black Control.{}", MAGENTA, RESET);
+            println!("  {}AI is playing White Aggro.{}\n", YELLOW, RESET);
+        }
+        _ => {
+            // Default: Red Burn
+            build_red_burn_deck(&mut game, p0);
+            build_green_stompy_deck(&mut game, p1);
+            println!("\n  {}You are playing Red Burn.{}", RED, RESET);
+            println!("  {}AI is playing Green Stompy.{}\n", GREEN, RESET);
+        }
     }
 
     let mut game_loop = GameLoop::new(2);
@@ -481,12 +717,6 @@ fn main() {
     // Shuffle and draw
     game_loop.setup(&mut game, &mut rng);
 
-    // The InteractiveAgent holds a raw pointer to the game state.
-    // We update it before each turn. This is safe because:
-    // 1. GameState lives on the stack in main() and outlives all agent calls
-    // 2. We only read through the pointer during agent callbacks
-    // 3. The game_loop borrows &mut game, but the agent only reads
-    //    through the pointer during its own callback (not simultaneously with mutation)
     let human = InteractiveAgent::new();
     let ai = SimpleAiAgent;
 
@@ -495,14 +725,8 @@ fn main() {
     println!("  {}Game Start! Good luck.{}", BOLD, RESET);
     println!("  {}(Type a number to choose, 'p' to pass, 'all'/'n' for attackers){}\n", DIM, RESET);
 
-    // Game loop — update the raw pointer before each turn
     while !game.game_over && game.turn.turn_number <= 50 {
-        // Update the pointer so the interactive agent can read game state
-        // Safety: game is alive for the entire loop, and the pointer is only
-        // dereferenced during synchronous agent callbacks within run_turn.
         let game_ptr = &game as *const GameState;
-        // We need to reach into the boxed agent to set the pointer
-        // Since Box<dyn PlayerAgent> erases the type, we use a helper
         set_game_ptr(&mut agents[0], game_ptr);
 
         let active = game.active_player();
@@ -533,9 +757,7 @@ fn main() {
 }
 
 /// Set the game state pointer on the InteractiveAgent inside a Box<dyn PlayerAgent>.
-/// This relies on InteractiveAgent being the first field layout of the trait object.
 fn set_game_ptr(agent: &mut Box<dyn PlayerAgent>, ptr: *const GameState) {
-    // We know agents[0] is an InteractiveAgent. Use the trait object's data pointer.
     let data_ptr = &mut **agent as *mut dyn PlayerAgent as *mut InteractiveAgent;
     unsafe {
         (*data_ptr).game_ptr = ptr;

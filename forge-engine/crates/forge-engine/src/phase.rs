@@ -65,6 +65,10 @@ impl TurnState {
             let next = (pos + 1) % player_order.len();
             self.active_player = player_order[next];
             self.priority_player = self.active_player;
+            self.turn_number += 1;
+            self.combat_attackers_declared = false;
+            self.combat_blockers_declared = false;
+            self.drawn_for_turn = false;
         }
     }
 

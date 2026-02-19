@@ -1,4 +1,4 @@
-use forge_engine_core::agent::PlayerAgent;
+use forge_engine_core::agent::{PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
@@ -97,6 +97,21 @@ impl PlayerAgent for ScriptedAgent {
 
     fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
         valid.first().copied()
+    }
+
+    fn choose_target_any(
+        &mut self,
+        _player: PlayerId,
+        valid_players: &[PlayerId],
+        valid_cards: &[CardId],
+    ) -> TargetChoice {
+        if let Some(&pid) = valid_players.first() {
+            TargetChoice::Player(pid)
+        } else if let Some(&cid) = valid_cards.first() {
+            TargetChoice::Card(cid)
+        } else {
+            TargetChoice::None
+        }
     }
 
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
@@ -386,6 +401,20 @@ fn full_game_runs() {
         }
         fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
             valid.first().copied()
+        }
+        fn choose_target_any(
+            &mut self,
+            _: PlayerId,
+            valid_players: &[PlayerId],
+            valid_cards: &[CardId],
+        ) -> TargetChoice {
+            if let Some(&pid) = valid_players.first() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = valid_cards.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
         }
         fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
             None

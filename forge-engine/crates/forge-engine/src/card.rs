@@ -51,6 +51,9 @@ pub struct CardInstance {
     // Abilities (raw strings from card definition — parsed in Phase 4)
     pub abilities: Vec<String>,
 
+    // Combat tracking
+    pub has_deathtouch_damage: bool,
+
     // Turn tracking
     pub entered_battlefield_this_turn: bool,
     pub attacked_this_turn: bool,
@@ -90,6 +93,7 @@ impl CardInstance {
             counters: HashMap::new(),
             keywords,
             abilities,
+            has_deathtouch_damage: false,
             entered_battlefield_this_turn: false,
             attacked_this_turn: false,
         }
@@ -133,9 +137,46 @@ impl CardInstance {
         self.has_keyword("Haste")
     }
 
+    pub fn has_flying(&self) -> bool {
+        self.has_keyword("Flying")
+    }
+
+    pub fn has_reach(&self) -> bool {
+        self.has_keyword("Reach")
+    }
+
+    pub fn has_first_strike(&self) -> bool {
+        self.has_keyword("First Strike")
+    }
+
+    pub fn has_double_strike(&self) -> bool {
+        self.has_keyword("Double Strike")
+    }
+
+    pub fn has_trample(&self) -> bool {
+        self.has_keyword("Trample")
+    }
+
+    pub fn has_deathtouch(&self) -> bool {
+        self.has_keyword("Deathtouch")
+    }
+
+    pub fn has_lifelink(&self) -> bool {
+        self.has_keyword("Lifelink")
+    }
+
+    pub fn has_vigilance(&self) -> bool {
+        self.has_keyword("Vigilance")
+    }
+
+    pub fn has_defender(&self) -> bool {
+        self.has_keyword("Defender")
+    }
+
     pub fn can_attack(&self) -> bool {
         self.is_creature()
             && !self.tapped
+            && !self.has_defender()
             && (self.has_haste() || !self.summoning_sick)
             && self.zone == ZoneType::Battlefield
     }
@@ -163,6 +204,7 @@ impl CardInstance {
         self.tapped = false;
         self.damage = 0;
         self.summoning_sick = true;
+        self.has_deathtouch_damage = false;
         self.entered_battlefield_this_turn = true;
         self.attacked_this_turn = false;
     }
@@ -171,6 +213,7 @@ impl CardInstance {
     pub fn new_turn(&mut self) {
         self.entered_battlefield_this_turn = false;
         self.attacked_this_turn = false;
+        self.has_deathtouch_damage = false;
         if self.zone == ZoneType::Battlefield {
             self.summoning_sick = false;
         }
