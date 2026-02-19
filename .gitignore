@@ -25,6 +25,7 @@ dist-ssr
 
 # Rust
 forge-engine/target/
+src-tauri/target/
 
 # Java / Maven
 forge/target/
