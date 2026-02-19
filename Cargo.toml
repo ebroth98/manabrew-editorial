@@ -1,0 +1,9 @@
+[workspace]
+resolver = "2"
+members = [
+    "src-tauri",
+]
+# forge-engine manages its own workspace
+exclude = [
+    "forge-engine",
+]
