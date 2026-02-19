@@ -1,244 +1,399 @@
-assume the api the server exposes is compatible with our client (we will create a middleware for it to adapt to our needs)
-
-use this stack:
-React
-Vite
-Tailwind
-Shadcn/UI
-Tanstack Query
-Zustand
-
-add as many details as possible to the plan.md file since we will use this plan to iterate with prompts.
-
-The plan should be structured in phases and each phase should have a list of tasks.
-
-The output should be only the plan.md file content.
-
-```markdown
-# Implementation Plan: Web-Based XMage Client
+# Implementation Plan: Forge Web
 
 ## Project Overview
-**Goal:** Reimplement the XMage client as a modern web application using React.
-**Target:** Feature parity with the existing Java Swing client, connected to standard XMage servers via a custom middleware adapter.
+**Goal:** Rewrite the Forge MTG engine in Rust, compile to WASM, and build a modern web client with P2P multiplayer. Achieve 1:1 behavioral parity with the Java Forge backend.
+
 **Stack:**
-- **Framework:** React + Vite
-- **Styling:** Tailwind CSS
-- **Components:** Shadcn/UI
-- **State Management:** Zustand
-- **Data Fetching/Async:** Tanstack Query
-- **API Interaction:** WebSocket (primary) & REST (secondary via Middleware)
+- **Engine:** Rust → WebAssembly (wasm-bindgen/wasm-pack)
+- **Frontend:** React 19 + Vite + TypeScript
+- **Styling:** Tailwind CSS 4 + Shadcn/UI
+- **State:** Zustand (game/UI state) + TanStack Query (card data/images)
+- **Networking:** WebRTC data channels (P2P), broadcast channels (spectating)
+- **Desktop:** Tauri (Rust backend + web frontend)
+- **Card data:** Forge `.txt` scripts (rules), Scryfall API (images)
+
+**Key Constraint:** The Rust engine must parse and execute Forge's 32,000+ card script files identically to the Java `forge-game` module. Card scripts are the contract between old and new.
 
 ---
 
-## Phase 1: Project Initialization & Architecture
+## Phase 1: Rust Engine — Foundation (DONE)
 
-**Objective:** Set up the development environment, directory structure, and foundational architecture for state and API communication.
+**Objective:** Core MTG types and card database parser.
 
-1.  **Scaffold Project**
-    - Initialize Vite project with React (TypeScript).
-    - Install and configure Tailwind CSS.
-    - Initialize Shadcn/UI and install core components (Button, Input, Card, Dialog, DropdownMenu, ScrollArea, Separator, Toast, Skeleton).
-    - Configure path aliases (e.g., `@/components`, `@/stores`, `@/lib`).
+1. **Foundation types** (`forge-foundation`)
+   - Color enum (5 colors) + ColorSet bitmask (32 combinations)
+   - ManaCost with 45 shard variants (hybrid, phyrexian, snow, X)
+   - CardTypeLine parser ("Legendary Creature — Human Wizard")
+   - ZoneType (19 zones), PhaseType (13 phases)
+   - CardSplitType (split, transform, meld, adventure, modal)
 
-2.  **Define Architecture & Types**
-    - Create TypeScript definitions mirroring XMage core objects (`Card`, `Deck`, `Player`, `Table`, `GameView`, `ClientCallback`).
-    - **Task:** Create a shared type library for API responses expected from the Middleware.
-
-3.  **Network Layer Setup**
-    - **Task:** Implement a WebSocket client singleton (using native WS or Socket.io client depending on middleware implementation) to handle persistent connection.
-    - **Task:** Configure Tanstack Query `QueryClient` for REST endpoints (e.g., Card Database searching, Server Status).
-    - **Task:** Create a "Middleware Mock" service to simulate server events for UI development without a running backend.
-
-4.  **Global UI Layout**
-    - Create `AppShell` layout (Sidebar/Navigation, Main Content Area, Status Bar).
-    - Implement Client-side Routing (React Router or Tanstack Router) for:
-        - `/login`
-        - `/lobby`
-        - `/deck-editor`
-        - `/game/:gameId`
-        - `/draft/:draftId`
+2. **Card script parser** (`forge-carddb`)
+   - Line-by-line parser for Forge `.txt` format
+   - CardFace (printed card data), CardRules (complete definition)
+   - CardDatabase with lookup by name
+   - WASM-compatible loading via string iterators (no `std::fs`)
+   - **Result:** Parses all 32,000+ cards with zero failures
 
 ---
 
-## Phase 2: Authentication & Server Connection
+## Phase 2: Rust Engine — Game State (DONE)
 
-**Objective:** Allow users to connect to the middleware, select a server, and authenticate.
+**Objective:** Mutable game state with arena-based entity system.
 
-1.  **State Management (Zustand)**
-    - Create `useConnectionStore`: Handle socket status (Connecting, Connected, Disconnected, Reconnecting).
-    - Create `useAuthStore`: Handle user session, username, preferences, and server selection.
+1. **Entity system**
+   - `CardId(u32)`, `PlayerId(u32)` — typed indices into `Vec` arenas
+   - `CardInstance` — mutable in-game card state (tapped, damage, counters, modifiers)
+   - `PlayerState` — life, poison, lands played, hand size, loss/win flags
 
-2.  **Login Screen UI**
-    - Design a modern Login form using Shadcn `Card` and `Form`.
-    - Features: Server address input, Username, Password, "Register" toggle, Flag/Icon selection.
+2. **Zone management**
+   - `Zone` per (ZoneType, PlayerId) — ordered card lists
+   - Zone-change state resets (untap, remove damage, reset controller)
 
-3.  **Connection Logic**
-    - Implement handshake logic with the Middleware.
-    - Handle authentication errors and display via Shadcn `Toast`.
-    - Persist last used server/username in `localStorage`.
+3. **Turn structure**
+   - `TurnState` — 13-phase cycle, active player, priority tracking
+   - Multiplayer turn order support
 
----
-
-## Phase 3: The Lobby (Community & Matchmaking)
-
-**Objective:** Replicate the functionality of the XMage Tabs (Tables, Chat, Users).
-
-1.  **Lobby Layout**
-    - Create a multi-pane layout:
-        - Left: Available Tables (Matches).
-        - Right: Connected Users.
-        - Bottom/Overlay: System & Lobby Chat.
-
-2.  **Chat System**
-    - **Task:** Create `ChatComponent` with support for different message types (System, User, Whisper).
-    - **Task:** Implement auto-scroll and "new message" indicators.
-    - **Task:** Integrate user color coding based on XMage logic.
-
-3.  **Table Management**
-    - **Task:** Create `TableList` component using Tanstack Table (optional) or mapped Shadcn Cards.
-    - **Task:** Implement filtering (Format, Rated/Unrated, Deck Type).
-    - **Task:** Create "New Table" Dialog:
-        - Inputs: Name, Password, Match Time, Format (Standard, Modern, Commander, etc.), Number of Wins.
-        - Skill level selector.
-
-4.  **User List**
-    - Display users with status icons (In Game, Drafting, Lobby).
-    - Implement context menu on users (Whisper, Watch Game, Profile).
+4. **Stack**
+   - `MagicStack` with `StackEntry` (source, controller, targets, ability text)
+   - LIFO resolution
 
 ---
 
-## Phase 4: Deck Editor
+## Phase 3: Rust Engine — First Playable (DONE)
 
-**Objective:** A full-featured deck builder with search and import/export capabilities.
+**Objective:** End-to-end games with combat and basic spells.
 
-1.  **Card Database Service**
-    - **Task:** Implement Tanstack Query hooks to search cards via the Middleware (which queries the XMage DB).
-    - **Task:** Handle pagination and caching of card data.
+1. **Mana system**
+   - `ManaPool` (WUBRG + colorless) with `can_pay()` / `try_pay()`
+   - Colored-first payment algorithm for generic costs
 
-2.  **Editor UI**
-    - **Layout:** Split screen. Top: Card Search/Pool. Bottom: Deck (Main/Sideboard).
-    - **Card Rendering:** Create `CardComponent` that displays the image (lazy loaded from Scryfall/Middleware) with a text-fallback tooltip for accessibility/loading states.
+2. **Game loop** (`GameLoop`)
+   - Full turn cycle: untap → upkeep → draw → main1 → combat → main2 → end → cleanup
+   - Land plays (1/turn), spell casting (pay mana → stack → resolve)
+   - `PlayerAgent` trait for decisions (attacks, blocks, targets, mulligans)
 
-3.  **Deck Management Logic**
-    - Create `useDeckStore` to manage current deck state.
-    - **Task:** Implement Drag-and-Drop (using `dnd-kit`) to move cards between Pool, Main, and Sideboard.
-    - **Task:** Implement Stats View (Mana curve charts, Color distribution).
+3. **Combat**
+   - Attack/block declaration via `PlayerAgent`
+   - Damage assignment, unblocked damage to player
+   - State-based actions after damage
 
-4.  **I/O Operations**
-    - **Task:** Implement `.dck` file parsing (XMage format) for import.
-    - **Task:** Implement clipboard export/import (Arena format compatibility).
-    - **Task:** Save/Load decks from the server.
+4. **DealDamage effect**
+   - Parse `SP$ DealDamage | ValidTgts$ Player | NumDmg$ 3`
+   - Lightning Bolt as proof of concept
 
----
+5. **CLI client** (`forge-cli`)
+   - ANSI-colored terminal game, human vs simple AI
+   - Board display, hand display, interactive input
 
-## Phase 5: Game Interface (The Battlefield)
-
-**Objective:** The core visual representation of Magic: The Gathering. This is the most complex phase.
-
-1.  **Game Layout Engine**
-    - Design a responsive grid system for the battlefield.
-    - **Areas:**
-        - Opponent Hand (Face down) & Library.
-        - Opponent Battlefield.
-        - **The Stack** (Crucial UI element).
-        - Player Battlefield.
-        - Player Hand.
-        - Sidebar: Life totals, Turn phase indicator, Mana pool, Graveyard/Exile/Command Zone toggles.
-
-2.  **Zone Components**
-    - **Hand:** Fan layout for cards.
-    - **Battlefield:** Grouping by permanent type (Lands back, Creatures front) or free-form.
-    - **Stack:** Vertical list of spells/abilities waiting to resolve.
-
-3.  **Game State Synchronization**
-    - Create `useGameStore`.
-    - **Task:** Handle `GAME_UPDATE` payloads from WebSocket. This payload contains the entire visible state of the game.
-    - **Task:** Diffing logic to animate changes (e.g., Card moves from Hand to Stack).
-
-4.  **Phase & Turn Indicator**
-    - Visual representation of WUBRG mana pool.
-    - Interactive Phase bar (Untap, Upkeep, Draw, Main1, Combat, Main2, End).
-    - Priority indicator (Whose turn is it?).
+6. **Integration tests**
+   - 4 end-to-end scenarios (combat, blocking, damage, full game)
 
 ---
 
-## Phase 6: Game Interaction & Logic
+## Phase 4: Rust Engine — Keywords & Targeting (DONE)
 
-**Objective:** Handling user inputs, priority passing, and complex game actions.
+**Objective:** Tactical depth through keywords and creature targeting.
 
-1.  **Feedback Loop**
-    - **Task:** Middleware `sendAction` function (Cast spell, Activate ability, Pass priority).
+1. **9 combat keywords**
+   - Flying (only blocked by flying/reach), Reach
+   - First Strike, Double Strike (two-step damage resolution with SBA between)
+   - Trample (excess damage to defending player)
+   - Deathtouch (1 damage kills, SBA flag), Lifelink (controller gains life)
+   - Vigilance (no tap to attack), Defender (cannot attack)
 
-2.  **Dialogs & Choices**
-    - Implement specific UI for XMage callbacks:
-        - `askYesNo` (Simple Dialog).
-        - `chooseMode` (List selection).
-        - `choosePile` (Fact or Fiction).
-        - `chooseColor`.
-        - `pickTarget` (Mouse interaction with battlefield cards).
+2. **Creature targeting**
+   - `TargetKind` enum: Player, Any, Creature(filter), None
+   - `ValidTgts$ Any` — target player or creature
+   - `ValidTgts$ Creature.nonBlack` — filtered creature targeting
+   - Target validation before listing playable spells
 
-3.  **Card Interactions**
-    - **Task:** Context Menu on cards (Activate ability, Attack, Block).
-    - **Task:** Targeting arrows (SVG overlay drawing lines between source and target).
-    - **Task:** Combat assignment UI (ordering blockers).
+3. **New spell effects**
+   - Pump: `SP$ Pump | NumAtt$ +3 | NumDef$ +3` (Giant Growth)
+   - Destroy: `SP$ Destroy` (Doom Blade)
+   - Draw: `SP$ Draw | NumCards$ 2` (Divination)
 
-4.  **Mana Payment**
-    - UI for manual mana tapping vs. auto-payment suggestions provided by the engine.
-
----
-
-## Phase 7: Drafting & Limited
-
-**Objective:** Interface for Draft and Sealed formats.
-
-1.  **Draft UI**
-    - **Layout:** Center pack view (clickable cards), Bottom picked cards view.
-    - **Task:** Timer visualizer (Draft picks are timed).
-
-2.  **Deck Construction (Limited)**
-    - Reuse Deck Editor components but restricted to the "Pool" of drafted/opened cards.
-    - "Submit Deck" action.
+4. **4 themed CLI decks**
+   - Red Burn, Green Stompy, White Aggro, Black Control
+   - Showcase all keywords and effects
 
 ---
 
-## Phase 8: Polish & Settings
+## Phase 5: Rust Engine — Triggers
 
-**Objective:** Quality of life features.
+**Objective:** Event-driven trigger system matching Forge's `T$` format.
 
-1.  **User Preferences**
-    - Create a settings modal.
-    - **Options:**
-        - Auto-yield (F2/F4 functionality).
-        - Auto-pass priority settings.
-        - Card size scaling.
-        - Sound volume.
+1. **Trigger infrastructure**
+   - `GameEvent` enum (CardEntersBattlefield, CardDies, CardLeavesZone, DamageDealt, LifeGained, SpellCast, PhaseBegins, AttackerDeclared, etc.)
+   - `TriggerDefinition` parsed from card scripts (`T$ ChangesZone | Origin$ Any | Destination$ Battlefield`)
+   - Trigger registry on `GameState` — cards register triggers when entering battlefield
+   - Trigger matching: event → scan registered triggers → collect matches
 
-2.  **Asset Management**
-    - **Task:** Logic to handle card images (using high-res sources or proxies).
-    - **Task:** Preloading assets for smoother gameplay.
+2. **Trigger resolution**
+   - Triggered abilities go on stack (APNAP order for simultaneous triggers)
+   - `StackEntry` extended with trigger source info
+   - "When", "Whenever", "At" trigger types
 
-3.  **Game Log**
-    - A dedicated scrollable area logging all game actions (Spell casting, damage dealing) with hover-to-preview card functionality.
+3. **Common triggers to implement**
+   - ETB (enters the battlefield): `T$ ChangesZone | Origin$ Any | Destination$ Battlefield`
+   - Dies: `T$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard`
+   - LTB (leaves the battlefield): `T$ ChangesZone | Origin$ Battlefield | Destination$ Any`
+   - Combat damage to player: `T$ DamageDone | ValidTarget$ Player`
+   - Beginning of upkeep: `T$ Phase | Phase$ Upkeep`
+   - Spell cast: `T$ SpellCast`
 
-4.  **Keyboard Shortcuts**
-    - Map keys to actions (Space to Pass, F2 to Yield, Ctrl+Z to Undo mana).
+4. **Trigger conditions**
+   - `TriggerConditions$` parsing
+   - "You control" / "an opponent controls" filtering
+   - Card type filtering on trigger source
 
-## Directory Structure
+5. **Test cards**
+   - Mulldrifter (ETB draw 2), Blood Artist (dies trigger), Llanowar Elves variant (tap trigger), Soul Warden (ETB life gain)
 
-```text
-src/
-├── api/            # WebSocket and REST adapters
-├── assets/         # Static images/icons
-├── components/
-│   ├── ui/         # Shadcn generic components
-│   ├── lobby/      # Lobby specific components
-│   ├── editor/     # Deck editor specific components
-│   ├── game/       # Battlefield components (Card, Zone, Hand)
-│   └── shared/     # Shared domain components (ManaSymbol, CardImage)
-├── hooks/          # Custom React hooks
-├── lib/            # Utilities (formatting, validation)
-├── stores/         # Zustand state stores
-├── types/          # TypeScript interfaces (Game, Card, Action)
-└── views/          # Page components (Login, Lobby, Game)
-```
-```
+---
+
+## Phase 6: Rust Engine — Static Abilities & Continuous Effects
+
+**Objective:** Implement the layer system (CR 613) for continuous effects.
+
+1. **Layer system**
+   - 7 layers per MTG comprehensive rules:
+     1. Copy effects
+     2. Control-changing effects
+     3. Text-changing effects
+     4. Type-changing effects
+     5. Color-changing effects
+     6. Ability adding/removing
+     7. Power/toughness (7a: CDA, 7b: set, 7c: modify, 7d: counters, 7e: switching)
+   - Dependency resolution within layers
+   - Timestamp ordering
+
+2. **Static ability types**
+   - Anthems: "Other creatures you control get +1/+1" (`S$ Continuous | Affected$ Creature.YouCtrl+Other | AddPower$ 1 | AddToughness$ 1`)
+   - Auras: continuous effects attached to a permanent
+   - Type-granting: "Creatures you control have flying"
+   - Color-changing: "Target creature becomes blue"
+   - Lordship: "Other Elves get +1/+1"
+
+3. **Recalculation engine**
+   - Recalculate all continuous effects when game state changes
+   - Cache and invalidate efficiently
+
+4. **Test cards**
+   - Glorious Anthem (+1/+1 to your creatures), Honor of the Pure (+1/+1 to white creatures), Elvish Archdruid (lord), Pacifism (aura — can't attack/block)
+
+---
+
+## Phase 7: Rust Engine — Replacement Effects
+
+**Objective:** "Instead" effects and damage prevention.
+
+1. **Replacement effect system**
+   - `R$ BeforeDraw`, `R$ DamageDone`, `R$ Destroy`, etc.
+   - Replacement chain (self-replacement rules, CR 614.6)
+   - Player chooses order when multiple apply
+
+2. **Common replacements**
+   - Damage prevention: "Prevent the next N damage"
+   - Damage redirection: "redirect to another target"
+   - Enter-with-counters: "enters the battlefield with N +1/+1 counters"
+   - Draw replacement: "If you would draw a card, instead..."
+   - Death replacement: "If ~ would die, exile it instead"
+
+3. **Test cards**
+   - Fog (prevent all combat damage), Rest in Peace (exile instead of graveyard), Hardened Scales (extra +1/+1 counter)
+
+---
+
+## Phase 8: Rust Engine — Activated Abilities
+
+**Objective:** Tap abilities, loyalty abilities, and cost framework.
+
+1. **Cost framework**
+   - Mana costs, tap costs, sacrifice costs, life payment, discard costs
+   - Cost parsing from Forge `AB$` format
+   - Cost payment UI integration (PlayerAgent methods)
+
+2. **Activated ability types**
+   - Mana abilities (Llanowar Elves: `{T}: Add {G}`)
+   - Damage abilities (Prodigal Sorcerer: `{T}: Deal 1 damage`)
+   - Pump abilities (Nantuko Shade: `{B}: +1/+1 until end of turn`)
+   - Sacrifice abilities (Sakura-Tribe Elder: sacrifice → search for land)
+
+3. **Planeswalker rules**
+   - Loyalty counters, loyalty abilities (+N/-N)
+   - One loyalty ability per turn
+   - Planeswalker damage redirection
+   - Planeswalker uniqueness rule
+
+4. **Test cards**
+   - Llanowar Elves, Birds of Paradise, Prodigal Sorcerer, Jace Beleren (planeswalker)
+
+---
+
+## Phase 9: Rust Engine — API Type Expansion
+
+**Objective:** Systematic coverage of Forge's ~150+ ability API types to reach critical mass.
+
+1. **Priority API types** (by card coverage)
+   - Counter manipulation (AddCounter, RemoveCounter, MoveCounter)
+   - Token creation (Token)
+   - Card selection (ChangeZone with choices — tutor, mill, exile from hand)
+   - Bounce (ChangeZone back to hand)
+   - Sacrifice (Sacrifice)
+   - Discard (Discard, DiscardHand)
+   - Life manipulation (GainLife, LoseLife, SetLife)
+   - Card filtering (DigMultiple, Scry, Surveil, Reveal)
+
+2. **Combat API types**
+   - Fight, Goad, Provoke, Menace, Battle Cry, Exalted
+
+3. **Zone manipulation**
+   - Search library, mill, exile from graveyard, flashback, cascade
+
+4. **Progress metric**
+   - Track % of Forge API types covered
+   - Track % of card scripts that can be fully executed
+   - Target: 80%+ of commonly played cards
+
+---
+
+## Phase 10: WASM Bindings
+
+**Objective:** Expose the Rust engine to JavaScript.
+
+1. **wasm-bindgen exports**
+   - `GameState` creation, serialization (JSON)
+   - Action submission (play card, declare attackers, pass priority)
+   - Game state queries (hand, battlefield, life totals, legal actions)
+   - Card database loading from bundled card scripts
+
+2. **TypeScript type generation**
+   - `tsify` or manual TS declarations matching Rust types
+   - Shared types between engine and frontend
+
+3. **wasm-pack build pipeline**
+   - `wasm-pack build --target web`
+   - Integrate into Vite build (`vite-plugin-wasm`)
+   - Lazy-load WASM module on game start
+
+4. **Performance validation**
+   - Benchmark: full game simulation in WASM < 100ms
+   - Card database load time < 2s for 32K cards
+   - Memory footprint profiling
+
+---
+
+## Phase 11: Web Frontend — Game UI
+
+**Objective:** Playable browser game using the WASM engine.
+
+1. **Game state bridge**
+   - `useGameStore` (Zustand) synced with WASM `GameState`
+   - Action dispatch: UI → Zustand → WASM engine → state update → React re-render
+   - Game event log from engine
+
+2. **Battlefield layout**
+   - Zones: opponent hand (face-down), opponent battlefield, stack, player battlefield, player hand
+   - Sidebar: life totals, mana pool, phase indicator, graveyard/exile peek
+   - Card rendering: Scryfall images (lazy-loaded), text fallback
+
+3. **Game interactions**
+   - Card selection (play from hand, activate ability)
+   - Targeting (click card/player, arrow overlay)
+   - Combat (select attackers → confirm → select blockers → confirm)
+   - Priority passing (space bar), auto-yield (F2)
+   - Stack visualization with resolve/respond
+
+4. **Phase/turn indicator**
+   - Visual phase bar (Untap → Cleanup)
+   - Mana pool display (WUBRG)
+   - Turn counter, active player indicator
+
+---
+
+## Phase 12: Web Frontend — Lobby & Deck Editor
+
+**Objective:** Pre-game experience.
+
+1. **Deck editor**
+   - Card search (by name, type, color, CMC) via card database
+   - Drag-and-drop or click to add/remove cards
+   - Main deck + sideboard
+   - Mana curve chart, color distribution
+   - Import/export (Forge `.dck` format, Arena format, clipboard)
+   - Save/load from localStorage
+
+2. **Lobby**
+   - Create game (format, starting life, deck selection)
+   - Join game (game list, P2P connection setup)
+   - Chat (WebRTC data channel)
+
+3. **Login/identity**
+   - Username selection (stored locally)
+   - Avatar/icon picker
+
+---
+
+## Phase 13: Networking — P2P Multiplayer
+
+**Objective:** Peer-to-peer games with no server.
+
+1. **WebRTC signaling**
+   - Signaling server (minimal — exchange SDP offers/answers)
+   - Or: manual offer/answer exchange (paste codes)
+   - Or: use a free TURN/STUN relay
+
+2. **Game state sync protocol**
+   - Host runs the WASM engine, sends serialized `GameState` diffs
+   - Client sends actions (play card, declare attackers, pass)
+   - Deterministic replay: seed + action log = reproducible game
+
+3. **Broadcast/spectator mode**
+   - Read-only WebRTC data channel
+   - Spectators receive state updates, cannot send actions
+   - Join mid-game with full state snapshot
+
+4. **Reconnection**
+   - Full state snapshot on reconnect
+   - Action log replay for verification
+
+---
+
+## Phase 14: Tauri Desktop
+
+**Objective:** Native desktop app with the same web UI.
+
+1. **Tauri shell**
+   - Rust backend with direct engine access (no WASM overhead)
+   - Web frontend loaded from local files
+   - Tauri commands for file I/O (deck save/load, card script directory)
+
+2. **Local features**
+   - Local AI games (engine runs natively in Rust)
+   - Deck storage on filesystem
+   - Card image caching
+
+3. **Distribution**
+   - macOS, Windows, Linux builds
+   - Auto-update via Tauri updater
+
+---
+
+## Current Status
+
+| Phase | Status |
+|---|---|
+| 1. Foundation types | Done |
+| 2. Game state | Done |
+| 3. First playable | Done |
+| 4. Keywords & targeting | Done |
+| 5. Triggers | Next |
+| 6. Static abilities | — |
+| 7. Replacement effects | — |
+| 8. Activated abilities | — |
+| 9. API type expansion | — |
+| 10. WASM bindings | — |
+| 11. Game UI | — |
+| 12. Lobby & deck editor | — |
+| 13. P2P networking | — |
+| 14. Tauri desktop | — |
