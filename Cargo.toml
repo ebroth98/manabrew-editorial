@@ -1,0 +1,13 @@
+[workspace]
+resolver = "2"
+members = [
+    "src-tauri",
+    "forge-engine/crates/forge-foundation",
+    "forge-engine/crates/forge-carddb",
+    "forge-engine/crates/forge-engine",
+    "forge-engine/crates/forge-cli",
+]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

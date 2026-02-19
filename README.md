@@ -1,21 +1,24 @@
 # Forge Web
 
-A modern web client for Magic: The Gathering, powered by a Rust rewrite of the [Forge](https://github.com/Card-Forge/forge) engine compiled to WebAssembly. Play in the browser with P2P multiplayer — no server required.
+A modern desktop and web client for Magic: The Gathering, powered by a Rust rewrite of the [Forge](https://github.com/Card-Forge/forge) engine compiled to WebAssembly. Play in the browser or as a native desktop app — P2P multiplayer with no dedicated server required.
 
 ## Vision
 
-[Forge](https://github.com/Card-Forge/forge) is one of the most complete MTG implementations (~30,000+ cards), but its Java/Swing stack confines it to desktop. This project rewrites the Forge rules engine in Rust and wraps it in a modern web UI:
+[Forge](https://github.com/Card-Forge/forge) is one of the most complete MTG implementations (~30,000+ cards), but its Java/Swing stack confines it to desktop. This project rewrites the Forge rules engine in Rust and wraps it in a modern UI:
 
 - **Browser-first** — Rust engine compiled to WASM, runs entirely client-side
 - **P2P multiplayer** — WebRTC data channels for peer-to-peer games, no dedicated server
 - **Broadcast/spectator** — Watch games in real time
-- **Tauri desktop** — Native app with the same web UI and local Rust backend
+- **Tauri desktop** — Native app wrapping the same React UI with a local Rust backend
 - **1:1 Forge parity** — Same card scripts, same rules behavior, same 30K+ card pool
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────────────┐
+│                  Tauri Desktop Shell                      │
+│           Native window  ·  Local Rust backend           │
+├──────────────────────────────────────────────────────────┤
 │                     Web Frontend                         │
 │        React + Vite + Tailwind + Shadcn/UI               │
 │     Views: Login, Lobby, Deck Editor, Game, Draft        │
@@ -46,6 +49,10 @@ A modern web client for Magic: The Gathering, powered by a Rust rewrite of the [
 │   ├── hooks/              # Custom React hooks
 │   ├── types/              # TypeScript interfaces
 │   └── lib/                # Utilities
+├── src-tauri/              # Tauri v2 desktop shell (Rust)
+│   ├── src/                # Rust entry point and lib
+│   ├── tauri.conf.json     # Tauri configuration
+│   └── capabilities/       # Tauri permission capabilities
 ├── forge-engine/           # Rust engine (see forge-engine/README.md)
 │   └── crates/
 │       ├── forge-foundation/   # Core MTG types, no I/O
@@ -67,17 +74,24 @@ A modern web client for Magic: The Gathering, powered by a Rust rewrite of the [
 | State | Zustand, TanStack Query |
 | Routing | React Router |
 | Engine | Rust → WebAssembly (wasm-bindgen) |
-| Desktop | Tauri (planned) |
+| Desktop | Tauri v2 |
 | Networking | WebRTC data channels (planned) |
 | Card data | Forge card scripts (.txt), Scryfall API (images) |
 
 ## Getting Started
 
-### Web Frontend
+### Prerequisites
+
+- [Node.js](https://nodejs.org/) 18+
+- [Rust](https://rustup.rs/) (stable toolchain)
+- On macOS: Xcode Command Line Tools — `xcode-select --install`
+- On Linux: `libwebkit2gtk-4.1-dev` and other [Tauri system dependencies](https://tauri.app/start/prerequisites/)
+
+### Desktop App (Tauri)
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173
+npm run dev          # Builds src-tauri, starts Vite on :1420, opens native window
 ```
 
 ### Rust Engine
@@ -117,7 +131,7 @@ See [`forge-engine/README.md`](forge-engine/README.md) for engine architecture a
 ### Platform
 1. WebRTC P2P networking
 2. Broadcast/spectator mode
-3. Tauri desktop shell
+3. ~~Tauri desktop shell~~ — Done
 
 ## License
 

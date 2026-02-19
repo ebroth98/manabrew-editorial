@@ -24,7 +24,9 @@ dist-ssr
 *.sw?
 
 # Rust
+/target/
 forge-engine/target/
+src-tauri/target/
 
 # Java / Maven
 forge/target/
