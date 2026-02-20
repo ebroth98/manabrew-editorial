@@ -1,4 +1,5 @@
 import { useGameStore } from "@/stores/useGameStore";
+import { useDeckStore } from "@/stores/useDeckStore";
 import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Card as XMageCard, Player } from "@/types/xmage";
@@ -393,21 +394,47 @@ function PromptBanner({ promptType }: { promptType: string }) {
   );
 }
 
-function DeckPicker({ onPick }: { onPick: (id: string) => void }) {
+function DeckPicker({ onPick }: { onPick: (cardNames: string[]) => void }) {
+  const { savedDecks } = useDeckStore();
+
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-6">
+    <div className="flex flex-col items-center justify-center h-full gap-6 p-6 overflow-y-auto">
       <h2 className="text-2xl font-bold">Choose Your Deck</h2>
-      <div className="grid grid-cols-2 gap-4 max-w-md">
-        {DECK_OPTIONS.map((deck) => (
-          <button
-            key={deck.id}
-            className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
-            onClick={() => onPick(deck.id)}
-          >
-            <p className={cn("font-semibold", deck.color)}>{deck.label}</p>
-            <p className="text-xs text-muted-foreground mt-1">{deck.desc}</p>
-          </button>
-        ))}
+
+      {/* Saved decks */}
+      {savedDecks.length > 0 && (
+        <div className="w-full max-w-xl">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Your Decks</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {savedDecks.map((s) => (
+              <button
+                key={s.id}
+                className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
+                onClick={() => onPick(s.deck.cards.map((c) => c.name))}
+              >
+                <p className="font-semibold truncate">{s.deck.name}</p>
+                <p className="text-xs text-muted-foreground mt-1">{s.deck.cards.length} cards</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Preset decks */}
+      <div className="w-full max-w-xl">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Preset Decks</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {DECK_OPTIONS.map((deck) => (
+            <button
+              key={deck.id}
+              className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
+              onClick={() => onPick([deck.id])}
+            >
+              <p className={cn("font-semibold", deck.color)}>{deck.label}</p>
+              <p className="text-xs text-muted-foreground mt-1">{deck.desc}</p>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

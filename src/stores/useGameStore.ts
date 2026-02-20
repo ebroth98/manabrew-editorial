@@ -25,7 +25,7 @@ interface GameState {
   debugInfo: string;
   updateGameView: (view: GameView) => void;
   // Actions
-  startGame: (deckChoice: string) => Promise<void>;
+  startGame: (cardNames: string[]) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
   castSpell: (cardId: string) => void;
   passPriority: () => void;
@@ -52,10 +52,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   updateGameView: (view) => set({ gameView: view }),
 
-  startGame: async (deckChoice) => {
+  startGame: async (cardNames) => {
     try {
       set({ debugInfo: 'Starting game...' });
-      const result = await invoke('start_game', { deckChoice });
+      const result = await invoke('start_game', { deckList: cardNames });
       // Clear old game state so stale gameView/prompts don't bleed into new game
       set({ isGameActive: true, gameLog: [], gameView: null, currentPrompt: null, debugInfo: `Game started: ${result}. Polling...` });
       // Poll for the first prompt after a short delay

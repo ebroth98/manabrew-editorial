@@ -41,7 +41,7 @@ impl GameManager {
         self.latest_prompt.lock().ok().and_then(|g| g.clone())
     }
 
-    pub fn start_game(&self, app: AppHandle, deck_choice: &str) -> Result<String, String> {
+    pub fn start_game(&self, app: AppHandle, deck_list: Vec<String>) -> Result<String, String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
 
         // End existing session if any
@@ -56,7 +56,7 @@ impl GameManager {
 
         let game_id = format!("game-{}", uuid_simple());
         let game_id_clone = game_id.clone();
-        let deck = deck_choice.to_string();
+        let deck = deck_list;
 
         // Channels
         let (prompt_tx, prompt_rx) = mpsc::channel::<AgentPrompt>();
@@ -104,7 +104,7 @@ impl GameManager {
 
         // Game thread
         let handle = thread::spawn(move || {
-            eprintln!("[game_thread] Starting game: {} with deck: {}", game_id_clone, deck);
+            eprintln!("[game_thread] Starting game: {} with deck: {:?}", game_id_clone, deck);
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 run_game(game_id_clone.clone(), deck, prompt_tx, response_rx, notify_tx);
             }));
@@ -216,7 +216,7 @@ fn uuid_simple() -> String {
 
 fn run_game(
     game_id: String,
-    deck_choice: String,
+    deck_list: Vec<String>,
     prompt_tx: mpsc::Sender<AgentPrompt>,
     response_rx: mpsc::Receiver<PlayerAction>,
     notify_tx: mpsc::Sender<String>,
@@ -226,25 +226,38 @@ fn run_game(
 
     let mut game = GameState::new(&["You", "AI Opponent"], 20);
 
-    // Build decks
-    match deck_choice.as_str() {
-        "green_stompy" => {
-            build_green_stompy_deck(&mut game, p0);
-            build_red_burn_deck(&mut game, p1);
+    // Build human player deck: if a single preset ID is given, use that;
+    // otherwise build a custom deck from the card name list.
+    let is_preset = deck_list.len() == 1 && matches!(
+        deck_list[0].as_str(),
+        "red_burn" | "green_stompy" | "white_aggro" | "black_control"
+    );
+
+    if is_preset {
+        match deck_list[0].as_str() {
+            "green_stompy" => {
+                build_green_stompy_deck(&mut game, p0);
+                build_red_burn_deck(&mut game, p1);
+            }
+            "white_aggro" => {
+                build_white_aggro_deck(&mut game, p0);
+                build_black_control_deck(&mut game, p1);
+            }
+            "black_control" => {
+                build_black_control_deck(&mut game, p0);
+                build_white_aggro_deck(&mut game, p1);
+            }
+            _ => {
+                // red_burn (default)
+                build_red_burn_deck(&mut game, p0);
+                build_green_stompy_deck(&mut game, p1);
+            }
         }
-        "white_aggro" => {
-            build_white_aggro_deck(&mut game, p0);
-            build_black_control_deck(&mut game, p1);
-        }
-        "black_control" => {
-            build_black_control_deck(&mut game, p0);
-            build_white_aggro_deck(&mut game, p1);
-        }
-        _ => {
-            // Default: Red Burn
-            build_red_burn_deck(&mut game, p0);
-            build_green_stompy_deck(&mut game, p1);
-        }
+    } else {
+        // Custom deck: build human player deck from card names
+        build_custom_deck(&mut game, p0, &deck_list);
+        // AI always plays red burn as a simple opponent
+        build_red_burn_deck(&mut game, p1);
     }
 
     let human = TauriAgent::new(p0, game_id.clone(), prompt_tx.clone(), response_rx, notify_tx);
@@ -472,6 +485,61 @@ fn make_mulldrifter(owner: PlayerId) -> CardInstance {
     card.triggers = vec![trigger];
     card.svars = svars;
     card
+}
+
+// ── Card registry ──────────────────────────────────────────────────
+
+/// Map a card name to a CardInstance, matching the cards supported by the engine.
+/// Returns None for unrecognised names (they are silently skipped).
+fn make_card_by_name(name: &str, owner: PlayerId) -> Option<CardInstance> {
+    match name {
+        // Lands
+        "Mountain"           => Some(make_mountain(owner)),
+        "Forest"             => Some(make_forest(owner)),
+        "Plains"             => Some(make_plains(owner)),
+        "Island"             => Some(make_island(owner)),
+        "Swamp"              => Some(make_swamp(owner)),
+        // Instants / Sorceries
+        "Lightning Bolt"     => Some(make_lightning_bolt(owner)),
+        "Shock"              => Some(make_shock(owner)),
+        "Giant Growth"       => Some(make_giant_growth(owner)),
+        "Doom Blade"         => Some(make_doom_blade(owner)),
+        "Divination"         => Some(make_divination(owner)),
+        // Creatures
+        "Gray Ogre"          => Some(make_grey_ogre(owner)),
+        "Hill Giant"         => Some(make_hill_giant(owner)),
+        "Grizzly Bears"      => Some(make_grizzly_bears(owner)),
+        "Centaur Courser"    => Some(make_centaur_courser(owner)),
+        "Craw Wurm"          => Some(make_craw_wurm(owner)),
+        "Garruk's Companion" => Some(make_garruks_companion(owner)),
+        "Giant Spider"       => Some(make_giant_spider(owner)),
+        "Savannah Lions"     => Some(make_savannah_lions(owner)),
+        "White Knight"       => Some(make_white_knight(owner)),
+        "Serra Angel"        => Some(make_serra_angel(owner)),
+        "Typhoid Rats"       => Some(make_typhoid_rats(owner)),
+        "Vampire Nighthawk"  => Some(make_vampire_nighthawk(owner)),
+        "Wall of Ice"        => Some(make_wall_of_ice(owner)),
+        "Guttersnipe"        => Some(make_guttersnipe(owner)),
+        "Soul Warden"        => Some(make_soul_warden(owner)),
+        "Mulldrifter"        => Some(make_mulldrifter(owner)),
+        _                    => None,
+    }
+}
+
+/// Build a deck for `owner` from a list of card names (one name per copy).
+/// Unrecognised names are skipped with a log message.
+fn build_custom_deck(game: &mut GameState, owner: PlayerId, names: &[String]) {
+    for name in names {
+        match make_card_by_name(name, owner) {
+            Some(card) => {
+                let id = game.create_card(card);
+                game.move_card(id, ZoneType::Library, owner);
+            }
+            None => {
+                eprintln!("[custom_deck] Unknown card '{}' — skipped", name);
+            }
+        }
+    }
 }
 
 // ── Deck builders ──────────────────────────────────────────────────

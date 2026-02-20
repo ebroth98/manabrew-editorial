@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDeckStore } from "@/stores/useDeckStore";
+import { useGameStore } from "@/stores/useGameStore";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { Trash2, Pencil, Plus, Search } from "lucide-react";
+import { Trash2, Pencil, Plus, Search, Swords } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/game/CardPreview";
 import { DeckStats } from "@/components/editor/DeckStats";
@@ -152,6 +153,7 @@ export default function MyDecks() {
     setDeckName,
     enrichSavedDeck,
   } = useDeckStore();
+  const { startGame } = useGameStore();
   const [selectedId, setSelectedId] = useState<string | null>(
     savedDecks[0]?.id ?? null,
   );
@@ -209,6 +211,14 @@ export default function MyDecks() {
   function handleEdit(id: string) {
     loadSavedDeck(id);
     navigate("/deck-editor");
+  }
+
+  function handlePlay(id: string) {
+    const saved = savedDecks.find((s) => s.id === id);
+    if (!saved) return;
+    const cardNames = saved.deck.cards.map((c) => c.name);
+    startGame(cardNames);
+    navigate("/play");
   }
 
   function handleDelete(id: string) {
@@ -396,10 +406,16 @@ export default function MyDecks() {
                   </div>
                 </div>
               </div>
-              <Button size="sm" onClick={() => handleEdit(selected.id)}>
-                <Pencil className="h-3.5 w-3.5 mr-1" />
-                Edit Deck
-              </Button>
+              <div className="flex gap-2 shrink-0">
+                <Button size="sm" variant="outline" onClick={() => handleEdit(selected.id)}>
+                  <Pencil className="h-3.5 w-3.5 mr-1" />
+                  Edit
+                </Button>
+                <Button size="sm" onClick={() => handlePlay(selected.id)}>
+                  <Swords className="h-3.5 w-3.5 mr-1" />
+                  Play
+                </Button>
+              </div>
             </div>
 
             {/* Mana curve */}
