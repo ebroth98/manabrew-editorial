@@ -93,11 +93,13 @@ function ManaPool({ pool }: { pool: Record<string, number> }) {
 function PlayerPanel({
   player,
   isOpponent,
+  isActiveTurn,
   isTargetable,
   onTarget,
 }: {
   player: Player;
   isOpponent: boolean;
+  isActiveTurn?: boolean;
   isTargetable?: boolean;
   onTarget?: () => void;
 }) {
@@ -106,6 +108,9 @@ function PlayerPanel({
       data-player-id={player.id}
       className={cn(
         "flex items-center gap-3 px-3 py-2 border rounded-lg bg-card text-sm transition-colors",
+        isActiveTurn && !isTargetable && (isOpponent
+          ? "ring-2 ring-orange-400 border-orange-400"
+          : "ring-2 ring-green-500 border-green-500"),
         isTargetable && "ring-2 ring-red-400 border-red-400 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30"
       )}
       onClick={isTargetable ? onTarget : undefined}
@@ -117,6 +122,15 @@ function PlayerPanel({
         </AvatarFallback>
       </Avatar>
       <div className="font-semibold truncate min-w-0">{player.name}</div>
+      {isActiveTurn && (
+        <span className={cn(
+          "text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0",
+          isOpponent ? "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400"
+                     : "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
+        )}>
+          {isOpponent ? "THEIR TURN" : "YOUR TURN"}
+        </span>
+      )}
       <div className="flex items-center gap-1 shrink-0">
         <Heart className="h-3.5 w-3.5 text-red-500" />
         <span className="font-bold">{player.life}</span>
@@ -262,10 +276,13 @@ function BattlefieldZone({
   );
 }
 
-function PhaseBar({ currentStep, activePlayerId, myPlayerId }: { currentStep: string; activePlayerId: string; myPlayerId: string }) {
+function PhaseBar({ currentStep, activePlayerId, myPlayerId, turn }: { currentStep: string; activePlayerId: string; myPlayerId: string; turn: number }) {
   const isMyTurn = activePlayerId === myPlayerId;
   return (
     <div className="flex items-center gap-1 overflow-x-auto py-1 px-2 bg-muted/30 border rounded-lg shrink-0">
+      <span className="text-xs font-bold shrink-0 text-muted-foreground tabular-nums mr-1" title="Turn number">
+        T{turn}
+      </span>
       <span className={cn("text-xs font-semibold shrink-0 mr-1", isMyTurn ? "text-green-600" : "text-orange-500")}>
         {isMyTurn ? "Your Turn" : "Opp Turn"}
       </span>
@@ -636,6 +653,7 @@ export default function Game() {
       <PlayerPanel
         player={opponent}
         isOpponent
+        isActiveTurn={gameView.activePlayerId === opponent.id}
         isTargetable={playerIsTargetable(opponent.id)}
         onTarget={() => handleTargetPlayer(opponent.id)}
       />
@@ -729,7 +747,8 @@ export default function Game() {
       <PhaseBar
         currentStep={gameView.step}
         activePlayerId={gameView.activePlayerId}
-        myPlayerId={me.id}
+        myPlayerId={me!.id}
+        turn={gameView.turn}
       />
 
       {/* My battlefield */}
@@ -791,8 +810,9 @@ export default function Game() {
           <PlayerPanel
             player={me}
             isOpponent={false}
-            isTargetable={playerIsTargetable(me.id)}
-            onTarget={() => handleTargetPlayer(me.id)}
+            isActiveTurn={gameView.activePlayerId === me!.id}
+            isTargetable={playerIsTargetable(me!.id)}
+            onTarget={() => handleTargetPlayer(me!.id)}
           />
         </div>
         <div className="flex gap-2 shrink-0 items-center">
