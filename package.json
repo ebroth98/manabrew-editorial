@@ -9,7 +9,11 @@
     "vite:dev": "vite",
     "vite:build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "ios": "tauri ios dev",
+    "android": "tauri android dev",
+    "ios-build": "tauri ios build",
+    "android-build": "tauri android build"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

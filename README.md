@@ -1,4 +1,4 @@
-# Forge Web
+# Bardidina Magica
 
 A modern desktop and web client for Magic: The Gathering, powered by a Rust rewrite of the [Forge](https://github.com/Card-Forge/forge) engine compiled to WebAssembly. Play in the browser or as a native desktop app — P2P multiplayer with no dedicated server required.
 
