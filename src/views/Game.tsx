@@ -1,7 +1,7 @@
-import { useParams } from "react-router-dom";
 import { useGameStore } from "@/stores/useGameStore";
-import { useEffect, useState } from "react";
-import type { GameView, Card as XMageCard, Player } from "@/types/xmage";
+import { useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import type { Card as XMageCard, Player } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,61 +33,12 @@ const MANA_COLORS = [
   { key: "C", bg: "bg-gray-100 border-gray-300", text: "text-gray-700" },
 ];
 
-// Mock game state for development
-function buildMockGameView(gameId: string): GameView {
-  return {
-    gameId,
-    turn: 4,
-    step: "main1",
-    activePlayerId: "player-1",
-    priorityPlayerId: "player-1",
-    players: [
-      {
-        id: "player-1",
-        name: "You",
-        isHuman: true,
-        life: 18,
-        poison: 0,
-        handCount: 5,
-        libraryCount: 49,
-        graveyardCount: 2,
-        exileCount: 0,
-        manaPool: { W: 0, U: 2, B: 0, R: 0, G: 0, C: 1 },
-      },
-      {
-        id: "player-2",
-        name: "Opponent",
-        isHuman: false,
-        life: 14,
-        poison: 0,
-        handCount: 3,
-        libraryCount: 52,
-        graveyardCount: 1,
-        exileCount: 0,
-        manaPool: { W: 0, U: 0, B: 0, R: 0, G: 0, C: 0 },
-      },
-    ],
-    myHand: [
-      { id: "h1", name: "Counterspell", setCode: "2ED", cardNumber: "56", color: "U", manaCost: "{U}{U}", cmc: 2, types: ["Instant"], subtypes: [], supertypes: [], text: "Counter target spell.", isPlayable: true, isSelected: false, isChoosable: true, controllerId: "player-1", ownerId: "player-1", zoneId: "hand" },
-      { id: "h2", name: "Lightning Bolt", setCode: "LEA", cardNumber: "161", color: "R", manaCost: "{R}", cmc: 1, types: ["Instant"], subtypes: [], supertypes: [], text: "Deal 3 damage to any target.", isPlayable: true, isSelected: false, isChoosable: true, controllerId: "player-1", ownerId: "player-1", zoneId: "hand" },
-      { id: "h3", name: "Island", setCode: "LEA", cardNumber: "287", color: "", manaCost: "", cmc: 0, types: ["Basic", "Land"], subtypes: ["Island"], supertypes: ["Basic"], text: "", isPlayable: true, isSelected: false, isChoosable: true, controllerId: "player-1", ownerId: "player-1", zoneId: "hand" },
-      { id: "h4", name: "Jace, the Mind Sculptor", setCode: "WWK", cardNumber: "31", color: "U", manaCost: "{2}{U}{U}", cmc: 4, types: ["Legendary", "Planeswalker"], subtypes: ["Jace"], supertypes: ["Legendary"], text: "+2: Look at the top card...", isPlayable: false, isSelected: false, isChoosable: true, controllerId: "player-1", ownerId: "player-1", zoneId: "hand" },
-      { id: "h5", name: "Force of Will", setCode: "ALL", cardNumber: "28", color: "U", manaCost: "{3}{U}{U}", cmc: 5, types: ["Instant"], subtypes: [], supertypes: [], text: "You may pay 1 life and exile a blue card from your hand rather than pay this spell's mana cost.", isPlayable: false, isSelected: false, isChoosable: true, controllerId: "player-1", ownerId: "player-1", zoneId: "hand" },
-    ],
-    battlefield: [
-      { id: "bf1", name: "Island", setCode: "LEA", cardNumber: "287", color: "", manaCost: "", cmc: 0, types: ["Basic", "Land"], subtypes: ["Island"], supertypes: ["Basic"], text: "", isPlayable: true, isSelected: false, isChoosable: true, controllerId: "player-1", ownerId: "player-1", zoneId: "battlefield" },
-      { id: "bf2", name: "Island", setCode: "LEA", cardNumber: "287", color: "", manaCost: "", cmc: 0, types: ["Basic", "Land"], subtypes: ["Island"], supertypes: ["Basic"], text: "", isPlayable: true, isSelected: false, isChoosable: true, controllerId: "player-1", ownerId: "player-1", zoneId: "battlefield" },
-      { id: "bf3", name: "Island", setCode: "LEA", cardNumber: "287", color: "", manaCost: "", cmc: 0, types: ["Basic", "Land"], subtypes: ["Island"], supertypes: ["Basic"], text: "", isPlayable: true, isSelected: false, isChoosable: true, controllerId: "player-1", ownerId: "player-1", zoneId: "battlefield" },
-      { id: "bf4", name: "Snapcaster Mage", setCode: "ISD", cardNumber: "78", color: "U", manaCost: "{1}{U}", cmc: 2, types: ["Creature"], subtypes: ["Human", "Wizard"], supertypes: [], text: "Flash\nWhen Snapcaster Mage enters the battlefield, target instant or sorcery card in your graveyard gains flashback until end of turn.", power: "2", toughness: "1", isPlayable: true, isSelected: false, isChoosable: true, controllerId: "player-1", ownerId: "player-1", zoneId: "battlefield" },
-      // Opponent's permanents (controller = player-2)
-      { id: "bf5", name: "Tarmogoyf", setCode: "FUT", cardNumber: "153", color: "G", manaCost: "{1}{G}", cmc: 2, types: ["Creature"], subtypes: ["Lhurgoyf"], supertypes: [], text: "Tarmogoyf's power is equal to the number of card types among cards in all graveyards...", power: "*", toughness: "1+*", isPlayable: false, isSelected: false, isChoosable: true, controllerId: "player-2", ownerId: "player-2", zoneId: "battlefield" },
-      { id: "bf6", name: "Mountain", setCode: "LEA", cardNumber: "289", color: "", manaCost: "", cmc: 0, types: ["Basic", "Land"], subtypes: ["Mountain"], supertypes: ["Basic"], text: "", isPlayable: false, isSelected: false, isChoosable: true, controllerId: "player-2", ownerId: "player-2", zoneId: "battlefield" },
-    ],
-    stack: [],
-    exile: [],
-    graveyard: [],
-  };
-}
+const DECK_OPTIONS = [
+  { id: "red_burn", label: "Red Burn", desc: "Bolts + Shocks + Ogres + Giants", color: "text-red-500" },
+  { id: "green_stompy", label: "Green Stompy", desc: "Giant Growth + Trample + Reach + Wurms", color: "text-green-500" },
+  { id: "white_aggro", label: "White Aggro", desc: "Savannah Lions + First Strike + Flying", color: "text-yellow-500" },
+  { id: "black_control", label: "Black Control", desc: "Doom Blade + Divination + Deathtouch", color: "text-purple-500" },
+];
 
 function ManaPool({ pool }: { pool: Record<string, number> }) {
   const total = Object.values(pool).reduce((a, b) => a + b, 0);
@@ -147,11 +98,13 @@ function BattlefieldZone({
   label,
   emptyLabel,
   className,
+  onClickCard,
 }: {
   cards: XMageCard[];
   label: string;
   emptyLabel: string;
   className?: string;
+  onClickCard?: (card: XMageCard) => void;
 }) {
   return (
     <div className={cn("flex flex-col gap-1 min-h-0", className)}>
@@ -161,11 +114,21 @@ function BattlefieldZone({
           <span className="text-xs text-muted-foreground italic self-center mx-auto">{emptyLabel}</span>
         ) : (
           cards.map((card) => (
-            <Card
-              key={card.id}
-              card={card}
-              className="w-[70px] h-[98px] shrink-0 hover:z-10"
-            />
+            <div key={card.id} className="relative group shrink-0">
+              <Card
+                card={card}
+                className={cn("w-[70px] h-[98px] shrink-0 hover:z-10",
+                  card.isChoosable && onClickCard && "ring-2 ring-blue-400 cursor-pointer"
+                )}
+              />
+              {card.isChoosable && onClickCard && (
+                <button
+                  className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 bg-blue-500/20 border-2 border-blue-400 transition-opacity"
+                  onClick={() => onClickCard(card)}
+                  title={`Target ${card.name}`}
+                />
+              )}
+            </div>
           ))
         )}
       </div>
@@ -242,17 +205,101 @@ function GraveyardPeek({ count, label }: { count: number; label: string }) {
   );
 }
 
+function PromptBanner({ promptType }: { promptType: string }) {
+  const labels: Record<string, string> = {
+    mulligan: "Keep this hand?",
+    chooseAction: "Choose a card to play or pass priority",
+    chooseAttackers: "Declare attackers",
+    chooseBlockers: "Declare blockers",
+    chooseTargetPlayer: "Choose a target player",
+    chooseTargetCard: "Choose a target creature",
+    chooseTargetAny: "Choose a target (player or creature)",
+    gameOver: "Game Over",
+  };
+  const label = labels[promptType] ?? promptType;
+  return (
+    <div className="shrink-0 border rounded-lg p-2 bg-blue-50 dark:bg-blue-950/20 text-center">
+      <p className="text-sm font-semibold text-blue-700 dark:text-blue-400">{label}</p>
+    </div>
+  );
+}
+
+function DeckPicker({ onPick }: { onPick: (id: string) => void }) {
+  return (
+    <div className="flex flex-col items-center justify-center h-full gap-6">
+      <h2 className="text-2xl font-bold">Choose Your Deck</h2>
+      <div className="grid grid-cols-2 gap-4 max-w-md">
+        {DECK_OPTIONS.map((deck) => (
+          <button
+            key={deck.id}
+            className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
+            onClick={() => onPick(deck.id)}
+          >
+            <p className={cn("font-semibold", deck.color)}>{deck.label}</p>
+            <p className="text-xs text-muted-foreground mt-1">{deck.desc}</p>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function Game() {
-  const { gameId } = useParams<{ gameId: string }>();
-  const { gameView, updateGameView, passPriority } = useGameStore();
+  const {
+    gameView,
+    currentPrompt,
+    isGameActive,
+    gameLog,
+    debugInfo,
+    passPriority,
+    castSpell,
+    declareAttackers,
+    targetPlayer,
+    targetCard,
+    targetAny,
+    mulliganDecision,
+    startGame,
+    setupListeners,
+  } = useGameStore();
   const [selectedCard, setSelectedCard] = useState<XMageCard | null>(null);
 
-  // Load mock data on mount
+  // Set up event listeners on mount
   useEffect(() => {
-    if (!gameView && gameId) {
-      updateGameView(buildMockGameView(gameId));
-    }
-  }, [gameId]);
+    let cleanup: (() => void) | undefined;
+    setupListeners().then((fn) => {
+      cleanup = fn;
+    });
+    return () => {
+      cleanup?.();
+    };
+  }, [setupListeners]);
+
+  // Poll for game state as fallback (in case events don't work)
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!isGameActive) return;
+    // Poll every 300ms when we don't have a gameView yet, or after responding
+    pollRef.current = setInterval(async () => {
+      try {
+        const prompt = await invoke<any>('get_prompt');
+        if (prompt) {
+          const gv = prompt.gameView || prompt.game_view;
+          if (gv) {
+            useGameStore.setState({
+              gameView: gv,
+              currentPrompt: prompt,
+              debugInfo: `Poll OK: ${prompt.type}`,
+            });
+          }
+        }
+      } catch (e) {
+        // ignore poll errors
+      }
+    }, 300);
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+    };
+  }, [isGameActive]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -267,10 +314,27 @@ export default function Game() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [passPriority]);
 
+  // Show deck picker if no active game
+  if (!isGameActive) {
+    return <DeckPicker onPick={(id) => startGame(id)} />;
+  }
+
+  // Loading
   if (!gameView) {
     return (
-      <div className="flex items-center justify-center h-full">
-        <p className="text-muted-foreground">Loading game...</p>
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <p className="text-muted-foreground">Waiting for game state...</p>
+        {debugInfo && <p className="text-xs text-muted-foreground font-mono">{debugInfo}</p>}
+        <Button variant="outline" size="sm" onClick={async () => {
+          try {
+            const raw = await invoke<any>('get_prompt');
+            useGameStore.setState({ debugInfo: `Manual poll: ${JSON.stringify(raw)?.slice(0, 200)}` });
+          } catch (e) {
+            useGameStore.setState({ debugInfo: `Poll error: ${e}` });
+          }
+        }}>
+          Debug: Poll Now
+        </Button>
       </div>
     );
   }
@@ -281,11 +345,42 @@ export default function Game() {
   const myPermanents = gameView.battlefield.filter((c) => c.controllerId === me.id);
   const opponentPermanents = gameView.battlefield.filter((c) => c.controllerId === opponent.id);
 
-  const hasPriority = gameView.priorityPlayerId === me.id;
+  const promptType = currentPrompt?.type;
+
+  // Game over overlay
+  if (gameView.gameOver || promptType === "gameOver") {
+    const winnerId = gameView.winnerId;
+    const didWin = winnerId === me.id;
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-4">
+        <h2 className={cn("text-3xl font-bold", didWin ? "text-green-600" : "text-red-600")}>
+          {didWin ? "You Win!" : "You Lose!"}
+        </h2>
+        <p className="text-muted-foreground">
+          Final life: You {me.life} — {opponent.name} {opponent.life}
+        </p>
+        <p className="text-sm text-muted-foreground">Turn {gameView.turn}</p>
+        <Button onClick={() => window.location.reload()}>Play Again</Button>
+      </div>
+    );
+  }
 
   function handlePlayCard(card: XMageCard) {
-    // TODO: wire to game engine
-    setSelectedCard(card);
+    if (!card.isPlayable) return;
+    castSpell(card.id);
+  }
+
+  function handleBattlefieldClick(card: XMageCard) {
+    if (!currentPrompt || !card.isChoosable) return;
+
+    if (promptType === "chooseAttackers") {
+      // For attackers: toggle selection (simplified: just send this one)
+      declareAttackers([card.id]);
+    } else if (promptType === "chooseTargetCard") {
+      targetCard(card.id);
+    } else if (promptType === "chooseTargetAny") {
+      targetAny({ kind: "card", cardId: card.id });
+    }
   }
 
   return (
@@ -301,6 +396,7 @@ export default function Game() {
           label={`${opponent.name}'s Battlefield`}
           emptyLabel="No permanents"
           className="flex-1"
+          onClickCard={promptType === "chooseTargetCard" || promptType === "chooseTargetAny" ? handleBattlefieldClick : undefined}
         />
       </div>
 
@@ -318,6 +414,11 @@ export default function Game() {
         </div>
       )}
 
+      {/* Prompt banner */}
+      {promptType && promptType !== "gameOver" && (
+        <PromptBanner promptType={promptType} />
+      )}
+
       {/* Phase bar */}
       <PhaseBar
         currentStep={gameView.step}
@@ -333,8 +434,17 @@ export default function Game() {
           label="Your Battlefield"
           emptyLabel="No permanents"
           className="flex-1"
+          onClickCard={promptType === "chooseAttackers" || promptType === "chooseTargetCard" || promptType === "chooseTargetAny" ? handleBattlefieldClick : undefined}
         />
       </div>
+
+      {/* Mulligan UI */}
+      {promptType === "mulligan" && (
+        <div className="shrink-0 flex gap-2 justify-center p-2">
+          <Button size="sm" onClick={() => mulliganDecision(true)}>Keep Hand</Button>
+          <Button size="sm" variant="destructive" onClick={() => mulliganDecision(false)}>Mulligan</Button>
+        </div>
+      )}
 
       {/* Hand */}
       <HandDisplay cards={gameView.myHand} onPlayCard={handlePlayCard} />
@@ -345,25 +455,70 @@ export default function Game() {
           <PlayerPanel player={me} isOpponent={false} />
         </div>
         <div className="flex gap-2 shrink-0">
-          {hasPriority && (
+          {promptType === "chooseAction" && (
+            <Button size="sm" variant="outline" onClick={passPriority}>
+              Pass (Space)
+            </Button>
+          )}
+          {promptType === "chooseAttackers" && (
             <>
               <Button size="sm" variant="outline" onClick={passPriority}>
-                Pass (Space)
+                No Attackers
               </Button>
-              <Button size="sm" variant="secondary" className="flex items-center gap-1">
+              <Button size="sm" variant="secondary" className="flex items-center gap-1"
+                onClick={() => {
+                  // Attack with all available
+                  const ids = currentPrompt?.availableAttackerIds ?? [];
+                  declareAttackers(ids);
+                }}
+              >
                 <Sword className="h-3.5 w-3.5" />
-                Attack
+                Attack All
               </Button>
+            </>
+          )}
+          {promptType === "chooseBlockers" && (
+            <Button size="sm" variant="outline" onClick={passPriority}>
+              No Blockers
+            </Button>
+          )}
+          {(promptType === "chooseTargetPlayer" || promptType === "chooseTargetAny") && (
+            <>
+              {currentPrompt?.validPlayerIds?.map((pid) => {
+                const player = gameView.players.find((p) => p.id === pid);
+                return (
+                  <Button key={pid} size="sm" variant="secondary"
+                    onClick={() => {
+                      if (promptType === "chooseTargetAny") {
+                        targetAny({ kind: "player", playerId: pid });
+                      } else {
+                        targetPlayer(pid);
+                      }
+                    }}
+                  >
+                    Target {player?.name ?? pid} ({player?.life})
+                  </Button>
+                );
+              })}
             </>
           )}
         </div>
       </div>
 
+      {/* Game log */}
+      {gameLog.length > 0 && (
+        <div className="shrink-0 max-h-16 overflow-y-auto text-xs text-muted-foreground border-t pt-1 px-1">
+          {gameLog.slice(-5).map((msg, i) => (
+            <div key={i}>{msg}</div>
+          ))}
+        </div>
+      )}
+
       {/* Selected card info */}
       {selectedCard && (
         <div className="shrink-0 text-xs text-muted-foreground border-t pt-1">
           Selected: <span className="font-semibold text-foreground">{selectedCard.name}</span>
-          {" "}— {selectedCard.text}
+          {" "}&mdash; {selectedCard.text}
           <Button size="sm" variant="ghost" className="ml-2 h-5 text-xs" onClick={() => setSelectedCard(null)}>
             Clear
           </Button>

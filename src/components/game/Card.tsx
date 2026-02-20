@@ -1,4 +1,5 @@
 import type { Card as CardType } from "@/types/xmage";
+import { useCardImage } from "@/hooks/useCardImage";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -11,6 +12,8 @@ interface CardProps {
 
 export function Card({ card, className, isTapped, onClick }: CardProps) {
   const [hasError, setHasError] = useState(false);
+  const { data: scryfallUrl } = useCardImage(card.name, card.imageUrl);
+  const imageUrl = card.imageUrl || scryfallUrl;
 
   return (
     <div
@@ -23,9 +26,9 @@ export function Card({ card, className, isTapped, onClick }: CardProps) {
       title={card.name}
       onClick={onClick}
     >
-      {card.imageUrl && !hasError ? (
+      {imageUrl && !hasError ? (
         <img
-          src={card.imageUrl}
+          src={imageUrl}
           alt={card.name}
           className="absolute inset-0 w-full h-full object-contain rounded-lg"
           onError={() => setHasError(true)}

@@ -9,10 +9,6 @@ import Draft from "@/views/Draft";
 
 export const router = createBrowserRouter([
   {
-    path: "/",
-    element: <Navigate to="/login" replace />,
-  },
-  {
     path: "/login",
     element: <Login />,
   },
@@ -20,6 +16,14 @@ export const router = createBrowserRouter([
     path: "/",
     element: <AppShell />,
     children: [
+      {
+        index: true,
+        element: <Navigate to="/play" replace />,
+      },
+      {
+        path: "play",
+        element: <Game />,
+      },
       {
         path: "lobby",
         element: <Lobby />,

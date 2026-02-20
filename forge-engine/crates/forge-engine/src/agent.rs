@@ -1,4 +1,6 @@
+use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::mana_pool::ManaPool;
 
 /// A target choice that can be a player, a card, or nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,6 +13,10 @@ pub enum TargetChoice {
 /// Trait for player decision-making. Decouples the engine from UI/AI.
 /// Implementations can be interactive (prompt user), AI, or network-driven.
 pub trait PlayerAgent {
+    /// Called before each agent decision point with the current game state.
+    /// Override this to capture snapshots for a UI or network layer.
+    fn snapshot_state(&mut self, _game: &GameState, _mana_pools: &[ManaPool]) {}
+
     /// Choose which cards to keep in opening hand (mulligan decision).
     /// Returns true to keep, false to mulligan.
     fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId]) -> bool;

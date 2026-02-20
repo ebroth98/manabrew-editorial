@@ -21,6 +21,8 @@ export interface Card {
   controllerId: string; // UUID
   ownerId: string; // UUID
   zoneId: string; // UUID
+  tapped?: boolean;
+  keywords?: string[];
 }
 
 export interface Deck {
@@ -71,6 +73,8 @@ export interface GameView {
   stack: StackObject[];
   exile: Card[];
   graveyard: Card[];
+  gameOver?: boolean;
+  winnerId?: string | null;
 }
 
 export interface StackObject {

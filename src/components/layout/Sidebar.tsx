@@ -7,6 +7,7 @@ import {
   BookMarked,
   Settings,
   LogOut,
+  Swords,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/stores/useAuthStore";
@@ -41,6 +42,17 @@ export function Sidebar({ className }: SidebarProps) {
             Bardidina Magica
           </h2>
           <div className="space-y-1">
+            <NavLink to="/play">
+              {({ isActive }) => (
+                <Button
+                  variant={isActive ? "secondary" : "ghost"}
+                  className="w-full justify-start"
+                >
+                  <Swords className="mr-2 h-4 w-4" />
+                  Play
+                </Button>
+              )}
+            </NavLink>
             <NavLink to="/lobby">
               {({ isActive }) => (
                 <Button

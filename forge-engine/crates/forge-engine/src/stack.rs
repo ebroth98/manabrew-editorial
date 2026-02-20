@@ -66,6 +66,10 @@ impl MagicStack {
     pub fn len(&self) -> usize {
         self.entries.len()
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &StackEntry> {
+        self.entries.iter()
+    }
 }
 
 impl Default for MagicStack {

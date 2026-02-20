@@ -239,6 +239,7 @@ impl GameLoop {
                 break;
             }
 
+            agents[active.index()].snapshot_state(game, &self.mana_pools);
             let agent = &mut agents[active.index()];
             let choice = agent.choose_action(active, &playable);
 
@@ -275,6 +276,7 @@ impl GameLoop {
             return;
         }
 
+        agents[active.index()].snapshot_state(game, &self.mana_pools);
         let agent = &mut agents[active.index()];
         let chosen_attackers = agent.choose_attackers(active, &available_attackers);
 
@@ -302,6 +304,7 @@ impl GameLoop {
             let legal_blockers = self.filter_legal_blockers(game, &chosen_attackers, &available_blockers);
 
             if !legal_blockers.is_empty() {
+                agents[defending.index()].snapshot_state(game, &self.mana_pools);
                 let def_agent = &mut agents[defending.index()];
                 let chosen_blockers =
                     def_agent.choose_blockers(defending, &chosen_attackers, &legal_blockers);
@@ -512,6 +515,7 @@ impl GameLoop {
                 match target_kind {
                     TargetKind::None => {}
                     TargetKind::Player => {
+                        agents[player.index()].snapshot_state(game, &self.mana_pools);
                         let agent = &mut agents[player.index()];
                         let opponents: Vec<PlayerId> = game
                             .alive_players()
@@ -527,6 +531,7 @@ impl GameLoop {
                             .filter(|&p| p != player)
                             .collect();
                         let valid_creatures = self.get_all_battlefield_creatures(game);
+                        agents[player.index()].snapshot_state(game, &self.mana_pools);
                         let agent = &mut agents[player.index()];
                         match agent.choose_target_any(player, &opponents, &valid_creatures) {
                             TargetChoice::Player(pid) => target_player = Some(pid),
@@ -536,6 +541,7 @@ impl GameLoop {
                     }
                     TargetKind::Creature(ref filter) => {
                         let valid = self.get_valid_creature_targets(game, filter.as_deref());
+                        agents[player.index()].snapshot_state(game, &self.mana_pools);
                         let agent = &mut agents[player.index()];
                         target_card = agent.choose_target_card(player, &valid);
                     }
