@@ -1,4 +1,5 @@
 mod ai_agent;
+mod card_db;
 mod commands;
 mod game_manager;
 mod game_view_dto;
