@@ -8,7 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
-import { Trash2, Pencil, Plus, Search, Swords } from "lucide-react";
+import { Trash2, Pencil, Plus, Search, Swords, Crown, X } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/game/CardPreview";
 import { DeckStats } from "@/components/editor/DeckStats";
@@ -163,6 +163,7 @@ export default function MyDecks() {
   const [playDialogOpen, setPlayDialogOpen] = useState(false);
   const [playDeckId, setPlayDeckId] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
+  const [cardFilter, setCardFilter] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [hovered, setHovered] = useState<{
@@ -208,10 +209,35 @@ export default function MyDecks() {
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.id]);
-  const mainGroups = selected ? groupCards(selected.deck.cards) : [];
+
+  // Reset card filter when switching decks
+  useEffect(() => {
+    setCardFilter("");
+  }, [selectedId]);
+  const allMainGroups = selected ? groupCards(selected.deck.cards) : [];
   const sideGroups = selected ? groupCards(selected.deck.sideboard) : [];
+  const filterLc = cardFilter.toLowerCase();
+  const mainGroups = filterLc
+    ? allMainGroups.filter((g) => g.card.name.toLowerCase().includes(filterLc))
+    : allMainGroups;
   const categories = categorize(mainGroups);
   const colors = selected ? extractColors(selected.deck.cards) : [];
+
+  function setSavedCommander(id: string, card: Card) {
+    useDeckStore.setState((state) => ({
+      savedDecks: state.savedDecks.map((s) =>
+        s.id === id ? { ...s, deck: { ...s.deck, commander: card } } : s,
+      ),
+    }));
+  }
+
+  function removeSavedCommander(id: string) {
+    useDeckStore.setState((state) => ({
+      savedDecks: state.savedDecks.map((s) =>
+        s.id === id ? { ...s, deck: { ...s.deck, commander: undefined } } : s,
+      ),
+    }));
+  }
 
   function handleEdit(id: string) {
     loadSavedDeck(id);
@@ -433,16 +459,78 @@ export default function MyDecks() {
             {/* Mana curve */}
             <DeckStats cards={selected.deck.cards} />
 
+            {/* Card filter input */}
+            <div className="px-4 py-1.5 border-b shrink-0">
+              <div className="relative">
+                <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+                <Input
+                  className="h-7 text-xs pl-6 pr-6"
+                  placeholder="Filter cards…"
+                  value={cardFilter}
+                  onChange={(e) => setCardFilter(e.target.value)}
+                />
+                {cardFilter && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => setCardFilter("")}
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
             {/* Card list body — Forge-style grouped by type */}
             <ScrollArea className="flex-1 px-4 py-3">
               <div className="space-y-4">
+                {/* Commander section */}
+                {selected.deck.commander && !cardFilter && (
+                  <div>
+                    <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                      Commander
+                    </h3>
+                    <div
+                      className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
+                      onMouseEnter={(e) =>
+                        setHovered({ card: selected.deck.commander!, x: e.clientX, y: e.clientY })
+                      }
+                      onMouseMove={(e) =>
+                        setHovered({ card: selected.deck.commander!, x: e.clientX, y: e.clientY })
+                      }
+                      onMouseLeave={() => setHovered(null)}
+                    >
+                      <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
+                      <span className="text-sm flex-1 truncate">
+                        {selected.deck.commander.name}
+                      </span>
+                      {selected.deck.commander.manaCost && (
+                        <span className="text-xs text-muted-foreground font-mono shrink-0">
+                          {selected.deck.commander.manaCost}
+                        </span>
+                      )}
+                      <Button
+                        size="icon"
+                        variant="ghost"
+                        className="h-5 w-5 text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                        title="Remove commander"
+                        onClick={() => removeSavedCommander(selected.id)}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {categories.map(({ label, items }) => (
                   <div key={label}>
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                       {label} ({items.reduce((a, g) => a + g.count, 0)})
                     </h3>
                     <div className="space-y-0.5">
-                      {items.map(({ card, count }) => (
+                      {items.map(({ card, count }) => {
+                        const isCommander = selected.deck.commander?.name === card.name;
+                        return (
                         <div
                           key={card.name}
                           className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
@@ -473,8 +561,26 @@ export default function MyDecks() {
                               {card.power}/{card.toughness}
                             </Badge>
                           )}
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className={
+                              isCommander
+                                ? "h-5 w-5 text-yellow-500 shrink-0"
+                                : "h-5 w-5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                            }
+                            title={isCommander ? "Remove commander" : "Set as commander"}
+                            onClick={() =>
+                              isCommander
+                                ? removeSavedCommander(selected.id)
+                                : setSavedCommander(selected.id, card)
+                            }
+                          >
+                            <Crown className="h-3 w-3" />
+                          </Button>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 ))}
