@@ -41,7 +41,7 @@ impl GameManager {
         self.latest_prompt.lock().ok().and_then(|g| g.clone())
     }
 
-    pub fn start_game(&self, app: AppHandle, deck_list: Vec<String>) -> Result<String, String> {
+    pub fn start_game(&self, app: AppHandle, deck_list: Vec<String>, starting_life: i32) -> Result<String, String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
 
         // End existing session if any
@@ -106,7 +106,7 @@ impl GameManager {
         let handle = thread::spawn(move || {
             eprintln!("[game_thread] Starting game: {} with deck: {:?}", game_id_clone, deck);
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_game(game_id_clone.clone(), deck, prompt_tx, response_rx, notify_tx);
+                run_game(game_id_clone.clone(), deck, starting_life, prompt_tx, response_rx, notify_tx);
             }));
             match result {
                 Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
@@ -217,6 +217,7 @@ fn uuid_simple() -> String {
 fn run_game(
     game_id: String,
     deck_list: Vec<String>,
+    starting_life: i32,
     prompt_tx: mpsc::Sender<AgentPrompt>,
     response_rx: mpsc::Receiver<PlayerAction>,
     notify_tx: mpsc::Sender<String>,
@@ -224,7 +225,7 @@ fn run_game(
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
 
-    let mut game = GameState::new(&["You", "AI Opponent"], 20);
+    let mut game = GameState::new(&["You", "AI Opponent"], starting_life);
 
     // Build human player deck: if a single preset ID is given, use that;
     // otherwise build a custom deck from the card name list.

@@ -1,6 +1,6 @@
 import { useGameStore } from "@/stores/useGameStore";
 import { useDeckStore } from "@/stores/useDeckStore";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Card as XMageCard, Player } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
@@ -558,10 +558,18 @@ export default function Game() {
   // will safely produce no arrows in that case.
   const me = gameView?.players.find((p) => p.isHuman) ?? gameView?.players[0];
   const opponent = gameView?.players.find((p) => !p.isHuman) ?? gameView?.players[1];
+  // Stabilize attackerIds so useGameArrows' useEffect doesn't re-run every render
+  // when the prompt has no attackerIds (the ?? [] fallback would create a new array each time).
+  const attackerIds = useMemo(
+    () => currentPrompt?.attackerIds ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentPrompt?.attackerIds?.join(",")],
+  );
+
   const arrows = useGameArrows({
     containerRef,
     promptType,
-    attackerIds: currentPrompt?.attackerIds ?? [],
+    attackerIds,
     blockAssignments,
     pendingAttackers,
     myPlayerId: me?.id ?? "",

@@ -8,8 +8,9 @@ pub async fn start_game(
     app: AppHandle,
     gm: State<'_, GameManager>,
     deck_list: Vec<String>,
+    starting_life: i32,
 ) -> Result<String, String> {
-    gm.start_game(app, deck_list)
+    gm.start_game(app, deck_list, starting_life)
 }
 
 #[tauri::command]

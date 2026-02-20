@@ -12,6 +12,9 @@ import { Trash2, Pencil, Plus, Search, Swords } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/game/CardPreview";
 import { DeckStats } from "@/components/editor/DeckStats";
+import { FormatBadge } from "@/components/game/FormatBadge";
+import { inferFormats } from "@/lib/formats";
+import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import type { Card } from "@/types/xmage";
 import { fetchCardCollection } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
@@ -145,6 +148,7 @@ function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
 
 export default function MyDecks() {
   const navigate = useNavigate();
+  const startGame = useGameStore((s) => s.startGame);
   const {
     savedDecks,
     loadSavedDeck,
@@ -153,10 +157,11 @@ export default function MyDecks() {
     setDeckName,
     enrichSavedDeck,
   } = useDeckStore();
-  const { startGame } = useGameStore();
   const [selectedId, setSelectedId] = useState<string | null>(
     savedDecks[0]?.id ?? null,
   );
+  const [playDialogOpen, setPlayDialogOpen] = useState(false);
+  const [playDeckId, setPlayDeckId] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -214,11 +219,8 @@ export default function MyDecks() {
   }
 
   function handlePlay(id: string) {
-    const saved = savedDecks.find((s) => s.id === id);
-    if (!saved) return;
-    const cardNames = saved.deck.cards.map((c) => c.name);
-    startGame(cardNames);
-    navigate("/play");
+    setPlayDeckId(id);
+    setPlayDialogOpen(true);
   }
 
   function handleDelete(id: string) {
@@ -290,6 +292,7 @@ export default function MyDecks() {
               <div className="py-1">
                 {filtered.map((s) => {
                   const deckColors = extractColors(s.deck.cards);
+                  const deckFormats = inferFormats(s.deck.cards.map((c) => c.name));
                   const isSelected = s.id === selectedId;
                   return (
                     <div
@@ -313,7 +316,7 @@ export default function MyDecks() {
                         )}
                       </div>
 
-                      {/* Name + count */}
+                      {/* Name + count + format badges */}
                       <div className="flex-1 min-w-0">
                         {editingId === s.id ? (
                           <Input
@@ -333,10 +336,14 @@ export default function MyDecks() {
                             {s.deck.name}
                           </p>
                         )}
-                        <p className="text-xs text-muted-foreground">
-                          {s.deck.cards.length} cards ·{" "}
-                          {new Date(s.savedAt).toLocaleDateString()}
-                        </p>
+                        <div className="flex items-center gap-1 flex-wrap">
+                          <span className="text-xs text-muted-foreground">
+                            {s.deck.cards.length} cards
+                          </span>
+                          {deckFormats.map((f) => (
+                            <FormatBadge key={f.id} formatId={f.id} />
+                          ))}
+                        </div>
                       </div>
 
                       {/* Actions (visible on hover or selection) */}
@@ -394,7 +401,7 @@ export default function MyDecks() {
                 <h2 className="text-lg font-bold truncate">
                   {selected.deck.name}
                 </h2>
-                <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2 flex-wrap text-sm text-muted-foreground">
                   <span>{selected.deck.cards.length} main</span>
                   {selected.deck.sideboard.length > 0 && (
                     <span>{selected.deck.sideboard.length} side</span>
@@ -404,6 +411,11 @@ export default function MyDecks() {
                       <ColorPip key={c} color={c} />
                     ))}
                   </div>
+                  {inferFormats(selected.deck.cards.map((c) => c.name)).map(
+                    (f) => (
+                      <FormatBadge key={f.id} formatId={f.id} />
+                    )
+                  )}
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
@@ -528,6 +540,17 @@ export default function MyDecks() {
           mouseY={hovered.y}
         />
       )}
+
+      <CreateGameDialog
+        key={playDeckId}
+        open={playDialogOpen}
+        onOpenChange={setPlayDialogOpen}
+        preSelectedDeckId={playDeckId}
+        onStart={(cardNames, formatId) => {
+          startGame(cardNames, formatId);
+          navigate("/play");
+        }}
+      />
     </ResizablePanelGroup>
   );
 }
