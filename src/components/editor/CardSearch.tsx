@@ -99,32 +99,37 @@ export function CardSearch() {
           </div>
         )}
 
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-4 pb-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 pb-4">
           {data?.pages.map((group) =>
-            group.data.map((card) => (
-              <div key={card.id} className="relative group p-2">
-                <Card 
-                  card={mapScryfallToXMage(card)} 
-                  className="w-full h-auto aspect-[5/7]"
-                />
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 rounded-lg">
-                  <Button 
-                    size="sm" 
-                    variant="secondary"
-                    onClick={() => addToMain(mapScryfallToXMage(card))}
-                  >
-                    Main
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="secondary"
-                    onClick={() => addToSide(mapScryfallToXMage(card))}
-                  >
-                    Side
-                  </Button>
+            group.data.map((card) => {
+              const xmageCard = mapScryfallToXMage(card);
+              return (
+                <div key={card.id} className="relative group">
+                  <Card
+                    card={xmageCard}
+                    className="w-full"
+                  />
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-2 rounded-lg">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      className="w-4/5"
+                      onClick={() => addToMain(xmageCard)}
+                    >
+                      + Main
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="w-4/5"
+                      onClick={() => addToSide(xmageCard)}
+                    >
+                      + Side
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
         

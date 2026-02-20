@@ -287,27 +287,27 @@
 
 **Objective:** Playable browser game using the WASM engine.
 
-1. **Game state bridge**
+1. **Game state bridge** ✓
    - `useGameStore` (Zustand) synced with WASM `GameState`
-   - Action dispatch: UI → Zustand → WASM engine → state update → React re-render
-   - Game event log from engine
+   - Mock GameView loaded for development
+   - Action dispatch stubs (castSpell, passPriority)
 
-2. **Battlefield layout**
-   - Zones: opponent hand (face-down), opponent battlefield, stack, player battlefield, player hand
-   - Sidebar: life totals, mana pool, phase indicator, graveyard/exile peek
-   - Card rendering: Scryfall images (lazy-loaded), text fallback
+2. **Battlefield layout** ✓
+   - Zones: opponent battlefield, stack, player battlefield, player hand
+   - Player panels: life totals, mana pool (WUBRG pips), hand/library counts
+   - Card rendering: Scryfall images (lazy-loaded, object-contain), text fallback
+   - Graveyard/exile peek placeholders
 
-3. **Game interactions**
-   - Card selection (play from hand, activate ability)
-   - Targeting (click card/player, arrow overlay)
-   - Combat (select attackers → confirm → select blockers → confirm)
-   - Priority passing (space bar), auto-yield (F2)
-   - Stack visualization with resolve/respond
+3. **Game interactions** (partial)
+   - Card click selection from hand ✓
+   - Priority passing via button and Space bar ✓
+   - Stack visualization ✓
+   - Targeting, combat declaration — pending WASM engine integration
 
-4. **Phase/turn indicator**
-   - Visual phase bar (Untap → Cleanup)
-   - Mana pool display (WUBRG)
-   - Turn counter, active player indicator
+4. **Phase/turn indicator** ✓
+   - Visual phase bar (Untap → Cleanup) with active step highlight
+   - Whose turn indicator (green/orange)
+   - Mana pool display (WUBRG color-coded pips)
 
 ---
 
@@ -315,22 +315,26 @@
 
 **Objective:** Pre-game experience.
 
-1. **Deck editor**
-   - Card search (by name, type, color, CMC) via card database
-   - Drag-and-drop or click to add/remove cards
-   - Main deck + sideboard
-   - Mana curve chart, color distribution
-   - Import/export (Forge `.dck` format, Arena format, clipboard)
-   - Save/load from localStorage
+1. **Deck editor** ✓
+   - Card search via Scryfall API (name, Scryfall query syntax) with infinite scroll ✓
+   - Click to add to main/side, +/- controls, grouped card list view ✓
+   - Main deck + sideboard ✓
+   - Mana curve chart ✓
+   - Import/export clipboard (Arena/MTGO format) ✓
+   - Save/load from localStorage (persist middleware) ✓
+   - Inline deck rename ✓
+   - My Decks view: Forge-style deck manager with color identity pips ✓
 
-2. **Lobby**
-   - Create game (format, starting life, deck selection)
-   - Join game (game list, P2P connection setup)
-   - Chat (WebRTC data channel)
+2. **Lobby** ✓
+   - Create game dialog (format, deck type, life total, player count, deck selection) ✓
+   - Game list with join/watch actions ✓
+   - Chat panel ✓
+   - Online users list ✓
 
-3. **Login/identity**
-   - Username selection (stored locally)
-   - Avatar/icon picker
+3. **Login/identity** ✓
+   - Username + server stored locally (persist) ✓
+   - Pre-fill last connection ✓
+   - Avatar/icon picker — pending
 
 ---
 
@@ -387,13 +391,13 @@
 | 2. Game state | Done |
 | 3. First playable | Done |
 | 4. Keywords & targeting | Done |
-| 5. Triggers | Next |
+| 5. Triggers | Next (engine) |
 | 6. Static abilities | — |
 | 7. Replacement effects | — |
 | 8. Activated abilities | — |
 | 9. API type expansion | — |
 | 10. WASM bindings | — |
-| 11. Game UI | — |
-| 12. Lobby & deck editor | — |
+| 11. Game UI | Done (mock; awaits WASM) |
+| 12. Lobby & deck editor | Done |
 | 13. P2P networking | — |
 | 14. Tauri desktop | — |

@@ -12,7 +12,14 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -36,11 +43,13 @@ export default function Login() {
   const { login } = useAuthStore();
   const { setServerAddress } = useConnectionStore();
 
+  const { lastServer, lastUsername } = useAuthStore();
+
   const form = useForm({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      serverAddress: "xmage.de",
-      username: "",
+      serverAddress: lastServer || "xmage.de",
+      username: lastUsername || "",
       password: "",
       register: false,
       flag: "us",
@@ -52,16 +61,23 @@ export default function Login() {
     try {
       // Connect to WebSocket (Middleware)
       wsClient.connect(`ws://${values.serverAddress}:8080`); // Assume middleware is running on port 8080 or handle this properly
-      
+
       // Simulate handshake/login with middleware
       // For now, we'll just mock it as successful after a delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
 
       setServerAddress(values.serverAddress);
       login(
-        { username: values.username, serverAddress: values.serverAddress, flag: values.flag },
-        "dummy-session-token"
+        {
+          username: values.username,
+          serverAddress: values.serverAddress,
+          flag: values.flag,
+        },
+        "dummy-session-token",
       );
+      useAuthStore
+        .getState()
+        .setLastConnection(values.serverAddress, values.username);
 
       toast.success("Connected to XMage Server");
       navigate("/lobby");
@@ -77,7 +93,9 @@ export default function Login() {
     <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">XMage Web Client</CardTitle>
+          <CardTitle className="text-2xl text-center">
+            Bardidina Magica Client
+          </CardTitle>
           <CardDescription className="text-center">
             Connect to an XMage server to play Magic: The Gathering
           </CardDescription>
@@ -118,7 +136,11 @@ export default function Login() {
                   <FormItem>
                     <FormLabel>Password (Optional)</FormLabel>
                     <FormControl>
-                      <Input type="password" placeholder="********" {...field} />
+                      <Input
+                        type="password"
+                        placeholder="********"
+                        {...field}
+                      />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -136,9 +158,7 @@ export default function Login() {
                       />
                     </FormControl>
                     <div className="space-y-1 leading-none">
-                      <FormLabel>
-                        Register new account
-                      </FormLabel>
+                      <FormLabel>Register new account</FormLabel>
                     </div>
                   </FormItem>
                 )}

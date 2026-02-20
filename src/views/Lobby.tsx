@@ -2,6 +2,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { TablesList } from "@/components/lobby/TablesList";
 import { UserList } from "@/components/lobby/UserList";
 import { ChatComponent } from "@/components/lobby/ChatComponent";
+import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { useState } from "react";
 import type { Table, User } from "@/types/xmage";
 
@@ -14,6 +15,7 @@ export default function Lobby() {
     { username: 'Jace', serverAddress: 'xmage.de', flag: 'us' },
     { username: 'Chandra', serverAddress: 'xmage.de', flag: 'in' },
   ]);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
   return (
     <div className="h-full w-full">
@@ -21,7 +23,7 @@ export default function Lobby() {
         <ResizablePanel defaultSize={75}>
           <ResizablePanelGroup orientation="vertical">
             <ResizablePanel defaultSize={70}>
-              <TablesList tables={tables} />
+              <TablesList tables={tables} onNewGame={() => setCreateDialogOpen(true)} />
             </ResizablePanel>
             <ResizableHandle />
             <ResizablePanel defaultSize={30}>
@@ -34,6 +36,8 @@ export default function Lobby() {
           <UserList users={users} />
         </ResizablePanel>
       </ResizablePanelGroup>
+
+      <CreateGameDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
     </div>
   );
 }

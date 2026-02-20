@@ -3,6 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import Login from "@/views/Login";
 import Lobby from "@/views/Lobby";
 import DeckEditor from "@/views/DeckEditor";
+import MyDecks from "@/views/MyDecks";
 import Game from "@/views/Game";
 import Draft from "@/views/Draft";
 
@@ -26,6 +27,10 @@ export const router = createBrowserRouter([
       {
         path: "deck-editor",
         element: <DeckEditor />,
+      },
+      {
+        path: "my-decks",
+        element: <MyDecks />,
       },
       {
         path: "game/:gameId",

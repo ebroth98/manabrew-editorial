@@ -6,14 +6,15 @@ import type { Table as XMageTable } from "@/types/xmage";
 
 interface TablesListProps {
   tables: XMageTable[];
+  onNewGame?: () => void;
 }
 
-export function TablesList({ tables }: TablesListProps) {
+export function TablesList({ tables, onNewGame }: TablesListProps) {
   return (
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between p-4 border-b">
         <h2 className="text-lg font-semibold">Active Matches</h2>
-        <Button size="sm">New Match</Button>
+        <Button size="sm" onClick={onNewGame}>New Match</Button>
       </div>
       <div className="flex-1 overflow-auto">
         <Table>
