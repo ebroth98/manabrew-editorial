@@ -1,5 +1,5 @@
 {
-  "productName": "Forge Web",
+  "productName": "Bardidina Magica",
   "version": "0.0.0",
   "identifier": "com.forgeweb.app",
   "build": {
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "Forge Web",
+        "title": "Bardidina Magica",
         "width": 1400,
         "height": 900,
         "resizable": true
@@ -30,6 +30,9 @@
       "icons/256x256.png",
       "icons/512x512.png",
       "icons/icon.png"
-    ]
+    ],
+    "iOS": {
+      "developmentTeam": "X77VWTYKWV"
+    }
   }
 }

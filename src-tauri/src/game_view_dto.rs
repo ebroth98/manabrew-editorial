@@ -24,6 +24,10 @@ pub struct GameViewDto {
     pub graveyard: Vec<CardDto>,
     pub opponent_graveyard: Vec<CardDto>,
     pub opponent_exile: Vec<CardDto>,
+    /// Cards in my command zone (typically just the commander).
+    pub my_command_zone: Vec<CardDto>,
+    /// Cards in the opponent's command zone.
+    pub opponent_command_zone: Vec<CardDto>,
     pub game_over: bool,
     pub winner_id: Option<String>,
 }
@@ -41,6 +45,8 @@ pub struct PlayerDto {
     pub graveyard_count: usize,
     pub exile_count: usize,
     pub mana_pool: HashMap<String, i32>,
+    /// Commander damage received: source card id string → total damage.
+    pub commander_damage: HashMap<String, i32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -197,6 +203,11 @@ impl GameViewDto {
         for &pid in &game.player_order {
             let ps = game.player(pid);
             let pool = mana_pools.get(pid.index()).cloned().unwrap_or_default();
+            let commander_damage: HashMap<String, i32> = ps
+                .commander_damage_received
+                .iter()
+                .map(|(&card_raw_id, &dmg)| (card_id_str(CardId(card_raw_id)), dmg))
+                .collect();
             players.push(PlayerDto {
                 id: player_id_str(pid),
                 name: ps.name.clone(),
@@ -208,6 +219,7 @@ impl GameViewDto {
                 graveyard_count: game.cards_in_zone(ZoneType::Graveyard, pid).len(),
                 exile_count: game.cards_in_zone(ZoneType::Exile, pid).len(),
                 mana_pool: mana_pool_to_map(&pool),
+                commander_damage,
             });
         }
 
@@ -272,6 +284,22 @@ impl GameViewDto {
             })
             .unwrap_or_default();
 
+        // Command zones
+        let my_command_zone: Vec<CardDto> = game
+            .cards_in_zone(ZoneType::Command, human_player)
+            .iter()
+            .map(|&cid| card_to_dto(game, cid, playable_ids, choosable_ids, "command"))
+            .collect();
+
+        let opponent_command_zone: Vec<CardDto> = opponent_player
+            .map(|pid| {
+                game.cards_in_zone(ZoneType::Command, pid)
+                    .iter()
+                    .map(|&cid| card_to_dto(game, cid, &[], &[], "command"))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         GameViewDto {
             game_id: game_id.to_string(),
             turn: game.turn.turn_number,
@@ -286,6 +314,8 @@ impl GameViewDto {
             graveyard,
             opponent_graveyard,
             opponent_exile,
+            my_command_zone,
+            opponent_command_zone,
             game_over: game.game_over,
             winner_id: game.winner.map(player_id_str),
         }

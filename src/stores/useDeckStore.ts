@@ -23,6 +23,8 @@ interface DeckState {
   saveCurrentDeck: () => void;
   loadSavedDeck: (id: string) => void;
   deleteSavedDeck: (id: string) => void;
+  setCommander: (card: Card) => void;
+  removeCommander: () => void;
   /** Patch cards in currentDeck by name with enriched data from Scryfall. */
   enrichDeckCards: (updates: Map<string, Partial<Card>>) => void;
   /** Patch cards in a specific saved deck by name with enriched data from Scryfall. */
@@ -75,6 +77,14 @@ export const useDeckStore = create<DeckState>()(
         })),
       clearDeck: () => set({ currentDeck: { ...initialDeck } }),
       loadDeck: (deck) => set({ currentDeck: deck }),
+      setCommander: (card) =>
+        set((state) => ({
+          currentDeck: { ...state.currentDeck, commander: card },
+        })),
+      removeCommander: () =>
+        set((state) => ({
+          currentDeck: { ...state.currentDeck, commander: undefined },
+        })),
       saveCurrentDeck: () =>
         set((state) => {
           const existing = state.savedDecks.find((s) => s.deck.name === state.currentDeck.name);
@@ -110,11 +120,14 @@ export const useDeckStore = create<DeckState>()(
               return patch ? { ...c, ...patch } : c;
             });
           }
+          const cmd = state.currentDeck.commander;
+          const cmdPatch = cmd ? updates.get(cmd.name.toLowerCase()) : undefined;
           return {
             currentDeck: {
               ...state.currentDeck,
               cards: applyUpdates(state.currentDeck.cards),
               sideboard: applyUpdates(state.currentDeck.sideboard),
+              ...(cmdPatch ? { commander: { ...cmd!, ...cmdPatch } } : {}),
             },
           };
         }),

@@ -1,15 +1,14 @@
-use std::collections::BTreeMap;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
 use forge_engine_core::agent::PlayerAgent;
-use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_engine_core::trigger::parse_trigger;
-use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+use forge_foundation::ZoneType;
+
+use crate::card_db::{card_rules_to_instance, get_card_db};
 use rand::SeedableRng;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -41,7 +40,7 @@ impl GameManager {
         self.latest_prompt.lock().ok().and_then(|g| g.clone())
     }
 
-    pub fn start_game(&self, app: AppHandle, deck_choice: &str) -> Result<String, String> {
+    pub fn start_game(&self, app: AppHandle, deck_list: Vec<String>, starting_life: i32, commander_name: Option<String>) -> Result<String, String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
 
         // End existing session if any
@@ -56,7 +55,7 @@ impl GameManager {
 
         let game_id = format!("game-{}", uuid_simple());
         let game_id_clone = game_id.clone();
-        let deck = deck_choice.to_string();
+        let deck = deck_list;
 
         // Channels
         let (prompt_tx, prompt_rx) = mpsc::channel::<AgentPrompt>();
@@ -104,9 +103,9 @@ impl GameManager {
 
         // Game thread
         let handle = thread::spawn(move || {
-            eprintln!("[game_thread] Starting game: {} with deck: {}", game_id_clone, deck);
+            eprintln!("[game_thread] Starting game: {} with deck: {:?}", game_id_clone, deck);
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_game(game_id_clone.clone(), deck, prompt_tx, response_rx, notify_tx);
+                run_game(game_id_clone.clone(), deck, starting_life, commander_name, prompt_tx, response_rx, notify_tx);
             }));
             match result {
                 Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
@@ -161,6 +160,8 @@ impl GameManager {
                     graveyard: vec![],
                     opponent_graveyard: vec![],
                     opponent_exile: vec![],
+                    my_command_zone: vec![],
+                    opponent_command_zone: vec![],
                     game_over: false,
                     winner_id: None,
                 });
@@ -216,7 +217,9 @@ fn uuid_simple() -> String {
 
 fn run_game(
     game_id: String,
-    deck_choice: String,
+    deck_list: Vec<String>,
+    starting_life: i32,
+    commander_name: Option<String>,
     prompt_tx: mpsc::Sender<AgentPrompt>,
     response_rx: mpsc::Receiver<PlayerAction>,
     notify_tx: mpsc::Sender<String>,
@@ -224,26 +227,52 @@ fn run_game(
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
 
-    let mut game = GameState::new(&["You", "AI Opponent"], 20);
+    let mut game = GameState::new(&["You", "AI Opponent"], starting_life);
 
-    // Build decks
-    match deck_choice.as_str() {
-        "green_stompy" => {
-            build_green_stompy_deck(&mut game, p0);
-            build_red_burn_deck(&mut game, p1);
+    // Build human player deck: if a single preset ID is given, use that;
+    // otherwise build a custom deck from the card name list.
+    let is_preset = deck_list.len() == 1 && matches!(
+        deck_list[0].as_str(),
+        "red_burn" | "green_stompy" | "white_aggro" | "black_control"
+    );
+
+    if is_preset {
+        match deck_list[0].as_str() {
+            "green_stompy" => {
+                build_named_deck(&mut game, p0, GREEN_STOMPY);
+                build_named_deck(&mut game, p1, RED_BURN);
+            }
+            "white_aggro" => {
+                build_named_deck(&mut game, p0, WHITE_AGGRO);
+                build_named_deck(&mut game, p1, BLACK_CONTROL);
+            }
+            "black_control" => {
+                build_named_deck(&mut game, p0, BLACK_CONTROL);
+                build_named_deck(&mut game, p1, WHITE_AGGRO);
+            }
+            _ => {
+                // red_burn (default)
+                build_named_deck(&mut game, p0, RED_BURN);
+                build_named_deck(&mut game, p1, GREEN_STOMPY);
+            }
         }
-        "white_aggro" => {
-            build_white_aggro_deck(&mut game, p0);
-            build_black_control_deck(&mut game, p1);
-        }
-        "black_control" => {
-            build_black_control_deck(&mut game, p0);
-            build_white_aggro_deck(&mut game, p1);
-        }
-        _ => {
-            // Default: Red Burn
-            build_red_burn_deck(&mut game, p0);
-            build_green_stompy_deck(&mut game, p1);
+    } else {
+        // Custom deck: build human player deck from card names sent by the frontend.
+        build_custom_deck(&mut game, p0, &deck_list);
+        // AI always plays red burn as a simple opponent.
+        build_named_deck(&mut game, p1, RED_BURN);
+    }
+
+    // Designate commander for the human player (must happen before game_loop.run which shuffles).
+    if let Some(ref name) = commander_name {
+        let library_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Library, p0).to_vec();
+        for cid in library_cards {
+            if game.card(cid).card_name == *name {
+                game.card_mut(cid).is_commander = true;
+                game.move_card(cid, ZoneType::Command, p0);
+                eprintln!("[game] Designated '{}' as commander for player 0", name);
+                break;
+            }
         }
     }
 
@@ -265,258 +294,83 @@ fn run_game(
     let _ = winner; // winner is also in the game_view
 }
 
-// ── Card constructors (copied from forge-cli) ──────────────────────────
+// ── Preset deck lists ──────────────────────────────────────────────
+//
+// Each entry is (card_name, count). Card definitions come exclusively from
+// the Forge card scripts in forge/forge-gui/res/cardsfolder/ — no stats are
+// hardcoded here.
 
-fn make_mountain(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Mountain".to_string(), owner,
-        CardTypeLine::parse("Basic Land - Mountain"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
-}
+const RED_BURN: &[(&str, usize)] = &[
+    ("Mountain", 17),
+    ("Lightning Bolt", 4),
+    ("Shock", 4),
+    ("Gray Ogre", 3),
+    ("Hill Giant", 3),
+    ("Guttersnipe", 3),
+];
 
-fn make_forest(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Forest".to_string(), owner,
-        CardTypeLine::parse("Basic Land - Forest"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
-}
+const GREEN_STOMPY: &[(&str, usize)] = &[
+    ("Forest", 17),
+    ("Giant Growth", 4),
+    ("Grizzly Bears", 3),
+    ("Centaur Courser", 2),
+    ("Garruk's Companion", 3),
+    ("Giant Spider", 2),
+    ("Wall of Ice", 2),
+    ("Craw Wurm", 2),
+];
 
-fn make_plains(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Plains".to_string(), owner,
-        CardTypeLine::parse("Basic Land - Plains"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
-}
+const WHITE_AGGRO: &[(&str, usize)] = &[
+    ("Plains", 17),
+    ("Savannah Lions", 4),
+    ("White Knight", 3),
+    ("Serra Angel", 3),
+    ("Soul Warden", 3),
+];
 
-fn make_island(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Island".to_string(), owner,
-        CardTypeLine::parse("Basic Land - Island"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
-}
-
-fn make_swamp(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Swamp".to_string(), owner,
-        CardTypeLine::parse("Basic Land - Swamp"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
-}
-
-fn make_lightning_bolt(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Lightning Bolt".to_string(), owner,
-        CardTypeLine::parse("Instant"),
-        ManaCost::parse("R"), ColorSet::RED, None, None, vec![],
-        vec!["SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3 | SpellDescription$ CARDNAME deals 3 damage to any target.".to_string()])
-}
-
-fn make_shock(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Shock".to_string(), owner,
-        CardTypeLine::parse("Instant"),
-        ManaCost::parse("R"), ColorSet::RED, None, None, vec![],
-        vec!["SP$ DealDamage | ValidTgts$ Any | NumDmg$ 2 | SpellDescription$ CARDNAME deals 2 damage to any target.".to_string()])
-}
-
-fn make_giant_growth(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Giant Growth".to_string(), owner,
-        CardTypeLine::parse("Instant"),
-        ManaCost::parse("G"), ColorSet::GREEN, None, None, vec![],
-        vec!["SP$ Pump | ValidTgts$ Creature | NumAtt$ 3 | NumDef$ 3 | SpellDescription$ Target creature gets +3/+3 until end of turn.".to_string()])
-}
-
-fn make_doom_blade(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Doom Blade".to_string(), owner,
-        CardTypeLine::parse("Instant"),
-        ManaCost::parse("1 B"), ColorSet::BLACK, None, None, vec![],
-        vec!["SP$ Destroy | ValidTgts$ Creature.nonBlack | SpellDescription$ Destroy target nonblack creature.".to_string()])
-}
-
-fn make_divination(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Divination".to_string(), owner,
-        CardTypeLine::parse("Sorcery"),
-        ManaCost::parse("2 U"), ColorSet::BLUE, None, None, vec![],
-        vec!["SP$ Draw | NumCards$ 2 | SpellDescription$ Draw two cards.".to_string()])
-}
-
-fn make_grey_ogre(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Gray Ogre".to_string(), owner,
-        CardTypeLine::parse("Creature - Ogre"),
-        ManaCost::parse("2 R"), ColorSet::RED, Some(2), Some(2), vec![], vec![])
-}
-
-fn make_hill_giant(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Hill Giant".to_string(), owner,
-        CardTypeLine::parse("Creature - Giant"),
-        ManaCost::parse("3 R"), ColorSet::RED, Some(3), Some(3), vec![], vec![])
-}
-
-fn make_grizzly_bears(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Grizzly Bears".to_string(), owner,
-        CardTypeLine::parse("Creature - Bear"),
-        ManaCost::parse("1 G"), ColorSet::GREEN, Some(2), Some(2), vec![], vec![])
-}
-
-fn make_centaur_courser(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Centaur Courser".to_string(), owner,
-        CardTypeLine::parse("Creature - Centaur Warrior"),
-        ManaCost::parse("2 G"), ColorSet::GREEN, Some(3), Some(3), vec![], vec![])
-}
-
-fn make_craw_wurm(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Craw Wurm".to_string(), owner,
-        CardTypeLine::parse("Creature - Wurm"),
-        ManaCost::parse("4 G G"), ColorSet::GREEN, Some(6), Some(4), vec![], vec![])
-}
-
-fn make_garruks_companion(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Garruk's Companion".to_string(), owner,
-        CardTypeLine::parse("Creature - Beast"),
-        ManaCost::parse("G G"), ColorSet::GREEN, Some(3), Some(2),
-        vec!["Trample".to_string()], vec![])
-}
-
-fn make_giant_spider(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Giant Spider".to_string(), owner,
-        CardTypeLine::parse("Creature - Spider"),
-        ManaCost::parse("3 G"), ColorSet::GREEN, Some(2), Some(4),
-        vec!["Reach".to_string()], vec![])
-}
-
-fn make_savannah_lions(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Savannah Lions".to_string(), owner,
-        CardTypeLine::parse("Creature - Cat"),
-        ManaCost::parse("W"), ColorSet::WHITE, Some(2), Some(1), vec![], vec![])
-}
-
-fn make_white_knight(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "White Knight".to_string(), owner,
-        CardTypeLine::parse("Creature - Human Knight"),
-        ManaCost::parse("W W"), ColorSet::WHITE, Some(2), Some(2),
-        vec!["First Strike".to_string()], vec![])
-}
-
-fn make_serra_angel(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Serra Angel".to_string(), owner,
-        CardTypeLine::parse("Creature - Angel"),
-        ManaCost::parse("3 W W"), ColorSet::WHITE, Some(4), Some(4),
-        vec!["Flying".to_string(), "Vigilance".to_string()], vec![])
-}
-
-fn make_typhoid_rats(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Typhoid Rats".to_string(), owner,
-        CardTypeLine::parse("Creature - Rat"),
-        ManaCost::parse("B"), ColorSet::BLACK, Some(1), Some(1),
-        vec!["Deathtouch".to_string()], vec![])
-}
-
-fn make_vampire_nighthawk(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Vampire Nighthawk".to_string(), owner,
-        CardTypeLine::parse("Creature - Vampire Shaman"),
-        ManaCost::parse("1 B B"), ColorSet::BLACK, Some(2), Some(3),
-        vec!["Flying".to_string(), "Deathtouch".to_string(), "Lifelink".to_string()], vec![])
-}
-
-fn make_wall_of_ice(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Wall of Ice".to_string(), owner,
-        CardTypeLine::parse("Creature - Wall"),
-        ManaCost::parse("2 G"), ColorSet::GREEN, Some(0), Some(7),
-        vec!["Defender".to_string()], vec![])
-}
-
-fn make_guttersnipe(owner: PlayerId) -> CardInstance {
-    let mut next_id = 0;
-    let trigger = parse_trigger(
-        "Mode$ SpellCast | ValidCard$ Instant,Sorcery | ValidActivatingPlayer$ You | Execute$ TrigDmg | TriggerDescription$ Whenever you cast an instant or sorcery spell, Guttersnipe deals 2 damage to each opponent.",
-        &mut next_id,
-    ).unwrap();
-
-    let mut svars = BTreeMap::new();
-    svars.insert("TrigDmg".to_string(), "DB$ DealDamage | Defined$ Opponent | NumDmg$ 2".to_string());
-
-    let mut card = CardInstance::new(CardId(0), "Guttersnipe".to_string(), owner,
-        CardTypeLine::parse("Creature - Goblin Shaman"),
-        ManaCost::parse("2 R"), ColorSet::RED, Some(2), Some(2),
-        vec![], vec![]);
-    card.triggers = vec![trigger];
-    card.svars = svars;
-    card
-}
-
-fn make_soul_warden(owner: PlayerId) -> CardInstance {
-    let mut next_id = 0;
-    let trigger = parse_trigger(
-        "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Creature.Other | Execute$ TrigGain | TriggerDescription$ Whenever another creature enters the battlefield, you gain 1 life.",
-        &mut next_id,
-    ).unwrap();
-
-    let mut svars = BTreeMap::new();
-    svars.insert("TrigGain".to_string(), "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string());
-
-    let mut card = CardInstance::new(CardId(0), "Soul Warden".to_string(), owner,
-        CardTypeLine::parse("Creature - Human Cleric"),
-        ManaCost::parse("W"), ColorSet::WHITE, Some(1), Some(1),
-        vec![], vec![]);
-    card.triggers = vec![trigger];
-    card.svars = svars;
-    card
-}
-
-fn make_mulldrifter(owner: PlayerId) -> CardInstance {
-    let mut next_id = 0;
-    let trigger = parse_trigger(
-        "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When Mulldrifter enters the battlefield, draw two cards.",
-        &mut next_id,
-    ).unwrap();
-
-    let mut svars = BTreeMap::new();
-    svars.insert("TrigDraw".to_string(), "DB$ Draw | Defined$ You | NumCards$ 2".to_string());
-
-    let mut card = CardInstance::new(CardId(0), "Mulldrifter".to_string(), owner,
-        CardTypeLine::parse("Creature - Elemental"),
-        ManaCost::parse("4 U"), ColorSet::BLUE, Some(2), Some(2),
-        vec!["Flying".to_string()], vec![]);
-    card.triggers = vec![trigger];
-    card.svars = svars;
-    card
-}
+const BLACK_CONTROL: &[(&str, usize)] = &[
+    ("Swamp", 13),
+    ("Island", 4),
+    ("Doom Blade", 4),
+    ("Divination", 2),
+    ("Typhoid Rats", 3),
+    ("Vampire Nighthawk", 3),
+    ("Mulldrifter", 2),
+];
 
 // ── Deck builders ──────────────────────────────────────────────────
 
-fn add_cards(game: &mut GameState, owner: PlayerId, count: usize, make: fn(PlayerId) -> CardInstance) {
-    for _ in 0..count {
-        let c = game.create_card(make(owner));
-        game.move_card(c, ZoneType::Library, owner);
+/// Build a preset deck from a (name, count) list, loading each card definition
+/// from the global CardDatabase (parsed from the Forge card scripts).
+fn build_named_deck(game: &mut GameState, owner: PlayerId, deck: &[(&str, usize)]) {
+    let db = get_card_db();
+    for (name, count) in deck {
+        match db.get_by_card_name(name) {
+            Some(rules) => {
+                for _ in 0..*count {
+                    let card = card_rules_to_instance(rules, owner);
+                    let id = game.create_card(card);
+                    game.move_card(id, ZoneType::Library, owner);
+                }
+            }
+            None => eprintln!("[deck] Unknown card '{}' — skipped", name),
+        }
     }
 }
 
-fn build_red_burn_deck(game: &mut GameState, owner: PlayerId) {
-    add_cards(game, owner, 17, make_mountain);
-    add_cards(game, owner, 4, make_lightning_bolt);
-    add_cards(game, owner, 4, make_shock);
-    add_cards(game, owner, 3, make_grey_ogre);
-    add_cards(game, owner, 3, make_hill_giant);
-    add_cards(game, owner, 3, make_guttersnipe);
-}
-
-fn build_green_stompy_deck(game: &mut GameState, owner: PlayerId) {
-    add_cards(game, owner, 17, make_forest);
-    add_cards(game, owner, 4, make_giant_growth);
-    add_cards(game, owner, 3, make_grizzly_bears);
-    add_cards(game, owner, 2, make_centaur_courser);
-    add_cards(game, owner, 3, make_garruks_companion);
-    add_cards(game, owner, 2, make_giant_spider);
-    add_cards(game, owner, 2, make_wall_of_ice);
-    add_cards(game, owner, 2, make_craw_wurm);
-}
-
-fn build_white_aggro_deck(game: &mut GameState, owner: PlayerId) {
-    add_cards(game, owner, 17, make_plains);
-    add_cards(game, owner, 4, make_savannah_lions);
-    add_cards(game, owner, 3, make_white_knight);
-    add_cards(game, owner, 3, make_serra_angel);
-    add_cards(game, owner, 3, make_soul_warden);
-}
-
-fn build_black_control_deck(game: &mut GameState, owner: PlayerId) {
-    add_cards(game, owner, 13, make_swamp);
-    add_cards(game, owner, 4, make_island);
-    add_cards(game, owner, 4, make_doom_blade);
-    add_cards(game, owner, 2, make_divination);
-    add_cards(game, owner, 3, make_typhoid_rats);
-    add_cards(game, owner, 3, make_vampire_nighthawk);
-    add_cards(game, owner, 2, make_mulldrifter);
+/// Build a custom deck for `owner` from a list of card names (one name per
+/// copy), loading each definition from the global CardDatabase.
+/// Unrecognised names are skipped with a log message.
+fn build_custom_deck(game: &mut GameState, owner: PlayerId, names: &[String]) {
+    let db = get_card_db();
+    for name in names {
+        match db.get_by_card_name(name) {
+            Some(rules) => {
+                let card = card_rules_to_instance(rules, owner);
+                let id = game.create_card(card);
+                game.move_card(id, ZoneType::Library, owner);
+            }
+            None => eprintln!("[custom_deck] Unknown card '{}' — skipped", name),
+        }
+    }
 }

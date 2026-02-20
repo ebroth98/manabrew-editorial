@@ -2,7 +2,7 @@ import { useDeckStore } from "@/stores/useDeckStore";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, Minus, Plus, Download, Upload, Save, FolderOpen, Trash2, Pencil, Check } from "lucide-react";
+import { X, Minus, Plus, Download, Upload, Save, FolderOpen, Trash2, Pencil, Check, Crown, Search } from "lucide-react";
 import { DeckStats } from "./DeckStats";
 import { CardPreview } from "@/components/game/CardPreview";
 import { useState, useRef, useEffect } from "react";
@@ -111,9 +111,12 @@ export function DeckBuilder() {
     loadSavedDeck,
     deleteSavedDeck,
     enrichDeckCards,
+    setCommander,
+    removeCommander,
   } = useDeckStore();
 
   const [editingName, setEditingName] = useState(false);
+  const [deckFilter, setDeckFilter] = useState("");
   const [nameInput, setNameInput] = useState(currentDeck.name);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [hovered, setHovered] = useState<{ card: Card; x: number; y: number } | null>(null);
@@ -149,8 +152,16 @@ export function DeckBuilder() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentDeck.cards, currentDeck.sideboard]);
 
-  const mainGroups = groupCards(currentDeck.cards);
-  const sideGroups = groupCards(currentDeck.sideboard);
+  const allMainGroups = groupCards(currentDeck.cards);
+  const allSideGroups = groupCards(currentDeck.sideboard);
+
+  const filterLc = deckFilter.toLowerCase();
+  const mainGroups = filterLc
+    ? allMainGroups.filter((g) => g.card.name.toLowerCase().includes(filterLc))
+    : allMainGroups;
+  const sideGroups = filterLc
+    ? allSideGroups.filter((g) => g.card.name.toLowerCase().includes(filterLc))
+    : allSideGroups;
 
   function confirmName() {
     if (nameInput.trim()) setDeckName(nameInput.trim());
@@ -363,8 +374,65 @@ export function DeckBuilder() {
         </div>
       </div>
 
+      {/* Deck filter */}
+      <div className="px-3 py-1.5 border-b">
+        <div className="relative">
+          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          <Input
+            className="h-7 text-xs pl-6 pr-6"
+            placeholder="Filter deck…"
+            value={deckFilter}
+            onChange={(e) => setDeckFilter(e.target.value)}
+          />
+          {deckFilter && (
+            <button
+              type="button"
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              onClick={() => setDeckFilter("")}
+            >
+              <X className="h-3 w-3" />
+            </button>
+          )}
+        </div>
+      </div>
+
       <ScrollArea className="flex-1 px-3 py-2">
         <div className="space-y-4">
+          {/* Commander */}
+          {currentDeck.commander && (
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                Commander
+              </h3>
+              <div
+                className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
+                onMouseEnter={(e) =>
+                  setHovered({ card: currentDeck.commander!, x: e.clientX, y: e.clientY })
+                }
+                onMouseMove={(e) =>
+                  setHovered({ card: currentDeck.commander!, x: e.clientX, y: e.clientY })
+                }
+                onMouseLeave={() => setHovered(null)}
+              >
+                <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
+                <span className="text-sm flex-1 truncate">{currentDeck.commander.name}</span>
+                {currentDeck.commander.manaCost && (
+                  <span className="text-xs text-muted-foreground shrink-0 font-mono">
+                    {currentDeck.commander.manaCost}
+                  </span>
+                )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-5 w-5 text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  onClick={() => removeCommander()}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Mainboard */}
           <div>
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
@@ -374,7 +442,9 @@ export function DeckBuilder() {
               <p className="text-xs text-muted-foreground italic px-1">No cards yet. Search and add cards above.</p>
             ) : (
               <div className="space-y-0.5">
-                {mainGroups.map((g) => (
+                {mainGroups.map((g) => {
+                  const isCommander = currentDeck.commander?.name === g.card.name;
+                  return (
                   <div
                     key={g.card.name}
                     className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
@@ -387,34 +457,51 @@ export function DeckBuilder() {
                     {g.card.manaCost && (
                       <span className="text-xs text-muted-foreground shrink-0 font-mono">{g.card.manaCost}</span>
                     )}
-                    <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                    <div className="flex gap-0.5 shrink-0">
+                      {/* Crown: always visible when active, hover-only when inactive */}
                       <Button
                         size="icon"
                         variant="ghost"
-                        className="h-5 w-5"
-                        onClick={() => handleAddOneToMain(g)}
+                        className={
+                          isCommander
+                            ? "h-5 w-5 text-yellow-500"
+                            : "h-5 w-5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity"
+                        }
+                        title={isCommander ? "Remove commander" : "Set as commander"}
+                        onClick={() => isCommander ? removeCommander() : setCommander(g.card)}
                       >
-                        <Plus className="h-3 w-3" />
+                        <Crown className="h-3 w-3" />
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5"
-                        onClick={() => handleRemoveOneFromMain(g.card.name)}
-                      >
-                        <Minus className="h-3 w-3" />
-                      </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        className="h-5 w-5 text-destructive"
-                        onClick={() => handleRemoveAllFromMain(g.card.name)}
-                      >
-                        <X className="h-3 w-3" />
-                      </Button>
+                      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5"
+                          onClick={() => handleAddOneToMain(g)}
+                        >
+                          <Plus className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5"
+                          onClick={() => handleRemoveOneFromMain(g.card.name)}
+                        >
+                          <Minus className="h-3 w-3" />
+                        </Button>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-5 w-5 text-destructive"
+                          onClick={() => handleRemoveAllFromMain(g.card.name)}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

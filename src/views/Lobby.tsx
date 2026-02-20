@@ -4,9 +4,13 @@ import { UserList } from "@/components/lobby/UserList";
 import { ChatComponent } from "@/components/lobby/ChatComponent";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useGameStore } from "@/stores/useGameStore";
 import type { Table, User } from "@/types/xmage";
 
 export default function Lobby() {
+  const navigate = useNavigate();
+  const startGame = useGameStore((s) => s.startGame);
   const [tables] = useState<Table[]>([
     { id: '1', name: 'Standard Match', gameType: 'Standard', deckType: 'Constructed', state: 'WAITING', numPlayers: 2, players: [], isTournament: false },
     { id: '2', name: 'Commander Night', gameType: 'Commander', deckType: 'EDH', state: 'DUELING', numPlayers: 4, players: [], isTournament: false },
@@ -16,6 +20,11 @@ export default function Lobby() {
     { username: 'Chandra', serverAddress: 'xmage.de', flag: 'in' },
   ]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
+
+  function handleStartGame(cardNames: string[], formatId: string, commanderName?: string) {
+    startGame(cardNames, formatId, commanderName);
+    navigate("/play");
+  }
 
   return (
     <div className="h-full w-full">
@@ -37,7 +46,7 @@ export default function Lobby() {
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      <CreateGameDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} />
+      <CreateGameDialog open={createDialogOpen} onOpenChange={setCreateDialogOpen} onStart={handleStartGame} />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-# Implementation Plan: Forge Web
+# Implementation Plan: Bardidina Magica
 
 ## Project Overview
 **Goal:** Rewrite the Forge MTG engine in Rust, compile to WASM, and build a modern web client with P2P multiplayer. Achieve 1:1 behavioral parity with the Java Forge backend.

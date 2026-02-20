@@ -1,5 +1,6 @@
 import { useGameStore } from "@/stores/useGameStore";
-import { useEffect, useRef, useState } from "react";
+import { useDeckStore } from "@/stores/useDeckStore";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Card as XMageCard, Player } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
@@ -393,21 +394,47 @@ function PromptBanner({ promptType }: { promptType: string }) {
   );
 }
 
-function DeckPicker({ onPick }: { onPick: (id: string) => void }) {
+function DeckPicker({ onPick }: { onPick: (cardNames: string[]) => void }) {
+  const { savedDecks } = useDeckStore();
+
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-6">
+    <div className="flex flex-col items-center justify-center h-full gap-6 p-6 overflow-y-auto">
       <h2 className="text-2xl font-bold">Choose Your Deck</h2>
-      <div className="grid grid-cols-2 gap-4 max-w-md">
-        {DECK_OPTIONS.map((deck) => (
-          <button
-            key={deck.id}
-            className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
-            onClick={() => onPick(deck.id)}
-          >
-            <p className={cn("font-semibold", deck.color)}>{deck.label}</p>
-            <p className="text-xs text-muted-foreground mt-1">{deck.desc}</p>
-          </button>
-        ))}
+
+      {/* Saved decks */}
+      {savedDecks.length > 0 && (
+        <div className="w-full max-w-xl">
+          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Your Decks</h3>
+          <div className="grid grid-cols-2 gap-3">
+            {savedDecks.map((s) => (
+              <button
+                key={s.id}
+                className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
+                onClick={() => onPick(s.deck.cards.map((c) => c.name))}
+              >
+                <p className="font-semibold truncate">{s.deck.name}</p>
+                <p className="text-xs text-muted-foreground mt-1">{s.deck.cards.length} cards</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Preset decks */}
+      <div className="w-full max-w-xl">
+        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">Preset Decks</h3>
+        <div className="grid grid-cols-2 gap-3">
+          {DECK_OPTIONS.map((deck) => (
+            <button
+              key={deck.id}
+              className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
+              onClick={() => onPick([deck.id])}
+            >
+              <p className={cn("font-semibold", deck.color)}>{deck.label}</p>
+              <p className="text-xs text-muted-foreground mt-1">{deck.desc}</p>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -531,10 +558,18 @@ export default function Game() {
   // will safely produce no arrows in that case.
   const me = gameView?.players.find((p) => p.isHuman) ?? gameView?.players[0];
   const opponent = gameView?.players.find((p) => !p.isHuman) ?? gameView?.players[1];
+  // Stabilize attackerIds so useGameArrows' useEffect doesn't re-run every render
+  // when the prompt has no attackerIds (the ?? [] fallback would create a new array each time).
+  const attackerIds = useMemo(
+    () => currentPrompt?.attackerIds ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [currentPrompt?.attackerIds?.join(",")],
+  );
+
   const arrows = useGameArrows({
     containerRef,
     promptType,
-    attackerIds: currentPrompt?.attackerIds ?? [],
+    attackerIds,
     blockAssignments,
     pendingAttackers,
     myPlayerId: me?.id ?? "",
@@ -658,7 +693,7 @@ export default function Game() {
         onTarget={() => handleTargetPlayer(opponent.id)}
       />
 
-      {/* Opponent graveyard + exile + battlefield */}
+      {/* Opponent graveyard + exile + command zone + battlefield */}
       <div className="flex gap-2 shrink-0 px-1">
         <div className="flex flex-col gap-1">
           <ZonePeek
@@ -671,6 +706,14 @@ export default function Game() {
             label="Exile"
             onClick={() => openZone(`${opponent.name}'s Exile`, gameView.opponentExile ?? [])}
           />
+          {(gameView.opponentCommandZone?.length ?? 0) > 0 && (
+            <ZonePeek
+              count={gameView.opponentCommandZone!.length}
+              label="CMD"
+              onClick={() => openZone(`${opponent.name}'s Command Zone`, gameView.opponentCommandZone!)}
+              icon={Sword}
+            />
+          )}
         </div>
         <BattlefieldZone
           cards={opponentPermanents}
@@ -764,6 +807,14 @@ export default function Game() {
             label="Exile"
             onClick={() => openZone("Your Exile", gameView.exile)}
           />
+          {(gameView.myCommandZone?.length ?? 0) > 0 && (
+            <ZonePeek
+              count={gameView.myCommandZone!.length}
+              label="CMD"
+              onClick={() => openZone("Your Command Zone", gameView.myCommandZone!)}
+              icon={Sword}
+            />
+          )}
         </div>
         <BattlefieldZone
           cards={myPermanents}

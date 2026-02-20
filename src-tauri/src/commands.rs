@@ -7,9 +7,11 @@ use crate::prompt::{AgentPrompt, PlayerAction};
 pub async fn start_game(
     app: AppHandle,
     gm: State<'_, GameManager>,
-    deck_choice: String,
+    deck_list: Vec<String>,
+    starting_life: i32,
+    commander_name: Option<String>,
 ) -> Result<String, String> {
-    gm.start_game(app, &deck_choice)
+    gm.start_game(app, deck_list, starting_life, commander_name)
 }
 
 #[tauri::command]
