@@ -986,6 +986,7 @@ dependencies = [
 name = "forge-web"
 version = "0.0.0"
 dependencies = [
+ "forge-carddb",
  "forge-engine-core",
  "forge-foundation",
  "rand 0.8.5",
