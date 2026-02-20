@@ -5,6 +5,8 @@ import type { Card as XMageCard, Player } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
 import { CardPreview } from "@/components/game/CardPreview";
 import { ZoneViewer } from "@/components/game/ZoneViewer";
+import { ArrowOverlay } from "@/components/game/ArrowOverlay";
+import { useGameArrows } from "@/components/game/useGameArrows";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -91,18 +93,24 @@ function ManaPool({ pool }: { pool: Record<string, number> }) {
 function PlayerPanel({
   player,
   isOpponent,
+  isActiveTurn,
   isTargetable,
   onTarget,
 }: {
   player: Player;
   isOpponent: boolean;
+  isActiveTurn?: boolean;
   isTargetable?: boolean;
   onTarget?: () => void;
 }) {
   return (
     <div
+      data-player-id={player.id}
       className={cn(
         "flex items-center gap-3 px-3 py-2 border rounded-lg bg-card text-sm transition-colors",
+        isActiveTurn && !isTargetable && (isOpponent
+          ? "ring-2 ring-orange-400 border-orange-400"
+          : "ring-2 ring-green-500 border-green-500"),
         isTargetable && "ring-2 ring-red-400 border-red-400 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30"
       )}
       onClick={isTargetable ? onTarget : undefined}
@@ -114,6 +122,15 @@ function PlayerPanel({
         </AvatarFallback>
       </Avatar>
       <div className="font-semibold truncate min-w-0">{player.name}</div>
+      {isActiveTurn && (
+        <span className={cn(
+          "text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0",
+          isOpponent ? "bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400"
+                     : "bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400"
+        )}>
+          {isOpponent ? "THEIR TURN" : "YOUR TURN"}
+        </span>
+      )}
       <div className="flex items-center gap-1 shrink-0">
         <Heart className="h-3.5 w-3.5 text-red-500" />
         <span className="font-bold">{player.life}</span>
@@ -196,6 +213,7 @@ function BattlefieldZone({
             return (
               <div
                 key={card.id}
+                data-card-id={card.id}
                 className="relative group shrink-0"
                 onMouseEnter={(e) => onHoverCard?.(card, e)}
                 onMouseLeave={() => onHoverCard?.(null)}
@@ -214,7 +232,7 @@ function BattlefieldZone({
                 {/* Tap-for-mana overlay — shown only during chooseAction */}
                 {isTappable && onTapLand && (
                   <button
-                    className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 bg-yellow-400/20 border-2 border-yellow-400 transition-opacity flex items-end justify-center pb-1"
+                    className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 bg-yellow-400/20 border-2 border-yellow-400 transition-opacity flex items-end justify-center pb-1"
                     onClick={() => onTapLand(card)}
                     title={`Tap ${card.name} for mana`}
                   >
@@ -224,7 +242,7 @@ function BattlefieldZone({
                 {/* Untap overlay — shown for tapped lands with unspent mana */}
                 {isUntappable && onUntapLand && (
                   <button
-                    className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 bg-cyan-400/20 border-2 border-cyan-400 transition-opacity flex items-end justify-center pb-1"
+                    className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 bg-cyan-400/20 border-2 border-cyan-400 transition-opacity flex items-end justify-center pb-1"
                     onClick={() => onUntapLand(card)}
                     title={`Untap ${card.name} (undo mana)`}
                   >
@@ -235,7 +253,7 @@ function BattlefieldZone({
                 {!isTappable && isChoosableClick && (
                   <button
                     className={cn(
-                      "absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 border-2 transition-opacity",
+                      "absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 border-2 transition-opacity",
                       isPending
                         ? "bg-orange-500/20 border-orange-400"
                         : isAttacking
@@ -258,10 +276,13 @@ function BattlefieldZone({
   );
 }
 
-function PhaseBar({ currentStep, activePlayerId, myPlayerId }: { currentStep: string; activePlayerId: string; myPlayerId: string }) {
+function PhaseBar({ currentStep, activePlayerId, myPlayerId, turn }: { currentStep: string; activePlayerId: string; myPlayerId: string; turn: number }) {
   const isMyTurn = activePlayerId === myPlayerId;
   return (
     <div className="flex items-center gap-1 overflow-x-auto py-1 px-2 bg-muted/30 border rounded-lg shrink-0">
+      <span className="text-xs font-bold shrink-0 text-muted-foreground tabular-nums mr-1" title="Turn number">
+        T{turn}
+      </span>
       <span className={cn("text-xs font-semibold shrink-0 mr-1", isMyTurn ? "text-green-600" : "text-orange-500")}>
         {isMyTurn ? "Your Turn" : "Opp Turn"}
       </span>
@@ -313,7 +334,7 @@ function HandDisplay({
               />
               {card.isPlayable && (
                 <button
-                  className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 bg-primary/20 border-2 border-primary transition-opacity"
+                  className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 bg-primary/20 border-2 border-primary transition-opacity"
                   onClick={() => onPlayCard(card)}
                   title={`Play ${card.name}`}
                 />
@@ -414,6 +435,8 @@ export default function Game() {
     startGame,
     setupListeners,
   } = useGameStore();
+  const containerRef = useRef<HTMLDivElement>(null);
+
   const [selectedCard, setSelectedCard] = useState<XMageCard | null>(null);
   const [hoveredCard, setHoveredCard] = useState<XMageCard | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -503,6 +526,21 @@ export default function Game() {
     setBlockAssignments([]);
   }, [currentPrompt?.type]);
 
+  // Targeting / combat arrows — must be called unconditionally (Rules of Hooks)
+  // Player IDs are empty strings when gameView is not yet available; the hook
+  // will safely produce no arrows in that case.
+  const me = gameView?.players.find((p) => p.isHuman) ?? gameView?.players[0];
+  const opponent = gameView?.players.find((p) => !p.isHuman) ?? gameView?.players[1];
+  const arrows = useGameArrows({
+    containerRef,
+    promptType,
+    attackerIds: currentPrompt?.attackerIds ?? [],
+    blockAssignments,
+    pendingAttackers,
+    myPlayerId: me?.id ?? "",
+    opponentPlayerId: opponent?.id ?? "",
+  });
+
   // Auto-return to play menu when game is over
   useEffect(() => {
     if (!gameView?.gameOver && currentPrompt?.type !== "gameOver") return;
@@ -535,11 +573,10 @@ export default function Game() {
     );
   }
 
-  const me = gameView.players.find((p) => p.isHuman) ?? gameView.players[0];
-  const opponent = gameView.players.find((p) => !p.isHuman) ?? gameView.players[1];
-
-  const myPermanents = gameView.battlefield.filter((c) => c.controllerId === me.id);
-  const opponentPermanents = gameView.battlefield.filter((c) => c.controllerId === opponent.id);
+  // me / opponent are already derived above (before the early returns).
+  // Re-assert non-null: if we reach here, gameView is defined.
+  const myPermanents = gameView.battlefield.filter((c) => c.controllerId === me!.id);
+  const opponentPermanents = gameView.battlefield.filter((c) => c.controllerId === opponent!.id);
 
   // Game over overlay
   if (gameView.gameOver || promptType === "gameOver") {
@@ -608,11 +645,15 @@ export default function Game() {
   }
 
   return (
-    <div className="flex flex-col h-full gap-2 overflow-hidden">
+    <div ref={containerRef} className="relative flex flex-col h-full gap-2 overflow-hidden">
+      {/* Targeting / combat arrow overlay — sits on top of all game elements */}
+      <ArrowOverlay arrows={arrows} />
+
       {/* Opponent panel */}
       <PlayerPanel
         player={opponent}
         isOpponent
+        isActiveTurn={gameView.activePlayerId === opponent.id}
         isTargetable={playerIsTargetable(opponent.id)}
         onTarget={() => handleTargetPlayer(opponent.id)}
       />
@@ -706,7 +747,8 @@ export default function Game() {
       <PhaseBar
         currentStep={gameView.step}
         activePlayerId={gameView.activePlayerId}
-        myPlayerId={me.id}
+        myPlayerId={me!.id}
+        turn={gameView.turn}
       />
 
       {/* My battlefield */}
@@ -768,8 +810,9 @@ export default function Game() {
           <PlayerPanel
             player={me}
             isOpponent={false}
-            isTargetable={playerIsTargetable(me.id)}
-            onTarget={() => handleTargetPlayer(me.id)}
+            isActiveTurn={gameView.activePlayerId === me!.id}
+            isTargetable={playerIsTargetable(me!.id)}
+            onTarget={() => handleTargetPlayer(me!.id)}
           />
         </div>
         <div className="flex gap-2 shrink-0 items-center">
