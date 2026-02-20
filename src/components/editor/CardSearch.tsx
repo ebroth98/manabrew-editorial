@@ -4,13 +4,14 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/game/Card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDeckStore } from "@/stores/useDeckStore";
-import { Loader2, Crown } from "lucide-react";
+import { Loader2, Crown, LayoutGrid, List } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ScryfallCard } from "@/types/scryfall";
 import type { Card as XMageCard } from "@/types/xmage";
+import { useDraggable } from "@dnd-kit/core";
 
-// ─── Filter definitions (mirrors Forge CardColorFilter / CardTypeFilter / CardCMCFilter) ────
+// ─── Filter definitions ────────────────────────────────────────────────────────
 
 const COLOR_FILTERS = [
   { id: "W", label: "W", scryfall: "c:w", title: "White" },
@@ -52,23 +53,18 @@ function buildScryfallQuery(
   cmc: CmcId
 ): string {
   const parts: string[] = [];
-
   if (text.trim()) parts.push(text.trim());
-
   if (colors.size > 0) {
     const clauses = [...colors].map((id) => COLOR_FILTERS.find((f) => f.id === id)!.scryfall);
     parts.push(clauses.length === 1 ? clauses[0] : `(${clauses.join(" or ")})`);
   }
-
   if (types.size > 0) {
     const clauses = [...types].map((t) => `t:${t.toLowerCase()}`);
     parts.push(clauses.length === 1 ? clauses[0] : `(${clauses.join(" or ")})`);
   }
-
   if (cmc !== "any") {
     parts.push(cmc === "6" ? "cmc>=6" : `cmc=${cmc}`);
   }
-
   return parts.join(" ");
 }
 
@@ -104,7 +100,7 @@ function mapScryfallToXMage(sfCard: ScryfallCard): XMageCard {
   };
 }
 
-// ─── Toggle button helper ────────────────────────────────────────────────────
+// ─── Filter toggle button ─────────────────────────────────────────────────────
 
 function FilterBtn({
   active,
@@ -137,7 +133,137 @@ function FilterBtn({
   );
 }
 
-// ─── Component ────────────────────────────────────────────────────────────────
+// ─── Draggable card wrapper (grid mode) ───────────────────────────────────────
+
+function DraggableCardGrid({
+  card,
+  onAddMain,
+  onAddSide,
+  onSetCommander,
+  isLegendaryCreature,
+}: {
+  card: XMageCard;
+  onAddMain: () => void;
+  onAddSide: () => void;
+  onSetCommander: () => void;
+  isLegendaryCreature: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `search-${card.id}`,
+    data: { card },
+  });
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn("relative group cursor-grab active:cursor-grabbing", isDragging && "opacity-30")}
+    >
+      <Card card={card} className="w-full" />
+      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 rounded-lg pointer-events-none group-hover:pointer-events-auto">
+        <Button size="sm" variant="secondary" className="w-4/5" onClick={(e) => { e.stopPropagation(); onAddMain(); }}>
+          + Main
+        </Button>
+        <Button size="sm" variant="outline" className="w-4/5" onClick={(e) => { e.stopPropagation(); onAddSide(); }}>
+          + Side
+        </Button>
+        {isLegendaryCreature && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-4/5 gap-1 text-yellow-500 border-yellow-500/50 hover:bg-yellow-500/10"
+            onClick={(e) => { e.stopPropagation(); onSetCommander(); }}
+          >
+            <Crown className="h-3 w-3" />
+            Commander
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Draggable card wrapper (list mode) ───────────────────────────────────────
+
+function DraggableCardRow({
+  card,
+  onAddMain,
+  onAddSide,
+  onSetCommander,
+  isLegendaryCreature,
+}: {
+  card: XMageCard;
+  onAddMain: () => void;
+  onAddSide: () => void;
+  onSetCommander: () => void;
+  isLegendaryCreature: boolean;
+}) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `search-${card.id}`,
+    data: { card },
+  });
+
+  const typeStr = [...(card.supertypes ?? []), ...(card.types ?? [])].join(" ");
+
+  return (
+    <div
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      className={cn(
+        "flex items-center gap-2 px-2 py-1.5 rounded hover:bg-muted/50 group cursor-grab active:cursor-grabbing border-b border-border/30 last:border-0",
+        isDragging && "opacity-30"
+      )}
+    >
+      {/* Small card art thumbnail */}
+      {card.imageUrl && (
+        <div className="w-8 h-8 shrink-0 rounded overflow-hidden bg-muted">
+          <img src={card.imageUrl} alt="" className="w-full h-full object-cover object-top" draggable={false} />
+        </div>
+      )}
+      {!card.imageUrl && (
+        <div className="w-8 h-8 shrink-0 rounded bg-muted flex items-center justify-center text-[9px] text-muted-foreground font-mono">
+          {card.setCode?.toUpperCase() || "?"}
+        </div>
+      )}
+
+      {/* Name + type */}
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium truncate leading-tight">{card.name}</div>
+        <div className="text-xs text-muted-foreground truncate leading-tight">{typeStr}</div>
+      </div>
+
+      {/* Mana cost */}
+      {card.manaCost && (
+        <span className="text-xs font-mono text-muted-foreground shrink-0">{card.manaCost}</span>
+      )}
+
+      {/* Action buttons (hover) */}
+      <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0 pointer-events-none group-hover:pointer-events-auto">
+        <Button size="sm" variant="secondary" className="h-6 px-2 text-xs" onClick={(e) => { e.stopPropagation(); onAddMain(); }}>
+          Main
+        </Button>
+        <Button size="sm" variant="outline" className="h-6 px-2 text-xs" onClick={(e) => { e.stopPropagation(); onAddSide(); }}>
+          Side
+        </Button>
+        {isLegendaryCreature && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 w-6 p-0 text-yellow-500"
+            title="Set as commander"
+            onClick={(e) => { e.stopPropagation(); onSetCommander(); }}
+          >
+            <Crown className="h-3 w-3" />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
 
 export function CardSearch() {
   const [text, setText] = useState("");
@@ -145,27 +271,22 @@ export function CardSearch() {
   const [activeColors, setActiveColors] = useState<Set<string>>(new Set());
   const [activeTypes, setActiveTypes] = useState<Set<string>>(new Set());
   const [activeCmc, setActiveCmc] = useState<CmcId>("any");
+  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
   const { addToMain, addToSide, setCommander } = useDeckStore();
   const observerTarget = useRef(null);
 
   const effectiveQuery = buildScryfallQuery(debouncedText, activeColors, activeTypes, activeCmc);
+  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, status } = useCardSearch(effectiveQuery);
 
-  const { data, fetchNextPage, hasNextPage, isFetchingNextPage, status } =
-    useCardSearch(effectiveQuery);
-
-  // Debounce text
   useEffect(() => {
     const handler = setTimeout(() => setDebouncedText(text), 500);
     return () => clearTimeout(handler);
   }, [text]);
 
-  // Infinite scroll
   useEffect(() => {
     const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasNextPage) fetchNextPage();
-      },
+      (entries) => { if (entries[0].isIntersecting && hasNextPage) fetchNextPage(); },
       { threshold: 1.0 }
     );
     if (observerTarget.current) observer.observe(observerTarget.current);
@@ -173,143 +294,135 @@ export function CardSearch() {
   }, [hasNextPage, fetchNextPage]);
 
   function toggleColor(id: string) {
-    setActiveColors((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
+    setActiveColors((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  }
+  function toggleType(id: string) {
+    setActiveTypes((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   }
 
-  function toggleType(id: string) {
-    setActiveTypes((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  }
+  const allCards: XMageCard[] = (data?.pages.flatMap((p) => p.data.map(mapScryfallToXMage))) ?? [];
 
   return (
     <div className="flex flex-col h-full w-full">
-      {/* Search bar + filter rows */}
-      <div className="p-3 border-b space-y-2">
-        <Input
-          placeholder="Search (e.g. 'Jace', 'Counterspell', or use filters below)"
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-        />
+      {/* Filters */}
+      <div className="p-3 border-b space-y-2 shrink-0">
+        <div className="flex gap-2">
+          <Input
+            placeholder="Search cards…"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            className="flex-1"
+          />
+          {/* View toggle */}
+          <div className="flex border rounded-md overflow-hidden shrink-0">
+            <button
+              type="button"
+              title="Grid view"
+              onClick={() => setViewMode("grid")}
+              className={cn(
+                "px-2 py-1 text-xs transition-colors",
+                viewMode === "grid" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+              )}
+            >
+              <LayoutGrid className="h-3.5 w-3.5" />
+            </button>
+            <button
+              type="button"
+              title="List view"
+              onClick={() => setViewMode("list")}
+              className={cn(
+                "px-2 py-1 text-xs transition-colors border-l",
+                viewMode === "list" ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
+              )}
+            >
+              <List className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
 
-        {/* Color filters */}
         <div className="flex items-center gap-1 flex-wrap">
           <span className="text-xs text-muted-foreground w-10 shrink-0">Color</span>
           {COLOR_FILTERS.map((f) => (
-            <FilterBtn
-              key={f.id}
-              active={activeColors.has(f.id)}
-              onClick={() => toggleColor(f.id)}
-              title={f.title}
-            >
+            <FilterBtn key={f.id} active={activeColors.has(f.id)} onClick={() => toggleColor(f.id)} title={f.title}>
               {f.label}
             </FilterBtn>
           ))}
         </div>
 
-        {/* Type filters */}
         <div className="flex items-center gap-1 flex-wrap">
           <span className="text-xs text-muted-foreground w-10 shrink-0">Type</span>
           {TYPE_FILTERS.map((f) => (
-            <FilterBtn
-              key={f.id}
-              active={activeTypes.has(f.id)}
-              onClick={() => toggleType(f.id)}
-            >
+            <FilterBtn key={f.id} active={activeTypes.has(f.id)} onClick={() => toggleType(f.id)}>
               {f.label}
             </FilterBtn>
           ))}
         </div>
 
-        {/* CMC filters */}
         <div className="flex items-center gap-1 flex-wrap">
           <span className="text-xs text-muted-foreground w-10 shrink-0">CMC</span>
           {CMC_FILTERS.map((f) => (
-            <FilterBtn
-              key={f.id}
-              active={activeCmc === f.id}
-              onClick={() => setActiveCmc(f.id)}
-            >
+            <FilterBtn key={f.id} active={activeCmc === f.id} onClick={() => setActiveCmc(f.id)}>
               {f.label}
             </FilterBtn>
           ))}
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-4">
-        {status === "pending" && effectiveQuery && (
-          <div className="flex justify-center p-8">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        )}
-
-        {status === "error" && (
-          <div className="text-center p-8 text-red-500">
-            Error fetching cards. Please try again.
-          </div>
-        )}
-
-        {!effectiveQuery && (
-          <p className="text-center text-sm text-muted-foreground py-12">
-            Enter a card name or select filters to search.
-          </p>
-        )}
-
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 gap-3 pb-4">
-          {data?.pages.map((group) =>
-            group.data.map((card) => {
-              const xmageCard = mapScryfallToXMage(card);
-              const isLegendaryCreature =
-                xmageCard.supertypes.includes("Legendary") &&
-                xmageCard.types.includes("Creature");
-              return (
-                <div key={card.id} className="relative group">
-                  <Card card={xmageCard} className="w-full" />
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 rounded-lg">
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="w-4/5"
-                      onClick={() => addToMain(xmageCard)}
-                    >
-                      + Main
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-4/5"
-                      onClick={() => addToSide(xmageCard)}
-                    >
-                      + Side
-                    </Button>
-                    {isLegendaryCreature && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-4/5 gap-1 text-yellow-500 border-yellow-500/50 hover:bg-yellow-500/10"
-                        onClick={() => setCommander(xmageCard)}
-                      >
-                        <Crown className="h-3 w-3" />
-                        Commander
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              );
-            })
+      <ScrollArea className="flex-1">
+        <div className="p-3">
+          {status === "pending" && effectiveQuery && (
+            <div className="flex justify-center p-8">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
           )}
-        </div>
-
-        <div ref={observerTarget} className="h-10 flex justify-center items-center">
-          {isFetchingNextPage && (
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+          {status === "error" && (
+            <div className="text-center p-8 text-red-500">Error fetching cards. Please try again.</div>
           )}
+          {!effectiveQuery && (
+            <p className="text-center text-sm text-muted-foreground py-12">
+              Enter a card name or select filters to search.
+            </p>
+          )}
+
+          {viewMode === "grid" ? (
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 pb-4">
+              {allCards.map((card) => {
+                const isLegendaryCreature =
+                  card.supertypes.includes("Legendary") && card.types.includes("Creature");
+                return (
+                  <DraggableCardGrid
+                    key={card.id}
+                    card={card}
+                    onAddMain={() => addToMain({ ...card, id: crypto.randomUUID() })}
+                    onAddSide={() => addToSide({ ...card, id: crypto.randomUUID() })}
+                    onSetCommander={() => setCommander(card)}
+                    isLegendaryCreature={isLegendaryCreature}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="pb-4">
+              {allCards.map((card) => {
+                const isLegendaryCreature =
+                  card.supertypes.includes("Legendary") && card.types.includes("Creature");
+                return (
+                  <DraggableCardRow
+                    key={card.id}
+                    card={card}
+                    onAddMain={() => addToMain({ ...card, id: crypto.randomUUID() })}
+                    onAddSide={() => addToSide({ ...card, id: crypto.randomUUID() })}
+                    onSetCommander={() => setCommander(card)}
+                    isLegendaryCreature={isLegendaryCreature}
+                  />
+                );
+              })}
+            </div>
+          )}
+
+          <div ref={observerTarget} className="h-10 flex justify-center items-center">
+            {isFetchingNextPage && <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />}
+          </div>
         </div>
       </ScrollArea>
     </div>
