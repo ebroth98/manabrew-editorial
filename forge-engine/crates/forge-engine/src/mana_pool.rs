@@ -75,6 +75,26 @@ impl ManaPool {
         pool.try_pay(cost)
     }
 
+    /// Returns true if the pool can pay `cost` plus `extra_generic` additional generic mana.
+    /// Used for commander tax checks.
+    pub fn can_pay_with_extra_generic(&self, cost: &forge_foundation::ManaCost, extra_generic: i32) -> bool {
+        let mut pool = self.clone();
+        if !pool.try_pay(cost) {
+            return false;
+        }
+        pool.total() >= extra_generic
+    }
+
+    /// Pay `extra_generic` additional generic mana from the pool.
+    /// Returns true if successful.
+    pub fn try_pay_extra_generic(&mut self, extra_generic: i32) -> bool {
+        if self.total() < extra_generic {
+            return false;
+        }
+        self.pay_generic(extra_generic);
+        true
+    }
+
     /// Try to pay a mana cost, deducting from the pool. Returns true if successful.
     pub fn try_pay(&mut self, cost: &forge_foundation::ManaCost) -> bool {
         // First, pay colored shards

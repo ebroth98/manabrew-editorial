@@ -546,8 +546,8 @@ export default function MyDecks() {
         open={playDialogOpen}
         onOpenChange={setPlayDialogOpen}
         preSelectedDeckId={playDeckId}
-        onStart={(cardNames, formatId) => {
-          startGame(cardNames, formatId);
+        onStart={(cardNames, formatId, commanderName) => {
+          startGame(cardNames, formatId, commanderName);
           navigate("/play");
         }}
       />

@@ -61,6 +61,8 @@ impl TauriAgent {
                 graveyard: vec![],
                 opponent_graveyard: vec![],
                 opponent_exile: vec![],
+                my_command_zone: vec![],
+                opponent_command_zone: vec![],
                 game_over: false,
                 winner_id: None,
             }

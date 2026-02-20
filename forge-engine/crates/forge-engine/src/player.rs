@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
 use crate::ids::PlayerId;
@@ -32,6 +34,9 @@ pub struct PlayerState {
     pub has_lost: bool,
     pub has_won: bool,
     pub has_conceded: bool,
+
+    // Commander damage received: card_id.0 → total damage dealt by that commander
+    pub commander_damage_received: HashMap<u32, i32>,
 }
 
 impl PlayerState {
@@ -52,6 +57,7 @@ impl PlayerState {
             has_lost: false,
             has_won: false,
             has_conceded: false,
+            commander_damage_received: HashMap::new(),
         }
     }
 

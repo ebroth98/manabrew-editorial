@@ -58,7 +58,7 @@ export const GAME_FORMATS: GameFormat[] = [
       maxCopies: 1,
       sideboardMax: 10,
       startingLife: 40,
-      requiresCommander: false,
+      requiresCommander: true,
     },
     bannedCards: [],
   },

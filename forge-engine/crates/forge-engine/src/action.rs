@@ -7,6 +7,17 @@ use crate::ids::{CardId, PlayerId};
 impl GameState {
     /// Move a card from its current zone to a new zone.
     pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
+        // Commander redirect: commanders going to GY or Exile return to Command zone instead.
+        // Mirrors Java's GameAction.stateBasedAction_Commander().
+        let (dest_zone, dest_owner) = if self.cards[card_id.index()].is_commander
+            && (dest_zone == ZoneType::Graveyard || dest_zone == ZoneType::Exile)
+        {
+            let owner = self.cards[card_id.index()].owner;
+            (ZoneType::Command, owner)
+        } else {
+            (dest_zone, dest_owner)
+        };
+
         let card = &self.cards[card_id.index()];
         let src_zone = card.zone;
         let src_owner = card.controller;
@@ -33,6 +44,16 @@ impl GameState {
                 card.toughness_modifier = 0;
                 card.summoning_sick = true;
                 card.controller = card.owner; // controller resets to owner
+            }
+            ZoneType::Command => {
+                // Commander returning to command zone: reset battlefield state
+                let card = &mut self.cards[card_id.index()];
+                card.tapped = false;
+                card.damage = 0;
+                card.power_modifier = 0;
+                card.toughness_modifier = 0;
+                card.summoning_sick = true;
+                card.controller = card.owner;
             }
             _ => {}
         }
@@ -69,6 +90,19 @@ impl GameState {
             if self.player(pid).poison_counters >= 10 && self.player(pid).is_alive() {
                 self.player_mut(pid).has_lost = true;
                 any_changes = true;
+            }
+            // Check commander damage (21+ from a single commander source = lose)
+            let commander_dmg_entries: Vec<(u32, i32)> = self
+                .player(pid)
+                .commander_damage_received
+                .iter()
+                .map(|(&k, &v)| (k, v))
+                .collect();
+            for (_card_raw_id, dmg) in commander_dmg_entries {
+                if dmg >= 21 && self.player(pid).is_alive() {
+                    self.player_mut(pid).has_lost = true;
+                    any_changes = true;
+                }
             }
         }
 

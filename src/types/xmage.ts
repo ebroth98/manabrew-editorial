@@ -46,6 +46,8 @@ export interface Player {
   graveyardCount: number;
   exileCount: number;
   manaPool: Record<string, number>; // W, U, B, R, G, C
+  /** Commander damage received: source card id → total damage. */
+  commanderDamage?: Record<string, number>;
 }
 
 export interface Table {
@@ -79,6 +81,10 @@ export interface GameView {
   graveyard: Card[];
   opponentGraveyard: Card[];
   opponentExile: Card[];
+  /** Cards in the human player's command zone (typically just the commander). */
+  myCommandZone?: Card[];
+  /** Cards in the opponent's command zone. */
+  opponentCommandZone?: Card[];
   gameOver?: boolean;
   winnerId?: string | null;
 }

@@ -5,7 +5,7 @@ use std::thread;
 use forge_engine_core::agent::PlayerAgent;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::ids::PlayerId;
+use forge_engine_core::ids::{CardId, PlayerId};
 use forge_foundation::ZoneType;
 
 use crate::card_db::{card_rules_to_instance, get_card_db};
@@ -40,7 +40,7 @@ impl GameManager {
         self.latest_prompt.lock().ok().and_then(|g| g.clone())
     }
 
-    pub fn start_game(&self, app: AppHandle, deck_list: Vec<String>, starting_life: i32) -> Result<String, String> {
+    pub fn start_game(&self, app: AppHandle, deck_list: Vec<String>, starting_life: i32, commander_name: Option<String>) -> Result<String, String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
 
         // End existing session if any
@@ -105,7 +105,7 @@ impl GameManager {
         let handle = thread::spawn(move || {
             eprintln!("[game_thread] Starting game: {} with deck: {:?}", game_id_clone, deck);
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_game(game_id_clone.clone(), deck, starting_life, prompt_tx, response_rx, notify_tx);
+                run_game(game_id_clone.clone(), deck, starting_life, commander_name, prompt_tx, response_rx, notify_tx);
             }));
             match result {
                 Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
@@ -160,6 +160,8 @@ impl GameManager {
                     graveyard: vec![],
                     opponent_graveyard: vec![],
                     opponent_exile: vec![],
+                    my_command_zone: vec![],
+                    opponent_command_zone: vec![],
                     game_over: false,
                     winner_id: None,
                 });
@@ -217,6 +219,7 @@ fn run_game(
     game_id: String,
     deck_list: Vec<String>,
     starting_life: i32,
+    commander_name: Option<String>,
     prompt_tx: mpsc::Sender<AgentPrompt>,
     response_rx: mpsc::Receiver<PlayerAction>,
     notify_tx: mpsc::Sender<String>,
@@ -258,6 +261,19 @@ fn run_game(
         build_custom_deck(&mut game, p0, &deck_list);
         // AI always plays red burn as a simple opponent.
         build_named_deck(&mut game, p1, RED_BURN);
+    }
+
+    // Designate commander for the human player (must happen before game_loop.run which shuffles).
+    if let Some(ref name) = commander_name {
+        let library_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Library, p0).to_vec();
+        for cid in library_cards {
+            if game.card(cid).card_name == *name {
+                game.card_mut(cid).is_commander = true;
+                game.move_card(cid, ZoneType::Command, p0);
+                eprintln!("[game] Designated '{}' as commander for player 0", name);
+                break;
+            }
+        }
     }
 
     let human = TauriAgent::new(p0, game_id.clone(), prompt_tx.clone(), response_rx, notify_tx);

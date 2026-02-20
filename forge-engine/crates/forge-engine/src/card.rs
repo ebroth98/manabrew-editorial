@@ -63,6 +63,12 @@ pub struct CardInstance {
     pub triggers: Vec<Trigger>,
     // SVars — mirrors Java Card.getSVars()
     pub svars: BTreeMap<String, String>,
+
+    // Commander tracking
+    /// True if this card is designated as a commander.
+    pub is_commander: bool,
+    /// How many times this commander has been cast from the command zone (for tax).
+    pub commander_cast_count: u32,
 }
 
 impl CardInstance {
@@ -104,6 +110,8 @@ impl CardInstance {
             attacked_this_turn: false,
             triggers: Vec::new(),
             svars: BTreeMap::new(),
+            is_commander: false,
+            commander_cast_count: 0,
         }
     }
 

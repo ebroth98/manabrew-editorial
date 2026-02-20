@@ -21,8 +21,8 @@ export default function Lobby() {
   ]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  function handleStartGame(cardNames: string[], formatId: string) {
-    startGame(cardNames, formatId);
+  function handleStartGame(cardNames: string[], formatId: string, commanderName?: string) {
+    startGame(cardNames, formatId, commanderName);
     navigate("/play");
   }
 

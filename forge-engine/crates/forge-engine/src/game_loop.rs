@@ -454,6 +454,19 @@ impl GameLoop {
         let mut playable = Vec::new();
         let hand = game.cards_in_zone(ZoneType::Hand, player);
 
+        // Check Command zone for commanders (with commander tax)
+        let command_zone: Vec<CardId> = game.cards_in_zone(ZoneType::Command, player).to_vec();
+        for card_id in command_zone {
+            let card = game.card(card_id);
+            if card.is_commander {
+                let tax = card.commander_cast_count as i32 * 2;
+                let available_mana = self.calculate_available_mana(game, player);
+                if available_mana.can_pay_with_extra_generic(&card.mana_cost, tax) {
+                    playable.push(card_id);
+                }
+            }
+        }
+
         for &card_id in hand {
             let card = game.card(card_id);
             if card.is_land() {
@@ -561,8 +574,22 @@ impl GameLoop {
             let is_creature = game.card(card_id).is_creature();
             let is_permanent = game.card(card_id).is_permanent();
 
+            // Detect commander cast from Command zone (for commander tax)
+            let is_commander_cast = game.card(card_id).is_commander
+                && game.card(card_id).zone == ZoneType::Command;
+            let commander_tax = if is_commander_cast {
+                game.card(card_id).commander_cast_count as i32 * 2
+            } else {
+                0
+            };
+
             // Auto-tap lands to pay the cost
             self.auto_tap_lands(game, player, &mana_cost);
+
+            // Auto-tap extra lands for commander tax
+            if commander_tax > 0 {
+                self.auto_tap_lands_generic(game, player, commander_tax);
+            }
 
             // Check if we have an ability line that defines what this spell does
             let abilities = game.card(card_id).abilities.clone();
@@ -613,6 +640,16 @@ impl GameLoop {
             let paid = self.pool_mut(player).try_pay(&mana_cost);
             if !paid {
                 return;
+            }
+
+            // Pay commander tax (extra generic mana)
+            if commander_tax > 0 && !self.pool_mut(player).try_pay_extra_generic(commander_tax) {
+                return;
+            }
+
+            // Increment commander cast count (before moving card to stack)
+            if is_commander_cast {
+                game.card_mut(card_id).commander_cast_count += 1;
             }
 
             game.player_mut(player).spells_cast_this_turn += 1;
@@ -703,6 +740,28 @@ impl GameLoop {
                         generic_needed -= 1;
                     }
                 }
+            }
+        }
+    }
+
+    /// Auto-tap untapped lands to produce `needed` additional generic mana.
+    /// Used for paying commander tax on top of the regular cost.
+    fn auto_tap_lands_generic(&mut self, game: &mut GameState, player: PlayerId, needed: i32) {
+        let mut remaining = needed;
+        let lands: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
+        for land_id in lands {
+            if remaining <= 0 {
+                break;
+            }
+            let eligible = {
+                let land = game.card(land_id);
+                land.is_land() && !land.tapped && basic_land_mana_atom(land).is_some()
+            };
+            if eligible {
+                let atom = basic_land_mana_atom(game.card(land_id)).unwrap();
+                game.tap(land_id);
+                self.pool_mut(player).add(atom, 1);
+                remaining -= 1;
             }
         }
     }
@@ -1018,6 +1077,14 @@ impl GameLoop {
                     attacker_has_lifelink,
                     attacker_controller,
                 );
+                // Track commander damage
+                if game.card(attacker_id).is_commander {
+                    *game
+                        .player_mut(defending_player)
+                        .commander_damage_received
+                        .entry(attacker_id.0)
+                        .or_insert(0) += attacker_power;
+                }
             } else {
                 // Blocked — mutual damage
                 let mut remaining_damage = attacker_power;
@@ -1092,6 +1159,14 @@ impl GameLoop {
                         attacker_has_lifelink,
                         attacker_controller,
                     );
+                    // Track commander damage from trample
+                    if game.card(attacker_id).is_commander {
+                        *game
+                            .player_mut(defending_player)
+                            .commander_damage_received
+                            .entry(attacker_id.0)
+                            .or_insert(0) += remaining_damage;
+                    }
                 }
             }
         }

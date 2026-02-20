@@ -693,7 +693,7 @@ export default function Game() {
         onTarget={() => handleTargetPlayer(opponent.id)}
       />
 
-      {/* Opponent graveyard + exile + battlefield */}
+      {/* Opponent graveyard + exile + command zone + battlefield */}
       <div className="flex gap-2 shrink-0 px-1">
         <div className="flex flex-col gap-1">
           <ZonePeek
@@ -706,6 +706,14 @@ export default function Game() {
             label="Exile"
             onClick={() => openZone(`${opponent.name}'s Exile`, gameView.opponentExile ?? [])}
           />
+          {(gameView.opponentCommandZone?.length ?? 0) > 0 && (
+            <ZonePeek
+              count={gameView.opponentCommandZone!.length}
+              label="CMD"
+              onClick={() => openZone(`${opponent.name}'s Command Zone`, gameView.opponentCommandZone!)}
+              icon={Sword}
+            />
+          )}
         </div>
         <BattlefieldZone
           cards={opponentPermanents}
@@ -799,6 +807,14 @@ export default function Game() {
             label="Exile"
             onClick={() => openZone("Your Exile", gameView.exile)}
           />
+          {(gameView.myCommandZone?.length ?? 0) > 0 && (
+            <ZonePeek
+              count={gameView.myCommandZone!.length}
+              label="CMD"
+              onClick={() => openZone("Your Command Zone", gameView.myCommandZone!)}
+              icon={Sword}
+            />
+          )}
         </div>
         <BattlefieldZone
           cards={myPermanents}

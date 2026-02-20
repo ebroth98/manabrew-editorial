@@ -21,8 +21,8 @@ interface CreateGameDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Pre-select a saved deck by ID (e.g. when launched from MyDecks) */
   preSelectedDeckId?: string;
-  /** Called with the deck card names and chosen format ID when Create is confirmed */
-  onStart: (cardNames: string[], formatId: string) => void;
+  /** Called with the deck card names, format ID, and optional commander name when Create is confirmed */
+  onStart: (cardNames: string[], formatId: string, commanderName?: string) => void;
 }
 
 export function CreateGameDialog({
@@ -40,23 +40,44 @@ export function CreateGameDialog({
   const [selectedDeck, setSelectedDeck] = useState<string>(
     preSelectedDeckId ?? "current"
   );
+  const [selectedCommander, setSelectedCommander] = useState<string>("");
 
   const allDecks = [
     {
       id: "current",
       name: `${currentDeck.name} (current)`,
       cardNames: currentDeck.cards.map((c) => c.name),
+      cards: currentDeck.cards,
     },
     ...savedDecks.map((s) => ({
       id: s.id,
       name: s.deck.name,
       cardNames: s.deck.cards.map((c) => c.name),
+      cards: s.deck.cards,
     })),
   ];
 
   const selectedDeckEntry = allDecks.find((d) => d.id === selectedDeck);
   const selectedDeckNames = selectedDeckEntry?.cardNames ?? [];
   const selectedDeckValidation = validateDeck(selectedDeckNames, selectedFormat);
+
+  // Get unique legendary creatures from the selected deck for the commander picker
+  const legendaryCreatures = selectedDeckEntry
+    ? Array.from(
+        new Map(
+          selectedDeckEntry.cards
+            .filter(
+              (c) =>
+                c.supertypes?.includes("Legendary") &&
+                c.types?.includes("Creature")
+            )
+            .map((c) => [c.name, c.name])
+        ).values()
+      )
+    : [];
+
+  const needsCommander = selectedFormat.deckRules.requiresCommander;
+  const commanderValid = !needsCommander || selectedCommander !== "";
 
   function handleCreate() {
     if (!selectedDeckEntry) {
@@ -67,8 +88,12 @@ export function CreateGameDialog({
       toast.error(selectedDeckValidation.errors[0] ?? "Deck is not legal in this format");
       return;
     }
+    if (needsCommander && !selectedCommander) {
+      toast.error("Please select a commander");
+      return;
+    }
     onOpenChange(false);
-    onStart(selectedDeckNames, selectedFormat.id);
+    onStart(selectedDeckNames, selectedFormat.id, needsCommander ? selectedCommander : undefined);
   }
 
   return (
@@ -177,6 +202,38 @@ export function CreateGameDialog({
                 </p>
               )}
             </div>
+
+            {/* Commander picker — shown only for Commander format */}
+            {needsCommander && (
+              <div className="space-y-1">
+                <Label>Commander</Label>
+                {legendaryCreatures.length === 0 ? (
+                  <p className="text-xs text-muted-foreground italic">
+                    No legendary creatures found in selected deck. Type a card name below.
+                  </p>
+                ) : null}
+                <select
+                  className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
+                  value={selectedCommander}
+                  onChange={(e) => setSelectedCommander(e.target.value)}
+                >
+                  <option value="">— Choose commander —</option>
+                  {legendaryCreatures.map((name) => (
+                    <option key={name} value={name}>
+                      {name}
+                    </option>
+                  ))}
+                </select>
+                {legendaryCreatures.length === 0 && (
+                  <input
+                    className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm"
+                    placeholder="Type commander card name"
+                    value={selectedCommander}
+                    onChange={(e) => setSelectedCommander(e.target.value)}
+                  />
+                )}
+              </div>
+            )}
           </div>
 
           <DialogFooter>
@@ -185,7 +242,7 @@ export function CreateGameDialog({
             </Button>
             <Button
               onClick={handleCreate}
-              disabled={!selectedDeckValidation.legal}
+              disabled={!selectedDeckValidation.legal || !commanderValid}
             >
               Create Game
             </Button>
