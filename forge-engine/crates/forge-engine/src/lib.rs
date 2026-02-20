@@ -9,4 +9,7 @@ pub mod action;
 pub mod agent;
 pub mod mana_pool;
 pub mod combat;
+pub mod event;
+pub mod trigger;
+pub mod trigger_handler;
 pub mod game_loop;

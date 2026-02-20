@@ -4,10 +4,13 @@ use forge_foundation::{ColorSet, ManaCost, PhaseType, ZoneType};
 use crate::agent::{PlayerAgent, TargetChoice};
 use crate::card::CardInstance;
 use crate::combat::CombatState;
+use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana_pool::ManaPool;
 use crate::stack::StackEntry;
+use crate::trigger::parse_pipe_params;
+use crate::trigger_handler::TriggerHandler;
 
 // ── Targeting types ─────────────────────────────────────────────────
 
@@ -89,6 +92,7 @@ fn parse_num_dmg(ability: &str) -> i32 {
 pub struct GameLoop {
     pub mana_pools: Vec<ManaPool>,
     pub combat: CombatState,
+    pub trigger_handler: TriggerHandler,
 }
 
 impl GameLoop {
@@ -96,6 +100,7 @@ impl GameLoop {
         GameLoop {
             mana_pools: (0..num_players).map(|_| ManaPool::new()).collect(),
             combat: CombatState::new(),
+            trigger_handler: TriggerHandler::new(),
         }
     }
 
@@ -143,12 +148,16 @@ impl GameLoop {
         let active = game.active_player();
         game.new_turn_for_player(active);
 
+        // Rebuild active triggers at start of turn
+        self.trigger_handler.reset_active_triggers(game);
+
         // Beginning phase: Untap, Upkeep, Draw
         game.turn.phase = PhaseType::Untap;
         self.step_untap(game);
 
         game.turn.phase = PhaseType::Upkeep;
-        // (No actions in simplified upkeep)
+        self.emit_phase_trigger(game, PhaseType::Upkeep);
+        self.process_triggers(game);
 
         game.turn.phase = PhaseType::Draw;
         self.step_draw(game);
@@ -178,7 +187,8 @@ impl GameLoop {
 
         // End phase
         game.turn.phase = PhaseType::EndOfTurn;
-        // (No actions in simplified end step)
+        self.emit_phase_trigger(game, PhaseType::EndOfTurn);
+        self.process_triggers(game);
 
         game.turn.phase = PhaseType::Cleanup;
         self.step_cleanup(game);
@@ -540,6 +550,17 @@ impl GameLoop {
 
             game.player_mut(player).spells_cast_this_turn += 1;
 
+            // Emit SpellCast trigger
+            self.trigger_handler.run_trigger(
+                TriggerType::SpellCast,
+                RunParams {
+                    spell_card: Some(card_id),
+                    spell_controller: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+
             // Put on stack and resolve immediately (simplified — no priority passing)
             let ability_text = abilities.first().cloned().unwrap_or_default();
 
@@ -552,6 +573,9 @@ impl GameLoop {
                 is_permanent_spell: is_permanent,
                 target_player,
                 target_card,
+                is_triggered_ability: false,
+                trigger_source: None,
+                trigger_index: None,
             };
 
             game.stack.push(entry);
@@ -619,10 +643,32 @@ impl GameLoop {
     /// Resolve the top of the stack.
     pub fn resolve_stack(&mut self, game: &mut GameState) {
         while let Some(entry) = game.stack.pop() {
+            if entry.is_triggered_ability {
+                // Triggered ability: resolve the effect
+                self.resolve_spell_effect(game, &entry);
+                continue;
+            }
+
             if let Some(card_id) = entry.source {
                 if entry.is_creature_spell || entry.is_permanent_spell {
                     // Permanent spell: move to battlefield
+                    let origin = game.card(card_id).zone;
                     game.move_card(card_id, ZoneType::Battlefield, entry.controller);
+
+                    // Register triggers for the new permanent
+                    self.trigger_handler.register_active_trigger(game, card_id);
+
+                    // Emit ChangesZone trigger (ETB)
+                    self.trigger_handler.run_trigger(
+                        TriggerType::ChangesZone,
+                        RunParams {
+                            card: Some(card_id),
+                            origin: Some(origin),
+                            destination: Some(ZoneType::Battlefield),
+                            ..Default::default()
+                        },
+                        false,
+                    );
                 } else {
                     // Non-permanent spell: resolve effect, then move to graveyard
                     self.resolve_spell_effect(game, &entry);
@@ -631,25 +677,98 @@ impl GameLoop {
                 }
             }
         }
+
+        // Process any triggers that were queued during resolution
+        self.process_triggers(game);
     }
 
     /// Resolve a spell effect from its ability text.
+    /// Handles both SP$ (spell) and DB$ (triggered/sub-ability) formats.
     fn resolve_spell_effect(&mut self, game: &mut GameState, entry: &StackEntry) {
-        let ability = &entry.ability_text;
+        self.resolve_single_effect(game, &entry.ability_text, entry);
 
+        // Handle SubAbility$ chain (mirrors Java's getSubAbility() linked list)
+        let params = parse_pipe_params(&entry.ability_text);
+        if let Some(sub_svar_name) = params.get("SubAbility") {
+            if let Some(source_card) = entry.source {
+                let sub_text = game.card(source_card).svars.get(sub_svar_name).cloned();
+                if let Some(sub_text) = sub_text {
+                    let sub_entry = StackEntry {
+                        id: 0,
+                        source: entry.source,
+                        controller: entry.controller,
+                        ability_text: sub_text,
+                        is_creature_spell: false,
+                        is_permanent_spell: false,
+                        target_player: entry.target_player,
+                        target_card: entry.target_card,
+                        is_triggered_ability: entry.is_triggered_ability,
+                        trigger_source: entry.trigger_source,
+                        trigger_index: entry.trigger_index,
+                    };
+                    self.resolve_spell_effect(game, &sub_entry);
+                }
+            }
+        }
+    }
+
+    /// Resolve a single effect line.
+    fn resolve_single_effect(
+        &mut self,
+        game: &mut GameState,
+        ability: &str,
+        entry: &StackEntry,
+    ) {
         if ability.contains("DealDamage") {
             let damage = parse_num_dmg(ability);
-            if let Some(target_player) = entry.target_player {
+            // For triggered abilities, resolve Defined$ for target
+            let target_player = entry.target_player.or_else(|| {
+                let params = parse_pipe_params(ability);
+                if let Some(defined) = params.get("Defined") {
+                    resolve_defined_player(defined, entry.controller, game)
+                } else {
+                    None
+                }
+            });
+
+            if let Some(target_player) = target_player {
                 game.deal_damage_to_player(target_player, damage);
             }
             if let Some(target_card) = entry.target_card {
-                // Check target is still on battlefield
                 if game.card(target_card).zone == ZoneType::Battlefield {
                     game.deal_damage_to_card(target_card, damage);
                 }
             }
+        } else if ability.contains("GainLife") {
+            let amount = parse_param(ability, "LifeAmount$ ").unwrap_or(1);
+            let params = parse_pipe_params(ability);
+            let target = params
+                .get("Defined")
+                .and_then(|d| resolve_defined_player(d, entry.controller, game))
+                .unwrap_or(entry.controller);
+            game.player_mut(target).gain_life(amount);
+        } else if ability.contains("LoseLife") {
+            let amount = parse_param(ability, "LifeAmount$ ").unwrap_or(1);
+            let params = parse_pipe_params(ability);
+            let target = params
+                .get("Defined")
+                .and_then(|d| resolve_defined_player(d, entry.controller, game))
+                .unwrap_or(entry.controller);
+            game.player_mut(target).lose_life(amount);
+        } else if ability.contains("PutCounter") {
+            let params = parse_pipe_params(ability);
+            let counter_type = params
+                .get("CounterType")
+                .map(|s| parse_counter_type(s))
+                .unwrap_or(crate::card::CounterType::P1P1);
+            let count = parse_param(ability, "CounterNum$ ").unwrap_or(1);
+            // Default target: the source card
+            if let Some(card_id) = entry.source {
+                if game.card(card_id).zone == ZoneType::Battlefield {
+                    game.card_mut(card_id).add_counter(counter_type, count);
+                }
+            }
         } else if ability.contains("Pump") {
-            // Pump effect: modify power/toughness until end of turn
             let att_bonus = parse_param(ability, "NumAtt$ ").unwrap_or(0);
             let def_bonus = parse_param(ability, "NumDef$ ").unwrap_or(0);
             if let Some(target_card) = entry.target_card {
@@ -659,7 +778,6 @@ impl GameLoop {
                 }
             }
         } else if ability.contains("Destroy") {
-            // Destroy target creature
             if let Some(target_card) = entry.target_card {
                 if game.card(target_card).zone == ZoneType::Battlefield {
                     let owner = game.card(target_card).owner;
@@ -667,9 +785,58 @@ impl GameLoop {
                 }
             }
         } else if ability.contains("Draw") {
-            // Draw cards
             let num = parse_param(ability, "NumCards$ ").unwrap_or(1);
-            game.draw_cards(entry.controller, num as usize);
+            let params = parse_pipe_params(ability);
+            let target = params
+                .get("Defined")
+                .and_then(|d| resolve_defined_player(d, entry.controller, game))
+                .unwrap_or(entry.controller);
+            game.draw_cards(target, num as usize);
+        }
+    }
+
+    // ── Trigger helpers ────────────────────────────────────────────
+
+    /// Emit a phase trigger event.
+    fn emit_phase_trigger(&mut self, game: &GameState, phase: PhaseType) {
+        let active = game.active_player();
+        self.trigger_handler.run_trigger(
+            TriggerType::Phase,
+            RunParams {
+                phase: Some(phase),
+                player: Some(active),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+
+    /// Process pending triggers: drain the waiting queue, put abilities on stack, resolve.
+    /// Mirrors Java's runWaitingTriggers() called between stack resolution windows.
+    fn process_triggers(&mut self, game: &mut GameState) {
+        // Loop in case triggers trigger more triggers
+        let mut safety = 0;
+        loop {
+            let entries = self.trigger_handler.run_waiting_triggers(game);
+            if entries.is_empty() {
+                break;
+            }
+
+            for entry in entries {
+                game.stack.push(entry);
+            }
+
+            // Resolve triggered abilities on the stack
+            while let Some(entry) = game.stack.pop() {
+                if entry.is_triggered_ability {
+                    self.resolve_spell_effect(game, &entry);
+                }
+            }
+
+            safety += 1;
+            if safety > 100 {
+                break; // prevent infinite loops
+            }
         }
     }
 
@@ -951,6 +1118,34 @@ fn basic_land_mana_atom(card: &CardInstance) -> Option<u16> {
             "Forest" => Some(ManaAtom::GREEN),
             _ => None,
         }
+    }
+}
+
+/// Resolve a Defined$ parameter to a player ID.
+/// Mirrors Java's AbilityUtils.getDefinedPlayers().
+fn resolve_defined_player(
+    defined: &str,
+    controller: PlayerId,
+    game: &GameState,
+) -> Option<PlayerId> {
+    match defined {
+        "You" => Some(controller),
+        "Opponent" | "OpponentCtrl" => {
+            let opp = game.opponent_of(controller);
+            Some(opp)
+        }
+        _ => None,
+    }
+}
+
+/// Parse a counter type string to CounterType enum.
+fn parse_counter_type(s: &str) -> crate::card::CounterType {
+    match s {
+        "P1P1" | "+1/+1" => crate::card::CounterType::P1P1,
+        "M1M1" | "-1/-1" => crate::card::CounterType::M1M1,
+        "Loyalty" => crate::card::CounterType::Loyalty,
+        "Charge" => crate::card::CounterType::Charge,
+        _ => crate::card::CounterType::P1P1,
     }
 }
 

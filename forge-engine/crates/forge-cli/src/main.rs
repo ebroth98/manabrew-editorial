@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::io::{self, Write};
 
 use forge_engine_core::agent::{PlayerAgent, TargetChoice};
@@ -5,6 +6,7 @@ use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use rand::SeedableRng;
 
@@ -48,6 +50,20 @@ fn format_keywords(card: &CardInstance) -> String {
     }
 }
 
+fn format_triggers(card: &CardInstance) -> String {
+    if card.triggers.is_empty() {
+        return String::new();
+    }
+    let descs: Vec<&str> = card.triggers.iter()
+        .filter(|t| !t.description.is_empty())
+        .map(|t| t.description.as_str())
+        .collect();
+    if descs.is_empty() {
+        return String::new();
+    }
+    format!(" <{}>", descs.join("; "))
+}
+
 fn format_card(card: &CardInstance) -> String {
     let color = card_color(card);
     let tapped = if card.tapped { " (T)" } else { "" };
@@ -59,8 +75,9 @@ fn format_card(card: &CardInstance) -> String {
 
     if card.is_creature() {
         let kw = format_keywords(card);
-        format!("{}{}{} {}/{}{}{}{}",
-            color, card.card_name, tapped, card.power(), card.toughness(), kw, sick, RESET)
+        let trig = format_triggers(card);
+        format!("{}{}{} {}/{}{}{}{}{}",
+            color, card.card_name, tapped, card.power(), card.toughness(), kw, trig, sick, RESET)
     } else if card.is_land() {
         format!("{}{}{}{}", color, card.card_name, tapped, RESET)
     } else {
@@ -610,6 +627,65 @@ fn make_wall_of_ice(owner: PlayerId) -> CardInstance {
         vec!["Defender".to_string()], vec![])
 }
 
+// -- Trigger creatures --
+
+fn make_mulldrifter(owner: PlayerId) -> CardInstance {
+    let mut next_id = 0;
+    let trigger = parse_trigger(
+        "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When Mulldrifter enters the battlefield, draw two cards.",
+        &mut next_id,
+    ).unwrap();
+
+    let mut svars = BTreeMap::new();
+    svars.insert("TrigDraw".to_string(), "DB$ Draw | Defined$ You | NumCards$ 2".to_string());
+
+    let mut card = CardInstance::new(CardId(0), "Mulldrifter".to_string(), owner,
+        CardTypeLine::parse("Creature - Elemental"),
+        ManaCost::parse("4 U"), ColorSet::BLUE, Some(2), Some(2),
+        vec!["Flying".to_string()], vec![]);
+    card.triggers = vec![trigger];
+    card.svars = svars;
+    card
+}
+
+fn make_soul_warden(owner: PlayerId) -> CardInstance {
+    let mut next_id = 0;
+    let trigger = parse_trigger(
+        "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Creature.Other | Execute$ TrigGain | TriggerDescription$ Whenever another creature enters the battlefield, you gain 1 life.",
+        &mut next_id,
+    ).unwrap();
+
+    let mut svars = BTreeMap::new();
+    svars.insert("TrigGain".to_string(), "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string());
+
+    let mut card = CardInstance::new(CardId(0), "Soul Warden".to_string(), owner,
+        CardTypeLine::parse("Creature - Human Cleric"),
+        ManaCost::parse("W"), ColorSet::WHITE, Some(1), Some(1),
+        vec![], vec![]);
+    card.triggers = vec![trigger];
+    card.svars = svars;
+    card
+}
+
+fn make_guttersnipe(owner: PlayerId) -> CardInstance {
+    let mut next_id = 0;
+    let trigger = parse_trigger(
+        "Mode$ SpellCast | ValidCard$ Instant,Sorcery | ValidActivatingPlayer$ You | Execute$ TrigDmg | TriggerDescription$ Whenever you cast an instant or sorcery spell, Guttersnipe deals 2 damage to each opponent.",
+        &mut next_id,
+    ).unwrap();
+
+    let mut svars = BTreeMap::new();
+    svars.insert("TrigDmg".to_string(), "DB$ DealDamage | Defined$ Opponent | NumDmg$ 2".to_string());
+
+    let mut card = CardInstance::new(CardId(0), "Guttersnipe".to_string(), owner,
+        CardTypeLine::parse("Creature - Goblin Shaman"),
+        ManaCost::parse("2 R"), ColorSet::RED, Some(2), Some(2),
+        vec![], vec![]);
+    card.triggers = vec![trigger];
+    card.svars = svars;
+    card
+}
+
 // ── Deck building ────────────────────────────────────────────────────
 
 fn add_cards(game: &mut GameState, owner: PlayerId, count: usize, make: fn(PlayerId) -> CardInstance) {
@@ -620,12 +696,13 @@ fn add_cards(game: &mut GameState, owner: PlayerId, count: usize, make: fn(Playe
 }
 
 fn build_red_burn_deck(game: &mut GameState, owner: PlayerId) {
-    // 17 Mountains, 4 Lightning Bolt, 4 Shock, 4 Gray Ogre, 4 Hill Giant = 33
+    // 17 Mountains, 4 Lightning Bolt, 4 Shock, 3 Gray Ogre, 3 Hill Giant, 3 Guttersnipe = 34
     add_cards(game, owner, 17, make_mountain);
     add_cards(game, owner, 4, make_lightning_bolt);
     add_cards(game, owner, 4, make_shock);
-    add_cards(game, owner, 4, make_grey_ogre);
-    add_cards(game, owner, 4, make_hill_giant);
+    add_cards(game, owner, 3, make_grey_ogre);
+    add_cards(game, owner, 3, make_hill_giant);
+    add_cards(game, owner, 3, make_guttersnipe);
 }
 
 fn build_green_stompy_deck(game: &mut GameState, owner: PlayerId) {
@@ -642,22 +719,24 @@ fn build_green_stompy_deck(game: &mut GameState, owner: PlayerId) {
 }
 
 fn build_white_aggro_deck(game: &mut GameState, owner: PlayerId) {
-    // 17 Plains, 4 Savannah Lions, 4 White Knight, 4 Serra Angel = 29
+    // 17 Plains, 4 Savannah Lions, 3 White Knight, 3 Serra Angel, 3 Soul Warden = 30
     add_cards(game, owner, 17, make_plains);
     add_cards(game, owner, 4, make_savannah_lions);
-    add_cards(game, owner, 4, make_white_knight);
-    add_cards(game, owner, 4, make_serra_angel);
+    add_cards(game, owner, 3, make_white_knight);
+    add_cards(game, owner, 3, make_serra_angel);
+    add_cards(game, owner, 3, make_soul_warden);
 }
 
 fn build_black_control_deck(game: &mut GameState, owner: PlayerId) {
     // 13 Swamps, 4 Islands, 4 Doom Blade, 2 Divination,
-    // 4 Typhoid Rats, 4 Vampire Nighthawk = 31
+    // 3 Typhoid Rats, 3 Vampire Nighthawk, 2 Mulldrifter = 31
     add_cards(game, owner, 13, make_swamp);
     add_cards(game, owner, 4, make_island);
     add_cards(game, owner, 4, make_doom_blade);
     add_cards(game, owner, 2, make_divination);
-    add_cards(game, owner, 4, make_typhoid_rats);
-    add_cards(game, owner, 4, make_vampire_nighthawk);
+    add_cards(game, owner, 3, make_typhoid_rats);
+    add_cards(game, owner, 3, make_vampire_nighthawk);
+    add_cards(game, owner, 2, make_mulldrifter);
 }
 
 // ── Main ─────────────────────────────────────────────────────────────

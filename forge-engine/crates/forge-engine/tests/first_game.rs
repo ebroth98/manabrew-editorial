@@ -1,8 +1,11 @@
+use std::collections::BTreeMap;
+
 use forge_engine_core::agent::{PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use rand::SeedableRng;
 
@@ -489,4 +492,401 @@ fn creature_combat_with_blocking() {
     // No player damage
     assert_eq!(game.player(p0).life, 20);
     assert_eq!(game.player(p1).life, 20);
+}
+
+// ── Trigger helper constructors ─────────────────────────────────────
+
+fn make_mulldrifter(owner: PlayerId) -> CardInstance {
+    let mut next_id = 0;
+    let trigger = parse_trigger(
+        "Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When Mulldrifter enters the battlefield, draw two cards.",
+        &mut next_id,
+    ).unwrap();
+
+    let mut svars = BTreeMap::new();
+    svars.insert("TrigDraw".to_string(), "DB$ Draw | Defined$ You | NumCards$ 2".to_string());
+
+    let mut card = CardInstance::new(
+        CardId(0), "Mulldrifter".to_string(), owner,
+        CardTypeLine::parse("Creature - Elemental"),
+        ManaCost::parse("4 U"), ColorSet::BLUE, Some(2), Some(2),
+        vec!["Flying".to_string()], vec![],
+    );
+    card.triggers = vec![trigger];
+    card.svars = svars;
+    card
+}
+
+fn make_soul_warden(owner: PlayerId) -> CardInstance {
+    let mut next_id = 0;
+    let trigger = parse_trigger(
+        "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Creature.Other | Execute$ TrigGain | TriggerDescription$ Whenever another creature enters the battlefield, you gain 1 life.",
+        &mut next_id,
+    ).unwrap();
+
+    let mut svars = BTreeMap::new();
+    svars.insert("TrigGain".to_string(), "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string());
+
+    let mut card = CardInstance::new(
+        CardId(0), "Soul Warden".to_string(), owner,
+        CardTypeLine::parse("Creature - Human Cleric"),
+        ManaCost::parse("W"), ColorSet::WHITE, Some(1), Some(1),
+        vec![], vec![],
+    );
+    card.triggers = vec![trigger];
+    card.svars = svars;
+    card
+}
+
+fn make_guttersnipe(owner: PlayerId) -> CardInstance {
+    let mut next_id = 0;
+    let trigger = parse_trigger(
+        "Mode$ SpellCast | ValidCard$ Instant,Sorcery | ValidActivatingPlayer$ You | Execute$ TrigDmg | TriggerDescription$ Whenever you cast an instant or sorcery spell, Guttersnipe deals 2 damage to each opponent.",
+        &mut next_id,
+    ).unwrap();
+
+    let mut svars = BTreeMap::new();
+    svars.insert("TrigDmg".to_string(), "DB$ DealDamage | Defined$ Opponent | NumDmg$ 2".to_string());
+
+    let mut card = CardInstance::new(
+        CardId(0), "Guttersnipe".to_string(), owner,
+        CardTypeLine::parse("Creature - Goblin Shaman"),
+        ManaCost::parse("2 R"), ColorSet::RED, Some(2), Some(2),
+        vec![], vec![],
+    );
+    card.triggers = vec![trigger];
+    card.svars = svars;
+    card
+}
+
+fn make_upkeep_pinger(owner: PlayerId) -> CardInstance {
+    let mut next_id = 0;
+    let trigger = parse_trigger(
+        "Mode$ Phase | Phase$ Upkeep | ValidPlayer$ You | Execute$ TrigPing | TriggerDescription$ At the beginning of your upkeep, deal 1 damage to each opponent.",
+        &mut next_id,
+    ).unwrap();
+
+    let mut svars = BTreeMap::new();
+    svars.insert("TrigPing".to_string(), "DB$ DealDamage | Defined$ Opponent | NumDmg$ 1".to_string());
+
+    let mut card = CardInstance::new(
+        CardId(0), "Upkeep Pinger".to_string(), owner,
+        CardTypeLine::parse("Creature - Spirit"),
+        ManaCost::parse("1 R"), ColorSet::RED, Some(1), Some(1),
+        vec![], vec![],
+    );
+    card.triggers = vec![trigger];
+    card.svars = svars;
+    card
+}
+
+fn make_island(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0), "Island".to_string(), owner,
+        CardTypeLine::parse("Basic Land - Island"),
+        ManaCost::no_cost(), ColorSet::COLORLESS, None, None,
+        vec![], vec![],
+    )
+}
+
+fn make_plains(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0), "Plains".to_string(), owner,
+        CardTypeLine::parse("Basic Land - Plains"),
+        ManaCost::no_cost(), ColorSet::COLORLESS, None, None,
+        vec![], vec![],
+    )
+}
+
+// ── Trigger Integration Tests ───────────────────────────────────────
+
+/// Test: Mulldrifter ETB trigger — enters battlefield → draw 2 cards.
+#[test]
+fn mulldrifter_etb_draws_two_cards() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put Mulldrifter directly on battlefield to test trigger
+    let mulldrifter = game.create_card(make_mulldrifter(p0));
+
+    // Give Alice 5 cards in library to draw from
+    for _ in 0..5 {
+        let island = game.create_card(make_island(p0));
+        game.move_card(island, ZoneType::Library, p0);
+    }
+
+    // Give Bob something so game works
+    let bob_forest = game.create_card(make_forest(p1));
+    game.move_card(bob_forest, ZoneType::Library, p1);
+
+    let mut game_loop = GameLoop::new(2);
+
+    // Simulate: put Mulldrifter on stack as a creature spell, then resolve
+    game.move_card(mulldrifter, ZoneType::Stack, p0);
+    let entry = forge_engine_core::stack::StackEntry {
+        id: 0,
+        source: Some(mulldrifter),
+        controller: p0,
+        ability_text: String::new(),
+        is_creature_spell: true,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: None,
+        is_triggered_ability: false,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    // Resolve stack — should move to battlefield and trigger ETB
+    game_loop.resolve_stack(&mut game);
+
+    // Mulldrifter should be on battlefield
+    assert_eq!(game.card(mulldrifter).zone, ZoneType::Battlefield,
+        "Mulldrifter should be on battlefield");
+
+    // Alice should have drawn 2 cards (from the 5 islands in library)
+    assert_eq!(game.zone(ZoneType::Hand, p0).len(), 2,
+        "Alice should have drawn 2 cards from Mulldrifter ETB trigger");
+    assert_eq!(game.zone(ZoneType::Library, p0).len(), 3,
+        "Alice should have 3 cards left in library");
+}
+
+/// Test: Soul Warden — another creature entering gives 1 life, self entering does NOT trigger.
+#[test]
+fn soul_warden_gains_life_on_other_creature_etb() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put Soul Warden directly on battlefield first
+    let soul_warden = game.create_card(make_soul_warden(p0));
+    game.move_card(soul_warden, ZoneType::Battlefield, p0);
+
+    let mut game_loop = GameLoop::new(2);
+
+    // Register Soul Warden's triggers
+    game_loop.trigger_handler.register_active_trigger(&game, soul_warden);
+
+    // Now put a Grizzly Bears on the stack and resolve
+    let bears = game.create_card(make_grizzly_bears(p0));
+    game.move_card(bears, ZoneType::Stack, p0);
+    let entry = forge_engine_core::stack::StackEntry {
+        id: 0,
+        source: Some(bears),
+        controller: p0,
+        ability_text: String::new(),
+        is_creature_spell: true,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: None,
+        is_triggered_ability: false,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+    game_loop.resolve_stack(&mut game);
+
+    // Alice should have gained 1 life (Soul Warden triggered on bears entering)
+    assert_eq!(game.player(p0).life, 21,
+        "Alice should be at 21 life after Soul Warden trigger");
+}
+
+/// Test: Soul Warden entering battlefield does NOT trigger its own ability (Creature.Other filter).
+#[test]
+fn soul_warden_does_not_trigger_on_self_etb() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    let mut game_loop = GameLoop::new(2);
+
+    // Soul Warden enters as a creature spell (from stack to battlefield)
+    let soul_warden = game.create_card(make_soul_warden(p0));
+    game.move_card(soul_warden, ZoneType::Stack, p0);
+    let entry = forge_engine_core::stack::StackEntry {
+        id: 0,
+        source: Some(soul_warden),
+        controller: p0,
+        ability_text: String::new(),
+        is_creature_spell: true,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: None,
+        is_triggered_ability: false,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+    game_loop.resolve_stack(&mut game);
+
+    // Life should still be 20 — Soul Warden should NOT trigger on itself
+    assert_eq!(game.player(p0).life, 20,
+        "Soul Warden should NOT trigger on itself entering (Creature.Other)");
+}
+
+/// Test: Guttersnipe — cast instant → 2 damage to opponent.
+#[test]
+fn guttersnipe_deals_damage_on_instant_cast() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put Guttersnipe on battlefield
+    let guttersnipe = game.create_card(make_guttersnipe(p0));
+    game.move_card(guttersnipe, ZoneType::Battlefield, p0);
+
+    // Give Alice a Mountain and Lightning Bolt in hand
+    let mountain = game.create_card(make_mountain(p0));
+    game.move_card(mountain, ZoneType::Hand, p0);
+    let bolt = game.create_card(make_lightning_bolt(p0));
+    game.move_card(bolt, ZoneType::Hand, p0);
+
+    // Give Bob cards so game works
+    let bob_forest = game.create_card(make_forest(p1));
+    game.move_card(bob_forest, ZoneType::Library, p1);
+
+    let mut game_loop = GameLoop::new(2);
+    // Register Guttersnipe's triggers
+    game_loop.trigger_handler.register_active_trigger(&game, guttersnipe);
+
+    // Set up agent: play Mountain, cast Lightning Bolt, pass
+    let mut alice = ScriptedAgent::new("Alice");
+    alice.actions = vec![
+        Some(0), // play Mountain
+        Some(0), // cast Lightning Bolt
+        None,    // pass
+    ];
+    let bob = ScriptedAgent::new("Bob");
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(alice), Box::new(bob)];
+
+    game.turn.active_player = p0;
+    game.turn.phase = forge_foundation::PhaseType::Main1;
+    game_loop.step_main_phase(&mut game, &mut agents);
+
+    // Bob should have taken 3 (Bolt) + 2 (Guttersnipe) = 5 damage
+    assert_eq!(game.player(p1).life, 15,
+        "Bob should be at 15 life (3 from Bolt + 2 from Guttersnipe)");
+}
+
+/// Test: Phase trigger — upkeep trigger deals 1 damage to opponent each turn.
+#[test]
+fn upkeep_trigger_fires_each_turn() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put pinger on battlefield for Alice
+    let pinger = game.create_card(make_upkeep_pinger(p0));
+    game.move_card(pinger, ZoneType::Battlefield, p0);
+    game.card_mut(pinger).summoning_sick = false;
+
+    // Give both players some library cards
+    for _ in 0..5 {
+        let m = game.create_card(make_mountain(p0));
+        game.move_card(m, ZoneType::Library, p0);
+        let f = game.create_card(make_forest(p1));
+        game.move_card(f, ZoneType::Library, p1);
+    }
+
+    let mut game_loop = GameLoop::new(2);
+
+    // Simple agents that just pass
+    struct PassAgent;
+    impl PlayerAgent for PassAgent {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
+        fn choose_action(&mut self, _: PlayerId, _: &[CardId]) -> Option<CardId> { None }
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> { Vec::new() }
+        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+            if let Some(&pid) = p.first() { TargetChoice::Player(pid) }
+            else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
+            else { TargetChoice::None }
+        }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn notify(&mut self, _: &str) {}
+    }
+
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    // Run Alice's turn (turn 2 so draw step works)
+    game.turn.turn_number = 2;
+    game.turn.active_player = p0;
+    game_loop.run_turn(&mut game, &mut agents, &mut rng);
+
+    // Bob should have taken 1 damage from upkeep trigger
+    assert_eq!(game.player(p1).life, 19,
+        "Bob should be at 19 life after upkeep pinger trigger");
+}
+
+/// Test: Full game with trigger cards completes without panicking.
+#[test]
+fn full_game_with_triggers_runs() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Alice: Mountains + Lightning Bolts + Guttersnipe
+    for _ in 0..10 {
+        let m = game.create_card(make_mountain(p0));
+        game.move_card(m, ZoneType::Library, p0);
+    }
+    for _ in 0..4 {
+        let b = game.create_card(make_lightning_bolt(p0));
+        game.move_card(b, ZoneType::Library, p0);
+    }
+    for _ in 0..3 {
+        let g = game.create_card(make_guttersnipe(p0));
+        game.move_card(g, ZoneType::Library, p0);
+    }
+
+    // Bob: Forests + Bears + Soul Warden
+    for _ in 0..10 {
+        let f = game.create_card(make_forest(p1));
+        game.move_card(f, ZoneType::Library, p1);
+    }
+    for _ in 0..4 {
+        let b = game.create_card(make_grizzly_bears(p1));
+        game.move_card(b, ZoneType::Library, p1);
+    }
+    for _ in 0..3 {
+        let sw = game.create_card(make_soul_warden(p1));
+        game.move_card(sw, ZoneType::Library, p1);
+    }
+
+    struct SimpleAgent;
+    impl PlayerAgent for SimpleAgent {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
+        fn choose_action(&mut self, _: PlayerId, playable: &[CardId]) -> Option<CardId> { playable.first().copied() }
+        fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> { available.to_vec() }
+        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+            if let Some(&pid) = p.first() { TargetChoice::Player(pid) }
+            else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
+            else { TargetChoice::None }
+        }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn notify(&mut self, _: &str) {}
+    }
+
+    let mut game_loop = GameLoop::new(2);
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(SimpleAgent), Box::new(SimpleAgent)];
+    let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+
+    let winner = game_loop.run(&mut game, &mut agents, &mut rng, 30);
+
+    assert!(game.game_over, "Game should be over");
+    assert!(winner.is_some(), "There should be a winner");
+
+    println!("Winner: {} (Player {})",
+        game.player(winner.unwrap()).name, winner.unwrap().0);
+    println!("Final life: Alice={}, Bob={}",
+        game.player(p0).life, game.player(p1).life);
+    println!("Game ended on turn {}", game.turn.turn_number);
 }

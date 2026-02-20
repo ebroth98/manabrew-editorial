@@ -20,6 +20,12 @@ pub struct StackEntry {
     pub target_player: Option<PlayerId>,
     /// Target card (if any).
     pub target_card: Option<CardId>,
+    /// Whether this is a triggered ability (not a spell).
+    pub is_triggered_ability: bool,
+    /// Card that owns the trigger (for intervening-if recheck).
+    pub trigger_source: Option<CardId>,
+    /// Index into card.triggers for intervening-if recheck.
+    pub trigger_index: Option<usize>,
 }
 
 /// The game stack. Spells and abilities are added to the top and resolve LIFO.

@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{CardId, PlayerId};
+use crate::trigger::Trigger;
 
 /// A card instance in a game. This is the mutable game-state representation,
 /// as opposed to CardRules which is the immutable definition.
@@ -57,6 +58,11 @@ pub struct CardInstance {
     // Turn tracking
     pub entered_battlefield_this_turn: bool,
     pub attacked_this_turn: bool,
+
+    // Triggers — mirrors Java Card.getTriggers()
+    pub triggers: Vec<Trigger>,
+    // SVars — mirrors Java Card.getSVars()
+    pub svars: BTreeMap<String, String>,
 }
 
 impl CardInstance {
@@ -96,6 +102,8 @@ impl CardInstance {
             has_deathtouch_damage: false,
             entered_battlefield_this_turn: false,
             attacked_this_turn: false,
+            triggers: Vec::new(),
+            svars: BTreeMap::new(),
         }
     }
 
