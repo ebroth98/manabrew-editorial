@@ -77,6 +77,14 @@ pub trait PlayerAgent {
 
     /// Notify the agent of a game event (for display/logging).
     fn notify(&mut self, message: &str);
+
+    /// Display-only notification: a card was played (land or spell).
+    /// Called on all agents so every player's UI can show the animation.
+    fn notify_card_played(&mut self, _player: PlayerId, _card_id: CardId, _card_name: &str) {}
+
+    /// Display-only notification: a new turn is starting for the given player.
+    /// Called on all agents before any turn actions so the UI can show the turn flash first.
+    fn notify_turn_changed(&mut self, _active_player: PlayerId, _turn_number: u32) {}
 }
 
 /// A simple agent that always passes priority and makes no choices.

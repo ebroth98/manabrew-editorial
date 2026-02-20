@@ -6,6 +6,7 @@ import DeckEditor from "@/views/DeckEditor";
 import MyDecks from "@/views/MyDecks";
 import Game from "@/views/Game";
 import Draft from "@/views/Draft";
+import Settings from "@/views/Settings";
 
 export const router = createBrowserRouter([
   {
@@ -43,6 +44,10 @@ export const router = createBrowserRouter([
       {
         path: "draft/:draftId",
         element: <Draft />,
+      },
+      {
+        path: "settings",
+        element: <Settings />,
       },
     ],
   },

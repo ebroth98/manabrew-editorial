@@ -1,6 +1,8 @@
 import { useGameStore } from "@/stores/useGameStore";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { Card as XMageCard, Player } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
@@ -97,12 +99,14 @@ function PlayerPanel({
   isActiveTurn,
   isTargetable,
   onTarget,
+  isFlashing,
 }: {
   player: Player;
   isOpponent: boolean;
   isActiveTurn?: boolean;
   isTargetable?: boolean;
   onTarget?: () => void;
+  isFlashing?: boolean;
 }) {
   return (
     <div
@@ -112,7 +116,8 @@ function PlayerPanel({
         isActiveTurn && !isTargetable && (isOpponent
           ? "ring-2 ring-orange-400 border-orange-400"
           : "ring-2 ring-green-500 border-green-500"),
-        isTargetable && "ring-2 ring-red-400 border-red-400 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30"
+        isTargetable && "ring-2 ring-red-400 border-red-400 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30",
+        isFlashing && "animate-player-turn-flash"
       )}
       onClick={isTargetable ? onTarget : undefined}
       title={isTargetable ? `Target ${player.name}` : undefined}
@@ -461,12 +466,33 @@ export default function Game() {
     endGame,
     startGame,
     setupListeners,
+    deferredQueue,
   } = useGameStore();
+  const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [selectedCard, setSelectedCard] = useState<XMageCard | null>(null);
   const [hoveredCard, setHoveredCard] = useState<XMageCard | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  // Display flash queue — sequential visual-only flashes.
+  type FlashItem =
+    | { kind: "card"; cardId: string; cardName: string }
+    | { kind: "turn"; playerId: string; playerName: string };
+  const [activeFlash, setActiveFlash] = useState<FlashItem | null>(null);
+  const flashQueueRef = useRef<FlashItem[]>([]);
+  const isFlashingRef = useRef(false);
+
+  function enqueueFlash(item: FlashItem) {
+    flashQueueRef.current.push(item);
+    if (!isFlashingRef.current) {
+      const next = flashQueueRef.current.shift();
+      if (next) {
+        isFlashingRef.current = true;
+        setActiveFlash(next);
+      }
+    }
+  }
 
   // Combat state
   const [pendingAttackers, setPendingAttackers] = useState<string[]>([]);
@@ -500,34 +526,6 @@ export default function Game() {
     };
   }, [setupListeners]);
 
-  // Poll for game state as fallback (in case events don't work)
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  useEffect(() => {
-    if (!isGameActive) return;
-    // Poll every 300ms when we don't have a gameView yet, or after responding
-    pollRef.current = setInterval(async () => {
-      // Never overwrite a game-over state — the dying thread keeps emitting prompts
-      if (useGameStore.getState().gameView?.gameOver) return;
-      try {
-        const prompt = await invoke<any>('get_prompt');
-        if (prompt) {
-          const gv = prompt.gameView || prompt.game_view;
-          if (gv) {
-            useGameStore.setState({
-              gameView: gv,
-              currentPrompt: prompt,
-              debugInfo: `Poll OK: ${prompt.type}`,
-            });
-          }
-        }
-      } catch (e) {
-        // ignore poll errors
-      }
-    }, 300);
-    return () => {
-      if (pollRef.current) clearInterval(pollRef.current);
-    };
-  }, [isGameActive]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -552,6 +550,86 @@ export default function Game() {
     setPendingAttacker(null);
     setBlockAssignments([]);
   }, [currentPrompt?.type]);
+
+  // Pop the next snapshot from the queue and start its flashes.
+  function startNextSnapshot() {
+    const queue = useGameStore.getState().deferredQueue;
+    if (queue.length === 0) {
+      isFlashingRef.current = false;
+      useGameStore.setState({ isFlashing: false });
+      return;
+    }
+
+    const [snapshot, ...rest] = queue;
+    useGameStore.setState({ deferredQueue: rest });
+
+    // Always apply gameView + prompt immediately so the board updates right away.
+    // Flash animations play as overlays on top of the already-updated state.
+    const updates: Record<string, unknown> = { gameView: snapshot.gameView };
+    if (snapshot.prompt) updates.currentPrompt = snapshot.prompt;
+    useGameStore.setState(updates);
+
+    if (snapshot.displayEvents.length === 0) {
+      // No flashes — continue to next in queue (use setTimeout to avoid infinite recursion in one tick)
+      if (rest.length > 0) {
+        setTimeout(startNextSnapshot, 0);
+      } else {
+        isFlashingRef.current = false;
+        useGameStore.setState({ isFlashing: false });
+      }
+      return;
+    }
+
+    // Enqueue flash items for this snapshot's display events.
+    for (const evt of snapshot.displayEvents) {
+      if (evt.kind === "cardPlayed") {
+        flashQueueRef.current.push({ kind: "card", cardId: evt.cardId!, cardName: evt.cardName! });
+      } else if (evt.kind === "turnChanged") {
+        flashQueueRef.current.push({ kind: "turn", playerId: evt.activePlayerId!, playerName: evt.activePlayerName! });
+      }
+    }
+
+    // Kick off the first flash
+    const first = flashQueueRef.current.shift();
+    if (first) {
+      isFlashingRef.current = true;
+      useGameStore.setState({ isFlashing: true });
+      setActiveFlash(first);
+    }
+  }
+
+  // Watch the deferred queue — when entries arrive and we're idle, start processing.
+  useEffect(() => {
+    if (deferredQueue.length > 0 && !isFlashingRef.current) {
+      startNextSnapshot();
+    }
+  }, [deferredQueue]);
+
+  // Process flash queue: when current flash ends, show next or move to next snapshot.
+  useEffect(() => {
+    if (!activeFlash) {
+      // Check if there are more flashes in the current snapshot's batch
+      const next = flashQueueRef.current.shift();
+      if (next) {
+        isFlashingRef.current = true;
+        setActiveFlash(next);
+      } else {
+        // All flashes done — state was already applied upfront, just move on.
+        const queue = useGameStore.getState().deferredQueue;
+        if (queue.length > 0) {
+          setTimeout(startNextSnapshot, 10);
+        } else {
+          isFlashingRef.current = false;
+          useGameStore.setState({ isFlashing: false });
+        }
+      }
+      return;
+    }
+    const timer = setTimeout(() => {
+      setActiveFlash(null);
+    }, flashDurationMs);
+    return () => clearTimeout(timer);
+  }, [activeFlash, flashDurationMs]);
 
   // Targeting / combat arrows — must be called unconditionally (Rules of Hooks)
   // Player IDs are empty strings when gameView is not yet available; the hook
@@ -679,8 +757,10 @@ export default function Game() {
     setPendingAttacker((prev) => (prev === card.id ? null : card.id));
   }
 
+  const turnFlashPlayerId = activeFlash?.kind === "turn" ? activeFlash.playerId : null;
+
   return (
-    <div ref={containerRef} className="relative flex flex-col h-full gap-2 overflow-hidden">
+    <div ref={containerRef} className="relative flex flex-col h-full gap-2 overflow-hidden" style={{ "--flash-duration": `${flashDurationMs}ms` } as React.CSSProperties}>
       {/* Targeting / combat arrow overlay — sits on top of all game elements */}
       <ArrowOverlay arrows={arrows} />
 
@@ -691,6 +771,7 @@ export default function Game() {
         isActiveTurn={gameView.activePlayerId === opponent.id}
         isTargetable={playerIsTargetable(opponent.id)}
         onTarget={() => handleTargetPlayer(opponent.id)}
+        isFlashing={turnFlashPlayerId === opponent.id}
       />
 
       {/* Opponent graveyard + exile + command zone + battlefield */}
@@ -864,6 +945,7 @@ export default function Game() {
             isActiveTurn={gameView.activePlayerId === me!.id}
             isTargetable={playerIsTargetable(me!.id)}
             onTarget={() => handleTargetPlayer(me!.id)}
+            isFlashing={turnFlashPlayerId === me!.id}
           />
         </div>
         <div className="flex gap-2 shrink-0 items-center">
@@ -988,6 +1070,36 @@ export default function Game() {
           cards={viewingZone.cards}
           onClose={closeZone}
         />
+      )}
+
+      {/* Card-play flash overlay */}
+      {activeFlash?.kind === "card" && createPortal(
+        <div className="fixed inset-0 z-[10000] flex items-center justify-center pointer-events-none bg-black/30 animate-card-flash-backdrop" style={{ "--flash-duration": `${flashDurationMs}ms` } as React.CSSProperties}>
+          <div className="animate-card-flash">
+            <Card
+              card={{
+                id: activeFlash.cardId,
+                name: activeFlash.cardName,
+                setCode: "",
+                cardNumber: "",
+                color: "",
+                manaCost: "",
+                types: [],
+                subtypes: [],
+                supertypes: [],
+                text: "",
+                isPlayable: false,
+                isSelected: false,
+                isChoosable: false,
+                controllerId: "",
+                ownerId: "",
+                zoneId: "",
+              }}
+              className="w-[240px] h-[336px]"
+            />
+          </div>
+        </div>,
+        document.body
       )}
 
       {/* Hover card preview */}

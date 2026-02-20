@@ -14,7 +14,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_agent::SimpleAiAgent;
 use crate::game_view_dto::GameViewDto;
-use crate::prompt::{AgentPrompt, PlayerAction};
+use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 use crate::tauri_agent::TauriAgent;
 
 pub struct GameManager {
@@ -69,16 +69,10 @@ impl GameManager {
         let latest_prompt = self.latest_prompt.clone();
         thread::spawn(move || {
             eprintln!("[prompt_fwd] Prompt forwarder started");
-            let window = app_prompt.get_webview_window("main");
             while let Ok(prompt) = prompt_rx.recv() {
                 eprintln!("[prompt_fwd] Got prompt, storing and emitting...");
-                // Store latest prompt for polling
                 if let Ok(mut lp) = latest_prompt.lock() {
                     *lp = Some(prompt.clone());
-                }
-                // Emit via both window and app to cover all listener types
-                if let Some(ref w) = window {
-                    let _ = w.emit("game:prompt", &prompt);
                 }
                 match app_prompt.emit("game:prompt", &prompt) {
                     Ok(()) => eprintln!("[prompt_fwd] Event emitted OK"),
@@ -136,15 +130,16 @@ impl GameManager {
             // Build a synthetic game-over prompt using the last known game view
             let game_view = {
                 let lp = self.latest_prompt.lock().map_err(|e| e.to_string())?;
-                let base_view = lp.as_ref().and_then(|p| match p {
-                    AgentPrompt::ChooseAction { game_view, .. } => Some(game_view.clone()),
-                    AgentPrompt::ChooseAttackers { game_view, .. } => Some(game_view.clone()),
-                    AgentPrompt::ChooseBlockers { game_view, .. } => Some(game_view.clone()),
-                    AgentPrompt::ChooseTargetPlayer { game_view, .. } => Some(game_view.clone()),
-                    AgentPrompt::ChooseTargetCard { game_view, .. } => Some(game_view.clone()),
-                    AgentPrompt::ChooseTargetAny { game_view, .. } => Some(game_view.clone()),
-                    AgentPrompt::Mulligan { game_view, .. } => Some(game_view.clone()),
-                    AgentPrompt::GameOver { game_view } => Some(game_view.clone()),
+                let base_view = lp.as_ref().and_then(|p| match &p.inner {
+                    AgentPromptInner::ChooseAction { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseAttackers { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseBlockers { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseTargetPlayer { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseTargetCard { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseTargetAny { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::Mulligan { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::GameOver { game_view } => Some(game_view.clone()),
+                    AgentPromptInner::StateUpdate { game_view } => Some(game_view.clone()),
                 });
                 let mut view = base_view.unwrap_or_else(|| GameViewDto {
                     game_id: String::new(),
@@ -170,7 +165,7 @@ impl GameManager {
                 view.winner_id = opponent_id;
                 view
             };
-            let prompt = AgentPrompt::GameOver { game_view };
+            let prompt = AgentPrompt { display_events: vec![], inner: AgentPromptInner::GameOver { game_view } };
             if let Ok(mut lp) = self.latest_prompt.lock() {
                 *lp = Some(prompt.clone());
             }
@@ -287,8 +282,9 @@ fn run_game(
 
     // Send final game-over prompt
     let final_view = GameViewDto::from_engine(&game, &game_loop.mana_pools, p0, &game_id, &[], &[]);
-    let _ = prompt_tx.send(AgentPrompt::GameOver {
-        game_view: final_view,
+    let _ = prompt_tx.send(AgentPrompt {
+        display_events: vec![],
+        inner: AgentPromptInner::GameOver { game_view: final_view },
     });
 
     let _ = winner; // winner is also in the game_view

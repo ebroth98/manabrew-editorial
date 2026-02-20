@@ -4,9 +4,20 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { GameView } from '@/types/xmage';
 import { getFormat } from '@/lib/formats';
 
+interface DisplayEvent {
+  kind: string;
+  cardId?: string;
+  cardName?: string;
+  playerId?: string;
+  activePlayerId?: string;
+  activePlayerName?: string;
+  turnNumber?: number;
+}
+
 interface AgentPrompt {
   type: string;
   gameView: GameView;
+  displayEvents?: DisplayEvent[];
   playableCardIds?: string[];
   handCardIds?: string[];
   availableAttackerIds?: string[];
@@ -23,12 +34,24 @@ interface GameConfig {
   startingLife: number;
 }
 
+/** A snapshot queued for sequential flash-then-apply processing. */
+interface DeferredSnapshot {
+  displayEvents: DisplayEvent[];
+  gameView: GameView;
+  /** null for display-only state updates (no player decision). */
+  prompt: AgentPrompt | null;
+}
+
 interface GameState {
   gameView: GameView | null;
   currentPrompt: AgentPrompt | null;
   gameLog: string[];
   isGameActive: boolean;
   debugInfo: string;
+  /** Queue of deferred snapshots waiting for flash animation. */
+  deferredQueue: DeferredSnapshot[];
+  /** True while Game.tsx is processing flash animations. */
+  isFlashing: boolean;
   gameConfig: GameConfig | null;
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
@@ -48,7 +71,44 @@ interface GameState {
   concede: () => void;
   endGame: () => Promise<void>;
   setupListeners: () => Promise<() => void>;
-  pollForPrompt: () => Promise<void>;
+}
+
+function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial<GameState>) => void, get: () => GameState) {
+  const displayEvents = [...(prompt.displayEvents ?? [])];
+  // Don't mutate the original payload (listeners may fire more than once).
+
+  const currentGameView = get().gameView;
+  const queueLen = get().deferredQueue.length;
+  // stateUpdate prompts only carry a gameView + display events — they should
+  // NOT replace the currentPrompt (the active player decision).
+  const isStateUpdate = prompt.type === "stateUpdate";
+
+  if (displayEvents.length > 0 && currentGameView !== null) {
+    // Enqueue this snapshot — the flash processor will play the events then apply the state.
+    const snapshot: DeferredSnapshot = { displayEvents, gameView: prompt.gameView, prompt: isStateUpdate ? null : prompt };
+    set({
+      deferredQueue: [...get().deferredQueue, snapshot],
+      debugInfo: `${source}: ${prompt.type} (queued #${queueLen + 1})`,
+    });
+  } else if (queueLen > 0 || get().isFlashing) {
+    // Flashes are in progress but this prompt has no display events — enqueue with empty events
+    // so it gets applied after the current flash sequence finishes.
+    const snapshot: DeferredSnapshot = { displayEvents: [], gameView: prompt.gameView, prompt: isStateUpdate ? null : prompt };
+    set({
+      deferredQueue: [...get().deferredQueue, snapshot],
+      debugInfo: `${source}: ${prompt.type} (queued-passthrough #${queueLen + 1})`,
+    });
+  } else {
+    // No display events and no queue — apply immediately
+    const updates: Partial<GameState> = {
+      gameView: prompt.gameView,
+      debugInfo: `${source}: ${prompt.type}`,
+    };
+    if (!isStateUpdate) {
+      updates.currentPrompt = prompt;
+    }
+    set(updates);
+  }
 }
 
 export const useGameStore = create<GameState>((set, get) => ({
@@ -57,6 +117,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameLog: [],
   isGameActive: false,
   debugInfo: '',
+  deferredQueue: [],
+  isFlashing: false,
   gameConfig: null,
 
   updateGameView: (view) => set({ gameView: view }),
@@ -76,37 +138,10 @@ export const useGameStore = create<GameState>((set, get) => ({
         commanderName: commanderName ?? null,
       });
       // Clear old game state so stale gameView/prompts don't bleed into new game
-      set({ isGameActive: true, gameLog: [], gameView: null, currentPrompt: null, debugInfo: `Game started: ${result}. Polling...` });
-      // Poll for the first prompt after a short delay
-      setTimeout(() => get().pollForPrompt(), 500);
+      set({ isGameActive: true, gameLog: [], gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, debugInfo: `Game started: ${result}. Polling...` });
     } catch (e) {
       set({ debugInfo: `Start failed: ${e}` });
       console.error('[store] Failed to start game:', e);
-    }
-  },
-
-  pollForPrompt: async () => {
-    // Don't overwrite a game-over state with subsequent prompts
-    if (get().gameView?.gameOver) return;
-    try {
-      const prompt = await invoke<AgentPrompt | null>('get_prompt');
-      if (prompt && prompt.gameView) {
-        set({
-          gameView: prompt.gameView,
-          currentPrompt: prompt,
-          debugInfo: `Got prompt via poll: ${prompt.type}`,
-        });
-      } else {
-        set({ debugInfo: `Poll returned: ${JSON.stringify(prompt)?.slice(0, 100)}` });
-        // Retry after a delay
-        setTimeout(() => {
-          if (get().isGameActive && !get().gameView) {
-            get().pollForPrompt();
-          }
-        }, 500);
-      }
-    } catch (e) {
-      set({ debugInfo: `Poll error: ${e}` });
     }
   },
 
@@ -114,8 +149,6 @@ export const useGameStore = create<GameState>((set, get) => ({
     try {
       set({ debugInfo: `Responding: ${action.type}` });
       await invoke('respond', { action });
-      // Poll for next prompt after responding
-      setTimeout(() => get().pollForPrompt(), 200);
     } catch (e) {
       set({ debugInfo: `Respond error: ${e}` });
       console.error('Failed to respond:', e);
@@ -177,14 +210,13 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   concede: () => {
-    // Send concede to the backend; the GameOver prompt will update state
     get().respond({ type: 'concede' });
   },
 
   endGame: async () => {
     try {
       await invoke('end_game');
-      set({ isGameActive: false, gameView: null, currentPrompt: null });
+      set({ isGameActive: false, gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false });
     } catch (e) {
       console.error('Failed to end game:', e);
     }
@@ -194,17 +226,11 @@ export const useGameStore = create<GameState>((set, get) => ({
     const unlisteners: UnlistenFn[] = [];
 
     try {
-      // Try both global and window-level listeners
       const unlisten1 = await listen<AgentPrompt>('game:prompt', (event) => {
         const prompt = event.payload;
-        // Don't overwrite a game-over state with subsequent prompts from a dying thread
         if (get().gameView?.gameOver) return;
         if (prompt && prompt.gameView) {
-          set({
-            gameView: prompt.gameView,
-            currentPrompt: prompt,
-            debugInfo: `Event received: ${prompt.type}`,
-          });
+          applyPrompt(prompt, 'Event', set, get);
         }
       });
       unlisteners.push(unlisten1);

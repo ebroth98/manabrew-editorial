@@ -6,7 +6,7 @@ use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana_pool::ManaPool;
 
 use crate::game_view_dto::GameViewDto;
-use crate::prompt::{AgentPrompt, BlockAssignment, PlayerAction, TargetAnyChoice};
+use crate::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, DisplayEvent, PlayerAction, TargetAnyChoice};
 
 /// A PlayerAgent that sends prompts to the frontend and blocks waiting for a response.
 pub struct TauriAgent {
@@ -16,6 +16,8 @@ pub struct TauriAgent {
     pub response_rx: mpsc::Receiver<PlayerAction>,
     pub notify_tx: mpsc::Sender<String>,
     latest_view: Option<GameViewDto>,
+    /// Display events accumulated between prompts — drained and attached to each outgoing prompt.
+    pending_display_events: Vec<DisplayEvent>,
 }
 
 impl TauriAgent {
@@ -33,11 +35,17 @@ impl TauriAgent {
             response_rx,
             notify_tx,
             latest_view: None,
+            pending_display_events: Vec::new(),
         }
     }
 
-    fn send_prompt(&self, prompt: AgentPrompt) {
-        let _ = self.prompt_tx.send(prompt);
+    /// Send a prompt to the frontend, bundling any accumulated display events.
+    fn send_prompt(&mut self, inner: AgentPromptInner) {
+        let display_events = std::mem::take(&mut self.pending_display_events);
+        let _ = self.prompt_tx.send(AgentPrompt {
+            display_events,
+            inner,
+        });
     }
 
     fn recv_action(&self) -> PlayerAction {
@@ -98,7 +106,7 @@ impl PlayerAgent for TauriAgent {
 
     fn mulligan_decision(&mut self, _player: PlayerId, hand: &[CardId]) -> bool {
         let hand_card_ids: Vec<String> = hand.iter().map(|c| format!("card-{}", c.0)).collect();
-        self.send_prompt(AgentPrompt::Mulligan {
+        self.send_prompt(AgentPromptInner::Mulligan {
             game_view: self.view(),
             hand_card_ids,
         });
@@ -125,7 +133,7 @@ impl PlayerAgent for TauriAgent {
             card.is_playable = playable_card_ids.contains(&card.id);
         }
 
-        self.send_prompt(AgentPrompt::ChooseAction {
+        self.send_prompt(AgentPromptInner::ChooseAction {
             game_view: view,
             playable_card_ids,
             tappable_land_ids,
@@ -157,7 +165,7 @@ impl PlayerAgent for TauriAgent {
         for card in &mut view.battlefield {
             card.is_choosable = available_attacker_ids.contains(&card.id);
         }
-        self.send_prompt(AgentPrompt::ChooseAttackers {
+        self.send_prompt(AgentPromptInner::ChooseAttackers {
             game_view: view,
             available_attacker_ids,
         });
@@ -181,7 +189,7 @@ impl PlayerAgent for TauriAgent {
         for card in &mut view.battlefield {
             card.is_choosable = available_blocker_ids.contains(&card.id);
         }
-        self.send_prompt(AgentPrompt::ChooseBlockers {
+        self.send_prompt(AgentPromptInner::ChooseBlockers {
             game_view: view,
             attacker_ids,
             available_blocker_ids,
@@ -200,7 +208,7 @@ impl PlayerAgent for TauriAgent {
 
     fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
         let valid_player_ids: Vec<String> = valid.iter().map(|p| format!("player-{}", p.0)).collect();
-        self.send_prompt(AgentPrompt::ChooseTargetPlayer {
+        self.send_prompt(AgentPromptInner::ChooseTargetPlayer {
             game_view: self.view(),
             valid_player_ids,
         });
@@ -218,7 +226,7 @@ impl PlayerAgent for TauriAgent {
         for card in &mut view.battlefield {
             card.is_choosable = valid_card_ids.contains(&card.id);
         }
-        self.send_prompt(AgentPrompt::ChooseTargetCard {
+        self.send_prompt(AgentPromptInner::ChooseTargetCard {
             game_view: view,
             valid_card_ids,
         });
@@ -242,7 +250,7 @@ impl PlayerAgent for TauriAgent {
         for card in &mut view.battlefield {
             card.is_choosable = valid_card_ids.contains(&card.id);
         }
-        self.send_prompt(AgentPrompt::ChooseTargetAny {
+        self.send_prompt(AgentPromptInner::ChooseTargetAny {
             game_view: view,
             valid_player_ids,
             valid_card_ids,
@@ -279,5 +287,36 @@ impl PlayerAgent for TauriAgent {
 
     fn notify(&mut self, message: &str) {
         let _ = self.notify_tx.send(message.to_string());
+    }
+
+    fn notify_card_played(&mut self, player: PlayerId, card_id: CardId, card_name: &str) {
+        self.pending_display_events.push(DisplayEvent::CardPlayed {
+            card_id: format!("card-{}", card_id.0),
+            card_name: card_name.to_string(),
+            player_id: format!("player-{}", player.0),
+        });
+        // Flush immediately so the frontend receives one event per card play.
+        self.send_prompt(AgentPromptInner::StateUpdate {
+            game_view: self.view(),
+        });
+    }
+
+    fn notify_turn_changed(&mut self, active_player: PlayerId, turn_number: u32) {
+        let player_id = format!("player-{}", active_player.0);
+        let active_player_name = self
+            .latest_view
+            .as_ref()
+            .and_then(|v| v.players.iter().find(|p| p.id == player_id))
+            .map(|p| p.name.clone())
+            .unwrap_or_else(|| format!("Player {}", active_player.0));
+        self.pending_display_events.push(DisplayEvent::TurnChanged {
+            active_player_id: player_id,
+            active_player_name,
+            turn_number,
+        });
+        // Flush immediately so the frontend receives one event per turn change.
+        self.send_prompt(AgentPromptInner::StateUpdate {
+            game_view: self.view(),
+        });
     }
 }

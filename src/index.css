@@ -34,6 +34,9 @@
 
   --animate-accordion-down: accordion-down 0.2s ease-out;
   --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-card-flash: card-flash var(--flash-duration, 1000ms) ease-out forwards;
+  --animate-card-flash-backdrop: card-flash-backdrop var(--flash-duration, 1000ms) ease-out forwards;
+  --animate-player-turn-flash: player-turn-flash var(--flash-duration, 1000ms) ease-out forwards;
 
   @keyframes accordion-down {
     from {
@@ -50,6 +53,62 @@
     }
     to {
       height: 0;
+    }
+  }
+
+  @keyframes card-flash {
+    0% {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+    15% {
+      opacity: 1;
+      transform: scale(1.05);
+    }
+    25% {
+      transform: scale(1);
+    }
+    80% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    100% {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+  }
+
+  @keyframes card-flash-backdrop {
+    0% {
+      opacity: 0;
+    }
+    15% {
+      opacity: 1;
+    }
+    80% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  @keyframes player-turn-flash {
+    0% {
+      box-shadow: 0 0 0 0 hsl(210 100% 60% / 0);
+      border-color: hsl(var(--border));
+    }
+    15% {
+      box-shadow: 0 0 12px 4px hsl(210 100% 60% / 0.5);
+      border-color: hsl(210 100% 60%);
+    }
+    80% {
+      box-shadow: 0 0 12px 4px hsl(210 100% 60% / 0.5);
+      border-color: hsl(210 100% 60%);
+    }
+    100% {
+      box-shadow: 0 0 0 0 hsl(210 100% 60% / 0);
+      border-color: hsl(var(--border));
     }
   }
 }

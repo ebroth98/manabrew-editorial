@@ -2,10 +2,41 @@ use serde::{Deserialize, Serialize};
 
 use crate::game_view_dto::GameViewDto;
 
-/// Sent from game thread to frontend: what the human player must decide.
+/// A display-only event that the frontend should animate before rendering the prompt's game state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "kind")]
+pub enum DisplayEvent {
+    #[serde(rename_all = "camelCase")]
+    CardPlayed {
+        card_id: String,
+        card_name: String,
+        player_id: String,
+    },
+    #[serde(rename_all = "camelCase")]
+    TurnChanged {
+        active_player_id: String,
+        active_player_name: String,
+        turn_number: u32,
+    },
+}
+
+/// Sent from game thread to frontend: what the human player must decide,
+/// bundled with any display events that happened since the last prompt.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentPrompt {
+    /// Display events to animate before applying the game state.
+    #[serde(default)]
+    pub display_events: Vec<DisplayEvent>,
+    /// The actual prompt data (type + gameView + prompt-specific fields).
+    #[serde(flatten)]
+    pub inner: AgentPromptInner,
+}
+
+/// The actual decision prompt variants.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
-pub enum AgentPrompt {
+pub enum AgentPromptInner {
     Mulligan {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
@@ -59,6 +90,13 @@ pub enum AgentPrompt {
         valid_card_ids: Vec<String>,
     },
     GameOver {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+    },
+    /// Display-only state update — no player decision required.
+    /// Emitted after each card play / turn change so the frontend can
+    /// animate events one-at-a-time even during the AI's turn.
+    StateUpdate {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
     },

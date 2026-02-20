@@ -148,6 +148,15 @@ impl GameLoop {
         let active = game.active_player();
         game.new_turn_for_player(active);
 
+        // Snapshot + notify all agents of the turn change (display-only, before any actions)
+        let turn_number = game.turn.turn_number;
+        for agent in agents.iter_mut() {
+            agent.snapshot_state(game, &self.mana_pools);
+        }
+        for agent in agents.iter_mut() {
+            agent.notify_turn_changed(active, turn_number);
+        }
+
         // Rebuild active triggers at start of turn
         self.trigger_handler.reset_active_triggers(game);
 
@@ -218,6 +227,9 @@ impl GameLoop {
     ) {
         let active = game.active_player();
 
+        /// Card info saved from a play action so we can notify after resolution.
+        let mut pending_play: Option<(CardId, String)> = None;
+
         // Loop: let the player take actions until they pass
         loop {
             if game.game_over {
@@ -230,6 +242,17 @@ impl GameLoop {
 
             if game.game_over {
                 return;
+            }
+
+            // If a card was just played, the stack has now resolved and SBAs
+            // have been checked — snapshot + notify with the post-resolution state.
+            if let Some((played_id, played_name)) = pending_play.take() {
+                for agent in agents.iter_mut() {
+                    agent.snapshot_state(game, &self.mana_pools);
+                }
+                for agent in agents.iter_mut() {
+                    agent.notify_card_played(active, played_id, &played_name);
+                }
             }
 
             // Find playable hand cards
@@ -277,7 +300,7 @@ impl GameLoop {
             match action {
                 MainPhaseAction::Pass => break,
                 MainPhaseAction::Play(card_id) => {
-                    self.play_card(game, agents, active, card_id);
+                    pending_play = self.play_card(game, agents, active, card_id);
                 }
                 MainPhaseAction::ActivateMana(land_id) => {
                     // Compute the mana atom before mutably borrowing game
@@ -552,14 +575,15 @@ impl GameLoop {
         pool
     }
 
-    /// Play a card from hand.
+    /// Play a card from hand. Returns the (card_id, card_name) if the card was
+    /// successfully played, so the caller can emit the notification after resolution.
     fn play_card(
         &mut self,
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
         card_id: CardId,
-    ) {
+    ) -> Option<(CardId, String)> {
         let card = game.card(card_id);
         let card_name = card.card_name.clone();
 
@@ -639,12 +663,12 @@ impl GameLoop {
             // Pay the mana cost from pool
             let paid = self.pool_mut(player).try_pay(&mana_cost);
             if !paid {
-                return;
+                return None;
             }
 
             // Pay commander tax (extra generic mana)
             if commander_tax > 0 && !self.pool_mut(player).try_pay_extra_generic(commander_tax) {
-                return;
+                return None;
             }
 
             // Increment commander cast count (before moving card to stack)
@@ -688,6 +712,8 @@ impl GameLoop {
             // Move spell to stack zone
             game.move_card(card_id, ZoneType::Stack, player);
         }
+
+        Some((card_id, card_name))
     }
 
     /// Auto-tap lands to produce the required mana.
