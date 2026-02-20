@@ -1,6 +1,6 @@
 use std::sync::mpsc;
 
-use forge_engine_core::agent::{PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana_pool::ManaPool;
@@ -59,6 +59,8 @@ impl TauriAgent {
                 stack: vec![],
                 exile: vec![],
                 graveyard: vec![],
+                opponent_graveyard: vec![],
+                opponent_exile: vec![],
                 game_over: false,
                 winner_id: None,
             }
@@ -104,8 +106,16 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_action(&mut self, _player: PlayerId, playable: &[CardId]) -> Option<CardId> {
+    fn choose_action(
+        &mut self,
+        _player: PlayerId,
+        playable: &[CardId],
+        tappable_lands: &[CardId],
+        untappable_lands: &[CardId],
+    ) -> MainPhaseAction {
         let playable_card_ids: Vec<String> = playable.iter().map(|c| format!("card-{}", c.0)).collect();
+        let tappable_land_ids: Vec<String> = tappable_lands.iter().map(|c| format!("card-{}", c.0)).collect();
+        let untappable_land_ids: Vec<String> = untappable_lands.iter().map(|c| format!("card-{}", c.0)).collect();
 
         // Update the view with playable info
         let mut view = self.view();
@@ -116,19 +126,37 @@ impl PlayerAgent for TauriAgent {
         self.send_prompt(AgentPrompt::ChooseAction {
             game_view: view,
             playable_card_ids,
+            tappable_land_ids,
+            untappable_land_ids,
         });
         match self.recv_action() {
             PlayerAction::PlayCard { card_id } => {
                 card_id.and_then(|id| Self::parse_card_id(&id))
+                    .map(MainPhaseAction::Play)
+                    .unwrap_or(MainPhaseAction::Pass)
             }
-            _ => None,
+            PlayerAction::TapLand { card_id } => {
+                Self::parse_card_id(&card_id)
+                    .map(MainPhaseAction::ActivateMana)
+                    .unwrap_or(MainPhaseAction::Pass)
+            }
+            PlayerAction::UntapLand { card_id } => {
+                Self::parse_card_id(&card_id)
+                    .map(MainPhaseAction::UntapMana)
+                    .unwrap_or(MainPhaseAction::Pass)
+            }
+            _ => MainPhaseAction::Pass,
         }
     }
 
     fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId]) -> Vec<CardId> {
         let available_attacker_ids: Vec<String> = available.iter().map(|c| format!("card-{}", c.0)).collect();
+        let mut view = self.view();
+        for card in &mut view.battlefield {
+            card.is_choosable = available_attacker_ids.contains(&card.id);
+        }
         self.send_prompt(AgentPrompt::ChooseAttackers {
-            game_view: self.view(),
+            game_view: view,
             available_attacker_ids,
         });
         match self.recv_action() {
@@ -147,8 +175,12 @@ impl PlayerAgent for TauriAgent {
     ) -> Vec<(CardId, CardId)> {
         let attacker_ids: Vec<String> = attackers.iter().map(|c| format!("card-{}", c.0)).collect();
         let available_blocker_ids: Vec<String> = available_blockers.iter().map(|c| format!("card-{}", c.0)).collect();
+        let mut view = self.view();
+        for card in &mut view.battlefield {
+            card.is_choosable = available_blocker_ids.contains(&card.id);
+        }
         self.send_prompt(AgentPrompt::ChooseBlockers {
-            game_view: self.view(),
+            game_view: view,
             attacker_ids,
             available_blocker_ids,
         });
@@ -180,8 +212,12 @@ impl PlayerAgent for TauriAgent {
 
     fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
         let valid_card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+        let mut view = self.view();
+        for card in &mut view.battlefield {
+            card.is_choosable = valid_card_ids.contains(&card.id);
+        }
         self.send_prompt(AgentPrompt::ChooseTargetCard {
-            game_view: self.view(),
+            game_view: view,
             valid_card_ids,
         });
         match self.recv_action() {
@@ -200,8 +236,12 @@ impl PlayerAgent for TauriAgent {
     ) -> TargetChoice {
         let valid_player_ids: Vec<String> = valid_players.iter().map(|p| format!("player-{}", p.0)).collect();
         let valid_card_ids: Vec<String> = valid_cards.iter().map(|c| format!("card-{}", c.0)).collect();
+        let mut view = self.view();
+        for card in &mut view.battlefield {
+            card.is_choosable = valid_card_ids.contains(&card.id);
+        }
         self.send_prompt(AgentPrompt::ChooseTargetAny {
-            game_view: self.view(),
+            game_view: view,
             valid_player_ids,
             valid_card_ids,
         });

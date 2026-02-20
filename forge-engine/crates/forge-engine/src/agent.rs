@@ -10,6 +10,19 @@ pub enum TargetChoice {
     None,
 }
 
+/// The action a player takes during a main phase.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MainPhaseAction {
+    /// Pass priority / end main phase.
+    Pass,
+    /// Play a card from hand (land or spell).
+    Play(CardId),
+    /// Tap an untapped land on the battlefield to add its mana to the pool.
+    ActivateMana(CardId),
+    /// Untap a tapped land and remove its mana from the pool (undo tap).
+    UntapMana(CardId),
+}
+
 /// Trait for player decision-making. Decouples the engine from UI/AI.
 /// Implementations can be interactive (prompt user), AI, or network-driven.
 pub trait PlayerAgent {
@@ -21,9 +34,16 @@ pub trait PlayerAgent {
     /// Returns true to keep, false to mulligan.
     fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId]) -> bool;
 
-    /// Choose a card to play from hand during a main phase.
-    /// Return None to pass priority.
-    fn choose_action(&mut self, player: PlayerId, playable: &[CardId]) -> Option<CardId>;
+    /// Choose a main-phase action: play a card from hand, tap a land for mana, untap a land, or pass.
+    /// `tappable_lands` lists untapped lands available for tapping.
+    /// `untappable_lands` lists tapped lands that still have mana in the pool (can be untapped).
+    fn choose_action(
+        &mut self,
+        player: PlayerId,
+        playable: &[CardId],
+        tappable_lands: &[CardId],
+        untappable_lands: &[CardId],
+    ) -> MainPhaseAction;
 
     /// Choose attackers from available creatures.
     /// Returns the set of creature CardIds to declare as attackers.
@@ -68,8 +88,14 @@ impl PlayerAgent for PassAgent {
         true // always keep
     }
 
-    fn choose_action(&mut self, _player: PlayerId, _playable: &[CardId]) -> Option<CardId> {
-        None // always pass
+    fn choose_action(
+        &mut self,
+        _player: PlayerId,
+        _playable: &[CardId],
+        _tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+    ) -> MainPhaseAction {
+        MainPhaseAction::Pass
     }
 
     fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId]) -> Vec<CardId> {

@@ -34,6 +34,31 @@ impl ManaPool {
         self.white + self.blue + self.black + self.red + self.green + self.colorless
     }
 
+    /// Remove `amount` of a given mana atom from the pool, saturating at 0.
+    pub fn remove(&mut self, atom: u16, amount: i32) {
+        match atom {
+            ManaAtom::WHITE => self.white = (self.white - amount).max(0),
+            ManaAtom::BLUE => self.blue = (self.blue - amount).max(0),
+            ManaAtom::BLACK => self.black = (self.black - amount).max(0),
+            ManaAtom::RED => self.red = (self.red - amount).max(0),
+            ManaAtom::GREEN => self.green = (self.green - amount).max(0),
+            _ => self.colorless = (self.colorless - amount).max(0),
+        }
+    }
+
+    /// Returns true if the pool contains at least `amount` of the given atom.
+    pub fn has_atom(&self, atom: u16, amount: i32) -> bool {
+        let available = match atom {
+            ManaAtom::WHITE => self.white,
+            ManaAtom::BLUE => self.blue,
+            ManaAtom::BLACK => self.black,
+            ManaAtom::RED => self.red,
+            ManaAtom::GREEN => self.green,
+            _ => self.colorless,
+        };
+        available >= amount
+    }
+
     pub fn empty(&mut self) {
         self.white = 0;
         self.blue = 0;

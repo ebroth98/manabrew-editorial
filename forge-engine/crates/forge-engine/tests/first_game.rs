@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use forge_engine_core::agent::{PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
@@ -45,19 +45,19 @@ impl PlayerAgent for ScriptedAgent {
         true // always keep
     }
 
-    fn choose_action(&mut self, _player: PlayerId, playable: &[CardId]) -> Option<CardId> {
+    fn choose_action(&mut self, _player: PlayerId, playable: &[CardId], _tappable_lands: &[CardId], _untappable_lands: &[CardId]) -> MainPhaseAction {
         if self.action_idx >= self.actions.len() {
-            return None;
+            return MainPhaseAction::Pass;
         }
         let action = self.actions[self.action_idx];
         self.action_idx += 1;
         match action {
-            None => None,
+            None => MainPhaseAction::Pass,
             Some(idx) => {
                 if idx < playable.len() {
-                    Some(playable[idx])
+                    MainPhaseAction::Play(playable[idx])
                 } else {
-                    None
+                    MainPhaseAction::Pass
                 }
             }
         }
@@ -385,8 +385,8 @@ fn full_game_runs() {
         fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
             true
         }
-        fn choose_action(&mut self, _: PlayerId, playable: &[CardId]) -> Option<CardId> {
-            playable.first().copied()
+        fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId]) -> MainPhaseAction {
+            playable.first().copied().map(MainPhaseAction::Play).unwrap_or(MainPhaseAction::Pass)
         }
         fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {
             available.to_vec() // attack with everything
@@ -796,7 +796,7 @@ fn upkeep_trigger_fires_each_turn() {
     struct PassAgent;
     impl PlayerAgent for PassAgent {
         fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
-        fn choose_action(&mut self, _: PlayerId, _: &[CardId]) -> Option<CardId> { None }
+        fn choose_action(&mut self, _: PlayerId, _: &[CardId], _: &[CardId], _: &[CardId]) -> MainPhaseAction { MainPhaseAction::Pass }
         fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> { Vec::new() }
         fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
         fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
@@ -861,7 +861,9 @@ fn full_game_with_triggers_runs() {
     struct SimpleAgent;
     impl PlayerAgent for SimpleAgent {
         fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
-        fn choose_action(&mut self, _: PlayerId, playable: &[CardId]) -> Option<CardId> { playable.first().copied() }
+        fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId]) -> MainPhaseAction {
+            playable.first().copied().map(MainPhaseAction::Play).unwrap_or(MainPhaseAction::Pass)
+        }
         fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> { available.to_vec() }
         fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
         fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }

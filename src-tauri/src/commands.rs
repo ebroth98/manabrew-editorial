@@ -14,10 +14,11 @@ pub async fn start_game(
 
 #[tauri::command]
 pub async fn respond(
+    app: AppHandle,
     gm: State<'_, GameManager>,
     action: PlayerAction,
 ) -> Result<(), String> {
-    gm.respond(action)
+    gm.respond(app, action)
 }
 
 #[tauri::command]

@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 
-use forge_engine_core::agent::{PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
@@ -228,27 +228,41 @@ impl PlayerAgent for InteractiveAgent {
         input != "n" && input != "no"
     }
 
-    fn choose_action(&mut self, player: PlayerId, playable: &[CardId]) -> Option<CardId> {
+    fn choose_action(&mut self, player: PlayerId, playable: &[CardId], tappable_lands: &[CardId], untappable_lands: &[CardId]) -> MainPhaseAction {
         let game = self.game();
 
         let opp = game.opponent_of(player);
         display_board(game, player, opp);
 
-        if playable.is_empty() {
-            println!("  {}No playable cards.{}", DIM, RESET);
-            return None;
+        if playable.is_empty() && tappable_lands.is_empty() && untappable_lands.is_empty() {
+            println!("  {}No actions available.{}", DIM, RESET);
+            return MainPhaseAction::Pass;
         }
 
-        println!("\n{}{}Playable cards:{}", CYAN, BOLD, RESET);
-        for (i, &cid) in playable.iter().enumerate() {
+        // Build a unified action list: untap lands, tap lands, then play cards
+        let mut actions: Vec<MainPhaseAction> = Vec::new();
+        println!("\n{}{}Available actions:{}", CYAN, BOLD, RESET);
+        for &cid in untappable_lands {
             let card = game.card(cid);
-            let action = if card.is_land() { "Play" } else { "Cast" };
-            println!("  {}{}{}: {} {}", BOLD, i, RESET, action, format_card_with_cost(card));
+            println!("  {}{}{}:  Untap {} (undo mana)", BOLD, actions.len(), RESET, card.card_name);
+            actions.push(MainPhaseAction::UntapMana(cid));
         }
-        println!("  {}(enter number to play, or 'p' to pass){}", DIM, RESET);
+        for &cid in tappable_lands {
+            let card = game.card(cid);
+            println!("  {}{}{}:  Tap {} (add mana)", BOLD, actions.len(), RESET, card.card_name);
+            actions.push(MainPhaseAction::ActivateMana(cid));
+        }
+        for &cid in playable {
+            let card = game.card(cid);
+            let verb = if card.is_land() { "Play" } else { "Cast" };
+            println!("  {}{}{}: {} {}", BOLD, actions.len(), RESET, verb, format_card_with_cost(card));
+            actions.push(MainPhaseAction::Play(cid));
+        }
+        println!("  {}(enter number to act, or 'p' to pass){}", DIM, RESET);
 
-        read_number(&format!("{}> {}", CYAN, RESET), playable.len())
-            .map(|idx| playable[idx])
+        read_number(&format!("{}> {}", CYAN, RESET), actions.len())
+            .map(|idx| actions[idx])
+            .unwrap_or(MainPhaseAction::Pass)
     }
 
     fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId]) -> Vec<CardId> {
@@ -406,8 +420,8 @@ struct SimpleAiAgent;
 impl PlayerAgent for SimpleAiAgent {
     fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
 
-    fn choose_action(&mut self, _: PlayerId, playable: &[CardId]) -> Option<CardId> {
-        playable.first().copied()
+    fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId]) -> MainPhaseAction {
+        playable.first().copied().map(MainPhaseAction::Play).unwrap_or(MainPhaseAction::Pass)
     }
 
     fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {

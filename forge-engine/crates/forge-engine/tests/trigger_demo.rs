@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use forge_engine_core::agent::{PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
@@ -133,8 +133,8 @@ impl VerboseAgent {
 
 impl PlayerAgent for VerboseAgent {
     fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
-    fn choose_action(&mut self, _: PlayerId, playable: &[CardId]) -> Option<CardId> {
-        playable.first().copied()
+    fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId]) -> MainPhaseAction {
+        playable.first().copied().map(MainPhaseAction::Play).unwrap_or(MainPhaseAction::Pass)
     }
     fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {
         available.to_vec()

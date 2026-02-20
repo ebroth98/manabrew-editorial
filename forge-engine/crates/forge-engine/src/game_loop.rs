@@ -1,7 +1,7 @@
 use forge_foundation::mana::ManaAtom;
 use forge_foundation::{ColorSet, ManaCost, PhaseType, ZoneType};
 
-use crate::agent::{PlayerAgent, TargetChoice};
+use crate::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use crate::card::CardInstance;
 use crate::combat::CombatState;
 use crate::event::{RunParams, TriggerType};
@@ -232,21 +232,82 @@ impl GameLoop {
                 return;
             }
 
-            // Find playable cards
+            // Find playable hand cards
             let playable = self.get_playable_cards(game, active);
 
-            if playable.is_empty() {
+            // Find untapped lands the player can manually tap for mana
+            let tappable_lands: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Battlefield, active)
+                .to_vec()
+                .into_iter()
+                .filter(|&cid| {
+                    let c = game.card(cid);
+                    c.is_land() && !c.tapped
+                })
+                .collect();
+
+            // Find tapped lands whose mana is still in the pool (can be untapped)
+            let pool_snapshot = self.pool(active).clone();
+            let untappable_lands: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Battlefield, active)
+                .to_vec()
+                .into_iter()
+                .filter(|&cid| {
+                    let c = game.card(cid);
+                    if !c.is_land() || !c.tapped {
+                        return false;
+                    }
+                    if let Some(atom) = basic_land_mana_atom(c) {
+                        pool_snapshot.has_atom(atom, 1)
+                    } else {
+                        false
+                    }
+                })
+                .collect();
+
+            // Auto-break only when truly nothing can be done
+            if playable.is_empty() && tappable_lands.is_empty() && untappable_lands.is_empty() {
                 break;
             }
 
             agents[active.index()].snapshot_state(game, &self.mana_pools);
             let agent = &mut agents[active.index()];
-            let choice = agent.choose_action(active, &playable);
+            let action = agent.choose_action(active, &playable, &tappable_lands, &untappable_lands);
 
-            match choice {
-                None => break, // Pass priority
-                Some(card_id) => {
+            match action {
+                MainPhaseAction::Pass => break,
+                MainPhaseAction::Play(card_id) => {
                     self.play_card(game, agents, active, card_id);
+                }
+                MainPhaseAction::ActivateMana(land_id) => {
+                    // Compute the mana atom before mutably borrowing game
+                    let atom_opt = {
+                        let c = game.card(land_id);
+                        if c.is_land() && !c.tapped {
+                            basic_land_mana_atom(c)
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some(atom) = atom_opt {
+                        game.tap(land_id);
+                        self.pool_mut(active).add(atom, 1);
+                    }
+                }
+                MainPhaseAction::UntapMana(land_id) => {
+                    // Compute the mana atom before mutably borrowing game
+                    let atom_opt = {
+                        let c = game.card(land_id);
+                        if c.is_land() && c.tapped {
+                            basic_land_mana_atom(c)
+                        } else {
+                            None
+                        }
+                    };
+                    if let Some(atom) = atom_opt {
+                        game.untap(land_id);
+                        self.pool_mut(active).remove(atom, 1);
+                    }
                 }
             }
         }

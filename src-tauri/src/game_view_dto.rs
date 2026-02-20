@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use forge_engine_core::card::CounterType;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana_pool::ManaPool;
@@ -21,6 +22,8 @@ pub struct GameViewDto {
     pub stack: Vec<StackObjectDto>,
     pub exile: Vec<CardDto>,
     pub graveyard: Vec<CardDto>,
+    pub opponent_graveyard: Vec<CardDto>,
+    pub opponent_exile: Vec<CardDto>,
     pub game_over: bool,
     pub winner_id: Option<String>,
 }
@@ -64,6 +67,10 @@ pub struct CardDto {
     pub zone_id: String,
     pub tapped: bool,
     pub keywords: Vec<String>,
+    /// Active counters: counter type name → count. Only non-zero entries included.
+    pub counters: HashMap<String, i32>,
+    pub damage: i32,
+    pub summoning_sick: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -128,6 +135,12 @@ fn card_to_dto(
     let power = card.base_power.map(|_| card.power().to_string());
     let toughness = card.base_toughness.map(|_| card.toughness().to_string());
 
+    // Collect non-zero counters, using the variant name as key (e.g. "P1P1", "M1M1", "Loyalty")
+    let counters: HashMap<String, i32> = card.counters.iter()
+        .filter(|(_, &v)| v > 0)
+        .map(|(k, &v)| (format!("{k:?}"), v))
+        .collect();
+
     // Build ability text from abilities
     let text = card.abilities.iter()
         .filter_map(|a| {
@@ -165,6 +178,9 @@ fn card_to_dto(
         zone_id: zone_label.to_string(),
         tapped: card.tapped,
         keywords: card.keywords.clone(),
+        counters,
+        damage: card.damage,
+        summoning_sick: card.summoning_sick && !card.has_haste(),
     }
 }
 
@@ -237,6 +253,25 @@ impl GameViewDto {
             .map(|&cid| card_to_dto(game, cid, playable_ids, choosable_ids, "exile"))
             .collect();
 
+        // Opponent graveyard and exile
+        let opponent_player = game.player_order.iter().copied().find(|&pid| pid != human_player);
+        let opponent_graveyard: Vec<CardDto> = opponent_player
+            .map(|pid| {
+                game.cards_in_zone(ZoneType::Graveyard, pid)
+                    .iter()
+                    .map(|&cid| card_to_dto(game, cid, &[], &[], "graveyard"))
+                    .collect()
+            })
+            .unwrap_or_default();
+        let opponent_exile: Vec<CardDto> = opponent_player
+            .map(|pid| {
+                game.cards_in_zone(ZoneType::Exile, pid)
+                    .iter()
+                    .map(|&cid| card_to_dto(game, cid, &[], &[], "exile"))
+                    .collect()
+            })
+            .unwrap_or_default();
+
         GameViewDto {
             game_id: game_id.to_string(),
             turn: game.turn.turn_number,
@@ -249,6 +284,8 @@ impl GameViewDto {
             stack,
             exile,
             graveyard,
+            opponent_graveyard,
+            opponent_exile,
             game_over: game.game_over,
             winner_id: game.winner.map(player_id_str),
         }

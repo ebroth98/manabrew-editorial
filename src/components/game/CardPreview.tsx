@@ -2,6 +2,7 @@ import { createPortal } from "react-dom";
 import { useCardImage } from "@/hooks/useCardImage";
 import { Loader2 } from "lucide-react";
 import type { Card } from "@/types/xmage";
+import { CounterDisplay } from "@/components/game/CounterBadge";
 
 interface CardPreviewProps {
   card: Card;
@@ -45,11 +46,20 @@ export function CardPreview({ card, mouseX, mouseY }: CardPreviewProps) {
             <span className="text-xs text-muted-foreground text-center">{card.name}</span>
           </div>
         ) : imageUrl ? (
-          <img
-            src={imageUrl}
-            alt={card.name}
-            className="w-full h-full object-contain"
-          />
+          <>
+            <img
+              src={imageUrl}
+              alt={card.name}
+              className="w-full h-full object-contain"
+            />
+            {card.counters && (
+              <CounterDisplay
+                counters={card.counters}
+                size="md"
+                className="absolute bottom-2 left-2 z-10"
+              />
+            )}
+          </>
         ) : (
           // Text fallback for cards with no image
           <div className="w-full h-full p-4 flex flex-col gap-2 bg-card">
@@ -59,6 +69,9 @@ export function CardPreview({ card, mouseX, mouseY }: CardPreviewProps) {
             </div>
             <div className="text-xs text-muted-foreground">{card.types?.join(" ")}</div>
             <div className="flex-1 text-xs text-foreground/80 whitespace-pre-wrap">{card.text}</div>
+            {card.counters && (
+              <CounterDisplay counters={card.counters} size="md" />
+            )}
             {card.power && card.toughness && (
               <div className="text-right font-bold text-sm">
                 {card.power}/{card.toughness}

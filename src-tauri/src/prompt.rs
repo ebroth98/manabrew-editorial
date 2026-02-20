@@ -17,6 +17,12 @@ pub enum AgentPrompt {
         game_view: GameViewDto,
         #[serde(rename = "playableCardIds")]
         playable_card_ids: Vec<String>,
+        /// Untapped lands on the battlefield that the player can manually tap for mana.
+        #[serde(rename = "tappableLandIds")]
+        tappable_land_ids: Vec<String>,
+        /// Tapped lands whose mana is still in the pool (can be untapped to undo).
+        #[serde(rename = "untappableLandIds")]
+        untappable_land_ids: Vec<String>,
     },
     ChooseAttackers {
         #[serde(rename = "gameView")]
@@ -87,6 +93,15 @@ pub enum PlayerAction {
     TargetAny {
         target: TargetAnyChoice,
     },
+    TapLand {
+        #[serde(rename = "cardId")]
+        card_id: String,
+    },
+    UntapLand {
+        #[serde(rename = "cardId")]
+        card_id: String,
+    },
+    Concede,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

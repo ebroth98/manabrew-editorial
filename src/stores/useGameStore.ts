@@ -13,6 +13,8 @@ interface AgentPrompt {
   availableBlockerIds?: string[];
   validPlayerIds?: string[];
   validCardIds?: string[];
+  tappableLandIds?: string[];
+  untappableLandIds?: string[];
 }
 
 interface GameState {
@@ -33,6 +35,9 @@ interface GameState {
   targetCard: (cardId: string | null) => void;
   targetAny: (target: { kind: string; playerId?: string; cardId?: string }) => void;
   mulliganDecision: (keep: boolean) => void;
+  tapLand: (cardId: string) => void;
+  untapLand: (cardId: string) => void;
+  concede: () => void;
   endGame: () => Promise<void>;
   setupListeners: () => Promise<() => void>;
   pollForPrompt: () => Promise<void>;
@@ -51,7 +56,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     try {
       set({ debugInfo: 'Starting game...' });
       const result = await invoke('start_game', { deckChoice });
-      set({ isGameActive: true, gameLog: [], debugInfo: `Game started: ${result}. Polling...` });
+      // Clear old game state so stale gameView/prompts don't bleed into new game
+      set({ isGameActive: true, gameLog: [], gameView: null, currentPrompt: null, debugInfo: `Game started: ${result}. Polling...` });
       // Poll for the first prompt after a short delay
       setTimeout(() => get().pollForPrompt(), 500);
     } catch (e) {
@@ -61,6 +67,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   pollForPrompt: async () => {
+    // Don't overwrite a game-over state with subsequent prompts
+    if (get().gameView?.gameOver) return;
     try {
       const prompt = await invoke<AgentPrompt | null>('get_prompt');
       if (prompt && prompt.gameView) {
@@ -141,6 +149,19 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().respond({ type: 'mulliganDecision', keep });
   },
 
+  tapLand: (cardId) => {
+    get().respond({ type: 'tapLand', cardId });
+  },
+
+  untapLand: (cardId) => {
+    get().respond({ type: 'untapLand', cardId });
+  },
+
+  concede: () => {
+    // Send concede to the backend; the GameOver prompt will update state
+    get().respond({ type: 'concede' });
+  },
+
   endGame: async () => {
     try {
       await invoke('end_game');
@@ -157,6 +178,8 @@ export const useGameStore = create<GameState>((set, get) => ({
       // Try both global and window-level listeners
       const unlisten1 = await listen<AgentPrompt>('game:prompt', (event) => {
         const prompt = event.payload;
+        // Don't overwrite a game-over state with subsequent prompts from a dying thread
+        if (get().gameView?.gameOver) return;
         if (prompt && prompt.gameView) {
           set({
             gameView: prompt.gameView,

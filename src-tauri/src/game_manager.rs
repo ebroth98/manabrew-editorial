@@ -46,10 +46,12 @@ impl GameManager {
 
         // End existing session if any
         if let Some(old) = session_guard.take() {
-            drop(old.response_tx); // signal game thread to stop
-            if let Some(handle) = old.thread_handle {
-                let _ = handle.join();
-            }
+            drop(old.response_tx); // signal game thread to stop (recv returns Err)
+            // Don't join — let the old thread wind down while the new game starts
+        }
+        // Clear any stale prompt from the previous game
+        if let Ok(mut lp) = self.latest_prompt.lock() {
+            *lp = None;
         }
 
         let game_id = format!("game-{}", uuid_simple());
@@ -130,7 +132,56 @@ impl GameManager {
         Ok(game_id)
     }
 
-    pub fn respond(&self, action: PlayerAction) -> Result<(), String> {
+    pub fn respond(&self, app: AppHandle, action: PlayerAction) -> Result<(), String> {
+        if matches!(action, PlayerAction::Concede) {
+            // Build a synthetic game-over prompt using the last known game view
+            let game_view = {
+                let lp = self.latest_prompt.lock().map_err(|e| e.to_string())?;
+                let base_view = lp.as_ref().and_then(|p| match p {
+                    AgentPrompt::ChooseAction { game_view, .. } => Some(game_view.clone()),
+                    AgentPrompt::ChooseAttackers { game_view, .. } => Some(game_view.clone()),
+                    AgentPrompt::ChooseBlockers { game_view, .. } => Some(game_view.clone()),
+                    AgentPrompt::ChooseTargetPlayer { game_view, .. } => Some(game_view.clone()),
+                    AgentPrompt::ChooseTargetCard { game_view, .. } => Some(game_view.clone()),
+                    AgentPrompt::ChooseTargetAny { game_view, .. } => Some(game_view.clone()),
+                    AgentPrompt::Mulligan { game_view, .. } => Some(game_view.clone()),
+                    AgentPrompt::GameOver { game_view } => Some(game_view.clone()),
+                });
+                let mut view = base_view.unwrap_or_else(|| GameViewDto {
+                    game_id: String::new(),
+                    turn: 0,
+                    step: "main1".into(),
+                    active_player_id: String::new(),
+                    priority_player_id: String::new(),
+                    players: vec![],
+                    my_hand: vec![],
+                    battlefield: vec![],
+                    stack: vec![],
+                    exile: vec![],
+                    graveyard: vec![],
+                    opponent_graveyard: vec![],
+                    opponent_exile: vec![],
+                    game_over: false,
+                    winner_id: None,
+                });
+                let opponent_id = view.players.iter().find(|p| !p.is_human).map(|p| p.id.clone());
+                view.game_over = true;
+                view.winner_id = opponent_id;
+                view
+            };
+            let prompt = AgentPrompt::GameOver { game_view };
+            if let Ok(mut lp) = self.latest_prompt.lock() {
+                *lp = Some(prompt.clone());
+            }
+            let _ = app.emit("game:prompt", &prompt);
+            // Unblock the game thread with a no-op
+            let session_guard = self.session.lock().map_err(|e| e.to_string())?;
+            if let Some(session) = session_guard.as_ref() {
+                let _ = session.response_tx.send(PlayerAction::PlayCard { card_id: None });
+            }
+            return Ok(());
+        }
+
         let session_guard = self.session.lock().map_err(|e| e.to_string())?;
         if let Some(session) = session_guard.as_ref() {
             session
@@ -146,10 +197,12 @@ impl GameManager {
     pub fn end_game(&self) -> Result<(), String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
         if let Some(session) = session_guard.take() {
-            drop(session.response_tx);
-            if let Some(handle) = session.thread_handle {
-                let _ = handle.join();
-            }
+            drop(session.response_tx); // signals game thread to stop
+            // Don't join here — let the thread wind down on its own so end_game returns fast
+        }
+        // Clear latest prompt so the next game doesn't see stale state
+        if let Ok(mut lp) = self.latest_prompt.lock() {
+            *lp = None;
         }
         Ok(())
     }

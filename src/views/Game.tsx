@@ -3,10 +3,38 @@ import { useEffect, useRef, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { Card as XMageCard, Player } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
+import { CardPreview } from "@/components/game/CardPreview";
+import { ZoneViewer } from "@/components/game/ZoneViewer";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { BookOpen, Heart, Layers, Archive, Sword } from "lucide-react";
+import { BookOpen, Heart, Layers, Archive, Sword, Skull, TimerOff } from "lucide-react";
+
+const AVATAR_COLORS = [
+  "bg-blue-600 text-white",
+  "bg-purple-600 text-white",
+  "bg-red-600 text-white",
+  "bg-green-700 text-white",
+  "bg-orange-500 text-white",
+  "bg-pink-600 text-white",
+  "bg-teal-600 text-white",
+  "bg-indigo-600 text-white",
+];
+
+function getAvatarColor(name: string): string {
+  const hash = name.split("").reduce((acc, c) => acc + c.charCodeAt(0), 0);
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function getInitials(name: string): string {
+  return name
+    .split(" ")
+    .map((w) => w[0] ?? "")
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
 
 // Phase bar definitions
 const PHASES = [
@@ -60,17 +88,41 @@ function ManaPool({ pool }: { pool: Record<string, number> }) {
   );
 }
 
-function PlayerPanel({ player, isOpponent }: { player: Player; isOpponent: boolean }) {
+function PlayerPanel({
+  player,
+  isOpponent,
+  isTargetable,
+  onTarget,
+}: {
+  player: Player;
+  isOpponent: boolean;
+  isTargetable?: boolean;
+  onTarget?: () => void;
+}) {
   return (
-    <div className={cn(
-      "flex items-center gap-3 px-3 py-2 border rounded-lg bg-card text-sm",
-      isOpponent ? "flex-row" : "flex-row"
-    )}>
+    <div
+      className={cn(
+        "flex items-center gap-3 px-3 py-2 border rounded-lg bg-card text-sm transition-colors",
+        isTargetable && "ring-2 ring-red-400 border-red-400 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30"
+      )}
+      onClick={isTargetable ? onTarget : undefined}
+      title={isTargetable ? `Target ${player.name}` : undefined}
+    >
+      <Avatar className={cn("h-8 w-8 shrink-0", isTargetable && "ring-2 ring-red-400")}>
+        <AvatarFallback className={cn("text-xs font-bold", getAvatarColor(player.name))}>
+          {getInitials(player.name)}
+        </AvatarFallback>
+      </Avatar>
       <div className="font-semibold truncate min-w-0">{player.name}</div>
       <div className="flex items-center gap-1 shrink-0">
         <Heart className="h-3.5 w-3.5 text-red-500" />
         <span className="font-bold">{player.life}</span>
       </div>
+      {isTargetable && (
+        <Badge variant="destructive" className="text-xs h-5 px-1 animate-pulse shrink-0">
+          TARGET
+        </Badge>
+      )}
       {player.poison > 0 && (
         <Badge variant="destructive" className="text-xs h-5 px-1">
           {player.poison} poison
@@ -99,12 +151,34 @@ function BattlefieldZone({
   emptyLabel,
   className,
   onClickCard,
+  onClickAnyCard,
+  onHoverCard,
+  pendingCardIds,
+  attackingCardIds,
+  tappableLandIds,
+  onTapLand,
+  untappableLandIds,
+  onUntapLand,
 }: {
   cards: XMageCard[];
   label: string;
   emptyLabel: string;
   className?: string;
+  /** Called when clicking a card with isChoosable=true */
   onClickCard?: (card: XMageCard) => void;
+  /** Called when clicking any card (used for assigning attackers during blocking) */
+  onClickAnyCard?: (card: XMageCard) => void;
+  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  /** Cards highlighted as selected/pending (orange ring) */
+  pendingCardIds?: string[];
+  /** Cards highlighted as currently attacking (red ring) */
+  attackingCardIds?: string[];
+  /** Untapped lands the player can click to tap for mana (gold ring) */
+  tappableLandIds?: string[];
+  onTapLand?: (card: XMageCard) => void;
+  /** Tapped lands whose mana is still in the pool (can be untapped) */
+  untappableLandIds?: string[];
+  onUntapLand?: (card: XMageCard) => void;
 }) {
   return (
     <div className={cn("flex flex-col gap-1 min-h-0", className)}>
@@ -113,23 +187,71 @@ function BattlefieldZone({
         {cards.length === 0 ? (
           <span className="text-xs text-muted-foreground italic self-center mx-auto">{emptyLabel}</span>
         ) : (
-          cards.map((card) => (
-            <div key={card.id} className="relative group shrink-0">
-              <Card
-                card={card}
-                className={cn("w-[70px] h-[98px] shrink-0 hover:z-10",
-                  card.isChoosable && onClickCard && "ring-2 ring-blue-400 cursor-pointer"
-                )}
-              />
-              {card.isChoosable && onClickCard && (
-                <button
-                  className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 bg-blue-500/20 border-2 border-blue-400 transition-opacity"
-                  onClick={() => onClickCard(card)}
-                  title={`Target ${card.name}`}
+          cards.map((card) => {
+            const isPending = pendingCardIds?.includes(card.id);
+            const isAttacking = attackingCardIds?.includes(card.id);
+            const isTappable = tappableLandIds?.includes(card.id);
+            const isUntappable = untappableLandIds?.includes(card.id);
+            const isChoosableClick = (card.isChoosable && !!onClickCard) || (isAttacking && !!onClickAnyCard);
+            return (
+              <div
+                key={card.id}
+                className="relative group shrink-0"
+                onMouseEnter={(e) => onHoverCard?.(card, e)}
+                onMouseLeave={() => onHoverCard?.(null)}
+              >
+                <Card
+                  card={card}
+                  isTapped={card.tapped}
+                  className={cn("w-[70px] h-[98px] shrink-0 hover:z-10",
+                    card.isChoosable && onClickCard && "ring-2 ring-blue-400 cursor-pointer",
+                    isPending && "ring-2 ring-orange-400 cursor-pointer",
+                    isAttacking && "ring-2 ring-red-500 cursor-pointer",
+                    isTappable && !isAttacking && "ring-2 ring-yellow-400 cursor-pointer",
+                    isUntappable && !isAttacking && !isTappable && "ring-2 ring-cyan-400 cursor-pointer",
+                  )}
                 />
-              )}
-            </div>
-          ))
+                {/* Tap-for-mana overlay — shown only during chooseAction */}
+                {isTappable && onTapLand && (
+                  <button
+                    className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 bg-yellow-400/20 border-2 border-yellow-400 transition-opacity flex items-end justify-center pb-1"
+                    onClick={() => onTapLand(card)}
+                    title={`Tap ${card.name} for mana`}
+                  >
+                    <span className="text-[9px] font-bold text-yellow-800 bg-yellow-200/90 px-1 rounded leading-none">TAP</span>
+                  </button>
+                )}
+                {/* Untap overlay — shown for tapped lands with unspent mana */}
+                {isUntappable && onUntapLand && (
+                  <button
+                    className="absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 bg-cyan-400/20 border-2 border-cyan-400 transition-opacity flex items-end justify-center pb-1"
+                    onClick={() => onUntapLand(card)}
+                    title={`Untap ${card.name} (undo mana)`}
+                  >
+                    <span className="text-[9px] font-bold text-cyan-900 bg-cyan-200/90 px-1 rounded leading-none">UNTAP</span>
+                  </button>
+                )}
+                {/* Choosable / attacker overlay */}
+                {!isTappable && isChoosableClick && (
+                  <button
+                    className={cn(
+                      "absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 border-2 transition-opacity",
+                      isPending
+                        ? "bg-orange-500/20 border-orange-400"
+                        : isAttacking
+                          ? "bg-red-500/20 border-red-500"
+                          : "bg-blue-500/20 border-blue-400"
+                    )}
+                    onClick={() => {
+                      if (card.isChoosable && onClickCard) onClickCard(card);
+                      else if (isAttacking && onClickAnyCard) onClickAnyCard(card);
+                    }}
+                    title={isPending ? `Deselect ${card.name}` : isAttacking ? `Block ${card.name}` : `Select ${card.name}`}
+                  />
+                )}
+              </div>
+            );
+          })
         )}
       </div>
     </div>
@@ -161,14 +283,27 @@ function PhaseBar({ currentStep, activePlayerId, myPlayerId }: { currentStep: st
   );
 }
 
-function HandDisplay({ cards, onPlayCard }: { cards: XMageCard[]; onPlayCard: (card: XMageCard) => void }) {
+function HandDisplay({
+  cards,
+  onPlayCard,
+  onHoverCard,
+}: {
+  cards: XMageCard[];
+  onPlayCard: (card: XMageCard) => void;
+  onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
+}) {
   return (
     <div className="flex flex-col gap-1 shrink-0">
       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">Hand ({cards.length})</span>
       <div className="w-full overflow-x-auto">
         <div className="flex gap-2 pb-2 px-1 min-h-[120px] items-end">
           {cards.map((card) => (
-            <div key={card.id} className="relative group shrink-0">
+            <div
+              key={card.id}
+              className="relative group shrink-0"
+              onMouseEnter={(e) => onHoverCard?.(card, e)}
+              onMouseLeave={() => onHoverCard?.(null)}
+            >
               <Card
                 card={card}
                 className={cn(
@@ -191,12 +326,25 @@ function HandDisplay({ cards, onPlayCard }: { cards: XMageCard[]; onPlayCard: (c
   );
 }
 
-function GraveyardPeek({ count, label }: { count: number; label: string }) {
+function ZonePeek({
+  count,
+  label,
+  icon: Icon = Archive,
+  onClick,
+}: {
+  count: number;
+  label: string;
+  icon?: React.ElementType;
+  onClick?: () => void;
+}) {
   return (
-    <div className="flex flex-col items-center gap-0.5 cursor-pointer group">
+    <div
+      className="flex flex-col items-center gap-0.5 cursor-pointer group"
+      onClick={onClick}
+    >
       <div className="w-12 h-16 rounded border-2 border-dashed border-muted-foreground/40 flex items-center justify-center group-hover:border-primary transition-colors bg-muted/20">
         <div className="text-center">
-          <Archive className="h-4 w-4 mx-auto text-muted-foreground" />
+          <Icon className="h-4 w-4 mx-auto text-muted-foreground" />
           <span className="text-xs font-bold text-muted-foreground">{count}</span>
         </div>
       </div>
@@ -208,9 +356,9 @@ function GraveyardPeek({ count, label }: { count: number; label: string }) {
 function PromptBanner({ promptType }: { promptType: string }) {
   const labels: Record<string, string> = {
     mulligan: "Keep this hand?",
-    chooseAction: "Choose a card to play or pass priority",
-    chooseAttackers: "Declare attackers",
-    chooseBlockers: "Declare blockers",
+    chooseAction: "Choose a card to play or pass priority (Space / F6)",
+    chooseAttackers: "Declare attackers — click creatures to toggle, then Attack or Attack All",
+    chooseBlockers: "Declare blockers — click an attacking creature, then click your blocker",
     chooseTargetPlayer: "Choose a target player",
     chooseTargetCard: "Choose a target creature",
     chooseTargetAny: "Choose a target (player or creature)",
@@ -254,14 +402,42 @@ export default function Game() {
     passPriority,
     castSpell,
     declareAttackers,
+    declareBlockers,
     targetPlayer,
     targetCard,
     targetAny,
     mulliganDecision,
+    tapLand,
+    untapLand,
+    concede,
+    endGame,
     startGame,
     setupListeners,
   } = useGameStore();
   const [selectedCard, setSelectedCard] = useState<XMageCard | null>(null);
+  const [hoveredCard, setHoveredCard] = useState<XMageCard | null>(null);
+  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+
+  // Combat state
+  const [pendingAttackers, setPendingAttackers] = useState<string[]>([]);
+  /** The attacker card ID the player has selected to assign a blocker to (attacker-first flow) */
+  const [pendingAttacker, setPendingAttacker] = useState<string | null>(null);
+  const [blockAssignments, setBlockAssignments] = useState<{ blockerId: string; attackerId: string }[]>([]);
+
+  // Zone viewer
+  const [viewingZone, setViewingZone] = useState<{ title: string; cards: XMageCard[] } | null>(null);
+  function openZone(title: string, cards: XMageCard[]) { setViewingZone({ title, cards }); }
+  function closeZone() { setViewingZone(null); }
+
+  // Concede confirmation
+  const [confirmConcede, setConfirmConcede] = useState(false);
+
+  const promptType = currentPrompt?.type;
+
+  function handleHoverCard(card: XMageCard | null, e?: React.MouseEvent) {
+    setHoveredCard(card);
+    if (e && card) setMousePos({ x: e.clientX, y: e.clientY });
+  }
 
   // Set up event listeners on mount
   useEffect(() => {
@@ -280,6 +456,8 @@ export default function Game() {
     if (!isGameActive) return;
     // Poll every 300ms when we don't have a gameView yet, or after responding
     pollRef.current = setInterval(async () => {
+      // Never overwrite a game-over state — the dying thread keeps emitting prompts
+      if (useGameStore.getState().gameView?.gameOver) return;
       try {
         const prompt = await invoke<any>('get_prompt');
         if (prompt) {
@@ -309,10 +487,28 @@ export default function Game() {
         e.preventDefault();
         passPriority();
       }
+      if (e.code === "F6") {
+        e.preventDefault();
+        passPriority();
+      }
     }
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [passPriority]);
+
+  // Reset combat state whenever the prompt type changes
+  useEffect(() => {
+    setPendingAttackers([]);
+    setPendingAttacker(null);
+    setBlockAssignments([]);
+  }, [currentPrompt?.type]);
+
+  // Auto-return to play menu when game is over
+  useEffect(() => {
+    if (!gameView?.gameOver && currentPrompt?.type !== "gameOver") return;
+    const timer = setTimeout(() => endGame(), 3000);
+    return () => clearTimeout(timer);
+  }, [gameView?.gameOver, currentPrompt?.type]);
 
   // Show deck picker if no active game
   if (!isGameActive) {
@@ -345,8 +541,6 @@ export default function Game() {
   const myPermanents = gameView.battlefield.filter((c) => c.controllerId === me.id);
   const opponentPermanents = gameView.battlefield.filter((c) => c.controllerId === opponent.id);
 
-  const promptType = currentPrompt?.type;
-
   // Game over overlay
   if (gameView.gameOver || promptType === "gameOver") {
     const winnerId = gameView.winnerId;
@@ -360,7 +554,8 @@ export default function Game() {
           Final life: You {me.life} — {opponent.name} {opponent.life}
         </p>
         <p className="text-sm text-muted-foreground">Turn {gameView.turn}</p>
-        <Button onClick={() => window.location.reload()}>Play Again</Button>
+        <p className="text-xs text-muted-foreground italic">Returning to menu…</p>
+        <Button variant="outline" size="sm" onClick={() => endGame()}>Return to Menu</Button>
       </div>
     );
   }
@@ -370,12 +565,35 @@ export default function Game() {
     castSpell(card.id);
   }
 
+  const playerIsTargetable = (promptType === "chooseTargetPlayer" || promptType === "chooseTargetAny")
+    ? (pid: string) => currentPrompt?.validPlayerIds?.includes(pid) ?? false
+    : () => false;
+
+  function handleTargetPlayer(pid: string) {
+    if (promptType === "chooseTargetAny") {
+      targetAny({ kind: "player", playerId: pid });
+    } else {
+      targetPlayer(pid);
+    }
+  }
+
   function handleBattlefieldClick(card: XMageCard) {
     if (!currentPrompt || !card.isChoosable) return;
 
     if (promptType === "chooseAttackers") {
-      // For attackers: toggle selection (simplified: just send this one)
-      declareAttackers([card.id]);
+      // Toggle this creature in/out of the pending attacker set
+      setPendingAttackers((prev) =>
+        prev.includes(card.id) ? prev.filter((id) => id !== card.id) : [...prev, card.id]
+      );
+    } else if (promptType === "chooseBlockers") {
+      // Attacker-first flow: if an attacker is already selected, assign this creature as its blocker
+      if (pendingAttacker) {
+        setBlockAssignments((prev) => {
+          const rest = prev.filter((a) => a.attackerId !== pendingAttacker);
+          return [...rest, { blockerId: card.id, attackerId: pendingAttacker }];
+        });
+        setPendingAttacker(null);
+      }
     } else if (promptType === "chooseTargetCard") {
       targetCard(card.id);
     } else if (promptType === "chooseTargetAny") {
@@ -383,20 +601,46 @@ export default function Game() {
     }
   }
 
+  /** Called when clicking one of the opponent's attacking creatures during block assignment (attacker-first flow) */
+  function handleAttackerClick(card: XMageCard) {
+    // Toggle selection: clicking the same attacker deselects it
+    setPendingAttacker((prev) => (prev === card.id ? null : card.id));
+  }
+
   return (
     <div className="flex flex-col h-full gap-2 overflow-hidden">
       {/* Opponent panel */}
-      <PlayerPanel player={opponent} isOpponent />
+      <PlayerPanel
+        player={opponent}
+        isOpponent
+        isTargetable={playerIsTargetable(opponent.id)}
+        onTarget={() => handleTargetPlayer(opponent.id)}
+      />
 
-      {/* Opponent graveyard */}
+      {/* Opponent graveyard + exile + battlefield */}
       <div className="flex gap-2 shrink-0 px-1">
-        <GraveyardPeek count={opponent.graveyardCount} label="GY" />
+        <div className="flex flex-col gap-1">
+          <ZonePeek
+            count={opponent.graveyardCount}
+            label="GY"
+            onClick={() => openZone(`${opponent.name}'s Graveyard`, gameView.opponentGraveyard ?? [])}
+          />
+          <ZonePeek
+            count={opponent.exileCount}
+            label="Exile"
+            onClick={() => openZone(`${opponent.name}'s Exile`, gameView.opponentExile ?? [])}
+          />
+        </div>
         <BattlefieldZone
           cards={opponentPermanents}
           label={`${opponent.name}'s Battlefield`}
           emptyLabel="No permanents"
           className="flex-1"
           onClickCard={promptType === "chooseTargetCard" || promptType === "chooseTargetAny" ? handleBattlefieldClick : undefined}
+          onClickAnyCard={promptType === "chooseBlockers" ? handleAttackerClick : undefined}
+          onHoverCard={handleHoverCard}
+          pendingCardIds={promptType === "chooseBlockers" && pendingAttacker ? [pendingAttacker] : undefined}
+          attackingCardIds={promptType === "chooseBlockers" ? (currentPrompt?.attackerIds ?? []) : undefined}
         />
       </div>
 
@@ -404,12 +648,51 @@ export default function Game() {
       {gameView.stack.length > 0 && (
         <div className="shrink-0 border rounded-lg p-2 bg-yellow-50 dark:bg-yellow-950/20">
           <p className="text-xs font-semibold text-yellow-700 dark:text-yellow-400 mb-1">Stack ({gameView.stack.length})</p>
-          <div className="flex gap-2">
-            {gameView.stack.map((obj) => (
-              <Badge key={obj.id} variant="outline" className="text-xs">
-                {obj.name}
-              </Badge>
-            ))}
+          <div className="flex flex-col gap-1">
+            {gameView.stack.map((obj) => {
+              const srcCard = gameView.battlefield.find((c) => c.id === obj.sourceId)
+                ?? gameView.myHand.find((c) => c.id === obj.sourceId);
+              const color = srcCard?.color ?? "";
+              const borderColor =
+                color === "White" ? "border-yellow-300" :
+                color === "Blue" ? "border-blue-400" :
+                color === "Black" ? "border-gray-600" :
+                color === "Red" ? "border-red-500" :
+                color === "Green" ? "border-green-500" :
+                "border-gray-300";
+              return (
+                <div key={obj.id} className={cn("flex flex-col border-l-4 pl-2 py-0.5", borderColor)}>
+                  <span className="text-xs font-bold leading-tight">{obj.name}</span>
+                  {obj.text && <span className="text-xs text-muted-foreground leading-tight">{obj.text}</span>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Combat report during blocking */}
+      {promptType === "chooseBlockers" && currentPrompt?.attackerIds && currentPrompt.attackerIds.length > 0 && (
+        <div className="shrink-0 border rounded-lg p-2 bg-red-50 dark:bg-red-950/20">
+          <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-1">Combat</p>
+          <div className="flex flex-col gap-0.5">
+            {currentPrompt.attackerIds.map((aid) => {
+              const attacker = gameView.battlefield.find((c) => c.id === aid);
+              const blockers = blockAssignments.filter((a) => a.attackerId === aid);
+              const blockerNames = blockers.map((b) => {
+                const bc = gameView.battlefield.find((c) => c.id === b.blockerId);
+                return bc?.name ?? b.blockerId;
+              });
+              return (
+                <div key={aid} className="text-xs flex gap-1 items-center">
+                  <span className="font-semibold">{attacker?.name ?? aid}</span>
+                  <span className="text-muted-foreground">→</span>
+                  <span className={blockerNames.length === 0 ? "text-red-500 italic" : "text-muted-foreground"}>
+                    {blockerNames.length === 0 ? "unblocked" : blockerNames.join(", ")}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         </div>
       )}
@@ -428,13 +711,43 @@ export default function Game() {
 
       {/* My battlefield */}
       <div className="flex gap-2 shrink-0 px-1 flex-1 min-h-0">
-        <GraveyardPeek count={me.graveyardCount} label="GY" />
+        <div className="flex flex-col gap-1">
+          <ZonePeek
+            count={me.graveyardCount}
+            label="GY"
+            onClick={() => openZone("Your Graveyard", gameView.graveyard)}
+          />
+          <ZonePeek
+            count={me.exileCount}
+            label="Exile"
+            onClick={() => openZone("Your Exile", gameView.exile)}
+          />
+        </div>
         <BattlefieldZone
           cards={myPermanents}
           label="Your Battlefield"
           emptyLabel="No permanents"
           className="flex-1"
-          onClickCard={promptType === "chooseAttackers" || promptType === "chooseTargetCard" || promptType === "chooseTargetAny" ? handleBattlefieldClick : undefined}
+          onClickCard={
+            promptType === "chooseAttackers" ||
+            promptType === "chooseBlockers" ||
+            promptType === "chooseTargetCard" ||
+            promptType === "chooseTargetAny"
+              ? handleBattlefieldClick
+              : undefined
+          }
+          onHoverCard={handleHoverCard}
+          pendingCardIds={
+            promptType === "chooseAttackers"
+              ? pendingAttackers
+              : promptType === "chooseBlockers"
+                ? blockAssignments.map((a) => a.blockerId)
+                : undefined
+          }
+          tappableLandIds={promptType === "chooseAction" ? (currentPrompt?.tappableLandIds ?? []) : undefined}
+          onTapLand={promptType === "chooseAction" ? (card) => tapLand(card.id) : undefined}
+          untappableLandIds={promptType === "chooseAction" ? (currentPrompt?.untappableLandIds ?? []) : undefined}
+          onUntapLand={promptType === "chooseAction" ? (card) => untapLand(card.id) : undefined}
         />
       </div>
 
@@ -447,60 +760,109 @@ export default function Game() {
       )}
 
       {/* Hand */}
-      <HandDisplay cards={gameView.myHand} onPlayCard={handlePlayCard} />
+      <HandDisplay cards={gameView.myHand} onPlayCard={handlePlayCard} onHoverCard={handleHoverCard} />
 
       {/* My panel + actions */}
       <div className="flex items-center gap-2 shrink-0">
         <div className="flex-1 min-w-0">
-          <PlayerPanel player={me} isOpponent={false} />
+          <PlayerPanel
+            player={me}
+            isOpponent={false}
+            isTargetable={playerIsTargetable(me.id)}
+            onTarget={() => handleTargetPlayer(me.id)}
+          />
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex gap-2 shrink-0 items-center">
           {promptType === "chooseAction" && (
-            <Button size="sm" variant="outline" onClick={passPriority}>
-              Pass (Space)
-            </Button>
+            <>
+              <Button size="sm" variant="outline" onClick={passPriority}>
+                Pass (Space)
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex items-center gap-1"
+                onClick={passPriority}
+                title="Pass priority to end of turn (F6)"
+              >
+                <TimerOff className="h-3.5 w-3.5" />
+                End Turn (F6)
+              </Button>
+            </>
           )}
           {promptType === "chooseAttackers" && (
             <>
               <Button size="sm" variant="outline" onClick={passPriority}>
                 No Attackers
               </Button>
-              <Button size="sm" variant="secondary" className="flex items-center gap-1"
-                onClick={() => {
-                  // Attack with all available
-                  const ids = currentPrompt?.availableAttackerIds ?? [];
-                  declareAttackers(ids);
-                }}
+              <Button
+                size="sm"
+                variant="secondary"
+                className="flex items-center gap-1"
+                onClick={() => declareAttackers(currentPrompt?.availableAttackerIds ?? [])}
               >
                 <Sword className="h-3.5 w-3.5" />
                 Attack All
               </Button>
+              {pendingAttackers.length > 0 && (
+                <Button
+                  size="sm"
+                  className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white"
+                  onClick={() => declareAttackers(pendingAttackers)}
+                >
+                  <Sword className="h-3.5 w-3.5" />
+                  Attack ({pendingAttackers.length})
+                </Button>
+              )}
             </>
           )}
           {promptType === "chooseBlockers" && (
-            <Button size="sm" variant="outline" onClick={passPriority}>
-              No Blockers
-            </Button>
-          )}
-          {(promptType === "chooseTargetPlayer" || promptType === "chooseTargetAny") && (
             <>
-              {currentPrompt?.validPlayerIds?.map((pid) => {
-                const player = gameView.players.find((p) => p.id === pid);
-                return (
-                  <Button key={pid} size="sm" variant="secondary"
-                    onClick={() => {
-                      if (promptType === "chooseTargetAny") {
-                        targetAny({ kind: "player", playerId: pid });
-                      } else {
-                        targetPlayer(pid);
-                      }
-                    }}
-                  >
-                    Target {player?.name ?? pid} ({player?.life})
-                  </Button>
-                );
-              })}
+              <Button size="sm" variant="outline" onClick={passPriority}>
+                No Blockers
+              </Button>
+              {pendingAttacker && (
+                <span className="text-xs text-muted-foreground italic self-center">
+                  Now click your blocker
+                </span>
+              )}
+              {blockAssignments.length > 0 && (
+                <Button
+                  size="sm"
+                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  onClick={() => declareBlockers(blockAssignments)}
+                >
+                  Confirm Blocks ({blockAssignments.length})
+                </Button>
+              )}
             </>
+          )}
+          {/* Concede button — always visible */}
+          {confirmConcede ? (
+            <>
+              <span className="text-xs text-muted-foreground italic self-center">Concede?</span>
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => { concede(); setConfirmConcede(false); }}
+              >
+                Yes, Concede
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => setConfirmConcede(false)}>
+                Cancel
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="flex items-center gap-1 text-muted-foreground hover:text-destructive"
+              onClick={() => setConfirmConcede(true)}
+              title="Concede the game"
+            >
+              <Skull className="h-3.5 w-3.5" />
+              Concede
+            </Button>
           )}
         </div>
       </div>
@@ -523,6 +885,20 @@ export default function Game() {
             Clear
           </Button>
         </div>
+      )}
+
+      {/* Zone viewer modal */}
+      {viewingZone && (
+        <ZoneViewer
+          title={viewingZone.title}
+          cards={viewingZone.cards}
+          onClose={closeZone}
+        />
+      )}
+
+      {/* Hover card preview */}
+      {hoveredCard && (
+        <CardPreview card={hoveredCard} mouseX={mousePos.x} mouseY={mousePos.y} />
       )}
     </div>
   );

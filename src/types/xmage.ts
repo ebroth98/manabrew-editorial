@@ -23,6 +23,10 @@ export interface Card {
   zoneId: string; // UUID
   tapped?: boolean;
   keywords?: string[];
+  /** Active counters keyed by counter type name (e.g. "P1P1", "M1M1", "Loyalty"). Only non-zero entries present. */
+  counters?: Record<string, number>;
+  damage?: number;
+  summoningSick?: boolean;
 }
 
 export interface Deck {
@@ -73,6 +77,8 @@ export interface GameView {
   stack: StackObject[];
   exile: Card[];
   graveyard: Card[];
+  opponentGraveyard: Card[];
+  opponentExile: Card[];
   gameOver?: boolean;
   winnerId?: string | null;
 }
