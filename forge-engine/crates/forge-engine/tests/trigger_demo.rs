@@ -133,7 +133,7 @@ impl VerboseAgent {
 
 impl PlayerAgent for VerboseAgent {
     fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
-    fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId]) -> MainPhaseAction {
+    fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId], _: &[(CardId, usize)]) -> MainPhaseAction {
         playable.first().copied().map(MainPhaseAction::Play).unwrap_or(MainPhaseAction::Pass)
     }
     fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {

@@ -122,6 +122,7 @@ impl PlayerAgent for TauriAgent {
         playable: &[CardId],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
+        _activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
         let playable_card_ids: Vec<String> = playable.iter().map(|c| format!("card-{}", c.0)).collect();
         let tappable_land_ids: Vec<String> = tappable_lands.iter().map(|c| format!("card-{}", c.0)).collect();

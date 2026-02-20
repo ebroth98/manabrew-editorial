@@ -10,7 +10,7 @@ impl PlayerAgent for SimpleAiAgent {
         true // always keep
     }
 
-    fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _tappable_lands: &[CardId], _untappable_lands: &[CardId]) -> MainPhaseAction {
+    fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _tappable_lands: &[CardId], _untappable_lands: &[CardId], _activatable: &[(CardId, usize)]) -> MainPhaseAction {
         playable.first().copied()
             .map(MainPhaseAction::Play)
             .unwrap_or(MainPhaseAction::Pass)

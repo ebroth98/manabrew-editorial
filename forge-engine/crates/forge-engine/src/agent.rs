@@ -21,6 +21,8 @@ pub enum MainPhaseAction {
     ActivateMana(CardId),
     /// Untap a tapped land and remove its mana from the pool (undo tap).
     UntapMana(CardId),
+    /// Activate an ability on a permanent. (source card, ability index)
+    ActivateAbility(CardId, usize),
 }
 
 /// Trait for player decision-making. Decouples the engine from UI/AI.
@@ -34,15 +36,18 @@ pub trait PlayerAgent {
     /// Returns true to keep, false to mulligan.
     fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId]) -> bool;
 
-    /// Choose a main-phase action: play a card from hand, tap a land for mana, untap a land, or pass.
+    /// Choose a main-phase action: play a card from hand, tap a land for mana, untap a land,
+    /// activate an ability, or pass.
     /// `tappable_lands` lists untapped lands available for tapping.
     /// `untappable_lands` lists tapped lands that still have mana in the pool (can be untapped).
+    /// `activatable` lists (card_id, ability_index) pairs for activated abilities that can be used.
     fn choose_action(
         &mut self,
         player: PlayerId,
         playable: &[CardId],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
+        activatable: &[(CardId, usize)],
     ) -> MainPhaseAction;
 
     /// Choose attackers from available creatures.
@@ -102,6 +107,7 @@ impl PlayerAgent for PassAgent {
         _playable: &[CardId],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
+        _activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
         MainPhaseAction::Pass
     }

@@ -228,18 +228,18 @@ impl PlayerAgent for InteractiveAgent {
         input != "n" && input != "no"
     }
 
-    fn choose_action(&mut self, player: PlayerId, playable: &[CardId], tappable_lands: &[CardId], untappable_lands: &[CardId]) -> MainPhaseAction {
+    fn choose_action(&mut self, player: PlayerId, playable: &[CardId], tappable_lands: &[CardId], untappable_lands: &[CardId], activatable: &[(CardId, usize)]) -> MainPhaseAction {
         let game = self.game();
 
         let opp = game.opponent_of(player);
         display_board(game, player, opp);
 
-        if playable.is_empty() && tappable_lands.is_empty() && untappable_lands.is_empty() {
+        if playable.is_empty() && tappable_lands.is_empty() && untappable_lands.is_empty() && activatable.is_empty() {
             println!("  {}No actions available.{}", DIM, RESET);
             return MainPhaseAction::Pass;
         }
 
-        // Build a unified action list: untap lands, tap lands, then play cards
+        // Build a unified action list: untap lands, tap lands, play cards, activate abilities
         let mut actions: Vec<MainPhaseAction> = Vec::new();
         println!("\n{}{}Available actions:{}", CYAN, BOLD, RESET);
         for &cid in untappable_lands {
@@ -257,6 +257,17 @@ impl PlayerAgent for InteractiveAgent {
             let verb = if card.is_land() { "Play" } else { "Cast" };
             println!("  {}{}{}: {} {}", BOLD, actions.len(), RESET, verb, format_card_with_cost(card));
             actions.push(MainPhaseAction::Play(cid));
+        }
+        for &(cid, ab_idx) in activatable {
+            let card = game.card(cid);
+            let desc = card.activated_abilities
+                .iter()
+                .find(|a| a.ability_index == ab_idx)
+                .and_then(|a| a.params.get("SpellDescription"))
+                .map(|s| s.as_str())
+                .unwrap_or("Activate ability");
+            println!("  {}{}{}: Activate {} - {}", BOLD, actions.len(), RESET, card.card_name, desc);
+            actions.push(MainPhaseAction::ActivateAbility(cid, ab_idx));
         }
         println!("  {}(enter number to act, or 'p' to pass){}", DIM, RESET);
 
@@ -420,7 +431,7 @@ struct SimpleAiAgent;
 impl PlayerAgent for SimpleAiAgent {
     fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
 
-    fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId]) -> MainPhaseAction {
+    fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId], _: &[(CardId, usize)]) -> MainPhaseAction {
         playable.first().copied().map(MainPhaseAction::Play).unwrap_or(MainPhaseAction::Pass)
     }
 

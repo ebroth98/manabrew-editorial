@@ -22,6 +22,8 @@ pub struct StackEntry {
     pub target_card: Option<CardId>,
     /// Whether this is a triggered ability (not a spell).
     pub is_triggered_ability: bool,
+    /// Whether this is an activated ability (not a spell).
+    pub is_activated_ability: bool,
     /// Card that owns the trigger (for intervening-if recheck).
     pub trigger_source: Option<CardId>,
     /// Index into card.triggers for intervening-if recheck.

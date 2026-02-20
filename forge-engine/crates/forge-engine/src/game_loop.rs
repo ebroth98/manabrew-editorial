@@ -4,6 +4,7 @@ use forge_foundation::{ColorSet, ManaCost, PhaseType, ZoneType};
 use crate::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use crate::card::CardInstance;
 use crate::combat::CombatState;
+use crate::cost::{can_pay, can_pay_ignoring_mana, CostPart};
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -288,14 +289,27 @@ impl GameLoop {
                 })
                 .collect();
 
+            // Find activatable abilities on battlefield permanents
+            let activatable = self.get_activatable_abilities(game, active);
+
             // Auto-break only when truly nothing can be done
-            if playable.is_empty() && tappable_lands.is_empty() && untappable_lands.is_empty() {
+            if playable.is_empty()
+                && tappable_lands.is_empty()
+                && untappable_lands.is_empty()
+                && activatable.is_empty()
+            {
                 break;
             }
 
             agents[active.index()].snapshot_state(game, &self.mana_pools);
             let agent = &mut agents[active.index()];
-            let action = agent.choose_action(active, &playable, &tappable_lands, &untappable_lands);
+            let action = agent.choose_action(
+                active,
+                &playable,
+                &tappable_lands,
+                &untappable_lands,
+                &activatable,
+            );
 
             match action {
                 MainPhaseAction::Pass => break,
@@ -331,6 +345,9 @@ impl GameLoop {
                         game.untap(land_id);
                         self.pool_mut(active).remove(atom, 1);
                     }
+                }
+                MainPhaseAction::ActivateAbility(card_id, ability_idx) => {
+                    self.activate_ability(game, agents, active, card_id, ability_idx);
                 }
             }
         }
@@ -558,16 +575,30 @@ impl GameLoop {
         playable
     }
 
-    /// Calculate available mana from untapped lands.
+    /// Calculate available mana from untapped lands and non-land mana sources.
     fn calculate_available_mana(&self, game: &GameState, player: PlayerId) -> ManaPool {
         let mut pool = self.pool(player).clone();
-        let lands = game.cards_in_zone(ZoneType::Battlefield, player);
+        let battlefield = game.cards_in_zone(ZoneType::Battlefield, player);
 
-        for &land_id in lands {
-            let land = game.card(land_id);
-            if land.is_land() && !land.tapped {
-                if let Some(atom) = basic_land_mana_atom(land) {
+        for &card_id in battlefield {
+            let card = game.card(card_id);
+            if card.is_land() && !card.tapped {
+                if let Some(atom) = basic_land_mana_atom(card) {
                     pool.add(atom, 1);
+                }
+            } else {
+                // Check non-land permanents for mana abilities
+                for ab in &card.activated_abilities {
+                    if ab.is_mana_ability
+                        && can_pay_ignoring_mana(&ab.cost, game, card_id, player)
+                    {
+                        // This creature can produce mana — add it to pool estimate
+                        if let Some(produced) = ab.params.get("Produced") {
+                            if let Some(atom) = mana_atom_from_produced(produced) {
+                                pool.add(atom, 1);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -702,6 +733,7 @@ impl GameLoop {
                 target_player,
                 target_card,
                 is_triggered_ability: false,
+                is_activated_ability: false,
                 trigger_source: None,
                 trigger_index: None,
             };
@@ -795,8 +827,8 @@ impl GameLoop {
     /// Resolve the top of the stack.
     pub fn resolve_stack(&mut self, game: &mut GameState) {
         while let Some(entry) = game.stack.pop() {
-            if entry.is_triggered_ability {
-                // Triggered ability: resolve the effect
+            if entry.is_triggered_ability || entry.is_activated_ability {
+                // Triggered/activated ability: resolve the effect
                 self.resolve_spell_effect(game, &entry);
                 continue;
             }
@@ -855,6 +887,7 @@ impl GameLoop {
                         target_player: entry.target_player,
                         target_card: entry.target_card,
                         is_triggered_ability: entry.is_triggered_ability,
+                        is_activated_ability: entry.is_activated_ability,
                         trigger_source: entry.trigger_source,
                         trigger_index: entry.trigger_index,
                     };
@@ -944,6 +977,66 @@ impl GameLoop {
                 .and_then(|d| resolve_defined_player(d, entry.controller, game))
                 .unwrap_or(entry.controller);
             game.draw_cards(target, num as usize);
+        } else if ability.contains("ChangeZone") {
+            let params = parse_pipe_params(ability);
+            let origin = params.get("Origin").map(|s| s.as_str()).unwrap_or("");
+            let destination = params.get("Destination").map(|s| s.as_str()).unwrap_or("");
+            let tapped = params
+                .get("Tapped")
+                .map(|s| s.eq_ignore_ascii_case("True"))
+                .unwrap_or(false);
+            let change_type = params.get("ChangeType").map(|s| s.as_str()).unwrap_or("");
+
+            if origin == "Library" && destination == "Battlefield" {
+                // Search library for a matching card and put it onto the battlefield
+                let controller = entry.controller;
+                let library = game.cards_in_zone(ZoneType::Library, controller).to_vec();
+
+                // Find the first matching card in the library
+                let found = library.iter().find(|&&cid| {
+                    let card = game.card(cid);
+                    matches_change_type(card, change_type)
+                }).copied();
+
+                if let Some(card_id) = found {
+                    game.move_card(card_id, ZoneType::Battlefield, controller);
+                    if tapped {
+                        game.tap(card_id);
+                    }
+
+                    // Register triggers for the new permanent
+                    self.trigger_handler.register_active_trigger(game, card_id);
+
+                    // Emit ChangesZone trigger (ETB)
+                    self.trigger_handler.run_trigger(
+                        TriggerType::ChangesZone,
+                        RunParams {
+                            card: Some(card_id),
+                            origin: Some(ZoneType::Library),
+                            destination: Some(ZoneType::Battlefield),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+
+                // Shuffle library after search
+                // Note: no RNG available here, so we just reverse as a simple shuffle
+                // A proper implementation would pass RNG through
+                let lib_cards = game.cards_in_zone(ZoneType::Library, controller).to_vec();
+                if !lib_cards.is_empty() {
+                    let zone = game.zone_mut(ZoneType::Library, controller);
+                    zone.cards.reverse();
+                }
+            }
+        } else if ability.contains("Mana") {
+            // Mana ability resolved on stack (shouldn't normally happen, but handle gracefully)
+            let params = parse_pipe_params(ability);
+            if let Some(produced) = params.get("Produced") {
+                if let Some(atom) = mana_atom_from_produced(produced) {
+                    self.pool_mut(entry.controller).add(atom, 1);
+                }
+            }
         }
     }
 
@@ -1262,6 +1355,192 @@ impl GameLoop {
                 .collect(),
         }
     }
+
+    // ── Activated Ability helpers ───────────────────────────────────
+
+    /// Find all activatable abilities for a player on the battlefield.
+    /// Returns (card_id, ability_index) pairs.
+    fn get_activatable_abilities(
+        &self,
+        game: &GameState,
+        player: PlayerId,
+    ) -> Vec<(CardId, usize)> {
+        let mut result = Vec::new();
+        let available_mana = self.calculate_available_mana(game, player);
+        let battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
+
+        for card_id in battlefield {
+            let card = game.card(card_id);
+            for ab in &card.activated_abilities {
+                if can_pay(&ab.cost, game, &available_mana, card_id, player) {
+                    result.push((card_id, ab.ability_index));
+                }
+            }
+        }
+
+        result
+    }
+
+    /// Activate an ability on a permanent.
+    fn activate_ability(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        card_id: CardId,
+        ability_idx: usize,
+    ) {
+        // Clone the ability data we need before mutating game
+        let ab = {
+            let card = game.card(card_id);
+            card.activated_abilities
+                .iter()
+                .find(|a| a.ability_index == ability_idx)
+                .cloned()
+        };
+
+        let ab = match ab {
+            Some(ab) => ab,
+            None => return,
+        };
+
+        if ab.is_mana_ability {
+            self.resolve_mana_ability(game, player, card_id, &ab);
+        } else {
+            self.activate_ability_on_stack(game, agents, player, card_id, &ab);
+        }
+    }
+
+    /// Resolve a mana ability immediately (no stack).
+    fn resolve_mana_ability(
+        &mut self,
+        game: &mut GameState,
+        player: PlayerId,
+        card_id: CardId,
+        ab: &crate::activated_ability::ActivatedAbility,
+    ) {
+        // Pay costs
+        for part in &ab.cost.parts {
+            match part {
+                CostPart::Tap => {
+                    game.tap(card_id);
+                }
+                CostPart::Mana(mana_cost) => {
+                    self.auto_tap_lands(game, player, mana_cost);
+                    self.pool_mut(player).try_pay(mana_cost);
+                }
+                CostPart::PayLife(amount) => {
+                    game.player_mut(player).lose_life(*amount);
+                }
+                CostPart::Sacrifice { type_filter, .. } => {
+                    if type_filter == "CARDNAME" {
+                        let owner = game.card(card_id).owner;
+                        game.move_card(card_id, ZoneType::Graveyard, owner);
+                    }
+                }
+            }
+        }
+
+        // Produce mana
+        if let Some(produced) = ab.params.get("Produced") {
+            if let Some(atom) = mana_atom_from_produced(produced) {
+                self.pool_mut(player).add(atom, 1);
+            }
+        }
+    }
+
+    /// Activate a non-mana ability: choose targets, pay costs, put on stack.
+    fn activate_ability_on_stack(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        card_id: CardId,
+        ab: &crate::activated_ability::ActivatedAbility,
+    ) {
+        let ability_text = ab.ability_text.clone();
+
+        // Determine targets
+        let mut target_player = None;
+        let mut target_card: Option<CardId> = None;
+
+        let target_kind = parse_valid_targets(&ability_text);
+        match target_kind {
+            TargetKind::None => {}
+            TargetKind::Player => {
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                let agent = &mut agents[player.index()];
+                let opponents: Vec<PlayerId> = game
+                    .alive_players()
+                    .into_iter()
+                    .filter(|&p| p != player)
+                    .collect();
+                target_player = agent.choose_target_player(player, &opponents);
+            }
+            TargetKind::Any => {
+                let opponents: Vec<PlayerId> = game
+                    .alive_players()
+                    .into_iter()
+                    .filter(|&p| p != player)
+                    .collect();
+                let valid_creatures = self.get_all_battlefield_creatures(game);
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                let agent = &mut agents[player.index()];
+                match agent.choose_target_any(player, &opponents, &valid_creatures) {
+                    TargetChoice::Player(pid) => target_player = Some(pid),
+                    TargetChoice::Card(cid) => target_card = Some(cid),
+                    TargetChoice::None => {}
+                }
+            }
+            TargetKind::Creature(ref filter) => {
+                let valid = self.get_valid_creature_targets(game, filter.as_deref());
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                let agent = &mut agents[player.index()];
+                target_card = agent.choose_target_card(player, &valid);
+            }
+        }
+
+        // Pay costs
+        for part in &ab.cost.parts {
+            match part {
+                CostPart::Tap => {
+                    game.tap(card_id);
+                }
+                CostPart::Mana(mana_cost) => {
+                    self.auto_tap_lands(game, player, mana_cost);
+                    self.pool_mut(player).try_pay(mana_cost);
+                }
+                CostPart::PayLife(amount) => {
+                    game.player_mut(player).lose_life(*amount);
+                }
+                CostPart::Sacrifice { type_filter, .. } => {
+                    if type_filter == "CARDNAME" {
+                        let owner = game.card(card_id).owner;
+                        game.move_card(card_id, ZoneType::Graveyard, owner);
+                    }
+                }
+            }
+        }
+
+        // Push to stack
+        let card_name = game.card(card_id).card_name.clone();
+        let entry = StackEntry {
+            id: 0,
+            source: Some(card_id),
+            controller: player,
+            ability_text,
+            is_creature_spell: false,
+            is_permanent_spell: false,
+            target_player,
+            target_card,
+            is_triggered_ability: false,
+            is_activated_ability: true,
+            trigger_source: None,
+            trigger_index: None,
+        };
+        game.stack.push(entry);
+        agents[player.index()].notify(&format!("Activated ability of {}", card_name));
+    }
 }
 
 /// Determine what mana atom a basic land produces.
@@ -1315,6 +1594,56 @@ fn parse_counter_type(s: &str) -> crate::card::CounterType {
         "Charge" => crate::card::CounterType::Charge,
         _ => crate::card::CounterType::P1P1,
     }
+}
+
+/// Convert a Produced$ value (e.g. "G", "R", "W") to a ManaAtom.
+fn mana_atom_from_produced(produced: &str) -> Option<u16> {
+    match produced.trim() {
+        "W" => Some(ManaAtom::WHITE),
+        "U" => Some(ManaAtom::BLUE),
+        "B" => Some(ManaAtom::BLACK),
+        "R" => Some(ManaAtom::RED),
+        "G" => Some(ManaAtom::GREEN),
+        "C" => Some(ManaAtom::COLORLESS),
+        _ => None,
+    }
+}
+
+/// Check if a card matches a ChangeType$ filter string.
+/// Handles "Land.Basic" and other type filters.
+fn matches_change_type(card: &CardInstance, change_type: &str) -> bool {
+    if change_type.is_empty() {
+        return true;
+    }
+
+    let parts: Vec<&str> = change_type.split('.').collect();
+    let type_part = parts[0];
+
+    // Check type
+    let type_matches = match type_part {
+        "Land" => card.is_land(),
+        "Creature" => card.is_creature(),
+        "Card" => true,
+        _ => true,
+    };
+
+    if !type_matches {
+        return false;
+    }
+
+    // Check qualifiers (e.g. "Basic")
+    for &qualifier in &parts[1..] {
+        match qualifier {
+            "Basic" => {
+                if !card.type_line.is_basic() {
+                    return false;
+                }
+            }
+            _ => {} // ignore unknown qualifiers
+        }
+    }
+
+    true
 }
 
 #[cfg(test)]

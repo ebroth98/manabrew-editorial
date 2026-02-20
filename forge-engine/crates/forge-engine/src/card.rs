@@ -3,6 +3,7 @@ use std::collections::{BTreeMap, HashMap};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
+use crate::activated_ability::{parse_activated_ability, ActivatedAbility};
 use crate::ids::{CardId, PlayerId};
 use crate::trigger::Trigger;
 
@@ -49,8 +50,11 @@ pub struct CardInstance {
     // Keywords active on this card (simplified — raw strings for now)
     pub keywords: Vec<String>,
 
-    // Abilities (raw strings from card definition — parsed in Phase 4)
+    // Abilities (raw strings from card definition)
     pub abilities: Vec<String>,
+
+    // Parsed activated abilities (from AB$ lines in abilities)
+    pub activated_abilities: Vec<ActivatedAbility>,
 
     // Combat tracking
     pub has_deathtouch_damage: bool,
@@ -84,6 +88,13 @@ impl CardInstance {
         keywords: Vec<String>,
         abilities: Vec<String>,
     ) -> Self {
+        // Parse activated abilities from raw ability strings
+        let activated_abilities: Vec<ActivatedAbility> = abilities
+            .iter()
+            .enumerate()
+            .filter_map(|(i, raw)| parse_activated_ability(raw, i))
+            .collect();
+
         CardInstance {
             id,
             card_name,
@@ -105,6 +116,7 @@ impl CardInstance {
             counters: HashMap::new(),
             keywords,
             abilities,
+            activated_abilities,
             has_deathtouch_damage: false,
             entered_battlefield_this_turn: false,
             attacked_this_turn: false,

@@ -12,4 +12,6 @@ pub mod combat;
 pub mod event;
 pub mod trigger;
 pub mod trigger_handler;
+pub mod cost;
+pub mod activated_ability;
 pub mod game_loop;

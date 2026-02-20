@@ -108,6 +108,7 @@ impl TriggerHandler {
                         target_player: None,
                         target_card: None,
                         is_triggered_ability: true,
+                        is_activated_ability: false,
                         trigger_source: Some(active.card_id),
                         trigger_index: Some(active.trigger_index),
                     };
