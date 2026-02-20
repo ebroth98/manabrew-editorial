@@ -11,7 +11,7 @@ export function useCardSearch(query: string) {
       }
       return undefined;
     },
-    enabled: query.length > 2, // Only fetch if query is meaningful
+    enabled: query.length > 0, // Enable when any query or filter is active
     initialPageParam: 1,
   });
 }

@@ -33,6 +33,8 @@ export interface Deck {
   name: string;
   cards: Card[];
   sideboard: Card[];
+  /** Designated commander (Commander format). Not included in cards[]. */
+  commander?: Card;
 }
 
 export interface Player {

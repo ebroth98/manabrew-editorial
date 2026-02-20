@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -40,39 +40,61 @@ export function CreateGameDialog({
   const [selectedDeck, setSelectedDeck] = useState<string>(
     preSelectedDeckId ?? "current"
   );
-  const [selectedCommander, setSelectedCommander] = useState<string>("");
+  const [selectedCommander, setSelectedCommander] = useState<string>(
+    currentDeck.commander?.name ?? ""
+  );
 
   const allDecks = [
     {
       id: "current",
       name: `${currentDeck.name} (current)`,
-      cardNames: currentDeck.cards.map((c) => c.name),
+      // Include the designated commander in the card list sent to the engine
+      cardNames: [
+        ...currentDeck.cards.map((c) => c.name),
+        ...(currentDeck.commander ? [currentDeck.commander.name] : []),
+      ],
       cards: currentDeck.cards,
+      commanderName: currentDeck.commander?.name,
     },
     ...savedDecks.map((s) => ({
       id: s.id,
       name: s.deck.name,
-      cardNames: s.deck.cards.map((c) => c.name),
+      cardNames: [
+        ...s.deck.cards.map((c) => c.name),
+        ...(s.deck.commander ? [s.deck.commander.name] : []),
+      ],
       cards: s.deck.cards,
+      commanderName: s.deck.commander?.name,
     })),
   ];
+
+  // Auto-populate commander when the selected deck changes
+  useEffect(() => {
+    const entry = allDecks.find((d) => d.id === selectedDeck);
+    setSelectedCommander(entry?.commanderName ?? "");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedDeck]);
 
   const selectedDeckEntry = allDecks.find((d) => d.id === selectedDeck);
   const selectedDeckNames = selectedDeckEntry?.cardNames ?? [];
   const selectedDeckValidation = validateDeck(selectedDeckNames, selectedFormat);
 
-  // Get unique legendary creatures from the selected deck for the commander picker
+  // Get unique legendary creatures from the selected deck for the commander picker.
+  // Also include the deck's designated commander even if it's stored separately.
   const legendaryCreatures = selectedDeckEntry
     ? Array.from(
-        new Map(
-          selectedDeckEntry.cards
+        new Map([
+          ...(selectedDeckEntry.commanderName
+            ? [[selectedDeckEntry.commanderName, selectedDeckEntry.commanderName] as [string, string]]
+            : []),
+          ...selectedDeckEntry.cards
             .filter(
               (c) =>
                 c.supertypes?.includes("Legendary") &&
                 c.types?.includes("Creature")
             )
-            .map((c) => [c.name, c.name])
-        ).values()
+            .map((c) => [c.name, c.name] as [string, string]),
+        ]).values()
       )
     : [];
 

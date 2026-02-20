@@ -2,7 +2,7 @@ import { useDeckStore } from "@/stores/useDeckStore";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { X, Minus, Plus, Download, Upload, Save, FolderOpen, Trash2, Pencil, Check } from "lucide-react";
+import { X, Minus, Plus, Download, Upload, Save, FolderOpen, Trash2, Pencil, Check, Crown } from "lucide-react";
 import { DeckStats } from "./DeckStats";
 import { CardPreview } from "@/components/game/CardPreview";
 import { useState, useRef, useEffect } from "react";
@@ -111,6 +111,7 @@ export function DeckBuilder() {
     loadSavedDeck,
     deleteSavedDeck,
     enrichDeckCards,
+    removeCommander,
   } = useDeckStore();
 
   const [editingName, setEditingName] = useState(false);
@@ -365,6 +366,41 @@ export function DeckBuilder() {
 
       <ScrollArea className="flex-1 px-3 py-2">
         <div className="space-y-4">
+          {/* Commander */}
+          {currentDeck.commander && (
+            <div>
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                Commander
+              </h3>
+              <div
+                className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
+                onMouseEnter={(e) =>
+                  setHovered({ card: currentDeck.commander!, x: e.clientX, y: e.clientY })
+                }
+                onMouseMove={(e) =>
+                  setHovered({ card: currentDeck.commander!, x: e.clientX, y: e.clientY })
+                }
+                onMouseLeave={() => setHovered(null)}
+              >
+                <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
+                <span className="text-sm flex-1 truncate">{currentDeck.commander.name}</span>
+                {currentDeck.commander.manaCost && (
+                  <span className="text-xs text-muted-foreground shrink-0 font-mono">
+                    {currentDeck.commander.manaCost}
+                  </span>
+                )}
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-5 w-5 text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                  onClick={() => removeCommander()}
+                >
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
+            </div>
+          )}
+
           {/* Mainboard */}
           <div>
             <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
