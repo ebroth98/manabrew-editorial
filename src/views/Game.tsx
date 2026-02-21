@@ -542,7 +542,13 @@ function PromptBanner({ promptType }: { promptType: string }) {
   );
 }
 
-function DeckPicker({ onPick }: { onPick: (cardNames: string[]) => void }) {
+interface DeckPickResult {
+  cardNames: string[];
+  commanderName?: string;
+  formatId?: string;
+}
+
+function DeckPicker({ onPick }: { onPick: (result: DeckPickResult) => void }) {
   const { savedDecks } = useDeckStore();
   const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
 
@@ -567,11 +573,18 @@ function DeckPicker({ onPick }: { onPick: (cardNames: string[]) => void }) {
               <button
                 key={s.id}
                 className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
-                onClick={() => onPick(s.deck.cards.map((c) => c.name))}
+                onClick={() => onPick({
+                  cardNames: s.deck.cards.map((c) => c.name),
+                  commanderName: s.deck.commander?.name,
+                  formatId: s.deck.commander ? 'commander' : undefined,
+                })}
               >
                 <p className="font-semibold truncate">{s.deck.name}</p>
                 <p className="text-xs text-muted-foreground mt-1">
                   {s.deck.cards.length} cards
+                  {s.deck.commander && (
+                    <span className="ml-2 text-yellow-600 font-medium">· EDH</span>
+                  )}
                 </p>
               </button>
             ))}
@@ -589,7 +602,7 @@ function DeckPicker({ onPick }: { onPick: (cardNames: string[]) => void }) {
             <button
               key={deck.id}
               className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
-              onClick={() => onPick([deck.id])}
+              onClick={() => onPick({ cardNames: [deck.id] })}
             >
               <p className={cn("font-semibold", deck.color)}>{deck.label}</p>
               <p className="text-xs text-muted-foreground mt-1">{deck.desc}</p>
@@ -830,7 +843,7 @@ export default function Game() {
 
   // Show deck picker if no active game
   if (!isGameActive) {
-    return <DeckPicker onPick={(id) => startGame(id)} />;
+    return <DeckPicker onPick={({ cardNames, commanderName, formatId }) => startGame(cardNames, formatId, commanderName)} />;
   }
 
   // Loading
