@@ -68,6 +68,17 @@ pub trait PlayerAgent {
     /// Choose a target card (e.g. for Lightning Bolt targeting a creature).
     fn choose_target_card(&mut self, player: PlayerId, valid: &[CardId]) -> Option<CardId>;
 
+    /// Choose a target card from a specific zone (e.g. Raise Dead from graveyard).
+    fn choose_target_card_from_zone(
+        &mut self,
+        player: PlayerId,
+        zone: forge_foundation::ZoneType,
+        valid: &[CardId],
+    ) -> Option<CardId> {
+        // Default implementation falls back to regular choose_target_card
+        self.choose_target_card(player, valid)
+    }
+
     /// Choose a target that can be a player or a card (e.g. "any target").
     fn choose_target_any(
         &mut self,

@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::game_view_dto::GameViewDto;
+use crate::game_view_dto::{GameViewDto, CardDto};
 
 /// A display-only event that the frontend should animate before rendering the prompt's game state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,6 +88,15 @@ pub enum AgentPromptInner {
         valid_player_ids: Vec<String>,
         #[serde(rename = "validCardIds")]
         valid_card_ids: Vec<String>,
+    },
+    ChooseTargetCardFromZone {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "validCardIds")]
+        valid_card_ids: Vec<String>,
+        zone: String,
+        #[serde(rename = "zoneCards")]
+        zone_cards: Vec<CardDto>,
     },
     GameOver {
         #[serde(rename = "gameView")]

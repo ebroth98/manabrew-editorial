@@ -138,6 +138,7 @@ impl GameManager {
                     AgentPromptInner::ChooseTargetPlayer { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::ChooseTargetCard { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::ChooseTargetAny { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseTargetCardFromZone { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::Mulligan { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::GameOver { game_view } => Some(game_view.clone()),
                     AgentPromptInner::StateUpdate { game_view } => Some(game_view.clone()),

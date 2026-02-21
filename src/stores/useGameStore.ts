@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { GameView } from '@/types/xmage';
+import type { GameView, Card } from '@/types/xmage';
 import { getFormat } from '@/lib/formats';
 
 interface DisplayEvent {
@@ -27,6 +27,8 @@ interface AgentPrompt {
   validCardIds?: string[];
   tappableLandIds?: string[];
   untappableLandIds?: string[];
+  zone?: string;
+  zoneCards?: Card[];
 }
 
 interface GameConfig {

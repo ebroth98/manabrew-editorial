@@ -887,6 +887,8 @@
 | `trigger_handler.rs` | **Partial** | Active/waiting/delayed triggers, dispatch (some stubs) |
 | `agent.rs` | **Complete** | PlayerAgent trait (14 callbacks incl. choose_sacrifice), MainPhaseAction, TargetChoice |
 | `game_loop.rs` | **Partial** | Game flow orchestration (framework, some phases incomplete) |
+| `spellability/mod.rs` | **Complete** | SpellAbility module structure |
+| `spellability/targeting.rs` | **Complete** | Targeting system: parse_valid_targets, choose_targets, CardInZone support for graveyard/exile targeting |
 
 ### Crate: `forge-cli`
 | File | Status | Features |
@@ -916,7 +918,7 @@
 | Player | 17 | 1 | 2 | 14 |
 | Player Actions | 10 | 1 | 3 | 6 |
 | Replacement Effects | 46 | 4 | 4 | 38 |
-| Spell Abilities | 25 | 1 | 2 | 22 |
+| Spell Abilities | 25 | 3 | 2 | 20 |
 | Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 4 | 1 | 135 |
 | Zones | 8 | 3 | 1 | 4 |

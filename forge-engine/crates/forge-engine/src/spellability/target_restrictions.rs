@@ -23,6 +23,11 @@ pub enum TargetKind {
     Any,
     /// Creature with optional filter (e.g. "ValidTgts$ Creature.nonBlack")
     Creature(Option<String>),
+    /// Card in a specific zone with optional filter (e.g. Raise Dead from graveyard)
+    CardInZone {
+        zone: ZoneType,
+        filter: Option<String>,
+    },
     /// No targets
     None,
 }
@@ -82,6 +87,9 @@ impl TargetRestrictions {
             TargetKind::Creature(ref filter) => {
                 !get_all_candidates_creature_filtered(game, filter.as_deref(), player).is_empty()
             }
+            TargetKind::CardInZone { zone, filter } => {
+                has_valid_target_in_zone(game, player, *zone, filter.as_deref())
+            }
         }
     }
 }
@@ -108,11 +116,13 @@ fn parse_target_kind(val: &str) -> TargetKind {
 }
 
 /// Parse `ValidTgts$` from a raw ability string.
+/// Enhanced version that also considers `Origin$` for zone targeting.
 /// Convenience wrapper for code that doesn't have parsed params yet.
 pub fn parse_valid_targets(ability: &str) -> TargetKind {
     let params = crate::trigger::parse_pipe_params(ability);
+    let origin_zone = params.get("Origin").and_then(|v| parse_zone_type(v));
     match params.get("ValidTgts") {
-        Some(val) => parse_target_kind(val),
+        Some(val) => parse_target_kind_enhanced(val, origin_zone),
         None => TargetKind::None,
     }
 }
@@ -184,6 +194,103 @@ pub fn get_all_candidates_creature_filtered(
     }
 }
 
+// ── Zone-aware targeting for cards like Raise Dead ───────────────────
+
+/// Parse a zone type string ("Graveyard", "Hand", "Battlefield", etc.)
+fn parse_zone_type(s: &str) -> Option<ZoneType> {
+    match s.to_lowercase().as_str() {
+        "graveyard" => Some(ZoneType::Graveyard),
+        "hand" => Some(ZoneType::Hand),
+        "battlefield" => Some(ZoneType::Battlefield),
+        "library" => Some(ZoneType::Library),
+        "exile" => Some(ZoneType::Exile),
+        "command" => Some(ZoneType::Command),
+        _ => None,
+    }
+}
+
+/// Enhanced parser that considers Origin$ parameter for zone targeting.
+/// This parser handles both legacy battlefield targeting and zone-aware targeting
+/// (e.g., Raise Dead with Origin$ Graveyard).
+fn parse_target_kind_enhanced(val: &str, origin_zone: Option<ZoneType>) -> TargetKind {
+    let val = val.trim();
+    
+    // Handle the special case of CardInZone targeting first
+    if let Some(zone) = origin_zone {
+        if zone != ZoneType::Battlefield {
+            // If we have a non-battlefield origin, this is zone targeting
+            // The filter might be in the ValidTgts$ (e.g., "Creature.YouCtrl")
+            let filter = if val.starts_with("Creature") {
+                let filter_part = val.strip_prefix("Creature").unwrap();
+                let filter_part = filter_part.strip_prefix('.').unwrap_or(filter_part);
+                if filter_part.is_empty() {
+                    None
+                } else {
+                    Some(filter_part.to_string())
+                }
+            } else if val.contains('.') {
+                // Handle formats like "Creature.YouCtrl" directly
+                Some(val.to_string())
+            } else {
+                None
+            };
+            return TargetKind::CardInZone { zone, filter };
+        }
+    }
+    
+    // For battlefield targeting (or no origin specified), use traditional parsing
+    parse_target_kind_legacy(val)
+}
+
+/// Legacy parser for battlefield-targeting spells (Unsummon, Doom Blade, etc.)
+fn parse_target_kind_legacy(val: &str) -> TargetKind {
+    let val = val.trim();
+    if val.eq_ignore_ascii_case("Any") {
+        return TargetKind::Any;
+    }
+    if val.eq_ignore_ascii_case("Player") {
+        return TargetKind::Player;
+    }
+    if val.starts_with("Creature") {
+        let filter = val.strip_prefix("Creature").unwrap();
+        if filter.is_empty() {
+            return TargetKind::Creature(None);
+        }
+        let filter = filter.strip_prefix('.').unwrap_or(filter);
+        return TargetKind::Creature(Some(filter.to_string()));
+    }
+    // Fallback: treat as "Any" if unrecognized
+    TargetKind::Any
+}
+
+/// Get all cards in a zone matching the filter (for Raise Dead style targeting)
+pub fn get_valid_cards_in_zone(
+    game: &GameState,
+    zone: ZoneType,
+    player: PlayerId,
+    filter: Option<&str>,
+) -> Vec<CardId> {
+    let zone_cards = game.cards_in_zone(zone, player).to_vec();
+    
+    match filter {
+        None => zone_cards,
+        Some(f) => zone_cards
+            .into_iter()
+            .filter(|&cid| card_property::card_has_property(game.card(cid), f, player))
+            .collect(),
+    }
+}
+
+/// Check if there are valid targets in a specific zone.
+pub fn has_valid_target_in_zone(
+    game: &GameState,
+    player: PlayerId,
+    zone: ZoneType,
+    filter: Option<&str>,
+) -> bool {
+    !get_valid_cards_in_zone(game, zone, player, filter).is_empty()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -218,6 +325,14 @@ mod tests {
             parse_valid_targets("SP$ Draw | ValidTgts$ Player"),
             TargetKind::Player
         );
+    }
+
+    #[test]
+    fn parse_valid_targets_graveyard_creature() {
+        // Test parsing for Raise Dead style: ValidTgts$ Creature with Origin$ Graveyard
+        let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Hand | ValidTgts$ Creature.YouCtrl";
+        let target_kind = parse_valid_targets(ability);
+        assert!(matches!(target_kind, TargetKind::CardInZone { zone: ZoneType::Graveyard, .. }));
     }
 
     #[test]
