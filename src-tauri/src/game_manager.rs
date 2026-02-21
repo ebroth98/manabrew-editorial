@@ -7,6 +7,7 @@ use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_foundation::ZoneType;
+use serde::{Deserialize, Serialize};
 
 use crate::card_db::{card_rules_to_instance, get_card_db};
 use rand::SeedableRng;
@@ -292,6 +293,62 @@ fn run_game(
     });
 
     let _ = winner; // winner is also in the game_view
+}
+
+// ── Preset deck registry ───────────────────────────────────────────
+
+/// Metadata for a preset deck, returned to the frontend via `get_preset_decks`.
+///
+/// Adding a new preset deck requires:
+/// 1. Add a `const MY_DECK: &[(&str, usize)]` below.
+/// 2. Add a `PresetDeckInfo` entry to `list_preset_decks()`.
+/// 3. Add the `"my_id"` arm to the `match` in `run_game()`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PresetDeckInfo {
+    pub id: String,
+    pub label: String,
+    pub desc: String,
+    /// Tailwind CSS text-color class used for the deck title in the UI.
+    pub color: String,
+}
+
+/// Return the ordered list of all available preset decks.
+///
+/// This is the single source of truth consumed by the `get_preset_decks`
+/// Tauri command — the frontend no longer hardcodes deck names.
+pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
+    vec![
+        PresetDeckInfo {
+            id: "red_burn".into(),
+            label: "Red Burn".into(),
+            desc: "Bolts + Shocks + Ogres + Giants".into(),
+            color: "text-red-500".into(),
+        },
+        PresetDeckInfo {
+            id: "green_stompy".into(),
+            label: "Green Stompy".into(),
+            desc: "Giant Growth + Trample + Reach + Wurms".into(),
+            color: "text-green-500".into(),
+        },
+        PresetDeckInfo {
+            id: "white_aggro".into(),
+            label: "White Aggro".into(),
+            desc: "Savannah Lions + First Strike + Flying".into(),
+            color: "text-yellow-500".into(),
+        },
+        PresetDeckInfo {
+            id: "black_control".into(),
+            label: "Black Control".into(),
+            desc: "Doom Blade + Divination + Deathtouch".into(),
+            color: "text-purple-500".into(),
+        },
+        PresetDeckInfo {
+            id: "white_static".into(),
+            label: "White Static".into(),
+            desc: "Glorious Anthem + Indestructible + Layer effects".into(),
+            color: "text-white".into(),
+        },
+    ]
 }
 
 // ── Preset deck lists ──────────────────────────────────────────────

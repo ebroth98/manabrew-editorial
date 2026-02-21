@@ -79,32 +79,12 @@ const MANA_COLORS = [
   { key: "C", bg: "bg-gray-100 border-gray-300", text: "text-gray-700" },
 ];
 
-const DECK_OPTIONS = [
-  {
-    id: "red_burn",
-    label: "Red Burn",
-    desc: "Bolts + Shocks + Ogres + Giants",
-    color: "text-red-500",
-  },
-  {
-    id: "green_stompy",
-    label: "Green Stompy",
-    desc: "Giant Growth + Trample + Reach + Wurms",
-    color: "text-green-500",
-  },
-  {
-    id: "white_aggro",
-    label: "White Aggro",
-    desc: "Savannah Lions + First Strike + Flying",
-    color: "text-yellow-500",
-  },
-  {
-    id: "black_control",
-    label: "Black Control",
-    desc: "Doom Blade + Divination + Deathtouch",
-    color: "text-purple-500",
-  },
-];
+interface PresetDeckInfo {
+  id: string;
+  label: string;
+  desc: string;
+  color: string;
+}
 
 function ManaPool({ pool }: { pool: Record<string, number> }) {
   const total = Object.values(pool).reduce((a, b) => a + b, 0);
@@ -564,6 +544,13 @@ function PromptBanner({ promptType }: { promptType: string }) {
 
 function DeckPicker({ onPick }: { onPick: (cardNames: string[]) => void }) {
   const { savedDecks } = useDeckStore();
+  const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
+
+  useEffect(() => {
+    invoke<PresetDeckInfo[]>("get_preset_decks")
+      .then(setPresetDecks)
+      .catch((e) => console.error("[DeckPicker] Failed to load preset decks:", e));
+  }, []);
 
   return (
     <div className="flex flex-col items-center justify-center h-full gap-6 p-6 overflow-y-auto">
@@ -592,13 +579,13 @@ function DeckPicker({ onPick }: { onPick: (cardNames: string[]) => void }) {
         </div>
       )}
 
-      {/* Preset decks */}
+      {/* Preset decks — loaded dynamically from the backend */}
       <div className="w-full max-w-xl">
         <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
           Preset Decks
         </h3>
         <div className="grid grid-cols-2 gap-3">
-          {DECK_OPTIONS.map((deck) => (
+          {presetDecks.map((deck) => (
             <button
               key={deck.id}
               className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"

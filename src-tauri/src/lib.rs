@@ -18,6 +18,7 @@ pub fn run() {
             commands::respond,
             commands::end_game,
             commands::get_prompt,
+            commands::get_preset_decks,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
