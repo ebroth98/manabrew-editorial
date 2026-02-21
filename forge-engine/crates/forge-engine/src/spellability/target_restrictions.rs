@@ -87,6 +87,9 @@ impl TargetRestrictions {
             TargetKind::Creature(ref filter) => {
                 !get_all_candidates_creature_filtered(game, filter.as_deref(), player).is_empty()
             }
+            TargetKind::CardInZone { zone, filter } => {
+                has_valid_target_in_zone(game, player, *zone, filter.as_deref())
+            }
         }
     }
 }

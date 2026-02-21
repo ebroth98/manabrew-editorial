@@ -254,6 +254,17 @@ fn choose_targets_for(
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
         }
+        TargetKind::CardInZone { zone, filter } => {
+            let valid = target_restrictions::get_valid_cards_in_zone(
+                game,
+                *zone,
+                player,
+                filter.as_deref(),
+            );
+            agents[player.index()].snapshot_state(game, mana_pools);
+            let agent = &mut agents[player.index()];
+            sa.target_chosen.target_card = agent.choose_target_card_from_zone(player, *zone, &valid);
+        }
     }
 
     true
