@@ -168,12 +168,18 @@ impl GameState {
         for cid in battlefield_cards {
             let card = &self.cards[cid.index()];
             if card.is_creature() {
-                let should_die = card.toughness() <= 0
-                    || card.lethal_damage()
-                    || (card.damage > 0 && card.has_deathtouch_damage);
+                let zero_toughness = card.toughness() <= 0;
+                let lethal = card.lethal_damage() || (card.damage > 0 && card.has_deathtouch_damage);
+                let should_die = zero_toughness || lethal;
                 if should_die {
                     let owner = card.owner;
-                    // Run Destroy replacement effects (e.g. indestructible).
+                    // CR 702.12: Indestructible prevents death from lethal damage and
+                    // "destroy" effects, but NOT from toughness ≤ 0 (CR 704.5f vs 704.5g).
+                    // This covers K:Indestructible from Forge card scripts (e.g. Darksteel Myr).
+                    if lethal && !zero_toughness && self.cards[cid.index()].has_keyword("Indestructible") {
+                        continue;
+                    }
+                    // Run Destroy replacement effects (R$-based indestructible, etc.).
                     // Mirrors Java GameAction.destroy() → ReplacementHandler.run(Destroy, …).
                     let mut destroy_event = ReplacementEvent::Destroy { target: cid };
                     let result = apply_replacements(self, &mut destroy_event);

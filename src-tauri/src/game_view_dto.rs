@@ -183,7 +183,16 @@ fn card_to_dto(
         owner_id: player_id_str(card.owner),
         zone_id: zone_label.to_string(),
         tapped: card.tapped,
-        keywords: card.keywords.clone(),
+        // Merge intrinsic keywords with those granted by continuous effects (layer 6).
+        keywords: {
+            let mut all = card.keywords.clone();
+            for k in &card.granted_keywords {
+                if !all.iter().any(|e| e.eq_ignore_ascii_case(k)) {
+                    all.push(k.clone());
+                }
+            }
+            all
+        },
         counters,
         damage: card.damage,
         summoning_sick: card.summoning_sick && !card.has_haste(),

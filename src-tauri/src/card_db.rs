@@ -4,6 +4,8 @@ use std::sync::OnceLock;
 use forge_carddb::{CardDatabase, CardRules};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::replacement::parse_replacement_effect;
+use forge_engine_core::static_ability::parse_static_ability;
 use forge_engine_core::trigger::parse_trigger;
 
 static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
@@ -90,6 +92,24 @@ pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstanc
     card.triggers = triggers;
     // SVars must be copied so trigger Execute$ references resolve correctly.
     card.svars = face.svars.clone();
+
+    // Load static abilities from S: lines (stored separately from A: ability lines
+    // in Forge card scripts).  The parser strips the "S:" key and stores only the
+    // value, so we re-prefix with "S$ " to match parse_static_ability's format.
+    for raw in &face.static_abilities {
+        let prefixed = format!("S$ {}", raw);
+        if let Some(sa) = parse_static_ability(&prefixed) {
+            card.static_abilities.push(sa);
+        }
+    }
+
+    // Load replacement effects from R: lines in the same way.
+    for raw in &face.replacements {
+        let prefixed = format!("R$ {}", raw);
+        if let Some(re) = parse_replacement_effect(&prefixed) {
+            card.replacement_effects.push(re);
+        }
+    }
 
     card
 }
