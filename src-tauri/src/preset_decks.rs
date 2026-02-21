@@ -77,6 +77,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Village Rites + sacrifice-as-additional-cost mechanics".into(),
             color: "text-gray-400".into(),
         },
+        PresetDeckInfo {
+            id: "library_manipulation".into(),
+            label: "Library Manipulation".into(),
+            desc: "Scry + Surveil + Mill + Dig (Preordain, Ransack the Lab, Thought Scour)".into(),
+            color: "text-cyan-400".into(),
+        },
     ]
 }
 
@@ -92,6 +98,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "zone_change"
             | "token_swarm"
             | "sac_cost"
+            | "library_manipulation"
     )
 }
 
@@ -128,6 +135,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "black_control" => {
             build_named_deck(game, p0, BLACK_CONTROL);
             build_named_deck(game, p1, WHITE_AGGRO);
+        }
+        "library_manipulation" => {
+            build_named_deck(game, p0, LIBRARY_MANIPULATION);
+            build_named_deck(game, p1, RED_BURN);
         }
         _ => {
             // red_burn (default)
@@ -237,6 +248,29 @@ const TOKEN_SWARM: &[(&str, usize)] = &[
     ("Savannah Lions", 4),
     ("Lightning Bolt", 4),
     ("Shock", 4),
+];
+
+/// Exercises issue #15: library manipulation — Scry, Surveil, Mill, Dig, RearrangeTopOfLibrary.
+/// Preordain tests Scry 2 + Draw.
+/// Ponder tests RearrangeTopOfLibrary (3 cards) + Draw.
+/// Thought Scour tests Mill 2 (targeted) + Draw.
+/// Ransack the Lab tests Dig 3 / take 1 to hand / rest to graveyard.
+/// Taigam's Scheming tests Surveil 5.
+/// Notion Rain tests Surveil 2 + Draw 2 + DealDamage to self.
+const LIBRARY_MANIPULATION: &[(&str, usize)] = &[
+    ("Island", 16),
+    ("Swamp", 4),
+    ("Preordain", 4),          // SP$ Scry 2, then draw a card
+    ("Ponder", 4),             // SP$ RearrangeTopOfLibrary 3, may shuffle, draw
+    ("Thought Scour", 4),      // SP$ Mill 2 target player, draw a card
+    ("Ransack the Lab", 4),    // SP$ Dig 3, take 1 to hand, rest to graveyard
+    ("Taigam's Scheming", 2),  // SP$ Surveil 5
+    ("Notion Rain", 2),        // SP$ Surveil 2, draw 2, deal 2 to self
+    ("Divination", 4),         // Draw 2
+    ("Mulldrifter", 4),        // Flying ETB draw 2
+    ("Typhoid Rats", 4),       // 1/1 Deathtouch
+    ("Doom Blade", 4),         // Destroy non-black creature
+    ("Vampire Nighthawk", 4),  // 2/3 Flying Deathtouch Lifelink
 ];
 
 // ── Deck builders ──────────────────────────────────────────────────

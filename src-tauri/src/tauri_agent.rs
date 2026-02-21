@@ -6,7 +6,7 @@ use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_foundation::ZoneType;
 
-use crate::game_view_dto::{GameViewDto, CardDto};
+use crate::game_view_dto::{card_to_dto, GameViewDto, CardDto};
 use crate::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, DisplayEvent, PlayerAction, TargetAnyChoice};
 
 /// A PlayerAgent that sends prompts to the frontend and blocks waiting for a response.
@@ -19,6 +19,8 @@ pub struct TauriAgent {
     latest_view: Option<GameViewDto>,
     /// Display events accumulated between prompts — drained and attached to each outgoing prompt.
     pending_display_events: Vec<DisplayEvent>,
+    /// Card DTOs pre-built by on_library_peek() for Scry/Surveil/Dig prompts.
+    peeked_library_cards: Vec<CardDto>,
 }
 
 impl TauriAgent {
@@ -37,6 +39,7 @@ impl TauriAgent {
             notify_tx,
             latest_view: None,
             pending_display_events: Vec::new(),
+            peeked_library_cards: Vec::new(),
         }
     }
 
@@ -340,6 +343,85 @@ impl PlayerAgent for TauriAgent {
                 card_id.and_then(|id| Self::parse_card_id(&id))
             }
             _ => valid.first().copied(),
+        }
+    }
+
+    fn on_library_peek(&mut self, game: &forge_engine_core::game::GameState, cards: &[CardId]) {
+        // Only build DTOs for the human player — AI peeks are silent.
+        self.peeked_library_cards = cards
+            .iter()
+            .map(|&id| card_to_dto(game, id, &[], &[], "library"))
+            .collect();
+    }
+
+    fn choose_scry(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
+        if player != self.human_player {
+            return vec![]; // AI: keep all on top
+        }
+        let card_ids: Vec<String> = cards.iter().map(|c| format!("card-{}", c.0)).collect();
+        let peeked = std::mem::take(&mut self.peeked_library_cards);
+        self.send_prompt(AgentPromptInner::Scry {
+            game_view: self.view(),
+            card_ids,
+            cards: peeked,
+        });
+        match self.recv_action() {
+            PlayerAction::ScryDecision { bottom_card_ids } => {
+                bottom_card_ids.iter().filter_map(|id| Self::parse_card_id(id)).collect()
+            }
+            _ => vec![],
+        }
+    }
+
+    fn choose_surveil(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
+        if player != self.human_player {
+            return vec![]; // AI: keep all on top
+        }
+        let card_ids: Vec<String> = cards.iter().map(|c| format!("card-{}", c.0)).collect();
+        let peeked = std::mem::take(&mut self.peeked_library_cards);
+        self.send_prompt(AgentPromptInner::Surveil {
+            game_view: self.view(),
+            card_ids,
+            cards: peeked,
+        });
+        match self.recv_action() {
+            PlayerAction::SurveilDecision { graveyard_card_ids } => {
+                graveyard_card_ids.iter().filter_map(|id| Self::parse_card_id(id)).collect()
+            }
+            _ => vec![],
+        }
+    }
+
+    fn choose_dig(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        max: usize,
+        optional: bool,
+    ) -> Vec<CardId> {
+        if player != self.human_player {
+            // AI: take first `max` cards
+            return valid.iter().copied().take(max).collect();
+        }
+        let card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+        let peeked = std::mem::take(&mut self.peeked_library_cards);
+        // Filter peeked to only valid cards (ChangeValid$ may have narrowed the list).
+        let valid_peeked: Vec<CardDto> = peeked
+            .into_iter()
+            .filter(|dto| card_ids.contains(&dto.id))
+            .collect();
+        self.send_prompt(AgentPromptInner::Dig {
+            game_view: self.view(),
+            card_ids,
+            cards: valid_peeked,
+            num_to_take: max,
+            optional,
+        });
+        match self.recv_action() {
+            PlayerAction::DigDecision { chosen_card_ids } => {
+                chosen_card_ids.iter().filter_map(|id| Self::parse_card_id(id)).collect()
+            }
+            _ => valid.iter().copied().take(max).collect(),
         }
     }
 

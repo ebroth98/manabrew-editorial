@@ -148,7 +148,7 @@
 | `DelayedTriggerEffect.java` | Create delayed trigger | Not implemented |
 | `DestroyEffect.java` | Destroy target permanent | Not implemented |
 | `DestroyAllEffect.java` | Destroy all matching permanents | Not implemented |
-| `DigEffect.java` | Look at top N cards, choose some | Not implemented |
+| `DigEffect.java` | Look at top N cards, choose some | **Implemented** — `dig.rs`: `DigNum$`, `ChangeNum$` (All/Any/N), `DestinationZone$`/`DestinationZone2$`, `ChangeValid$`, `LibraryPosition2$`, optional; agent `choose_dig`; TauriAgent `Dig` prompt + `DigDecision` response |
 | `DiscardEffect.java` | Force discard | Not implemented |
 | `DiscoverEffect.java` | Discover N mechanic | Not implemented |
 | `DrawEffect.java` | Draw cards | **Partial** (`action.rs` draw_cards) |
@@ -170,7 +170,7 @@
 | `ManaReflectedEffect.java` | Reflected mana (any color matching…) | Not implemented |
 | `ManifestEffect.java` | Manifest (face-down) | Not implemented |
 | `MeldEffect.java` | Meld two cards | Not implemented |
-| `MillEffect.java` | Mill N cards | Not implemented |
+| `MillEffect.java` | Mill N cards | **Implemented** — `mill.rs`: `NumCards$`, targeted or `Defined$` player, moves top N from library to graveyard, emits ChangesZone trigger |
 | `MutateEffect.java` | Mutate a creature | Not implemented |
 | `PermanentCreatureEffect.java` | Resolve creature permanent spell | Not implemented |
 | `PermanentNoncreatureEffect.java` | Resolve non-creature permanent spell | Not implemented |
@@ -181,15 +181,15 @@
 | `PumpEffect.java` | +N/+N (or set P/T) until end of turn | Not implemented |
 | `PumpAllEffect.java` | Pump all matching creatures | Not implemented |
 | `RegenerateEffect.java` | Regenerate a permanent | Not implemented |
-| `RevealEffect.java` | Reveal cards | Not implemented |
+| `RevealEffect.java` | Reveal cards | **Partial** — `reveal.rs`: reveals N cards from target hand, notifies all agents; no full interactive UI reveal |
 | `RollDiceEffect.java` | Roll dice | Not implemented |
 | `SacrificeEffect.java` | Force sacrifice | **Implemented** (`game_loop.rs` Sacrifice handler: SacValid$Self or matching permanents, agent choose_sacrifice for human choice, ChangesZone trigger) |
 | `SacrificeAllEffect.java` | Force sacrifice of all matching | **Implemented** (`game_loop.rs` SacrificeAll handler: ValidCards filter, multi-player, ChangesZone trigger) |
-| `ScryEffect.java` | Scry N | Not implemented |
+| `ScryEffect.java` | Scry N | **Implemented** — `scry.rs`: `ScryNum$`, `Defined$` player, agent `choose_scry`; TauriAgent `Scry` prompt + `ScryDecision` response; PassAgent keeps all on top |
 | `SetStateEffect.java` | Transform / flip / turn face-up | Not implemented |
 | `ShuffleEffect.java` | Shuffle library | **Partial** (`action.rs` shuffle_library) |
 | `SkipPhaseEffect.java` | Skip a phase | Not implemented |
-| `SurveilEffect.java` | Surveil N | Not implemented |
+| `SurveilEffect.java` | Surveil N | **Implemented** — `surveil.rs`: `Amount$`, `Defined$` player, agent `choose_surveil`; TauriAgent `Surveil` prompt + `SurveilDecision` response; emits ChangesZone trigger for graveyard cards |
 | `TapEffect.java` | Tap a permanent | **Partial** (`action.rs` tap) |
 | `TapAllEffect.java` | Tap all matching | Not implemented |
 | `TokenEffect.java` | Create token(s) | **Implemented** — `Token` handler in `game_loop.rs`: `TokenScript$`, `TokenAmount$`, `TokenOwner$` (You/Opponent). Token templates loaded from `tokenscripts/` via `get_token_db()` and registered in `GameLoop`. Tokens flagged `is_token` and cease to exist when leaving battlefield (CR 110.5g). |
@@ -198,7 +198,7 @@
 | `UntapAllEffect.java` | Untap all matching | **Partial** (`action.rs` untap_all) |
 | `VoteEffect.java` | Council's dilemma / voting mechanic | Not implemented |
 
-> **Note**: 197 effect files total. Only ~12 have partial implementation in forge-engine. The remaining ~100+ effects (AdvanceCrank, Airbend, AlterAttribute, AssembleContraption, Behold, Blight, Bond, Camouflage, ChaosEnsues, Cloak, Endure, Forage, Heist, Incubate, Intensify, Investigate, Learn, MakeCard, ManifestDread, MultiplePiles, OpenAttraction, OwnershipGain, Planeswalk, PlayLandVariant, PowerExchange, Radiation, Rearrange, RemoveFromCombat, RemoveFromGame, RepeatEach, Replace*, RestartGame, ReverseTurnOrder, Ring, RollPlanarDice, Seek, SetInMotion, Subgame, TextBoxExchange, TimeTravel, Venture, VillainousChoice, ZoneExchange, etc.) are **not implemented**.
+> **Note**: 197 effect files total. ~22 have full or partial implementation. Additional implemented effects not listed individually: `RevealHandEffect.java` → `reveal_hand.rs` (inform all agents of a player's hand), `LookAtEffect.java` → `look_at.rs` (activating player peeks at top N cards of a zone), `RearrangeTopOfLibraryEffect` → `rearrange_top_of_library.rs` (used by Ponder: look at top N, reorder, optional shuffle via `choose_reorder_library` / `choose_may_shuffle`). The remaining ~100+ effects (AdvanceCrank, Airbend, AlterAttribute, AssembleContraption, Behold, Blight, Bond, Camouflage, ChaosEnsues, Cloak, Endure, Forage, Heist, Incubate, Intensify, Investigate, Learn, MakeCard, ManifestDread, MultiplePiles, OpenAttraction, OwnershipGain, Planeswalk, PlayLandVariant, PowerExchange, Radiation, RemoveFromCombat, RemoveFromGame, RepeatEach, Replace*, RestartGame, ReverseTurnOrder, Ring, RollPlanarDice, Seek, SetInMotion, Subgame, TextBoxExchange, TimeTravel, Venture, VillainousChoice, ZoneExchange, etc.) are **not implemented**.
 
 ---
 
@@ -903,7 +903,7 @@
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
 | Core Game | 37 | 3 | 8 | 26 |
 | Ability System | 10 | 0 | 2 | 8 |
-| Ability Effects | 197 | 4 | 11 | 182 |
+| Ability Effects | 197 | 10 | 12 | 175 |
 | Card System | 28 | 4 | 3 | 21 |
 | Perpetual Effects | 8 | 0 | 0 | 8 |
 | Tokens | 1 | 0 | 0 | 1 |
@@ -922,8 +922,8 @@
 | Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 4 | 1 | 135 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **31** | **56** | **682** |
+| **TOTAL** | **769** | **37** | **57** | **675** |
 
-> **Coverage: ~11.3% implemented or partially implemented** (87 of 769 features have some Rust counterpart)
+> **Coverage: ~12.2% implemented or partially implemented** (94 of 769 features have some Rust counterpart)
 >
 > The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (135 files), and **costs** (58 files).

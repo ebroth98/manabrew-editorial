@@ -109,6 +109,38 @@ pub enum AgentPromptInner {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
     },
+    /// Scry N: player sees `card_ids` (top N of library) and picks which go to bottom.
+    Scry {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// The top N cards the player is looking at (in library order, last = topmost).
+        #[serde(rename = "cardIds")]
+        card_ids: Vec<String>,
+        /// Card DTOs for display.
+        #[serde(rename = "cards")]
+        cards: Vec<CardDto>,
+    },
+    /// Surveil N: player sees `card_ids` (top N of library) and picks which go to graveyard.
+    Surveil {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "cardIds")]
+        card_ids: Vec<String>,
+        #[serde(rename = "cards")]
+        cards: Vec<CardDto>,
+    },
+    /// Dig N, take K: player sees `card_ids` (top N) and picks up to `num_to_take` to keep.
+    Dig {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "cardIds")]
+        card_ids: Vec<String>,
+        #[serde(rename = "cards")]
+        cards: Vec<CardDto>,
+        #[serde(rename = "numToTake")]
+        num_to_take: usize,
+        optional: bool,
+    },
 }
 
 /// Sent from frontend to game thread: the human player's response.
@@ -147,6 +179,21 @@ pub enum PlayerAction {
     UntapLand {
         #[serde(rename = "cardId")]
         card_id: String,
+    },
+    /// Response to Scry prompt: IDs of cards the player wants on the bottom.
+    ScryDecision {
+        #[serde(rename = "bottomCardIds")]
+        bottom_card_ids: Vec<String>,
+    },
+    /// Response to Surveil prompt: IDs of cards the player wants in the graveyard.
+    SurveilDecision {
+        #[serde(rename = "graveyardCardIds")]
+        graveyard_card_ids: Vec<String>,
+    },
+    /// Response to Dig prompt: IDs of the cards the player wants to take.
+    DigDecision {
+        #[serde(rename = "chosenCardIds")]
+        chosen_card_ids: Vec<String>,
     },
     Concede,
 }
