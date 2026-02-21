@@ -4,28 +4,29 @@
 //! `ability/effects/` package (204 files). Effects are dispatched by
 //! API type string extracted from the ability text.
 
-pub mod change_zone;
-pub mod change_zone_all;
-pub mod copy_permanent;
-pub mod deal_damage;
-pub mod destroy;
-pub mod dig;
-pub mod draw;
-pub mod gain_life;
-pub mod look_at;
-pub mod lose_life;
-pub mod mana;
-pub mod mill;
-pub mod pump;
-pub mod put_counter;
-pub mod rearrange_top_of_library;
-pub mod reveal;
-pub mod reveal_hand;
-pub mod sacrifice;
-pub mod sacrifice_all;
-pub mod scry;
-pub mod surveil;
-pub mod token;
+pub mod change_zone_effect;
+pub mod change_zone_all_effect;
+pub mod copy_permanent_effect;
+pub mod damage_deal_effect;
+pub mod destroy_effect;
+pub mod dig_effect;
+pub mod dig_multiple_effect;
+pub mod draw_effect;
+pub mod life_gain_effect;
+pub mod look_at_effect;
+pub mod life_lose_effect;
+pub mod mana_effect;
+pub mod mill_effect;
+pub mod pump_effect;
+pub mod counters_put_effect;
+pub mod rearrange_top_of_library_effect;
+pub mod reveal_effect;
+pub mod reveal_hand_effect;
+pub mod sacrifice_effect;
+pub mod sacrifice_all_effect;
+pub mod scry_effect;
+pub mod surveil_effect;
+pub mod token_effect;
 
 use std::collections::HashMap;
 
@@ -58,30 +59,31 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
     });
 
     match api_type {
-        "DealDamage" => deal_damage::resolve(ctx, sa),
-        "GainLife" => gain_life::resolve(ctx, sa),
-        "LoseLife" => lose_life::resolve(ctx, sa),
-        "PutCounter" => put_counter::resolve(ctx, sa),
-        "Pump" => pump::resolve(ctx, sa),
-        "Destroy" => destroy::resolve(ctx, sa),
-        "Draw" => draw::resolve(ctx, sa),
-        "ChangeZoneAll" => change_zone_all::resolve(ctx, sa),
-        "ChangeZone" => change_zone::resolve(ctx, sa),
-        "SacrificeAll" => sacrifice_all::resolve(ctx, sa),
-        "Sacrifice" => sacrifice::resolve(ctx, sa),
-        "CopyPermanent" => copy_permanent::resolve(ctx, sa),
-        "Token" => token::resolve(ctx, sa),
-        "Mana" => mana::resolve(ctx, sa),
+        "DealDamage" => damage_deal_effect::resolve(ctx, sa),
+        "GainLife" => life_gain_effect::resolve(ctx, sa),
+        "LoseLife" => life_lose_effect::resolve(ctx, sa),
+        "PutCounter" => counters_put_effect::resolve(ctx, sa),
+        "Pump" => pump_effect::resolve(ctx, sa),
+        "Destroy" => destroy_effect::resolve(ctx, sa),
+        "Draw" => draw_effect::resolve(ctx, sa),
+        "ChangeZoneAll" => change_zone_all_effect::resolve(ctx, sa),
+        "ChangeZone" => change_zone_effect::resolve(ctx, sa),
+        "SacrificeAll" => sacrifice_all_effect::resolve(ctx, sa),
+        "Sacrifice" => sacrifice_effect::resolve(ctx, sa),
+        "CopyPermanent" => copy_permanent_effect::resolve(ctx, sa),
+        "Token" => token_effect::resolve(ctx, sa),
+        "Mana" => mana_effect::resolve(ctx, sa),
         // Library manipulation (issue #15)
-        "Mill" => mill::resolve(ctx, sa),
-        "Scry" => scry::resolve(ctx, sa),
-        "Surveil" => surveil::resolve(ctx, sa),
-        "Dig" | "DigMultiple" => dig::resolve(ctx, sa),
-        "RearrangeTopOfLibrary" => rearrange_top_of_library::resolve(ctx, sa),
+        "Mill" => mill_effect::resolve(ctx, sa),
+        "Scry" => scry_effect::resolve(ctx, sa),
+        "Surveil" => surveil_effect::resolve(ctx, sa),
+        "Dig" => dig_effect::resolve(ctx, sa),
+        "DigMultiple" => dig_multiple_effect::resolve(ctx, sa),
+        "RearrangeTopOfLibrary" => rearrange_top_of_library_effect::resolve(ctx, sa),
         // Reveal / Look (informational)
-        "Reveal" => reveal::resolve(ctx, sa),
-        "RevealHand" => reveal_hand::resolve(ctx, sa),
-        "LookAt" => look_at::resolve(ctx, sa),
+        "Reveal" => reveal_effect::resolve(ctx, sa),
+        "RevealHand" => reveal_hand_effect::resolve(ctx, sa),
+        "LookAt" => look_at_effect::resolve(ctx, sa),
         _ => {} // Unimplemented effect — silently skip
     }
 }
