@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { Card as XMageCard, Player } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
+import { FreeBattlefield } from "@/components/game/FreeBattlefield";
 import { CardPreview } from "@/components/game/CardPreview";
 import { ZoneViewer } from "@/components/game/ZoneViewer";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
@@ -403,22 +404,32 @@ function HandDisplay({
   cards,
   onPlayCard,
   onHoverCard,
+  onStartDrag,
 }: {
   cards: XMageCard[];
   onPlayCard: (card: XMageCard) => void;
   onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  onStartDrag?: (card: XMageCard, e: React.MouseEvent) => void;
 }) {
   return (
     <div className="flex flex-col gap-1 shrink-0">
       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">
         Hand ({cards.length})
       </span>
-      <div className="w-full overflow-x-auto">
+      <div className="overflow-x-auto">
         <div className="flex gap-2 pb-2 px-1 min-h-[120px] items-end">
           {cards.map((card) => (
             <div
               key={card.id}
-              className="relative group shrink-0"
+              className={cn(
+                "relative group shrink-0",
+                card.isPlayable && "cursor-grab",
+              )}
+              onMouseDown={
+                card.isPlayable
+                  ? (e) => { e.preventDefault(); onStartDrag?.(card, e); }
+                  : undefined
+              }
               onMouseEnter={(e) => onHoverCard?.(card, e)}
               onMouseLeave={() => onHoverCard?.(null)}
             >
@@ -432,6 +443,7 @@ function HandDisplay({
               {card.isPlayable && (
                 <button
                   className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 bg-primary/20 border-2 border-primary transition-opacity"
+                  onMouseDown={(e) => e.stopPropagation()}
                   onClick={() => onPlayCard(card)}
                   title={`Play ${card.name}`}
                 />
@@ -642,6 +654,14 @@ export default function Game() {
 
   const [hoveredCard, setHoveredCard] = useState<XMageCard | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hand drag-to-play state
+  const [draggingHandCard, setDraggingHandCard] = useState<XMageCard | null>(null);
+  const [ghostPos, setGhostPos] = useState({ x: 0, y: 0 });
+  const [isOverBattlefield, setIsOverBattlefield] = useState(false);
+  const battlefieldContainerRef = useRef<HTMLDivElement>(null);
+  const isOverBattlefieldRef = useRef(false);
 
   // Display flash queue — sequential visual-only flashes.
   type FlashItem =
@@ -678,8 +698,19 @@ export default function Game() {
   const promptType = currentPrompt?.type;
 
   function handleHoverCard(card: XMageCard | null, e?: React.MouseEvent) {
-    setHoveredCard(card);
-    if (e && card) setMousePos({ x: e.clientX, y: e.clientY });
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    if (!card) {
+      setHoveredCard(null);
+      return;
+    }
+    if (e) setMousePos({ x: e.clientX, y: e.clientY });
+    hoverTimerRef.current = setTimeout(() => {
+      setHoveredCard(card);
+      hoverTimerRef.current = null;
+    }, 500);
   }
 
   // Set up event listeners on mount
@@ -883,16 +914,6 @@ export default function Game() {
     (c) => c.controllerId === opponent!.id,
   );
 
-  // Split permanents into lands vs non-lands for separate zone display
-  const myLands = myPermanents.filter((c) => c.types?.includes("Land"));
-  const myNonLands = myPermanents.filter((c) => !c.types?.includes("Land"));
-  const opponentLands = opponentPermanents.filter((c) =>
-    c.types?.includes("Land"),
-  );
-  const opponentNonLands = opponentPermanents.filter(
-    (c) => !c.types?.includes("Land"),
-  );
-
   // Game over overlay
   if (gameView.gameOver || promptType === "gameOver") {
     const winnerId = gameView.winnerId;
@@ -969,6 +990,48 @@ export default function Game() {
   function handleAttackerClick(card: XMageCard) {
     // Toggle selection: clicking the same attacker deselects it
     setPendingAttacker((prev) => (prev === card.id ? null : card.id));
+  }
+
+  /** Initiate a drag from the hand; on drop over the battlefield, plays the card */
+  function startHandCardDrag(card: XMageCard, e: React.MouseEvent) {
+    if (!card.isPlayable) return;
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoveredCard(null);
+    setDraggingHandCard(card);
+    setGhostPos({ x: e.clientX, y: e.clientY });
+
+    let moved = false;
+    const handleMouseMove = (me: MouseEvent) => {
+      moved = true;
+      setGhostPos({ x: me.clientX, y: me.clientY });
+      if (battlefieldContainerRef.current) {
+        const rect = battlefieldContainerRef.current.getBoundingClientRect();
+        const over =
+          me.clientX >= rect.left &&
+          me.clientX <= rect.right &&
+          me.clientY >= rect.top &&
+          me.clientY <= rect.bottom;
+        isOverBattlefieldRef.current = over;
+        setIsOverBattlefield(over);
+      }
+    };
+
+    const handleMouseUp = () => {
+      document.removeEventListener("mousemove", handleMouseMove);
+      document.removeEventListener("mouseup", handleMouseUp);
+      if (moved && isOverBattlefieldRef.current) {
+        castSpell(card.id);
+      }
+      setDraggingHandCard(null);
+      setIsOverBattlefield(false);
+      isOverBattlefieldRef.current = false;
+    };
+
+    document.addEventListener("mousemove", handleMouseMove);
+    document.addEventListener("mouseup", handleMouseUp);
   }
 
   const turnFlashPlayerId =
@@ -1139,25 +1202,10 @@ export default function Game() {
                   />
                 )}
               </div>
-              {/* Right: lands (top) + non-land battlefield (flex-1) */}
+              {/* Right: opponent's full battlefield */}
               <div className="flex flex-col gap-1 flex-1 min-w-0 overflow-hidden">
                 <BattlefieldZone
-                  cards={opponentLands}
-                  label="Lands"
-                  emptyLabel="No lands"
-                  className="shrink-0"
-                  zoneBg="bg-green-500/8 border-green-700/40 dark:bg-green-500/5 dark:border-green-600/30"
-                  minHeight={opponentLands.length > 0 ? 80 : 44}
-                  onClickCard={
-                    promptType === "chooseTargetCard" ||
-                    promptType === "chooseTargetAny"
-                      ? handleBattlefieldClick
-                      : undefined
-                  }
-                  onHoverCard={handleHoverCard}
-                />
-                <BattlefieldZone
-                  cards={opponentNonLands}
+                  cards={opponentPermanents}
                   label={`${opponent!.name}'s Battlefield`}
                   emptyLabel="No permanents"
                   className="flex-1"
@@ -1221,14 +1269,15 @@ export default function Game() {
                   />
                 )}
               </div>
-              {/* Right: non-land battlefield (flex-1) + lands */}
-              <div className="flex flex-col gap-1 flex-1 min-w-0 overflow-hidden">
-                <BattlefieldZone
-                  cards={myNonLands}
+              {/* Right: relative wrapper — battlefield fills it, hand overlays at bottom */}
+              <div
+                ref={battlefieldContainerRef}
+                className="relative flex flex-col flex-1 min-w-0 overflow-hidden"
+              >
+                <FreeBattlefield
+                  cards={myPermanents}
                   label="Your Battlefield"
-                  emptyLabel="No permanents"
                   className="flex-1"
-                  minHeight={60}
                   onClickCard={
                     promptType === "chooseAttackers" ||
                     promptType === "chooseBlockers" ||
@@ -1245,21 +1294,6 @@ export default function Game() {
                         ? blockAssignments.map((a) => a.blockerId)
                         : undefined
                   }
-                />
-                <BattlefieldZone
-                  cards={myLands}
-                  label="Lands"
-                  emptyLabel="No lands yet"
-                  className="shrink-0"
-                  zoneBg="bg-green-500/8 border-green-700/40 dark:bg-green-500/5 dark:border-green-600/30"
-                  minHeight={myLands.length > 0 ? 80 : 44}
-                  onClickCard={
-                    promptType === "chooseTargetCard" ||
-                    promptType === "chooseTargetAny"
-                      ? handleBattlefieldClick
-                      : undefined
-                  }
-                  onHoverCard={handleHoverCard}
                   tappableLandIds={
                     promptType === "chooseAction"
                       ? (currentPrompt?.tappableLandIds ?? [])
@@ -1280,7 +1314,18 @@ export default function Game() {
                       ? (card) => untapLand(card.id)
                       : undefined
                   }
+                  bottomReserved={130}
+                  isDropActive={isOverBattlefield}
                 />
+                {/* Hand — centered overlay at the bottom of the battlefield */}
+                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
+                  <HandDisplay
+                    cards={gameView.myHand}
+                    onPlayCard={handlePlayCard}
+                    onHoverCard={handleHoverCard}
+                    onStartDrag={startHandCardDrag}
+                  />
+                </div>
               </div>
             </div>
 
@@ -1299,13 +1344,6 @@ export default function Game() {
                 </Button>
               </div>
             )}
-
-            {/* Hand */}
-            <HandDisplay
-              cards={gameView.myHand}
-              onPlayCard={handlePlayCard}
-              onHoverCard={handleHoverCard}
-            />
 
             {/* My player panel + actions */}
             <div className="flex items-center gap-2 shrink-0 flex-wrap">
@@ -1481,6 +1519,21 @@ export default function Game() {
                 className="w-[240px] h-[336px]"
               />
             </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ── Ghost card while dragging from hand ───────────── */}
+      {draggingHandCard &&
+        createPortal(
+          <div
+            className="fixed pointer-events-none z-[9999]"
+            style={{ left: ghostPos.x - 35, top: ghostPos.y - 49 }}
+          >
+            <Card
+              card={draggingHandCard}
+              className="w-[70px] h-[98px] opacity-70 shadow-2xl ring-2 ring-primary"
+            />
           </div>,
           document.body,
         )}
