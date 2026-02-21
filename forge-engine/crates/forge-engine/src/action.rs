@@ -3,6 +3,8 @@ use forge_foundation::ZoneType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::layer::apply_etb_tapped;
+use crate::replacement::ReplacementResult;
+use crate::replacement_handler::{apply_replacements, ReplacementEvent};
 
 /// Game state mutation methods — moving cards, dealing damage, state-based actions.
 impl GameState {
@@ -84,16 +86,44 @@ impl GameState {
     }
 
     /// Deal damage to a card (creature).
+    ///
+    /// Runs replacement effects (e.g. damage prevention) before applying.
+    /// Mirrors Java `GameAction.addDamage()` calling `ReplacementHandler.run()`.
     pub fn deal_damage_to_card(&mut self, target: CardId, amount: i32) {
-        if amount > 0 {
-            self.cards[target.index()].damage += amount;
+        if amount <= 0 {
+            return;
+        }
+        let mut event = ReplacementEvent::DamageToCard {
+            target,
+            amount,
+            source: None,
+        };
+        apply_replacements(self, &mut event);
+        if let ReplacementEvent::DamageToCard { amount: final_amount, .. } = event {
+            if final_amount > 0 {
+                self.cards[target.index()].damage += final_amount;
+            }
         }
     }
 
     /// Deal damage to a player.
+    ///
+    /// Runs replacement effects (e.g. damage prevention) before applying.
+    /// Mirrors Java `GameAction.addDamage()` calling `ReplacementHandler.run()`.
     pub fn deal_damage_to_player(&mut self, target: PlayerId, amount: i32) {
-        if amount > 0 {
-            self.players[target.index()].deal_damage(amount);
+        if amount <= 0 {
+            return;
+        }
+        let mut event = ReplacementEvent::DamageToPlayer {
+            target,
+            amount,
+            source: None,
+        };
+        apply_replacements(self, &mut event);
+        if let ReplacementEvent::DamageToPlayer { amount: final_amount, .. } = event {
+            if final_amount > 0 {
+                self.players[target.index()].deal_damage(final_amount);
+            }
         }
     }
 
@@ -143,8 +173,31 @@ impl GameState {
                     || (card.damage > 0 && card.has_deathtouch_damage);
                 if should_die {
                     let owner = card.owner;
-                    self.move_card(cid, ZoneType::Graveyard, owner);
-                    any_changes = true;
+                    // Run Destroy replacement effects (e.g. indestructible).
+                    // Mirrors Java GameAction.destroy() → ReplacementHandler.run(Destroy, …).
+                    let mut destroy_event = ReplacementEvent::Destroy { target: cid };
+                    let result = apply_replacements(self, &mut destroy_event);
+                    if result != ReplacementResult::Replaced {
+                        // No replacement blocked destruction — run Moved check in case
+                        // a zone-rerouting effect applies (e.g. "exile instead of die").
+                        let mut moved_event = ReplacementEvent::Moved {
+                            card: cid,
+                            origin: ZoneType::Battlefield,
+                            destination: ZoneType::Graveyard,
+                        };
+                        apply_replacements(self, &mut moved_event);
+                        let final_dest =
+                            if let ReplacementEvent::Moved { destination, .. } = moved_event {
+                                destination
+                            } else {
+                                ZoneType::Graveyard
+                            };
+                        self.move_card(cid, final_dest, owner);
+                        any_changes = true;
+                    } else {
+                        // Indestructible — destruction was replaced; creature stays.
+                        // Damage is still marked but the creature does not die.
+                    }
                 }
             }
         }
@@ -171,8 +224,21 @@ impl GameState {
         }
     }
 
-    /// Draw a card for a player. Returns the drawn card ID, or None if library empty.
+    /// Draw a card for a player. Returns the drawn card ID, or None if the draw
+    /// was skipped or the library is empty.
+    ///
+    /// Runs Draw replacement effects before drawing.  If the draw is replaced
+    /// (e.g. "skip your draw step"), returns `None`.
+    ///
+    /// Mirrors Java `GameAction.draw()` calling `ReplacementHandler.run(Draw, …)`.
     pub fn draw_card(&mut self, player: PlayerId) -> Option<CardId> {
+        // Run Draw replacement effects.
+        let mut event = ReplacementEvent::Draw { player };
+        let result = apply_replacements(self, &mut event);
+        if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+            return None;
+        }
+
         let card_id = self.zone_mut(ZoneType::Library, player).take_top()?;
         self.move_card(card_id, ZoneType::Hand, player);
         self.player_mut(player).drawn_this_turn += 1;

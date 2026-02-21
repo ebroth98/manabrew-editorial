@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::activated_ability::{parse_activated_ability, ActivatedAbility};
 use crate::ids::{CardId, PlayerId};
+use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::static_ability::{parse_static_ability, StaticAbility};
 use crate::trigger::Trigger;
 
@@ -98,6 +99,10 @@ pub struct CardInstance {
     pub is_commander: bool,
     /// How many times this commander has been cast from the command zone (for tax).
     pub commander_cast_count: u32,
+
+    // Replacement effects — parsed from R$ lines in card abilities.
+    // Mirrors Java `Card.getReplacementEffects()`.
+    pub replacement_effects: Vec<ReplacementEffect>,
 }
 
 impl CardInstance {
@@ -113,11 +118,18 @@ impl CardInstance {
         keywords: Vec<String>,
         abilities: Vec<String>,
     ) -> Self {
-        // Parse activated abilities from AB$ lines.
+        // Parse activated abilities from raw ability strings.
         let activated_abilities: Vec<ActivatedAbility> = abilities
             .iter()
             .enumerate()
             .filter_map(|(i, raw)| parse_activated_ability(raw, i))
+            .collect();
+
+        // Parse replacement effects from R$ lines in card abilities.
+        // Mirrors Java Card constructor calling ReplacementHandler registration.
+        let replacement_effects: Vec<ReplacementEffect> = abilities
+            .iter()
+            .filter_map(|raw| parse_replacement_effect(raw))
             .collect();
 
         // Parse static abilities from S$ lines.
@@ -164,6 +176,7 @@ impl CardInstance {
             svars: BTreeMap::new(),
             is_commander: false,
             commander_cast_count: 0,
+            replacement_effects,
         }
     }
 

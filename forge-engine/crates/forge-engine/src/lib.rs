@@ -16,4 +16,6 @@ pub mod cost;
 pub mod activated_ability;
 pub mod static_ability;
 pub mod layer;
+pub mod replacement;
+pub mod replacement_handler;
 pub mod game_loop;

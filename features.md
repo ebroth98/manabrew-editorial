@@ -541,24 +541,24 @@
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `ReplacementHandler.java` | Central replacement effect dispatcher | Not implemented |
-| `ReplacementEffect.java` | Base replacement effect class | Not implemented |
-| `ReplacementType.java` | Enum of all replacement types | Not implemented |
-| `ReplacementResult.java` | Replacement processing result | Not implemented |
-| `ReplacementLayer.java` | Replacement effect ordering layers | Not implemented |
+| `ReplacementHandler.java` | Central replacement effect dispatcher | **Implemented** (`replacement_handler.rs` — `apply_replacements`, CR 616 layer loop, `ReplacementEvent` enum) |
+| `ReplacementEffect.java` | Base replacement effect class | **Implemented** (`replacement.rs` — `ReplacementEffect` struct, `can_replace_*`, `active_in_zone`, R$ parser) |
+| `ReplacementType.java` | Enum of all replacement types | **Partial** (`replacement.rs` — DamageDone, Draw, DrawCards, Destroy, Moved, GainLife, AddCounter, GameLoss; 35 others as `Other`) |
+| `ReplacementResult.java` | Replacement processing result | **Implemented** (`replacement.rs` — Replaced, NotReplaced, Prevented, Updated, Skipped) |
+| `ReplacementLayer.java` | Replacement effect ordering layers | **Implemented** (`replacement.rs` — CantHappen, Control, Copy, Transform, Other) |
 | `ReplacementEffectView.java` | Replacement effect UI view | Not implemented |
-| `ReplaceDamage.java` | Replace damage events | Not implemented |
+| `ReplaceDamage.java` | Replace damage events | **Partial** (`replacement_handler.rs` — Prevent$ True zeroes damage; no amount operators, no redirection) |
 | `ReplaceDealtDamage.java` | Replace damage-dealt events | Not implemented |
 | `ReplaceAssignDealDamage.java` | Replace damage assignment | Not implemented |
-| `ReplaceDraw.java` | Replace single draw | Not implemented |
+| `ReplaceDraw.java` | Replace single draw | **Partial** (`replacement_handler.rs` — Skipped/Replaced result; no draw-into replacement) |
 | `ReplaceDrawCards.java` | Replace multiple draws | Not implemented |
 | `ReplaceGainLife.java` | Replace life gain | Not implemented |
 | `ReplaceLifeReduced.java` | Replace life reduction | Not implemented |
 | `ReplacePayLife.java` | Replace life payment | Not implemented |
 | `ReplaceGameLoss.java` | Replace game loss | Not implemented |
 | `ReplaceGameWin.java` | Replace game win | Not implemented |
-| `ReplaceDestroy.java` | Replace destroy events | Not implemented |
-| `ReplaceMoved.java` | Replace zone change events | Not implemented |
+| `ReplaceDestroy.java` | Replace destroy events | **Partial** (`replacement_handler.rs` — Replaced blocks SBA destruction; no regeneration shield) |
+| `ReplaceMoved.java` | Replace zone change events | **Partial** (`replacement_handler.rs` — NewDestination$ reroutes zone; Destination$/Origin$/ValidCard$ filters; no LKI/ETB handling) |
 | `ReplaceCounter.java` | Replace counter spell | Not implemented |
 | `ReplaceAddCounter.java` | Replace counter addition | Not implemented |
 | `ReplaceRemoveCounter.java` | Replace counter removal | Not implemented |
@@ -915,13 +915,13 @@
 | Phases | 7 | 1 | 3 | 3 |
 | Player | 17 | 1 | 2 | 14 |
 | Player Actions | 10 | 1 | 3 | 6 |
-| Replacement Effects | 46 | 0 | 0 | 46 |
+| Replacement Effects | 46 | 4 | 4 | 38 |
 | Spell Abilities | 25 | 1 | 2 | 22 |
 | Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 4 | 1 | 135 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **22** | **51** | **696** |
+| **TOTAL** | **769** | **26** | **55** | **688** |
 
-> **Coverage: ~9.5% implemented or partially implemented** (73 of 769 features have some Rust counterpart)
+> **Coverage: ~10.5% implemented or partially implemented** (81 of 769 features have some Rust counterpart)
 >
-> The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (46 files), **trigger types** (135 files), and **costs** (58 files).
+> The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (135 files), and **costs** (58 files).
