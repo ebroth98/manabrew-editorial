@@ -13,6 +13,7 @@
 use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
+use forge_foundation::ColorSet;
 
 use crate::card::CardInstance;
 
@@ -130,6 +131,7 @@ impl StaticAbility {
 ///
 /// Examples:
 /// - `"Creature.YouControl"` — creatures you control
+/// - `"Creature.White+YouCtrl"` — white creatures you control (Honor of the Pure)
 /// - `"Creature.Other+YouControl"` — creatures you control other than this card
 /// - `"Creature.Goblin+YouControl"` — Goblins you control
 /// - `"Permanent.YouControl"` — all permanents you control
@@ -147,6 +149,11 @@ pub struct CardFilter {
     pub nonland_only: bool,
     /// Only match land permanents.
     pub land_only: bool,
+    /// Only match cards that include this color (e.g. White for Honor of the Pure).
+    /// `None` means no color restriction.
+    pub required_color: Option<ColorSet>,
+    /// Only match colorless cards (`Colorless` qualifier).
+    pub colorless_only: bool,
 }
 
 impl CardFilter {
@@ -177,6 +184,13 @@ impl CardFilter {
             "Land" => f.land_only = true,
             "YouControl" | "YouCtrl" => f.controller_only = true,
             "Other" => f.other_only = true,
+            // Color qualifiers (e.g. "Creature.White+YouCtrl" for Honor of the Pure).
+            "White"     => f.required_color = Some(ColorSet::WHITE),
+            "Blue"      => f.required_color = Some(ColorSet::BLUE),
+            "Black"     => f.required_color = Some(ColorSet::BLACK),
+            "Red"       => f.required_color = Some(ColorSet::RED),
+            "Green"     => f.required_color = Some(ColorSet::GREEN),
+            "Colorless" => f.colorless_only = true,
             s => {
                 // Unknown tokens are treated as subtype filters (e.g. "Goblin").
                 if f.subtype.is_none() {
@@ -207,6 +221,14 @@ impl CardFilter {
             return false;
         }
         if self.land_only && !card.is_land() {
+            return false;
+        }
+        if let Some(required) = self.required_color {
+            if !card.color.shares_color_with(required) {
+                return false;
+            }
+        }
+        if self.colorless_only && !card.color.is_colorless() {
             return false;
         }
         true
@@ -435,5 +457,66 @@ mod tests {
         let f = CardFilter::parse("Creature.Goblin+YouControl");
         assert!(f.matches(&goblin, &source));
         assert!(!f.matches(&bear, &source));
+    }
+
+    // ── Color filter tests ───────────────────────────────────────────────
+
+    fn make_white_creature(id: u32, owner: u32) -> CardInstance {
+        CardInstance::new(
+            CardId(id),
+            "White Knight".to_string(),
+            PlayerId(owner),
+            CardTypeLine::parse("Creature - Human Knight"),
+            ManaCost::parse("W W"),
+            ColorSet::WHITE,
+            Some(2),
+            Some(2),
+            vec![],
+            vec![],
+        )
+    }
+
+    #[test]
+    fn filter_color_white_parses() {
+        let f = CardFilter::parse("Creature.White+YouCtrl");
+        assert!(f.creatures_only);
+        assert!(f.controller_only);
+        assert_eq!(f.required_color, Some(ColorSet::WHITE));
+        assert!(f.subtype.is_none(), "White should not be treated as a subtype");
+    }
+
+    #[test]
+    fn filter_honor_of_the_pure_matches_white_creature() {
+        // Simulate Honor of the Pure: "Creature.White+YouCtrl"
+        let source = make_white_creature(0, 0); // Honor of the Pure controlled by player 0
+        let white_ally = make_white_creature(1, 0);
+        let green_ally = make_creature(2, 0, &[]); // green creature, same controller
+        let white_opponent = make_white_creature(3, 1); // white but opponent controls it
+        let mut white_opponent = white_opponent;
+        white_opponent.controller = PlayerId(1);
+
+        let f = CardFilter::parse("Creature.White+YouCtrl");
+        assert!(f.matches(&white_ally, &source), "white ally should match");
+        assert!(!f.matches(&green_ally, &source), "green creature should not match");
+        assert!(!f.matches(&white_opponent, &source), "opponent's white creature should not match");
+    }
+
+    #[test]
+    fn filter_color_white_does_not_match_colorless() {
+        let source = make_white_creature(0, 0);
+        let colorless = CardInstance::new(
+            CardId(1),
+            "Darksteel Myr".to_string(),
+            PlayerId(0),
+            CardTypeLine::parse("Artifact Creature - Myr"),
+            ManaCost::parse("3"),
+            ColorSet::COLORLESS,
+            Some(0),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        let f = CardFilter::parse("Creature.White+YouCtrl");
+        assert!(!f.matches(&colorless, &source), "colorless artifact should not be white");
     }
 }
