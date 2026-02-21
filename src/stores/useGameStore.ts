@@ -29,6 +29,14 @@ interface AgentPrompt {
   untappableLandIds?: string[];
   zone?: string;
   zoneCards?: Card[];
+  /** IDs of library cards revealed for scry / surveil / dig */
+  cardIds?: string[];
+  /** Card DTOs for the revealed library cards */
+  cards?: Card[];
+  /** dig: maximum number of cards the player may take */
+  numToTake?: number;
+  /** dig: whether taking 0 cards is allowed */
+  optional?: boolean;
 }
 
 interface GameConfig {
@@ -70,6 +78,9 @@ interface GameState {
   mulliganDecision: (keep: boolean) => void;
   tapLand: (cardId: string) => void;
   untapLand: (cardId: string) => void;
+  scryDecision: (bottomCardIds: string[]) => void;
+  surveilDecision: (graveyardCardIds: string[]) => void;
+  digDecision: (chosenCardIds: string[]) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setupListeners: () => Promise<() => void>;
@@ -211,6 +222,18 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   untapLand: (cardId) => {
     get().respond({ type: 'untapLand', cardId });
+  },
+
+  scryDecision: (bottomCardIds) => {
+    get().respond({ type: 'scryDecision', bottomCardIds });
+  },
+
+  surveilDecision: (graveyardCardIds) => {
+    get().respond({ type: 'surveilDecision', graveyardCardIds });
+  },
+
+  digDecision: (chosenCardIds) => {
+    get().respond({ type: 'digDecision', chosenCardIds });
   },
 
   concede: () => {

@@ -222,23 +222,17 @@ fn choose_targets_for(
         TargetKind::Player => {
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            let opponents: Vec<PlayerId> = game
-                .alive_players()
-                .into_iter()
-                .filter(|&p| p != player)
-                .collect();
-            sa.target_chosen.target_player = agent.choose_target_player(player, &opponents);
+            // "target player" means any player — including the caster themselves.
+            let valid_players: Vec<PlayerId> = game.alive_players().into_iter().collect();
+            sa.target_chosen.target_player = agent.choose_target_player(player, &valid_players);
         }
         TargetKind::Any => {
-            let opponents: Vec<PlayerId> = game
-                .alive_players()
-                .into_iter()
-                .filter(|&p| p != player)
-                .collect();
+            // "any target" includes all alive players (the caster too) and all creatures.
+            let valid_players: Vec<PlayerId> = game.alive_players().into_iter().collect();
             let valid_creatures = target_restrictions::get_all_candidates_creatures(game);
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            match agent.choose_target_any(player, &opponents, &valid_creatures) {
+            match agent.choose_target_any(player, &valid_players, &valid_creatures) {
                 TargetChoice::Player(pid) => sa.target_chosen.target_player = Some(pid),
                 TargetChoice::Card(cid) => sa.target_chosen.target_card = Some(cid),
                 TargetChoice::None => {}
