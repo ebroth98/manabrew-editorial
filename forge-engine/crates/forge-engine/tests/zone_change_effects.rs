@@ -1,0 +1,617 @@
+/// Integration tests for Zone Change Effects (Issue #13):
+/// ChangeZone, ChangeZoneAll, Sacrifice, SacrificeAll
+
+use forge_engine_core::agent::{PassAgent, PlayerAgent};
+use forge_engine_core::card::CardInstance;
+use forge_engine_core::game::GameState;
+use forge_engine_core::game_loop::GameLoop;
+use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::stack::StackEntry;
+use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+
+// ── Card constructors ────────────────────────────────────────────────
+
+fn make_grizzly_bears(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Grizzly Bears".to_string(),
+        owner,
+        CardTypeLine::parse("Creature - Bear"),
+        ManaCost::parse("1 G"),
+        ColorSet::GREEN,
+        Some(2),
+        Some(2),
+        vec![],
+        vec![],
+    )
+}
+
+fn make_forest(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Forest".to_string(),
+        owner,
+        CardTypeLine::parse("Basic Land - Forest"),
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
+}
+
+fn make_mountain(owner: PlayerId) -> CardInstance {
+    CardInstance::new(
+        CardId(0),
+        "Mountain".to_string(),
+        owner,
+        CardTypeLine::parse("Basic Land - Mountain"),
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
+}
+
+/// Build a minimal 2-agent PassAgent slice for tests that don't care about choices.
+fn pass_agents() -> Vec<Box<dyn PlayerAgent>> {
+    vec![Box::new(PassAgent), Box::new(PassAgent)]
+}
+
+/// Push a fake non-permanent spell entry for testing effect resolution.
+fn push_effect_entry(
+    game: &mut GameState,
+    controller: PlayerId,
+    ability_text: &str,
+    target_card: Option<CardId>,
+    target_player: Option<PlayerId>,
+    source: Option<CardId>,
+) {
+    let entry = StackEntry {
+        id: 0,
+        source,
+        controller,
+        ability_text: ability_text.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player,
+        target_card,
+        is_triggered_ability: false,
+        is_activated_ability: false,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+}
+
+// ── Test 1: Bounce to Hand (Battlefield → Hand) ──────────────────────
+
+/// ChangeZone Battlefield→Hand on a targeted creature (bounce effect like Unsummon).
+#[test]
+fn test_bounce_to_hand() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put a creature on Bob's battlefield
+    let bears = game.create_card(make_grizzly_bears(p1));
+    game.move_card(bears, ZoneType::Battlefield, p1);
+
+    // Alice casts an Unsummon-like effect targeting Bob's creature
+    let ability = "SP$ ChangeZone | Origin$ Battlefield | Destination$ Hand | ValidTgts$ Creature";
+    push_effect_entry(&mut game, p0, ability, Some(bears), None, None);
+
+    // Create a fake source card for the effect (not important, just needs to exist)
+    // Actually, the effect resolves the stack and moves to graveyard, but there's no source card.
+    // We need to wrap this as a triggered/activated ability so it doesn't try to move a card
+    // from source. Let's use an activated ability entry instead.
+    // Clear the stack and use is_activated_ability = true
+    game.stack.pop();
+
+    let entry = StackEntry {
+        id: 0,
+        source: None,
+        controller: p0,
+        ability_text: ability.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: Some(bears),
+        is_triggered_ability: false,
+        is_activated_ability: true,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    // Creature should now be in Bob's hand
+    assert_eq!(
+        game.card(bears).zone,
+        ZoneType::Hand,
+        "Bounced creature should be in Bob's hand"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p1).len(),
+        0,
+        "Bob's battlefield should be empty"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Hand, p1).len(),
+        1,
+        "Bob should have 1 card in hand (bounced creature)"
+    );
+}
+
+// ── Test 2: Exile Permanent (Battlefield → Exile) ────────────────────
+
+/// ChangeZone Battlefield→Exile on a targeted creature (Swords to Plowshares style).
+#[test]
+fn test_exile_permanent() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put a creature on Bob's battlefield
+    let bears = game.create_card(make_grizzly_bears(p1));
+    game.move_card(bears, ZoneType::Battlefield, p1);
+
+    let ability = "SP$ ChangeZone | Origin$ Battlefield | Destination$ Exile";
+    let entry = StackEntry {
+        id: 0,
+        source: None,
+        controller: p0,
+        ability_text: ability.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: Some(bears),
+        is_triggered_ability: false,
+        is_activated_ability: true,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    assert_eq!(
+        game.card(bears).zone,
+        ZoneType::Exile,
+        "Exiled creature should be in Exile zone"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p1).len(),
+        0,
+        "Bob's battlefield should be empty"
+    );
+}
+
+// ── Test 3: Reanimate (Graveyard → Battlefield) ──────────────────────
+
+/// ChangeZone Graveyard→Battlefield on a creature in the graveyard (Animate Dead style).
+#[test]
+fn test_reanimate() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put a creature in Bob's graveyard
+    let bears = game.create_card(make_grizzly_bears(p1));
+    game.move_card(bears, ZoneType::Graveyard, p1);
+
+    // Alice reanimates it onto the battlefield
+    let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Battlefield";
+    let entry = StackEntry {
+        id: 0,
+        source: None,
+        controller: p0,
+        ability_text: ability.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: Some(bears),
+        is_triggered_ability: false,
+        is_activated_ability: true,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    // The reanimated creature should be on Alice's battlefield (controller = Alice)
+    assert_eq!(
+        game.card(bears).zone,
+        ZoneType::Battlefield,
+        "Reanimated creature should be on the battlefield"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Graveyard, p1).len(),
+        0,
+        "Bob's graveyard should be empty after reanimation"
+    );
+    // It comes under Alice's (p0) control
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p0).len(),
+        1,
+        "The reanimated creature should be on Alice's battlefield (she controls it)"
+    );
+}
+
+// ── Test 4: Raise Dead (Graveyard → Hand) ────────────────────────────
+
+/// ChangeZone Graveyard→Hand on a creature in the graveyard (Raise Dead style).
+#[test]
+fn test_raise_dead() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let _p1 = PlayerId(1);
+
+    // Put a creature in Alice's graveyard
+    let bears = game.create_card(make_grizzly_bears(p0));
+    game.move_card(bears, ZoneType::Graveyard, p0);
+
+    // Alice casts Raise Dead targeting her own creature
+    let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Hand";
+    let entry = StackEntry {
+        id: 0,
+        source: None,
+        controller: p0,
+        ability_text: ability.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: Some(bears),
+        is_triggered_ability: false,
+        is_activated_ability: true,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    assert_eq!(
+        game.card(bears).zone,
+        ZoneType::Hand,
+        "Raised creature should be in hand"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Graveyard, p0).len(),
+        0,
+        "Alice's graveyard should be empty"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Hand, p0).len(),
+        1,
+        "Alice should have 1 card in hand"
+    );
+}
+
+// ── Test 5: ChangeZoneAll Board Wipe (Battlefield → Exile) ───────────
+
+/// ChangeZoneAll Battlefield→Exile moves all creatures off the battlefield.
+#[test]
+fn test_change_zone_all_board_wipe() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put creatures on both battlefields
+    let alice_bears = game.create_card(make_grizzly_bears(p0));
+    game.move_card(alice_bears, ZoneType::Battlefield, p0);
+
+    let bob_bears = game.create_card(make_grizzly_bears(p1));
+    game.move_card(bob_bears, ZoneType::Battlefield, p1);
+
+    // Also put a land on Alice's battlefield — it should NOT be exiled
+    let alice_forest = game.create_card(make_forest(p0));
+    game.move_card(alice_forest, ZoneType::Battlefield, p0);
+
+    // Exile all creatures (Cataclysm-style)
+    let ability = "SP$ ChangeZoneAll | Origin$ Battlefield | Destination$ Exile | ValidCards$ Creature";
+    let entry = StackEntry {
+        id: 0,
+        source: None,
+        controller: p0,
+        ability_text: ability.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: None,
+        is_triggered_ability: false,
+        is_activated_ability: true,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    // Both creatures should be exiled
+    assert_eq!(
+        game.card(alice_bears).zone,
+        ZoneType::Exile,
+        "Alice's creature should be in Exile"
+    );
+    assert_eq!(
+        game.card(bob_bears).zone,
+        ZoneType::Exile,
+        "Bob's creature should be in Exile"
+    );
+    // Land should remain on battlefield
+    assert_eq!(
+        game.card(alice_forest).zone,
+        ZoneType::Battlefield,
+        "Land should remain on the battlefield"
+    );
+    // Both players' battlefields should only have land (Alice has 1, Bob has 0)
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p0).len(),
+        1,
+        "Alice's battlefield should have only the land"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p1).len(),
+        0,
+        "Bob's battlefield should be empty"
+    );
+}
+
+// ── Test 6: Sacrifice Self (SacValid$ Self) ───────────────────────────
+
+/// Sacrifice with SacValid$=Self sacrifices the source card.
+#[test]
+fn test_sacrifice_self() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let _p1 = PlayerId(1);
+
+    // Put a creature on Alice's battlefield as the source of the ability
+    let bears = game.create_card(make_grizzly_bears(p0));
+    game.move_card(bears, ZoneType::Battlefield, p0);
+
+    // The creature sacrifices itself (like a Loxodon Warhammer echo)
+    let ability = "SP$ Sacrifice | SacValid$ Self";
+    let entry = StackEntry {
+        id: 0,
+        source: Some(bears), // the source card is the creature that sacrifices
+        controller: p0,
+        ability_text: ability.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: None,
+        is_triggered_ability: false,
+        is_activated_ability: true,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    assert_eq!(
+        game.card(bears).zone,
+        ZoneType::Graveyard,
+        "Self-sacrificed creature should be in graveyard"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p0).len(),
+        0,
+        "Alice's battlefield should be empty"
+    );
+}
+
+// ── Test 7: SacrificeAll Creatures ────────────────────────────────────
+
+/// SacrificeAll moves all creatures from battlefield to graveyard.
+#[test]
+fn test_sacrifice_all_creatures() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Put creatures on both battlefields
+    let alice_bears = game.create_card(make_grizzly_bears(p0));
+    game.move_card(alice_bears, ZoneType::Battlefield, p0);
+
+    let bob_bears = game.create_card(make_grizzly_bears(p1));
+    game.move_card(bob_bears, ZoneType::Battlefield, p1);
+
+    // Put a land on Alice's battlefield — it should survive
+    let alice_forest = game.create_card(make_forest(p0));
+    game.move_card(alice_forest, ZoneType::Battlefield, p0);
+
+    // Sacrifice all creatures (Overwhelming Splendor style)
+    let ability = "SP$ SacrificeAll | ValidCards$ Creature";
+    let entry = StackEntry {
+        id: 0,
+        source: None,
+        controller: p0,
+        ability_text: ability.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: None,
+        is_triggered_ability: false,
+        is_activated_ability: true,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    // Both creatures should be in their owners' graveyards
+    assert_eq!(
+        game.card(alice_bears).zone,
+        ZoneType::Graveyard,
+        "Alice's creature should be in graveyard"
+    );
+    assert_eq!(
+        game.card(bob_bears).zone,
+        ZoneType::Graveyard,
+        "Bob's creature should be in graveyard"
+    );
+    // Land survives
+    assert_eq!(
+        game.card(alice_forest).zone,
+        ZoneType::Battlefield,
+        "Land should still be on battlefield"
+    );
+    // Graveyard counts
+    assert_eq!(
+        game.zone(ZoneType::Graveyard, p0).len(),
+        1,
+        "Alice's graveyard should have 1 card"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Graveyard, p1).len(),
+        1,
+        "Bob's graveyard should have 1 card"
+    );
+}
+
+// ── Test 8: Sacrifice Defined$ Player — each player sacrifices ────────
+
+/// Sacrifice with Defined$ Player (Innocent Blood) makes BOTH players sacrifice a creature.
+#[test]
+fn test_sacrifice_each_player() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Both players have a creature on the battlefield
+    let alice_bears = game.create_card(make_grizzly_bears(p0));
+    game.move_card(alice_bears, ZoneType::Battlefield, p0);
+
+    let bob_bears = game.create_card(make_grizzly_bears(p1));
+    game.move_card(bob_bears, ZoneType::Battlefield, p1);
+
+    // Innocent Blood: each player sacrifices a creature
+    let ability = "SP$ Sacrifice | SacValid$ Creature | Defined$ Player";
+    let entry = StackEntry {
+        id: 0,
+        source: None,
+        controller: p0,
+        ability_text: ability.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: None,
+        is_triggered_ability: false,
+        is_activated_ability: true,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    // Both creatures must have been sacrificed
+    assert_eq!(
+        game.card(alice_bears).zone,
+        ZoneType::Graveyard,
+        "Alice's creature should be sacrificed (Defined$ Player affects each player)"
+    );
+    assert_eq!(
+        game.card(bob_bears).zone,
+        ZoneType::Graveyard,
+        "Bob's creature should be sacrificed (Defined$ Player affects each player)"
+    );
+    assert_eq!(game.zone(ZoneType::Battlefield, p0).len(), 0, "Alice's battlefield should be empty");
+    assert_eq!(game.zone(ZoneType::Battlefield, p1).len(), 0, "Bob's battlefield should be empty");
+}
+
+// ── Test 9: Tuck to Library Bottom (LibraryPosition$ -1) ─────────────
+
+/// ChangeZone Battlefield→Library with LibraryPosition$=-1 places the card at the bottom.
+#[test]
+fn test_tuck_to_library_bottom() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
+
+    // Give Alice some cards in her library first
+    let library_card1 = game.create_card(make_mountain(p0));
+    game.move_card(library_card1, ZoneType::Library, p0);
+    let library_card2 = game.create_card(make_forest(p0));
+    game.move_card(library_card2, ZoneType::Library, p0);
+
+    // Put a creature on Bob's battlefield that will get tucked
+    let bears = game.create_card(make_grizzly_bears(p1));
+    game.move_card(bears, ZoneType::Battlefield, p1);
+
+    // Alice casts Condemn on Bob's attacking creature — puts it on bottom of its owner's library
+    let ability = "SP$ ChangeZone | Origin$ Battlefield | Destination$ Library | LibraryPosition$ -1";
+    let entry = StackEntry {
+        id: 0,
+        source: None,
+        controller: p0,
+        ability_text: ability.to_string(),
+        is_creature_spell: false,
+        is_permanent_spell: false,
+        target_player: None,
+        target_card: Some(bears),
+        is_triggered_ability: false,
+        is_activated_ability: true,
+        trigger_source: None,
+        trigger_index: None,
+    };
+    game.stack.push(entry);
+
+    let mut agents = pass_agents();
+    let mut game_loop = GameLoop::new(2);
+    game_loop.resolve_stack(&mut game, &mut agents);
+
+    // Creature should be in Bob's library (its owner)
+    assert_eq!(
+        game.card(bears).zone,
+        ZoneType::Library,
+        "Tucked creature should be in Bob's library"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p1).len(),
+        0,
+        "Bob's battlefield should be empty"
+    );
+
+    // The tucked card should be at the bottom (index 0 in our internal representation)
+    // Bob's library only has the bears card
+    let bob_library = &game.zone(ZoneType::Library, p1).cards;
+    assert_eq!(bob_library.len(), 1, "Bob's library should have 1 card");
+    assert_eq!(
+        bob_library[0],
+        bears,
+        "Tucked creature should be at bottom of Bob's library (index 0)"
+    );
+
+    // Alice's library should be untouched
+    assert_eq!(
+        game.zone(ZoneType::Library, p0).len(),
+        2,
+        "Alice's library should still have 2 cards"
+    );
+}

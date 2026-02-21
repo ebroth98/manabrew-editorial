@@ -76,6 +76,12 @@ pub trait PlayerAgent {
         valid_cards: &[CardId],
     ) -> TargetChoice;
 
+    /// Choose one permanent to sacrifice from the valid options.
+    /// Default picks the first (used by AI agents).
+    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        valid.first().copied()
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;
@@ -150,6 +156,10 @@ impl PlayerAgent for PassAgent {
         } else {
             TargetChoice::None
         }
+    }
+
+    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        valid.first().copied()
     }
 
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {

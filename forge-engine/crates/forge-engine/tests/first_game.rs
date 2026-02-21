@@ -233,7 +233,7 @@ fn lightning_bolt_deals_3_damage() {
     game_loop.step_main_phase(&mut game, &mut agents);
 
     // Resolve stack
-    game_loop.resolve_stack(&mut game);
+    game_loop.resolve_stack(&mut game, &mut agents);
     game.check_state_based_actions();
 
     // Verify: Bob should be at 17 life
@@ -320,7 +320,7 @@ fn grizzly_bears_attacks() {
     // Main Phase 1
     game.turn.phase = forge_foundation::PhaseType::Main1;
     game_loop.step_main_phase(&mut game, &mut agents);
-    game_loop.resolve_stack(&mut game);
+    game_loop.resolve_stack(&mut game, &mut agents);
 
     assert_eq!(
         game.zone(ZoneType::Battlefield, p0).len(),
@@ -642,7 +642,11 @@ fn mulldrifter_etb_draws_two_cards() {
     game.stack.push(entry);
 
     // Resolve stack — should move to battlefield and trigger ETB
-    game_loop.resolve_stack(&mut game);
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+        Box::new(forge_engine_core::agent::PassAgent),
+        Box::new(forge_engine_core::agent::PassAgent),
+    ];
+    game_loop.resolve_stack(&mut game, &mut agents);
 
     // Mulldrifter should be on battlefield
     assert_eq!(game.card(mulldrifter).zone, ZoneType::Battlefield,
@@ -689,7 +693,11 @@ fn soul_warden_gains_life_on_other_creature_etb() {
         trigger_index: None,
     };
     game.stack.push(entry);
-    game_loop.resolve_stack(&mut game);
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+        Box::new(forge_engine_core::agent::PassAgent),
+        Box::new(forge_engine_core::agent::PassAgent),
+    ];
+    game_loop.resolve_stack(&mut game, &mut agents);
 
     // Alice should have gained 1 life (Soul Warden triggered on bears entering)
     assert_eq!(game.player(p0).life, 21,
@@ -723,7 +731,11 @@ fn soul_warden_does_not_trigger_on_self_etb() {
         trigger_index: None,
     };
     game.stack.push(entry);
-    game_loop.resolve_stack(&mut game);
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+        Box::new(forge_engine_core::agent::PassAgent),
+        Box::new(forge_engine_core::agent::PassAgent),
+    ];
+    game_loop.resolve_stack(&mut game, &mut agents);
 
     // Life should still be 20 — Soul Warden should NOT trigger on itself
     assert_eq!(game.player(p0).life, 20,

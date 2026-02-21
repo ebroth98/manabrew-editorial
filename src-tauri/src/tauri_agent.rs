@@ -282,6 +282,29 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
+    fn choose_sacrifice(&mut self, player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        // Non-human players: just pick the first valid card (AI behavior)
+        if player != self.human_player {
+            return valid.first().copied();
+        }
+        // Human player: reuse the ChooseTargetCard prompt so the frontend can pick
+        let valid_card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+        let mut view = self.view();
+        for card in &mut view.battlefield {
+            card.is_choosable = valid_card_ids.contains(&card.id);
+        }
+        self.send_prompt(AgentPromptInner::ChooseTargetCard {
+            game_view: view,
+            valid_card_ids,
+        });
+        match self.recv_action() {
+            PlayerAction::TargetCard { card_id } => {
+                card_id.and_then(|id| Self::parse_card_id(&id))
+            }
+            _ => valid.first().copied(),
+        }
+    }
+
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
         None
     }

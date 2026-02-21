@@ -119,8 +119,8 @@
 | `BidLifeEffect.java` | Bid life (auction mechanic) | Not implemented |
 | `BlockEffect.java` | Force/modify blocking | Not implemented |
 | `BranchEffect.java` | Conditional branching in ability chains | Not implemented |
-| `ChangeZoneEffect.java` | Move card(s) to another zone | **Partial** (`action.rs` move_card) |
-| `ChangeZoneAllEffect.java` | Move all matching cards to a zone | Not implemented |
+| `ChangeZoneEffect.java` | Move card(s) to another zone | **Implemented** (`game_loop.rs` ChangeZone handler: targeted/defined/self, LibraryPosition, Shuffle, Tapped, ChangesZone trigger) |
+| `ChangeZoneAllEffect.java` | Move all matching cards to a zone | **Implemented** (`game_loop.rs` ChangeZoneAll handler: ValidCards filter, multi-player, triggers) |
 | `CharmEffect.java` | Modal "choose N" charm abilities | Not implemented |
 | `ChooseCardEffect.java` | Choose a card from a set | Not implemented |
 | `ChooseCardNameEffect.java` | Name a card | Not implemented |
@@ -183,8 +183,8 @@
 | `RegenerateEffect.java` | Regenerate a permanent | Not implemented |
 | `RevealEffect.java` | Reveal cards | Not implemented |
 | `RollDiceEffect.java` | Roll dice | Not implemented |
-| `SacrificeEffect.java` | Force sacrifice | Not implemented |
-| `SacrificeAllEffect.java` | Force sacrifice of all matching | Not implemented |
+| `SacrificeEffect.java` | Force sacrifice | **Implemented** (`game_loop.rs` Sacrifice handler: SacValid$Self or matching permanents, agent choose_sacrifice for human choice, ChangesZone trigger) |
+| `SacrificeAllEffect.java` | Force sacrifice of all matching | **Implemented** (`game_loop.rs` SacrificeAll handler: ValidCards filter, multi-player, ChangesZone trigger) |
 | `ScryEffect.java` | Scry N | Not implemented |
 | `SetStateEffect.java` | Transform / flip / turn face-up | Not implemented |
 | `ShuffleEffect.java` | Shuffle library | **Partial** (`action.rs` shuffle_library) |
@@ -885,7 +885,7 @@
 | `event.rs` | **Complete** | TriggerType enum (5 types), RunParams (~20 fields) |
 | `trigger.rs` | **Complete** | Trigger matching, ValidCard/ValidPlayer filters, parsing |
 | `trigger_handler.rs` | **Partial** | Active/waiting/delayed triggers, dispatch (some stubs) |
-| `agent.rs` | **Complete** | PlayerAgent trait (13 callbacks), MainPhaseAction, TargetChoice |
+| `agent.rs` | **Complete** | PlayerAgent trait (14 callbacks incl. choose_sacrifice), MainPhaseAction, TargetChoice |
 | `game_loop.rs` | **Partial** | Game flow orchestration (framework, some phases incomplete) |
 
 ### Crate: `forge-cli`
@@ -901,7 +901,7 @@
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
 | Core Game | 37 | 3 | 8 | 26 |
 | Ability System | 10 | 0 | 2 | 8 |
-| Ability Effects | 197 | 0 | 12 | 185 |
+| Ability Effects | 197 | 4 | 11 | 182 |
 | Card System | 28 | 4 | 3 | 21 |
 | Perpetual Effects | 8 | 0 | 0 | 8 |
 | Tokens | 1 | 0 | 0 | 1 |
@@ -920,8 +920,8 @@
 | Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 4 | 1 | 135 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **26** | **55** | **688** |
+| **TOTAL** | **769** | **30** | **54** | **685** |
 
-> **Coverage: ~10.5% implemented or partially implemented** (81 of 769 features have some Rust counterpart)
+> **Coverage: ~10.9% implemented or partially implemented** (84 of 769 features have some Rust counterpart)
 >
 > The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (135 files), and **costs** (58 files).

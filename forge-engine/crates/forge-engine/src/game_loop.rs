@@ -170,7 +170,7 @@ impl GameLoop {
 
         game.turn.phase = PhaseType::Upkeep;
         self.emit_phase_trigger(game, PhaseType::Upkeep);
-        self.process_triggers(game);
+        self.process_triggers(game, agents);
 
         game.turn.phase = PhaseType::Draw;
         self.step_draw(game);
@@ -201,7 +201,7 @@ impl GameLoop {
         // End phase
         game.turn.phase = PhaseType::EndOfTurn;
         self.emit_phase_trigger(game, PhaseType::EndOfTurn);
-        self.process_triggers(game);
+        self.process_triggers(game, agents);
 
         game.turn.phase = PhaseType::Cleanup;
         self.step_cleanup(game);
@@ -241,7 +241,7 @@ impl GameLoop {
             }
 
             // Resolve any pending stack entries first
-            self.resolve_stack(game);
+            self.resolve_stack(game, agents);
             // Recompute continuous effects after resolution (a permanent may
             // have entered or left the battlefield).
             apply_continuous_effects(game);
@@ -835,11 +835,11 @@ impl GameLoop {
     }
 
     /// Resolve the top of the stack.
-    pub fn resolve_stack(&mut self, game: &mut GameState) {
+    pub fn resolve_stack(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         while let Some(entry) = game.stack.pop() {
             if entry.is_triggered_ability || entry.is_activated_ability {
                 // Triggered/activated ability: resolve the effect
-                self.resolve_spell_effect(game, &entry);
+                self.resolve_spell_effect(game, agents, &entry);
                 continue;
             }
 
@@ -865,7 +865,7 @@ impl GameLoop {
                     );
                 } else {
                     // Non-permanent spell: resolve effect, then move to graveyard
-                    self.resolve_spell_effect(game, &entry);
+                    self.resolve_spell_effect(game, agents, &entry);
                     let owner = game.card(card_id).owner;
                     game.move_card(card_id, ZoneType::Graveyard, owner);
                 }
@@ -873,13 +873,13 @@ impl GameLoop {
         }
 
         // Process any triggers that were queued during resolution
-        self.process_triggers(game);
+        self.process_triggers(game, agents);
     }
 
     /// Resolve a spell effect from its ability text.
     /// Handles both SP$ (spell) and DB$ (triggered/sub-ability) formats.
-    fn resolve_spell_effect(&mut self, game: &mut GameState, entry: &StackEntry) {
-        self.resolve_single_effect(game, &entry.ability_text, entry);
+    fn resolve_spell_effect(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>], entry: &StackEntry) {
+        self.resolve_single_effect(game, agents, &entry.ability_text, entry);
 
         // Handle SubAbility$ chain (mirrors Java's getSubAbility() linked list)
         let params = parse_pipe_params(&entry.ability_text);
@@ -901,7 +901,7 @@ impl GameLoop {
                         trigger_source: entry.trigger_source,
                         trigger_index: entry.trigger_index,
                     };
-                    self.resolve_spell_effect(game, &sub_entry);
+                    self.resolve_spell_effect(game, agents, &sub_entry);
                 }
             }
         }
@@ -911,6 +911,7 @@ impl GameLoop {
     fn resolve_single_effect(
         &mut self,
         game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
         ability: &str,
         entry: &StackEntry,
     ) {
@@ -987,56 +988,212 @@ impl GameLoop {
                 .and_then(|d| resolve_defined_player(d, entry.controller, game))
                 .unwrap_or(entry.controller);
             game.draw_cards(target, num as usize);
-        } else if ability.contains("ChangeZone") {
+        } else if ability.contains("ChangeZoneAll") {
             let params = parse_pipe_params(ability);
-            let origin = params.get("Origin").map(|s| s.as_str()).unwrap_or("");
-            let destination = params.get("Destination").map(|s| s.as_str()).unwrap_or("");
-            let tapped = params
-                .get("Tapped")
-                .map(|s| s.eq_ignore_ascii_case("True"))
-                .unwrap_or(false);
-            let change_type = params.get("ChangeType").map(|s| s.as_str()).unwrap_or("");
+            let origin_str = params.get("Origin").map(|s| s.as_str()).unwrap_or("Battlefield");
+            let destination_str = params.get("Destination").map(|s| s.as_str()).unwrap_or("Graveyard");
+            let valid_cards_filter = params.get("ValidCards").map(|s| s.clone()).unwrap_or_else(|| "Card".to_string());
+            let tapped = params.get("Tapped").map(|s| s.eq_ignore_ascii_case("True")).unwrap_or(false);
 
-            if origin == "Library" && destination == "Battlefield" {
-                // Search library for a matching card and put it onto the battlefield
-                let controller = entry.controller;
-                let library = game.cards_in_zone(ZoneType::Library, controller).to_vec();
+            if let (Some(dest_zone), Some(origin_zone)) = (parse_zone_type(destination_str), parse_zone_type(origin_str)) {
+                let player_ids = game.player_order.clone();
+                let mut to_move: Vec<(CardId, PlayerId)> = Vec::new();
 
-                // Find the first matching card in the library
-                let found = library.iter().find(|&&cid| {
-                    let card = game.card(cid);
-                    matches_change_type(card, change_type)
-                }).copied();
-
-                if let Some(card_id) = found {
-                    game.move_card(card_id, ZoneType::Battlefield, controller);
-                    if tapped {
-                        game.tap(card_id);
+                for &pid in &player_ids {
+                    let zone_cards = game.cards_in_zone(origin_zone, pid).to_vec();
+                    for cid in zone_cards {
+                        if matches_change_type(game.card(cid), &valid_cards_filter) {
+                            let dest_owner = if dest_zone == ZoneType::Battlefield {
+                                entry.controller
+                            } else {
+                                game.card(cid).owner
+                            };
+                            to_move.push((cid, dest_owner));
+                        }
                     }
+                }
 
-                    // Register triggers for the new permanent
-                    self.trigger_handler.register_active_trigger(game, card_id);
-
-                    // Emit ChangesZone trigger (ETB)
+                for (card_id, dest_owner) in to_move {
+                    if game.card(card_id).zone != origin_zone {
+                        continue; // already moved
+                    }
+                    let old_zone = game.card(card_id).zone;
+                    game.move_card(card_id, dest_zone, dest_owner);
+                    if dest_zone == ZoneType::Battlefield {
+                        if tapped { game.tap(card_id); }
+                        self.trigger_handler.register_active_trigger(game, card_id);
+                    }
                     self.trigger_handler.run_trigger(
                         TriggerType::ChangesZone,
                         RunParams {
                             card: Some(card_id),
-                            origin: Some(ZoneType::Library),
-                            destination: Some(ZoneType::Battlefield),
+                            origin: Some(old_zone),
+                            destination: Some(dest_zone),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+            }
+        } else if ability.contains("ChangeZone") {
+            let params = parse_pipe_params(ability);
+            let origin_str = params.get("Origin").map(|s| s.as_str()).unwrap_or("");
+            let destination_str = params.get("Destination").map(|s| s.as_str()).unwrap_or("");
+            let tapped = params.get("Tapped").map(|s| s.eq_ignore_ascii_case("True")).unwrap_or(false);
+            let change_type = params.get("ChangeType").map(|s| s.clone()).unwrap_or_default();
+            let defined = params.get("Defined").map(|s| s.clone()).unwrap_or_default();
+            let lib_position = params.get("LibraryPosition").map(|s| s.clone()).unwrap_or_default();
+            let shuffle = params.get("Shuffle").map(|s| s.eq_ignore_ascii_case("True")).unwrap_or(false);
+            let controller = entry.controller;
+
+            if let (Some(dest_zone), Some(origin_zone)) = (parse_zone_type(destination_str), parse_zone_type(origin_str)) {
+                // Determine which card to move
+                let card_to_move = if let Some(cid) = entry.target_card {
+                    // Targeted effect: move if it's in the expected origin zone
+                    if game.card(cid).zone == origin_zone { Some(cid) } else { None }
+                } else if defined.eq_ignore_ascii_case("Self") {
+                    // Move the source card itself
+                    entry.source.filter(|&cid| game.card(cid).zone == origin_zone)
+                } else if defined.is_empty() || defined.eq_ignore_ascii_case("You") {
+                    // No target: search controller's origin zone for a matching card (e.g. library tutor)
+                    let search_player = if defined.eq_ignore_ascii_case("Opponent") {
+                        game.opponent_of(controller)
+                    } else {
+                        controller
+                    };
+                    let zone_cards = game.cards_in_zone(origin_zone, search_player).to_vec();
+                    zone_cards.into_iter().find(|&cid| matches_change_type(game.card(cid), &change_type))
+                } else {
+                    None
+                };
+
+                if let Some(card_id) = card_to_move {
+                    let card_owner = game.card(card_id).owner;
+                    let dest_owner = if dest_zone == ZoneType::Battlefield {
+                        controller
+                    } else {
+                        card_owner
+                    };
+                    let old_zone = game.card(card_id).zone;
+                    game.move_card(card_id, dest_zone, dest_owner);
+
+                    // Handle library bottom positioning (move_card adds to top by default)
+                    if dest_zone == ZoneType::Library && (lib_position == "-1" || lib_position.eq_ignore_ascii_case("Bottom")) {
+                        let zone = game.zone_mut(ZoneType::Library, dest_owner);
+                        if let Some(pos) = zone.cards.iter().rposition(|&c| c == card_id) {
+                            zone.cards.remove(pos);
+                            zone.cards.insert(0, card_id); // index 0 = bottom
+                        }
+                    }
+
+                    if dest_zone == ZoneType::Battlefield {
+                        if tapped { game.tap(card_id); }
+                        self.trigger_handler.register_active_trigger(game, card_id);
+                    }
+
+                    self.trigger_handler.run_trigger(
+                        TriggerType::ChangesZone,
+                        RunParams {
+                            card: Some(card_id),
+                            origin: Some(old_zone),
+                            destination: Some(dest_zone),
                             ..Default::default()
                         },
                         false,
                     );
                 }
 
-                // Shuffle library after search
-                // Note: no RNG available here, so we just reverse as a simple shuffle
-                // A proper implementation would pass RNG through
-                let lib_cards = game.cards_in_zone(ZoneType::Library, controller).to_vec();
-                if !lib_cards.is_empty() {
-                    let zone = game.zone_mut(ZoneType::Library, controller);
-                    zone.cards.reverse();
+                // Shuffle the library after a search (when origin was Library)
+                if (origin_zone == ZoneType::Library || shuffle) && dest_zone != ZoneType::Library {
+                    let lib_cards = game.cards_in_zone(ZoneType::Library, controller).to_vec();
+                    if !lib_cards.is_empty() {
+                        // No RNG available here — reverse as a placeholder shuffle
+                        let zone = game.zone_mut(ZoneType::Library, controller);
+                        zone.cards.reverse();
+                    }
+                }
+            }
+        } else if ability.contains("SacrificeAll") {
+            let params = parse_pipe_params(ability);
+            let valid_cards_filter = params.get("ValidCards").map(|s| s.clone()).unwrap_or_else(|| "Creature".to_string());
+
+            let player_ids = game.player_order.clone();
+            let mut to_sacrifice: Vec<CardId> = Vec::new();
+            for &pid in &player_ids {
+                let zone_cards = game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
+                for cid in zone_cards {
+                    if matches_change_type(game.card(cid), &valid_cards_filter) {
+                        to_sacrifice.push(cid);
+                    }
+                }
+            }
+
+            for card_id in to_sacrifice {
+                if game.card(card_id).zone != ZoneType::Battlefield {
+                    continue;
+                }
+                let owner = game.card(card_id).owner;
+                game.move_card(card_id, ZoneType::Graveyard, owner);
+                self.trigger_handler.run_trigger(
+                    TriggerType::ChangesZone,
+                    RunParams {
+                        card: Some(card_id),
+                        origin: Some(ZoneType::Battlefield),
+                        destination: Some(ZoneType::Graveyard),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+        } else if ability.contains("Sacrifice") {
+            let params = parse_pipe_params(ability);
+            let sac_valid = params.get("SacValid").map(|s| s.clone()).unwrap_or_else(|| "Self".to_string());
+            let defined = params.get("Defined").map(|s| s.to_lowercase()).unwrap_or_default();
+
+            // "Defined$ Player" means each player sacrifices (e.g. Innocent Blood).
+            // "ValidTgts$ Player" means a targeted player sacrifices (e.g. Diabolic Edict) —
+            // in that case entry.target_player is set. Otherwise default to the controller.
+            let sacrificing_players: Vec<PlayerId> = if defined == "player" {
+                game.player_order.clone()
+            } else {
+                vec![entry.target_player.unwrap_or(entry.controller)]
+            };
+
+            for sacrificing_player in sacrificing_players {
+                let card_to_sacrifice = if sac_valid.eq_ignore_ascii_case("Self") {
+                    // Sacrifice the source card itself
+                    entry.source.filter(|&cid| game.card(cid).zone == ZoneType::Battlefield)
+                } else {
+                    // Find valid cards controlled by the sacrificing player
+                    let valid: Vec<CardId> = game
+                        .cards_in_zone(ZoneType::Battlefield, sacrificing_player)
+                        .to_vec()
+                        .into_iter()
+                        .filter(|&cid| matches_change_type(game.card(cid), &sac_valid))
+                        .collect();
+
+                    if valid.is_empty() {
+                        None
+                    } else {
+                        agents[sacrificing_player.index()].choose_sacrifice(sacrificing_player, &valid)
+                    }
+                };
+
+                if let Some(card_id) = card_to_sacrifice {
+                    if game.card(card_id).zone == ZoneType::Battlefield {
+                        let owner = game.card(card_id).owner;
+                        game.move_card(card_id, ZoneType::Graveyard, owner);
+                        self.trigger_handler.run_trigger(
+                            TriggerType::ChangesZone,
+                            RunParams {
+                                card: Some(card_id),
+                                origin: Some(ZoneType::Battlefield),
+                                destination: Some(ZoneType::Graveyard),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
                 }
             }
         } else if ability.contains("Mana") {
@@ -1068,7 +1225,7 @@ impl GameLoop {
 
     /// Process pending triggers: drain the waiting queue, put abilities on stack, resolve.
     /// Mirrors Java's runWaitingTriggers() called between stack resolution windows.
-    fn process_triggers(&mut self, game: &mut GameState) {
+    fn process_triggers(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         // Loop in case triggers trigger more triggers
         let mut safety = 0;
         loop {
@@ -1084,7 +1241,7 @@ impl GameLoop {
             // Resolve triggered abilities on the stack
             while let Some(entry) = game.stack.pop() {
                 if entry.is_triggered_ability {
-                    self.resolve_spell_effect(game, &entry);
+                    self.resolve_spell_effect(game, agents, &entry);
                 }
             }
 
@@ -1603,6 +1760,19 @@ fn parse_counter_type(s: &str) -> crate::card::CounterType {
         "Loyalty" => crate::card::CounterType::Loyalty,
         "Charge" => crate::card::CounterType::Charge,
         _ => crate::card::CounterType::P1P1,
+    }
+}
+
+/// Parse a zone name string to ZoneType.
+fn parse_zone_type(s: &str) -> Option<ZoneType> {
+    match s.trim() {
+        "Battlefield" => Some(ZoneType::Battlefield),
+        "Graveyard" => Some(ZoneType::Graveyard),
+        "Hand" => Some(ZoneType::Hand),
+        "Library" | "Deck" => Some(ZoneType::Library),
+        "Exile" => Some(ZoneType::Exile),
+        "Command" => Some(ZoneType::Command),
+        _ => None,
     }
 }
 

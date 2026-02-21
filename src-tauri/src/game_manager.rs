@@ -7,14 +7,13 @@ use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_foundation::ZoneType;
-use serde::{Deserialize, Serialize};
 
-use crate::card_db::{card_rules_to_instance, get_card_db};
 use rand::SeedableRng;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_agent::SimpleAiAgent;
 use crate::game_view_dto::GameViewDto;
+use crate::preset_decks::{build_ai_opponent, build_custom_deck, build_preset_decks, is_preset_id};
 use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 use crate::tauri_agent::TauriAgent;
 
@@ -227,40 +226,13 @@ fn run_game(
 
     // Build human player deck: if a single preset ID is given, use that;
     // otherwise build a custom deck from the card name list.
-    let is_preset = deck_list.len() == 1 && matches!(
-        deck_list[0].as_str(),
-        "red_burn" | "green_stompy" | "white_aggro" | "black_control" | "white_static"
-    );
-
-    if is_preset {
-        match deck_list[0].as_str() {
-            "green_stompy" => {
-                build_named_deck(&mut game, p0, GREEN_STOMPY);
-                build_named_deck(&mut game, p1, RED_BURN);
-            }
-            "white_aggro" => {
-                build_named_deck(&mut game, p0, WHITE_AGGRO);
-                build_named_deck(&mut game, p1, BLACK_CONTROL);
-            }
-            "white_static" => {
-                build_named_deck(&mut game, p0, WHITE_STATIC);
-                build_named_deck(&mut game, p1, GREEN_STOMPY);
-            }
-            "black_control" => {
-                build_named_deck(&mut game, p0, BLACK_CONTROL);
-                build_named_deck(&mut game, p1, WHITE_AGGRO);
-            }
-            _ => {
-                // red_burn (default)
-                build_named_deck(&mut game, p0, RED_BURN);
-                build_named_deck(&mut game, p1, GREEN_STOMPY);
-            }
-        }
+    if deck_list.len() == 1 && is_preset_id(&deck_list[0]) {
+        build_preset_decks(&mut game, &deck_list[0], p0, p1);
     } else {
         // Custom deck: build human player deck from card names sent by the frontend.
         build_custom_deck(&mut game, p0, &deck_list);
         // AI always plays red burn as a simple opponent.
-        build_named_deck(&mut game, p1, RED_BURN);
+        build_ai_opponent(&mut game, p1);
     }
 
     // Designate commander for the human player (must happen before game_loop.run which shuffles).
@@ -293,155 +265,4 @@ fn run_game(
     });
 
     let _ = winner; // winner is also in the game_view
-}
-
-// ── Preset deck registry ───────────────────────────────────────────
-
-/// Metadata for a preset deck, returned to the frontend via `get_preset_decks`.
-///
-/// Adding a new preset deck requires:
-/// 1. Add a `const MY_DECK: &[(&str, usize)]` below.
-/// 2. Add a `PresetDeckInfo` entry to `list_preset_decks()`.
-/// 3. Add the `"my_id"` arm to the `match` in `run_game()`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct PresetDeckInfo {
-    pub id: String,
-    pub label: String,
-    pub desc: String,
-    /// Tailwind CSS text-color class used for the deck title in the UI.
-    pub color: String,
-}
-
-/// Return the ordered list of all available preset decks.
-///
-/// This is the single source of truth consumed by the `get_preset_decks`
-/// Tauri command — the frontend no longer hardcodes deck names.
-pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
-    vec![
-        PresetDeckInfo {
-            id: "red_burn".into(),
-            label: "Red Burn".into(),
-            desc: "Bolts + Shocks + Ogres + Giants".into(),
-            color: "text-red-500".into(),
-        },
-        PresetDeckInfo {
-            id: "green_stompy".into(),
-            label: "Green Stompy".into(),
-            desc: "Giant Growth + Trample + Reach + Wurms".into(),
-            color: "text-green-500".into(),
-        },
-        PresetDeckInfo {
-            id: "white_aggro".into(),
-            label: "White Aggro".into(),
-            desc: "Savannah Lions + First Strike + Flying".into(),
-            color: "text-yellow-500".into(),
-        },
-        PresetDeckInfo {
-            id: "black_control".into(),
-            label: "Black Control".into(),
-            desc: "Doom Blade + Divination + Deathtouch".into(),
-            color: "text-purple-500".into(),
-        },
-        PresetDeckInfo {
-            id: "white_static".into(),
-            label: "White Static".into(),
-            desc: "Glorious Anthem + Indestructible + Layer effects".into(),
-            color: "text-white".into(),
-        },
-    ]
-}
-
-// ── Preset deck lists ──────────────────────────────────────────────
-//
-// Each entry is (card_name, count). Card definitions come exclusively from
-// the Forge card scripts in forge/forge-gui/res/cardsfolder/ — no stats are
-// hardcoded here.
-
-const RED_BURN: &[(&str, usize)] = &[
-    ("Mountain", 17),
-    ("Lightning Bolt", 4),
-    ("Shock", 4),
-    ("Gray Ogre", 3),
-    ("Hill Giant", 3),
-    ("Guttersnipe", 3),
-];
-
-const GREEN_STOMPY: &[(&str, usize)] = &[
-    ("Forest", 17),
-    ("Giant Growth", 4),
-    ("Grizzly Bears", 3),
-    ("Centaur Courser", 2),
-    ("Garruk's Companion", 3),
-    ("Giant Spider", 2),
-    ("Wall of Ice", 2),
-    ("Craw Wurm", 2),
-];
-
-const WHITE_AGGRO: &[(&str, usize)] = &[
-    ("Plains", 17),
-    ("Savannah Lions", 4),
-    ("White Knight", 3),
-    ("Serra Angel", 3),
-    ("Soul Warden", 3),
-];
-
-/// Exercises PR #26 (static abilities / layer system) and PR #27 (replacement effects).
-/// Glorious Anthem tests the YouCtrl alias fix and layer 7c anthem stacking.
-/// Darksteel Myr tests the indestructible Destroy replacement effect.
-/// Honor of the Pure tests color-based filtering (White creatures).
-const WHITE_STATIC: &[(&str, usize)] = &[
-    ("Plains", 16),
-    ("Glorious Anthem", 3),
-    ("Honor of the Pure", 3),
-    ("Darksteel Myr", 3),
-    ("Savannah Lions", 4),
-    ("White Knight", 4),
-    ("Serra Angel", 3),
-];
-
-const BLACK_CONTROL: &[(&str, usize)] = &[
-    ("Swamp", 13),
-    ("Island", 4),
-    ("Doom Blade", 4),
-    ("Divination", 2),
-    ("Typhoid Rats", 3),
-    ("Vampire Nighthawk", 3),
-    ("Mulldrifter", 2),
-];
-
-// ── Deck builders ──────────────────────────────────────────────────
-
-/// Build a preset deck from a (name, count) list, loading each card definition
-/// from the global CardDatabase (parsed from the Forge card scripts).
-fn build_named_deck(game: &mut GameState, owner: PlayerId, deck: &[(&str, usize)]) {
-    let db = get_card_db();
-    for (name, count) in deck {
-        match db.get_by_card_name(name) {
-            Some(rules) => {
-                for _ in 0..*count {
-                    let card = card_rules_to_instance(rules, owner);
-                    let id = game.create_card(card);
-                    game.move_card(id, ZoneType::Library, owner);
-                }
-            }
-            None => eprintln!("[deck] Unknown card '{}' — skipped", name),
-        }
-    }
-}
-
-/// Build a custom deck for `owner` from a list of card names (one name per
-/// copy), loading each definition from the global CardDatabase.
-/// Unrecognised names are skipped with a log message.
-fn build_custom_deck(game: &mut GameState, owner: PlayerId, names: &[String]) {
-    let db = get_card_db();
-    for name in names {
-        match db.get_by_card_name(name) {
-            Some(rules) => {
-                let card = card_rules_to_instance(rules, owner);
-                let id = game.create_card(card);
-                game.move_card(id, ZoneType::Library, owner);
-            }
-            None => eprintln!("[custom_deck] Unknown card '{}' — skipped", name),
-        }
-    }
 }

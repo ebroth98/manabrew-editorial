@@ -1,6 +1,7 @@
 use tauri::{AppHandle, State};
 
-use crate::game_manager::{GameManager, PresetDeckInfo};
+use crate::game_manager::GameManager;
+use crate::preset_decks::PresetDeckInfo;
 use crate::prompt::{AgentPrompt, PlayerAction};
 
 #[tauri::command]
@@ -35,5 +36,5 @@ pub async fn get_prompt(gm: State<'_, GameManager>) -> Result<Option<AgentPrompt
 
 #[tauri::command]
 pub fn get_preset_decks() -> Vec<PresetDeckInfo> {
-    crate::game_manager::list_preset_decks()
+    crate::preset_decks::list_preset_decks()
 }

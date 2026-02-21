@@ -3,6 +3,7 @@ mod card_db;
 mod commands;
 mod game_manager;
 mod game_view_dto;
+mod preset_decks;
 mod prompt;
 mod tauri_agent;
 
