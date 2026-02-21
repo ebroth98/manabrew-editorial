@@ -1,5 +1,7 @@
 # Project Guidelines
 
+Never push directly on main, always create a feature branch and a relative pr
+
 ## Feature Tracking
 
 Whenever you implement, partially implement, or modify a feature in this repository, you **must** update `features.md` accordingly:
