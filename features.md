@@ -627,12 +627,12 @@
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `StaticAbility.java` | Core static ability class with layer system | Not implemented |
-| `StaticAbilityLayer.java` | Enum: copy, control, text, type, color, abilities, P/T, rules | Not implemented |
-| `StaticAbilityMode.java` | Enum: 80+ static ability modes | Not implemented |
-| `StaticAbilityContinuous.java` | Core continuous effect handler | Not implemented |
-| `StaticAbilityCantAttack.java` | Prevents attacking | Not implemented |
-| `StaticAbilityCantBlock.java` | Prevents blocking | Not implemented |
+| `StaticAbility.java` | Core static ability class with layer system | **Partial** (`static_ability.rs`: `StaticAbility` struct + parser, `StaticMode` enum (6 modes), `CardFilter` for `Affected$`/`ValidCards$`; missing: 74+ modes, dependency graph, timestamp tracking) |
+| `StaticAbilityLayer.java` | Enum: copy, control, text, type, color, abilities, P/T, rules | **Partial** (`static_ability.rs`: `Layer` enum — Type(4), Color(5), Ability(6), SetPT(7b), ModifyPT(7c); missing: copy/control/text/7a/rules layers) |
+| `StaticAbilityMode.java` | Enum: 80+ static ability modes | **Partial** (`static_ability.rs` `StaticMode`: Continuous, CantAttack, CantBlock, ETBTapped, CantBeCast, ReduceCost, IncreaseCost; 73+ modes not yet handled) |
+| `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: ModifyPT (7c), SetPT (7b), Ability/keyword-grant (6) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped; missing: type/color layers, dependency resolution) |
+| `StaticAbilityCantAttack.java` | Prevents attacking | **Implemented** (`layer.rs`: `Mode$ CantAttack` sets `cant_attack_static` flag; `card.rs` `can_attack()` respects it) |
+| `StaticAbilityCantBlock.java` | Prevents blocking | **Implemented** (`layer.rs`: `Mode$ CantBlock` sets `cant_block_static` flag; `card.rs` `can_block()` respects it) |
 | `StaticAbilityCantBeSacrificed.java` | Prevents sacrifice | Not implemented |
 | `StaticAbilityCantCast.java` | Prevents casting | Not implemented |
 | `StaticAbilityCantTarget.java` | Grants hexproof/shroud | Not implemented |
@@ -917,11 +917,11 @@
 | Player Actions | 10 | 1 | 3 | 6 |
 | Replacement Effects | 46 | 0 | 0 | 46 |
 | Spell Abilities | 25 | 1 | 2 | 22 |
-| Static Abilities | 60 | 0 | 0 | 60 |
+| Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 4 | 1 | 135 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **20** | **47** | **702** |
+| **TOTAL** | **769** | **22** | **51** | **696** |
 
-> **Coverage: ~8.7% implemented or partially implemented** (67 of 769 features have some Rust counterpart)
+> **Coverage: ~9.5% implemented or partially implemented** (73 of 769 features have some Rust counterpart)
 >
 > The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (46 files), **trigger types** (135 files), and **costs** (58 files).

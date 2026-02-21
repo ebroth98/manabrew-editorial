@@ -5,6 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::activated_ability::{parse_activated_ability, ActivatedAbility};
 use crate::ids::{CardId, PlayerId};
+use crate::static_ability::{parse_static_ability, StaticAbility};
 use crate::trigger::Trigger;
 
 /// A card instance in a game. This is the mutable game-state representation,
@@ -34,8 +35,19 @@ pub struct CardInstance {
     // Power/Toughness (base values, can be modified)
     pub base_power: Option<i32>,
     pub base_toughness: Option<i32>,
+    /// Temporary P/T modifications from spells/abilities resolving this turn
+    /// (e.g. Giant Growth).  Reset when leaving the battlefield.
     pub power_modifier: i32,
     pub toughness_modifier: i32,
+    /// Layer 7b override: set by `SetPower$` / `SetToughness$` continuous effects.
+    /// `None` means use `base_power` / `base_toughness` as normal.
+    /// Reset to `None` each time [`layer::apply_continuous_effects`] runs.
+    pub static_set_power: Option<i32>,
+    pub static_set_toughness: Option<i32>,
+    /// Layer 7c bonus: accumulated from `AddPower$` / `AddToughness$` anthems.
+    /// Reset to 0 each time [`layer::apply_continuous_effects`] runs.
+    pub static_power_modifier: i32,
+    pub static_toughness_modifier: i32,
 
     // Combat/state
     pub tapped: bool,
@@ -47,8 +59,11 @@ pub struct CardInstance {
     // Counters
     pub counters: HashMap<CounterType, i32>,
 
-    // Keywords active on this card (simplified — raw strings for now)
+    // Keywords intrinsic to this card (from its card definition).
     pub keywords: Vec<String>,
+    /// Keywords granted by continuous static effects (Layer 6).
+    /// Reset and recomputed each time [`layer::apply_continuous_effects`] runs.
+    pub granted_keywords: Vec<String>,
 
     // Abilities (raw strings from card definition)
     pub abilities: Vec<String>,
@@ -56,8 +71,18 @@ pub struct CardInstance {
     // Parsed activated abilities (from AB$ lines in abilities)
     pub activated_abilities: Vec<ActivatedAbility>,
 
+    /// Parsed static abilities (from S$ lines in abilities).
+    /// Mirrors Java Forge `Card.getStaticAbilities()`.
+    pub static_abilities: Vec<StaticAbility>,
+
     // Combat tracking
     pub has_deathtouch_damage: bool,
+    /// Set by `Mode$ CantAttack` static effects. Reset each time
+    /// [`layer::apply_continuous_effects`] runs.
+    pub cant_attack_static: bool,
+    /// Set by `Mode$ CantBlock` static effects. Reset each time
+    /// [`layer::apply_continuous_effects`] runs.
+    pub cant_block_static: bool,
 
     // Turn tracking
     pub entered_battlefield_this_turn: bool,
@@ -88,11 +113,18 @@ impl CardInstance {
         keywords: Vec<String>,
         abilities: Vec<String>,
     ) -> Self {
-        // Parse activated abilities from raw ability strings
+        // Parse activated abilities from AB$ lines.
         let activated_abilities: Vec<ActivatedAbility> = abilities
             .iter()
             .enumerate()
             .filter_map(|(i, raw)| parse_activated_ability(raw, i))
+            .collect();
+
+        // Parse static abilities from S$ lines.
+        // Mirrors Java Forge Card constructor calling StaticAbility.create().
+        let static_abilities: Vec<StaticAbility> = abilities
+            .iter()
+            .filter_map(|raw| parse_static_ability(raw))
             .collect();
 
         CardInstance {
@@ -108,6 +140,10 @@ impl CardInstance {
             base_toughness,
             power_modifier: 0,
             toughness_modifier: 0,
+            static_set_power: None,
+            static_set_toughness: None,
+            static_power_modifier: 0,
+            static_toughness_modifier: 0,
             tapped: false,
             flipped: false,
             face_down: false,
@@ -115,9 +151,13 @@ impl CardInstance {
             damage: 0,
             counters: HashMap::new(),
             keywords,
+            granted_keywords: Vec::new(),
             abilities,
             activated_abilities,
+            static_abilities,
             has_deathtouch_damage: false,
+            cant_attack_static: false,
+            cant_block_static: false,
             entered_battlefield_this_turn: false,
             attacked_this_turn: false,
             triggers: Vec::new(),
@@ -127,15 +167,25 @@ impl CardInstance {
         }
     }
 
+    /// Effective power, accounting for all layer effects and counters.
+    ///
+    /// Calculation order (CR 613):
+    /// - Layer 7b: `static_set_power` overrides `base_power` if set.
+    /// - Layer 7c: `static_power_modifier` (anthem bonuses) is added.
+    /// - Temporary: `power_modifier` (from spells like Giant Growth) is added.
+    /// - Layer 7d: +1/+1 and -1/-1 counters are factored in.
     pub fn power(&self) -> i32 {
-        self.base_power.unwrap_or(0)
+        let base = self.static_set_power.unwrap_or(self.base_power.unwrap_or(0));
+        base + self.static_power_modifier
             + self.power_modifier
             + self.counter_count(CounterType::P1P1)
             - self.counter_count(CounterType::M1M1)
     }
 
+    /// Effective toughness, accounting for all layer effects and counters.
     pub fn toughness(&self) -> i32 {
-        self.base_toughness.unwrap_or(0)
+        let base = self.static_set_toughness.unwrap_or(self.base_toughness.unwrap_or(0));
+        base + self.static_toughness_modifier
             + self.toughness_modifier
             + self.counter_count(CounterType::P1P1)
             - self.counter_count(CounterType::M1M1)
@@ -157,8 +207,11 @@ impl CardInstance {
         self.type_line.is_permanent()
     }
 
+    /// Check whether this card has a keyword — either intrinsically or granted
+    /// by a continuous static effect (Layer 6).
     pub fn has_keyword(&self, kw: &str) -> bool {
         self.keywords.iter().any(|k| k.eq_ignore_ascii_case(kw))
+            || self.granted_keywords.iter().any(|k| k.eq_ignore_ascii_case(kw))
     }
 
     pub fn has_haste(&self) -> bool {
@@ -205,12 +258,16 @@ impl CardInstance {
         self.is_creature()
             && !self.tapped
             && !self.has_defender()
+            && !self.cant_attack_static
             && (self.has_haste() || !self.summoning_sick)
             && self.zone == ZoneType::Battlefield
     }
 
     pub fn can_block(&self) -> bool {
-        self.is_creature() && !self.tapped && self.zone == ZoneType::Battlefield
+        self.is_creature()
+            && !self.tapped
+            && !self.cant_block_static
+            && self.zone == ZoneType::Battlefield
     }
 
     pub fn counter_count(&self, ct: CounterType) -> i32 {

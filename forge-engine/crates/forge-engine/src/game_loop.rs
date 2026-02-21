@@ -8,6 +8,7 @@ use crate::cost::{can_pay, can_pay_ignoring_mana, CostPart};
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::layer::apply_continuous_effects;
 use crate::mana_pool::ManaPool;
 use crate::stack::StackEntry;
 use crate::trigger::parse_pipe_params;
@@ -160,6 +161,8 @@ impl GameLoop {
 
         // Rebuild active triggers at start of turn
         self.trigger_handler.reset_active_triggers(game);
+        // Recompute continuous static effects for the new turn.
+        apply_continuous_effects(game);
 
         // Beginning phase: Untap, Upkeep, Draw
         game.turn.phase = PhaseType::Untap;
@@ -239,6 +242,9 @@ impl GameLoop {
 
             // Resolve any pending stack entries first
             self.resolve_stack(game);
+            // Recompute continuous effects after resolution (a permanent may
+            // have entered or left the battlefield).
+            apply_continuous_effects(game);
             game.check_state_based_actions();
 
             if game.game_over {
@@ -366,6 +372,10 @@ impl GameLoop {
 
         // Begin Combat
         game.turn.phase = PhaseType::CombatBegin;
+
+        // Recompute continuous effects before evaluating attack/block legality.
+        // CantAttack / CantBlock flags are set here.
+        apply_continuous_effects(game);
 
         // Declare Attackers
         game.turn.phase = PhaseType::CombatDeclareAttackers;

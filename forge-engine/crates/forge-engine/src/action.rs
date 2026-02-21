@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::layer::apply_etb_tapped;
 
 /// Game state mutation methods — moving cards, dealing damage, state-based actions.
 impl GameState {
@@ -34,24 +35,44 @@ impl GameState {
         match dest_zone {
             ZoneType::Battlefield => {
                 self.cards[card_id.index()].enter_battlefield();
+                // Add to destination zone first so the card is "on the
+                // battlefield" when ETB-tapped checks run against it.
+                self.zone_mut(dest_zone, dest_owner).add(card_id);
+                // Apply ETB-tapped effects (intrinsic + extrinsic).
+                apply_etb_tapped(self, card_id);
+                return;
             }
             ZoneType::Graveyard | ZoneType::Hand | ZoneType::Exile | ZoneType::Library => {
-                // Reset battlefield state when leaving
+                // Reset battlefield state when leaving (including static modifiers).
                 let card = &mut self.cards[card_id.index()];
                 card.tapped = false;
                 card.damage = 0;
                 card.power_modifier = 0;
                 card.toughness_modifier = 0;
+                card.static_power_modifier = 0;
+                card.static_toughness_modifier = 0;
+                card.static_set_power = None;
+                card.static_set_toughness = None;
+                card.granted_keywords.clear();
+                card.cant_attack_static = false;
+                card.cant_block_static = false;
                 card.summoning_sick = true;
-                card.controller = card.owner; // controller resets to owner
+                card.controller = card.owner;
             }
             ZoneType::Command => {
-                // Commander returning to command zone: reset battlefield state
+                // Commander returning to command zone: reset battlefield state.
                 let card = &mut self.cards[card_id.index()];
                 card.tapped = false;
                 card.damage = 0;
                 card.power_modifier = 0;
                 card.toughness_modifier = 0;
+                card.static_power_modifier = 0;
+                card.static_toughness_modifier = 0;
+                card.static_set_power = None;
+                card.static_set_toughness = None;
+                card.granted_keywords.clear();
+                card.cant_attack_static = false;
+                card.cant_block_static = false;
                 card.summoning_sick = true;
                 card.controller = card.owner;
             }
