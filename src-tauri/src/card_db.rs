@@ -9,6 +9,7 @@ use forge_engine_core::static_ability::parse_static_ability;
 use forge_engine_core::trigger::parse_trigger;
 
 static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
+static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
 
 /// Returns the path to the Forge card scripts directory.
 /// Checks the CARDS_DIR env var first; falls back to the path adjacent
@@ -19,6 +20,16 @@ fn cards_dir() -> PathBuf {
     } else {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("../forge/forge-gui/res/cardsfolder")
+    }
+}
+
+/// Returns the path to the Forge token scripts directory.
+fn token_scripts_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("TOKEN_SCRIPTS_DIR") {
+        PathBuf::from(dir)
+    } else {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../forge/forge-gui/res/tokenscripts")
     }
 }
 
@@ -40,6 +51,23 @@ pub fn get_card_db() -> &'static CardDatabase {
                 eprintln!("[carddb]   parse error in {}: {}", file, err);
             }
         }
+        db
+    })
+}
+
+/// Returns the global token-script database, loading it on first call.
+///
+/// Token scripts live in `forge/forge-gui/res/tokenscripts/` and are keyed
+/// by their filename stem (e.g. "r_1_1_goblin" for `r_1_1_goblin.txt`).
+pub fn get_token_db() -> &'static CardDatabase {
+    TOKEN_DB.get_or_init(|| {
+        let dir = token_scripts_dir();
+        eprintln!("[tokendb] Loading token scripts from {:?} …", dir);
+        let (db, result) = CardDatabase::load_from_directory(&dir);
+        eprintln!(
+            "[tokendb] Loaded {} token scripts ({} failed)",
+            result.loaded, result.failed
+        );
         db
     })
 }

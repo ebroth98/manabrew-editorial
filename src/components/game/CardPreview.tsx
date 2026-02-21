@@ -18,7 +18,7 @@ const CARD_H = 336; // 5:7 ratio
  * Positions itself near the cursor, clamped to viewport edges.
  */
 export function CardPreview({ card, mouseX, mouseY }: CardPreviewProps) {
-  const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl);
+  const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color);
   const imageUrl = card.imageUrl ?? fetchedUrl ?? null;
 
   // Determine horizontal placement: prefer right of cursor, flip left if near edge

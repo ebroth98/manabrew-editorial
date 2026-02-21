@@ -27,6 +27,7 @@ export interface Card {
   counters?: Record<string, number>;
   damage?: number;
   summoningSick?: boolean;
+  isToken?: boolean;
 }
 
 export interface Deck {

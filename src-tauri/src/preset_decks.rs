@@ -65,6 +65,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Bounce + Sacrifice + Reanimate (ChangeZone / Sacrifice effects)".into(),
             color: "text-blue-400".into(),
         },
+        PresetDeckInfo {
+            id: "token_swarm".into(),
+            label: "Token Swarm".into(),
+            desc: "Raise the Alarm + Krenko's Command + token creation effects".into(),
+            color: "text-orange-400".into(),
+        },
     ]
 }
 
@@ -78,6 +84,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "black_control"
             | "white_static"
             | "zone_change"
+            | "token_swarm"
     )
 }
 
@@ -102,6 +109,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "zone_change" => {
             build_named_deck(game, p0, ZONE_CHANGE);
             build_named_deck(game, p1, GREEN_STOMPY);
+        }
+        "token_swarm" => {
+            build_named_deck(game, p0, TOKEN_SWARM);
+            build_named_deck(game, p1, RED_BURN);
         }
         "black_control" => {
             build_named_deck(game, p0, BLACK_CONTROL);
@@ -189,6 +200,20 @@ const ZONE_CHANGE: &[(&str, usize)] = &[
     ("Typhoid Rats", 4),
     ("Vampire Nighthawk", 3),
     ("Doom Blade", 2),
+];
+
+/// Exercises issue #14: Token creation (SP$ Token) and CopyPermanent effects.
+/// Raise the Alarm / Krenko's Command / Dragon Fodder create tokens directly.
+/// Goblin creatures give the AI something to fight against.
+const TOKEN_SWARM: &[(&str, usize)] = &[
+    ("Plains", 8),
+    ("Mountain", 8),
+    ("Raise the Alarm", 4),    // SP$ Token: 2× 1/1 white Soldier
+    ("Krenko's Command", 4),   // SP$ Token: 2× 1/1 red Goblin
+    ("Dragon Fodder", 4),      // SP$ Token: 2× 1/1 red Goblin
+    ("Savannah Lions", 4),
+    ("Lightning Bolt", 4),
+    ("Shock", 4),
 ];
 
 // ── Deck builders ──────────────────────────────────────────────────

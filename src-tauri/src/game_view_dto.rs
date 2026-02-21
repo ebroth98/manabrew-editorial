@@ -77,6 +77,7 @@ pub struct CardDto {
     pub counters: HashMap<String, i32>,
     pub damage: i32,
     pub summoning_sick: bool,
+    pub is_token: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -196,6 +197,7 @@ fn card_to_dto(
         counters,
         damage: card.damage,
         summoning_sick: card.summoning_sick && !card.has_haste(),
+        is_token: card.is_token,
     }
 }
 

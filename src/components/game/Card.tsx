@@ -46,7 +46,7 @@ function KeywordChips({ keywords }: { keywords: string[] }) {
 
 export function Card({ card, className, isTapped, onClick }: CardProps) {
   const [hasError, setHasError] = useState(false);
-  const { data: scryfallUrl } = useCardImage(card.name, card.imageUrl);
+  const { data: scryfallUrl } = useCardImage(card.name, card.imageUrl, card.isToken, card.color);
   const imageUrl = card.imageUrl || scryfallUrl;
 
   const creature = isCreature(card);

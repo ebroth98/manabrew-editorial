@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use forge_foundation::mana::ManaAtom;
 use forge_foundation::{ColorSet, ManaCost, PhaseType, ZoneType};
 
@@ -95,6 +97,9 @@ pub struct GameLoop {
     pub mana_pools: Vec<ManaPool>,
     pub combat: CombatState,
     pub trigger_handler: TriggerHandler,
+    /// Token templates keyed by their script filename stem (e.g. "r_1_1_goblin").
+    /// Populated at game start by the Tauri layer; used by the Token effect handler.
+    pub token_templates: HashMap<String, CardInstance>,
 }
 
 impl GameLoop {
@@ -103,7 +108,14 @@ impl GameLoop {
             mana_pools: (0..num_players).map(|_| ManaPool::new()).collect(),
             combat: CombatState::new(),
             trigger_handler: TriggerHandler::new(),
+            token_templates: HashMap::new(),
         }
+    }
+
+    /// Register a token template by its script filename stem (e.g. "r_1_1_goblin").
+    /// Called at game start by the Tauri layer for every token script in the token DB.
+    pub fn register_token(&mut self, script_name: impl Into<String>, template: CardInstance) {
+        self.token_templates.insert(script_name.into(), template);
     }
 
     pub fn pool(&self, pid: PlayerId) -> &ManaPool {
@@ -964,7 +976,7 @@ impl GameLoop {
                     game.card_mut(card_id).add_counter(counter_type, count);
                 }
             }
-        } else if ability.contains("Pump") {
+        } else if ability.contains("$ Pump") {
             let att_bonus = parse_param(ability, "NumAtt$ ").unwrap_or(0);
             let def_bonus = parse_param(ability, "NumDef$ ").unwrap_or(0);
             if let Some(target_card) = entry.target_card {
@@ -1195,6 +1207,113 @@ impl GameLoop {
                         );
                     }
                 }
+            }
+        } else if ability.contains("CopyPermanent") {
+            // Clone a targeted permanent onto the battlefield under the controller's control.
+            // Mirrors Java CopyPermanentEffect.
+            // Supports: PumpKeywords$ (extra keywords on the copy).
+            // AtEOT$ Exile is noted but requires end-of-turn cleanup (not yet implemented).
+            if let Some(original_id) = entry.target_card {
+                if game.card(original_id).zone == ZoneType::Battlefield {
+                    let params = parse_pipe_params(ability);
+                    let original = game.card(original_id).clone();
+
+                    let mut copy = CardInstance::new(
+                        CardId(0),
+                        original.card_name.clone(),
+                        entry.controller,
+                        original.type_line.clone(),
+                        original.mana_cost.clone(),
+                        original.color,
+                        original.base_power,
+                        original.base_toughness,
+                        original.keywords.clone(),
+                        original.abilities.clone(),
+                    );
+                    copy.triggers = original.triggers.clone();
+                    copy.svars = original.svars.clone();
+                    copy.static_abilities = original.static_abilities.clone();
+                    copy.replacement_effects = original.replacement_effects.clone();
+                    // Copies are tokens for zone-change purposes (cease to exist off battlefield).
+                    copy.is_token = true;
+
+                    // Apply PumpKeywords$ (e.g. "Haste" added temporarily to the copy).
+                    if let Some(pump_kws) = params.get("PumpKeywords") {
+                        for kw in pump_kws.split(',') {
+                            let kw = kw.trim().to_string();
+                            if !kw.is_empty() {
+                                copy.granted_keywords.push(kw);
+                            }
+                        }
+                    }
+
+                    let copy_id = game.create_card(copy);
+                    game.move_card(copy_id, ZoneType::Battlefield, entry.controller);
+                    self.trigger_handler.register_active_trigger(game, copy_id);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::ChangesZone,
+                        RunParams {
+                            card: Some(copy_id),
+                            origin: Some(ZoneType::None),
+                            destination: Some(ZoneType::Battlefield),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+            }
+        } else if ability.contains("Token") {
+            // Create token creature(s) on the battlefield.
+            // Mirrors Java TokenEffect / TokenEffectBase.
+            // Parameters: TokenScript$ (filename stem), TokenAmount$ (count), TokenOwner$ (You/Opponent).
+            let params = parse_pipe_params(ability);
+            let amount: usize = params
+                .get("TokenAmount")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+            let token_script = params.get("TokenScript").cloned().unwrap_or_default();
+            let token_owner_str = params
+                .get("TokenOwner")
+                .map(|s| s.to_lowercase())
+                .unwrap_or_else(|| "you".to_string());
+
+            let token_controller = if token_owner_str.contains("opponent") {
+                game.player_order
+                    .iter()
+                    .find(|&&p| p != entry.controller)
+                    .copied()
+                    .unwrap_or(entry.controller)
+            } else {
+                entry.controller
+            };
+
+            if token_script.is_empty() {
+                eprintln!("[game_loop] Token effect missing TokenScript$ param");
+            } else if let Some(template) = self.token_templates.get(&token_script).cloned() {
+                for _ in 0..amount {
+                    let mut token = template.clone();
+                    token.owner = token_controller;
+                    token.controller = token_controller;
+                    token.is_token = true;
+                    let token_id = game.create_card(token);
+                    game.move_card(token_id, ZoneType::Battlefield, token_controller);
+                    self.trigger_handler.register_active_trigger(game, token_id);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::ChangesZone,
+                        RunParams {
+                            card: Some(token_id),
+                            origin: Some(ZoneType::None),
+                            destination: Some(ZoneType::Battlefield),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+            } else {
+                eprintln!(
+                    "[game_loop] Unknown token script '{}' — register it via game_loop.register_token()",
+                    token_script
+                );
             }
         } else if ability.contains("Mana") {
             // Mana ability resolved on stack (shouldn't normally happen, but handle gracefully)

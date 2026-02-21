@@ -100,6 +100,9 @@ pub struct CardInstance {
     /// How many times this commander has been cast from the command zone (for tax).
     pub commander_cast_count: u32,
 
+    /// True if this permanent is a token or a copy-token (ceases to exist on zone change).
+    pub is_token: bool,
+
     // Replacement effects — parsed from R$ lines in card abilities.
     // Mirrors Java `Card.getReplacementEffects()`.
     pub replacement_effects: Vec<ReplacementEffect>,
@@ -176,6 +179,7 @@ impl CardInstance {
             svars: BTreeMap::new(),
             is_commander: false,
             commander_cast_count: 0,
+            is_token: false,
             replacement_effects,
         }
     }

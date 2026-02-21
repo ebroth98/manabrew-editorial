@@ -12,6 +12,7 @@ use rand::SeedableRng;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ai_agent::SimpleAiAgent;
+use crate::card_db::{card_rules_to_instance, get_token_db};
 use crate::game_view_dto::GameViewDto;
 use crate::preset_decks::{build_ai_opponent, build_custom_deck, build_preset_decks, is_preset_id};
 use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
@@ -253,6 +254,15 @@ fn run_game(
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human), Box::new(ai)];
     let mut game_loop = GameLoop::new(2);
+
+    // Register token templates so the engine can instantiate tokens by script name.
+    // Uses a placeholder owner (p0); the actual owner/controller is set at creation time.
+    let token_db = get_token_db();
+    for (script_name, rules) in token_db.iter() {
+        let template = card_rules_to_instance(rules, p0);
+        game_loop.register_token(script_name.clone(), template);
+    }
+
     let mut rng = rand::rngs::StdRng::from_entropy();
 
     let winner = game_loop.run(&mut game, &mut agents, &mut rng, 50);

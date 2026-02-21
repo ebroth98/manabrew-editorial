@@ -25,6 +25,16 @@ impl GameState {
         let src_zone = card.zone;
         let src_owner = card.controller;
 
+        // Tokens and copy-tokens cease to exist when leaving the battlefield (CR 110.5g).
+        // Set zone to None (limbo) and remove from source zone without adding to destination.
+        if card.is_token && dest_zone != ZoneType::Battlefield {
+            self.cards[card_id.index()].zone = ZoneType::None;
+            if src_zone != ZoneType::None {
+                self.zone_mut(src_zone, src_owner).remove(card_id);
+            }
+            return;
+        }
+
         // Remove from source zone
         if src_zone != ZoneType::None {
             self.zone_mut(src_zone, src_owner).remove(card_id);

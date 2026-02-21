@@ -19,6 +19,46 @@ export async function getCardByName(name: string): Promise<ScryfallCard> {
 }
 
 /**
+ * Convert an engine ColorSet string (e.g. "W", "WU", "C") to Scryfall color
+ * filter tokens (e.g. ["c:w", "c:u"]). Returns empty array for colorless/unknown.
+ */
+function colorFilters(engineColor: string): string[] {
+  if (!engineColor || engineColor === "C") return [];
+  return engineColor
+    .toUpperCase()
+    .split("")
+    .filter((ch) => "WUBRG".includes(ch))
+    .map((ch) => `c:${ch.toLowerCase()}`);
+}
+
+/**
+ * Find a token card on Scryfall by name and color.
+ * Forge token scripts append " Token" to the name (e.g. "Goblin Token"),
+ * but Scryfall names tokens without that suffix (e.g. "Goblin").
+ * The color filter (engine format: "W", "WU", "C") disambiguates tokens that
+ * share a name but differ in color (e.g. white vs red Soldier tokens).
+ * Returns the oldest classic MTG printing to avoid crossover/themed set art.
+ */
+export async function getTokenByName(name: string, color?: string): Promise<ScryfallCard> {
+  // Strip trailing " Token" added by Forge token script naming convention
+  const searchName = name.endsWith(" Token") ? name.slice(0, -6) : name;
+  const colorPart = color ? colorFilters(color).join("+") : "";
+  const colorQuery = colorPart ? `+${colorPart}` : "";
+  // dir=asc → oldest first, so data[0] is the classic original art instead of
+  // the newest crossover/themed printing. unique=art → one result per artwork.
+  const url = `https://api.scryfall.com/cards/search?q=!"${encodeURIComponent(searchName)}"+t:token${colorQuery}+-is:universesbeyond&order=released&dir=asc&unique=art`;
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`Token not found: ${name}`);
+  }
+  const data: ScryfallListResponse = await response.json();
+  if (!data.data.length) {
+    throw new Error(`Token not found: ${name}`);
+  }
+  return data.data[0];
+}
+
+/**
  * Batch-fetch cards by name using POST /cards/collection (up to 75 per request).
  * Returns a map keyed by lowercased card name → ScryfallCard.
  */

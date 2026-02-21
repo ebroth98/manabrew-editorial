@@ -127,10 +127,10 @@
 | `ChooseColorEffect.java` | Choose a color | Not implemented |
 | `ChooseTypeEffect.java` | Choose a type | Not implemented |
 | `ChoosePlayerEffect.java` | Choose a player | Not implemented |
-| `CloneEffect.java` | Copy/clone a permanent | Not implemented |
+| `CloneEffect.java` | Copy/clone a permanent | **Partial** — `CopyPermanent` handler in `game_loop.rs`: copies targeted battlefield permanent, supports `PumpKeywords$`; copies are flagged `is_token` and cease to exist off battlefield. `AtEOT$` cleanup not yet implemented. |
 | `ConniveEffect.java` | Connive N (draw + discard) | Not implemented |
 | `ControlGainEffect.java` | Gain control of permanent | Not implemented |
-| `CopyPermanentEffect.java` | Copy a permanent onto battlefield | Not implemented |
+| `CopyPermanentEffect.java` | Copy a permanent onto battlefield | **Partial** — see `CloneEffect.java` above |
 | `CopySpellAbilityEffect.java` | Copy a spell on the stack | Not implemented |
 | `CounterEffect.java` | Counter a spell or ability | Not implemented |
 | `CountersPutEffect.java` | Put counters on a permanent/player | Not implemented |
@@ -192,8 +192,8 @@
 | `SurveilEffect.java` | Surveil N | Not implemented |
 | `TapEffect.java` | Tap a permanent | **Partial** (`action.rs` tap) |
 | `TapAllEffect.java` | Tap all matching | Not implemented |
-| `TokenEffect.java` | Create token(s) | Not implemented |
-| `TokenEffectBase.java` | Base class for token creation | Not implemented |
+| `TokenEffect.java` | Create token(s) | **Implemented** — `Token` handler in `game_loop.rs`: `TokenScript$`, `TokenAmount$`, `TokenOwner$` (You/Opponent). Token templates loaded from `tokenscripts/` via `get_token_db()` and registered in `GameLoop`. Tokens flagged `is_token` and cease to exist when leaving battlefield (CR 110.5g). |
+| `TokenEffectBase.java` | Base class for token creation | **Implemented** — see `TokenEffect.java` above |
 | `UntapEffect.java` | Untap a permanent | **Partial** (`action.rs` untap) |
 | `UntapAllEffect.java` | Untap all matching | **Partial** (`action.rs` untap_all) |
 | `VoteEffect.java` | Council's dilemma / voting mechanic | Not implemented |
@@ -263,7 +263,7 @@
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `TokenInfo.java` | Token definition: name, image, types, keywords, P/T, colors | Not implemented |
+| `TokenInfo.java` | Token definition: name, image, types, keywords, P/T, colors | **Implemented** — token scripts loaded from `forge/forge-gui/res/tokenscripts/` via `CardDatabase`; keyed by filename stem (e.g. `r_1_1_goblin`). |
 
 ---
 
