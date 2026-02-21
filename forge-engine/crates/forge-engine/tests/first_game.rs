@@ -5,6 +5,7 @@ use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::layer::apply_continuous_effects;
 use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use rand::SeedableRng;
@@ -1281,4 +1282,244 @@ fn card_without_activated_abilities() {
 fn sp_line_not_activated_ability() {
     let card = make_lightning_bolt(PlayerId(0));
     assert_eq!(card.activated_abilities.len(), 0);
+}
+
+// ── Static Abilities & Layer System (PR #26) ─────────────────────────────────
+
+/// Test: Forge card scripts use `YouCtrl` (not `YouControl`).
+/// Verifies the alias fix so that real Forge card data works correctly.
+#[test]
+fn youctrl_forge_alias_applies_anthem() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let alice = PlayerId(0);
+    let bob = PlayerId(1);
+
+    // Glorious Anthem — uses Forge's YouCtrl spelling (PR #26 alias fix).
+    let anthem = CardInstance::new(
+        CardId(0),
+        "Glorious Anthem".to_string(),
+        alice,
+        CardTypeLine::parse("Enchantment"),
+        ManaCost::parse("1 W W"),
+        ColorSet::WHITE,
+        None,
+        None,
+        vec![],
+        vec!["S$ Mode$ Continuous | Affected$ Creature.YouCtrl | AddPower$ 1 | AddToughness$ 1 | Description$ Creatures you control get +1/+1.".to_string()],
+    );
+    let anthem_id = game.create_card(anthem);
+    game.move_card(anthem_id, ZoneType::Battlefield, alice);
+
+    // Savannah Lions (2/1) controlled by Alice.
+    let lions = CardInstance::new(
+        CardId(0),
+        "Savannah Lions".to_string(),
+        alice,
+        CardTypeLine::parse("Creature - Cat"),
+        ManaCost::parse("W"),
+        ColorSet::WHITE,
+        Some(2),
+        Some(1),
+        vec![],
+        vec![],
+    );
+    let lions_id = game.create_card(lions);
+    game.move_card(lions_id, ZoneType::Battlefield, alice);
+
+    // Grizzly Bears (2/2) controlled by Bob — should not be affected.
+    let bears = CardInstance::new(
+        CardId(0),
+        "Grizzly Bears".to_string(),
+        bob,
+        CardTypeLine::parse("Creature - Bear"),
+        ManaCost::parse("1 G"),
+        ColorSet::GREEN,
+        Some(2),
+        Some(2),
+        vec![],
+        vec![],
+    );
+    let bears_id = game.create_card(bears);
+    game.move_card(bears_id, ZoneType::Battlefield, bob);
+
+    apply_continuous_effects(&mut game);
+
+    assert_eq!(game.card(lions_id).power(), 3, "Alice's 2/1 should be 3/2 under anthem");
+    assert_eq!(game.card(lions_id).toughness(), 2);
+    assert_eq!(game.card(bears_id).power(), 2, "Bob's 2/2 should be unaffected");
+    assert_eq!(game.card(bears_id).toughness(), 2);
+}
+
+/// Test: Flying keyword grant via YouCtrl uses Forge's alias correctly.
+#[test]
+fn youctrl_keyword_grant_gives_flying() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let alice = PlayerId(0);
+    let bob = PlayerId(1);
+
+    // Favorable Winds — uses YouCtrl in Forge card data.
+    let winds = CardInstance::new(
+        CardId(0),
+        "Favorable Winds".to_string(),
+        alice,
+        CardTypeLine::parse("Enchantment"),
+        ManaCost::parse("1 U"),
+        ColorSet::from_mask(2), // Blue
+        None,
+        None,
+        vec![],
+        vec!["S$ Mode$ Continuous | Affected$ Creature.YouCtrl | AddKeyword$ Flying | Description$ Creatures you control with flying get +1/+1.".to_string()],
+    );
+    let winds_id = game.create_card(winds);
+    game.move_card(winds_id, ZoneType::Battlefield, alice);
+
+    let alice_creature = CardInstance::new(
+        CardId(0),
+        "White Knight".to_string(),
+        alice,
+        CardTypeLine::parse("Creature - Human Knight"),
+        ManaCost::parse("W W"),
+        ColorSet::WHITE,
+        Some(2),
+        Some(2),
+        vec![],
+        vec![],
+    );
+    let alice_id = game.create_card(alice_creature);
+    game.move_card(alice_id, ZoneType::Battlefield, alice);
+
+    let bob_creature = CardInstance::new(
+        CardId(0),
+        "Serra Angel".to_string(),
+        bob,
+        CardTypeLine::parse("Creature - Angel"),
+        ManaCost::parse("3 W W"),
+        ColorSet::WHITE,
+        Some(4),
+        Some(4),
+        vec!["Flying".to_string()],
+        vec![],
+    );
+    let bob_id = game.create_card(bob_creature);
+    game.move_card(bob_id, ZoneType::Battlefield, bob);
+
+    apply_continuous_effects(&mut game);
+
+    assert!(game.card(alice_id).has_flying(), "Alice's creature should gain Flying");
+    // Bob's Serra Angel already has Flying natively; the enchantment shouldn't grant it
+    // (and since it's Bob's enchantment that's missing, it doesn't matter, but
+    // we verify Bob's creature is not affected by Alice's enchantment).
+    let alice_enchantment_affects_bob = game
+        .card(bob_id)
+        .granted_keywords
+        .iter()
+        .any(|k| k.eq_ignore_ascii_case("Flying"));
+    assert!(!alice_enchantment_affects_bob, "Bob's creature should not receive Alice's grant");
+}
+
+// ── Replacement Effects Framework (PR #27) ───────────────────────────────────
+
+/// Test: Indestructible creature survives lethal damage via state-based actions.
+/// Exercises the Destroy replacement effect path in check_state_based_actions.
+#[test]
+fn indestructible_survives_lethal_damage() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let alice = PlayerId(0);
+    // Need at least one opponent alive so the game doesn't end during SBA.
+    let bob_creature = CardInstance::new(
+        CardId(0),
+        "Grizzly Bears".to_string(),
+        PlayerId(1),
+        CardTypeLine::parse("Creature - Bear"),
+        ManaCost::parse("1 G"),
+        ColorSet::GREEN,
+        Some(2),
+        Some(2),
+        vec![],
+        vec![],
+    );
+    let bob_id = game.create_card(bob_creature);
+    game.move_card(bob_id, ZoneType::Battlefield, PlayerId(1));
+
+    // Darksteel Myr: 0/1 artifact creature with Indestructible replacement effect.
+    let myr = CardInstance::new(
+        CardId(0),
+        "Darksteel Myr".to_string(),
+        alice,
+        CardTypeLine::parse("Artifact Creature - Myr"),
+        ManaCost::parse("3"),
+        ColorSet::COLORLESS,
+        Some(0),
+        Some(1),
+        vec!["Indestructible".to_string()],
+        vec!["R$ Event$ Destroy | ValidCard$ Card.Self".to_string()],
+    );
+    let myr_id = game.create_card(myr);
+    game.move_card(myr_id, ZoneType::Battlefield, alice);
+
+    // Mark lethal damage on the Myr (toughness=1, damage=3).
+    game.card_mut(myr_id).damage = 3;
+
+    game.check_state_based_actions();
+
+    assert_eq!(
+        game.card(myr_id).zone,
+        ZoneType::Battlefield,
+        "Indestructible Myr must remain on the battlefield after lethal damage"
+    );
+}
+
+/// Test: A creature with exile-on-death replacement goes to Exile, not Graveyard.
+/// Exercises the Moved replacement effect path in check_state_based_actions.
+#[test]
+fn exile_on_death_goes_to_exile_not_graveyard() {
+    let mut game = GameState::new(&["Alice", "Bob"], 20);
+    let alice = PlayerId(0);
+    // Keep Bob alive.
+    let bob_creature = CardInstance::new(
+        CardId(0),
+        "Grizzly Bears".to_string(),
+        PlayerId(1),
+        CardTypeLine::parse("Creature - Bear"),
+        ManaCost::parse("1 G"),
+        ColorSet::GREEN,
+        Some(2),
+        Some(2),
+        vec![],
+        vec![],
+    );
+    let bob_id = game.create_card(bob_creature);
+    game.move_card(bob_id, ZoneType::Battlefield, PlayerId(1));
+
+    // "If ~ would be put into a graveyard from the battlefield, exile it instead."
+    let exile_bear = CardInstance::new(
+        CardId(0),
+        "Exile Bear".to_string(),
+        alice,
+        CardTypeLine::parse("Creature - Bear"),
+        ManaCost::parse("1 G"),
+        ColorSet::GREEN,
+        Some(2),
+        Some(2),
+        vec![],
+        vec!["R$ Event$ Moved | Destination$ Graveyard | Origin$ Battlefield | ValidCard$ Card.Self | NewDestination$ Exile".to_string()],
+    );
+    let bear_id = game.create_card(exile_bear);
+    game.move_card(bear_id, ZoneType::Battlefield, alice);
+
+    // Deal lethal damage (toughness=2, damage=2).
+    game.card_mut(bear_id).damage = 2;
+
+    game.check_state_based_actions();
+
+    assert_eq!(
+        game.card(bear_id).zone,
+        ZoneType::Exile,
+        "Creature with exile-on-death should go to Exile, not Graveyard"
+    );
+    assert_ne!(
+        game.card(bear_id).zone,
+        ZoneType::Graveyard,
+        "Creature should not be in Graveyard"
+    );
 }

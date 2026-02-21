@@ -175,7 +175,7 @@ impl CardFilter {
             "Permanent" | "Card" | "" => {}
             "nonLand" | "NonLand" => f.nonland_only = true,
             "Land" => f.land_only = true,
-            "YouControl" => f.controller_only = true,
+            "YouControl" | "YouCtrl" => f.controller_only = true,
             "Other" => f.other_only = true,
             s => {
                 // Unknown tokens are treated as subtype filters (e.g. "Goblin").

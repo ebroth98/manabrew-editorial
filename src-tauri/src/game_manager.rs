@@ -228,7 +228,7 @@ fn run_game(
     // otherwise build a custom deck from the card name list.
     let is_preset = deck_list.len() == 1 && matches!(
         deck_list[0].as_str(),
-        "red_burn" | "green_stompy" | "white_aggro" | "black_control"
+        "red_burn" | "green_stompy" | "white_aggro" | "black_control" | "white_static"
     );
 
     if is_preset {
@@ -240,6 +240,10 @@ fn run_game(
             "white_aggro" => {
                 build_named_deck(&mut game, p0, WHITE_AGGRO);
                 build_named_deck(&mut game, p1, BLACK_CONTROL);
+            }
+            "white_static" => {
+                build_named_deck(&mut game, p0, WHITE_STATIC);
+                build_named_deck(&mut game, p1, GREEN_STOMPY);
             }
             "black_control" => {
                 build_named_deck(&mut game, p0, BLACK_CONTROL);
@@ -322,6 +326,20 @@ const WHITE_AGGRO: &[(&str, usize)] = &[
     ("White Knight", 3),
     ("Serra Angel", 3),
     ("Soul Warden", 3),
+];
+
+/// Exercises PR #26 (static abilities / layer system) and PR #27 (replacement effects).
+/// Glorious Anthem tests the YouCtrl alias fix and layer 7c anthem stacking.
+/// Darksteel Myr tests the indestructible Destroy replacement effect.
+/// Honor of the Pure tests color-based filtering (White creatures).
+const WHITE_STATIC: &[(&str, usize)] = &[
+    ("Plains", 16),
+    ("Glorious Anthem", 3),
+    ("Honor of the Pure", 3),
+    ("Darksteel Myr", 3),
+    ("Savannah Lions", 4),
+    ("White Knight", 4),
+    ("Serra Angel", 3),
 ];
 
 const BLACK_CONTROL: &[(&str, usize)] = &[
