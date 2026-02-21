@@ -1,6 +1,7 @@
 # Project Guidelines
 
 - Never push directly on main, always create a feature branch and a relative pr
+- never automatically push any sort of code wait for an explicit push command
 
 ## Feature implementation
 Whenever you implement a feature, or modify, make sure to always keep logical, naming, and file parity, with the java counterpart in forge/forge-game/ or forge/forge-core.
