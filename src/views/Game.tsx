@@ -650,6 +650,8 @@ export default function Game() {
   const [activeFlash, setActiveFlash] = useState<FlashItem | null>(null);
   const flashQueueRef = useRef<FlashItem[]>([]);
   const isFlashingRef = useRef(false);
+  // Hold the deferred gameView + prompt until all flashes for the current snapshot finish.
+  const deferredStateRef = useRef<{ gameView: unknown; prompt: unknown } | null>(null);
 
 
   // Combat state
@@ -722,6 +724,16 @@ export default function Game() {
     setBlockAssignments([]);
   }, [currentPrompt?.type]);
 
+  // Apply deferred gameView + prompt from the ref into the store.
+  function applyDeferredState() {
+    const deferred = deferredStateRef.current;
+    if (!deferred) return;
+    deferredStateRef.current = null;
+    const updates: Record<string, unknown> = { gameView: deferred.gameView };
+    if (deferred.prompt) updates.currentPrompt = deferred.prompt;
+    useGameStore.setState(updates);
+  }
+
   // Pop the next snapshot from the queue and start its flashes.
   function startNextSnapshot() {
     const queue = useGameStore.getState().deferredQueue;
@@ -734,14 +746,11 @@ export default function Game() {
     const [snapshot, ...rest] = queue;
     useGameStore.setState({ deferredQueue: rest });
 
-    // Always apply gameView + prompt immediately so the board updates right away.
-    // Flash animations play as overlays on top of the already-updated state.
-    const updates: Record<string, unknown> = { gameView: snapshot.gameView };
-    if (snapshot.prompt) updates.currentPrompt = snapshot.prompt;
-    useGameStore.setState(updates);
-
     if (snapshot.displayEvents.length === 0) {
-      // No flashes — continue to next in queue (use setTimeout to avoid infinite recursion in one tick)
+      // No flashes — apply state immediately and continue to next in queue.
+      const updates: Record<string, unknown> = { gameView: snapshot.gameView };
+      if (snapshot.prompt) updates.currentPrompt = snapshot.prompt;
+      useGameStore.setState(updates);
       if (rest.length > 0) {
         setTimeout(startNextSnapshot, 0);
       } else {
@@ -750,6 +759,9 @@ export default function Game() {
       }
       return;
     }
+
+    // Defer the gameView + prompt — will be applied after all flashes finish.
+    deferredStateRef.current = { gameView: snapshot.gameView, prompt: snapshot.prompt };
 
     // Enqueue flash items for this snapshot's display events.
     for (const evt of snapshot.displayEvents) {
@@ -784,7 +796,7 @@ export default function Game() {
     }
   }, [deferredQueue]);
 
-  // Process flash queue: when current flash ends, show next or move to next snapshot.
+  // Process flash queue: when current flash ends, show next or apply deferred state.
   useEffect(() => {
     if (!activeFlash) {
       // Check if there are more flashes in the current snapshot's batch
@@ -793,7 +805,8 @@ export default function Game() {
         isFlashingRef.current = true;
         setActiveFlash(next);
       } else {
-        // All flashes done — state was already applied upfront, just move on.
+        // All flashes done — now apply the deferred gameView + prompt.
+        applyDeferredState();
         const queue = useGameStore.getState().deferredQueue;
         if (queue.length > 0) {
           setTimeout(startNextSnapshot, 10);

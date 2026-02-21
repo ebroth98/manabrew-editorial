@@ -147,7 +147,9 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   respond: async (action) => {
     try {
-      set({ debugInfo: `Responding: ${action.type}` });
+      // Clear the current prompt immediately so combat/action UI disappears
+      // as soon as the player commits — the next prompt will arrive via event.
+      set({ currentPrompt: null, debugInfo: `Responding: ${action.type}` });
       await invoke('respond', { action });
     } catch (e) {
       set({ debugInfo: `Respond error: ${e}` });
