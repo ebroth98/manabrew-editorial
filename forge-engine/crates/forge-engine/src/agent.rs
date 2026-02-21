@@ -32,6 +32,12 @@ pub trait PlayerAgent {
     /// Override this to capture snapshots for a UI or network layer.
     fn snapshot_state(&mut self, _game: &GameState, _mana_pools: &[ManaPool]) {}
 
+    /// Called before library-peek choices (Scry, Surveil, Dig) so UI agents
+    /// can build card info for the cards being revealed from the library.
+    /// Receives `game` and the top-N card IDs the player is looking at.
+    /// Default implementation is a no-op.
+    fn on_library_peek(&mut self, _game: &GameState, _cards: &[CardId]) {}
+
     /// Choose which cards to keep in opening hand (mulligan decision).
     /// Returns true to keep, false to mulligan.
     fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId]) -> bool;
@@ -91,6 +97,47 @@ pub trait PlayerAgent {
     /// Default picks the first (used by AI agents).
     fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
         valid.first().copied()
+    }
+
+    /// Choose which of the top `cards` (from Scry) to put on the bottom of the library.
+    /// The rest will stay on top. Default: keep all on top (no cards sent to bottom).
+    /// Mirrors Java's `PlayerController.chooseScryCriteria()`.
+    fn choose_scry(&mut self, _player: PlayerId, _cards: &[CardId]) -> Vec<CardId> {
+        vec![]
+    }
+
+    /// Choose which of the top `cards` (from Surveil) to put into the graveyard.
+    /// The rest will go on top. Default: keep all on top (nothing milled).
+    /// Mirrors Java's `Player.surveil()`.
+    fn choose_surveil(&mut self, _player: PlayerId, _cards: &[CardId]) -> Vec<CardId> {
+        vec![]
+    }
+
+    /// Choose up to `max` cards from `valid` to move to the destination zone (Dig effect).
+    /// `optional` means the player is not required to choose any.
+    /// Default: take first `max` cards.
+    /// Mirrors Java's `PlayerController.chooseEntitiesForEffect()` used in DigEffect.
+    fn choose_dig(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        max: usize,
+        _optional: bool,
+    ) -> Vec<CardId> {
+        valid.iter().copied().take(max).collect()
+    }
+
+    /// Choose an ordering for the top N cards being put back on the library (Ponder/Reorder).
+    /// Returns the cards in desired order: index 0 will be placed deepest, last will be on top.
+    /// Default: keep original order.
+    fn choose_reorder_library(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
+        cards.to_vec()
+    }
+
+    /// Choose whether to shuffle after looking at the top of the library (e.g. Ponder).
+    /// Default: do not shuffle.
+    fn choose_may_shuffle(&mut self, _player: PlayerId) -> bool {
+        false
     }
 
     /// Choose whether to play a land or cast a spell when both are possible.

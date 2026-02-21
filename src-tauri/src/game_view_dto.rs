@@ -127,7 +127,7 @@ fn phase_to_step(phase: forge_foundation::PhaseType) -> &'static str {
     }
 }
 
-fn card_to_dto(
+pub fn card_to_dto(
     game: &GameState,
     cid: CardId,
     playable_ids: &[CardId],

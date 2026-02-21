@@ -9,14 +9,22 @@ pub mod change_zone_all;
 pub mod copy_permanent;
 pub mod deal_damage;
 pub mod destroy;
+pub mod dig;
 pub mod draw;
 pub mod gain_life;
+pub mod look_at;
 pub mod lose_life;
 pub mod mana;
+pub mod mill;
 pub mod pump;
 pub mod put_counter;
+pub mod rearrange_top_of_library;
+pub mod reveal;
+pub mod reveal_hand;
 pub mod sacrifice;
 pub mod sacrifice_all;
+pub mod scry;
+pub mod surveil;
 pub mod token;
 
 use std::collections::HashMap;
@@ -64,6 +72,16 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
         "CopyPermanent" => copy_permanent::resolve(ctx, sa),
         "Token" => token::resolve(ctx, sa),
         "Mana" => mana::resolve(ctx, sa),
+        // Library manipulation (issue #15)
+        "Mill" => mill::resolve(ctx, sa),
+        "Scry" => scry::resolve(ctx, sa),
+        "Surveil" => surveil::resolve(ctx, sa),
+        "Dig" | "DigMultiple" => dig::resolve(ctx, sa),
+        "RearrangeTopOfLibrary" => rearrange_top_of_library::resolve(ctx, sa),
+        // Reveal / Look (informational)
+        "Reveal" => reveal::resolve(ctx, sa),
+        "RevealHand" => reveal_hand::resolve(ctx, sa),
+        "LookAt" => look_at::resolve(ctx, sa),
         _ => {} // Unimplemented effect — silently skip
     }
 }
@@ -74,6 +92,7 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
 fn detect_api_type_from_text(ability: &str) -> &'static str {
     // Order matters — check longer names first
     // ChangeZoneAll must be checked before ChangeZone, SacrificeAll before Sacrifice
+    // RevealHand before Reveal, DigMultiple before Dig
     if ability.contains("DealDamage") {
         "DealDamage"
     } else if ability.contains("GainLife") {
@@ -102,6 +121,24 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "Token"
     } else if ability.contains("Mana") {
         "Mana"
+    } else if ability.contains("Mill") {
+        "Mill"
+    } else if ability.contains("Scry") {
+        "Scry"
+    } else if ability.contains("Surveil") {
+        "Surveil"
+    } else if ability.contains("DigMultiple") {
+        "DigMultiple"
+    } else if ability.contains("$ Dig") {
+        "Dig"
+    } else if ability.contains("RearrangeTopOfLibrary") {
+        "RearrangeTopOfLibrary"
+    } else if ability.contains("RevealHand") {
+        "RevealHand"
+    } else if ability.contains("Reveal") {
+        "Reveal"
+    } else if ability.contains("LookAt") {
+        "LookAt"
     } else {
         ""
     }

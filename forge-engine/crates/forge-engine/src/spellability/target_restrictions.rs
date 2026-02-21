@@ -71,18 +71,15 @@ impl TargetRestrictions {
     /// Check if there is at least one valid target candidate.
     /// Mirrors Java's `TargetRestrictions.hasCandidates()`.
     pub fn has_candidates(&self, game: &GameState, player: PlayerId) -> bool {
+        let _ = player; // may be used for future opponent-only filtering
         match &self.target_kind {
             TargetKind::None => true,
-            TargetKind::Player => {
-                game.alive_players().into_iter().any(|p| p != player)
-            }
+            // "target player" = any alive player (including the caster themselves).
+            TargetKind::Player => !game.alive_players().is_empty(),
+            // "any target" = any alive player or any creature on the battlefield.
             TargetKind::Any => {
-                let has_opponent = game.alive_players().into_iter().any(|p| p != player);
-                if has_opponent {
-                    true
-                } else {
-                    !get_all_candidates_creatures(game).is_empty()
-                }
+                !game.alive_players().is_empty()
+                    || !get_all_candidates_creatures(game).is_empty()
             }
             TargetKind::Creature(ref filter) => {
                 !get_all_candidates_creature_filtered(game, filter.as_deref(), player).is_empty()

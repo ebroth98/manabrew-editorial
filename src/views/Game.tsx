@@ -9,6 +9,7 @@ import { FreeBattlefield } from "@/components/game/FreeBattlefield";
 import { CardPreview } from "@/components/game/CardPreview";
 import { ZoneViewer } from "@/components/game/ZoneViewer";
 import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
+import { LibraryPeekModal, type LibraryPeekMode } from "@/components/game/LibraryPeekModal";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
 import { Button } from "@/components/ui/button";
@@ -537,6 +538,9 @@ function PromptBanner({ promptType }: { promptType: string }) {
     chooseTargetCard: "Choose a target creature",
     chooseTargetAny: "Choose a target (player or creature)",
     chooseTargetCardFromZone: "Choose a target card from the zone",
+    scry: "Scry — arrange the top cards of your library",
+    surveil: "Surveil — choose cards to send to the graveyard",
+    dig: "Dig — choose cards to take to your hand",
     gameOver: "Game Over",
   };
   const label = labels[promptType] ?? promptType;
@@ -669,6 +673,9 @@ export default function Game() {
     mulliganDecision,
     tapLand,
     untapLand,
+    scryDecision,
+    surveilDecision,
+    digDecision,
     concede,
     endGame,
     setupListeners,
@@ -733,6 +740,14 @@ export default function Game() {
   function closeZoneTargetSelector() {
     setZoneTargetSelector(null);
   }
+
+  // Library peek modal (Scry / Surveil / Dig)
+  const [libraryPeekModal, setLibraryPeekModal] = useState<{
+    mode: LibraryPeekMode;
+    cards: XMageCard[];
+    numToTake?: number;
+    optional?: boolean;
+  } | null>(null);
 
   // Concede confirmation
   const [confirmConcede, setConfirmConcede] = useState(false);
@@ -940,6 +955,24 @@ export default function Game() {
     const timer = setTimeout(() => endGame(), 3000);
     return () => clearTimeout(timer);
   }, [gameView?.gameOver, currentPrompt?.type]);
+
+  // Open library-peek modal for Scry / Surveil / Dig prompts
+  useEffect(() => {
+    if (
+      (promptType === "scry" || promptType === "surveil" || promptType === "dig") &&
+      currentPrompt?.cards &&
+      currentPrompt.cards.length > 0
+    ) {
+      setLibraryPeekModal({
+        mode: promptType as LibraryPeekMode,
+        cards: currentPrompt.cards as XMageCard[],
+        numToTake: promptType === "dig" ? currentPrompt.numToTake : undefined,
+        optional: promptType === "dig" ? currentPrompt.optional : undefined,
+      });
+    } else if (promptType !== "scry" && promptType !== "surveil" && promptType !== "dig") {
+      setLibraryPeekModal(null);
+    }
+  }, [promptType, currentPrompt]);
 
   // Handle zone-based targeting prompts (e.g., selecting from graveyard)
   useEffect(() => {
@@ -1558,6 +1591,26 @@ export default function Game() {
         />
       )}
 
+      {/* ── Library peek modal (Scry / Surveil / Dig) ────── */}
+      {libraryPeekModal && (
+        <LibraryPeekModal
+          mode={libraryPeekModal.mode}
+          cards={libraryPeekModal.cards}
+          numToTake={libraryPeekModal.numToTake}
+          optional={libraryPeekModal.optional}
+          onConfirm={(selectedIds) => {
+            if (libraryPeekModal.mode === "scry") {
+              scryDecision(selectedIds);
+            } else if (libraryPeekModal.mode === "surveil") {
+              surveilDecision(selectedIds);
+            } else {
+              digDecision(selectedIds);
+            }
+            setLibraryPeekModal(null);
+          }}
+        />
+      )}
+
       {/* ── Card-play flash overlay ───────────────────────── */}
       {activeFlash?.kind === "card" &&
         createPortal(
@@ -1612,7 +1665,8 @@ export default function Game() {
         )}
 
       {/* ── Hover card preview ────────────────────────────── */}
-      {hoveredCard && (
+      {/* Hide when any modal is open so the preview doesn't bleed through. */}
+      {hoveredCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && (
         <CardPreview
           card={hoveredCard}
           mouseX={mousePos.x}
