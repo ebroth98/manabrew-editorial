@@ -19,7 +19,7 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: <Navigate to="/play" replace />,
+        element: <Navigate to="/lobby" replace />,
       },
       {
         path: "play",

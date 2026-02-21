@@ -21,9 +21,9 @@ export default function Lobby() {
   ]);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
 
-  function handleStartGame(cardNames: string[], formatId: string, commanderName?: string) {
+  function handleStartGame(cardNames: string[], formatId: string, commanderName?: string, playerCount?: number) {
     startGame(cardNames, formatId, commanderName);
-    navigate("/play");
+    navigate("/play", { state: { devExtraOpponents: Math.max(0, (playerCount ?? 2) - 2) } });
   }
 
   return (

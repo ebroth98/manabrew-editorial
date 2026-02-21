@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -16,13 +17,20 @@ import { FormatBadge } from "@/components/game/FormatBadge";
 import { cn } from "@/lib/utils";
 import { AlertCircle } from "lucide-react";
 
+interface PresetDeckInfo {
+  id: string;
+  label: string;
+  desc: string;
+  color: string;
+}
+
 interface CreateGameDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Pre-select a saved deck by ID (e.g. when launched from MyDecks) */
   preSelectedDeckId?: string;
-  /** Called with the deck card names, format ID, and optional commander name when Create is confirmed */
-  onStart: (cardNames: string[], formatId: string, commanderName?: string) => void;
+  /** Called with the deck card names, format ID, optional commander name, and player count when Create is confirmed */
+  onStart: (cardNames: string[], formatId: string, commanderName?: string, playerCount?: number) => void;
 }
 
 export function CreateGameDialog({
@@ -43,6 +51,14 @@ export function CreateGameDialog({
   const [selectedCommander, setSelectedCommander] = useState<string>(
     currentDeck.commander?.name ?? ""
   );
+  const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
+  const [playerCount, setPlayerCount] = useState(2);
+
+  useEffect(() => {
+    invoke<PresetDeckInfo[]>("get_preset_decks")
+      .then(setPresetDecks)
+      .catch((e) => console.error("[CreateGameDialog] Failed to load preset decks:", e));
+  }, []);
 
   const allDecks = [
     {
@@ -53,6 +69,7 @@ export function CreateGameDialog({
         ...currentDeck.cards.map((c) => c.name),
         ...(currentDeck.commander ? [currentDeck.commander.name] : []),
       ],
+      isPreset: false as const,
       cards: currentDeck.cards,
       commanderName: currentDeck.commander?.name,
     },
@@ -63,8 +80,17 @@ export function CreateGameDialog({
         ...s.deck.cards.map((c) => c.name),
         ...(s.deck.commander ? [s.deck.commander.name] : []),
       ],
+      isPreset: false as const,
       cards: s.deck.cards,
       commanderName: s.deck.commander?.name,
+    })),
+    ...presetDecks.map((deck) => ({
+      id: `preset__${deck.id}`,
+      name: deck.label,
+      cardNames: [deck.id],
+      isPreset: true as const,
+      cards: [],
+      commanderName: undefined as string | undefined,
     })),
   ];
 
@@ -77,7 +103,9 @@ export function CreateGameDialog({
 
   const selectedDeckEntry = allDecks.find((d) => d.id === selectedDeck);
   const selectedDeckNames = selectedDeckEntry?.cardNames ?? [];
-  const selectedDeckValidation = validateDeck(selectedDeckNames, selectedFormat);
+  const selectedDeckValidation = selectedDeckEntry?.isPreset
+    ? { legal: true, errors: [] as string[] }
+    : validateDeck(selectedDeckNames, selectedFormat);
 
   // Get unique legendary creatures from the selected deck for the commander picker.
   // Also include the deck's designated commander even if it's stored separately.
@@ -115,7 +143,7 @@ export function CreateGameDialog({
       return;
     }
     onOpenChange(false);
-    onStart(selectedDeckNames, selectedFormat.id, needsCommander ? selectedCommander : undefined);
+    onStart(selectedDeckNames, selectedFormat.id, needsCommander ? selectedCommander : undefined, playerCount);
   }
 
   return (
@@ -135,6 +163,34 @@ export function CreateGameDialog({
                 value={gameName}
                 onChange={(e) => setGameName(e.target.value)}
               />
+            </div>
+
+            {/* DEV: Player count */}
+            <div className="space-y-1">
+              <Label className="flex items-center gap-1.5">
+                Player Count
+                <span className="text-[10px] font-mono text-orange-500 bg-orange-50 dark:bg-orange-950/30 px-1 rounded">DEV</span>
+              </Label>
+              <div className="flex gap-1">
+                {[2, 3, 4].map((n) => (
+                  <button
+                    key={n}
+                    type="button"
+                    onClick={() => setPlayerCount(n)}
+                    className={cn(
+                      "px-3 py-1 rounded border text-sm transition-colors",
+                      playerCount === n
+                        ? "border-orange-400 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 font-semibold"
+                        : "border-border hover:bg-muted/60"
+                    )}
+                  >
+                    {n}
+                  </button>
+                ))}
+                <span className="text-xs text-muted-foreground self-center ml-1">
+                  {playerCount === 2 ? "1 opponent" : `${playerCount - 1} opponents (${playerCount - 2} simulated)`}
+                </span>
+              </div>
             </div>
 
             {/* Format picker */}
@@ -182,7 +238,9 @@ export function CreateGameDialog({
               <Label>Deck</Label>
               <div className="space-y-1 max-h-40 overflow-y-auto border rounded p-2">
                 {allDecks.map((d) => {
-                  const validation = validateDeck(d.cardNames, selectedFormat);
+                  const validation = d.isPreset
+                    ? { legal: true, errors: [] as string[] }
+                    : validateDeck(d.cardNames, selectedFormat);
                   const isSelected = selectedDeck === d.id;
                   return (
                     <div
@@ -204,9 +262,15 @@ export function CreateGameDialog({
                     >
                       <span className="truncate">{d.name}</span>
                       <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                        <span className="text-xs text-muted-foreground">
-                          {d.cardNames.length} cards
-                        </span>
+                        {d.isPreset ? (
+                          <span className="text-xs text-muted-foreground bg-muted px-1 py-0.5 rounded">
+                            Preset
+                          </span>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">
+                            {d.cardNames.length} cards
+                          </span>
+                        )}
                         {!validation.legal && (
                           <span title={validation.errors.slice(0, 3).join("\n")}>
                             <AlertCircle className="h-3.5 w-3.5 text-destructive" />

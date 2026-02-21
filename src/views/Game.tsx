@@ -1,7 +1,6 @@
 import { useGameStore } from "@/stores/useGameStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
-import { useDeckStore } from "@/stores/useDeckStore";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
 import type { Card as XMageCard, Player } from "@/types/xmage";
@@ -29,6 +28,7 @@ import {
   Skull,
   TimerOff,
 } from "lucide-react";
+import { Navigate, useLocation } from "react-router-dom";
 
 const AVATAR_COLORS = [
   "bg-blue-600 text-white",
@@ -79,13 +79,6 @@ const MANA_COLORS = [
   { key: "G", bg: "bg-green-100 border-green-300", text: "text-green-800" },
   { key: "C", bg: "bg-gray-100 border-gray-300", text: "text-gray-700" },
 ];
-
-interface PresetDeckInfo {
-  id: string;
-  label: string;
-  desc: string;
-  color: string;
-}
 
 function ManaPool({ pool }: { pool: Record<string, number> }) {
   const total = Object.values(pool).reduce((a, b) => a + b, 0);
@@ -554,72 +547,103 @@ function PromptBanner({ promptType }: { promptType: string }) {
   );
 }
 
-interface DeckPickResult {
-  cardNames: string[];
-  commanderName?: string;
-  formatId?: string;
+interface OpponentHalfProps {
+  player: Player;
+  permanents: XMageCard[];
+  graveyard: XMageCard[];
+  exile: XMageCard[];
+  commandZone?: XMageCard[];
+  isTargetable: boolean;
+  onTarget: () => void;
+  isFlashing: boolean;
+  activePlayerId: string;
+  promptType: string | undefined;
+  pendingAttacker: string | null;
+  attackerIds?: string[];
+  onClickCard: (card: XMageCard) => void;
+  onClickAnyCard: (card: XMageCard) => void;
+  onHoverCard: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  onOpenZone: (title: string, cards: XMageCard[]) => void;
 }
 
-function DeckPicker({ onPick }: { onPick: (result: DeckPickResult) => void }) {
-  const { savedDecks } = useDeckStore();
-  const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
-
-  useEffect(() => {
-    invoke<PresetDeckInfo[]>("get_preset_decks")
-      .then(setPresetDecks)
-      .catch((e) => console.error("[DeckPicker] Failed to load preset decks:", e));
-  }, []);
-
+function OpponentHalf({
+  player,
+  permanents,
+  graveyard,
+  exile,
+  commandZone,
+  isTargetable,
+  onTarget,
+  isFlashing,
+  activePlayerId,
+  promptType,
+  pendingAttacker,
+  attackerIds,
+  onClickCard,
+  onClickAnyCard,
+  onHoverCard,
+  onOpenZone,
+}: OpponentHalfProps) {
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-6 p-6 overflow-y-auto">
-      <h2 className="text-2xl font-bold">Choose Your Deck</h2>
-
-      {/* Saved decks */}
-      {savedDecks.length > 0 && (
-        <div className="w-full max-w-xl">
-          <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-            Your Decks
-          </h3>
-          <div className="grid grid-cols-2 gap-3">
-            {savedDecks.map((s) => (
-              <button
-                key={s.id}
-                className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
-                onClick={() => onPick({
-                  cardNames: s.deck.cards.map((c) => c.name),
-                  commanderName: s.deck.commander?.name,
-                  formatId: s.deck.commander ? 'commander' : undefined,
-                })}
-              >
-                <p className="font-semibold truncate">{s.deck.name}</p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  {s.deck.cards.length} cards
-                  {s.deck.commander && (
-                    <span className="ml-2 text-yellow-600 font-medium">· EDH</span>
-                  )}
-                </p>
-              </button>
-            ))}
-          </div>
+    <div className="flex flex-col gap-1 h-full overflow-hidden">
+      <PlayerPanel
+        player={player}
+        isOpponent
+        isActiveTurn={activePlayerId === player.id}
+        isTargetable={isTargetable}
+        onTarget={onTarget}
+        isFlashing={isFlashing}
+      />
+      <div className="flex gap-2 flex-1 min-h-0 overflow-hidden">
+        <div className="flex flex-col gap-1 shrink-0">
+          <LibraryPile count={player.libraryCount} />
+          <ZonePeek
+            count={player.graveyardCount}
+            label="GY"
+            onClick={() => onOpenZone(`${player.name}'s Graveyard`, graveyard)}
+          />
+          <ZonePeek
+            count={player.exileCount}
+            label="Exile"
+            onClick={() => onOpenZone(`${player.name}'s Exile`, exile)}
+          />
+          {(commandZone?.length ?? 0) > 0 && (
+            <ZonePeek
+              count={commandZone!.length}
+              label="CMD"
+              onClick={() =>
+                onOpenZone(`${player.name}'s Command Zone`, commandZone!)
+              }
+              icon={Sword}
+            />
+          )}
         </div>
-      )}
-
-      {/* Preset decks — loaded dynamically from the backend */}
-      <div className="w-full max-w-xl">
-        <h3 className="text-sm font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-          Preset Decks
-        </h3>
-        <div className="grid grid-cols-2 gap-3">
-          {presetDecks.map((deck) => (
-            <button
-              key={deck.id}
-              className="border rounded-lg p-4 hover:bg-muted/50 transition-colors text-left"
-              onClick={() => onPick({ cardNames: [deck.id] })}
-            >
-              <p className={cn("font-semibold", deck.color)}>{deck.label}</p>
-              <p className="text-xs text-muted-foreground mt-1">{deck.desc}</p>
-            </button>
-          ))}
+        <div className="flex flex-col gap-1 flex-1 min-w-0 overflow-hidden">
+          <BattlefieldZone
+            cards={permanents}
+            label={`${player.name}'s Battlefield`}
+            emptyLabel="No permanents"
+            className="flex-1"
+            minHeight={60}
+            onClickCard={
+              promptType === "chooseTargetCard" ||
+              promptType === "chooseTargetAny"
+                ? onClickCard
+                : undefined
+            }
+            onClickAnyCard={
+              promptType === "chooseBlockers" ? onClickAnyCard : undefined
+            }
+            onHoverCard={onHoverCard}
+            pendingCardIds={
+              promptType === "chooseBlockers" && pendingAttacker
+                ? [pendingAttacker]
+                : undefined
+            }
+            attackingCardIds={
+              promptType === "chooseBlockers" ? (attackerIds ?? []) : undefined
+            }
+          />
         </div>
       </div>
     </div>
@@ -645,11 +669,12 @@ export default function Game() {
     untapLand,
     concede,
     endGame,
-    startGame,
     setupListeners,
     deferredQueue,
   } = useGameStore();
   const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
+  const location = useLocation();
+  const devExtraOpponents = ((location.state as { devExtraOpponents?: number } | null)?.devExtraOpponents ?? 0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const [hoveredCard, setHoveredCard] = useState<XMageCard | null>(null);
@@ -858,8 +883,24 @@ export default function Game() {
   // Player IDs are empty strings when gameView is not yet available; the hook
   // will safely produce no arrows in that case.
   const me = gameView?.players.find((p) => p.isHuman) ?? gameView?.players[0];
-  const opponent =
-    gameView?.players.find((p) => !p.isHuman) ?? gameView?.players[1];
+  const opponents = gameView?.players.filter((p) => !p.isHuman) ?? [];
+  const opponent = opponents[0]; // alias for arrows hook + game-over screen
+  // DEV: pad with simulated opponents to test multi-player layout
+  const displayOpponents = [
+    ...opponents,
+    ...Array.from({ length: devExtraOpponents }, (_, i) => ({
+      id: `dev-fake-${i}`,
+      name: `Dev Opp ${opponents.length + i + 1}`,
+      isHuman: false,
+      life: 20,
+      poison: 0,
+      handCount: 7,
+      libraryCount: 40,
+      graveyardCount: 0,
+      exileCount: 0,
+      manaPool: {} as Record<string, number>,
+    } as Player)),
+  ];
   // Stabilize attackerIds so useGameArrows' useEffect doesn't re-run every render
   // when the prompt has no attackerIds (the ?? [] fallback would create a new array each time).
   const attackerIds = useMemo(
@@ -885,10 +926,7 @@ export default function Game() {
     return () => clearTimeout(timer);
   }, [gameView?.gameOver, currentPrompt?.type]);
 
-  // Show deck picker if no active game
-  if (!isGameActive) {
-    return <DeckPicker onPick={({ cardNames, commanderName, formatId }) => startGame(cardNames, formatId, commanderName)} />;
-  }
+  if (!isGameActive) return <Navigate to="/lobby" replace />;
 
   // Loading
   if (!gameView) {
@@ -923,8 +961,11 @@ export default function Game() {
   const myPermanents = gameView.battlefield.filter(
     (c) => c.controllerId === me!.id,
   );
-  const opponentPermanents = gameView.battlefield.filter(
-    (c) => c.controllerId === opponent!.id,
+  const opponentPermanentsByPlayer = new Map(
+    opponents.map((op) => [
+      op.id,
+      gameView.battlefield.filter((c) => c.controllerId === op.id),
+    ]),
   );
 
   // Game over overlay
@@ -942,7 +983,7 @@ export default function Game() {
           {didWin ? "You Win!" : "You Lose!"}
         </h2>
         <p className="text-muted-foreground">
-          Final life: You {me!.life} — {opponent!.name} {opponent!.life}
+          Final life: You {me!.life} — {opponents.map((op) => `${op.name} ${op.life}`).join(" · ")}
         </p>
         <p className="text-sm text-muted-foreground">Turn {gameView.turn}</p>
         <p className="text-xs text-muted-foreground italic">
@@ -1167,89 +1208,54 @@ export default function Game() {
       <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
         {/* ──── Opponent half ──────────────────────────────── */}
         <ResizablePanel defaultSize={45} minSize={20}>
-          <div className="flex flex-col gap-1 h-full overflow-hidden">
-            {/* Opponent player panel */}
-            <PlayerPanel
-              player={opponent!}
-              isOpponent
-              isActiveTurn={gameView.activePlayerId === opponent!.id}
-              isTargetable={playerIsTargetable(opponent!.id)}
-              onTarget={() => handleTargetPlayer(opponent!.id)}
-              isFlashing={turnFlashPlayerId === opponent!.id}
+          {displayOpponents.length <= 1 ? (
+            <OpponentHalf
+              player={displayOpponents[0]!}
+              permanents={opponentPermanentsByPlayer.get(displayOpponents[0]!.id) ?? []}
+              graveyard={gameView.opponentGraveyard ?? []}
+              exile={gameView.opponentExile ?? []}
+              commandZone={gameView.opponentCommandZone ?? undefined}
+              isTargetable={playerIsTargetable(displayOpponents[0]!.id)}
+              onTarget={() => handleTargetPlayer(displayOpponents[0]!.id)}
+              isFlashing={turnFlashPlayerId === displayOpponents[0]?.id}
+              activePlayerId={gameView.activePlayerId}
+              promptType={promptType}
+              pendingAttacker={pendingAttacker}
+              attackerIds={currentPrompt?.attackerIds}
+              onClickCard={handleBattlefieldClick}
+              onClickAnyCard={handleAttackerClick}
+              onHoverCard={handleHoverCard}
+              onOpenZone={openZone}
             />
-            {/* Zones column + battlefields */}
-            <div className="flex gap-2 flex-1 min-h-0 overflow-hidden">
-              {/* Left: library + zone peeks */}
-              <div className="flex flex-col gap-1 shrink-0">
-                <LibraryPile count={opponent!.libraryCount} />
-                <ZonePeek
-                  count={opponent!.graveyardCount}
-                  label="GY"
-                  onClick={() =>
-                    openZone(
-                      `${opponent!.name}'s Graveyard`,
-                      gameView.opponentGraveyard ?? [],
-                    )
-                  }
-                />
-                <ZonePeek
-                  count={opponent!.exileCount}
-                  label="Exile"
-                  onClick={() =>
-                    openZone(
-                      `${opponent!.name}'s Exile`,
-                      gameView.opponentExile ?? [],
-                    )
-                  }
-                />
-                {(gameView.opponentCommandZone?.length ?? 0) > 0 && (
-                  <ZonePeek
-                    count={gameView.opponentCommandZone!.length}
-                    label="CMD"
-                    onClick={() =>
-                      openZone(
-                        `${opponent!.name}'s Command Zone`,
-                        gameView.opponentCommandZone!,
-                      )
-                    }
-                    icon={Sword}
-                  />
-                )}
-              </div>
-              {/* Right: opponent's full battlefield */}
-              <div className="flex flex-col gap-1 flex-1 min-w-0 overflow-hidden">
-                <BattlefieldZone
-                  cards={opponentPermanents}
-                  label={`${opponent!.name}'s Battlefield`}
-                  emptyLabel="No permanents"
-                  className="flex-1"
-                  minHeight={60}
-                  onClickCard={
-                    promptType === "chooseTargetCard" ||
-                    promptType === "chooseTargetAny"
-                      ? handleBattlefieldClick
-                      : undefined
-                  }
-                  onClickAnyCard={
-                    promptType === "chooseBlockers"
-                      ? handleAttackerClick
-                      : undefined
-                  }
-                  onHoverCard={handleHoverCard}
-                  pendingCardIds={
-                    promptType === "chooseBlockers" && pendingAttacker
-                      ? [pendingAttacker]
-                      : undefined
-                  }
-                  attackingCardIds={
-                    promptType === "chooseBlockers"
-                      ? (currentPrompt?.attackerIds ?? [])
-                      : undefined
-                  }
-                />
-              </div>
-            </div>
-          </div>
+          ) : (
+            <ResizablePanelGroup orientation="horizontal">
+              {displayOpponents.map((op, i) => (
+                <Fragment key={op.id}>
+                  {i > 0 && <ResizableHandle />}
+                  <ResizablePanel>
+                    <OpponentHalf
+                      player={op}
+                      permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
+                      graveyard={i === 0 ? (gameView.opponentGraveyard ?? []) : []}
+                      exile={i === 0 ? (gameView.opponentExile ?? []) : []}
+                      commandZone={i === 0 ? (gameView.opponentCommandZone ?? undefined) : undefined}
+                      isTargetable={playerIsTargetable(op.id)}
+                      onTarget={() => handleTargetPlayer(op.id)}
+                      isFlashing={turnFlashPlayerId === op.id}
+                      activePlayerId={gameView.activePlayerId}
+                      promptType={promptType}
+                      pendingAttacker={pendingAttacker}
+                      attackerIds={currentPrompt?.attackerIds}
+                      onClickCard={handleBattlefieldClick}
+                      onClickAnyCard={handleAttackerClick}
+                      onHoverCard={handleHoverCard}
+                      onOpenZone={openZone}
+                    />
+                  </ResizablePanel>
+                </Fragment>
+              ))}
+            </ResizablePanelGroup>
+          )}
         </ResizablePanel>
 
         <ResizableHandle withHandle />
