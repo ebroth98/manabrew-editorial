@@ -1,6 +1,6 @@
 # Project Guidelines
 
-Never push directly on main, always create a feature branch and a relative pr
+- Never push directly on main, always create a feature branch and a relative pr
 
 ## Feature Tracking
 
@@ -10,6 +10,7 @@ Whenever you implement, partially implement, or modify a feature in this reposit
 - Mark features with incomplete coverage as **Partial** with a brief note on what exists.
 - If a feature's status changes (e.g. from Partial to Implemented), update the status and description.
 - Keep the Summary Statistics section at the bottom of `features.md` accurate after any changes.
+- whenever relevant update or create a new preset deck in src-tauri/src/game_manager.rs so that it will be possible to test the newly introduced mechanic 
 
 ## Project Structure
 
