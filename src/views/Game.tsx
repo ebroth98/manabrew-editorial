@@ -995,16 +995,17 @@ export default function Game() {
   /** Initiate a drag from the hand; on drop over the battlefield, plays the card */
   function startHandCardDrag(card: XMageCard, e: React.MouseEvent) {
     if (!card.isPlayable) return;
+    // Cancel any pending hover timer but keep the preview visible until movement begins
     if (hoverTimerRef.current) {
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
     }
-    setHoveredCard(null);
     setDraggingHandCard(card);
     setGhostPos({ x: e.clientX, y: e.clientY });
 
     let moved = false;
     const handleMouseMove = (me: MouseEvent) => {
+      if (!moved) setHoveredCard(null); // dismiss preview on first movement
       moved = true;
       setGhostPos({ x: me.clientX, y: me.clientY });
       if (battlefieldContainerRef.current) {
