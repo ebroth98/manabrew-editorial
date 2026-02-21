@@ -1,3 +1,5 @@
+pub mod targeting;
+
 use serde::{Deserialize, Serialize};
 
 use crate::ids::{CardId, PlayerId};

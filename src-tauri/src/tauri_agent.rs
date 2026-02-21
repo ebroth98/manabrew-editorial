@@ -3,7 +3,7 @@ use std::sync::mpsc;
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_engine_core::mana_pool::ManaPool;
+use forge_engine_core::mana::ManaPool;
 
 use crate::game_view_dto::GameViewDto;
 use crate::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, DisplayEvent, PlayerAction, TargetAnyChoice};

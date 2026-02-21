@@ -1,5 +1,11 @@
 use forge_foundation::mana::ManaAtom;
+use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
+
+use crate::card::CardInstance;
+use crate::cost::can_pay_ignoring_mana;
+use crate::game::GameState;
+use crate::ids::{CardId, PlayerId};
 
 /// Tracks available mana for a player during a turn.
 /// Simplified model: tracks count of each color + colorless + generic.
@@ -215,10 +221,197 @@ impl ManaPool {
     }
 }
 
+// ── Mana helpers ────────────────────────────────────────────────────
+
+/// Determine what mana atom a basic land produces based on its subtypes.
+pub fn basic_land_mana_atom(card: &CardInstance) -> Option<u16> {
+    if card.type_line.has_subtype("Plains") {
+        Some(ManaAtom::WHITE)
+    } else if card.type_line.has_subtype("Island") {
+        Some(ManaAtom::BLUE)
+    } else if card.type_line.has_subtype("Swamp") {
+        Some(ManaAtom::BLACK)
+    } else if card.type_line.has_subtype("Mountain") {
+        Some(ManaAtom::RED)
+    } else if card.type_line.has_subtype("Forest") {
+        Some(ManaAtom::GREEN)
+    } else {
+        // Check card name as fallback
+        match card.card_name.as_str() {
+            "Plains" => Some(ManaAtom::WHITE),
+            "Island" => Some(ManaAtom::BLUE),
+            "Swamp" => Some(ManaAtom::BLACK),
+            "Mountain" => Some(ManaAtom::RED),
+            "Forest" => Some(ManaAtom::GREEN),
+            _ => None,
+        }
+    }
+}
+
+/// Convert a Produced$ value (e.g. "G", "R", "W") to a ManaAtom.
+pub fn mana_atom_from_produced(produced: &str) -> Option<u16> {
+    match produced.trim() {
+        "W" => Some(ManaAtom::WHITE),
+        "U" => Some(ManaAtom::BLUE),
+        "B" => Some(ManaAtom::BLACK),
+        "R" => Some(ManaAtom::RED),
+        "G" => Some(ManaAtom::GREEN),
+        "C" => Some(ManaAtom::COLORLESS),
+        _ => None,
+    }
+}
+
+/// Auto-tap lands to produce the required mana.
+pub fn auto_tap_lands(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+) {
+    let lands: Vec<CardId> = game
+        .cards_in_zone(ZoneType::Battlefield, player)
+        .to_vec();
+
+    // First, tap lands for colored requirements
+    for shard in cost.shards() {
+        if shard.is_x() {
+            continue;
+        }
+        let atoms = shard.shard();
+        let color_atoms = atoms & ManaAtom::COLORS_SUPERPOSITION;
+
+        if color_atoms != 0 {
+            for &land_id in &lands {
+                let land = game.card(land_id);
+                if land.is_land() && !land.tapped {
+                    if let Some(atom) = basic_land_mana_atom(land) {
+                        if (atom & color_atoms) != 0 {
+                            game.tap(land_id);
+                            pool.add(atom, 1);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Then tap lands for generic cost
+    let mut generic_needed = cost.generic_cost();
+    if generic_needed > 0 {
+        for &land_id in &lands {
+            if generic_needed <= 0 {
+                break;
+            }
+            let land = game.card(land_id);
+            if land.is_land() && !land.tapped {
+                if let Some(atom) = basic_land_mana_atom(land) {
+                    game.tap(land_id);
+                    pool.add(atom, 1);
+                    generic_needed -= 1;
+                }
+            }
+        }
+    }
+}
+
+/// Auto-tap untapped lands to produce `needed` additional generic mana.
+/// Used for paying commander tax on top of the regular cost.
+pub fn auto_tap_lands_generic(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    needed: i32,
+) {
+    let mut remaining = needed;
+    let lands: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
+    for land_id in lands {
+        if remaining <= 0 {
+            break;
+        }
+        let eligible = {
+            let land = game.card(land_id);
+            land.is_land() && !land.tapped && basic_land_mana_atom(land).is_some()
+        };
+        if eligible {
+            let atom = basic_land_mana_atom(game.card(land_id)).unwrap();
+            game.tap(land_id);
+            pool.add(atom, 1);
+            remaining -= 1;
+        }
+    }
+}
+
+/// Calculate available mana from the current pool plus untapped lands and non-land mana sources.
+pub fn calculate_available_mana(
+    pool: &ManaPool,
+    game: &GameState,
+    player: PlayerId,
+) -> ManaPool {
+    let mut available = pool.clone();
+    let battlefield = game.cards_in_zone(ZoneType::Battlefield, player);
+
+    for &card_id in battlefield {
+        let card = game.card(card_id);
+        if card.is_land() && !card.tapped {
+            if let Some(atom) = basic_land_mana_atom(card) {
+                available.add(atom, 1);
+            }
+        } else {
+            // Check non-land permanents for mana abilities
+            for ab in &card.activated_abilities {
+                if ab.is_mana_ability
+                    && can_pay_ignoring_mana(&ab.cost, game, card_id, player)
+                {
+                    if let Some(produced) = ab.params.get("Produced") {
+                        if let Some(atom) = mana_atom_from_produced(produced) {
+                            available.add(atom, 1);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    available
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use forge_foundation::ManaCost;
+
+    #[test]
+    fn basic_land_detection() {
+        use crate::card::CardInstance;
+        use crate::ids::{CardId, PlayerId};
+        use forge_foundation::ColorSet;
+
+        let card = CardInstance::new(
+            CardId(0),
+            "Mountain".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Basic Land - Mountain"),
+            ManaCost::no_cost(),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        assert_eq!(basic_land_mana_atom(&card), Some(ManaAtom::RED));
+    }
+
+    #[test]
+    fn mana_atom_from_produced_test() {
+        assert_eq!(mana_atom_from_produced("W"), Some(ManaAtom::WHITE));
+        assert_eq!(mana_atom_from_produced("U"), Some(ManaAtom::BLUE));
+        assert_eq!(mana_atom_from_produced("B"), Some(ManaAtom::BLACK));
+        assert_eq!(mana_atom_from_produced("R"), Some(ManaAtom::RED));
+        assert_eq!(mana_atom_from_produced("G"), Some(ManaAtom::GREEN));
+        assert_eq!(mana_atom_from_produced("C"), Some(ManaAtom::COLORLESS));
+        assert_eq!(mana_atom_from_produced("X"), None);
+    }
 
     #[test]
     fn pay_simple_cost() {

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use forge_engine_core::card::CounterType;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_engine_core::mana_pool::ManaPool;
+use forge_engine_core::mana::ManaPool;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 

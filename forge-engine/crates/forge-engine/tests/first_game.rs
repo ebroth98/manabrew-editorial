@@ -5,7 +5,7 @@ use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_engine_core::layer::apply_continuous_effects;
+use forge_engine_core::staticability::layer::apply_continuous_effects;
 use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use rand::SeedableRng;
@@ -625,7 +625,7 @@ fn mulldrifter_etb_draws_two_cards() {
 
     // Simulate: put Mulldrifter on stack as a creature spell, then resolve
     game.move_card(mulldrifter, ZoneType::Stack, p0);
-    let entry = forge_engine_core::stack::StackEntry {
+    let entry = forge_engine_core::spellability::StackEntry {
         id: 0,
         source: Some(mulldrifter),
         controller: p0,
@@ -678,7 +678,7 @@ fn soul_warden_gains_life_on_other_creature_etb() {
     // Now put a Grizzly Bears on the stack and resolve
     let bears = game.create_card(make_grizzly_bears(p0));
     game.move_card(bears, ZoneType::Stack, p0);
-    let entry = forge_engine_core::stack::StackEntry {
+    let entry = forge_engine_core::spellability::StackEntry {
         id: 0,
         source: Some(bears),
         controller: p0,
@@ -716,7 +716,7 @@ fn soul_warden_does_not_trigger_on_self_etb() {
     // Soul Warden enters as a creature spell (from stack to battlefield)
     let soul_warden = game.create_card(make_soul_warden(p0));
     game.move_card(soul_warden, ZoneType::Stack, p0);
-    let entry = forge_engine_core::stack::StackEntry {
+    let entry = forge_engine_core::spellability::StackEntry {
         id: 0,
         source: Some(soul_warden),
         controller: p0,

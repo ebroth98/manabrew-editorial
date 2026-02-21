@@ -2,9 +2,9 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::layer::apply_etb_tapped;
+use crate::staticability::layer::apply_etb_tapped;
 use crate::replacement::ReplacementResult;
-use crate::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::handler::{apply_replacements, ReplacementEvent};
 
 /// Game state mutation methods — moving cards, dealing damage, state-based actions.
 impl GameState {

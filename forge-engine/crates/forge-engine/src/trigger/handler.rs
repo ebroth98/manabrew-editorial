@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::stack::StackEntry;
+use crate::spellability::StackEntry;
 use crate::trigger::TriggerMode;
 
 /// An active trigger reference — (card_id, trigger_index) pair.

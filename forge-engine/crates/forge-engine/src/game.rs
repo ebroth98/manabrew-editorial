@@ -7,7 +7,7 @@ use crate::card::CardInstance;
 use crate::ids::{CardId, PlayerId};
 use crate::phase::TurnState;
 use crate::player::PlayerState;
-use crate::stack::MagicStack;
+use crate::spellability::MagicStack;
 use crate::zone::{Zone, ZoneKey};
 
 /// The complete, serializable game state.

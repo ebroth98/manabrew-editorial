@@ -1,94 +1,21 @@
 use std::collections::HashMap;
 
-use forge_foundation::mana::ManaAtom;
-use forge_foundation::{ColorSet, ManaCost, PhaseType, ZoneType};
+use forge_foundation::{PhaseType, ZoneType};
 
-use crate::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use crate::ability::effects::{self, EffectContext};
+use crate::agent::{MainPhaseAction, PlayerAgent};
 use crate::card::CardInstance;
-use crate::combat::CombatState;
-use crate::cost::{can_pay, can_pay_ignoring_mana, CostPart};
+use crate::combat::{self, CombatState};
+use crate::cost::{can_pay, CostPart};
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::layer::apply_continuous_effects;
-use crate::mana_pool::ManaPool;
-use crate::stack::StackEntry;
+use crate::mana::{self, ManaPool, basic_land_mana_atom, mana_atom_from_produced};
+use crate::spellability::StackEntry;
+use crate::spellability::targeting;
+use crate::staticability::layer::apply_continuous_effects;
 use crate::trigger::parse_pipe_params;
-use crate::trigger_handler::TriggerHandler;
-
-// ── Targeting types ─────────────────────────────────────────────────
-
-/// What kinds of targets a spell can select.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum TargetKind {
-    /// Player only (e.g. "ValidTgts$ Player")
-    Player,
-    /// Any player or creature (e.g. "ValidTgts$ Any")
-    Any,
-    /// Creature with optional filter (e.g. "ValidTgts$ Creature.nonBlack")
-    Creature(Option<String>),
-    /// No targets
-    None,
-}
-
-/// Parse ValidTgts$ from an ability string.
-fn parse_valid_targets(ability: &str) -> TargetKind {
-    for part in ability.split('|') {
-        let part = part.trim();
-        if let Some(val) = part.strip_prefix("ValidTgts$ ") {
-            let val = val.trim();
-            if val.eq_ignore_ascii_case("Any") {
-                return TargetKind::Any;
-            }
-            if val.eq_ignore_ascii_case("Player") {
-                return TargetKind::Player;
-            }
-            if val.starts_with("Creature") {
-                // e.g. "Creature.nonBlack" or just "Creature"
-                let filter = val.strip_prefix("Creature").unwrap();
-                if filter.is_empty() {
-                    return TargetKind::Creature(None);
-                }
-                // Strip leading dot
-                let filter = filter.strip_prefix('.').unwrap_or(filter);
-                return TargetKind::Creature(Some(filter.to_string()));
-            }
-            // Fallback: treat as "Any" if unrecognized
-            return TargetKind::Any;
-        }
-    }
-    TargetKind::None
-}
-
-/// Check if a creature matches a filter string like "nonBlack", "nonWhite", etc.
-fn matches_creature_filter(card: &CardInstance, filter: &str) -> bool {
-    let lower = filter.to_ascii_lowercase();
-    if let Some(color_name) = lower.strip_prefix("non") {
-        let excluded = ColorSet::from_names(color_name);
-        !card.color.shares_color_with(excluded)
-    } else {
-        // No recognized filter — match everything
-        true
-    }
-}
-
-/// Parse a numeric parameter from an ability string (e.g. "NumAtt$ 3" → 3).
-fn parse_param(ability: &str, prefix: &str) -> Option<i32> {
-    for part in ability.split('|') {
-        let part = part.trim();
-        if let Some(val) = part.strip_prefix(prefix) {
-            if let Ok(n) = val.trim().parse::<i32>() {
-                return Some(n);
-            }
-        }
-    }
-    None
-}
-
-/// Parse NumDmg$ value from an ability string like "NumDmg$ 3".
-fn parse_num_dmg(ability: &str) -> i32 {
-    parse_param(ability, "NumDmg$ ").unwrap_or(0)
-}
+use crate::trigger::handler::TriggerHandler;
 
 // ── GameLoop ────────────────────────────────────────────────────────
 
@@ -243,7 +170,7 @@ impl GameLoop {
     ) {
         let active = game.active_player();
 
-        /// Card info saved from a play action so we can notify after resolution.
+        // Card info saved from a play action so we can notify after resolution.
         let mut pending_play: Option<(CardId, String)> = None;
 
         // Loop: let the player take actions until they pass
@@ -391,7 +318,7 @@ impl GameLoop {
 
         // Declare Attackers
         game.turn.phase = PhaseType::CombatDeclareAttackers;
-        let available_attackers = self.get_available_attackers(game, active);
+        let available_attackers = combat::get_available_attackers(game, active);
 
         if available_attackers.is_empty() {
             game.turn.phase = PhaseType::CombatEnd;
@@ -420,11 +347,11 @@ impl GameLoop {
 
         // Declare Blockers
         game.turn.phase = PhaseType::CombatDeclareBlockers;
-        let available_blockers = self.get_available_blockers(game, defending);
+        let available_blockers = combat::get_available_blockers(game, defending);
 
         if !available_blockers.is_empty() {
             // Filter out illegal blocks (flying can only be blocked by flying/reach)
-            let legal_blockers = self.filter_legal_blockers(game, &chosen_attackers, &available_blockers);
+            let legal_blockers = combat::filter_legal_blockers(game, &chosen_attackers, &available_blockers);
 
             if !legal_blockers.is_empty() {
                 agents[defending.index()].snapshot_state(game, &self.mana_pools);
@@ -448,12 +375,12 @@ impl GameLoop {
         }
 
         // Determine if we need first strike damage step
-        let has_first_strikers = self.combat_has_first_strikers(game);
+        let has_first_strikers = self.combat.has_first_strikers(game);
 
         if has_first_strikers {
             // First Strike Damage step
             game.turn.phase = PhaseType::CombatFirstStrikeDamage;
-            self.resolve_combat_damage_step(game, true);
+            self.combat.resolve_damage_step(game, true);
 
             // SBA between damage steps
             loop {
@@ -470,7 +397,7 @@ impl GameLoop {
 
         // Regular Combat Damage step
         game.turn.phase = PhaseType::CombatDamage;
-        self.resolve_combat_damage_step(game, false);
+        self.combat.resolve_damage_step(game, false);
 
         // SBA after combat
         loop {
@@ -522,7 +449,7 @@ impl GameLoop {
             let card = game.card(card_id);
             if card.is_commander {
                 let tax = card.commander_cast_count as i32 * 2;
-                let available_mana = self.calculate_available_mana(game, player);
+                let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
                 if available_mana.can_pay_with_extra_generic(&card.mana_cost, tax) {
                     playable.push(card_id);
                 }
@@ -537,57 +464,13 @@ impl GameLoop {
                 }
             } else {
                 // Check if we can pay the mana cost
-                let available_mana = self.calculate_available_mana(game, player);
+                let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
                 if available_mana.can_pay(&card.mana_cost) {
                     // For targeted spells, check that at least one valid target exists
-                    let abilities = &card.abilities;
-                    let mut needs_target = false;
-                    let mut has_valid_target = false;
-
-                    for ability in abilities {
-                        let target_kind = parse_valid_targets(ability);
-                        match target_kind {
-                            TargetKind::None => {}
-                            TargetKind::Player => {
-                                needs_target = true;
-                                let opponents: Vec<PlayerId> = game
-                                    .alive_players()
-                                    .into_iter()
-                                    .filter(|&p| p != player)
-                                    .collect();
-                                if !opponents.is_empty() {
-                                    has_valid_target = true;
-                                }
-                            }
-                            TargetKind::Any => {
-                                needs_target = true;
-                                // Can target players or any creature on battlefield
-                                let opponents: Vec<PlayerId> = game
-                                    .alive_players()
-                                    .into_iter()
-                                    .filter(|&p| p != player)
-                                    .collect();
-                                if !opponents.is_empty() {
-                                    has_valid_target = true;
-                                } else {
-                                    // Check for creatures
-                                    let all_creatures = self.get_all_battlefield_creatures(game);
-                                    if !all_creatures.is_empty() {
-                                        has_valid_target = true;
-                                    }
-                                }
-                            }
-                            TargetKind::Creature(ref filter) => {
-                                needs_target = true;
-                                let valid = self.get_valid_creature_targets(game, filter.as_deref());
-                                if !valid.is_empty() {
-                                    has_valid_target = true;
-                                }
-                            }
-                        }
-                    }
-
-                    if !needs_target || has_valid_target {
+                    let all_valid = card.abilities.iter().all(|ab| {
+                        targeting::has_valid_target(game, player, ab)
+                    });
+                    if all_valid {
                         playable.push(card_id);
                     }
                 }
@@ -595,37 +478,6 @@ impl GameLoop {
         }
 
         playable
-    }
-
-    /// Calculate available mana from untapped lands and non-land mana sources.
-    fn calculate_available_mana(&self, game: &GameState, player: PlayerId) -> ManaPool {
-        let mut pool = self.pool(player).clone();
-        let battlefield = game.cards_in_zone(ZoneType::Battlefield, player);
-
-        for &card_id in battlefield {
-            let card = game.card(card_id);
-            if card.is_land() && !card.tapped {
-                if let Some(atom) = basic_land_mana_atom(card) {
-                    pool.add(atom, 1);
-                }
-            } else {
-                // Check non-land permanents for mana abilities
-                for ab in &card.activated_abilities {
-                    if ab.is_mana_ability
-                        && can_pay_ignoring_mana(&ab.cost, game, card_id, player)
-                    {
-                        // This creature can produce mana — add it to pool estimate
-                        if let Some(produced) = ab.params.get("Produced") {
-                            if let Some(atom) = mana_atom_from_produced(produced) {
-                                pool.add(atom, 1);
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        pool
     }
 
     /// Play a card from hand. Returns the (card_id, card_name) if the card was
@@ -661,57 +513,22 @@ impl GameLoop {
             };
 
             // Auto-tap lands to pay the cost
-            self.auto_tap_lands(game, player, &mana_cost);
+            mana::auto_tap_lands(game, self.pool_mut(player), player, &mana_cost);
 
             // Auto-tap extra lands for commander tax
             if commander_tax > 0 {
-                self.auto_tap_lands_generic(game, player, commander_tax);
+                mana::auto_tap_lands_generic(game, self.pool_mut(player), player, commander_tax);
             }
 
             // Check if we have an ability line that defines what this spell does
             let abilities = game.card(card_id).abilities.clone();
 
-            // Determine targets
-            let mut target_player = None;
-            let mut target_card: Option<CardId> = None;
-
-            for ability in &abilities {
-                let target_kind = parse_valid_targets(ability);
-                match target_kind {
-                    TargetKind::None => {}
-                    TargetKind::Player => {
-                        agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        let agent = &mut agents[player.index()];
-                        let opponents: Vec<PlayerId> = game
-                            .alive_players()
-                            .into_iter()
-                            .filter(|&p| p != player)
-                            .collect();
-                        target_player = agent.choose_target_player(player, &opponents);
-                    }
-                    TargetKind::Any => {
-                        let opponents: Vec<PlayerId> = game
-                            .alive_players()
-                            .into_iter()
-                            .filter(|&p| p != player)
-                            .collect();
-                        let valid_creatures = self.get_all_battlefield_creatures(game);
-                        agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        let agent = &mut agents[player.index()];
-                        match agent.choose_target_any(player, &opponents, &valid_creatures) {
-                            TargetChoice::Player(pid) => target_player = Some(pid),
-                            TargetChoice::Card(cid) => target_card = Some(cid),
-                            TargetChoice::None => {}
-                        }
-                    }
-                    TargetKind::Creature(ref filter) => {
-                        let valid = self.get_valid_creature_targets(game, filter.as_deref());
-                        agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        let agent = &mut agents[player.index()];
-                        target_card = agent.choose_target_card(player, &valid);
-                    }
-                }
-            }
+            // Determine targets (use first ability's targeting)
+            let (target_player, target_card) = if let Some(ability) = abilities.first() {
+                targeting::choose_targets(game, agents, &self.mana_pools, player, ability)
+            } else {
+                (None, None)
+            };
 
             // Pay the mana cost from pool
             let paid = self.pool_mut(player).try_pay(&mana_cost);
@@ -768,82 +585,6 @@ impl GameLoop {
         }
 
         Some((card_id, card_name))
-    }
-
-    /// Auto-tap lands to produce the required mana.
-    fn auto_tap_lands(
-        &mut self,
-        game: &mut GameState,
-        player: PlayerId,
-        cost: &ManaCost,
-    ) {
-        let lands: Vec<CardId> = game
-            .cards_in_zone(ZoneType::Battlefield, player)
-            .to_vec();
-
-        // First, tap lands for colored requirements
-        for shard in cost.shards() {
-            if shard.is_x() {
-                continue;
-            }
-            let atoms = shard.shard();
-            let color_atoms = atoms & ManaAtom::COLORS_SUPERPOSITION;
-
-            if color_atoms != 0 {
-                for &land_id in &lands {
-                    let land = game.card(land_id);
-                    if land.is_land() && !land.tapped {
-                        if let Some(atom) = basic_land_mana_atom(land) {
-                            if (atom & color_atoms) != 0 {
-                                game.tap(land_id);
-                                self.pool_mut(player).add(atom, 1);
-                                break;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Then tap lands for generic cost
-        let mut generic_needed = cost.generic_cost();
-        if generic_needed > 0 {
-            for &land_id in &lands {
-                if generic_needed <= 0 {
-                    break;
-                }
-                let land = game.card(land_id);
-                if land.is_land() && !land.tapped {
-                    if let Some(atom) = basic_land_mana_atom(land) {
-                        game.tap(land_id);
-                        self.pool_mut(player).add(atom, 1);
-                        generic_needed -= 1;
-                    }
-                }
-            }
-        }
-    }
-
-    /// Auto-tap untapped lands to produce `needed` additional generic mana.
-    /// Used for paying commander tax on top of the regular cost.
-    fn auto_tap_lands_generic(&mut self, game: &mut GameState, player: PlayerId, needed: i32) {
-        let mut remaining = needed;
-        let lands: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
-        for land_id in lands {
-            if remaining <= 0 {
-                break;
-            }
-            let eligible = {
-                let land = game.card(land_id);
-                land.is_land() && !land.tapped && basic_land_mana_atom(land).is_some()
-            };
-            if eligible {
-                let atom = basic_land_mana_atom(game.card(land_id)).unwrap();
-                game.tap(land_id);
-                self.pool_mut(player).add(atom, 1);
-                remaining -= 1;
-            }
-        }
     }
 
     /// Resolve the top of the stack.
@@ -919,7 +660,7 @@ impl GameLoop {
         }
     }
 
-    /// Resolve a single effect line.
+    /// Resolve a single effect line by delegating to the effects module.
     fn resolve_single_effect(
         &mut self,
         game: &mut GameState,
@@ -927,403 +668,14 @@ impl GameLoop {
         ability: &str,
         entry: &StackEntry,
     ) {
-        if ability.contains("DealDamage") {
-            let damage = parse_num_dmg(ability);
-            // For triggered abilities, resolve Defined$ for target
-            let target_player = entry.target_player.or_else(|| {
-                let params = parse_pipe_params(ability);
-                if let Some(defined) = params.get("Defined") {
-                    resolve_defined_player(defined, entry.controller, game)
-                } else {
-                    None
-                }
-            });
-
-            if let Some(target_player) = target_player {
-                game.deal_damage_to_player(target_player, damage);
-            }
-            if let Some(target_card) = entry.target_card {
-                if game.card(target_card).zone == ZoneType::Battlefield {
-                    game.deal_damage_to_card(target_card, damage);
-                }
-            }
-        } else if ability.contains("GainLife") {
-            let amount = parse_param(ability, "LifeAmount$ ").unwrap_or(1);
-            let params = parse_pipe_params(ability);
-            let target = params
-                .get("Defined")
-                .and_then(|d| resolve_defined_player(d, entry.controller, game))
-                .unwrap_or(entry.controller);
-            game.player_mut(target).gain_life(amount);
-        } else if ability.contains("LoseLife") {
-            let amount = parse_param(ability, "LifeAmount$ ").unwrap_or(1);
-            let params = parse_pipe_params(ability);
-            let target = params
-                .get("Defined")
-                .and_then(|d| resolve_defined_player(d, entry.controller, game))
-                .unwrap_or(entry.controller);
-            game.player_mut(target).lose_life(amount);
-        } else if ability.contains("PutCounter") {
-            let params = parse_pipe_params(ability);
-            let counter_type = params
-                .get("CounterType")
-                .map(|s| parse_counter_type(s))
-                .unwrap_or(crate::card::CounterType::P1P1);
-            let count = parse_param(ability, "CounterNum$ ").unwrap_or(1);
-            // Default target: the source card
-            if let Some(card_id) = entry.source {
-                if game.card(card_id).zone == ZoneType::Battlefield {
-                    game.card_mut(card_id).add_counter(counter_type, count);
-                }
-            }
-        } else if ability.contains("$ Pump") {
-            let att_bonus = parse_param(ability, "NumAtt$ ").unwrap_or(0);
-            let def_bonus = parse_param(ability, "NumDef$ ").unwrap_or(0);
-            if let Some(target_card) = entry.target_card {
-                if game.card(target_card).zone == ZoneType::Battlefield {
-                    game.card_mut(target_card).power_modifier += att_bonus;
-                    game.card_mut(target_card).toughness_modifier += def_bonus;
-                }
-            }
-        } else if ability.contains("Destroy") {
-            if let Some(target_card) = entry.target_card {
-                if game.card(target_card).zone == ZoneType::Battlefield {
-                    let owner = game.card(target_card).owner;
-                    game.move_card(target_card, ZoneType::Graveyard, owner);
-                }
-            }
-        } else if ability.contains("Draw") {
-            let num = parse_param(ability, "NumCards$ ").unwrap_or(1);
-            let params = parse_pipe_params(ability);
-            let target = params
-                .get("Defined")
-                .and_then(|d| resolve_defined_player(d, entry.controller, game))
-                .unwrap_or(entry.controller);
-            game.draw_cards(target, num as usize);
-        } else if ability.contains("ChangeZoneAll") {
-            let params = parse_pipe_params(ability);
-            let origin_str = params.get("Origin").map(|s| s.as_str()).unwrap_or("Battlefield");
-            let destination_str = params.get("Destination").map(|s| s.as_str()).unwrap_or("Graveyard");
-            let valid_cards_filter = params.get("ValidCards").map(|s| s.clone()).unwrap_or_else(|| "Card".to_string());
-            let tapped = params.get("Tapped").map(|s| s.eq_ignore_ascii_case("True")).unwrap_or(false);
-
-            if let (Some(dest_zone), Some(origin_zone)) = (parse_zone_type(destination_str), parse_zone_type(origin_str)) {
-                let player_ids = game.player_order.clone();
-                let mut to_move: Vec<(CardId, PlayerId)> = Vec::new();
-
-                for &pid in &player_ids {
-                    let zone_cards = game.cards_in_zone(origin_zone, pid).to_vec();
-                    for cid in zone_cards {
-                        if matches_change_type(game.card(cid), &valid_cards_filter) {
-                            let dest_owner = if dest_zone == ZoneType::Battlefield {
-                                entry.controller
-                            } else {
-                                game.card(cid).owner
-                            };
-                            to_move.push((cid, dest_owner));
-                        }
-                    }
-                }
-
-                for (card_id, dest_owner) in to_move {
-                    if game.card(card_id).zone != origin_zone {
-                        continue; // already moved
-                    }
-                    let old_zone = game.card(card_id).zone;
-                    game.move_card(card_id, dest_zone, dest_owner);
-                    if dest_zone == ZoneType::Battlefield {
-                        if tapped { game.tap(card_id); }
-                        self.trigger_handler.register_active_trigger(game, card_id);
-                    }
-                    self.trigger_handler.run_trigger(
-                        TriggerType::ChangesZone,
-                        RunParams {
-                            card: Some(card_id),
-                            origin: Some(old_zone),
-                            destination: Some(dest_zone),
-                            ..Default::default()
-                        },
-                        false,
-                    );
-                }
-            }
-        } else if ability.contains("ChangeZone") {
-            let params = parse_pipe_params(ability);
-            let origin_str = params.get("Origin").map(|s| s.as_str()).unwrap_or("");
-            let destination_str = params.get("Destination").map(|s| s.as_str()).unwrap_or("");
-            let tapped = params.get("Tapped").map(|s| s.eq_ignore_ascii_case("True")).unwrap_or(false);
-            let change_type = params.get("ChangeType").map(|s| s.clone()).unwrap_or_default();
-            let defined = params.get("Defined").map(|s| s.clone()).unwrap_or_default();
-            let lib_position = params.get("LibraryPosition").map(|s| s.clone()).unwrap_or_default();
-            let shuffle = params.get("Shuffle").map(|s| s.eq_ignore_ascii_case("True")).unwrap_or(false);
-            let controller = entry.controller;
-
-            if let (Some(dest_zone), Some(origin_zone)) = (parse_zone_type(destination_str), parse_zone_type(origin_str)) {
-                // Determine which card to move
-                let card_to_move = if let Some(cid) = entry.target_card {
-                    // Targeted effect: move if it's in the expected origin zone
-                    if game.card(cid).zone == origin_zone { Some(cid) } else { None }
-                } else if defined.eq_ignore_ascii_case("Self") {
-                    // Move the source card itself
-                    entry.source.filter(|&cid| game.card(cid).zone == origin_zone)
-                } else if defined.is_empty() || defined.eq_ignore_ascii_case("You") {
-                    // No target: search controller's origin zone for a matching card (e.g. library tutor)
-                    let search_player = if defined.eq_ignore_ascii_case("Opponent") {
-                        game.opponent_of(controller)
-                    } else {
-                        controller
-                    };
-                    let zone_cards = game.cards_in_zone(origin_zone, search_player).to_vec();
-                    zone_cards.into_iter().find(|&cid| matches_change_type(game.card(cid), &change_type))
-                } else {
-                    None
-                };
-
-                if let Some(card_id) = card_to_move {
-                    let card_owner = game.card(card_id).owner;
-                    let dest_owner = if dest_zone == ZoneType::Battlefield {
-                        controller
-                    } else {
-                        card_owner
-                    };
-                    let old_zone = game.card(card_id).zone;
-                    game.move_card(card_id, dest_zone, dest_owner);
-
-                    // Handle library bottom positioning (move_card adds to top by default)
-                    if dest_zone == ZoneType::Library && (lib_position == "-1" || lib_position.eq_ignore_ascii_case("Bottom")) {
-                        let zone = game.zone_mut(ZoneType::Library, dest_owner);
-                        if let Some(pos) = zone.cards.iter().rposition(|&c| c == card_id) {
-                            zone.cards.remove(pos);
-                            zone.cards.insert(0, card_id); // index 0 = bottom
-                        }
-                    }
-
-                    if dest_zone == ZoneType::Battlefield {
-                        if tapped { game.tap(card_id); }
-                        self.trigger_handler.register_active_trigger(game, card_id);
-                    }
-
-                    self.trigger_handler.run_trigger(
-                        TriggerType::ChangesZone,
-                        RunParams {
-                            card: Some(card_id),
-                            origin: Some(old_zone),
-                            destination: Some(dest_zone),
-                            ..Default::default()
-                        },
-                        false,
-                    );
-                }
-
-                // Shuffle the library after a search (when origin was Library)
-                if (origin_zone == ZoneType::Library || shuffle) && dest_zone != ZoneType::Library {
-                    let lib_cards = game.cards_in_zone(ZoneType::Library, controller).to_vec();
-                    if !lib_cards.is_empty() {
-                        // No RNG available here — reverse as a placeholder shuffle
-                        let zone = game.zone_mut(ZoneType::Library, controller);
-                        zone.cards.reverse();
-                    }
-                }
-            }
-        } else if ability.contains("SacrificeAll") {
-            let params = parse_pipe_params(ability);
-            let valid_cards_filter = params.get("ValidCards").map(|s| s.clone()).unwrap_or_else(|| "Creature".to_string());
-
-            let player_ids = game.player_order.clone();
-            let mut to_sacrifice: Vec<CardId> = Vec::new();
-            for &pid in &player_ids {
-                let zone_cards = game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
-                for cid in zone_cards {
-                    if matches_change_type(game.card(cid), &valid_cards_filter) {
-                        to_sacrifice.push(cid);
-                    }
-                }
-            }
-
-            for card_id in to_sacrifice {
-                if game.card(card_id).zone != ZoneType::Battlefield {
-                    continue;
-                }
-                let owner = game.card(card_id).owner;
-                game.move_card(card_id, ZoneType::Graveyard, owner);
-                self.trigger_handler.run_trigger(
-                    TriggerType::ChangesZone,
-                    RunParams {
-                        card: Some(card_id),
-                        origin: Some(ZoneType::Battlefield),
-                        destination: Some(ZoneType::Graveyard),
-                        ..Default::default()
-                    },
-                    false,
-                );
-            }
-        } else if ability.contains("Sacrifice") {
-            let params = parse_pipe_params(ability);
-            let sac_valid = params.get("SacValid").map(|s| s.clone()).unwrap_or_else(|| "Self".to_string());
-            let defined = params.get("Defined").map(|s| s.to_lowercase()).unwrap_or_default();
-
-            // "Defined$ Player" means each player sacrifices (e.g. Innocent Blood).
-            // "ValidTgts$ Player" means a targeted player sacrifices (e.g. Diabolic Edict) —
-            // in that case entry.target_player is set. Otherwise default to the controller.
-            let sacrificing_players: Vec<PlayerId> = if defined == "player" {
-                game.player_order.clone()
-            } else {
-                vec![entry.target_player.unwrap_or(entry.controller)]
-            };
-
-            for sacrificing_player in sacrificing_players {
-                let card_to_sacrifice = if sac_valid.eq_ignore_ascii_case("Self") {
-                    // Sacrifice the source card itself
-                    entry.source.filter(|&cid| game.card(cid).zone == ZoneType::Battlefield)
-                } else {
-                    // Find valid cards controlled by the sacrificing player
-                    let valid: Vec<CardId> = game
-                        .cards_in_zone(ZoneType::Battlefield, sacrificing_player)
-                        .to_vec()
-                        .into_iter()
-                        .filter(|&cid| matches_change_type(game.card(cid), &sac_valid))
-                        .collect();
-
-                    if valid.is_empty() {
-                        None
-                    } else {
-                        agents[sacrificing_player.index()].choose_sacrifice(sacrificing_player, &valid)
-                    }
-                };
-
-                if let Some(card_id) = card_to_sacrifice {
-                    if game.card(card_id).zone == ZoneType::Battlefield {
-                        let owner = game.card(card_id).owner;
-                        game.move_card(card_id, ZoneType::Graveyard, owner);
-                        self.trigger_handler.run_trigger(
-                            TriggerType::ChangesZone,
-                            RunParams {
-                                card: Some(card_id),
-                                origin: Some(ZoneType::Battlefield),
-                                destination: Some(ZoneType::Graveyard),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                    }
-                }
-            }
-        } else if ability.contains("CopyPermanent") {
-            // Clone a targeted permanent onto the battlefield under the controller's control.
-            // Mirrors Java CopyPermanentEffect.
-            // Supports: PumpKeywords$ (extra keywords on the copy).
-            // AtEOT$ Exile is noted but requires end-of-turn cleanup (not yet implemented).
-            if let Some(original_id) = entry.target_card {
-                if game.card(original_id).zone == ZoneType::Battlefield {
-                    let params = parse_pipe_params(ability);
-                    let original = game.card(original_id).clone();
-
-                    let mut copy = CardInstance::new(
-                        CardId(0),
-                        original.card_name.clone(),
-                        entry.controller,
-                        original.type_line.clone(),
-                        original.mana_cost.clone(),
-                        original.color,
-                        original.base_power,
-                        original.base_toughness,
-                        original.keywords.clone(),
-                        original.abilities.clone(),
-                    );
-                    copy.triggers = original.triggers.clone();
-                    copy.svars = original.svars.clone();
-                    copy.static_abilities = original.static_abilities.clone();
-                    copy.replacement_effects = original.replacement_effects.clone();
-                    // Copies are tokens for zone-change purposes (cease to exist off battlefield).
-                    copy.is_token = true;
-
-                    // Apply PumpKeywords$ (e.g. "Haste" added temporarily to the copy).
-                    if let Some(pump_kws) = params.get("PumpKeywords") {
-                        for kw in pump_kws.split(',') {
-                            let kw = kw.trim().to_string();
-                            if !kw.is_empty() {
-                                copy.granted_keywords.push(kw);
-                            }
-                        }
-                    }
-
-                    let copy_id = game.create_card(copy);
-                    game.move_card(copy_id, ZoneType::Battlefield, entry.controller);
-                    self.trigger_handler.register_active_trigger(game, copy_id);
-                    self.trigger_handler.run_trigger(
-                        TriggerType::ChangesZone,
-                        RunParams {
-                            card: Some(copy_id),
-                            origin: Some(ZoneType::None),
-                            destination: Some(ZoneType::Battlefield),
-                            ..Default::default()
-                        },
-                        false,
-                    );
-                }
-            }
-        } else if ability.contains("Token") {
-            // Create token creature(s) on the battlefield.
-            // Mirrors Java TokenEffect / TokenEffectBase.
-            // Parameters: TokenScript$ (filename stem), TokenAmount$ (count), TokenOwner$ (You/Opponent).
-            let params = parse_pipe_params(ability);
-            let amount: usize = params
-                .get("TokenAmount")
-                .and_then(|s| s.parse().ok())
-                .unwrap_or(1);
-            let token_script = params.get("TokenScript").cloned().unwrap_or_default();
-            let token_owner_str = params
-                .get("TokenOwner")
-                .map(|s| s.to_lowercase())
-                .unwrap_or_else(|| "you".to_string());
-
-            let token_controller = if token_owner_str.contains("opponent") {
-                game.player_order
-                    .iter()
-                    .find(|&&p| p != entry.controller)
-                    .copied()
-                    .unwrap_or(entry.controller)
-            } else {
-                entry.controller
-            };
-
-            if token_script.is_empty() {
-                eprintln!("[game_loop] Token effect missing TokenScript$ param");
-            } else if let Some(template) = self.token_templates.get(&token_script).cloned() {
-                for _ in 0..amount {
-                    let mut token = template.clone();
-                    token.owner = token_controller;
-                    token.controller = token_controller;
-                    token.is_token = true;
-                    let token_id = game.create_card(token);
-                    game.move_card(token_id, ZoneType::Battlefield, token_controller);
-                    self.trigger_handler.register_active_trigger(game, token_id);
-                    self.trigger_handler.run_trigger(
-                        TriggerType::ChangesZone,
-                        RunParams {
-                            card: Some(token_id),
-                            origin: Some(ZoneType::None),
-                            destination: Some(ZoneType::Battlefield),
-                            ..Default::default()
-                        },
-                        false,
-                    );
-                }
-            } else {
-                eprintln!(
-                    "[game_loop] Unknown token script '{}' — register it via game_loop.register_token()",
-                    token_script
-                );
-            }
-        } else if ability.contains("Mana") {
-            // Mana ability resolved on stack (shouldn't normally happen, but handle gracefully)
-            let params = parse_pipe_params(ability);
-            if let Some(produced) = params.get("Produced") {
-                if let Some(atom) = mana_atom_from_produced(produced) {
-                    self.pool_mut(entry.controller).add(atom, 1);
-                }
-            }
-        }
+        let mut ctx = EffectContext {
+            game,
+            agents,
+            trigger_handler: &mut self.trigger_handler,
+            token_templates: &self.token_templates,
+            mana_pools: &mut self.mana_pools,
+        };
+        effects::resolve_effect(&mut ctx, ability, entry);
     }
 
     // ── Trigger helpers ────────────────────────────────────────────
@@ -1371,277 +723,6 @@ impl GameLoop {
         }
     }
 
-    // ── Combat helpers ──────────────────────────────────────────────
-
-    fn get_available_attackers(&self, game: &GameState, player: PlayerId) -> Vec<CardId> {
-        game.creatures_on_battlefield(player)
-            .into_iter()
-            .filter(|&cid| game.card(cid).can_attack())
-            .collect()
-    }
-
-    fn get_available_blockers(&self, game: &GameState, player: PlayerId) -> Vec<CardId> {
-        game.creatures_on_battlefield(player)
-            .into_iter()
-            .filter(|&cid| game.card(cid).can_block())
-            .collect()
-    }
-
-    /// Filter blockers to only those that can legally block at least one attacker.
-    /// A creature without flying or reach cannot block a flier.
-    fn filter_legal_blockers(
-        &self,
-        game: &GameState,
-        attackers: &[CardId],
-        blockers: &[CardId],
-    ) -> Vec<CardId> {
-        blockers
-            .iter()
-            .filter(|&&blocker_id| {
-                let blocker = game.card(blocker_id);
-                // A blocker is legal if it can block at least one attacker
-                attackers.iter().any(|&attacker_id| {
-                    let attacker = game.card(attacker_id);
-                    if attacker.has_flying() {
-                        blocker.has_flying() || blocker.has_reach()
-                    } else {
-                        true
-                    }
-                })
-            })
-            .copied()
-            .collect()
-    }
-
-    /// Check if any creature in combat has first strike or double strike.
-    fn combat_has_first_strikers(&self, game: &GameState) -> bool {
-        for &(attacker_id, _) in &self.combat.attackers {
-            if game.card(attacker_id).zone != ZoneType::Battlefield {
-                continue;
-            }
-            let card = game.card(attacker_id);
-            if card.has_first_strike() || card.has_double_strike() {
-                return true;
-            }
-        }
-        for &(blocker_id, _) in &self.combat.blockers {
-            if game.card(blocker_id).zone != ZoneType::Battlefield {
-                continue;
-            }
-            let card = game.card(blocker_id);
-            if card.has_first_strike() || card.has_double_strike() {
-                return true;
-            }
-        }
-        false
-    }
-
-    /// Resolve one step of combat damage.
-    /// If `first_strike_only` is true, only first-strike and double-strike creatures deal damage.
-    /// If false, only non-first-strike and double-strike creatures deal damage.
-    fn resolve_combat_damage_step(&mut self, game: &mut GameState, first_strike_only: bool) {
-        for (attacker_id, defending_player) in self.combat.attackers.clone() {
-            // Check attacker is still alive
-            if game.card(attacker_id).zone != ZoneType::Battlefield {
-                continue;
-            }
-
-            let attacker = game.card(attacker_id);
-            let attacker_has_fs = attacker.has_first_strike();
-            let attacker_has_ds = attacker.has_double_strike();
-            let attacker_has_trample = attacker.has_trample();
-            let attacker_has_deathtouch = attacker.has_deathtouch();
-            let attacker_has_lifelink = attacker.has_lifelink();
-            let attacker_controller = attacker.controller;
-
-            // Determine if this attacker deals damage in this step
-            let deals_damage = if first_strike_only {
-                attacker_has_fs || attacker_has_ds
-            } else {
-                // Regular damage step: creatures without first strike, plus double strike
-                !attacker_has_fs || attacker_has_ds
-            };
-
-            if !deals_damage {
-                continue;
-            }
-
-            let attacker_power = game.card(attacker_id).power();
-            if attacker_power <= 0 {
-                continue;
-            }
-
-            let blockers = self.combat.get_blockers_for(attacker_id);
-
-            if blockers.is_empty() {
-                // Unblocked — damage goes to defending player
-                self.deal_combat_damage_to_player(
-                    game,
-                    defending_player,
-                    attacker_power,
-                    attacker_has_lifelink,
-                    attacker_controller,
-                );
-                // Track commander damage
-                if game.card(attacker_id).is_commander {
-                    *game
-                        .player_mut(defending_player)
-                        .commander_damage_received
-                        .entry(attacker_id.0)
-                        .or_insert(0) += attacker_power;
-                }
-            } else {
-                // Blocked — mutual damage
-                let mut remaining_damage = attacker_power;
-
-                for &blocker_id in &blockers {
-                    if remaining_damage <= 0 {
-                        break;
-                    }
-                    // Check blocker is still alive
-                    if game.card(blocker_id).zone != ZoneType::Battlefield {
-                        continue;
-                    }
-
-                    let blocker_toughness = game.card(blocker_id).toughness();
-                    let blocker_damage = game.card(blocker_id).damage;
-                    let remaining_toughness = blocker_toughness - blocker_damage;
-
-                    // Deathtouch: only 1 damage needed to be lethal
-                    let damage_to_blocker = if attacker_has_deathtouch {
-                        1.min(remaining_damage)
-                    } else {
-                        remaining_damage.min(remaining_toughness.max(0))
-                    };
-
-                    if damage_to_blocker > 0 {
-                        self.deal_combat_damage_to_card(
-                            game,
-                            blocker_id,
-                            damage_to_blocker,
-                            attacker_has_deathtouch,
-                            attacker_has_lifelink,
-                            attacker_controller,
-                        );
-                        remaining_damage -= damage_to_blocker;
-                    }
-
-                    // Blocker damages attacker (only in the step it should deal damage)
-                    let blocker_card = game.card(blocker_id);
-                    let blocker_has_fs = blocker_card.has_first_strike();
-                    let blocker_has_ds = blocker_card.has_double_strike();
-                    let blocker_has_deathtouch = blocker_card.has_deathtouch();
-                    let blocker_has_lifelink = blocker_card.has_lifelink();
-                    let blocker_controller = blocker_card.controller;
-
-                    let blocker_deals = if first_strike_only {
-                        blocker_has_fs || blocker_has_ds
-                    } else {
-                        !blocker_has_fs || blocker_has_ds
-                    };
-
-                    if blocker_deals {
-                        let blocker_power = game.card(blocker_id).power();
-                        if blocker_power > 0 {
-                            self.deal_combat_damage_to_card(
-                                game,
-                                attacker_id,
-                                blocker_power,
-                                blocker_has_deathtouch,
-                                blocker_has_lifelink,
-                                blocker_controller,
-                            );
-                        }
-                    }
-                }
-
-                // Trample: remaining damage goes to defending player
-                if attacker_has_trample && remaining_damage > 0 {
-                    self.deal_combat_damage_to_player(
-                        game,
-                        defending_player,
-                        remaining_damage,
-                        attacker_has_lifelink,
-                        attacker_controller,
-                    );
-                    // Track commander damage from trample
-                    if game.card(attacker_id).is_commander {
-                        *game
-                            .player_mut(defending_player)
-                            .commander_damage_received
-                            .entry(attacker_id.0)
-                            .or_insert(0) += remaining_damage;
-                    }
-                }
-            }
-        }
-    }
-
-    /// Deal combat damage to a player, handling lifelink.
-    fn deal_combat_damage_to_player(
-        &self,
-        game: &mut GameState,
-        target: PlayerId,
-        amount: i32,
-        lifelink: bool,
-        source_controller: PlayerId,
-    ) {
-        if amount > 0 {
-            game.deal_damage_to_player(target, amount);
-            if lifelink {
-                game.player_mut(source_controller).gain_life(amount);
-            }
-        }
-    }
-
-    /// Deal combat damage to a card, handling deathtouch and lifelink.
-    fn deal_combat_damage_to_card(
-        &self,
-        game: &mut GameState,
-        target: CardId,
-        amount: i32,
-        deathtouch: bool,
-        lifelink: bool,
-        source_controller: PlayerId,
-    ) {
-        if amount > 0 {
-            game.deal_damage_to_card(target, amount);
-            if deathtouch {
-                game.card_mut(target).has_deathtouch_damage = true;
-            }
-            if lifelink {
-                game.player_mut(source_controller).gain_life(amount);
-            }
-        }
-    }
-
-    // ── Targeting helpers ───────────────────────────────────────────
-
-    /// Get all creatures on the battlefield (any player).
-    fn get_all_battlefield_creatures(&self, game: &GameState) -> Vec<CardId> {
-        let mut creatures = Vec::new();
-        for &pid in &game.player_order {
-            for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
-                if game.card(cid).is_creature() {
-                    creatures.push(cid);
-                }
-            }
-        }
-        creatures
-    }
-
-    /// Get creatures matching an optional filter (e.g. "nonBlack").
-    fn get_valid_creature_targets(&self, game: &GameState, filter: Option<&str>) -> Vec<CardId> {
-        let all = self.get_all_battlefield_creatures(game);
-        match filter {
-            None => all,
-            Some(f) => all
-                .into_iter()
-                .filter(|&cid| matches_creature_filter(game.card(cid), f))
-                .collect(),
-        }
-    }
-
     // ── Activated Ability helpers ───────────────────────────────────
 
     /// Find all activatable abilities for a player on the battlefield.
@@ -1652,7 +733,7 @@ impl GameLoop {
         player: PlayerId,
     ) -> Vec<(CardId, usize)> {
         let mut result = Vec::new();
-        let available_mana = self.calculate_available_mana(game, player);
+        let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
         let battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
 
         for card_id in battlefield {
@@ -1697,23 +778,22 @@ impl GameLoop {
         }
     }
 
-    /// Resolve a mana ability immediately (no stack).
-    fn resolve_mana_ability(
+    /// Pay the cost parts of an activated ability (tap, mana, life, sacrifice).
+    fn pay_ability_cost(
         &mut self,
         game: &mut GameState,
         player: PlayerId,
         card_id: CardId,
-        ab: &crate::activated_ability::ActivatedAbility,
+        cost: &crate::cost::Cost,
     ) {
-        // Pay costs
-        for part in &ab.cost.parts {
+        for part in &cost.parts {
             match part {
                 CostPart::Tap => {
                     game.tap(card_id);
                 }
                 CostPart::Mana(mana_cost) => {
-                    self.auto_tap_lands(game, player, mana_cost);
-                    self.pool_mut(player).try_pay(mana_cost);
+                    mana::auto_tap_lands(game, &mut self.mana_pools[player.index()], player, mana_cost);
+                    self.mana_pools[player.index()].try_pay(mana_cost);
                 }
                 CostPart::PayLife(amount) => {
                     game.player_mut(player).lose_life(*amount);
@@ -1726,6 +806,17 @@ impl GameLoop {
                 }
             }
         }
+    }
+
+    /// Resolve a mana ability immediately (no stack).
+    fn resolve_mana_ability(
+        &mut self,
+        game: &mut GameState,
+        player: PlayerId,
+        card_id: CardId,
+        ab: &crate::ability::activated::ActivatedAbility,
+    ) {
+        self.pay_ability_cost(game, player, card_id, &ab.cost);
 
         // Produce mana
         if let Some(produced) = ab.params.get("Produced") {
@@ -1742,71 +833,16 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
         card_id: CardId,
-        ab: &crate::activated_ability::ActivatedAbility,
+        ab: &crate::ability::activated::ActivatedAbility,
     ) {
         let ability_text = ab.ability_text.clone();
 
         // Determine targets
-        let mut target_player = None;
-        let mut target_card: Option<CardId> = None;
-
-        let target_kind = parse_valid_targets(&ability_text);
-        match target_kind {
-            TargetKind::None => {}
-            TargetKind::Player => {
-                agents[player.index()].snapshot_state(game, &self.mana_pools);
-                let agent = &mut agents[player.index()];
-                let opponents: Vec<PlayerId> = game
-                    .alive_players()
-                    .into_iter()
-                    .filter(|&p| p != player)
-                    .collect();
-                target_player = agent.choose_target_player(player, &opponents);
-            }
-            TargetKind::Any => {
-                let opponents: Vec<PlayerId> = game
-                    .alive_players()
-                    .into_iter()
-                    .filter(|&p| p != player)
-                    .collect();
-                let valid_creatures = self.get_all_battlefield_creatures(game);
-                agents[player.index()].snapshot_state(game, &self.mana_pools);
-                let agent = &mut agents[player.index()];
-                match agent.choose_target_any(player, &opponents, &valid_creatures) {
-                    TargetChoice::Player(pid) => target_player = Some(pid),
-                    TargetChoice::Card(cid) => target_card = Some(cid),
-                    TargetChoice::None => {}
-                }
-            }
-            TargetKind::Creature(ref filter) => {
-                let valid = self.get_valid_creature_targets(game, filter.as_deref());
-                agents[player.index()].snapshot_state(game, &self.mana_pools);
-                let agent = &mut agents[player.index()];
-                target_card = agent.choose_target_card(player, &valid);
-            }
-        }
+        let (target_player, target_card) =
+            targeting::choose_targets(game, agents, &self.mana_pools, player, &ability_text);
 
         // Pay costs
-        for part in &ab.cost.parts {
-            match part {
-                CostPart::Tap => {
-                    game.tap(card_id);
-                }
-                CostPart::Mana(mana_cost) => {
-                    self.auto_tap_lands(game, player, mana_cost);
-                    self.pool_mut(player).try_pay(mana_cost);
-                }
-                CostPart::PayLife(amount) => {
-                    game.player_mut(player).lose_life(*amount);
-                }
-                CostPart::Sacrifice { type_filter, .. } => {
-                    if type_filter == "CARDNAME" {
-                        let owner = game.card(card_id).owner;
-                        game.move_card(card_id, ZoneType::Graveyard, owner);
-                    }
-                }
-            }
-        }
+        self.pay_ability_cost(game, player, card_id, &ab.cost);
 
         // Push to stack
         let card_name = game.card(card_id).card_name.clone();
@@ -1829,228 +865,3 @@ impl GameLoop {
     }
 }
 
-/// Determine what mana atom a basic land produces.
-fn basic_land_mana_atom(card: &CardInstance) -> Option<u16> {
-    if card.type_line.has_subtype("Plains") {
-        Some(ManaAtom::WHITE)
-    } else if card.type_line.has_subtype("Island") {
-        Some(ManaAtom::BLUE)
-    } else if card.type_line.has_subtype("Swamp") {
-        Some(ManaAtom::BLACK)
-    } else if card.type_line.has_subtype("Mountain") {
-        Some(ManaAtom::RED)
-    } else if card.type_line.has_subtype("Forest") {
-        Some(ManaAtom::GREEN)
-    } else {
-        // Check card name as fallback
-        match card.card_name.as_str() {
-            "Plains" => Some(ManaAtom::WHITE),
-            "Island" => Some(ManaAtom::BLUE),
-            "Swamp" => Some(ManaAtom::BLACK),
-            "Mountain" => Some(ManaAtom::RED),
-            "Forest" => Some(ManaAtom::GREEN),
-            _ => None,
-        }
-    }
-}
-
-/// Resolve a Defined$ parameter to a player ID.
-/// Mirrors Java's AbilityUtils.getDefinedPlayers().
-fn resolve_defined_player(
-    defined: &str,
-    controller: PlayerId,
-    game: &GameState,
-) -> Option<PlayerId> {
-    match defined {
-        "You" => Some(controller),
-        "Opponent" | "OpponentCtrl" => {
-            let opp = game.opponent_of(controller);
-            Some(opp)
-        }
-        _ => None,
-    }
-}
-
-/// Parse a counter type string to CounterType enum.
-fn parse_counter_type(s: &str) -> crate::card::CounterType {
-    match s {
-        "P1P1" | "+1/+1" => crate::card::CounterType::P1P1,
-        "M1M1" | "-1/-1" => crate::card::CounterType::M1M1,
-        "Loyalty" => crate::card::CounterType::Loyalty,
-        "Charge" => crate::card::CounterType::Charge,
-        _ => crate::card::CounterType::P1P1,
-    }
-}
-
-/// Parse a zone name string to ZoneType.
-fn parse_zone_type(s: &str) -> Option<ZoneType> {
-    match s.trim() {
-        "Battlefield" => Some(ZoneType::Battlefield),
-        "Graveyard" => Some(ZoneType::Graveyard),
-        "Hand" => Some(ZoneType::Hand),
-        "Library" | "Deck" => Some(ZoneType::Library),
-        "Exile" => Some(ZoneType::Exile),
-        "Command" => Some(ZoneType::Command),
-        _ => None,
-    }
-}
-
-/// Convert a Produced$ value (e.g. "G", "R", "W") to a ManaAtom.
-fn mana_atom_from_produced(produced: &str) -> Option<u16> {
-    match produced.trim() {
-        "W" => Some(ManaAtom::WHITE),
-        "U" => Some(ManaAtom::BLUE),
-        "B" => Some(ManaAtom::BLACK),
-        "R" => Some(ManaAtom::RED),
-        "G" => Some(ManaAtom::GREEN),
-        "C" => Some(ManaAtom::COLORLESS),
-        _ => None,
-    }
-}
-
-/// Check if a card matches a ChangeType$ filter string.
-/// Handles "Land.Basic" and other type filters.
-fn matches_change_type(card: &CardInstance, change_type: &str) -> bool {
-    if change_type.is_empty() {
-        return true;
-    }
-
-    let parts: Vec<&str> = change_type.split('.').collect();
-    let type_part = parts[0];
-
-    // Check type
-    let type_matches = match type_part {
-        "Land" => card.is_land(),
-        "Creature" => card.is_creature(),
-        "Card" => true,
-        _ => true,
-    };
-
-    if !type_matches {
-        return false;
-    }
-
-    // Check qualifiers (e.g. "Basic")
-    for &qualifier in &parts[1..] {
-        match qualifier {
-            "Basic" => {
-                if !card.type_line.is_basic() {
-                    return false;
-                }
-            }
-            _ => {} // ignore unknown qualifiers
-        }
-    }
-
-    true
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn parse_num_dmg_test() {
-        assert_eq!(
-            parse_num_dmg(
-                "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3 | SpellDescription$ test"
-            ),
-            3
-        );
-    }
-
-    #[test]
-    fn basic_land_detection() {
-        let card = CardInstance::new(
-            CardId(0),
-            "Mountain".to_string(),
-            PlayerId(0),
-            forge_foundation::CardTypeLine::parse("Basic Land - Mountain"),
-            ManaCost::no_cost(),
-            forge_foundation::ColorSet::COLORLESS,
-            None,
-            None,
-            vec![],
-            vec![],
-        );
-        assert_eq!(basic_land_mana_atom(&card), Some(ManaAtom::RED));
-    }
-
-    #[test]
-    fn parse_valid_targets_any() {
-        assert_eq!(
-            parse_valid_targets("SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3"),
-            TargetKind::Any
-        );
-    }
-
-    #[test]
-    fn parse_valid_targets_creature_filter() {
-        assert_eq!(
-            parse_valid_targets("SP$ Destroy | ValidTgts$ Creature.nonBlack"),
-            TargetKind::Creature(Some("nonBlack".to_string()))
-        );
-    }
-
-    #[test]
-    fn parse_valid_targets_creature_no_filter() {
-        assert_eq!(
-            parse_valid_targets("SP$ Destroy | ValidTgts$ Creature"),
-            TargetKind::Creature(None)
-        );
-    }
-
-    #[test]
-    fn parse_valid_targets_player() {
-        assert_eq!(
-            parse_valid_targets("SP$ Draw | ValidTgts$ Player"),
-            TargetKind::Player
-        );
-    }
-
-    #[test]
-    fn parse_param_test() {
-        assert_eq!(
-            parse_param("SP$ Pump | NumAtt$ 3 | NumDef$ 3", "NumAtt$ "),
-            Some(3)
-        );
-        assert_eq!(
-            parse_param("SP$ Pump | NumAtt$ 3 | NumDef$ 3", "NumDef$ "),
-            Some(3)
-        );
-        assert_eq!(
-            parse_param("SP$ Draw | NumCards$ 2", "NumCards$ "),
-            Some(2)
-        );
-    }
-
-    #[test]
-    fn creature_filter_non_black() {
-        let black_creature = CardInstance::new(
-            CardId(0),
-            "Doom".to_string(),
-            PlayerId(0),
-            forge_foundation::CardTypeLine::parse("Creature - Zombie"),
-            ManaCost::parse("1 B"),
-            ColorSet::BLACK,
-            Some(2),
-            Some(2),
-            vec![],
-            vec![],
-        );
-        let green_creature = CardInstance::new(
-            CardId(1),
-            "Bear".to_string(),
-            PlayerId(0),
-            forge_foundation::CardTypeLine::parse("Creature - Bear"),
-            ManaCost::parse("1 G"),
-            ColorSet::GREEN,
-            Some(2),
-            Some(2),
-            vec![],
-            vec![],
-        );
-        assert!(!matches_creature_filter(&black_creature, "nonBlack"));
-        assert!(matches_creature_filter(&green_creature, "nonBlack"));
-    }
-}

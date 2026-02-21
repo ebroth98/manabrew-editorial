@@ -5,7 +5,7 @@ use forge_carddb::{CardDatabase, CardRules};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::replacement::parse_replacement_effect;
-use forge_engine_core::static_ability::parse_static_ability;
+use forge_engine_core::staticability::parse_static_ability;
 use forge_engine_core::trigger::parse_trigger;
 
 static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();

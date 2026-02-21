@@ -1,6 +1,6 @@
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::mana_pool::ManaPool;
+use crate::mana::ManaPool;
 
 /// A target choice that can be a player, a card, or nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

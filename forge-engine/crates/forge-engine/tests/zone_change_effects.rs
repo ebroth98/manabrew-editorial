@@ -6,7 +6,7 @@ use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_engine_core::stack::StackEntry;
+use forge_engine_core::spellability::StackEntry;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 // ── Card constructors ────────────────────────────────────────────────

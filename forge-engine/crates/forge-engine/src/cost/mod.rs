@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::mana_pool::ManaPool;
+use crate::mana::ManaPool;
 
 /// A single component of an ability cost.
 /// Mirrors Java's CostPart hierarchy.

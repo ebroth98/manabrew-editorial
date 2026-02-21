@@ -35,7 +35,7 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::CardId;
-use crate::static_ability::{CardFilter, Layer, StaticAbility, StaticMode};
+use crate::staticability::{CardFilter, Layer, StaticAbility, StaticMode};
 
 // ── Effect collection ────────────────────────────────────────────────────────
 
