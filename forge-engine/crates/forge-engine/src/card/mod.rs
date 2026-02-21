@@ -1,3 +1,5 @@
+pub mod card_property;
+
 use std::collections::{BTreeMap, HashMap};
 
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};

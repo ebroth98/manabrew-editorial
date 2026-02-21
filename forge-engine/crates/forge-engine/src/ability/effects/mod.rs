@@ -19,7 +19,7 @@ pub mod sacrifice;
 pub mod sacrifice_all;
 pub mod token;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::HashMap;
 
 use forge_foundation::ZoneType;
 
@@ -29,9 +29,8 @@ use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
-use crate::spellability::StackEntry;
+use crate::spellability::SpellAbility;
 use crate::trigger::handler::TriggerHandler;
-use crate::trigger::parse_pipe_params;
 
 /// Everything an effect needs to resolve.
 pub struct EffectContext<'a> {
@@ -42,43 +41,38 @@ pub struct EffectContext<'a> {
     pub mana_pools: &'a mut Vec<ManaPool>,
 }
 
-/// Resolve a single effect line by detecting the API type and dispatching.
-pub fn resolve_effect(ctx: &mut EffectContext, ability: &str, entry: &StackEntry) {
-    let params = parse_pipe_params(ability);
-    let api_type = detect_api_type(ability, &params);
+/// Resolve a single SpellAbility node's effect by dispatching on its API type.
+/// Mirrors Java's `AbilityUtils.resolveApiAbility(sa)`.
+pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let api_type = sa.api.as_deref().unwrap_or_else(|| {
+        // Fallback: detect from ability text (for backwards compat)
+        detect_api_type_from_text(&sa.ability_text)
+    });
 
     match api_type {
-        "DealDamage" => deal_damage::resolve(ctx, &params, entry, ability),
-        "GainLife" => gain_life::resolve(ctx, &params, entry, ability),
-        "LoseLife" => lose_life::resolve(ctx, &params, entry, ability),
-        "PutCounter" => put_counter::resolve(ctx, &params, entry, ability),
-        "Pump" => pump::resolve(ctx, &params, entry, ability),
-        "Destroy" => destroy::resolve(ctx, &params, entry),
-        "Draw" => draw::resolve(ctx, &params, entry, ability),
-        "ChangeZoneAll" => change_zone_all::resolve(ctx, &params, entry),
-        "ChangeZone" => change_zone::resolve(ctx, &params, entry),
-        "SacrificeAll" => sacrifice_all::resolve(ctx, &params, entry),
-        "Sacrifice" => sacrifice::resolve(ctx, &params, entry),
-        "CopyPermanent" => copy_permanent::resolve(ctx, &params, entry, ability),
-        "Token" => token::resolve(ctx, &params, entry),
-        "Mana" => mana::resolve(ctx, &params, entry),
+        "DealDamage" => deal_damage::resolve(ctx, sa),
+        "GainLife" => gain_life::resolve(ctx, sa),
+        "LoseLife" => lose_life::resolve(ctx, sa),
+        "PutCounter" => put_counter::resolve(ctx, sa),
+        "Pump" => pump::resolve(ctx, sa),
+        "Destroy" => destroy::resolve(ctx, sa),
+        "Draw" => draw::resolve(ctx, sa),
+        "ChangeZoneAll" => change_zone_all::resolve(ctx, sa),
+        "ChangeZone" => change_zone::resolve(ctx, sa),
+        "SacrificeAll" => sacrifice_all::resolve(ctx, sa),
+        "Sacrifice" => sacrifice::resolve(ctx, sa),
+        "CopyPermanent" => copy_permanent::resolve(ctx, sa),
+        "Token" => token::resolve(ctx, sa),
+        "Mana" => mana::resolve(ctx, sa),
         _ => {} // Unimplemented effect — silently skip
     }
 }
 
-/// Detect the API type from an ability string.
-///
-/// Tries structured detection first (SP$, DB$, AB$ prefix), then falls
-/// back to contains-matching for compatibility with existing card scripts.
-fn detect_api_type<'a>(ability: &'a str, params: &'a BTreeMap<String, String>) -> &'a str {
-    // Structured: check for SP$, DB$, AB$ keys in the parsed params
-    for key in &["SP", "DB", "AB"] {
-        if let Some(val) = params.get(*key) {
-            return val.as_str();
-        }
-    }
-
-    // Fallback: contains-matching (order matters — check longer names first)
+/// Fallback: detect API type from raw ability text via contains-matching.
+/// Only used when `SpellAbility.api` is None (shouldn't happen for properly
+/// parsed abilities, but kept for backward compatibility).
+fn detect_api_type_from_text(ability: &str) -> &'static str {
+    // Order matters — check longer names first
     // ChangeZoneAll must be checked before ChangeZone, SacrificeAll before Sacrifice
     if ability.contains("DealDamage") {
         "DealDamage"
@@ -262,23 +256,10 @@ mod tests {
     }
 
     #[test]
-    fn detect_api_type_sp_prefix() {
-        let params = parse_pipe_params("SP$ DealDamage | NumDmg$ 3");
-        assert_eq!(detect_api_type("SP$ DealDamage | NumDmg$ 3", &params), "DealDamage");
-    }
-
-    #[test]
-    fn detect_api_type_db_prefix() {
-        let params = parse_pipe_params("DB$ Draw | NumCards$ 2");
-        assert_eq!(detect_api_type("DB$ Draw | NumCards$ 2", &params), "Draw");
-    }
-
-    #[test]
     fn detect_api_type_fallback() {
-        let params = BTreeMap::new();
-        assert_eq!(detect_api_type("something with ChangeZoneAll", &params), "ChangeZoneAll");
-        assert_eq!(detect_api_type("something with ChangeZone", &params), "ChangeZone");
-        assert_eq!(detect_api_type("something with SacrificeAll", &params), "SacrificeAll");
-        assert_eq!(detect_api_type("something with Sacrifice", &params), "Sacrifice");
+        assert_eq!(detect_api_type_from_text("something with ChangeZoneAll"), "ChangeZoneAll");
+        assert_eq!(detect_api_type_from_text("something with ChangeZone"), "ChangeZone");
+        assert_eq!(detect_api_type_from_text("something with SacrificeAll"), "SacrificeAll");
+        assert_eq!(detect_api_type_from_text("something with Sacrifice"), "Sacrifice");
     }
 }

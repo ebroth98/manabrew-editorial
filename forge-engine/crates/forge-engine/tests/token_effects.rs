@@ -5,7 +5,7 @@ use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_engine_core::spellability::StackEntry;
+use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -69,19 +69,14 @@ fn push_activated_entry(
     ability_text: &str,
     target_card: Option<CardId>,
 ) {
+    let mut sa = SpellAbility::new_simple(None, controller, ability_text);
+    sa.is_activated = true;
+    sa.target_chosen.target_card = target_card;
     game.stack.push(StackEntry {
         id: 0,
-        source: None,
-        controller,
-        ability_text: ability_text.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card,
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     });
 }
 

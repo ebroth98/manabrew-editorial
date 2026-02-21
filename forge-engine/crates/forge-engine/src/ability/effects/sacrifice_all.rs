@@ -1,17 +1,15 @@
-use std::collections::BTreeMap;
-
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_change_type, EffectContext};
 use crate::ids::CardId;
-use crate::spellability::StackEntry;
+use crate::spellability::SpellAbility;
 
 pub fn resolve(
     ctx: &mut EffectContext,
-    params: &BTreeMap<String, String>,
-    _entry: &StackEntry,
+    sa: &SpellAbility,
 ) {
-    let valid_cards_filter = params
+    let valid_cards_filter = sa
+        .params
         .get("ValidCards")
         .cloned()
         .unwrap_or_else(|| "Creature".to_string());

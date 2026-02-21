@@ -292,15 +292,15 @@
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `Cost.java` | Cost container: parses cost strings, holds cost parts | **Partial** (ManaCost in foundation) |
+| `Cost.java` | Cost container: parses cost strings, holds cost parts | **Partial** (`cost/mod.rs` parse_cost + spell cost extraction from SP$ lines) |
 | `CostPartMana.java` | Mana portion of costs | **Implemented** (`mana_pool.rs` try_pay) |
-| `CostPayment.java` | Cost payment orchestration | Not implemented |
-| `CostPart.java` | Abstract base for cost components | Not implemented |
+| `CostPayment.java` | Cost payment orchestration | **Partial** (`game_loop.rs` pay_ability_cost + pay_additional_costs) |
+| `CostPart.java` | Abstract base for cost components | **Partial** (`cost/mod.rs` CostPart enum: Tap, Mana, PayLife, Sacrifice) |
 | `CostPartWithList.java` | Cost part tracking affected cards | Not implemented |
 | `CostPartWithTrigger.java` | Cost part that fires triggers | Not implemented |
 | `CostTap.java` | Tap as cost | **Partial** (tap in `action.rs`) |
 | `CostUntap.java` | Untap as cost | Not implemented |
-| `CostSacrifice.java` | Sacrifice as cost | Not implemented |
+| `CostSacrifice.java` | Sacrifice as cost | **Implemented** (`cost/mod.rs` get_sacrifice_targets, `game_loop.rs` pay_sacrifice_cost) |
 | `CostPayLife.java` | Pay life as cost | Not implemented |
 | `CostPayEnergy.java` | Pay energy counters | Not implemented |
 | `CostPayShards.java` | Pay shard tokens | Not implemented |
@@ -908,7 +908,7 @@
 | Perpetual Effects | 8 | 0 | 0 | 8 |
 | Tokens | 1 | 0 | 0 | 1 |
 | Combat | 10 | 1 | 1 | 8 |
-| Costs | 60 | 0 | 2 | 58 |
+| Costs | 60 | 1 | 4 | 55 |
 | Events | 60 | 0 | 3 | 57 |
 | Extra Hands | 1 | 0 | 0 | 1 |
 | Keywords | 20 | 0 | 2 | 18 |
@@ -922,8 +922,8 @@
 | Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 4 | 1 | 135 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **32** | **54** | **683** |
+| **TOTAL** | **769** | **31** | **56** | **682** |
 
-> **Coverage: ~11.2% implemented or partially implemented** (86 of 769 features have some Rust counterpart)
+> **Coverage: ~11.3% implemented or partially implemented** (87 of 769 features have some Rust counterpart)
 >
 > The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (135 files), and **costs** (58 files).

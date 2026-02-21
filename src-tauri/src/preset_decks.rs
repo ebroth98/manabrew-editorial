@@ -71,6 +71,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Raise the Alarm + Krenko's Command + token creation effects".into(),
             color: "text-orange-400".into(),
         },
+        PresetDeckInfo {
+            id: "sac_cost".into(),
+            label: "Sacrifice Cost".into(),
+            desc: "Village Rites + sacrifice-as-additional-cost mechanics".into(),
+            color: "text-gray-400".into(),
+        },
     ]
 }
 
@@ -85,6 +91,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "white_static"
             | "zone_change"
             | "token_swarm"
+            | "sac_cost"
     )
 }
 
@@ -113,6 +120,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "token_swarm" => {
             build_named_deck(game, p0, TOKEN_SWARM);
             build_named_deck(game, p1, RED_BURN);
+        }
+        "sac_cost" => {
+            build_named_deck(game, p0, SAC_COST);
+            build_named_deck(game, p1, GREEN_STOMPY);
         }
         "black_control" => {
             build_named_deck(game, p0, BLACK_CONTROL);
@@ -200,6 +211,18 @@ const ZONE_CHANGE: &[(&str, usize)] = &[
     ("Typhoid Rats", 4),
     ("Vampire Nighthawk", 3),
     ("Doom Blade", 2),
+];
+
+/// Exercises sacrifice-as-additional-cost (CostSacrifice).
+/// Village Rites tests `Cost$ B Sac<1/Creature>` — sacrifice a creature to draw two cards.
+/// Cheap creatures provide sacrifice fodder; Raise Dead lets you recur them.
+const SAC_COST: &[(&str, usize)] = &[
+    ("Swamp", 17),
+    ("Severed Strands", 10),
+    ("Typhoid Rats", 4),        // Cheap sacrifice fodder (1/1 deathtouch)
+    ("Vampire Nighthawk", 3),   // Evasive threat
+    ("Doom Blade", 3),          // Removal
+    ("Raise Dead", 3),          // Recur creatures from graveyard
 ];
 
 /// Exercises issue #14: Token creation (SP$ Token) and CopyPermanent effects.

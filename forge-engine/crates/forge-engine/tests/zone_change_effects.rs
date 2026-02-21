@@ -6,7 +6,7 @@ use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_engine_core::spellability::StackEntry;
+use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 // ── Card constructors ────────────────────────────────────────────────
@@ -70,19 +70,14 @@ fn push_effect_entry(
     target_player: Option<PlayerId>,
     source: Option<CardId>,
 ) {
+    let mut sa = SpellAbility::new_simple(source, controller, ability_text);
+    sa.target_chosen.target_card = target_card;
+    sa.target_chosen.target_player = target_player;
     let entry = StackEntry {
         id: 0,
-        source,
-        controller,
-        ability_text: ability_text.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player,
-        target_card,
-        is_triggered_ability: false,
-        is_activated_ability: false,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 }
@@ -111,19 +106,14 @@ fn test_bounce_to_hand() {
     // Clear the stack and use is_activated_ability = true
     game.stack.pop();
 
+    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    sa.is_activated = true;
+    sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {
         id: 0,
-        source: None,
-        controller: p0,
-        ability_text: ability.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: Some(bears),
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
@@ -163,19 +153,14 @@ fn test_exile_permanent() {
     game.move_card(bears, ZoneType::Battlefield, p1);
 
     let ability = "SP$ ChangeZone | Origin$ Battlefield | Destination$ Exile";
+    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    sa.is_activated = true;
+    sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {
         id: 0,
-        source: None,
-        controller: p0,
-        ability_text: ability.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: Some(bears),
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
@@ -210,19 +195,14 @@ fn test_reanimate() {
 
     // Alice reanimates it onto the battlefield
     let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Battlefield";
+    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    sa.is_activated = true;
+    sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {
         id: 0,
-        source: None,
-        controller: p0,
-        ability_text: ability.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: Some(bears),
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
@@ -264,19 +244,14 @@ fn test_raise_dead() {
 
     // Alice casts Raise Dead targeting her own creature
     let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Hand";
+    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    sa.is_activated = true;
+    sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {
         id: 0,
-        source: None,
-        controller: p0,
-        ability_text: ability.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: Some(bears),
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
@@ -323,19 +298,13 @@ fn test_change_zone_all_board_wipe() {
 
     // Exile all creatures (Cataclysm-style)
     let ability = "SP$ ChangeZoneAll | Origin$ Battlefield | Destination$ Exile | ValidCards$ Creature";
+    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    sa.is_activated = true;
     let entry = StackEntry {
         id: 0,
-        source: None,
-        controller: p0,
-        ability_text: ability.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: None,
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
@@ -388,19 +357,13 @@ fn test_sacrifice_self() {
 
     // The creature sacrifices itself (like a Loxodon Warhammer echo)
     let ability = "SP$ Sacrifice | SacValid$ Self";
+    let mut sa = SpellAbility::new_simple(Some(bears), p0, ability); // source is the creature that sacrifices
+    sa.is_activated = true;
     let entry = StackEntry {
         id: 0,
-        source: Some(bears), // the source card is the creature that sacrifices
-        controller: p0,
-        ability_text: ability.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: None,
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
@@ -442,19 +405,13 @@ fn test_sacrifice_all_creatures() {
 
     // Sacrifice all creatures (Overwhelming Splendor style)
     let ability = "SP$ SacrificeAll | ValidCards$ Creature";
+    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    sa.is_activated = true;
     let entry = StackEntry {
         id: 0,
-        source: None,
-        controller: p0,
-        ability_text: ability.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: None,
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
@@ -510,19 +467,13 @@ fn test_sacrifice_each_player() {
 
     // Innocent Blood: each player sacrifices a creature
     let ability = "SP$ Sacrifice | SacValid$ Creature | Defined$ Player";
+    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    sa.is_activated = true;
     let entry = StackEntry {
         id: 0,
-        source: None,
-        controller: p0,
-        ability_text: ability.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: None,
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
@@ -566,19 +517,14 @@ fn test_tuck_to_library_bottom() {
 
     // Alice casts Condemn on Bob's attacking creature — puts it on bottom of its owner's library
     let ability = "SP$ ChangeZone | Origin$ Battlefield | Destination$ Library | LibraryPosition$ -1";
+    let mut sa = SpellAbility::new_simple(None, p0, ability);
+    sa.is_activated = true;
+    sa.target_chosen.target_card = Some(bears);
     let entry = StackEntry {
         id: 0,
-        source: None,
-        controller: p0,
-        ability_text: ability.to_string(),
+        spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: Some(bears),
-        is_triggered_ability: false,
-        is_activated_ability: true,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
