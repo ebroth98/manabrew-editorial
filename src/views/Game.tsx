@@ -8,6 +8,7 @@ import { Card } from "@/components/game/Card";
 import { FreeBattlefield } from "@/components/game/FreeBattlefield";
 import { CardPreview } from "@/components/game/CardPreview";
 import { ZoneViewer } from "@/components/game/ZoneViewer";
+import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
 import { Button } from "@/components/ui/button";
@@ -535,6 +536,7 @@ function PromptBanner({ promptType }: { promptType: string }) {
     chooseTargetPlayer: "Choose a target player",
     chooseTargetCard: "Choose a target creature",
     chooseTargetAny: "Choose a target (player or creature)",
+    chooseTargetCardFromZone: "Choose a target card from the zone",
     gameOver: "Game Over",
   };
   const label = labels[promptType] ?? promptType;
@@ -717,6 +719,19 @@ export default function Game() {
   }
   function closeZone() {
     setViewingZone(null);
+  }
+
+  // Zone target selector (for selecting cards from graveyard, exile, etc.)
+  const [zoneTargetSelector, setZoneTargetSelector] = useState<{
+    title: string;
+    cards: XMageCard[];
+    validCardIds: string[];
+  } | null>(null);
+  function openZoneTargetSelector(title: string, cards: XMageCard[], validCardIds: string[]) {
+    setZoneTargetSelector({ title, cards, validCardIds });
+  }
+  function closeZoneTargetSelector() {
+    setZoneTargetSelector(null);
   }
 
   // Concede confirmation
@@ -925,6 +940,30 @@ export default function Game() {
     const timer = setTimeout(() => endGame(), 3000);
     return () => clearTimeout(timer);
   }, [gameView?.gameOver, currentPrompt?.type]);
+
+  // Handle zone-based targeting prompts (e.g., selecting from graveyard)
+  useEffect(() => {
+    if (promptType === "chooseTargetCardFromZone" && currentPrompt) {
+      const zone = currentPrompt.zone;
+      const validCardIds = currentPrompt.validCardIds || [];
+      const zoneCards = currentPrompt.zoneCards || [];
+      
+      if (zone && zoneCards.length > 0) {
+        const zoneNames: Record<string, string> = {
+          Graveyard: "Graveyard",
+          Exile: "Exile",
+          Hand: "Hand",
+        };
+        const zoneName = zoneNames[zone] || zone;
+        const title = `Choose from ${zoneName}`;
+        
+        openZoneTargetSelector(title, zoneCards, validCardIds);
+      }
+    } else {
+      // Close the zone selector if prompt type changes
+      closeZoneTargetSelector();
+    }
+  }, [promptType, currentPrompt]);
 
   if (!isGameActive) return <Navigate to="/lobby" replace />;
 
@@ -1502,6 +1541,20 @@ export default function Game() {
           title={viewingZone.title}
           cards={viewingZone.cards}
           onClose={closeZone}
+        />
+      )}
+
+      {/* ── Zone target selector modal (for graveyard/exile targeting) ─────────── */}
+      {zoneTargetSelector && (
+        <ZoneTargetSelector
+          title={zoneTargetSelector.title}
+          cards={zoneTargetSelector.cards}
+          validCardIds={zoneTargetSelector.validCardIds}
+          onSelect={(cardId) => {
+            targetCard(cardId);
+            closeZoneTargetSelector();
+          }}
+          onCancel={closeZoneTargetSelector}
         />
       )}
 

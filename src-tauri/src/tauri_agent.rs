@@ -4,8 +4,9 @@ use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
+use forge_foundation::ZoneType;
 
-use crate::game_view_dto::GameViewDto;
+use crate::game_view_dto::{GameViewDto, CardDto};
 use crate::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, DisplayEvent, PlayerAction, TargetAnyChoice};
 
 /// A PlayerAgent that sends prompts to the frontend and blocks waiting for a response.
@@ -230,6 +231,43 @@ impl PlayerAgent for TauriAgent {
         self.send_prompt(AgentPromptInner::ChooseTargetCard {
             game_view: view,
             valid_card_ids,
+        });
+        match self.recv_action() {
+            PlayerAction::TargetCard { card_id } => {
+                card_id.and_then(|id| Self::parse_card_id(&id))
+            }
+            _ => valid.first().copied(),
+        }
+    }
+
+    fn choose_target_card_from_zone(
+        &mut self,
+        _player: PlayerId,
+        zone: ZoneType,
+        valid: &[CardId],
+    ) -> Option<CardId> {
+        let valid_card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+        let mut view = self.view();
+        
+        // Build the list of cards in the specified zone
+        let zone_cards: Vec<CardDto> = match zone {
+            ZoneType::Graveyard => {
+                view.graveyard.iter().filter(|c| valid_card_ids.contains(&c.id)).cloned().collect()
+            }
+            ZoneType::Exile => {
+                view.exile.iter().filter(|c| valid_card_ids.contains(&c.id)).cloned().collect()
+            }
+            ZoneType::Hand => {
+                view.my_hand.iter().filter(|c| valid_card_ids.contains(&c.id)).cloned().collect()
+            }
+            _ => vec![],
+        };
+
+        self.send_prompt(AgentPromptInner::ChooseTargetCardFromZone {
+            game_view: view,
+            valid_card_ids,
+            zone: format!("{:?}", zone),
+            zone_cards,
         });
         match self.recv_action() {
             PlayerAction::TargetCard { card_id } => {

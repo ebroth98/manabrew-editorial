@@ -194,7 +194,7 @@ const ZONE_CHANGE: &[(&str, usize)] = &[
     ("Island", 4),
     ("Unsummon", 4),       // ChangeZone: Battlefield → Hand
     ("Boomerang", 2),      // ChangeZone: Battlefield → Hand (any permanent)
-    ("Raise Dead", 3),     // ChangeZone: Graveyard → Hand
+    ("Raise Dead", 13),    // ChangeZone: Graveyard → Hand
     ("Diabolic Edict", 3), // Sacrifice: target player sacrifices a creature
     ("Innocent Blood", 3), // Sacrifice: each player sacrifices a creature
     ("Typhoid Rats", 4),
@@ -208,9 +208,9 @@ const ZONE_CHANGE: &[(&str, usize)] = &[
 const TOKEN_SWARM: &[(&str, usize)] = &[
     ("Plains", 8),
     ("Mountain", 8),
-    ("Raise the Alarm", 4),    // SP$ Token: 2× 1/1 white Soldier
-    ("Krenko's Command", 4),   // SP$ Token: 2× 1/1 red Goblin
-    ("Dragon Fodder", 4),      // SP$ Token: 2× 1/1 red Goblin
+    ("Raise the Alarm", 4),  // SP$ Token: 2× 1/1 white Soldier
+    ("Krenko's Command", 4), // SP$ Token: 2× 1/1 red Goblin
+    ("Dragon Fodder", 4),    // SP$ Token: 2× 1/1 red Goblin
     ("Savannah Lions", 4),
     ("Lightning Bolt", 4),
     ("Shock", 4),
