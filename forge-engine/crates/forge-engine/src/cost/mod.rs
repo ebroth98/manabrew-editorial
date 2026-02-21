@@ -1,6 +1,7 @@
-use forge_foundation::ManaCost;
+use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
+use crate::ability::effects::matches_change_type;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
@@ -135,6 +136,20 @@ fn split_cost_tokens(raw: &str) -> Vec<&str> {
     tokens
 }
 
+/// Find valid sacrifice targets on the battlefield for a player, filtered by type.
+/// Mirrors Java's `CostSacrifice.getMaxAmountX()` + `CardLists.getValidCards()`.
+pub fn get_sacrifice_targets(
+    game: &GameState,
+    player: PlayerId,
+    type_filter: &str,
+) -> Vec<CardId> {
+    game.cards_in_zone(ZoneType::Battlefield, player)
+        .to_vec()
+        .into_iter()
+        .filter(|&cid| matches_change_type(game.card(cid), type_filter))
+        .collect()
+}
+
 /// Check if a cost can be paid by the given player for the given source card.
 /// `available_mana` is the total mana available (pool + untapped sources).
 pub fn can_pay(
@@ -169,15 +184,20 @@ pub fn can_pay(
             }
             CostPart::Sacrifice {
                 type_filter,
-                amount: _,
+                amount,
             } => {
                 if type_filter == "CARDNAME" {
                     // Must sacrifice self — check it's on the battlefield
-                    if card.zone != forge_foundation::ZoneType::Battlefield {
+                    if card.zone != ZoneType::Battlefield {
+                        return false;
+                    }
+                } else {
+                    // Scan battlefield for valid sacrifice targets
+                    let targets = get_sacrifice_targets(game, player, type_filter);
+                    if (targets.len() as i32) < *amount {
                         return false;
                     }
                 }
-                // Other sacrifice filters would require scanning battlefield
             }
         }
     }
@@ -215,10 +235,15 @@ pub fn can_pay_ignoring_mana(
             }
             CostPart::Sacrifice {
                 type_filter,
-                amount: _,
+                amount,
             } => {
                 if type_filter == "CARDNAME" {
-                    if card.zone != forge_foundation::ZoneType::Battlefield {
+                    if card.zone != ZoneType::Battlefield {
+                        return false;
+                    }
+                } else {
+                    let targets = get_sacrifice_targets(game, player, type_filter);
+                    if (targets.len() as i32) < *amount {
                         return false;
                     }
                 }
@@ -296,6 +321,24 @@ mod tests {
         // Tap first (order -1), then sacrifice (order 15)
         assert!(matches!(cost.parts[0], CostPart::Tap));
         assert!(matches!(cost.parts[1], CostPart::Sacrifice { .. }));
+    }
+
+    #[test]
+    fn parse_sacrifice_creature() {
+        let cost = parse_cost("B Sac<1/Creature>");
+        assert_eq!(cost.parts.len(), 2);
+        // Mana (order 0) before Sacrifice (order 15)
+        assert!(matches!(cost.parts[0], CostPart::Mana(_)));
+        match &cost.parts[1] {
+            CostPart::Sacrifice {
+                amount,
+                type_filter,
+            } => {
+                assert_eq!(*amount, 1);
+                assert_eq!(type_filter, "Creature");
+            }
+            _ => panic!("expected Sacrifice cost part"),
+        }
     }
 
     #[test]

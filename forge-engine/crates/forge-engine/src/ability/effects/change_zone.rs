@@ -1,35 +1,34 @@
-use std::collections::BTreeMap;
-
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_change_type, parse_zone_type, EffectContext};
-use crate::spellability::StackEntry;
+use crate::spellability::SpellAbility;
 
 pub fn resolve(
     ctx: &mut EffectContext,
-    params: &BTreeMap<String, String>,
-    entry: &StackEntry,
+    sa: &SpellAbility,
 ) {
-    let origin_str = params.get("Origin").map(|s| s.as_str()).unwrap_or("");
-    let destination_str = params.get("Destination").map(|s| s.as_str()).unwrap_or("");
-    let tapped = params
+    let origin_str = sa.params.get("Origin").map(|s| s.as_str()).unwrap_or("");
+    let destination_str = sa.params.get("Destination").map(|s| s.as_str()).unwrap_or("");
+    let tapped = sa
+        .params
         .get("Tapped")
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
-    let change_type = params.get("ChangeType").cloned().unwrap_or_default();
-    let defined = params.get("Defined").cloned().unwrap_or_default();
-    let lib_position = params.get("LibraryPosition").cloned().unwrap_or_default();
-    let shuffle = params
+    let change_type = sa.params.get("ChangeType").cloned().unwrap_or_default();
+    let defined = sa.params.get("Defined").cloned().unwrap_or_default();
+    let lib_position = sa.params.get("LibraryPosition").cloned().unwrap_or_default();
+    let shuffle = sa
+        .params
         .get("Shuffle")
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
-    let controller = entry.controller;
+    let controller = sa.activating_player;
 
     if let (Some(dest_zone), Some(origin_zone)) =
         (parse_zone_type(destination_str), parse_zone_type(origin_str))
     {
         // Determine which card to move
-        let card_to_move = if let Some(cid) = entry.target_card {
+        let card_to_move = if let Some(cid) = sa.target_chosen.target_card {
             // Targeted effect: move if it's in the expected origin zone
             if ctx.game.card(cid).zone == origin_zone {
                 Some(cid)
@@ -38,8 +37,7 @@ pub fn resolve(
             }
         } else if defined.eq_ignore_ascii_case("Self") {
             // Move the source card itself
-            entry
-                .source
+            sa.source
                 .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
         } else if defined.is_empty() || defined.eq_ignore_ascii_case("You") {
             // No target: search controller's origin zone for a matching card (e.g. library tutor)

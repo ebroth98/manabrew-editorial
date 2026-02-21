@@ -1,23 +1,22 @@
-use std::collections::BTreeMap;
-
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
-use crate::spellability::StackEntry;
+use crate::spellability::SpellAbility;
 
 pub fn resolve(
     ctx: &mut EffectContext,
-    params: &BTreeMap<String, String>,
-    entry: &StackEntry,
+    sa: &SpellAbility,
 ) {
     // Create token creature(s) on the battlefield.
     // Mirrors Java TokenEffect / TokenEffectBase.
-    let amount: usize = params
+    let amount: usize = sa
+        .params
         .get("TokenAmount")
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
-    let token_script = params.get("TokenScript").cloned().unwrap_or_default();
-    let token_owner_str = params
+    let token_script = sa.params.get("TokenScript").cloned().unwrap_or_default();
+    let token_owner_str = sa
+        .params
         .get("TokenOwner")
         .map(|s| s.to_lowercase())
         .unwrap_or_else(|| "you".to_string());
@@ -26,11 +25,11 @@ pub fn resolve(
         ctx.game
             .player_order
             .iter()
-            .find(|&&p| p != entry.controller)
+            .find(|&&p| p != sa.activating_player)
             .copied()
-            .unwrap_or(entry.controller)
+            .unwrap_or(sa.activating_player)
     } else {
-        entry.controller
+        sa.activating_player
     };
 
     if token_script.is_empty() {

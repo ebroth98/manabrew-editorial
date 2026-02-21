@@ -2,6 +2,11 @@
 
 - Never push directly on main, always create a feature branch and a relative pr
 
+## Feature implementation
+Whenever you implement a feature, or modify, make sure to always keep logical, naming, and file parity, with the java counterpart in forge/forge-game/ or forge/forge-core.
+More importalty, you must keep equal (identical structure of file, and interface with the files inside forge/forge-game/src/main/java/forge/game).
+You cannot make up different file names.
+
 ## Feature Tracking
 
 Whenever you implement, partially implement, or modify a feature in this repository, you **must** update `features.md` accordingly:

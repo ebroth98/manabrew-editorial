@@ -1,23 +1,22 @@
-use std::collections::BTreeMap;
-
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_change_type, parse_zone_type, EffectContext};
 use crate::ids::{CardId, PlayerId};
-use crate::spellability::StackEntry;
+use crate::spellability::SpellAbility;
 
 pub fn resolve(
     ctx: &mut EffectContext,
-    params: &BTreeMap<String, String>,
-    entry: &StackEntry,
+    sa: &SpellAbility,
 ) {
-    let origin_str = params.get("Origin").map(|s| s.as_str()).unwrap_or("Battlefield");
-    let destination_str = params.get("Destination").map(|s| s.as_str()).unwrap_or("Graveyard");
-    let valid_cards_filter = params
+    let origin_str = sa.params.get("Origin").map(|s| s.as_str()).unwrap_or("Battlefield");
+    let destination_str = sa.params.get("Destination").map(|s| s.as_str()).unwrap_or("Graveyard");
+    let valid_cards_filter = sa
+        .params
         .get("ValidCards")
         .cloned()
         .unwrap_or_else(|| "Card".to_string());
-    let tapped = params
+    let tapped = sa
+        .params
         .get("Tapped")
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
@@ -33,7 +32,7 @@ pub fn resolve(
             for cid in zone_cards {
                 if matches_change_type(ctx.game.card(cid), &valid_cards_filter) {
                     let dest_owner = if dest_zone == ZoneType::Battlefield {
-                        entry.controller
+                        sa.activating_player
                     } else {
                         ctx.game.card(cid).owner
                     };

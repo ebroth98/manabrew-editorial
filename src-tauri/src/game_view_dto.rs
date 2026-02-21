@@ -251,14 +251,14 @@ impl GameViewDto {
 
         // Stack
         let stack: Vec<StackObjectDto> = game.stack.iter().map(|entry| {
-            let name = entry.source
+            let name = entry.spell_ability.source
                 .map(|cid| game.card(cid).card_name.clone())
                 .unwrap_or_else(|| "Ability".to_string());
             StackObjectDto {
                 id: format!("stack-{}", entry.id),
-                source_id: entry.source.map(|c| card_id_str(c)).unwrap_or_default(),
+                source_id: entry.spell_ability.source.map(|c| card_id_str(c)).unwrap_or_default(),
                 name,
-                text: entry.ability_text.clone(),
+                text: entry.spell_ability.ability_text.clone(),
             }
         }).collect();
 

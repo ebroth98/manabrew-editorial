@@ -625,19 +625,12 @@ fn mulldrifter_etb_draws_two_cards() {
 
     // Simulate: put Mulldrifter on stack as a creature spell, then resolve
     game.move_card(mulldrifter, ZoneType::Stack, p0);
+    let sa = forge_engine_core::spellability::SpellAbility::new_simple(Some(mulldrifter), p0, "");
     let entry = forge_engine_core::spellability::StackEntry {
         id: 0,
-        source: Some(mulldrifter),
-        controller: p0,
-        ability_text: String::new(),
+        spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: None,
-        is_triggered_ability: false,
-        is_activated_ability: false,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
 
@@ -678,19 +671,12 @@ fn soul_warden_gains_life_on_other_creature_etb() {
     // Now put a Grizzly Bears on the stack and resolve
     let bears = game.create_card(make_grizzly_bears(p0));
     game.move_card(bears, ZoneType::Stack, p0);
+    let sa = forge_engine_core::spellability::SpellAbility::new_simple(Some(bears), p0, "");
     let entry = forge_engine_core::spellability::StackEntry {
         id: 0,
-        source: Some(bears),
-        controller: p0,
-        ability_text: String::new(),
+        spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: None,
-        is_triggered_ability: false,
-        is_activated_ability: false,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
@@ -716,19 +702,12 @@ fn soul_warden_does_not_trigger_on_self_etb() {
     // Soul Warden enters as a creature spell (from stack to battlefield)
     let soul_warden = game.create_card(make_soul_warden(p0));
     game.move_card(soul_warden, ZoneType::Stack, p0);
+    let sa = forge_engine_core::spellability::SpellAbility::new_simple(Some(soul_warden), p0, "");
     let entry = forge_engine_core::spellability::StackEntry {
         id: 0,
-        source: Some(soul_warden),
-        controller: p0,
-        ability_text: String::new(),
+        spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
-        target_player: None,
-        target_card: None,
-        is_triggered_ability: false,
-        is_activated_ability: false,
-        trigger_source: None,
-        trigger_index: None,
     };
     game.stack.push(entry);
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![

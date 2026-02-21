@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::spellability::StackEntry;
+use crate::spellability::{SpellAbility, StackEntry};
 use crate::trigger::TriggerMode;
 
 /// An active trigger reference — (card_id, trigger_index) pair.
@@ -98,19 +98,20 @@ impl TriggerHandler {
                         .cloned()
                         .unwrap_or_default();
 
+                    let mut sa = SpellAbility::new_simple(
+                        Some(active.card_id),
+                        host_controller,
+                        &svar_text,
+                    );
+                    sa.is_trigger = true;
+                    sa.trigger_source = Some(active.card_id);
+                    sa.trigger_index = Some(active.trigger_index);
+
                     let entry = StackEntry {
                         id: 0,
-                        source: Some(active.card_id),
-                        controller: host_controller,
-                        ability_text: svar_text,
+                        spell_ability: sa,
                         is_creature_spell: false,
                         is_permanent_spell: false,
-                        target_player: None,
-                        target_card: None,
-                        is_triggered_ability: true,
-                        is_activated_ability: false,
-                        trigger_source: Some(active.card_id),
-                        trigger_index: Some(active.trigger_index),
                     };
                     entries.push((entry, host_controller));
                 }

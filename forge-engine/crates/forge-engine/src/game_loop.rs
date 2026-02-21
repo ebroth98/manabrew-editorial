@@ -6,13 +6,13 @@ use crate::ability::effects::{self, EffectContext};
 use crate::agent::{MainPhaseAction, PlayerAgent};
 use crate::card::CardInstance;
 use crate::combat::{self, CombatState};
-use crate::cost::{can_pay, CostPart};
+use crate::cost::{self, can_pay, parse_cost, CostPart};
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::{self, ManaPool, basic_land_mana_atom, mana_atom_from_produced};
-use crate::spellability::StackEntry;
-use crate::spellability::targeting;
+use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
+use crate::spellability::target_restrictions;
 use crate::staticability::layer::apply_continuous_effects;
 use crate::trigger::parse_pipe_params;
 use crate::trigger::handler::TriggerHandler;
@@ -438,6 +438,22 @@ impl GameLoop {
         }
     }
 
+    /// Extract and parse the `Cost$` parameter from the first SP$ ability line.
+    /// Mirrors Java's `SpellAbility.getPayCosts()` which returns the full cost
+    /// (mana + additional costs) for a spell ability.
+    fn parse_spell_cost(abilities: &[String]) -> Option<crate::cost::Cost> {
+        for ability in abilities {
+            let params = parse_pipe_params(ability);
+            // Only process SP$ lines (spell abilities)
+            if params.contains_key("SP") {
+                if let Some(cost_str) = params.get("Cost") {
+                    return Some(parse_cost(cost_str));
+                }
+            }
+        }
+        None
+    }
+
     /// Get cards the active player can play.
     fn get_playable_cards(&self, game: &GameState, player: PlayerId) -> Vec<CardId> {
         let mut playable = Vec::new();
@@ -466,12 +482,36 @@ impl GameLoop {
                 // Check if we can pay the mana cost
                 let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
                 if available_mana.can_pay(&card.mana_cost) {
-                    // For targeted spells, check that at least one valid target exists
-                    let all_valid = card.abilities.iter().all(|ab| {
-                        targeting::has_valid_target(game, player, ab)
-                    });
-                    if all_valid {
-                        playable.push(card_id);
+                    // Check additional costs from SP$ line (e.g. Sac<1/Creature>).
+                    // Mirrors Java's CostPayment.canPayAdditionalCosts().
+                    let spell_cost = Self::parse_spell_cost(&card.abilities);
+                    let additional_costs_ok = if let Some(ref sc) = spell_cost {
+                        sc.parts.iter().all(|part| match part {
+                            CostPart::Sacrifice { type_filter, amount } => {
+                                if type_filter == "CARDNAME" {
+                                    true // source-sacrifice checked separately
+                                } else {
+                                    let targets = cost::get_sacrifice_targets(game, player, type_filter);
+                                    (targets.len() as i32) >= *amount
+                                }
+                            }
+                            CostPart::PayLife(life) => game.player(player).life >= *life,
+                            _ => true, // Mana already checked, Tap N/A for spells
+                        })
+                    } else {
+                        true
+                    };
+
+                    if additional_costs_ok {
+                        // For targeted spells, check that at least one valid target
+                        // exists across the entire SubAbility chain.
+                        // Mirrors Java's setupTargets() walking the chain.
+                        let all_valid = card.abilities.iter().all(|ab| {
+                            target_restrictions::has_candidates_in_chain(game, player, ab, Some(card_id))
+                        });
+                        if all_valid {
+                            playable.push(card_id);
+                        }
                     }
                 }
             }
@@ -523,13 +563,6 @@ impl GameLoop {
             // Check if we have an ability line that defines what this spell does
             let abilities = game.card(card_id).abilities.clone();
 
-            // Determine targets (use first ability's targeting)
-            let (target_player, target_card) = if let Some(ability) = abilities.first() {
-                targeting::choose_targets(game, agents, &self.mana_pools, player, ability)
-            } else {
-                (None, None)
-            };
-
             // Pay the mana cost from pool
             let paid = self.pool_mut(player).try_pay(&mana_cost);
             if !paid {
@@ -539,6 +572,13 @@ impl GameLoop {
             // Pay commander tax (extra generic mana)
             if commander_tax > 0 && !self.pool_mut(player).try_pay_extra_generic(commander_tax) {
                 return None;
+            }
+
+            // Pay additional costs from SP$ line (e.g. sacrifice a creature).
+            // Mirrors Java's CostPayment.payCost() iterating CostParts.
+            let spell_cost = Self::parse_spell_cost(&abilities);
+            if let Some(ref sc) = spell_cost {
+                self.pay_additional_costs(game, agents, player, card_id, sc);
             }
 
             // Increment commander cast count (before moving card to stack)
@@ -559,22 +599,18 @@ impl GameLoop {
                 false,
             );
 
-            // Put on stack and resolve immediately (simplified — no priority passing)
+            // Build SpellAbility chain and choose targets.
+            // Mirrors Java's AbilityFactory.getAbility() + setupTargets().
             let ability_text = abilities.first().cloned().unwrap_or_default();
+            let mut sa = build_spell_ability(game, card_id, &ability_text, player);
+            sa.is_spell = true;
+            sa.setup_targets(game, agents, &self.mana_pools);
 
             let entry = StackEntry {
                 id: 0,
-                source: Some(card_id),
-                controller: player,
-                ability_text,
+                spell_ability: sa,
                 is_creature_spell: is_creature,
                 is_permanent_spell: is_permanent,
-                target_player,
-                target_card,
-                is_triggered_ability: false,
-                is_activated_ability: false,
-                trigger_source: None,
-                trigger_index: None,
             };
 
             game.stack.push(entry);
@@ -590,17 +626,17 @@ impl GameLoop {
     /// Resolve the top of the stack.
     pub fn resolve_stack(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         while let Some(entry) = game.stack.pop() {
-            if entry.is_triggered_ability || entry.is_activated_ability {
+            if entry.spell_ability.is_trigger || entry.spell_ability.is_activated {
                 // Triggered/activated ability: resolve the effect
                 self.resolve_spell_effect(game, agents, &entry);
                 continue;
             }
 
-            if let Some(card_id) = entry.source {
+            if let Some(card_id) = entry.spell_ability.source {
                 if entry.is_creature_spell || entry.is_permanent_spell {
                     // Permanent spell: move to battlefield
                     let origin = game.card(card_id).zone;
-                    game.move_card(card_id, ZoneType::Battlefield, entry.controller);
+                    game.move_card(card_id, ZoneType::Battlefield, entry.spell_ability.activating_player);
 
                     // Register triggers for the new permanent
                     self.trigger_handler.register_active_trigger(game, card_id);
@@ -629,34 +665,15 @@ impl GameLoop {
         self.process_triggers(game, agents);
     }
 
-    /// Resolve a spell effect from its ability text.
-    /// Handles both SP$ (spell) and DB$ (triggered/sub-ability) formats.
+    /// Resolve a spell effect by walking the SpellAbility chain.
+    /// Mirrors Java's `AbilityUtils.resolveApiAbility()` + `resolveSubAbilities()`.
     fn resolve_spell_effect(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>], entry: &StackEntry) {
-        self.resolve_single_effect(game, agents, &entry.ability_text, entry);
-
-        // Handle SubAbility$ chain (mirrors Java's getSubAbility() linked list)
-        let params = parse_pipe_params(&entry.ability_text);
-        if let Some(sub_svar_name) = params.get("SubAbility") {
-            if let Some(source_card) = entry.source {
-                let sub_text = game.card(source_card).svars.get(sub_svar_name).cloned();
-                if let Some(sub_text) = sub_text {
-                    let sub_entry = StackEntry {
-                        id: 0,
-                        source: entry.source,
-                        controller: entry.controller,
-                        ability_text: sub_text,
-                        is_creature_spell: false,
-                        is_permanent_spell: false,
-                        target_player: entry.target_player,
-                        target_card: entry.target_card,
-                        is_triggered_ability: entry.is_triggered_ability,
-                        is_activated_ability: entry.is_activated_ability,
-                        trigger_source: entry.trigger_source,
-                        trigger_index: entry.trigger_index,
-                    };
-                    self.resolve_spell_effect(game, agents, &sub_entry);
-                }
-            }
+        // Walk the SpellAbility chain: resolve each node's effect
+        // Mirrors Java's resolveApiAbility() + resolveSubAbilities()
+        let mut current = Some(&entry.spell_ability);
+        while let Some(sa) = current {
+            self.resolve_single_effect(game, agents, sa);
+            current = sa.get_sub_ability();
         }
     }
 
@@ -665,8 +682,7 @@ impl GameLoop {
         &mut self,
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
-        ability: &str,
-        entry: &StackEntry,
+        sa: &SpellAbility,
     ) {
         let mut ctx = EffectContext {
             game,
@@ -675,7 +691,7 @@ impl GameLoop {
             token_templates: &self.token_templates,
             mana_pools: &mut self.mana_pools,
         };
-        effects::resolve_effect(&mut ctx, ability, entry);
+        effects::resolve_effect(&mut ctx, sa);
     }
 
     // ── Trigger helpers ────────────────────────────────────────────
@@ -711,7 +727,7 @@ impl GameLoop {
 
             // Resolve triggered abilities on the stack
             while let Some(entry) = game.stack.pop() {
-                if entry.is_triggered_ability {
+                if entry.spell_ability.is_trigger {
                     self.resolve_spell_effect(game, agents, &entry);
                 }
             }
@@ -772,16 +788,18 @@ impl GameLoop {
         };
 
         if ab.is_mana_ability {
-            self.resolve_mana_ability(game, player, card_id, &ab);
+            self.resolve_mana_ability(game, agents, player, card_id, &ab);
         } else {
             self.activate_ability_on_stack(game, agents, player, card_id, &ab);
         }
     }
 
     /// Pay the cost parts of an activated ability (tap, mana, life, sacrifice).
+    /// Mirrors Java's `CostPayment.payCost()` iterating over `CostPart`s.
     fn pay_ability_cost(
         &mut self,
         game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
         card_id: CardId,
         cost: &crate::cost::Cost,
@@ -798,12 +816,70 @@ impl GameLoop {
                 CostPart::PayLife(amount) => {
                     game.player_mut(player).lose_life(*amount);
                 }
-                CostPart::Sacrifice { type_filter, .. } => {
+                CostPart::Sacrifice { type_filter, amount } => {
                     if type_filter == "CARDNAME" {
                         let owner = game.card(card_id).owner;
                         game.move_card(card_id, ZoneType::Graveyard, owner);
+                    } else {
+                        self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
                     }
                 }
+            }
+        }
+    }
+
+    /// Pay additional costs from an SP$ ability line (non-mana cost parts only).
+    /// Used during spell casting for costs like `Sac<1/Creature>`.
+    /// Mirrors Java's `CostPayment.payCost()` for spell abilities.
+    fn pay_additional_costs(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        _card_id: CardId,
+        spell_cost: &crate::cost::Cost,
+    ) {
+        for part in &spell_cost.parts {
+            match part {
+                // Mana is already paid by play_card's main mana payment flow
+                CostPart::Mana(_) | CostPart::Tap => {}
+                CostPart::PayLife(amount) => {
+                    game.player_mut(player).lose_life(*amount);
+                }
+                CostPart::Sacrifice { type_filter, amount } => {
+                    if type_filter != "CARDNAME" {
+                        self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Pay a sacrifice cost by prompting the agent to choose targets.
+    /// Mirrors Java's `CostSacrifice.doListPayment()` which calls
+    /// `GameAction.sacrifice()`.
+    fn pay_sacrifice_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            let valid = cost::get_sacrifice_targets(game, player, type_filter);
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                let owner = game.card(chosen).owner;
+                game.move_card(chosen, ZoneType::Graveyard, owner);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    ZoneType::Battlefield,
+                    ZoneType::Graveyard,
+                );
             }
         }
     }
@@ -812,11 +888,12 @@ impl GameLoop {
     fn resolve_mana_ability(
         &mut self,
         game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
     ) {
-        self.pay_ability_cost(game, player, card_id, &ab.cost);
+        self.pay_ability_cost(game, agents, player, card_id, &ab.cost);
 
         // Produce mana
         if let Some(produced) = ab.params.get("Produced") {
@@ -837,28 +914,21 @@ impl GameLoop {
     ) {
         let ability_text = ab.ability_text.clone();
 
-        // Determine targets
-        let (target_player, target_card) =
-            targeting::choose_targets(game, agents, &self.mana_pools, player, &ability_text);
+        // Build SpellAbility and choose targets
+        let mut sa = SpellAbility::new_simple(Some(card_id), player, &ability_text);
+        sa.is_activated = true;
+        sa.setup_targets(game, agents, &self.mana_pools);
 
         // Pay costs
-        self.pay_ability_cost(game, player, card_id, &ab.cost);
+        self.pay_ability_cost(game, agents, player, card_id, &ab.cost);
 
         // Push to stack
         let card_name = game.card(card_id).card_name.clone();
         let entry = StackEntry {
             id: 0,
-            source: Some(card_id),
-            controller: player,
-            ability_text,
+            spell_ability: sa,
             is_creature_spell: false,
             is_permanent_spell: false,
-            target_player,
-            target_card,
-            is_triggered_ability: false,
-            is_activated_ability: true,
-            trigger_source: None,
-            trigger_index: None,
         };
         game.stack.push(entry);
         agents[player.index()].notify(&format!("Activated ability of {}", card_name));
