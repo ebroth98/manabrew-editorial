@@ -24,6 +24,18 @@ export interface ScryfallCard {
     art_crop: string;
     border_crop: string;
   };
+  /** Present on double-faced cards instead of top-level image_uris. */
+  card_faces?: Array<{
+    name: string;
+    image_uris?: {
+      small: string;
+      normal: string;
+      large: string;
+      png: string;
+      art_crop: string;
+      border_crop: string;
+    };
+  }>;
   mana_cost?: string;
   cmc: number;
   type_line: string;

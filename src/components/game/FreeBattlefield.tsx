@@ -15,6 +15,8 @@ interface FreeBattlefieldProps {
   onClickCard?: (card: XMageCard) => void;
   onClickAnyCard?: (card: XMageCard) => void;
   onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  onFlipCard?: () => void;
+  showBackFace?: boolean;
   pendingCardIds?: string[];
   attackingCardIds?: string[];
   tappableLandIds?: string[];
@@ -42,6 +44,8 @@ export function FreeBattlefield({
   onClickCard,
   onClickAnyCard,
   onHoverCard,
+  onFlipCard,
+  showBackFace,
   pendingCardIds,
   attackingCardIds,
   tappableLandIds,
@@ -365,6 +369,8 @@ export function FreeBattlefield({
               <Card
                 card={card}
                 isTapped={card.tapped}
+                onFlip={onFlipCard}
+                showBackFace={showBackFace}
                 className={cn(
                   "w-[70px] h-[98px] shrink-0",
                   isDragging ? "cursor-grabbing" : "cursor-grab",

@@ -78,6 +78,10 @@ pub struct CardDto {
     pub damage: i32,
     pub summoning_sick: bool,
     pub is_token: bool,
+    /// True if this card has an alternate face (DFC: Transform, Modal DFC).
+    pub is_double_faced: bool,
+    /// True if this card is currently showing its back face.
+    pub is_transformed: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -198,6 +202,8 @@ pub fn card_to_dto(
         damage: card.damage,
         summoning_sick: card.summoning_sick && !card.has_haste(),
         is_token: card.is_token,
+        is_double_faced: card.other_part.is_some(),
+        is_transformed: card.is_transformed,
     }
 }
 

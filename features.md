@@ -121,7 +121,7 @@
 | `BranchEffect.java` | Conditional branching in ability chains | Not implemented |
 | `ChangeZoneEffect.java` | Move card(s) to another zone | **Implemented** (`game_loop.rs` ChangeZone handler: targeted/defined/self, LibraryPosition, Shuffle, Tapped, ChangesZone trigger) |
 | `ChangeZoneAllEffect.java` | Move all matching cards to a zone | **Implemented** (`game_loop.rs` ChangeZoneAll handler: ValidCards filter, multi-player, triggers) |
-| `CharmEffect.java` | Modal "choose N" charm abilities | Not implemented |
+| `CharmEffect.java` | Modal "choose N" charm abilities | **Implemented** — `charm_effect.rs`: `SP$ Charm`, `Choices$ SVar1,...`, `CharmNum$`, `MinCharmNum$`; resolution-time targeting via `TargetKind` dispatch; agent `choose_mode`; TauriAgent `ChooseMode` prompt + `ModeDecision` response; `ChooseModeModal` frontend |
 | `ChooseCardEffect.java` | Choose a card from a set | Not implemented |
 | `ChooseCardNameEffect.java` | Name a card | Not implemented |
 | `ChooseColorEffect.java` | Choose a color | Not implemented |
@@ -186,7 +186,7 @@
 | `SacrificeEffect.java` | Force sacrifice | **Implemented** (`game_loop.rs` Sacrifice handler: SacValid$Self or matching permanents, agent choose_sacrifice for human choice, ChangesZone trigger) |
 | `SacrificeAllEffect.java` | Force sacrifice of all matching | **Implemented** (`game_loop.rs` SacrificeAll handler: ValidCards filter, multi-player, ChangesZone trigger) |
 | `ScryEffect.java` | Scry N | **Implemented** — `scry.rs`: `ScryNum$`, `Defined$` player, agent `choose_scry`; TauriAgent `Scry` prompt + `ScryDecision` response; PassAgent keeps all on top |
-| `SetStateEffect.java` | Transform / flip / turn face-up | Not implemented |
+| `SetStateEffect.java` | Transform / flip / turn face-up | **Implemented** — `set_state_effect.rs`: `Mode$ Transform` with optional `ConditionDefined$ Remembered | ConditionPresent$ | ConditionCompare$` gate; calls `card.transform()` and resets active triggers |
 | `ShuffleEffect.java` | Shuffle library | **Partial** (`action.rs` shuffle_library) |
 | `SkipPhaseEffect.java` | Skip a phase | Not implemented |
 | `SurveilEffect.java` | Surveil N | **Implemented** — `surveil.rs`: `Amount$`, `Defined$` player, agent `choose_surveil`; TauriAgent `Surveil` prompt + `SurveilDecision` response; emits ChangesZone trigger for graveyard cards |
@@ -198,7 +198,7 @@
 | `UntapAllEffect.java` | Untap all matching | **Implemented** — `untap_all_effect.rs`: `ValidCards$` filter with full qualifier support |
 | `VoteEffect.java` | Council's dilemma / voting mechanic | Not implemented |
 
-> **Note**: 197 effect files total. ~37 have full or partial implementation. Additional implemented effects not listed individually: `RevealHandEffect.java` → `reveal_hand.rs` (inform all agents of a player's hand), `LookAtEffect.java` → `look_at.rs` (activating player peeks at top N cards of a zone), `RearrangeTopOfLibraryEffect` → `rearrange_top_of_library.rs` (used by Ponder: look at top N, reorder, optional shuffle via `choose_reorder_library` / `choose_may_shuffle`). The remaining ~100+ effects (AdvanceCrank, Airbend, AlterAttribute, AssembleContraption, Behold, Blight, Bond, Camouflage, ChaosEnsues, Cloak, Endure, Forage, Heist, Incubate, Intensify, Investigate, Learn, MakeCard, ManifestDread, MultiplePiles, OpenAttraction, OwnershipGain, Planeswalk, PlayLandVariant, PowerExchange, Radiation, RemoveFromCombat, RemoveFromGame, RepeatEach, Replace*, RestartGame, ReverseTurnOrder, Ring, RollPlanarDice, Seek, SetInMotion, Subgame, TextBoxExchange, TimeTravel, Venture, VillainousChoice, ZoneExchange, etc.) are **not implemented**.
+> **Note**: 197 effect files total. ~41 have full or partial implementation. Additional implemented effects not listed individually: `RevealHandEffect.java` → `reveal_hand.rs` (inform all agents of a player's hand), `LookAtEffect.java` → `look_at.rs` (activating player peeks at top N cards of a zone), `RearrangeTopOfLibraryEffect` → `rearrange_top_of_library.rs` (used by Ponder: look at top N, reorder, optional shuffle via `choose_reorder_library` / `choose_may_shuffle`), `PeekAndRevealEffect.java` → `peek_and_reveal_effect.rs` (peek top N cards, optionally store in `remembered_cards`), `CleanupEffect.java` → `cleanup_effect.rs` (clear remembered cards/CMC). The remaining ~100+ effects (AdvanceCrank, Airbend, AlterAttribute, AssembleContraption, Behold, Blight, Bond, Camouflage, ChaosEnsues, Cloak, Endure, Forage, Heist, Incubate, Intensify, Investigate, Learn, MakeCard, ManifestDread, MultiplePiles, OpenAttraction, OwnershipGain, Planeswalk, PlayLandVariant, PowerExchange, Radiation, RemoveFromCombat, RemoveFromGame, RepeatEach, Replace*, RestartGame, ReverseTurnOrder, Ring, RollPlanarDice, Seek, SetInMotion, Subgame, TextBoxExchange, TimeTravel, Venture, VillainousChoice, ZoneExchange, etc.) are **not implemented**.
 
 ---
 
@@ -209,7 +209,7 @@
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `Card.java` | Core card class — full state, abilities, types, counters, damage | **Implemented** (`card.rs` CardInstance) |
-| `CardState.java` | Single state of card (front/back) with mutable properties | **Partial** (single state in CardInstance) |
+| `CardState.java` | Single state of card (front/back) with mutable properties | **Partial** — dual-face support: `CardOtherPart` stores back face; `transform()` swaps all face characteristics, `is_transformed` flag; `CardSplitType::is_dual_faced()` used during card loading |
 | `CardFactory.java` | Factory: creates Card instances from templates | **Partial** (create_card in `game.rs`) |
 | `CardFactoryUtil.java` | Card creation utilities | Not implemented |
 | `CardCollection.java` | Mutable card collection | **Implemented** (Vec<CardId> in zones) |
@@ -903,8 +903,8 @@
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
 | Core Game | 37 | 3 | 8 | 26 |
 | Ability System | 10 | 0 | 2 | 8 |
-| Ability Effects | 197 | 26 | 11 | 160 |
-| Card System | 28 | 4 | 3 | 21 |
+| Ability Effects | 197 | 28 | 13 | 156 |
+| Card System | 28 | 4 | 4 | 20 |
 | Perpetual Effects | 8 | 0 | 0 | 8 |
 | Tokens | 1 | 0 | 0 | 1 |
 | Combat | 10 | 1 | 1 | 8 |
@@ -922,8 +922,8 @@
 | Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 4 | 1 | 135 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **48** | **56** | **665** |
+| **TOTAL** | **769** | **50** | **58** | **661** |
 
-> **Coverage: ~13.5% implemented or partially implemented** (104 of 769 features have some Rust counterpart)
+> **Coverage: ~14.1% implemented or partially implemented** (108 of 769 features have some Rust counterpart)
 >
 > The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (135 files), and **costs** (58 files).

@@ -11,6 +11,23 @@ use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::staticability::{parse_static_ability, StaticAbility};
 use crate::trigger::Trigger;
 
+/// Stores alternate-face characteristics for double-faced cards (DFCs).
+/// The `transform()` method swaps `CardInstance` fields with these values.
+/// Mirrors Java's `CardState` stored as the "backside" state.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CardOtherPart {
+    pub name: String,
+    pub type_line: CardTypeLine,
+    pub mana_cost: ManaCost,
+    pub color: ColorSet,
+    pub base_power: Option<i32>,
+    pub base_toughness: Option<i32>,
+    pub keywords: Vec<String>,
+    pub abilities: Vec<String>,
+    pub triggers: Vec<Trigger>,
+    pub svars: BTreeMap<String, String>,
+}
+
 /// A card instance in a game. This is the mutable game-state representation,
 /// as opposed to CardRules which is the immutable definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -121,6 +138,12 @@ pub struct CardInstance {
     pub remembered_cards: Vec<CardId>,
     /// CMC values remembered by this card
     pub remembered_cmc: Vec<i32>,
+
+    // Double-faced card (DFC) state
+    /// True if this card is currently showing its back face.
+    pub is_transformed: bool,
+    /// Back-face characteristics for DFC cards. `None` for single-faced cards.
+    pub other_part: Option<CardOtherPart>,
 }
 
 impl CardInstance {
@@ -200,6 +223,8 @@ impl CardInstance {
             attachments: Vec::new(),
             remembered_cards: Vec::new(),
             remembered_cmc: Vec::new(),
+            is_transformed: false,
+            other_part: None,
         }
     }
 
@@ -358,6 +383,39 @@ impl CardInstance {
     /// Add a remembered CMC value
     pub fn add_remembered_cmc(&mut self, cmc: i32) {
         self.remembered_cmc.push(cmc);
+    }
+
+    /// Transform this double-faced card to its other face.
+    /// Swaps all face-dependent characteristics with `other_part`.
+    /// No-op if `other_part` is `None`.
+    /// Mirrors Java's `CardUtil.applyState(card, CardStateName.Backside)`.
+    pub fn transform(&mut self) {
+        if let Some(other) = self.other_part.as_mut() {
+            std::mem::swap(&mut self.card_name, &mut other.name);
+            std::mem::swap(&mut self.type_line, &mut other.type_line);
+            std::mem::swap(&mut self.mana_cost, &mut other.mana_cost);
+            std::mem::swap(&mut self.color, &mut other.color);
+            std::mem::swap(&mut self.base_power, &mut other.base_power);
+            std::mem::swap(&mut self.base_toughness, &mut other.base_toughness);
+            std::mem::swap(&mut self.keywords, &mut other.keywords);
+            std::mem::swap(&mut self.abilities, &mut other.abilities);
+            std::mem::swap(&mut self.triggers, &mut other.triggers);
+            std::mem::swap(&mut self.svars, &mut other.svars);
+
+            // Reset per-face transient state
+            self.power_modifier = 0;
+            self.toughness_modifier = 0;
+            self.damage = 0;
+            self.granted_keywords.clear();
+
+            // Re-parse activated abilities from new face's abilities
+            self.activated_abilities = self.abilities.iter()
+                .enumerate()
+                .filter_map(|(i, raw)| parse_activated_ability(raw, i))
+                .collect();
+
+            self.is_transformed = !self.is_transformed;
+        }
     }
 }
 

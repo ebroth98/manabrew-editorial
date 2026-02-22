@@ -41,6 +41,12 @@ interface AgentPrompt {
   numToDiscard?: number;
   /** chooseTargetSpell: stack entry IDs that can be countered */
   validSpellIds?: string[];
+  /** chooseMode: human-readable descriptions for each available mode */
+  options?: string[];
+  /** chooseMode: minimum number of modes that must be chosen */
+  minChoices?: number;
+  /** chooseMode: maximum number of modes that can be chosen */
+  maxChoices?: number;
 }
 
 interface GameConfig {
@@ -89,6 +95,7 @@ interface GameState {
   digDecision: (chosenCardIds: string[]) => void;
   discardDecision: (discardedCardIds: string[]) => void;
   targetSpell: (spellId: string | null) => void;
+  modeDecision: (chosenIndices: number[]) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setupListeners: () => Promise<() => void>;
@@ -254,6 +261,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   targetSpell: (spellId) => {
     get().respond({ type: 'targetSpell', spellId });
+  },
+
+  modeDecision: (chosenIndices) => {
+    get().respond({ type: 'modeDecision', chosenIndices });
   },
 
   concede: () => {

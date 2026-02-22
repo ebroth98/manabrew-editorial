@@ -28,6 +28,10 @@ export interface Card {
   damage?: number;
   summoningSick?: boolean;
   isToken?: boolean;
+  /** True if this card has an alternate face (Transform DFC, Modal DFC). */
+  isDoubleFaced?: boolean;
+  /** True if this card is currently showing its back face. */
+  isTransformed?: boolean;
 }
 
 export interface Deck {

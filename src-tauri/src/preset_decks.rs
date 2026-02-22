@@ -108,6 +108,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Wrath of God + Pyroclasm + Righteous Charge (DestroyAll / DamageAll / PumpAll effects)".into(),
             color: "text-amber-500".into(),
         },
+        PresetDeckInfo {
+            id: "charm_modal".into(),
+            label: "Charm & Modal".into(),
+            desc: "Izzet Charm + Grixis Charm — choose-your-mode modal spells (SP$ Charm)".into(),
+            color: "text-violet-400".into(),
+        },
     ]
 }
 
@@ -128,6 +134,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "green_fight"
             | "showcase"
             | "mass_effects"
+            | "charm_modal"
     )
 }
 
@@ -184,6 +191,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "mass_effects" => {
             build_named_deck(game, p0, MASS_EFFECTS);
             build_named_deck(game, p1, GREEN_STOMPY);
+        }
+        "charm_modal" => {
+            build_named_deck(game, p0, CHARM_MODAL);
+            build_named_deck(game, p1, RED_BURN);
         }
         _ => {
             // red_burn (default)
@@ -275,10 +286,10 @@ const ZONE_CHANGE: &[(&str, usize)] = &[
 const SAC_COST: &[(&str, usize)] = &[
     ("Swamp", 17),
     ("Severed Strands", 10),
-    ("Typhoid Rats", 4),        // Cheap sacrifice fodder (1/1 deathtouch)
-    ("Vampire Nighthawk", 3),   // Evasive threat
-    ("Doom Blade", 3),          // Removal
-    ("Raise Dead", 3),          // Recur creatures from graveyard
+    ("Typhoid Rats", 4),      // Cheap sacrifice fodder (1/1 deathtouch)
+    ("Vampire Nighthawk", 3), // Evasive threat
+    ("Doom Blade", 3),        // Removal
+    ("Raise Dead", 3),        // Recur creatures from graveyard
 ];
 
 /// Exercises issue #14: Token creation (SP$ Token) and CopyPermanent effects.
@@ -305,45 +316,45 @@ const TOKEN_SWARM: &[(&str, usize)] = &[
 const LIBRARY_MANIPULATION: &[(&str, usize)] = &[
     ("Island", 16),
     ("Swamp", 4),
-    ("Preordain", 4),          // SP$ Scry 2, then draw a card
-    ("Ponder", 4),             // SP$ RearrangeTopOfLibrary 3, may shuffle, draw
-    ("Thought Scour", 4),      // SP$ Mill 2 target player, draw a card
-    ("Ransack the Lab", 4),    // SP$ Dig 3, take 1 to hand, rest to graveyard
-    ("Taigam's Scheming", 2),  // SP$ Surveil 5
-    ("Notion Rain", 2),        // SP$ Surveil 2, draw 2, deal 2 to self
-    ("Divination", 4),         // Draw 2
-    ("Mulldrifter", 4),        // Flying ETB draw 2
-    ("Typhoid Rats", 4),       // 1/1 Deathtouch
-    ("Doom Blade", 4),         // Destroy non-black creature
-    ("Vampire Nighthawk", 4),  // 2/3 Flying Deathtouch Lifelink
+    ("Preordain", 4),         // SP$ Scry 2, then draw a card
+    ("Ponder", 4),            // SP$ RearrangeTopOfLibrary 3, may shuffle, draw
+    ("Thought Scour", 4),     // SP$ Mill 2 target player, draw a card
+    ("Ransack the Lab", 4),   // SP$ Dig 3, take 1 to hand, rest to graveyard
+    ("Taigam's Scheming", 2), // SP$ Surveil 5
+    ("Notion Rain", 2),       // SP$ Surveil 2, draw 2, deal 2 to self
+    ("Divination", 4),        // Draw 2
+    ("Mulldrifter", 4),       // Flying ETB draw 2
+    ("Typhoid Rats", 4),      // 1/1 Deathtouch
+    ("Doom Blade", 4),        // Destroy non-black creature
+    ("Vampire Nighthawk", 4), // 2/3 Flying Deathtouch Lifelink
 ];
 
 /// Exercises issue #16: Counter (Counterspell, Cancel), Discard (Mind Rot),
 /// and ControlGain (Control Magic) effects.
 const BLUE_CONTROL: &[(&str, usize)] = &[
     ("Island", 17),
-    ("Counterspell", 4),    // SP$ Counter: counter target spell
-    ("Cancel", 4),          // SP$ Counter: counter target spell (3 mana)
-    ("Mind Rot", 4),        // SP$ Discard: target player discards 2 cards
-    ("Control Magic", 3),   // ControlGain: gain control of target creature
-    ("Mulldrifter", 3),     // 2/2 Flying; ETB draw 2
-    ("Divination", 4),      // Draw 2
-    ("Wall of Ice", 4),     // Blocker
-    ("Sea Serpent", 4),     // Big blue creature
+    ("Counterspell", 4),  // SP$ Counter: counter target spell
+    ("Cancel", 4),        // SP$ Counter: counter target spell (3 mana)
+    ("Mind Rot", 4),      // SP$ Discard: target player discards 2 cards
+    ("Control Magic", 3), // ControlGain: gain control of target creature
+    ("Mulldrifter", 3),   // 2/2 Flying; ETB draw 2
+    ("Divination", 4),    // Draw 2
+    ("Wall of Ice", 4),   // Blocker
+    ("Sea Serpent", 4),   // Big blue creature
 ];
 
 /// Exercises issue #16: Fight effects (Prey Upon, Ram Through).
 /// Big green creatures provide good fight targets.
 const GREEN_FIGHT: &[(&str, usize)] = &[
     ("Forest", 17),
-    ("Prey Upon", 4),         // SP$ Fight: creature you control fights target creature
-    ("Ram Through", 4),       // SP$ Fight: similar fight spell
+    ("Prey Upon", 4),   // SP$ Fight: creature you control fights target creature
+    ("Ram Through", 4), // SP$ Fight: similar fight spell
     ("Garruk's Companion", 4), // 3/2 Trample
-    ("Centaur Courser", 4),   // 3/3
-    ("Giant Spider", 3),      // 2/4 Reach
-    ("Craw Wurm", 3),         // 6/4
-    ("Giant Growth", 4),      // Pump before fighting
-    ("Grizzly Bears", 4),     // 2/2
+    ("Centaur Courser", 4), // 3/3
+    ("Giant Spider", 3), // 2/4 Reach
+    ("Craw Wurm", 3),   // 6/4
+    ("Giant Growth", 4), // Pump before fighting
+    ("Grizzly Bears", 4), // 2/2
 ];
 
 /// Exercises all implemented mechanics in one deck (Grixis: U/B/R).
@@ -407,14 +418,32 @@ const SHOWCASE: &[(&str, usize)] = &[
 /// - Savannah Lions / White Knight / Serra Angel: creatures to interact with mass effects
 const MASS_EFFECTS: &[(&str, usize)] = &[
     ("Plains", 18),
-    ("Wrath of God", 4),     // SP$ DestroyAll | ValidCards$ Creature | NoRegen$ True
-    ("Pyroclasm", 4),         // SP$ DamageAll | NumDmg$ 2 | ValidCards$ Creature
+    ("Wrath of God", 4), // SP$ DestroyAll | ValidCards$ Creature | NoRegen$ True
+    ("Pyroclasm", 4),    // SP$ DamageAll | NumDmg$ 2 | ValidCards$ Creature
     ("Righteous Charge", 4), // SP$ PumpAll | ValidCards$ Creature.YouCtrl | NumAtt$ +2 | NumDef$ +2
-    ("Rising Miasma", 4),    // SP$ PumpAll | ValidCards$ Creature | NumAtt$ -2 | NumDef$ -2
-    ("Savannah Lions", 4),   // 2/1 attacker
-    ("White Knight", 4),     // 2/2 First Strike + Protection
-    ("Serra Angel", 4),      // 4/4 Flying + Vigilance
-    ("Darksteel Myr", 4),    // Indestructible (survives Wrath of God)
+    ("Rising Miasma", 4), // SP$ PumpAll | ValidCards$ Creature | NumAtt$ -2 | NumDef$ -2
+    ("Savannah Lions", 4), // 2/1 attacker
+    ("White Knight", 4), // 2/2 First Strike + Protection
+    ("Serra Angel", 4),  // 4/4 Flying + Vigilance
+    ("Darksteel Myr", 4), // Indestructible (survives Wrath of God)
+];
+
+/// Exercises issue #18: modal spells (SP$ Charm).
+/// - Izzet Charm: choose from Counter / DealDamage / Draw+Discard
+/// - Grixis Charm: choose from Bounce / Pump -4/-4 / PumpAll +2/+0
+/// - Guttersnipe: burns opponent for each instant/sorcery cast
+/// - Delver of Secrets: evasive threat that pairs with instants
+const CHARM_MODAL: &[(&str, usize)] = &[
+    ("Island", 8),
+    ("Mountain", 6),
+    ("Swamp", 4),
+    ("Izzet Charm", 4),  // Counter / DealDamage / Draw+Discard
+    ("Grixis Charm", 4), // Bounce / Pump -4/-4 / PumpAll +2/+0
+    ("Lightning Bolt", 4),
+    ("Counterspell", 3),
+    ("Guttersnipe", 4),
+    ("Delver of Secrets", 24),
+    ("Gray Ogre", 3),
 ];
 
 /// All AI-eligible deck lists, used for random opponent selection.
@@ -435,7 +464,10 @@ const AI_DECK_OPTIONS: &[&[(&str, usize)]] = &[
 /// Pick a random deck from all AI-eligible presets.
 fn random_ai_deck() -> &'static [(&'static str, usize)] {
     let mut rng = rand::thread_rng();
-    AI_DECK_OPTIONS.choose(&mut rng).copied().unwrap_or(RED_BURN)
+    AI_DECK_OPTIONS
+        .choose(&mut rng)
+        .copied()
+        .unwrap_or(RED_BURN)
 }
 
 // ── Deck builders ──────────────────────────────────────────────────

@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use forge_carddb::{CardDatabase, CardRules};
-use forge_engine_core::card::CardInstance;
+use forge_engine_core::card::{CardInstance, CardOtherPart};
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::replacement::parse_replacement_effect;
 use forge_engine_core::staticability::parse_static_ability;
@@ -139,5 +139,29 @@ pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstanc
         }
     }
 
+    // Populate alternate face for double-faced cards (Transform, Meld, Modal DFC).
+    if rules.split_type.is_dual_faced() {
+        if let Some(ref back_face) = rules.other_part {
+            let mut back_trigger_id = 0u32;
+            let back_triggers: Vec<_> = back_face
+                .triggers
+                .iter()
+                .filter_map(|raw| parse_trigger(raw, &mut back_trigger_id))
+                .collect();
+
+            card.other_part = Some(CardOtherPart {
+                name: back_face.name.clone(),
+                type_line: back_face.type_line.clone(),
+                mana_cost: back_face.mana_cost.clone(),
+                color: back_face.resolved_color(),
+                base_power: back_face.int_power,
+                base_toughness: back_face.int_toughness,
+                keywords: back_face.keywords.clone(),
+                abilities: back_face.abilities.clone(),
+                triggers: back_triggers,
+                svars: back_face.svars.clone(),
+            });
+        }
+    }
     card
 }

@@ -154,6 +154,24 @@ pub trait PlayerAgent {
         valid.first().copied()
     }
 
+    /// Choose N modes for a modal spell (SP$ Charm / Commands).
+    ///
+    /// `descriptions` — human-readable description of each mode.
+    /// `min` — minimum number of modes to choose.
+    /// `max` — maximum number of modes to choose.
+    ///
+    /// Returns indices into `descriptions` of the chosen modes, in order.
+    /// Default: choose the first `min` modes (index 0, 1, …).
+    fn choose_mode(
+        &mut self,
+        _player: PlayerId,
+        descriptions: &[String],
+        min: usize,
+        _max: usize,
+    ) -> Vec<usize> {
+        (0..min.min(descriptions.len())).collect()
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;

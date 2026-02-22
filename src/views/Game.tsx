@@ -11,6 +11,7 @@ import { ZoneViewer } from "@/components/game/ZoneViewer";
 import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
 import { LibraryPeekModal, type LibraryPeekMode } from "@/components/game/LibraryPeekModal";
 import { SpellStackModal } from "@/components/game/SpellStackModal";
+import { ChooseModeModal } from "@/components/game/ChooseModeModal";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
 import { Button } from "@/components/ui/button";
@@ -232,6 +233,8 @@ function BattlefieldZone({
   onClickCard,
   onClickAnyCard,
   onHoverCard,
+  onFlipCard,
+  showBackFace,
   pendingCardIds,
   attackingCardIds,
   tappableLandIds,
@@ -252,6 +255,8 @@ function BattlefieldZone({
   /** Called when clicking any card (used for assigning attackers during blocking) */
   onClickAnyCard?: (card: XMageCard) => void;
   onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  onFlipCard?: () => void;
+  showBackFace?: boolean;
   /** Cards highlighted as selected/pending (orange ring) */
   pendingCardIds?: string[];
   /** Cards highlighted as currently attacking (red ring) */
@@ -263,6 +268,8 @@ function BattlefieldZone({
   untappableLandIds?: string[];
   onUntapLand?: (card: XMageCard) => void;
 }) {
+  const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  
   return (
     <div className={cn("flex flex-col gap-1 min-h-0", className)}>
       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">
@@ -293,12 +300,21 @@ function BattlefieldZone({
                 key={card.id}
                 data-card-id={card.id}
                 className="relative group shrink-0"
-                onMouseEnter={(e) => onHoverCard?.(card, e)}
-                onMouseLeave={() => onHoverCard?.(null)}
+                onMouseEnter={(e) => {
+                  setHoveredCardId(card.id);
+                  onHoverCard?.(card, e);
+                }}
+                onMouseLeave={() => {
+                  setHoveredCardId(null);
+                  onHoverCard?.(null);
+                }}
               >
                 <Card
                   card={card}
                   isTapped={card.tapped}
+                  isHovered={hoveredCardId === card.id}
+                  onFlip={onFlipCard}
+                  showBackFace={showBackFace}
                   className={cn(
                     "w-[70px] h-[98px] shrink-0 hover:z-10",
                     card.isChoosable &&
@@ -421,15 +437,19 @@ function PhaseBar({
 
 function HandDisplay({
   cards,
-  onPlayCard,
   onHoverCard,
   onStartDrag,
+  onFlipCard,
+  showBackFace,
 }: {
   cards: XMageCard[];
-  onPlayCard: (card: XMageCard) => void;
   onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
   onStartDrag?: (card: XMageCard, e: React.MouseEvent) => void;
+  onFlipCard?: () => void;
+  showBackFace?: boolean;
 }) {
+  const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  
   return (
     <div className="flex flex-col gap-1 shrink-0">
       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">
@@ -449,8 +469,14 @@ function HandDisplay({
                   ? (e) => { e.preventDefault(); onStartDrag?.(card, e); }
                   : undefined
               }
-              onMouseEnter={(e) => onHoverCard?.(card, e)}
-              onMouseLeave={() => onHoverCard?.(null)}
+              onMouseEnter={(e) => {
+                setHoveredCardId(card.id);
+                onHoverCard?.(card, e);
+              }}
+              onMouseLeave={() => {
+                setHoveredCardId(null);
+                onHoverCard?.(null);
+              }}
             >
               <Card
                 card={card}
@@ -458,12 +484,13 @@ function HandDisplay({
                   "w-[80px] h-[112px] transition-transform group-hover:-translate-y-3",
                   !card.isPlayable && "opacity-60 grayscale",
                 )}
+                isHovered={hoveredCardId === card.id}
+                onFlip={onFlipCard}
+                showBackFace={showBackFace}
               />
               {card.isPlayable && (
-                <button
-                  className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 bg-primary/20 border-2 border-primary transition-opacity"
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onClick={() => onPlayCard(card)}
+                <div
+                  className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 bg-primary/20 border-2 border-primary transition-opacity pointer-events-none"
                   title={`Play ${card.name}`}
                 />
               )}
@@ -561,6 +588,7 @@ const PROMPT_LABELS: Record<string, string> = {
   chooseTargetAny:         "Choose a target (player or permanent)",
   chooseTargetCardFromZone:"Choose a target card from the zone",
   chooseTargetSpell:       "Choose a spell on the stack to counter",
+  chooseMode:              "Choose a mode for the spell",
   scry:                    "Scry — choose cards to put on the bottom",
   surveil:                 "Surveil — choose cards to send to the graveyard",
   dig:                     "Dig — choose cards to take to your hand",
@@ -596,6 +624,8 @@ interface OpponentHalfProps {
   onClickCard: (card: XMageCard) => void;
   onClickAnyCard: (card: XMageCard) => void;
   onHoverCard: (card: XMageCard | null, e?: React.MouseEvent) => void;
+  onFlipCard: () => void;
+  showBackFace: boolean;
   onOpenZone: (title: string, cards: XMageCard[]) => void;
 }
 
@@ -616,6 +646,8 @@ function OpponentHalf({
   onClickCard,
   onClickAnyCard,
   onHoverCard,
+  onFlipCard,
+  showBackFace,
   onOpenZone,
 }: OpponentHalfProps) {
   return (
@@ -658,6 +690,8 @@ function OpponentHalf({
             cards={permanents}
             label={`${player.name}'s Battlefield`}
             emptyLabel="No permanents"
+            onFlipCard={onFlipCard}
+            showBackFace={showBackFace}
             className="flex-1"
             minHeight={60}
             onClickCard={
@@ -708,6 +742,7 @@ export default function Game() {
     digDecision,
     discardDecision,
     targetSpell,
+    modeDecision,
     concede,
     endGame,
     setupListeners,
@@ -721,6 +756,7 @@ export default function Game() {
   const [hoveredCard, setHoveredCard] = useState<XMageCard | null>(null);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showBackFace, setShowBackFace] = useState(false);
 
   // Hand drag-to-play state
   const [draggingHandCard, setDraggingHandCard] = useState<XMageCard | null>(null);
@@ -784,6 +820,9 @@ export default function Game() {
   // Spell stack modal (view stack / choose counter target)
   const [spellStackModalOpen, setSpellStackModalOpen] = useState(false);
 
+  // Choose mode modal (SP$ Charm — modal spells)
+  const [chooseModeOpen, setChooseModeOpen] = useState(false);
+
   // Concede confirmation
   const [confirmConcede, setConfirmConcede] = useState(false);
 
@@ -798,6 +837,10 @@ export default function Game() {
     setHoveredCard(null);
   }
 
+  function handleFlipCard() {
+    setShowBackFace(prev => !prev);
+  }
+
   function handleHoverCard(card: XMageCard | null, e?: React.MouseEvent) {
     if (hoverTimerRef.current) {
       clearTimeout(hoverTimerRef.current);
@@ -805,11 +848,13 @@ export default function Game() {
     }
     if (!card) {
       setHoveredCard(null);
+      setShowBackFace(false);
       return;
     }
     if (e) setMousePos({ x: e.clientX, y: e.clientY });
     hoverTimerRef.current = setTimeout(() => {
       setHoveredCard(card);
+      setShowBackFace(false); // Reset to front face when hovering new card
       hoverTimerRef.current = null;
     }, 500);
   }
@@ -1075,6 +1120,15 @@ export default function Game() {
     }
   }, [promptType]);
 
+  // Auto-open the choose-mode modal for SP$ Charm prompts
+  useEffect(() => {
+    if (promptType === "chooseMode") {
+      setChooseModeOpen(true);
+    } else {
+      setChooseModeOpen(false);
+    }
+  }, [promptType]);
+
   if (!isGameActive) return <Navigate to="/lobby" replace />;
 
   // Loading
@@ -1143,11 +1197,6 @@ export default function Game() {
         </Button>
       </div>
     );
-  }
-
-  function handlePlayCard(card: XMageCard) {
-    if (!card.isPlayable) return;
-    castSpell(card.id);
   }
 
   const playerIsTargetable =
@@ -1226,9 +1275,13 @@ export default function Game() {
     const handleMouseUp = () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
-      if (moved && isOverBattlefieldRef.current) {
+      
+      if (!moved) {
+        castSpell(card.id);
+      } else if (isOverBattlefieldRef.current) {
         castSpell(card.id);
       }
+      
       setDraggingHandCard(null);
       setIsOverBattlefield(false);
       isOverBattlefieldRef.current = false;
@@ -1431,6 +1484,8 @@ export default function Game() {
               onClickCard={handleBattlefieldClick}
               onClickAnyCard={handleAttackerClick}
               onHoverCard={handleHoverCard}
+              onFlipCard={handleFlipCard}
+              showBackFace={showBackFace}
               onOpenZone={openZone}
             />
           ) : (
@@ -1456,6 +1511,8 @@ export default function Game() {
                       onClickCard={handleBattlefieldClick}
                       onClickAnyCard={handleAttackerClick}
                       onHoverCard={handleHoverCard}
+                      onFlipCard={handleFlipCard}
+                      showBackFace={showBackFace}
                       onOpenZone={openZone}
                     />
                   </ResizablePanel>
@@ -1514,6 +1571,8 @@ export default function Game() {
                       : undefined
                   }
                   onHoverCard={handleHoverCard}
+                  onFlipCard={handleFlipCard}
+                  showBackFace={showBackFace}
                   pendingCardIds={
                     promptType === "chooseAttackers"
                       ? pendingAttackers
@@ -1548,8 +1607,9 @@ export default function Game() {
                 <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
                   <HandDisplay
                     cards={gameView.myHand}
-                    onPlayCard={handlePlayCard}
                     onHoverCard={handleHoverCard}
+                    onFlipCard={handleFlipCard}
+                    showBackFace={showBackFace}
                     onStartDrag={startHandCardDrag}
                   />
                 </div>
@@ -1775,6 +1835,19 @@ export default function Game() {
         />
       )}
 
+      {/* ── Choose mode modal (SP$ Charm) ────────────────── */}
+      {chooseModeOpen && currentPrompt?.options && (
+        <ChooseModeModal
+          options={currentPrompt.options}
+          minChoices={currentPrompt.minChoices ?? 1}
+          maxChoices={currentPrompt.maxChoices ?? 1}
+          onConfirm={(chosenIndices) => {
+            modeDecision(chosenIndices);
+            setChooseModeOpen(false);
+          }}
+        />
+      )}
+
       {/* ── Card-play flash overlay ───────────────────────── */}
       {activeFlash?.kind === "card" &&
         createPortal(
@@ -1835,6 +1908,7 @@ export default function Game() {
           card={hoveredCard}
           mouseX={mousePos.x}
           mouseY={mousePos.y}
+          showBackFace={showBackFace}
         />
       )}
     </div>

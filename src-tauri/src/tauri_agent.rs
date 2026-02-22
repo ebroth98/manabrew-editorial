@@ -467,6 +467,29 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
+    fn choose_mode(
+        &mut self,
+        player: PlayerId,
+        descriptions: &[String],
+        min: usize,
+        max: usize,
+    ) -> Vec<usize> {
+        if player != self.human_player {
+            // AI: pick first `min` modes
+            return (0..min.min(descriptions.len())).collect();
+        }
+        self.send_prompt(AgentPromptInner::ChooseMode {
+            game_view: self.view(),
+            options: descriptions.to_vec(),
+            min_choices: min,
+            max_choices: max,
+        });
+        match self.recv_action() {
+            PlayerAction::ModeDecision { chosen_indices } => chosen_indices,
+            _ => (0..min.min(descriptions.len())).collect(),
+        }
+    }
+
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
         None
     }

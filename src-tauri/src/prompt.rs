@@ -160,6 +160,19 @@ pub enum AgentPromptInner {
         #[serde(rename = "validSpellIds")]
         valid_spell_ids: Vec<String>,
     },
+    /// Choose N modes for a modal spell (SP$ Charm).
+    ChooseMode {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// Human-readable descriptions for each available mode.
+        options: Vec<String>,
+        /// Minimum number of modes that must be chosen.
+        #[serde(rename = "minChoices")]
+        min_choices: usize,
+        /// Maximum number of modes that can be chosen.
+        #[serde(rename = "maxChoices")]
+        max_choices: usize,
+    },
 }
 
 /// Sent from frontend to game thread: the human player's response.
@@ -223,6 +236,11 @@ pub enum PlayerAction {
     TargetSpell {
         #[serde(rename = "spellId")]
         spell_id: Option<String>,
+    },
+    /// Response to ChooseMode prompt: indices (0-based) of chosen modes.
+    ModeDecision {
+        #[serde(rename = "chosenIndices")]
+        chosen_indices: Vec<usize>,
     },
     Concede,
 }

@@ -129,11 +129,10 @@ export function LibraryPeekModal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9000] flex items-center justify-center"
-      style={{ backgroundColor: "rgba(0,0,0,0.6)" }}
+      className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
     >
       <div
-        className="bg-card border rounded-xl shadow-2xl flex flex-col max-w-4xl w-full max-h-[85vh] mx-4"
+        className="bg-card border rounded-xl shadow-2xl flex flex-col max-w-4xl w-full max-h-[85vh] mx-4 animate-in fade-in zoom-in-95 duration-200"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}

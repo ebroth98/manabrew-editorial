@@ -9,6 +9,9 @@ interface CardProps {
   className?: string;
   isTapped?: boolean;
   onClick?: () => void;
+  isHovered?: boolean;
+  onFlip?: () => void;
+  showBackFace?: boolean;
 }
 
 function isCreature(card: CardType) {
@@ -44,9 +47,22 @@ function KeywordChips({ keywords }: { keywords: string[] }) {
   );
 }
 
-export function Card({ card, className, isTapped, onClick }: CardProps) {
+export function Card({
+  card,
+  className,
+  isTapped,
+  onClick,
+  isHovered,
+  onFlip,
+  showBackFace,
+}: CardProps) {
   const [hasError, setHasError] = useState(false);
-  const { data: scryfallUrl } = useCardImage(card.name, card.imageUrl, card.isToken, card.color);
+  const { data: scryfallUrl } = useCardImage(
+    card.name,
+    card.imageUrl,
+    card.isToken,
+    card.color,
+  );
   const imageUrl = card.imageUrl || scryfallUrl;
 
   const creature = isCreature(card);
@@ -56,11 +72,14 @@ export function Card({ card, className, isTapped, onClick }: CardProps) {
   return (
     <div
       className={cn(
-        "relative rounded-lg border bg-card text-card-foreground shadow-sm transition-transform duration-200 ease-in-out hover:scale-105 cursor-pointer overflow-hidden",
+        "relative rounded-lg border bg-card text-card-foreground shadow-sm transition-transform duration-200 ease-in-out hover:scale-105 cursor-pointer group overflow-hidden",
         "w-[150px] aspect-[5/7]",
         isTapped && "rotate-90",
-        creature && card.summoningSick && onBattlefield && "ring-2 ring-dashed ring-gray-400",
-        className
+        creature &&
+          card.summoningSick &&
+          onBattlefield &&
+          "ring-2 ring-dashed ring-gray-400",
+        className,
       )}
       title={card.name}
       onClick={onClick}
@@ -74,11 +93,18 @@ export function Card({ card, className, isTapped, onClick }: CardProps) {
             onError={() => setHasError(true)}
             loading="lazy"
           />
-          {/* Token indicator — top-center banner */}
-          {card.isToken && (
+          {/* Token / Transformed indicator — top-center banner */}
+          {(card.isToken || card.isTransformed) && (
             <div className="absolute top-0 left-0 right-0 flex justify-center z-20 pointer-events-none">
-              <span className="text-[8px] font-bold bg-amber-400/90 text-amber-900 px-1.5 py-0.5 rounded-b leading-none">
-                TOKEN
+              <span
+                className={cn(
+                  "text-[8px] font-bold px-1.5 py-0.5 rounded-b leading-none",
+                  card.isTransformed
+                    ? "bg-purple-500/90 text-white"
+                    : "bg-amber-400/90 text-amber-900",
+                )}
+              >
+                {card.isTransformed ? "TRANSFORMED" : "TOKEN"}
               </span>
             </div>
           )}
@@ -100,9 +126,7 @@ export function Card({ card, className, isTapped, onClick }: CardProps) {
               <span
                 className={cn(
                   "text-[10px] font-bold px-1 py-0.5 rounded leading-none",
-                  lethal
-                    ? "bg-red-600 text-white"
-                    : "bg-black/70 text-white"
+                  lethal ? "bg-red-600 text-white" : "bg-black/70 text-white",
                 )}
               >
                 {card.power}/{card.toughness}
@@ -118,11 +142,20 @@ export function Card({ card, className, isTapped, onClick }: CardProps) {
       ) : (
         <div className="absolute inset-0 p-2 flex flex-col justify-between">
           <div className="flex justify-between items-start gap-1">
-            <span className="font-bold text-xs leading-tight line-clamp-2">{card.name}</span>
+            <span className="font-bold text-xs leading-tight line-clamp-2">
+              {card.name}
+            </span>
             <div className="flex flex-col items-end gap-0.5 shrink-0">
-              {card.isToken && (
-                <span className="text-[8px] font-bold bg-amber-400/90 text-amber-900 px-1 py-0.5 rounded leading-none">
-                  TOKEN
+              {(card.isToken || card.isTransformed) && (
+                <span
+                  className={cn(
+                    "text-[8px] font-bold px-1 py-0.5 rounded leading-none",
+                    card.isTransformed
+                      ? "bg-purple-500/90 text-white"
+                      : "bg-amber-400/90 text-amber-900",
+                  )}
+                >
+                  {card.isTransformed ? "TRANSFORMED" : "TOKEN"}
                 </span>
               )}
               <span className="text-xs font-mono">{card.manaCost}</span>
@@ -135,21 +168,70 @@ export function Card({ card, className, isTapped, onClick }: CardProps) {
           </div>
           {/* Counters row in text fallback */}
           {card.counters && (
-            <CounterDisplay counters={card.counters} size="sm" className="mb-0.5" />
+            <CounterDisplay
+              counters={card.counters}
+              size="sm"
+              className="mb-0.5"
+            />
           )}
           <div className="flex justify-between items-end">
             <span className="text-xs text-muted-foreground truncate">
               {card.types?.join(" ")}
             </span>
             {creature && card.power && card.toughness && (
-              <span className={cn("font-bold text-sm shrink-0", lethal && "text-red-500")}>
+              <span
+                className={cn(
+                  "font-bold text-sm shrink-0",
+                  lethal && "text-red-500",
+                )}
+              >
                 {card.power}/{card.toughness}
                 {card.damage != null && card.damage > 0 && (
-                  <span className="text-xs text-red-400 ml-0.5">⚔{card.damage}</span>
+                  <span className="text-xs text-red-400 ml-0.5">
+                    ⚔{card.damage}
+                  </span>
                 )}
               </span>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Flip button for double-faced cards - appears on hover */}
+      {card.isDoubleFaced && (
+        <div
+          className={cn(
+            "absolute left-1/2 -translate-x-1/2 bottom-0 z-50",
+            isHovered ? "flex" : "hidden group-hover:flex",
+          )}
+        >
+          <button
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onFlip?.();
+            }}
+            className="bg-black/90 hover:bg-black text-white px-2.5 py-1 rounded shadow-lg border border-white/20 transition-colors pointer-events-auto flex items-center gap-1.5 whitespace-nowrap text-xs backdrop-blur-sm"
+            title={showBackFace ? "Show Front Face" : "Show Back Face"}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              width="12"
+              height="12"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+              <path d="M16 3h3a2 2 0 0 1 2 2v3" />
+              <path d="M12 20v-18" />
+              <path d="M8 21H5a2 2 0 0 1-2-2v-3" />
+              <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+            </svg>
+          </button>
         </div>
       )}
     </div>

@@ -5,6 +5,8 @@
 //! API type string extracted from the ability text.
 
 pub mod attach_effect;
+pub mod charm_effect;
+pub mod cleanup_effect;
 pub mod change_zone_all_effect;
 pub mod change_zone_effect;
 pub mod control_gain_effect;
@@ -25,6 +27,7 @@ pub mod life_lose_effect;
 pub mod look_at_effect;
 pub mod mana_effect;
 pub mod mill_effect;
+pub mod peek_and_reveal_effect;
 pub mod pump_all_effect;
 pub mod pump_effect;
 pub mod rearrange_top_of_library_effect;
@@ -33,6 +36,7 @@ pub mod reveal_hand_effect;
 pub mod sacrifice_all_effect;
 pub mod sacrifice_effect;
 pub mod scry_effect;
+pub mod set_state_effect;
 pub mod surveil_effect;
 pub mod tap_all_effect;
 pub mod token_effect;
@@ -98,6 +102,12 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
         "Reveal" => reveal_effect::resolve(ctx, sa),
         "RevealHand" => reveal_hand_effect::resolve(ctx, sa),
         "LookAt" => look_at_effect::resolve(ctx, sa),
+        // Modal effects (issue #18)
+        "Charm" => charm_effect::resolve(ctx, sa),
+        // Double-faced card / transform effects (issue #19)
+        "PeekAndReveal" => peek_and_reveal_effect::resolve(ctx, sa),
+        "SetState" => set_state_effect::resolve(ctx, sa),
+        "Cleanup" => cleanup_effect::resolve(ctx, sa),
         // Counter, Control, Fight, Discard, Attach (issue #16)
         "Counter" => counter_effect::resolve(ctx, sa),
         "ControlGain" => control_gain_effect::resolve(ctx, sa),
@@ -167,6 +177,14 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "Reveal"
     } else if ability.contains("LookAt") {
         "LookAt"
+    } else if ability.contains("$ Charm") {
+        "Charm"
+    } else if ability.contains("PeekAndReveal") {
+        "PeekAndReveal"
+    } else if ability.contains("$ SetState") {
+        "SetState"
+    } else if ability.contains("$ Cleanup") {
+        "Cleanup"
     } else if ability.contains("$ Counter") {
         "Counter"
     } else if ability.contains("ControlGain") {

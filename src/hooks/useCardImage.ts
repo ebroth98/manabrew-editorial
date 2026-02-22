@@ -12,6 +12,16 @@ export function useCardImage(name: string, existingUrl?: string, isToken?: boole
     queryKey: ["card-image", name, isToken ? "token" : "card", color ?? ""],
     queryFn: async () => {
       const card = isToken ? await getTokenByName(name, color) : await getCardByName(name);
+      // Double-faced cards return card_faces instead of top-level image_uris.
+      // Find the face matching the current name (works for both front and back face).
+      if (card.card_faces) {
+        const face = card.card_faces.find(
+          (f) => f.name.toLowerCase() === name.toLowerCase(),
+        );
+        if (face?.image_uris) {
+          return face.image_uris.normal ?? face.image_uris.large ?? null;
+        }
+      }
       return card.image_uris?.normal ?? card.image_uris?.large ?? null;
     },
     enabled: !!name && !existingUrl,
