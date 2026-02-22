@@ -69,7 +69,8 @@ impl ServerClient {
             *guard = Some(username.clone());
         }
 
-        let url = format!("ws://{}:{}", host, port);
+        let scheme = if port == 443 { "wss" } else { "ws" };
+        let url = format!("{}://{}:{}", scheme, host, port);
 
         let handle = tauri::async_runtime::spawn(async move {
             if let Err(e) = run_ws_client(app.clone(), url, username, password, tx, rx).await {

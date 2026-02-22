@@ -20,6 +20,6 @@ forge-foundation = { path = "../forge-engine/crates/forge-foundation" }
 forge-carddb = { path = "../forge-engine/crates/forge-carddb" }
 rand = "0.8"
 tokio = { version = "1", features = ["rt", "sync", "macros"] }
-tokio-tungstenite = "0.24"
+tokio-tungstenite = { version = "0.24", features = ["native-tls"] }
 futures-util = "0.3"
 forge-server = { path = "../forge-engine/crates/forge-server" }
