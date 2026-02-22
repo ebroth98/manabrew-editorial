@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
 use futures_util::{SinkExt, StreamExt};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 
@@ -153,6 +153,23 @@ async fn run_ws_client(
 }
 
 fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
+    // Handle game envelopes in StateUpdate specially
+    if let ServerMessage::StateUpdate { from_player: _, state } = msg {
+        if let Some(kind) = state.get("kind").and_then(|v| v.as_str()) {
+            if kind == "response" {
+                // Route to game manager (host only) — don't emit to frontend
+                let gm: tauri::State<'_, crate::game_manager::GameManager> =
+                    app.state::<crate::game_manager::GameManager>();
+                gm.route_remote_response(state);
+                return;
+            } else if kind == "prompt" {
+                // Emit as a specialized event for non-host game rendering
+                let _ = app.emit("game:remote_prompt", state);
+                return;
+            }
+        }
+    }
+
     let (event, payload) = match msg {
         ServerMessage::AuthResult { success, player_id, reconnected, error } => (
             "server:auth_result",

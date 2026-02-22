@@ -5,6 +5,7 @@ mod game_manager;
 mod game_view_dto;
 mod preset_decks;
 mod prompt;
+mod remote_agent;
 mod server_client;
 mod server_commands;
 mod tauri_agent;
@@ -33,6 +34,8 @@ pub fn run() {
             server_commands::server_leave_room,
             server_commands::server_set_ready,
             server_commands::server_start_game,
+            server_commands::server_respond,
+            commands::start_multiplayer_game,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

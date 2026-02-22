@@ -83,3 +83,22 @@ pub async fn server_start_game(client: State<'_, ServerClient>) -> Result<(), St
     let msg = serde_json::json!({"type": "StartGame"});
     client.send(&msg.to_string())
 }
+
+/// Remote player sends their response back to the host via the server relay.
+#[tauri::command]
+pub async fn server_respond(
+    client: State<'_, ServerClient>,
+    player_slot: String,
+    action: serde_json::Value,
+) -> Result<(), String> {
+    let envelope = serde_json::json!({
+        "kind": "response",
+        "fromPlayer": player_slot,
+        "action": action,
+    });
+    let msg = serde_json::json!({
+        "type": "BroadcastState",
+        "state": envelope,
+    });
+    client.send(&msg.to_string())
+}

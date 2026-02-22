@@ -76,10 +76,17 @@ interface GameState {
   /** True after respond() is called and before the next prompt arrives — prevents double-submit. */
   isWaitingForResponse: boolean;
   gameConfig: GameConfig | null;
+  /** True if this is a networked multiplayer game. */
+  isMultiplayer: boolean;
+  /** True if this client is the host (runs the engine). */
+  isHost: boolean;
+  /** This player's slot identifier, e.g. "player-0", "player-1". */
+  myPlayerSlot: string | null;
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
   // Actions
-  startGame: (deckList: { name: string, setCode: string }[], formatId?: string, commanderName?: string) => Promise<void>;
+  startGame: (cardNames: string[], formatId?: string, commanderName?: string) => Promise<void>;
+  startMultiplayerGame: (playerNames: string[], hostPlayerIndex: number, startingLife: number) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
   castSpell: (cardId: string) => void;
   passPriority: () => void;
@@ -99,6 +106,7 @@ interface GameState {
   modeDecision: (chosenIndices: number[]) => void;
   concede: () => void;
   endGame: () => Promise<void>;
+  setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
   setupListeners: () => Promise<() => void>;
 }
 
@@ -151,6 +159,9 @@ export const useGameStore = create<GameState>((set, get) => ({
   isFlashing: false,
   isWaitingForResponse: false,
   gameConfig: null,
+  isMultiplayer: false,
+  isHost: false,
+  myPlayerSlot: null,
 
   updateGameView: (view) => set({ gameView: view }),
 
@@ -176,13 +187,44 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
+  startMultiplayerGame: async (playerNames, hostPlayerIndex, startingLife) => {
+    try {
+      set({ debugInfo: 'Starting multiplayer game...' });
+      const result = await invoke('start_multiplayer_game', {
+        playerNames,
+        hostPlayerIndex,
+        startingLife,
+      });
+      set({
+        isGameActive: true,
+        isMultiplayer: true,
+        isHost: true,
+        myPlayerSlot: `player-${hostPlayerIndex}`,
+        gameLog: [],
+        gameView: null,
+        currentPrompt: null,
+        deferredQueue: [],
+        isFlashing: false,
+        isWaitingForResponse: false,
+        debugInfo: `Multiplayer game started: ${result}`,
+      });
+    } catch (e) {
+      set({ debugInfo: `Multiplayer start failed: ${e}` });
+      console.error('[store] Failed to start multiplayer game:', e);
+    }
+  },
+
   respond: async (action) => {
     try {
-      // Mark as waiting so action buttons are disabled while the engine processes the response.
-      // We do NOT clear currentPrompt here — keeping it visible prevents a blank-state flash.
-      // The incoming next prompt will clear isWaitingForResponse and update currentPrompt.
       set({ isWaitingForResponse: true, debugInfo: `Responding: ${action.type}` });
-      await invoke('respond', { action });
+      const { isMultiplayer, isHost, myPlayerSlot } = get();
+      if (isMultiplayer && !isHost) {
+        // Remote player: send response via server relay
+        await invoke('server_respond', { playerSlot: myPlayerSlot, action });
+      } else {
+        // Host or single-player: send directly to engine
+        await invoke('respond', { action });
+      }
     } catch (e) {
       set({ isWaitingForResponse: false, debugInfo: `Respond error: ${e}` });
       console.error('Failed to respond:', e);
@@ -275,10 +317,14 @@ export const useGameStore = create<GameState>((set, get) => ({
   endGame: async () => {
     try {
       await invoke('end_game');
-      set({ isGameActive: false, gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false });
+      set({ isGameActive: false, gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, isMultiplayer: false, isHost: false, myPlayerSlot: null });
     } catch (e) {
       console.error('Failed to end game:', e);
     }
+  },
+
+  setMultiplayerState: (isMultiplayer, isHost, myPlayerSlot) => {
+    set({ isMultiplayer, isHost, myPlayerSlot });
   },
 
   setupListeners: async () => {
@@ -300,6 +346,22 @@ export const useGameStore = create<GameState>((set, get) => ({
         }));
       });
       unlisteners.push(unlisten2);
+
+      // Remote prompt listener: receives prompts relayed via the server for non-host players
+      const unlisten3 = await listen<{ kind: string; forPlayer: string; prompt: AgentPrompt }>('game:remote_prompt', (event) => {
+        const { forPlayer, prompt } = event.payload;
+        const { myPlayerSlot } = get();
+        if (forPlayer === myPlayerSlot) {
+          // This prompt is for us — render it fully
+          applyPrompt(prompt, 'Remote', set, get);
+        } else {
+          // Not for us — update board display only (opponent's game state)
+          if (prompt?.gameView) {
+            set({ gameView: prompt.gameView });
+          }
+        }
+      });
+      unlisteners.push(unlisten3);
     } catch (e) {
       console.error('[store] Failed to setup listeners:', e);
     }

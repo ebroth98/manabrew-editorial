@@ -29,8 +29,19 @@ export default function Lobby() {
 
   // Navigate to game when server starts a game
   useEffect(() => {
-    if (gameStarted) {
-      navigate('/play', { state: { multiplayer: true, playerOrder } });
+    if (gameStarted && playerOrder.length > 0) {
+      const isHost = currentRoom?.host === username;
+      const myIndex = playerOrder.indexOf(username ?? '');
+      // Reset gameStarted so returning to lobby doesn't re-trigger navigation
+      useServerStore.setState({ gameStarted: false });
+      navigate('/play', {
+        state: {
+          multiplayer: true,
+          playerOrder,
+          isHost,
+          myPlayerSlot: `player-${myIndex}`,
+        },
+      });
     }
   }, [gameStarted]);
 
