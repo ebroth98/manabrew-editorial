@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 import { useConnectionStore } from "@/stores/useConnectionStore";
 import { useAuthStore } from "@/stores/useAuthStore";
+import { useServerStore } from "@/stores/useServerStore";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import { Sun, Moon, Menu } from "lucide-react";
@@ -28,6 +29,13 @@ export function AppShell() {
   const { theme, setTheme } = useTheme();
   const sidebarRef = usePanelRef();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const setupListeners = useServerStore((s) => s.setupListeners);
+
+  // Register Tauri event listeners at app level so they're always active
+  useEffect(() => {
+    const cleanup = setupListeners();
+    return cleanup;
+  }, []);
 
   function toggleSidebar() {
     const panel = sidebarRef.current;

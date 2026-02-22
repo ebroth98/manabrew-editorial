@@ -1,0 +1,12 @@
+services:
+  forge-server:
+    build: .
+    ports:
+      - "9443:9443"
+    environment:
+      FORGE_HOST: "0.0.0.0"
+      FORGE_PORT: "9443"
+      FORGE_MAX_ROOMS: "100"
+      FORGE_SERVER_KEY: "forge"
+      RUST_LOG: "forge_server=info"
+    restart: unless-stopped

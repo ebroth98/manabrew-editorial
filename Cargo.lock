@@ -1024,12 +1024,16 @@ dependencies = [
  "forge-carddb",
  "forge-engine-core",
  "forge-foundation",
+ "forge-server",
+ "futures-util",
  "rand 0.8.5",
  "serde",
  "serde_json",
  "tauri",
  "tauri-build",
  "tauri-plugin-opener",
+ "tokio",
+ "tokio-tungstenite",
 ]
 
 [[package]]
