@@ -1,0 +1,155 @@
+use forge_foundation::ZoneType;
+
+use super::{matches_valid_cards, parse_param, EffectContext};
+use crate::ids::CardId;
+use crate::spellability::SpellAbility;
+
+/// `SP$ DamageAll` — deal N damage to all matching permanents and/or players.
+///
+/// Mirrors Java's `DamageAllEffect.java`:
+/// - `ValidCards$` selects which battlefield permanents receive damage.
+/// - `ValidPlayers$` set to "Player" also deals damage to every player.
+/// - `NumDmg$` specifies the amount (fixed integer; SVar X not yet supported).
+///
+/// # Card script examples
+/// ```text
+/// A:SP$ DamageAll | NumDmg$ 2 | ValidCards$ Creature
+/// A:SP$ DamageAll | ValidCards$ Creature.withFlying | ValidPlayers$ Player | NumDmg$ X
+/// ```
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let num_dmg = parse_param(&sa.ability_text, "NumDmg$ ").unwrap_or(0);
+    if num_dmg <= 0 {
+        return;
+    }
+
+    let valid_cards_filter = sa.params.get("ValidCards").cloned().unwrap_or_default();
+    let valid_players = sa.params.get("ValidPlayers").map(|s| s.as_str()).unwrap_or("").to_string();
+    let activating_player = sa.activating_player;
+
+    let player_ids = ctx.game.player_order.clone();
+
+    // Pass 1 — collect matching battlefield permanents
+    let mut to_damage: Vec<CardId> = Vec::new();
+    if !valid_cards_filter.is_empty() {
+        for &pid in &player_ids {
+            let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
+            for cid in zone_cards {
+                if matches_valid_cards(ctx.game.card(cid), &valid_cards_filter, activating_player) {
+                    to_damage.push(cid);
+                }
+            }
+        }
+    }
+
+    // Pass 2 — apply damage to collected permanents
+    for card_id in to_damage {
+        if ctx.game.card(card_id).zone == ZoneType::Battlefield {
+            ctx.game.deal_damage_to_card(card_id, num_dmg);
+        }
+    }
+
+    // Deal damage to each player if ValidPlayers$ is set
+    if !valid_players.is_empty() {
+        for pid in player_ids {
+            ctx.game.deal_damage_to_player(pid, num_dmg);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+    use std::collections::HashMap;
+
+    use crate::ability::effects::EffectContext;
+    use crate::agent::PassAgent;
+    use crate::card::CardInstance;
+    use crate::game::GameState;
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::ManaPool;
+    use crate::spellability::SpellAbility;
+    use crate::trigger::handler::TriggerHandler;
+
+    fn make_creature(game: &mut GameState, owner: PlayerId) -> CardId {
+        let c = CardInstance::new(
+            CardId(0),
+            "Bear".into(),
+            owner,
+            CardTypeLine::parse("Creature - Bear"),
+            ManaCost::parse("1 G"),
+            ColorSet::GREEN,
+            Some(2),
+            Some(2),
+            vec![],
+            vec![],
+        );
+        game.create_card(c)
+    }
+
+    #[test]
+    fn damage_all_deals_to_each_creature() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        let c1 = make_creature(&mut game, p0);
+        let c2 = make_creature(&mut game, p1);
+        game.move_card(c1, ZoneType::Battlefield, p0);
+        game.move_card(c2, ZoneType::Battlefield, p1);
+
+        let sa = SpellAbility::new_simple(
+            None,
+            p0,
+            "A:SP$ DamageAll | NumDmg$ 2 | ValidCards$ Creature",
+        );
+        let mut th = TriggerHandler::new();
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut mp = vec![ManaPool::default(), ManaPool::default()];
+        let templates = HashMap::new();
+        let mut ctx = EffectContext {
+            game: &mut game,
+            agents: &mut agents,
+            trigger_handler: &mut th,
+            token_templates: &templates,
+            mana_pools: &mut mp,
+            parent_target_card: None,
+        };
+        super::resolve(&mut ctx, &sa);
+
+        assert_eq!(ctx.game.card(c1).damage, 2);
+        assert_eq!(ctx.game.card(c2).damage, 2);
+        // Players not affected (no ValidPlayers$)
+        assert_eq!(ctx.game.player(p0).life, 20);
+        assert_eq!(ctx.game.player(p1).life, 20);
+    }
+
+    #[test]
+    fn damage_all_with_valid_players() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+
+        let sa = SpellAbility::new_simple(
+            None,
+            p0,
+            "A:SP$ DamageAll | NumDmg$ 3 | ValidCards$ | ValidPlayers$ Player",
+        );
+        let mut th = TriggerHandler::new();
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut mp = vec![ManaPool::default(), ManaPool::default()];
+        let templates = HashMap::new();
+        let mut ctx = EffectContext {
+            game: &mut game,
+            agents: &mut agents,
+            trigger_handler: &mut th,
+            token_templates: &templates,
+            mana_pools: &mut mp,
+            parent_target_card: None,
+        };
+        super::resolve(&mut ctx, &sa);
+
+        assert_eq!(ctx.game.player(p0).life, 17);
+        assert_eq!(ctx.game.player(p1).life, 17);
+    }
+}

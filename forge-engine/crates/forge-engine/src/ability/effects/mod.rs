@@ -11,7 +11,9 @@ pub mod control_gain_effect;
 pub mod copy_permanent_effect;
 pub mod counter_effect;
 pub mod counters_put_effect;
+pub mod damage_all_effect;
 pub mod damage_deal_effect;
+pub mod destroy_all_effect;
 pub mod destroy_effect;
 pub mod dig_effect;
 pub mod dig_multiple_effect;
@@ -23,6 +25,7 @@ pub mod life_lose_effect;
 pub mod look_at_effect;
 pub mod mana_effect;
 pub mod mill_effect;
+pub mod pump_all_effect;
 pub mod pump_effect;
 pub mod rearrange_top_of_library_effect;
 pub mod reveal_effect;
@@ -31,11 +34,13 @@ pub mod sacrifice_all_effect;
 pub mod sacrifice_effect;
 pub mod scry_effect;
 pub mod surveil_effect;
+pub mod tap_all_effect;
 pub mod token_effect;
+pub mod untap_all_effect;
 
 use std::collections::HashMap;
 
-use forge_foundation::ZoneType;
+use forge_foundation::{ColorSet, ZoneType};
 
 use crate::agent::PlayerAgent;
 use crate::card::{CardInstance, CounterType};
@@ -99,6 +104,12 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
         "Fight" => fight_effect::resolve(ctx, sa),
         "Discard" => discard_effect::resolve(ctx, sa),
         "Attach" => attach_effect::resolve(ctx, sa),
+        // Mass / board-wide effects (issue #17)
+        "DestroyAll" => destroy_all_effect::resolve(ctx, sa),
+        "DamageAll" => damage_all_effect::resolve(ctx, sa),
+        "PumpAll" => pump_all_effect::resolve(ctx, sa),
+        "TapAll" => tap_all_effect::resolve(ctx, sa),
+        "UntapAll" => untap_all_effect::resolve(ctx, sa),
         _ => {} // Unimplemented effect — silently skip
     }
 }
@@ -166,6 +177,17 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "Discard"
     } else if ability.contains("$ Attach") {
         "Attach"
+    // Mass / board-wide effects (issue #17) — longer names first
+    } else if ability.contains("DestroyAll") {
+        "DestroyAll"
+    } else if ability.contains("DamageAll") {
+        "DamageAll"
+    } else if ability.contains("PumpAll") {
+        "PumpAll"
+    } else if ability.contains("TapAll") {
+        "TapAll"
+    } else if ability.contains("UntapAll") {
+        "UntapAll"
     } else {
         ""
     }
@@ -235,6 +257,103 @@ pub fn parse_zone_type(s: &str) -> Option<ZoneType> {
 /// Convert a Produced$ value (e.g. "G", "R", "W") to a ManaAtom.
 /// Re-exported from the mana module for convenience in effect files.
 pub use crate::mana::mana_atom_from_produced;
+
+/// Full ValidCards$ filter matching with controller and keyword qualifier support.
+///
+/// This is the preferred function for mass effects (DestroyAll, DamageAll, etc.)
+/// because it handles `YouCtrl`, `OppCtrl`, `withFlying`, and color (`nonBlack`)
+/// qualifiers in addition to card types.
+///
+/// `activating_player` is the player who cast/activated the ability; used to
+/// resolve `YouCtrl` / `OppCtrl` qualifiers.
+///
+/// Mirrors Java's `CardLists.getValidCards()` + `CardProperty.cardHasProperty()`.
+pub fn matches_valid_cards(
+    card: &CardInstance,
+    filter: &str,
+    activating_player: PlayerId,
+) -> bool {
+    if filter.is_empty() || filter == "Card" {
+        return true;
+    }
+
+    let parts: Vec<&str> = filter.split('.').collect();
+    let type_part = parts[0];
+
+    // ── Type check ──────────────────────────────────────────────────────────
+    let type_matches = match type_part {
+        "Creature" => card.is_creature(),
+        "Land" => card.is_land(),
+        "Artifact" => card
+            .type_line
+            .core_types
+            .iter()
+            .any(|t| t.name().eq_ignore_ascii_case("Artifact")),
+        "Enchantment" => card
+            .type_line
+            .core_types
+            .iter()
+            .any(|t| t.name().eq_ignore_ascii_case("Enchantment")),
+        "Planeswalker" => card
+            .type_line
+            .core_types
+            .iter()
+            .any(|t| t.name().eq_ignore_ascii_case("Planeswalker")),
+        "Instant" => card
+            .type_line
+            .core_types
+            .iter()
+            .any(|t| t.name().eq_ignore_ascii_case("Instant")),
+        "Sorcery" => card
+            .type_line
+            .core_types
+            .iter()
+            .any(|t| t.name().eq_ignore_ascii_case("Sorcery")),
+        "Permanent" | "Card" => true,
+        _ => true, // Unknown type — match everything
+    };
+    if !type_matches {
+        return false;
+    }
+
+    // ── Qualifier checks (dot-separated after the type) ─────────────────────
+    for &qualifier in &parts[1..] {
+        if !matches_valid_cards_qualifier(card, qualifier, activating_player) {
+            return false;
+        }
+    }
+    true
+}
+
+fn matches_valid_cards_qualifier(
+    card: &CardInstance,
+    qualifier: &str,
+    activating_player: PlayerId,
+) -> bool {
+    match qualifier {
+        "YouCtrl" => card.controller == activating_player,
+        "OppCtrl" => card.controller != activating_player,
+        "Basic" => card.type_line.is_basic(),
+        "withFlying" => {
+            card.keywords.iter().any(|k| k.eq_ignore_ascii_case("Flying"))
+                || card
+                    .granted_keywords
+                    .iter()
+                    .any(|k| k.eq_ignore_ascii_case("Flying"))
+        }
+        _ => {
+            // Color filters: "nonBlack", "nonRed", "nonWhite", etc.
+            let lower = qualifier.to_ascii_lowercase();
+            if let Some(color_name) = lower.strip_prefix("non") {
+                let excluded = ColorSet::from_names(color_name);
+                !card.color.shares_color_with(excluded)
+            } else {
+                // Unknown qualifier — match everything (forward-compatible)
+                true
+            }
+        }
+    }
+}
 
 /// Check if a card matches a ChangeType$ / ValidCards$ filter string.
 pub fn matches_change_type(card: &CardInstance, change_type: &str) -> bool {

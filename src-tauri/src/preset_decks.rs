@@ -102,6 +102,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "All mechanics: Counter + Burn + Bounce + Token + Scry + Discard + Fight + Sac + Control + Mill".into(),
             color: "text-pink-400".into(),
         },
+        PresetDeckInfo {
+            id: "mass_effects".into(),
+            label: "Mass Effects".into(),
+            desc: "Wrath of God + Pyroclasm + Righteous Charge (DestroyAll / DamageAll / PumpAll effects)".into(),
+            color: "text-amber-500".into(),
+        },
     ]
 }
 
@@ -121,6 +127,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "blue_control"
             | "green_fight"
             | "showcase"
+            | "mass_effects"
     )
 }
 
@@ -173,6 +180,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "showcase" => {
             build_named_deck(game, p0, SHOWCASE);
             build_named_deck(game, p1, random_ai_deck());
+        }
+        "mass_effects" => {
+            build_named_deck(game, p0, MASS_EFFECTS);
+            build_named_deck(game, p1, GREEN_STOMPY);
         }
         _ => {
             // red_burn (default)
@@ -386,6 +397,24 @@ const SHOWCASE: &[(&str, usize)] = &[
     ("Typhoid Rats", 2),
     ("Vampire Nighthawk", 2),
     ("Mulldrifter", 2),
+];
+
+/// Exercises issue #17: mass/board-wide effects.
+/// - Wrath of God: DestroyAll Creature (board wipe, respects Indestructible)
+/// - Pyroclasm: DamageAll 2 to each creature
+/// - Righteous Charge: PumpAll +2/+2 to all your creatures until EOT
+/// - Rising Miasma: PumpAll -2/-2 to all creatures until EOT
+/// - Savannah Lions / White Knight / Serra Angel: creatures to interact with mass effects
+const MASS_EFFECTS: &[(&str, usize)] = &[
+    ("Plains", 18),
+    ("Wrath of God", 4),     // SP$ DestroyAll | ValidCards$ Creature | NoRegen$ True
+    ("Pyroclasm", 4),         // SP$ DamageAll | NumDmg$ 2 | ValidCards$ Creature
+    ("Righteous Charge", 4), // SP$ PumpAll | ValidCards$ Creature.YouCtrl | NumAtt$ +2 | NumDef$ +2
+    ("Rising Miasma", 4),    // SP$ PumpAll | ValidCards$ Creature | NumAtt$ -2 | NumDef$ -2
+    ("Savannah Lions", 4),   // 2/1 attacker
+    ("White Knight", 4),     // 2/2 First Strike + Protection
+    ("Serra Angel", 4),      // 4/4 Flying + Vigilance
+    ("Darksteel Myr", 4),    // Indestructible (survives Wrath of God)
 ];
 
 /// All AI-eligible deck lists, used for random opponent selection.
