@@ -1,4 +1,4 @@
-use crate::protocol::{RoomInfo, RoomPlayerInfo, RoomStatus};
+use crate::protocol::{GameFormat, RoomInfo, RoomPlayerInfo, RoomStatus};
 
 #[derive(Debug, Clone)]
 pub struct RoomSlot {
@@ -14,6 +14,7 @@ pub struct Room {
     pub room_name: String,
     pub host_player_id: String,
     pub max_players: u8,
+    pub format: GameFormat,
     pub status: RoomStatus,
     pub players: Vec<RoomSlot>,
 }
@@ -25,6 +26,7 @@ impl Room {
         host_player_id: String,
         host_username: String,
         max_players: u8,
+        format: GameFormat,
     ) -> Self {
         let max_players = max_players.clamp(2, 8);
         Room {
@@ -32,6 +34,7 @@ impl Room {
             room_name,
             host_player_id: host_player_id.clone(),
             max_players,
+            format,
             status: RoomStatus::Lobby,
             players: vec![RoomSlot {
                 player_id: host_player_id,
@@ -146,6 +149,7 @@ impl Room {
                 })
                 .collect(),
             max_players: self.max_players,
+            format: self.format.clone(),
             status: self.status.clone(),
         }
     }

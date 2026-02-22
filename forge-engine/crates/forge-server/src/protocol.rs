@@ -15,6 +15,7 @@ pub enum ClientMessage {
     CreateRoom {
         room_name: String,
         max_players: u8,
+        format: GameFormat,
     },
 
     JoinRoom {
@@ -118,6 +119,7 @@ pub struct RoomInfo {
     pub host: String,
     pub players: Vec<RoomPlayerInfo>,
     pub max_players: u8,
+    pub format: GameFormat,
     pub status: RoomStatus,
 }
 
@@ -141,4 +143,10 @@ pub struct PlayerInfo {
 pub enum RoomStatus {
     Lobby,
     InGame,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub enum GameFormat {
+    Standard,
+    Commander,
 }

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::error::ServerError;
-use crate::protocol::{RoomInfo, RoomStatus};
+use crate::protocol::{GameFormat, RoomInfo, RoomStatus};
 use crate::room::Room;
 use crate::state::ServerState;
 
@@ -10,6 +10,7 @@ pub fn create_room_sync(
     player_id: &str,
     room_name: String,
     max_players: u8,
+    format: GameFormat,
 ) -> Result<RoomInfo, ServerError> {
     {
         if let Some(player) = state.players.get(player_id) {
@@ -38,6 +39,7 @@ pub fn create_room_sync(
         player_id.to_string(),
         username,
         max_players,
+        format,
     );
     let info = room.to_room_info();
 

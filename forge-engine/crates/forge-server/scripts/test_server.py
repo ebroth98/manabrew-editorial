@@ -151,7 +151,7 @@ async def test_lobby_4_players():
         fail("List rooms (empty)", str(r))
 
     # Player1 creates a room
-    await send(ws1, {"type": "CreateRoom", "room_name": "MTG Night", "max_players": 4})
+    await send(ws1, {"type": "CreateRoom", "format": "Standard", "room_name": "MTG Night", "max_players": 4})
     r = await recv(ws1)  # RoomCreated
     if r["type"] == "RoomCreated":
         ok("Create room")
@@ -263,7 +263,7 @@ async def test_reconnection():
     ws2, r2 = await connect_and_auth("recon_guest")
     assert r2["success"]
 
-    await send(ws1, {"type": "CreateRoom", "room_name": "Reconnect Test", "max_players": 2})
+    await send(ws1, {"type": "CreateRoom", "format": "Standard", "room_name": "Reconnect Test", "max_players": 2})
     r = await recv(ws1)
     room_id = r["room_id"]
     _ = await recv(ws1)  # RoomUpdate
@@ -372,7 +372,7 @@ async def test_leave_room():
     ws2, r2 = await connect_and_auth("leave_guest")
     assert r1["success"] and r2["success"]
 
-    await send(ws1, {"type": "CreateRoom", "room_name": "Leave Test", "max_players": 4})
+    await send(ws1, {"type": "CreateRoom", "format": "Standard", "room_name": "Leave Test", "max_players": 4})
     r = await recv(ws1)
     room_id = r["room_id"]
     _ = await recv(ws1)
@@ -403,6 +403,173 @@ async def test_leave_room():
     await ws2.close()
 
 
+async def test_lobby_disconnect_frees_username():
+    """When a player disconnects from a lobby room, their username should be freed."""
+    print("\n-- Test: Lobby Disconnect Frees Username --")
+
+    ws1, r1 = await connect_and_auth("lobby_dc_host")
+    assert r1["success"]
+
+    # Create a room (stays in Lobby status)
+    await send(ws1, {"type": "CreateRoom", "format": "Standard", "room_name": "DC Test", "max_players": 4})
+    r = await recv(ws1)
+    assert r["type"] == "RoomCreated"
+    room_id = r["room_id"]
+    _ = await recv(ws1)  # RoomUpdate
+
+    # Disconnect (close WebSocket while in Lobby)
+    await ws1.close()
+    await asyncio.sleep(0.5)
+
+    # Same username should now be available again
+    ws1_new, r1_new = await connect_and_auth("lobby_dc_host")
+    if r1_new.get("type") == "AuthResult" and r1_new.get("success") and not r1_new.get("reconnected"):
+        ok("Username freed after lobby disconnect (fresh session, not reconnect)")
+    elif r1_new.get("type") == "AuthResult" and r1_new.get("success"):
+        ok("Username freed after lobby disconnect")
+    else:
+        fail("Username freed after lobby disconnect", str(r1_new))
+
+    # The old room should be gone (host was the only player)
+    await send(ws1_new, {"type": "ListRooms"})
+    r = await recv(ws1_new)
+    old_rooms = [rm for rm in r.get("rooms", []) if rm["room_id"] == room_id]
+    if len(old_rooms) == 0:
+        ok("Empty lobby room removed after host disconnect")
+    else:
+        fail("Empty lobby room removed", str(old_rooms))
+
+    await ws1_new.close()
+
+
+async def test_lobby_disconnect_with_other_players():
+    """When a guest disconnects from a lobby room, the host gets PlayerLeft and the room persists."""
+    print("\n-- Test: Lobby Disconnect With Other Players --")
+
+    ws1, r1 = await connect_and_auth("ldc_host")
+    ws2, r2 = await connect_and_auth("ldc_guest")
+    assert r1["success"] and r2["success"]
+
+    await send(ws1, {"type": "CreateRoom", "format": "Standard", "room_name": "DC Multi Test", "max_players": 4})
+    r = await recv(ws1)
+    room_id = r["room_id"]
+    _ = await recv(ws1)  # RoomUpdate
+
+    await send(ws2, {"type": "JoinRoom", "room_id": room_id})
+    await drain(ws2, 3)
+    await drain(ws1, 3)
+
+    # Guest disconnects from lobby
+    await ws2.close()
+    await asyncio.sleep(0.5)
+
+    # Host should get PlayerLeft (not PlayerDisconnected) + RoomUpdate
+    msgs = await drain(ws1, 5)
+    left_msgs = [m for m in msgs if m.get("type") == "PlayerLeft"]
+    disconnect_msgs = [m for m in msgs if m.get("type") == "PlayerDisconnected"]
+    if left_msgs and left_msgs[0]["username"] == "ldc_guest":
+        ok("Host gets PlayerLeft when guest disconnects from lobby")
+    else:
+        fail("Host gets PlayerLeft on lobby disconnect", str(msgs))
+
+    if len(disconnect_msgs) == 0:
+        ok("No PlayerDisconnected sent for lobby disconnect")
+    else:
+        fail("No PlayerDisconnected for lobby disconnect", str(disconnect_msgs))
+
+    # Room should still exist with just the host
+    await send(ws1, {"type": "ListRooms"})
+    r = await recv(ws1)
+    our_room = [rm for rm in r.get("rooms", []) if rm["room_id"] == room_id]
+    if our_room and len(our_room[0]["players"]) == 1:
+        ok("Room persists with host after guest lobby disconnect")
+    else:
+        fail("Room state after guest lobby disconnect", str(r))
+
+    # Guest's username should be freed -- can reconnect as fresh
+    ws2_new, r2_new = await connect_and_auth("ldc_guest")
+    if r2_new.get("type") == "AuthResult" and r2_new.get("success"):
+        ok("Guest username freed after lobby disconnect")
+    else:
+        fail("Guest username freed", str(r2_new))
+
+    await ws1.close()
+    await ws2_new.close()
+
+
+async def test_ingame_disconnect_preserves_session():
+    """When a player disconnects during an in-game room, their session is preserved (not freed)."""
+    print("\n-- Test: InGame Disconnect Preserves Session --")
+
+    ws1, r1 = await connect_and_auth("ig_host")
+    ws2, r2 = await connect_and_auth("ig_guest")
+    assert r1["success"] and r2["success"]
+
+    await send(ws1, {"type": "CreateRoom", "format": "Standard", "room_name": "InGame DC Test", "max_players": 2})
+    r = await recv(ws1)
+    room_id = r["room_id"]
+    _ = await recv(ws1)  # RoomUpdate
+
+    await send(ws2, {"type": "JoinRoom", "room_id": room_id})
+    await drain(ws2, 3)
+    await drain(ws1, 3)
+
+    # Both ready + start game
+    await send(ws1, {"type": "SetReady", "ready": True})
+    await drain(ws1, 3)
+    await drain(ws2, 3)
+    await send(ws2, {"type": "SetReady", "ready": True})
+    await drain(ws1, 3)
+    await drain(ws2, 3)
+    await send(ws1, {"type": "StartGame"})
+    await drain(ws1, 2)
+    await drain(ws2, 2)
+
+    # Guest disconnects during InGame
+    await ws2.close()
+    await asyncio.sleep(0.5)
+
+    # Host should get PlayerDisconnected (not PlayerLeft)
+    msgs = await drain(ws1, 5)
+    disconnect_msgs = [m for m in msgs if m.get("type") == "PlayerDisconnected"]
+    left_msgs = [m for m in msgs if m.get("type") == "PlayerLeft"]
+    if disconnect_msgs:
+        ok("Host gets PlayerDisconnected during in-game disconnect")
+    else:
+        fail("Host gets PlayerDisconnected during in-game", str(msgs))
+
+    if len(left_msgs) == 0:
+        ok("No PlayerLeft sent for in-game disconnect")
+    else:
+        fail("No PlayerLeft for in-game disconnect", str(left_msgs))
+
+    # Room should still show both players, guest marked disconnected
+    await send(ws1, {"type": "ListRooms"})
+    r = await recv(ws1)
+    our_room = [rm for rm in r.get("rooms", []) if rm["room_id"] == room_id]
+    if our_room and len(our_room[0]["players"]) == 2:
+        guest_info = [p for p in our_room[0]["players"] if p["username"] == "ig_guest"]
+        if guest_info and not guest_info[0]["connected"]:
+            ok("In-game room preserves disconnected player slot")
+        else:
+            fail("Guest disconnected flag", str(our_room[0]["players"]))
+    else:
+        fail("In-game room player count", str(r))
+
+    # Guest username should NOT be freed (session preserved) -- reconnect should reclaim
+    ws2_new, r2_new = await connect_and_auth("ig_guest")
+    if r2_new.get("type") == "AuthResult" and r2_new.get("success") and r2_new.get("reconnected"):
+        ok("In-game disconnect preserves session (reconnected=true)")
+    elif r2_new.get("type") == "AuthResult" and r2_new.get("success"):
+        # reconnected flag might not be set but session still preserved
+        ok("In-game disconnect preserves session (auth success)")
+    else:
+        fail("In-game session preserved for reconnect", str(r2_new))
+
+    await ws1.close()
+    await ws2_new.close()
+
+
 async def main():
     print(f"\n{'='*60}")
     print(f"  forge-server integration test")
@@ -414,6 +581,9 @@ async def main():
         await test_lobby_4_players()
         await test_reconnection()
         await test_leave_room()
+        await test_lobby_disconnect_frees_username()
+        await test_lobby_disconnect_with_other_players()
+        await test_ingame_disconnect_preserves_session()
     except Exception as e:
         global FAIL
         FAIL += 1

@@ -9,7 +9,7 @@ use tracing::{debug, info, warn};
 
 use crate::error::ServerError;
 use crate::lobby;
-use crate::protocol::{ClientMessage, ServerMessage};
+use crate::protocol::{ClientMessage, RoomStatus, ServerMessage};
 use crate::state::{ConnectedPlayer, ServerState};
 
 type WsSender = futures_util::stream::SplitSink<
@@ -384,9 +384,10 @@ fn handle_client_message(
         ClientMessage::CreateRoom {
             room_name,
             max_players,
+            format,
         } => {
-            info!("[lobby] '{}' creating room '{}' (max={})", username, room_name, max_players);
-            match lobby::create_room_sync(state, player_id, room_name, max_players) {
+            info!("[lobby] '{}' creating room '{}' (max={}, format={:?})", username, room_name, max_players, format);
+            match lobby::create_room_sync(state, player_id, room_name, max_players, format) {
                 Ok(info) => {
                     info!("[lobby] room created: {} (id={})", info.room_name, &info.room_id[..8]);
                     send_msg(
@@ -629,40 +630,99 @@ fn mark_disconnected(
     };
 
     if let Some(rid) = &room_id {
-        let all_disconnected = {
-            if let Some(mut room) = state.rooms.get_mut(rid) {
-                room.set_connected(player_id, false);
-                room.all_disconnected()
-            } else {
-                return;
-            }
-        };
+        // Check the room status to decide behavior
+        let room_status = state.rooms.get(rid).map(|r| r.status.clone());
 
-        if all_disconnected {
-            info!("[cleanup] all players disconnected from room {} -- removing", &rid[..8]);
-            if let Some((_, room)) = state.rooms.remove(rid) {
-                for slot in &room.players {
-                    state.players.remove(&slot.player_id);
+        match room_status {
+            Some(RoomStatus::InGame) => {
+                // InGame: preserve session for reconnection
+                let all_disconnected = {
+                    if let Some(mut room) = state.rooms.get_mut(rid) {
+                        room.set_connected(player_id, false);
+                        room.all_disconnected()
+                    } else {
+                        return;
+                    }
+                };
+
+                if all_disconnected {
+                    info!("[cleanup] all players disconnected from in-game room {} -- removing", &rid[..8]);
+                    if let Some((_, room)) = state.rooms.remove(rid) {
+                        for slot in &room.players {
+                            state.players.remove(&slot.player_id);
+                        }
+                    }
+                } else {
+                    info!("[disconnect] '{}' marked disconnected in in-game room {} (session preserved)", username, &rid[..8]);
+                    broadcast_to_room(
+                        state,
+                        rid,
+                        &ServerMessage::PlayerDisconnected {
+                            username: username.clone(),
+                        },
+                    );
+
+                    if let Some(room) = state.rooms.get(rid) {
+                        broadcast_to_room(
+                            state,
+                            rid,
+                            &ServerMessage::RoomUpdate {
+                                room: room.to_room_info(),
+                            },
+                        );
+                    }
                 }
             }
-        } else {
-            info!("[disconnect] '{}' marked disconnected in room {} (session preserved)", username, &rid[..8]);
-            broadcast_to_room(
-                state,
-                rid,
-                &ServerMessage::PlayerDisconnected {
-                    username: username.clone(),
-                },
-            );
+            Some(RoomStatus::Lobby) => {
+                // Lobby: treat like a leave — remove player, clean up room, free username
+                info!("[disconnect] '{}' disconnected from lobby room {} -- treating as leave", username, &rid[..8]);
 
-            if let Some(room) = state.rooms.get(rid) {
-                broadcast_to_room(
-                    state,
-                    rid,
-                    &ServerMessage::RoomUpdate {
-                        room: room.to_room_info(),
-                    },
-                );
+                let room_empty = {
+                    if let Some(mut room) = state.rooms.get_mut(rid) {
+                        room.remove_player(player_id);
+                        room.players.is_empty()
+                    } else {
+                        false
+                    }
+                };
+
+                // Clear room_id before removing player entry
+                if let Some(mut player) = state.players.get_mut(player_id) {
+                    player.room_id = None;
+                }
+
+                if room_empty {
+                    info!("[cleanup] lobby room {} is now empty -- removing", &rid[..8]);
+                    state.rooms.remove(rid);
+                } else {
+                    // Notify remaining players
+                    broadcast_to_room(
+                        state,
+                        rid,
+                        &ServerMessage::PlayerLeft {
+                            room_id: rid.clone(),
+                            username: username.clone(),
+                        },
+                    );
+                    if let Some(room) = state.rooms.get(rid) {
+                        broadcast_to_room(
+                            state,
+                            rid,
+                            &ServerMessage::RoomUpdate {
+                                room: room.to_room_info(),
+                            },
+                        );
+                    }
+                }
+
+                // Free the username
+                info!("[cleanup] '{}' removed (disconnected from lobby)", username);
+                state.players.remove(player_id);
+            }
+            None => {
+                // Room disappeared, just clean up the player
+                info!("[cleanup] '{}' removed (room no longer exists)", username);
+                state.players.remove(player_id);
             }
         }
     } else {
