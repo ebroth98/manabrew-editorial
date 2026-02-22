@@ -1,22 +1,16 @@
-use std::sync::Arc;
-
 use dashmap::DashMap;
-use tokio::sync::Mutex;
+use tokio::sync::mpsc;
+use tokio_tungstenite::tungstenite::Message;
 
 use crate::room::Room;
-
-/// Sender half of a WebSocket connection.
-pub type WsSender = futures_util::stream::SplitSink<
-    tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
-    tokio_tungstenite::tungstenite::Message,
->;
 
 pub struct ConnectedPlayer {
     pub player_id: String,
     pub username: String,
     pub room_id: Option<String>,
-    pub sender: Arc<Mutex<WsSender>>,
+    pub sender: mpsc::UnboundedSender<Message>,
     pub connected: bool,
+    pub generation: u64,
 }
 
 pub struct ServerState {
@@ -42,10 +36,14 @@ impl ServerState {
             .any(|entry| entry.value().username == username && entry.value().connected)
     }
 
-    pub fn find_disconnected_by_username(&self, username: &str) -> Option<(String, Option<String>)> {
+    pub fn find_disconnected_by_username(&self, username: &str) -> Option<(String, Option<String>, u64)> {
         self.players
             .iter()
             .find(|entry| entry.value().username == username && !entry.value().connected)
-            .map(|entry| (entry.value().player_id.clone(), entry.value().room_id.clone()))
+            .map(|entry| (
+                entry.value().player_id.clone(),
+                entry.value().room_id.clone(),
+                entry.value().generation,
+            ))
     }
 }

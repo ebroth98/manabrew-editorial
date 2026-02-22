@@ -3,36 +3,50 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use futures_util::{SinkExt, StreamExt};
-use tokio::sync::Mutex;
+use tokio::sync::mpsc;
 use tokio_tungstenite::tungstenite::Message;
 use tracing::{debug, info, warn};
 
 use crate::error::ServerError;
 use crate::lobby;
 use crate::protocol::{ClientMessage, ServerMessage};
-use crate::state::{ConnectedPlayer, ServerState, WsSender};
+use crate::state::{ConnectedPlayer, ServerState};
 
-/// Send a `ServerMessage` to a single WebSocket sender.
-pub async fn send_msg(sender: &Arc<Mutex<WsSender>>, msg: &ServerMessage) {
+type WsSender = futures_util::stream::SplitSink<
+    tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+    tokio_tungstenite::tungstenite::Message,
+>;
+
+type WsReceiver = futures_util::stream::SplitStream<
+    tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
+>;
+
+/// Background task: drains channel and writes to the WebSocket sink.
+async fn write_loop(mut rx: mpsc::UnboundedReceiver<Message>, mut sink: WsSender) {
+    while let Some(msg) = rx.recv().await {
+        if sink.send(msg).await.is_err() {
+            break;
+        }
+    }
+    let _ = sink.close().await;
+}
+
+fn send_msg(sender: &mpsc::UnboundedSender<Message>, msg: &ServerMessage) {
     if let Ok(json) = serde_json::to_string(msg) {
-        let mut tx = sender.lock().await;
-        let _ = tx.send(Message::Text(json.into())).await;
+        let _ = sender.send(Message::Text(json.into()));
     }
 }
 
-/// Send a `ServerMessage` to a single player by ID, with logging.
-async fn emit_to(state: &Arc<ServerState>, player_id: &str, msg: &ServerMessage, json: &str) {
+fn emit_to(state: &Arc<ServerState>, player_id: &str, msg: &ServerMessage, json: &str) {
     if let Some(player) = state.players.get(player_id) {
         if player.connected {
             debug!("[emit] -> '{}': {}", player.username, msg_type_of(msg));
-            let mut tx = player.sender.lock().await;
-            let _ = tx.send(Message::Text(json.to_string().into())).await;
+            let _ = player.sender.send(Message::Text(json.to_string().into()));
         }
     }
 }
 
-/// Send a `ServerMessage` to every *connected* player in a room, except the sender.
-pub async fn broadcast_to_room_except(
+pub fn broadcast_to_room_except(
     state: &Arc<ServerState>,
     sender_player_id: &str,
     room_id: &str,
@@ -65,12 +79,11 @@ pub async fn broadcast_to_room_except(
         if pid == sender_player_id {
             continue;
         }
-        emit_to(state, pid, msg, &json).await;
+        emit_to(state, pid, msg, &json);
     }
 }
 
-/// Send a `ServerMessage` to every *connected* player in a room (including the sender).
-pub async fn broadcast_to_room(
+pub fn broadcast_to_room(
     state: &Arc<ServerState>,
     room_id: &str,
     msg: &ServerMessage,
@@ -96,7 +109,7 @@ pub async fn broadcast_to_room(
     );
 
     for pid in &player_ids {
-        emit_to(state, pid, msg, &json).await;
+        emit_to(state, pid, msg, &json);
     }
 }
 
@@ -114,11 +127,13 @@ pub async fn handle_connection(
 
     info!("[connect] WebSocket upgraded for {}", addr);
 
-    let (sender, mut receiver) = ws_stream.split();
-    let sender = Arc::new(Mutex::new(sender));
+    let (sink, mut receiver) = ws_stream.split();
+    let (tx, rx) = mpsc::unbounded_channel();
 
-    let (player_id, username, reconnected) =
-        match authenticate(&mut receiver, &sender, &state).await {
+    tokio::spawn(write_loop(rx, sink));
+
+    let (player_id, username, reconnected, generation) =
+        match authenticate(&mut receiver, &tx, &state).await {
             Ok(result) => result,
             Err(e) => {
                 warn!("[auth] failed from {}: {}", addr, e);
@@ -151,40 +166,35 @@ pub async fn handle_connection(
                             code: "parse_error".into(),
                             message: e.to_string(),
                         };
-                        send_msg(&sender, &err_msg).await;
+                        send_msg(&tx, &err_msg);
                         continue;
                     }
                 };
                 debug!("[recv] '{}' -> {}", username, client_msg_type(&client_msg));
-                handle_client_message(&state, &player_id, &username, &sender, client_msg).await;
+                handle_client_message(&state, &player_id, &username, &tx, client_msg);
             }
             Message::Close(_) => {
                 info!("[recv] '{}' sent close frame", username);
                 break;
             }
-            Message::Ping(_) => {
+            Message::Ping(data) => {
                 debug!("[recv] '{}' ping", username);
-                let mut tx = sender.lock().await;
-                let _ = tx.send(Message::Pong(vec![].into())).await;
+                let _ = tx.send(Message::Pong(data));
             }
             _ => {}
         }
     }
 
     info!("[disconnect] '{}' (id={})", username, &player_id[..8]);
-    mark_disconnected(&state, &player_id, &sender).await;
+    mark_disconnected(&state, &player_id, generation);
     Ok(())
 }
 
-type WsReceiver = futures_util::stream::SplitStream<
-    tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
->;
-
 async fn authenticate(
     receiver: &mut WsReceiver,
-    sender: &Arc<Mutex<WsSender>>,
+    sender: &mpsc::UnboundedSender<Message>,
     state: &Arc<ServerState>,
-) -> Result<(String, String, bool), ServerError> {
+) -> Result<(String, String, bool, u64), ServerError> {
     let timeout = Duration::from_secs(10);
 
     let frame = tokio::time::timeout(timeout, receiver.next())
@@ -212,7 +222,7 @@ async fn authenticate(
                     reconnected: None,
                     error: Some("Invalid server key".into()),
                 };
-                send_msg(sender, &reply).await;
+                send_msg(sender, &reply);
                 return Err(ServerError::AuthFailed("Invalid server key".into()));
             }
 
@@ -223,17 +233,19 @@ async fn authenticate(
                     reconnected: None,
                     error: Some("Username cannot be empty".into()),
                 };
-                send_msg(sender, &reply).await;
+                send_msg(sender, &reply);
                 return Err(ServerError::AuthFailed("Empty username".into()));
             }
 
             // Check for reconnection
-            if let Some((existing_pid, room_id)) = state.find_disconnected_by_username(&username) {
-                info!("[auth] reclaiming session for '{}' (id={})", username, &existing_pid[..8]);
+            if let Some((existing_pid, room_id, old_gen)) = state.find_disconnected_by_username(&username) {
+                let new_gen = old_gen + 1;
+                info!("[auth] reclaiming session for '{}' (id={}, gen={})", username, &existing_pid[..8], new_gen);
 
                 if let Some(mut player) = state.players.get_mut(&existing_pid) {
                     player.sender = sender.clone();
                     player.connected = true;
+                    player.generation = new_gen;
                 }
 
                 // Send AuthResult to the reconnecting client FIRST
@@ -243,7 +255,7 @@ async fn authenticate(
                     reconnected: Some(true),
                     error: None,
                 };
-                send_msg(sender, &reply).await;
+                send_msg(sender, &reply);
 
                 // Then update room state and notify others
                 if let Some(rid) = &room_id {
@@ -258,8 +270,7 @@ async fn authenticate(
                         &ServerMessage::PlayerConnected {
                             username: username.clone(),
                         },
-                    )
-                    .await;
+                    );
 
                     if let Some(room) = state.rooms.get(rid) {
                         broadcast_to_room(
@@ -268,12 +279,11 @@ async fn authenticate(
                             &ServerMessage::RoomUpdate {
                                 room: room.to_room_info(),
                             },
-                        )
-                        .await;
+                        );
                     }
                 }
 
-                return Ok((existing_pid, username, true));
+                return Ok((existing_pid, username, true, new_gen));
             }
 
             // TODO: Per ora username unique quindi n'se po' ripetere
@@ -284,11 +294,12 @@ async fn authenticate(
                     reconnected: None,
                     error: Some(format!("Username '{}' is already taken", username)),
                 };
-                send_msg(sender, &reply).await;
+                send_msg(sender, &reply);
                 return Err(ServerError::DuplicateUsername(username));
             }
 
             let player_id = uuid::Uuid::new_v4().to_string();
+            let generation = 0u64;
             state.players.insert(
                 player_id.clone(),
                 ConnectedPlayer {
@@ -297,6 +308,7 @@ async fn authenticate(
                     room_id: None,
                     sender: sender.clone(),
                     connected: true,
+                    generation,
                 },
             );
 
@@ -306,9 +318,9 @@ async fn authenticate(
                 reconnected: Some(false),
                 error: None,
             };
-            send_msg(sender, &reply).await;
+            send_msg(sender, &reply);
 
-            Ok((player_id, username, false))
+            Ok((player_id, username, false, generation))
         }
         _ => {
             let reply = ServerMessage::AuthResult {
@@ -317,7 +329,7 @@ async fn authenticate(
                 reconnected: None,
                 error: Some("First message must be Authenticate".into()),
             };
-            send_msg(sender, &reply).await;
+            send_msg(sender, &reply);
             Err(ServerError::AuthFailed(
                 "First message was not Authenticate".into(),
             ))
@@ -325,11 +337,11 @@ async fn authenticate(
     }
 }
 
-async fn handle_client_message(
+fn handle_client_message(
     state: &Arc<ServerState>,
     player_id: &str,
     username: &str,
-    sender: &Arc<Mutex<WsSender>>,
+    sender: &mpsc::UnboundedSender<Message>,
     msg: ClientMessage,
 ) {
     match msg {
@@ -341,8 +353,7 @@ async fn handle_client_message(
                     code: "already_authenticated".into(),
                     message: "You are already authenticated".into(),
                 },
-            )
-            .await;
+            );
         }
 
         ClientMessage::ListRooms => {
@@ -352,7 +363,7 @@ async fn handle_client_message(
                 .map(|entry| entry.value().to_room_info())
                 .collect();
             debug!("[emit] -> '{}': RoomList ({} rooms)", username, rooms.len());
-            send_msg(sender, &ServerMessage::RoomList { rooms }).await;
+            send_msg(sender, &ServerMessage::RoomList { rooms });
         }
 
         ClientMessage::ListPlayers => {
@@ -367,7 +378,7 @@ async fn handle_client_message(
                 })
                 .collect();
             debug!("[emit] -> '{}': PlayerList ({} players)", username, players.len());
-            send_msg(sender, &ServerMessage::PlayerList { players }).await;
+            send_msg(sender, &ServerMessage::PlayerList { players });
         }
 
         ClientMessage::CreateRoom {
@@ -375,7 +386,7 @@ async fn handle_client_message(
             max_players,
         } => {
             info!("[lobby] '{}' creating room '{}' (max={})", username, room_name, max_players);
-            match lobby::create_room(state, player_id, room_name, max_players).await {
+            match lobby::create_room_sync(state, player_id, room_name, max_players) {
                 Ok(info) => {
                     info!("[lobby] room created: {} (id={})", info.room_name, &info.room_id[..8]);
                     send_msg(
@@ -384,9 +395,8 @@ async fn handle_client_message(
                             room_id: info.room_id.clone(),
                             room_name: info.room_name.clone(),
                         },
-                    )
-                    .await;
-                    send_msg(sender, &ServerMessage::RoomUpdate { room: info }).await;
+                    );
+                    send_msg(sender, &ServerMessage::RoomUpdate { room: info });
                 }
                 Err(e) => {
                     warn!("[lobby] '{}' create room failed: {}", username, e);
@@ -396,15 +406,14 @@ async fn handle_client_message(
                             code: e.code().into(),
                             message: e.to_string(),
                         },
-                    )
-                    .await;
+                    );
                 }
             }
         }
 
         ClientMessage::JoinRoom { room_id } => {
             info!("[lobby] '{}' joining room {}", username, &room_id[..8.min(room_id.len())]);
-            match lobby::join_room(state, player_id, &room_id).await {
+            match lobby::join_room_sync(state, player_id, &room_id) {
                 Ok(info) => {
                     info!("[lobby] '{}' joined room '{}'", username, info.room_name);
                     broadcast_to_room(
@@ -414,10 +423,8 @@ async fn handle_client_message(
                             room_id: room_id.clone(),
                             username: username.to_string(),
                         },
-                    )
-                    .await;
-                    broadcast_to_room(state, &room_id, &ServerMessage::RoomUpdate { room: info })
-                        .await;
+                    );
+                    broadcast_to_room(state, &room_id, &ServerMessage::RoomUpdate { room: info });
                 }
                 Err(e) => {
                     warn!("[lobby] '{}' join room failed: {}", username, e);
@@ -427,8 +434,7 @@ async fn handle_client_message(
                             code: e.code().into(),
                             message: e.to_string(),
                         },
-                    )
-                    .await;
+                    );
                 }
             }
         }
@@ -440,7 +446,7 @@ async fn handle_client_message(
                 .and_then(|p| p.room_id.clone());
 
             info!("[lobby] '{}' leaving room", username);
-            match lobby::leave_room(state, player_id).await {
+            match lobby::leave_room_sync(state, player_id) {
                 Ok(()) => {
                     if let Some(rid) = room_id_before {
                         info!("[lobby] '{}' left room {}", username, &rid[..8]);
@@ -451,8 +457,7 @@ async fn handle_client_message(
                                 room_id: rid.clone(),
                                 username: username.to_string(),
                             },
-                        )
-                        .await;
+                        );
                         if let Some(room) = state.rooms.get(&rid) {
                             broadcast_to_room(
                                 state,
@@ -460,8 +465,7 @@ async fn handle_client_message(
                                 &ServerMessage::RoomUpdate {
                                     room: room.to_room_info(),
                                 },
-                            )
-                            .await;
+                            );
                         }
                     }
                 }
@@ -473,15 +477,14 @@ async fn handle_client_message(
                             code: e.code().into(),
                             message: e.to_string(),
                         },
-                    )
-                    .await;
+                    );
                 }
             }
         }
 
         ClientMessage::SetReady { ready } => {
             info!("[lobby] '{}' set ready={}", username, ready);
-            match lobby::set_ready(state, player_id, ready).await {
+            match lobby::set_ready_sync(state, player_id, ready) {
                 Ok(room_id) => {
                     broadcast_to_room(
                         state,
@@ -490,8 +493,7 @@ async fn handle_client_message(
                             username: username.to_string(),
                             ready,
                         },
-                    )
-                    .await;
+                    );
                     if let Some(room) = state.rooms.get(&room_id) {
                         broadcast_to_room(
                             state,
@@ -499,8 +501,7 @@ async fn handle_client_message(
                             &ServerMessage::RoomUpdate {
                                 room: room.to_room_info(),
                             },
-                        )
-                        .await;
+                        );
                     }
                 }
                 Err(e) => {
@@ -511,15 +512,14 @@ async fn handle_client_message(
                             code: e.code().into(),
                             message: e.to_string(),
                         },
-                    )
-                    .await;
+                    );
                 }
             }
         }
 
         ClientMessage::StartGame => {
             info!("[game] '{}' starting game", username);
-            match lobby::start_game(state, player_id).await {
+            match lobby::start_game_sync(state, player_id) {
                 Ok((room_id, player_order)) => {
                     info!("[game] game started in room {} | order: {:?}", &room_id[..8], player_order);
                     broadcast_to_room(
@@ -529,8 +529,7 @@ async fn handle_client_message(
                             room_id: room_id.clone(),
                             player_order,
                         },
-                    )
-                    .await;
+                    );
                 }
                 Err(e) => {
                     warn!("[game] '{}' start game failed: {}", username, e);
@@ -540,8 +539,7 @@ async fn handle_client_message(
                             code: e.code().into(),
                             message: e.to_string(),
                         },
-                    )
-                    .await;
+                    );
                 }
             }
         }
@@ -560,8 +558,7 @@ async fn handle_client_message(
                         from_player: username.to_string(),
                         state: game_state,
                     },
-                )
-                .await;
+                );
             } else {
                 warn!("[game] '{}' tried to broadcast state but not in a room", username);
                 send_msg(
@@ -570,8 +567,7 @@ async fn handle_client_message(
                         code: "not_in_room".into(),
                         message: "You are not in a room".into(),
                     },
-                )
-                .await;
+                );
             }
         }
 
@@ -596,8 +592,7 @@ async fn handle_client_message(
                         new_active_player,
                         turn_number,
                     },
-                )
-                .await;
+                );
             } else {
                 warn!("[game] '{}' tried turn change but not in a room", username);
                 send_msg(
@@ -606,25 +601,20 @@ async fn handle_client_message(
                         code: "not_in_room".into(),
                         message: "You are not in a room".into(),
                     },
-                )
-                .await;
+                );
             }
         }
-
     }
 }
 
-async fn mark_disconnected(
+fn mark_disconnected(
     state: &Arc<ServerState>,
     player_id: &str,
-    our_sender: &Arc<Mutex<WsSender>>,
+    our_generation: u64,
 ) {
     let (username, room_id) = {
         if let Some(mut player) = state.players.get_mut(player_id) {
-            // Allora questo e' perche' se per qualche motivo una sessione
-            // che si e' disconnessa e' gia stata "reclaimed" da qualcuno
-            // Arc ptr diventa diverso, quindi semplicemente non disconnettere (race cond)
-            if !Arc::ptr_eq(&player.sender, our_sender) {
+            if player.generation != our_generation {
                 info!(
                     "[disconnect] '{}' old connection cleaned up (session reclaimed by new connection)",
                     player.username
@@ -663,8 +653,7 @@ async fn mark_disconnected(
                 &ServerMessage::PlayerDisconnected {
                     username: username.clone(),
                 },
-            )
-            .await;
+            );
 
             if let Some(room) = state.rooms.get(rid) {
                 broadcast_to_room(
@@ -673,8 +662,7 @@ async fn mark_disconnected(
                     &ServerMessage::RoomUpdate {
                         room: room.to_room_info(),
                     },
-                )
-                .await;
+                );
             }
         }
     } else {

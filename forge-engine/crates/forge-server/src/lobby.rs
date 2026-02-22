@@ -5,7 +5,7 @@ use crate::protocol::{RoomInfo, RoomStatus};
 use crate::room::Room;
 use crate::state::ServerState;
 
-pub async fn create_room(
+pub fn create_room_sync(
     state: &Arc<ServerState>,
     player_id: &str,
     room_name: String,
@@ -50,7 +50,7 @@ pub async fn create_room(
     Ok(info)
 }
 
-pub async fn join_room(
+pub fn join_room_sync(
     state: &Arc<ServerState>,
     player_id: &str,
     room_id: &str,
@@ -100,7 +100,7 @@ pub async fn join_room(
     Ok(info)
 }
 
-pub async fn leave_room(
+pub fn leave_room_sync(
     state: &Arc<ServerState>,
     player_id: &str,
 ) -> Result<(), ServerError> {
@@ -133,7 +133,7 @@ pub async fn leave_room(
     Ok(())
 }
 
-pub async fn set_ready(
+pub fn set_ready_sync(
     state: &Arc<ServerState>,
     player_id: &str,
     ready: bool,
@@ -163,7 +163,7 @@ pub async fn set_ready(
     Ok(room_id)
 }
 
-pub async fn start_game(
+pub fn start_game_sync(
     state: &Arc<ServerState>,
     player_id: &str,
 ) -> Result<(String, Vec<String>), ServerError> {
