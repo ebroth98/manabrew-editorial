@@ -55,6 +55,15 @@ impl GameState {
                 return;
             }
             ZoneType::Graveyard | ZoneType::Hand | ZoneType::Exile | ZoneType::Library => {
+                // Detach any attachments before resetting state.
+                let attachments: Vec<CardId> = self.cards[card_id.index()].attachments.clone();
+                for aura_id in attachments {
+                    self.cards[aura_id.index()].attached_to = None;
+                }
+                self.cards[card_id.index()].attachments.clear();
+                // Also detach this card from its host if it was an Aura/Equipment.
+                self.detach(card_id);
+
                 // Reset battlefield state when leaving (including static modifiers).
                 let card = &mut self.cards[card_id.index()];
                 card.tapped = false;
@@ -72,6 +81,14 @@ impl GameState {
                 card.controller = card.owner;
             }
             ZoneType::Command => {
+                // Detach any attachments before resetting state.
+                let attachments: Vec<CardId> = self.cards[card_id.index()].attachments.clone();
+                for aura_id in attachments {
+                    self.cards[aura_id.index()].attached_to = None;
+                }
+                self.cards[card_id.index()].attachments.clear();
+                self.detach(card_id);
+
                 // Commander returning to command zone: reset battlefield state.
                 let card = &mut self.cards[card_id.index()];
                 card.tapped = false;
@@ -316,6 +333,49 @@ impl GameState {
         } else {
             false
         }
+    }
+
+    /// Change the controller of a permanent to `new_controller`.
+    /// Mirrors Java's `GameAction.controllerChangeZoneCorrection()` — moves the
+    /// card between per-player zone lists and updates the controller field.
+    pub fn change_controller(&mut self, card_id: CardId, new_controller: PlayerId) {
+        let card = &self.cards[card_id.index()];
+        if card.controller == new_controller {
+            return;
+        }
+        let old_controller = card.controller;
+        let zone = card.zone;
+
+        // Move between zone lists
+        if zone != ZoneType::None {
+            self.zone_mut(zone, old_controller).remove(card_id);
+            self.zone_mut(zone, new_controller).add(card_id);
+        }
+        self.cards[card_id.index()].controller = new_controller;
+    }
+
+    /// Attach `aura_id` to `target_id`.
+    /// If `aura_id` was already attached elsewhere, detach it first.
+    /// Mirrors Java's `Card.enchantEntity()` / `Card.equip()`.
+    pub fn attach_to(&mut self, aura_id: CardId, target_id: CardId) {
+        // Detach from previous host if any
+        self.detach(aura_id);
+        self.cards[aura_id.index()].attached_to = Some(target_id);
+        self.cards[target_id.index()].attachments.push(aura_id);
+    }
+
+    /// Detach `aura_id` from whatever it is currently attached to.
+    /// Mirrors Java's `Card.unattachFromEntity()`.
+    pub fn detach(&mut self, aura_id: CardId) {
+        if let Some(host_id) = self.cards[aura_id.index()].attached_to.take() {
+            self.cards[host_id.index()].attachments.retain(|&a| a != aura_id);
+        }
+    }
+
+    /// Remove a spell from the stack by its entry ID (used by Counter).
+    /// Mirrors Java's `Game.getStack().remove(sa)`.
+    pub fn remove_from_stack(&mut self, entry_id: u32) -> bool {
+        self.stack.remove_by_id(entry_id).is_some()
     }
 }
 

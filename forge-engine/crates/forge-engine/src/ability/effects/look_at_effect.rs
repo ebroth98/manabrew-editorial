@@ -34,7 +34,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let count = num.min(zone_cards.len());
 
     let top = &zone_cards[zone_cards.len() - count..];
-    let names: Vec<String> = top.iter().map(|&id| ctx.game.card(id).card_name.clone()).collect();
+    let names: Vec<String> = top
+        .iter()
+        .map(|&id| ctx.game.card(id).card_name.clone())
+        .collect();
     let msg = format!(
         "Looking at top {} card(s) of {:?}: [{}]",
         count,

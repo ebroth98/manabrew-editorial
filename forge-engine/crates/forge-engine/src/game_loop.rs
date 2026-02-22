@@ -109,7 +109,7 @@ impl GameLoop {
 
         game.turn.phase = PhaseType::Upkeep;
         self.emit_phase_trigger(game, PhaseType::Upkeep);
-        self.process_triggers(game, agents);
+        self.step_with_priority(game, agents, false);
 
         game.turn.phase = PhaseType::Draw;
         self.step_draw(game);
@@ -140,7 +140,7 @@ impl GameLoop {
         // End phase
         game.turn.phase = PhaseType::EndOfTurn;
         self.emit_phase_trigger(game, PhaseType::EndOfTurn);
-        self.process_triggers(game, agents);
+        self.step_with_priority(game, agents, false);
 
         game.turn.phase = PhaseType::Cleanup;
         self.step_cleanup(game);
@@ -163,139 +163,36 @@ impl GameLoop {
         }
     }
 
-    pub fn step_main_phase(
+    
+    /// Run a priority loop until everyone passes and the stack is empty.
+    /// This should be called in any phase/step where players get priority (Upkeep, Main, Combat, End).
+    pub fn step_with_priority(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>], is_main_phase: bool) {
+        loop {
+            if game.game_over { return; }
+
+            // 1. Process any pending triggers and put them on the stack
+            self.process_triggers(game, agents);
+
+            // 2. Give players priority
+            self.priority_round(game, agents, is_main_phase);
+
+            if game.game_over { return; }
+
+            // 3. If stack is empty after everyone passed, the phase ends
+            if game.stack.is_empty() {
+                break;
+            }
+
+            // 4. Resolve top of stack (resolve_stack resolves one and gives priority)
+            self.resolve_stack(game, agents);
+        }
+    }
+pub fn step_main_phase(
         &mut self,
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
-        let active = game.active_player();
-
-        // Card info saved from a play action so we can notify after resolution.
-        let mut pending_play: Option<(CardId, String)> = None;
-
-        // Loop: let the player take actions until they pass
-        loop {
-            if game.game_over {
-                return;
-            }
-
-            // Resolve any pending stack entries first
-            self.resolve_stack(game, agents);
-            // Recompute continuous effects after resolution (a permanent may
-            // have entered or left the battlefield).
-            apply_continuous_effects(game);
-            game.check_state_based_actions();
-
-            if game.game_over {
-                return;
-            }
-
-            // If a card was just played, the stack has now resolved and SBAs
-            // have been checked — snapshot + notify with the post-resolution state.
-            if let Some((played_id, played_name)) = pending_play.take() {
-                for agent in agents.iter_mut() {
-                    agent.snapshot_state(game, &self.mana_pools);
-                }
-                for agent in agents.iter_mut() {
-                    agent.notify_card_played(active, played_id, &played_name);
-                }
-            }
-
-            // Find playable hand cards
-            let playable = self.get_playable_cards(game, active);
-
-            // Find untapped lands the player can manually tap for mana
-            let tappable_lands: Vec<CardId> = game
-                .cards_in_zone(ZoneType::Battlefield, active)
-                .to_vec()
-                .into_iter()
-                .filter(|&cid| {
-                    let c = game.card(cid);
-                    c.is_land() && !c.tapped
-                })
-                .collect();
-
-            // Find tapped lands whose mana is still in the pool (can be untapped)
-            let pool_snapshot = self.pool(active).clone();
-            let untappable_lands: Vec<CardId> = game
-                .cards_in_zone(ZoneType::Battlefield, active)
-                .to_vec()
-                .into_iter()
-                .filter(|&cid| {
-                    let c = game.card(cid);
-                    if !c.is_land() || !c.tapped {
-                        return false;
-                    }
-                    if let Some(atom) = basic_land_mana_atom(c) {
-                        pool_snapshot.has_atom(atom, 1)
-                    } else {
-                        false
-                    }
-                })
-                .collect();
-
-            // Find activatable abilities on battlefield permanents
-            let activatable = self.get_activatable_abilities(game, active);
-
-            // Auto-break only when truly nothing can be done
-            if playable.is_empty()
-                && tappable_lands.is_empty()
-                && untappable_lands.is_empty()
-                && activatable.is_empty()
-            {
-                break;
-            }
-
-            agents[active.index()].snapshot_state(game, &self.mana_pools);
-            let agent = &mut agents[active.index()];
-            let action = agent.choose_action(
-                active,
-                &playable,
-                &tappable_lands,
-                &untappable_lands,
-                &activatable,
-            );
-
-            match action {
-                MainPhaseAction::Pass => break,
-                MainPhaseAction::Play(card_id) => {
-                    pending_play = self.play_card(game, agents, active, card_id);
-                }
-                MainPhaseAction::ActivateMana(land_id) => {
-                    // Compute the mana atom before mutably borrowing game
-                    let atom_opt = {
-                        let c = game.card(land_id);
-                        if c.is_land() && !c.tapped {
-                            basic_land_mana_atom(c)
-                        } else {
-                            None
-                        }
-                    };
-                    if let Some(atom) = atom_opt {
-                        game.tap(land_id);
-                        self.pool_mut(active).add(atom, 1);
-                    }
-                }
-                MainPhaseAction::UntapMana(land_id) => {
-                    // Compute the mana atom before mutably borrowing game
-                    let atom_opt = {
-                        let c = game.card(land_id);
-                        if c.is_land() && c.tapped {
-                            basic_land_mana_atom(c)
-                        } else {
-                            None
-                        }
-                    };
-                    if let Some(atom) = atom_opt {
-                        game.untap(land_id);
-                        self.pool_mut(active).remove(atom, 1);
-                    }
-                }
-                MainPhaseAction::ActivateAbility(card_id, ability_idx) => {
-                    self.activate_ability(game, agents, active, card_id, ability_idx);
-                }
-            }
-        }
+        self.step_with_priority(game, agents, true);
     }
 
     pub fn step_combat(
@@ -455,15 +352,19 @@ impl GameLoop {
     }
 
     /// Get cards the active player can play.
-    fn get_playable_cards(&self, game: &GameState, player: PlayerId) -> Vec<CardId> {
+    fn get_playable_cards(&self, game: &GameState, player: PlayerId, must_be_instant: bool) -> Vec<CardId> {
         let mut playable = Vec::new();
         let hand = game.cards_in_zone(ZoneType::Hand, player);
 
         // Check Command zone for commanders (with commander tax)
         let command_zone: Vec<CardId> = game.cards_in_zone(ZoneType::Command, player).to_vec();
+
         for card_id in command_zone {
             let card = game.card(card_id);
             if card.is_commander {
+                if must_be_instant && !card.has_keyword("Flash") && !card.type_line.is_instant() {
+                    continue;
+                }
                 let tax = card.commander_cast_count as i32 * 2;
                 let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
                 if available_mana.can_pay_with_extra_generic(&card.mana_cost, tax) {
@@ -472,13 +373,19 @@ impl GameLoop {
             }
         }
 
+
         for &card_id in hand {
             let card = game.card(card_id);
             if card.is_land() {
-                if game.player(player).can_play_land() {
+                if !must_be_instant && game.player(player).can_play_land() {
                     playable.push(card_id);
                 }
             } else {
+                let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
+                if must_be_instant && !is_instant {
+                    continue;
+                }
+
                 // Check if we can pay the mana cost
                 let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
                 if available_mana.can_pay(&card.mana_cost) {
@@ -623,56 +530,66 @@ impl GameLoop {
         Some((card_id, card_name))
     }
 
-    /// Resolve the top of the stack.
+    /// Resolve the top item of the stack.
+    /// Does NOT run a priority_round — the caller (step_with_priority) handles that
+    /// both before calling this and after (via the outer loop) so players get priority
+    /// between each resolved item.
     pub fn resolve_stack(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
-        while let Some(entry) = game.stack.pop() {
-            if entry.spell_ability.is_trigger || entry.spell_ability.is_activated {
-                // Triggered/activated ability: resolve the effect
+        if game.stack.is_empty() {
+            return;
+        }
+
+        let entry = game.stack.pop().unwrap();
+
+        if entry.spell_ability.is_trigger || entry.spell_ability.is_activated {
+            // Triggered/activated ability: resolve the effect
+            self.resolve_spell_effect(game, agents, &entry);
+        } else if let Some(card_id) = entry.spell_ability.source {
+            if entry.is_creature_spell || entry.is_permanent_spell {
+                // Permanent spell: move to battlefield
+                let origin = game.card(card_id).zone;
+                game.move_card(card_id, ZoneType::Battlefield, entry.spell_ability.activating_player);
+
+                // Register triggers for the new permanent
+                self.trigger_handler.register_active_trigger(game, card_id);
+
+                // Emit ChangesZone trigger (ETB)
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    card_id,
+                    origin,
+                    ZoneType::Battlefield,
+                );
+            } else {
+                // Non-permanent spell: resolve effect, then move to graveyard
                 self.resolve_spell_effect(game, agents, &entry);
-                continue;
-            }
-
-            if let Some(card_id) = entry.spell_ability.source {
-                if entry.is_creature_spell || entry.is_permanent_spell {
-                    // Permanent spell: move to battlefield
-                    let origin = game.card(card_id).zone;
-                    game.move_card(card_id, ZoneType::Battlefield, entry.spell_ability.activating_player);
-
-                    // Register triggers for the new permanent
-                    self.trigger_handler.register_active_trigger(game, card_id);
-
-                    // Emit ChangesZone trigger (ETB)
-                    self.trigger_handler.run_trigger(
-                        TriggerType::ChangesZone,
-                        RunParams {
-                            card: Some(card_id),
-                            origin: Some(origin),
-                            destination: Some(ZoneType::Battlefield),
-                            ..Default::default()
-                        },
-                        false,
-                    );
-                } else {
-                    // Non-permanent spell: resolve effect, then move to graveyard
-                    self.resolve_spell_effect(game, agents, &entry);
-                    let owner = game.card(card_id).owner;
+                let owner = game.card(card_id).owner;
+                // Only move to graveyard if it's still in stack zone
+                if game.card(card_id).zone != ZoneType::Exile && game.card(card_id).zone != ZoneType::Library && game.card(card_id).zone != ZoneType::Hand {
                     game.move_card(card_id, ZoneType::Graveyard, owner);
                 }
             }
         }
 
-        // Process any triggers that were queued during resolution
+        // Continuous effects might change after resolution
+        apply_continuous_effects(game);
+        game.check_state_based_actions();
+
+        // Process triggers that may have fired during resolution (puts them on stack
+        // so the outer step_with_priority loop can give priority before resolving them)
         self.process_triggers(game, agents);
     }
 
-    /// Resolve a spell effect by walking the SpellAbility chain.
-    /// Mirrors Java's `AbilityUtils.resolveApiAbility()` + `resolveSubAbilities()`.
     fn resolve_spell_effect(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>], entry: &StackEntry) {
-        // Walk the SpellAbility chain: resolve each node's effect
-        // Mirrors Java's resolveApiAbility() + resolveSubAbilities()
+        // Walk the SpellAbility chain: resolve each node's effect, propagating
+        // the parent SA's chosen target card so sub-abilities can resolve
+        // `Defined$ ParentTarget`. Mirrors Java's resolveApiAbility() + resolveSubAbilities().
+        let mut parent_target_card: Option<CardId> = None;
         let mut current = Some(&entry.spell_ability);
         while let Some(sa) = current {
-            self.resolve_single_effect(game, agents, sa);
+            self.resolve_single_effect(game, agents, sa, parent_target_card);
+            // This SA's target card becomes the parent context for the next sub-ability.
+            parent_target_card = sa.target_chosen.target_card;
             current = sa.get_sub_ability();
         }
     }
@@ -683,6 +600,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         sa: &SpellAbility,
+        parent_target_card: Option<CardId>,
     ) {
         let mut ctx = EffectContext {
             game,
@@ -690,6 +608,7 @@ impl GameLoop {
             trigger_handler: &mut self.trigger_handler,
             token_templates: &self.token_templates,
             mana_pools: &mut self.mana_pools,
+            parent_target_card,
         };
         effects::resolve_effect(&mut ctx, sa);
     }
@@ -712,37 +631,16 @@ impl GameLoop {
 
     /// Process pending triggers: drain the waiting queue, put abilities on stack, resolve.
     /// Mirrors Java's runWaitingTriggers() called between stack resolution windows.
-    fn process_triggers(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
-        // Loop in case triggers trigger more triggers
-        let mut safety = 0;
-        loop {
-            let entries = self.trigger_handler.run_waiting_triggers(game);
-            if entries.is_empty() {
-                break;
-            }
-
-            for entry in entries {
-                game.stack.push(entry);
-            }
-
-            // Resolve triggered abilities on the stack
-            while let Some(entry) = game.stack.pop() {
-                if entry.spell_ability.is_trigger {
-                    self.resolve_spell_effect(game, agents, &entry);
-                }
-            }
-
-            safety += 1;
-            if safety > 100 {
-                break; // prevent infinite loops
-            }
+    fn process_triggers(&mut self, game: &mut GameState, _agents: &mut [Box<dyn PlayerAgent>]) {
+        let entries = self.trigger_handler.run_waiting_triggers(game);
+        for entry in entries {
+            game.stack.push(entry);
         }
     }
 
     // ── Activated Ability helpers ───────────────────────────────────
 
     /// Find all activatable abilities for a player on the battlefield.
-    /// Returns (card_id, ability_index) pairs.
     fn get_activatable_abilities(
         &self,
         game: &GameState,
@@ -933,5 +831,137 @@ impl GameLoop {
         game.stack.push(entry);
         agents[player.index()].notify(&format!("Activated ability of {}", card_name));
     }
-}
 
+
+
+    /// Give players priority to take actions (play cards, activate abilities).
+    /// Returns when all players pass in succession.
+    pub fn priority_round(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        is_main_phase: bool,
+    ) {
+        let mut priority_player = game.active_player();
+        let mut passed_count = 0;
+        let num_players = game.players.len();
+
+        while passed_count < num_players {
+            if game.game_over { return; }
+
+            // Check SBA before any player gets priority
+            loop {
+                if !game.check_state_based_actions() { break; }
+            }
+            if game.game_over { return; }
+
+            // A player can play sorcery-speed cards if:
+            // - It's their own turn
+            // - It's a main phase
+            // - The stack is empty
+            let can_play_sorcery = is_main_phase 
+                && priority_player == game.active_player() 
+                && game.stack.is_empty();
+            let must_be_instant = !can_play_sorcery;
+
+            let playable = self.get_playable_cards(game, priority_player, must_be_instant);
+            
+            let tappable_lands: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Battlefield, priority_player)
+                .to_vec()
+                .into_iter()
+                .filter(|&cid| {
+                    let c = game.card(cid);
+                    c.is_land() && !c.tapped
+                })
+                .collect();
+
+            let pool_snapshot = self.pool(priority_player).clone();
+            let untappable_lands: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Battlefield, priority_player)
+                .to_vec()
+                .into_iter()
+                .filter(|&cid| {
+                    let c = game.card(cid);
+                    if !c.is_land() || !c.tapped { return false; }
+                    if let Some(atom) = basic_land_mana_atom(c) {
+                        pool_snapshot.has_atom(atom, 1)
+                    } else {
+                        false
+                    }
+                })
+                .collect();
+
+            let activatable = self.get_activatable_abilities(game, priority_player);
+
+            // At instant speed (must_be_instant), tappable lands alone don't justify holding
+            // priority — there's nothing instant-speed to spend the mana on. Only offer priority
+            // if there are actual instant-speed spells or activatable abilities to use.
+            let can_hold_priority = if must_be_instant {
+                !playable.is_empty() || !untappable_lands.is_empty() || !activatable.is_empty()
+            } else {
+                !playable.is_empty() || !tappable_lands.is_empty() || !untappable_lands.is_empty() || !activatable.is_empty()
+            };
+
+            if !can_hold_priority {
+                passed_count += 1;
+                priority_player = game.next_player(priority_player);
+                continue;
+            }
+
+            agents[priority_player.index()].snapshot_state(game, &self.mana_pools);
+            let action = agents[priority_player.index()].choose_action(
+                priority_player,
+                &playable,
+                &tappable_lands,
+                &untappable_lands,
+                &activatable,
+            );
+
+            match action {
+                MainPhaseAction::Pass => {
+                    passed_count += 1;
+                    priority_player = game.next_player(priority_player);
+                }
+                MainPhaseAction::Play(card_id) => {
+                    let played = self.play_card(game, agents, priority_player, card_id);
+                    if let Some((played_id, played_name)) = played {
+                        for agent in agents.iter_mut() {
+                            agent.snapshot_state(game, &self.mana_pools);
+                            agent.notify_card_played(priority_player, played_id, &played_name);
+                        }
+                    }
+                    passed_count = 0;
+                }
+                MainPhaseAction::ActivateMana(land_id) => {
+                    let atom_opt = {
+                        let c = game.card(land_id);
+                        if c.is_land() && !c.tapped { basic_land_mana_atom(c) } else { None }
+                    };
+                    if let Some(atom) = atom_opt {
+                        game.tap(land_id);
+                        self.pool_mut(priority_player).add(atom, 1);
+                    }
+                    passed_count = 0;
+                }
+                MainPhaseAction::UntapMana(land_id) => {
+                    let atom_opt = {
+                        let c = game.card(land_id);
+                        if c.is_land() && c.tapped { basic_land_mana_atom(c) } else { None }
+                    };
+                    if let Some(atom) = atom_opt {
+                        game.untap(land_id);
+                        self.pool_mut(priority_player).remove(atom, 1);
+                    }
+                    passed_count = 0;
+                }
+                MainPhaseAction::ActivateAbility(card_id, ability_idx) => {
+                    self.activate_ability(game, agents, priority_player, card_id, ability_idx);
+                    passed_count = 0;
+                }
+            }
+        }
+    
+
+}
+}

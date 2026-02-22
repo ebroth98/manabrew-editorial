@@ -141,6 +141,25 @@ pub enum AgentPromptInner {
         num_to_take: usize,
         optional: bool,
     },
+    /// Discard N cards from hand.
+    ChooseDiscard {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// All card IDs currently in hand.
+        #[serde(rename = "handCardIds")]
+        hand_card_ids: Vec<String>,
+        /// How many cards must be discarded.
+        #[serde(rename = "numToDiscard")]
+        num_to_discard: usize,
+    },
+    /// Choose a target spell on the stack (for Counter).
+    ChooseTargetSpell {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// Stack entry IDs (as strings) that can be countered.
+        #[serde(rename = "validSpellIds")]
+        valid_spell_ids: Vec<String>,
+    },
 }
 
 /// Sent from frontend to game thread: the human player's response.
@@ -194,6 +213,16 @@ pub enum PlayerAction {
     DigDecision {
         #[serde(rename = "chosenCardIds")]
         chosen_card_ids: Vec<String>,
+    },
+    /// Response to ChooseDiscard prompt: IDs of the cards the player discards.
+    DiscardDecision {
+        #[serde(rename = "discardedCardIds")]
+        discarded_card_ids: Vec<String>,
+    },
+    /// Response to ChooseTargetSpell prompt: the stack entry ID the player targets.
+    TargetSpell {
+        #[serde(rename = "spellId")]
+        spell_id: Option<String>,
     },
     Concede,
 }

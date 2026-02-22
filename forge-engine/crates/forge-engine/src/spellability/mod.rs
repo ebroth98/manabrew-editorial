@@ -259,6 +259,18 @@ fn choose_targets_for(
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card_from_zone(player, *zone, &valid);
         }
+        TargetKind::Spell => {
+            let valid = target_restrictions::get_all_candidates_spells(game);
+            // Apply TargetType$ filter if present
+            let valid = if let Some(ref filter) = sa.target_restrictions.as_ref().and_then(|tr| tr.target_type_filter.as_ref()) {
+                target_restrictions::filter_spells_by_type(game, &valid, filter)
+            } else {
+                valid
+            };
+            agents[player.index()].snapshot_state(game, mana_pools);
+            let agent = &mut agents[player.index()];
+            sa.target_chosen.target_stack_entry = agent.choose_target_spell(player, &valid);
+        }
     }
 
     true
@@ -320,6 +332,16 @@ impl MagicStack {
 
     pub fn iter(&self) -> impl Iterator<Item = &StackEntry> {
         self.entries.iter()
+    }
+
+    /// Remove and return the stack entry with the given ID (for Counter effects).
+    /// Returns `None` if no entry with that ID exists.
+    pub fn remove_by_id(&mut self, id: u32) -> Option<StackEntry> {
+        if let Some(pos) = self.entries.iter().position(|e| e.id == id) {
+            Some(self.entries.remove(pos))
+        } else {
+            None
+        }
     }
 }
 

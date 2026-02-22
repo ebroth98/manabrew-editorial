@@ -10,6 +10,7 @@ import { CardPreview } from "@/components/game/CardPreview";
 import { ZoneViewer } from "@/components/game/ZoneViewer";
 import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
 import { LibraryPeekModal, type LibraryPeekMode } from "@/components/game/LibraryPeekModal";
+import { SpellStackModal } from "@/components/game/SpellStackModal";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
 import { Button } from "@/components/ui/button";
@@ -57,20 +58,21 @@ function getInitials(name: string): string {
     .slice(0, 2);
 }
 
-// Phase bar definitions
+// Phase bar definitions — must match phase_to_step() in src-tauri/src/game_view_dto.rs
 const PHASES = [
-  { id: "untap", label: "Untap", short: "UNT" },
-  { id: "upkeep", label: "Upkeep", short: "UP" },
-  { id: "draw", label: "Draw", short: "DR" },
-  { id: "main1", label: "Main 1", short: "M1" },
-  { id: "begin_combat", label: "Begin Combat", short: "BC" },
-  { id: "declare_attackers", label: "Attackers", short: "ATK" },
-  { id: "declare_blockers", label: "Blockers", short: "BLK" },
-  { id: "combat_damage", label: "Damage", short: "DMG" },
-  { id: "end_combat", label: "End Combat", short: "EC" },
-  { id: "main2", label: "Main 2", short: "M2" },
-  { id: "end", label: "End", short: "END" },
-  { id: "cleanup", label: "Cleanup", short: "CL" },
+  { id: "untap",               label: "Untap",        short: "UNT" },
+  { id: "upkeep",              label: "Upkeep",       short: "UP"  },
+  { id: "draw",                label: "Draw",         short: "DR"  },
+  { id: "main1",               label: "Main 1",       short: "M1"  },
+  { id: "begin_combat",        label: "Begin Combat", short: "BC"  },
+  { id: "declare_attackers",   label: "Attackers",    short: "ATK" },
+  { id: "declare_blockers",    label: "Blockers",     short: "BLK" },
+  { id: "first_strike_damage", label: "1st Strike",   short: "1ST" },
+  { id: "combat_damage",       label: "Damage",       short: "DMG" },
+  { id: "end_combat",          label: "End Combat",   short: "EC"  },
+  { id: "main2",               label: "Main 2",       short: "M2"  },
+  { id: "end",                 label: "End",          short: "END" },
+  { id: "cleanup",             label: "Cleanup",      short: "CL"  },
 ];
 
 const MANA_COLORS = [
@@ -111,6 +113,7 @@ function PlayerPanel({
   player,
   isOpponent,
   isActiveTurn,
+  isPriorityPlayer,
   isTargetable,
   onTarget,
   isFlashing,
@@ -118,10 +121,17 @@ function PlayerPanel({
   player: Player;
   isOpponent: boolean;
   isActiveTurn?: boolean;
+  /** True when this player currently holds priority (can play spells/abilities). */
+  isPriorityPlayer?: boolean;
   isTargetable?: boolean;
   onTarget?: () => void;
   isFlashing?: boolean;
 }) {
+  const totalCmdDmg = Object.values(player.commanderDamage ?? {}).reduce(
+    (a, b) => a + b,
+    0,
+  );
+
   return (
     <div
       data-player-id={player.id}
@@ -164,6 +174,11 @@ function PlayerPanel({
           {isOpponent ? "THEIR TURN" : "YOUR TURN"}
         </span>
       )}
+      {isPriorityPlayer && (
+        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 animate-pulse">
+          PRIORITY
+        </span>
+      )}
       <div className="flex items-center gap-1 shrink-0">
         <Heart className="h-3.5 w-3.5 text-red-500" />
         <span className="font-bold">{player.life}</span>
@@ -177,8 +192,17 @@ function PlayerPanel({
         </Badge>
       )}
       {player.poison > 0 && (
-        <Badge variant="destructive" className="text-xs h-5 px-1">
-          {player.poison} poison
+        <Badge variant="destructive" className="text-xs h-5 px-1 shrink-0">
+          {player.poison} ☠
+        </Badge>
+      )}
+      {totalCmdDmg > 0 && (
+        <Badge
+          variant="outline"
+          className="text-xs h-5 px-1 text-orange-600 border-orange-400 shrink-0"
+          title={`Commander damage received: ${totalCmdDmg}`}
+        >
+          ⚔{totalCmdDmg} CMD
         </Badge>
       )}
       <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
@@ -526,24 +550,26 @@ function LibraryPile({
   );
 }
 
+// Prompt type → human-readable instruction. Matches AgentPromptInner variants in prompt.rs.
+const PROMPT_LABELS: Record<string, string> = {
+  mulligan:                "Keep this hand?",
+  chooseAction:            "Your turn — play a card or pass priority (Space / F6)",
+  chooseAttackers:         "Declare attackers — click creatures to toggle, then confirm",
+  chooseBlockers:          "Declare blockers — click an attacker, then click your blocker",
+  chooseTargetPlayer:      "Choose a target player",
+  chooseTargetCard:        "Choose a target creature",
+  chooseTargetAny:         "Choose a target (player or permanent)",
+  chooseTargetCardFromZone:"Choose a target card from the zone",
+  chooseTargetSpell:       "Choose a spell on the stack to counter",
+  scry:                    "Scry — choose cards to put on the bottom",
+  surveil:                 "Surveil — choose cards to send to the graveyard",
+  dig:                     "Dig — choose cards to take to your hand",
+  chooseDiscard:           "Discard — choose cards to discard",
+  gameOver:                "Game Over",
+};
+
 function PromptBanner({ promptType }: { promptType: string }) {
-  const labels: Record<string, string> = {
-    mulligan: "Keep this hand?",
-    chooseAction: "Choose a card to play or pass priority (Space / F6)",
-    chooseAttackers:
-      "Declare attackers — click creatures to toggle, then Attack or Attack All",
-    chooseBlockers:
-      "Declare blockers — click an attacking creature, then click your blocker",
-    chooseTargetPlayer: "Choose a target player",
-    chooseTargetCard: "Choose a target creature",
-    chooseTargetAny: "Choose a target (player or creature)",
-    chooseTargetCardFromZone: "Choose a target card from the zone",
-    scry: "Scry — arrange the top cards of your library",
-    surveil: "Surveil — choose cards to send to the graveyard",
-    dig: "Dig — choose cards to take to your hand",
-    gameOver: "Game Over",
-  };
-  const label = labels[promptType] ?? promptType;
+  const label = PROMPT_LABELS[promptType] ?? promptType;
   return (
     <div className="shrink-0 border rounded-lg p-2 bg-blue-50 dark:bg-blue-950/20 text-center">
       <p className="text-sm font-semibold text-blue-700 dark:text-blue-400">
@@ -563,6 +589,7 @@ interface OpponentHalfProps {
   onTarget: () => void;
   isFlashing: boolean;
   activePlayerId: string;
+  priorityPlayerId: string;
   promptType: string | undefined;
   pendingAttacker: string | null;
   attackerIds?: string[];
@@ -582,6 +609,7 @@ function OpponentHalf({
   onTarget,
   isFlashing,
   activePlayerId,
+  priorityPlayerId,
   promptType,
   pendingAttacker,
   attackerIds,
@@ -596,6 +624,7 @@ function OpponentHalf({
         player={player}
         isOpponent
         isActiveTurn={activePlayerId === player.id}
+        isPriorityPlayer={priorityPlayerId === player.id}
         isTargetable={isTargetable}
         onTarget={onTarget}
         isFlashing={isFlashing}
@@ -661,6 +690,7 @@ export default function Game() {
     gameView,
     currentPrompt,
     isGameActive,
+    isWaitingForResponse,
     gameLog,
     debugInfo,
     passPriority,
@@ -676,6 +706,8 @@ export default function Game() {
     scryDecision,
     surveilDecision,
     digDecision,
+    discardDecision,
+    targetSpell,
     concede,
     endGame,
     setupListeners,
@@ -749,10 +781,22 @@ export default function Game() {
     optional?: boolean;
   } | null>(null);
 
+  // Spell stack modal (view stack / choose counter target)
+  const [spellStackModalOpen, setSpellStackModalOpen] = useState(false);
+
   // Concede confirmation
   const [confirmConcede, setConfirmConcede] = useState(false);
 
   const promptType = currentPrompt?.type;
+
+  /** Cancel any pending hover timer and clear the visible preview. */
+  function dismissHover() {
+    if (hoverTimerRef.current) {
+      clearTimeout(hoverTimerRef.current);
+      hoverTimerRef.current = null;
+    }
+    setHoveredCard(null);
+  }
 
   function handleHoverCard(card: XMageCard | null, e?: React.MouseEvent) {
     if (hoverTimerRef.current) {
@@ -782,7 +826,7 @@ export default function Game() {
   }, [setupListeners]);
 
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — passPriority already checks isWaitingForResponse internally
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (
@@ -810,12 +854,19 @@ export default function Game() {
     setBlockAssignments([]);
   }, [currentPrompt?.type]);
 
+  // Dismiss card hover preview whenever any modal opens or the active prompt changes.
+  // This prevents a stale preview from lingering behind a modal or after closing one.
+  useEffect(() => {
+    dismissHover();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen, currentPrompt?.type]);
+
   // Apply deferred gameView + prompt from the ref into the store.
   function applyDeferredState() {
     const deferred = deferredStateRef.current;
     if (!deferred) return;
     deferredStateRef.current = null;
-    const updates: Record<string, unknown> = { gameView: deferred.gameView };
+    const updates: Record<string, unknown> = { gameView: deferred.gameView, isWaitingForResponse: false };
     if (deferred.prompt) updates.currentPrompt = deferred.prompt;
     useGameStore.setState(updates);
   }
@@ -834,7 +885,7 @@ export default function Game() {
 
     if (snapshot.displayEvents.length === 0) {
       // No flashes — apply state immediately and continue to next in queue.
-      const updates: Record<string, unknown> = { gameView: snapshot.gameView };
+      const updates: Record<string, unknown> = { gameView: snapshot.gameView, isWaitingForResponse: false };
       if (snapshot.prompt) updates.currentPrompt = snapshot.prompt;
       useGameStore.setState(updates);
       if (rest.length > 0) {
@@ -956,7 +1007,7 @@ export default function Game() {
     return () => clearTimeout(timer);
   }, [gameView?.gameOver, currentPrompt?.type]);
 
-  // Open library-peek modal for Scry / Surveil / Dig prompts
+  // Open library-peek modal for Scry / Surveil / Dig / Discard prompts
   useEffect(() => {
     if (
       (promptType === "scry" || promptType === "surveil" || promptType === "dig") &&
@@ -969,10 +1020,27 @@ export default function Game() {
         numToTake: promptType === "dig" ? currentPrompt.numToTake : undefined,
         optional: promptType === "dig" ? currentPrompt.optional : undefined,
       });
-    } else if (promptType !== "scry" && promptType !== "surveil" && promptType !== "dig") {
+    } else if (promptType === "chooseDiscard" && currentPrompt) {
+      // Build card objects from hand card IDs — hand is visible in gameView.myHand
+      const handCards = (currentPrompt.handCardIds ?? [])
+        .map((id) => gameView?.myHand.find((c) => c.id === id))
+        .filter((c): c is XMageCard => c !== undefined);
+      if (handCards.length > 0) {
+        setLibraryPeekModal({
+          mode: "discard",
+          cards: handCards,
+          numToTake: currentPrompt.numToDiscard,
+        });
+      }
+    } else if (
+      promptType !== "scry" &&
+      promptType !== "surveil" &&
+      promptType !== "dig" &&
+      promptType !== "chooseDiscard"
+    ) {
       setLibraryPeekModal(null);
     }
-  }, [promptType, currentPrompt]);
+  }, [promptType, currentPrompt, gameView?.myHand]);
 
   // Handle zone-based targeting prompts (e.g., selecting from graveyard)
   useEffect(() => {
@@ -997,6 +1065,15 @@ export default function Game() {
       closeZoneTargetSelector();
     }
   }, [promptType, currentPrompt]);
+
+  // Auto-open the spell-stack modal when the engine asks the player to pick a counter target
+  useEffect(() => {
+    if (promptType === "chooseTargetSpell") {
+      setSpellStackModalOpen(true);
+    } else {
+      setSpellStackModalOpen(false);
+    }
+  }, [promptType]);
 
   if (!isGameActive) return <Navigate to="/lobby" replace />;
 
@@ -1175,51 +1252,107 @@ export default function Game() {
       <ArrowOverlay arrows={arrows} />
 
       {/* ── Stack ─────────────────────────────────────────── */}
-      {gameView.stack.length > 0 && (
-        <div className="shrink-0 border rounded-lg p-2 bg-yellow-50 dark:bg-yellow-950/20">
-          <p className="text-xs font-semibold text-yellow-700 dark:text-yellow-400 mb-1">
-            Stack ({gameView.stack.length})
-          </p>
-          <div className="flex flex-col gap-1">
-            {gameView.stack.map((obj) => {
-              const srcCard =
-                gameView.battlefield.find((c) => c.id === obj.sourceId) ??
-                gameView.myHand.find((c) => c.id === obj.sourceId);
-              const color = srcCard?.color ?? "";
-              const borderColor =
-                color === "White"
-                  ? "border-yellow-300"
-                  : color === "Blue"
-                    ? "border-blue-400"
-                    : color === "Black"
-                      ? "border-gray-600"
-                      : color === "Red"
-                        ? "border-red-500"
-                        : color === "Green"
-                          ? "border-green-500"
-                          : "border-gray-300";
-              return (
-                <div
-                  key={obj.id}
-                  className={cn(
-                    "flex flex-col border-l-4 pl-2 py-0.5",
-                    borderColor,
-                  )}
+      {gameView.stack.length > 0 && (() => {
+        // Visual stacked-card pile — newest card on top (last in array = top of LIFO stack)
+        // Card size: w-[52px] h-[73px] ≈ 5:7 MTG aspect ratio; offset between layers = 4px
+        const OFFSET = 4;
+        const MAX_LAYERS = Math.min(gameView.stack.length, 4);
+        const pileW = 52 + (MAX_LAYERS - 1) * OFFSET + 4; // +4 for visual breathing room
+        const pileH = 73 + (MAX_LAYERS - 1) * OFFSET + 4;
+        const isTargeting = promptType === "chooseTargetSpell";
+
+        return (
+          <div
+            className={cn(
+              "shrink-0 border rounded-lg p-2 flex items-center gap-3",
+              isTargeting
+                ? "bg-blue-50 dark:bg-blue-950/20 border-blue-300"
+                : "bg-yellow-50 dark:bg-yellow-950/20",
+            )}
+          >
+            {/* Visual card pile — click to open modal */}
+            <div
+              className="relative shrink-0 cursor-pointer"
+              style={{ width: pileW, height: pileH }}
+              onClick={() => setSpellStackModalOpen(true)}
+              title="View stack"
+            >
+              {gameView.stack.slice(0, MAX_LAYERS).map((obj, i) => {
+                // i=0 = oldest (bottom), i=MAX_LAYERS-1 = newest (top of stack)
+                const layerFromTop = (MAX_LAYERS - 1) - i;
+                const offset = layerFromTop * OFFSET;
+                const cardStub = {
+                  id: obj.sourceId,
+                  name: obj.name,
+                  setCode: "",
+                  cardNumber: "",
+                  color: "",
+                  manaCost: "",
+                  types: [] as string[],
+                  subtypes: [] as string[],
+                  supertypes: [] as string[],
+                  text: obj.text,
+                  isPlayable: false,
+                  isSelected: false,
+                  isChoosable: false,
+                  controllerId: "",
+                  ownerId: "",
+                  zoneId: "",
+                };
+                return (
+                  <div
+                    key={obj.id}
+                    className="absolute"
+                    style={{ top: offset, left: offset, zIndex: i + 1 }}
+                  >
+                    <Card
+                      card={cardStub}
+                      className={cn(
+                        "w-[52px] h-[73px]",
+                        isTargeting && layerFromTop === 0 && "ring-2 ring-blue-400",
+                      )}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Stack info + spell names */}
+            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
+              <p className={cn(
+                "text-xs font-semibold",
+                isTargeting ? "text-blue-700 dark:text-blue-400" : "text-yellow-700 dark:text-yellow-400",
+              )}>
+                Stack ({gameView.stack.length})
+              </p>
+              {/* Show spells top-to-bottom (newest first) */}
+              {[...gameView.stack].reverse().map((obj, idx) => (
+                <span key={obj.id} className="text-xs text-muted-foreground truncate">
+                  {idx === 0 && <span className="font-semibold text-foreground">[TOP] </span>}
+                  {obj.name}
+                </span>
+              ))}
+              {isTargeting && (
+                <Button
+                  size="sm"
+                  className="mt-1 h-6 text-xs"
+                  onClick={() => setSpellStackModalOpen(true)}
                 >
-                  <span className="text-xs font-bold leading-tight">
-                    {obj.name}
-                  </span>
-                  {obj.text && (
-                    <span className="text-xs text-muted-foreground leading-tight">
-                      {obj.text}
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+                  Choose Counter Target
+                </Button>
+              )}
+              {!isTargeting && (
+                <button
+                  className="text-[10px] text-muted-foreground hover:text-foreground underline text-left mt-0.5"
+                  onClick={() => setSpellStackModalOpen(true)}
+                >
+                  View stack
+                </button>
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── Combat report ─────────────────────────────────── */}
       {promptType === "chooseBlockers" &&
@@ -1291,6 +1424,7 @@ export default function Game() {
               onTarget={() => handleTargetPlayer(displayOpponents[0]!.id)}
               isFlashing={turnFlashPlayerId === displayOpponents[0]?.id}
               activePlayerId={gameView.activePlayerId}
+              priorityPlayerId={gameView.priorityPlayerId}
               promptType={promptType}
               pendingAttacker={pendingAttacker}
               attackerIds={currentPrompt?.attackerIds}
@@ -1315,6 +1449,7 @@ export default function Game() {
                       onTarget={() => handleTargetPlayer(op.id)}
                       isFlashing={turnFlashPlayerId === op.id}
                       activePlayerId={gameView.activePlayerId}
+                      priorityPlayerId={gameView.priorityPlayerId}
                       promptType={promptType}
                       pendingAttacker={pendingAttacker}
                       attackerIds={currentPrompt?.attackerIds}
@@ -1444,15 +1579,21 @@ export default function Game() {
                   player={me!}
                   isOpponent={false}
                   isActiveTurn={gameView.activePlayerId === me!.id}
+                  isPriorityPlayer={gameView.priorityPlayerId === me!.id}
                   isTargetable={playerIsTargetable(me!.id)}
                   onTarget={() => handleTargetPlayer(me!.id)}
                   isFlashing={turnFlashPlayerId === me!.id}
                 />
               </div>
               <div className="flex gap-1 shrink-0 items-center flex-wrap">
+                {isWaitingForResponse && (
+                  <span className="text-xs text-muted-foreground italic self-center animate-pulse">
+                    Waiting…
+                  </span>
+                )}
                 {promptType === "chooseAction" && (
                   <>
-                    <Button size="sm" variant="outline" onClick={passPriority}>
+                    <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
                       Pass (Space)
                     </Button>
                     <Button
@@ -1460,6 +1601,7 @@ export default function Game() {
                       variant="outline"
                       className="flex items-center gap-1"
                       onClick={passPriority}
+                      disabled={isWaitingForResponse}
                       title="Pass priority to end of turn (F6)"
                     >
                       <TimerOff className="h-3.5 w-3.5" />
@@ -1469,13 +1611,14 @@ export default function Game() {
                 )}
                 {promptType === "chooseAttackers" && (
                   <>
-                    <Button size="sm" variant="outline" onClick={passPriority}>
+                    <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
                       No Attackers
                     </Button>
                     <Button
                       size="sm"
                       variant="secondary"
                       className="flex items-center gap-1"
+                      disabled={isWaitingForResponse}
                       onClick={() =>
                         declareAttackers(
                           currentPrompt?.availableAttackerIds ?? [],
@@ -1489,6 +1632,7 @@ export default function Game() {
                       <Button
                         size="sm"
                         className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white"
+                        disabled={isWaitingForResponse}
                         onClick={() => declareAttackers(pendingAttackers)}
                       >
                         <Sword className="h-3.5 w-3.5" />
@@ -1499,7 +1643,7 @@ export default function Game() {
                 )}
                 {promptType === "chooseBlockers" && (
                   <>
-                    <Button size="sm" variant="outline" onClick={passPriority}>
+                    <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
                       No Blockers
                     </Button>
                     {pendingAttacker && (
@@ -1511,6 +1655,7 @@ export default function Game() {
                       <Button
                         size="sm"
                         className="bg-blue-600 hover:bg-blue-700 text-white"
+                        disabled={isWaitingForResponse}
                         onClick={() => declareBlockers(blockAssignments)}
                       >
                         Confirm Blocks ({blockAssignments.length})
@@ -1556,11 +1701,11 @@ export default function Game() {
               </div>
             </div>
 
-            {/* Game log */}
+            {/* Game log — last 10 entries, scrollable */}
             {gameLog.length > 0 && (
-              <div className="shrink-0 max-h-14 overflow-y-auto text-xs text-muted-foreground border-t pt-1 px-1">
-                {gameLog.slice(-4).map((msg, i) => (
-                  <div key={i}>{msg}</div>
+              <div className="shrink-0 max-h-20 overflow-y-auto text-xs text-muted-foreground border-t pt-1 px-1 flex flex-col-reverse">
+                {gameLog.slice(-10).reverse().map((msg, i) => (
+                  <div key={i} className="py-px">{msg}</div>
                 ))}
               </div>
             )}
@@ -1603,11 +1748,30 @@ export default function Game() {
               scryDecision(selectedIds);
             } else if (libraryPeekModal.mode === "surveil") {
               surveilDecision(selectedIds);
+            } else if (libraryPeekModal.mode === "discard") {
+              discardDecision(selectedIds);
             } else {
               digDecision(selectedIds);
             }
             setLibraryPeekModal(null);
           }}
+        />
+      )}
+
+      {/* ── Spell stack modal (view stack / choose counter target) ─── */}
+      {spellStackModalOpen && gameView.stack.length > 0 && (
+        <SpellStackModal
+          stack={gameView.stack}
+          validSpellIds={
+            promptType === "chooseTargetSpell"
+              ? (currentPrompt?.validSpellIds ?? [])
+              : []
+          }
+          onTarget={(spellId) => {
+            targetSpell(spellId);
+            setSpellStackModalOpen(false);
+          }}
+          onCancel={() => setSpellStackModalOpen(false)}
         />
       )}
 
@@ -1666,7 +1830,7 @@ export default function Game() {
 
       {/* ── Hover card preview ────────────────────────────── */}
       {/* Hide when any modal is open so the preview doesn't bleed through. */}
-      {hoveredCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && (
+      {hoveredCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && !spellStackModalOpen && (
         <CardPreview
           card={hoveredCard}
           mouseX={mousePos.x}

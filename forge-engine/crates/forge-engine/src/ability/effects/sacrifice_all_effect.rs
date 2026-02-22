@@ -4,10 +4,7 @@ use super::{emit_zone_trigger, matches_change_type, EffectContext};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-) {
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
@@ -30,8 +27,7 @@ pub fn resolve(
             continue;
         }
         let owner = ctx.game.card(card_id).owner;
-        ctx.game
-            .move_card(card_id, ZoneType::Graveyard, owner);
+        ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
         emit_zone_trigger(
             ctx.trigger_handler,
             card_id,

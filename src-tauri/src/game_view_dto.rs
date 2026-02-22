@@ -118,7 +118,7 @@ fn phase_to_step(phase: forge_foundation::PhaseType) -> &'static str {
         CombatBegin => "begin_combat",
         CombatDeclareAttackers => "declare_attackers",
         CombatDeclareBlockers => "declare_blockers",
-        CombatFirstStrikeDamage => "combat_damage",
+        CombatFirstStrikeDamage => "first_strike_damage",
         CombatDamage => "combat_damage",
         CombatEnd => "end_combat",
         Main2 => "main2",

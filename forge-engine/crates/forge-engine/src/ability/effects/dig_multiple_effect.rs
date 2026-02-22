@@ -215,6 +215,7 @@ mod tests {
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
+            parent_target_card: None,
         };
 
         super::resolve(&mut ctx, &sa);

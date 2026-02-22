@@ -36,8 +36,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     ctx.agents[target.index()].on_library_peek(ctx.game, &top_n);
 
     // Ask the agent which to put on the bottom.
-    let bottom_ids = ctx.agents[target.index()]
-        .choose_scry(target, &top_n);
+    let bottom_ids = ctx.agents[target.index()].choose_scry(target, &top_n);
 
     // Validate: only cards that were actually in top_n are accepted.
     let bottom: Vec<_> = bottom_ids
@@ -95,20 +94,51 @@ mod tests {
     /// Agent that always puts all cards on the bottom.
     struct BottomAllAgent;
     impl PlayerAgent for BottomAllAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
-        fn choose_action(&mut self, _: PlayerId, _: &[CardId], _: &[CardId], _: &[CardId], _: &[(CardId, usize)]) -> crate::agent::MainPhaseAction {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+            true
+        }
+        fn choose_action(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+            _: &[CardId],
+            _: &[(CardId, usize)],
+        ) -> crate::agent::MainPhaseAction {
             crate::agent::MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> { vec![] }
-        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { vec![] }
-        fn choose_target_player(&mut self, _: PlayerId, v: &[PlayerId]) -> Option<PlayerId> { v.first().copied() }
-        fn choose_target_card(&mut self, _: PlayerId, v: &[CardId]) -> Option<CardId> { v.first().copied() }
-        fn choose_target_any(&mut self, _: PlayerId, vp: &[PlayerId], vc: &[CardId]) -> crate::agent::TargetChoice {
-            vp.first().copied().map(crate::agent::TargetChoice::Player)
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+            vec![]
+        }
+        fn choose_blockers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            vec![]
+        }
+        fn choose_target_player(&mut self, _: PlayerId, v: &[PlayerId]) -> Option<PlayerId> {
+            v.first().copied()
+        }
+        fn choose_target_card(&mut self, _: PlayerId, v: &[CardId]) -> Option<CardId> {
+            v.first().copied()
+        }
+        fn choose_target_any(
+            &mut self,
+            _: PlayerId,
+            vp: &[PlayerId],
+            vc: &[CardId],
+        ) -> crate::agent::TargetChoice {
+            vp.first()
+                .copied()
+                .map(crate::agent::TargetChoice::Player)
                 .or_else(|| vc.first().copied().map(crate::agent::TargetChoice::Card))
                 .unwrap_or(crate::agent::TargetChoice::None)
         }
-        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+            None
+        }
         fn notify(&mut self, _: &str) {}
         fn choose_scry(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
             cards.to_vec() // put all on bottom
@@ -130,10 +160,8 @@ mod tests {
         // Scry 2: sees [b, c] (top 2). BottomAllAgent puts both on bottom.
         let sa = SpellAbility::new_simple(None, p0, "SP$ Scry | ScryNum$ 2");
         let mut trigger_handler = TriggerHandler::new();
-        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-            Box::new(BottomAllAgent),
-            Box::new(PassAgent),
-        ];
+        let mut agents: Vec<Box<dyn PlayerAgent>> =
+            vec![Box::new(BottomAllAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
         let mut ctx = EffectContext {
@@ -142,6 +170,7 @@ mod tests {
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
+            parent_target_card: None,
         };
 
         super::resolve(&mut ctx, &sa);
@@ -164,10 +193,7 @@ mod tests {
 
         let sa = SpellAbility::new_simple(None, p0, "SP$ Scry | ScryNum$ 2");
         let mut trigger_handler = TriggerHandler::new();
-        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-            Box::new(PassAgent),
-            Box::new(PassAgent),
-        ];
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
         let mut ctx = EffectContext {
@@ -176,6 +202,7 @@ mod tests {
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
+            parent_target_card: None,
         };
 
         super::resolve(&mut ctx, &sa);

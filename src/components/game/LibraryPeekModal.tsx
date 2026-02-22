@@ -7,7 +7,7 @@ import type { Card as CardType } from "@/types/xmage";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
 
-export type LibraryPeekMode = "scry" | "surveil" | "dig";
+export type LibraryPeekMode = "scry" | "surveil" | "dig" | "discard";
 
 interface LibraryPeekModalProps {
   mode: LibraryPeekMode;
@@ -32,7 +32,7 @@ const MODE_CONFIG: Record<
     selectedLabel: string;
     unselectedLabel: string;
     selectedRing: string;
-    confirmLabel: (selected: number, total: number) => string;
+    confirmLabel: (selected: number, total: number, required?: number) => string;
   }
 > = {
   scry: {
@@ -65,6 +65,19 @@ const MODE_CONFIG: Record<
     selectedRing: "ring-green-400",
     confirmLabel: (n) => `Take ${n} to Hand`,
   },
+  discard: {
+    title: "Discard",
+    subtitle: "Choose cards to discard from your hand",
+    instructions:
+      "Click cards to discard them. You must discard the required number.",
+    selectedLabel: "DISCARD",
+    unselectedLabel: "KEEP",
+    selectedRing: "ring-red-500",
+    confirmLabel: (n, _t, required) =>
+      n < (required ?? 0)
+        ? `Select ${(required ?? 0) - n} more to discard`
+        : `Discard ${n}`,
+  },
 };
 
 export function LibraryPeekModal({
@@ -79,8 +92,14 @@ export function LibraryPeekModal({
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
 
   const config = MODE_CONFIG[mode];
-  const max = mode === "dig" ? (numToTake ?? cards.length) : cards.length;
-  const canConfirm = mode !== "dig" || optional || selected.size > 0;
+  const required = mode === "discard" ? (numToTake ?? 1) : undefined;
+  const max = mode === "dig" ? (numToTake ?? cards.length) : mode === "discard" ? (numToTake ?? cards.length) : cards.length;
+  const canConfirm =
+    mode === "dig"
+      ? optional || selected.size > 0
+      : mode === "discard"
+        ? selected.size === (numToTake ?? 1)
+        : true;
 
   function toggleCard(id: string) {
     setSelected((prev) => {
@@ -88,7 +107,7 @@ export function LibraryPeekModal({
       if (next.has(id)) {
         next.delete(id);
       } else {
-        if (mode === "dig" && next.size >= max) return prev;
+        if ((mode === "dig" || mode === "discard") && next.size >= max) return prev;
         next.add(id);
       }
       return next;
@@ -123,7 +142,7 @@ export function LibraryPeekModal({
             <h2 className="font-semibold text-base">{config.title}</h2>
             <p className="text-xs text-muted-foreground">{config.subtitle}</p>
           </div>
-          {mode === "dig" && numToTake !== undefined && (
+          {(mode === "dig" || mode === "discard") && numToTake !== undefined && (
             <Badge variant="secondary">
               {selected.size} / {numToTake} selected
             </Badge>
@@ -188,7 +207,7 @@ export function LibraryPeekModal({
           </div>
           <div className="flex gap-2">
             {/* Select All / Clear helpers for scry and surveil */}
-            {mode !== "dig" && (
+            {mode !== "dig" && mode !== "discard" && (
               <Button
                 variant="outline"
                 size="sm"
@@ -199,7 +218,7 @@ export function LibraryPeekModal({
                 All to {config.selectedLabel}
               </Button>
             )}
-            {mode !== "dig" && selected.size > 0 && (
+            {mode !== "dig" && mode !== "discard" && selected.size > 0 && (
               <Button
                 variant="outline"
                 size="sm"
@@ -213,7 +232,7 @@ export function LibraryPeekModal({
               disabled={!canConfirm}
               onClick={handleConfirm}
             >
-              {config.confirmLabel(selected.size, cards.length)}
+              {config.confirmLabel(selected.size, cards.length, required)}
             </Button>
           </div>
         </div>

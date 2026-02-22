@@ -192,6 +192,7 @@ impl TriggerHandler {
             TriggerMode::SpellCast { .. } => TriggerType::SpellCast,
             TriggerMode::Attacks { .. } => TriggerType::Attacks,
             TriggerMode::DamageDone { .. } => TriggerType::DamageDone,
+            TriggerMode::Countered { .. } => TriggerType::Countered,
         };
 
         if trigger_type != *mode {

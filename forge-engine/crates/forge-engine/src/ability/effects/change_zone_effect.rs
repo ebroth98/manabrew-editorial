@@ -3,12 +3,13 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger, matches_change_type, parse_zone_type, EffectContext};
 use crate::spellability::SpellAbility;
 
-pub fn resolve(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-) {
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let origin_str = sa.params.get("Origin").map(|s| s.as_str()).unwrap_or("");
-    let destination_str = sa.params.get("Destination").map(|s| s.as_str()).unwrap_or("");
+    let destination_str = sa
+        .params
+        .get("Destination")
+        .map(|s| s.as_str())
+        .unwrap_or("");
     let tapped = sa
         .params
         .get("Tapped")
@@ -16,7 +17,11 @@ pub fn resolve(
         .unwrap_or(false);
     let change_type = sa.params.get("ChangeType").cloned().unwrap_or_default();
     let defined = sa.params.get("Defined").cloned().unwrap_or_default();
-    let lib_position = sa.params.get("LibraryPosition").cloned().unwrap_or_default();
+    let lib_position = sa
+        .params
+        .get("LibraryPosition")
+        .cloned()
+        .unwrap_or_default();
     let shuffle = sa
         .params
         .get("Shuffle")
@@ -24,9 +29,10 @@ pub fn resolve(
         .unwrap_or(false);
     let controller = sa.activating_player;
 
-    if let (Some(dest_zone), Some(origin_zone)) =
-        (parse_zone_type(destination_str), parse_zone_type(origin_str))
-    {
+    if let (Some(dest_zone), Some(origin_zone)) = (
+        parse_zone_type(destination_str),
+        parse_zone_type(origin_str),
+    ) {
         // Determine which card to move
         let card_to_move = if let Some(cid) = sa.target_chosen.target_card {
             // Targeted effect: move if it's in the expected origin zone

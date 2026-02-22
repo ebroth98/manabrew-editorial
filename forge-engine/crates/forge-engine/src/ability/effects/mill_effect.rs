@@ -25,10 +25,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let count = num.min(lib_len);
 
     for _ in 0..count {
-        let top = ctx
-            .game
-            .zone_mut(ZoneType::Library, target)
-            .take_top();
+        let top = ctx.game.zone_mut(ZoneType::Library, target).take_top();
         if let Some(card_id) = top {
             ctx.game.move_card(card_id, ZoneType::Graveyard, target);
             emit_zone_trigger(
@@ -83,10 +80,8 @@ mod tests {
 
         let sa = SpellAbility::new_simple(None, p0, "SP$ Mill | NumCards$ 2 | Defined$ You");
         let mut trigger_handler = TriggerHandler::new();
-        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> = vec![
-            Box::new(PassAgent),
-            Box::new(PassAgent),
-        ];
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
         let mut ctx = EffectContext {
@@ -95,6 +90,7 @@ mod tests {
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
+            parent_target_card: None,
         };
 
         super::resolve(&mut ctx, &sa);
@@ -112,10 +108,8 @@ mod tests {
 
         let sa = SpellAbility::new_simple(None, p0, "SP$ Mill | NumCards$ 5 | Defined$ You");
         let mut trigger_handler = TriggerHandler::new();
-        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> = vec![
-            Box::new(PassAgent),
-            Box::new(PassAgent),
-        ];
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
         let mut ctx = EffectContext {
@@ -124,6 +118,7 @@ mod tests {
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
+            parent_target_card: None,
         };
 
         super::resolve(&mut ctx, &sa);

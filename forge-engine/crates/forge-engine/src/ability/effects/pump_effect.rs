@@ -3,10 +3,7 @@ use forge_foundation::ZoneType;
 use super::{parse_param, EffectContext};
 use crate::spellability::SpellAbility;
 
-pub fn resolve(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-) {
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let att_bonus = parse_param(&sa.ability_text, "NumAtt$ ").unwrap_or(0);
     let def_bonus = parse_param(&sa.ability_text, "NumDef$ ").unwrap_or(0);
 

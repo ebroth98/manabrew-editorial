@@ -37,6 +37,10 @@ interface AgentPrompt {
   numToTake?: number;
   /** dig: whether taking 0 cards is allowed */
   optional?: boolean;
+  /** chooseDiscard: how many must be discarded */
+  numToDiscard?: number;
+  /** chooseTargetSpell: stack entry IDs that can be countered */
+  validSpellIds?: string[];
 }
 
 interface GameConfig {
@@ -62,6 +66,8 @@ interface GameState {
   deferredQueue: DeferredSnapshot[];
   /** True while Game.tsx is processing flash animations. */
   isFlashing: boolean;
+  /** True after respond() is called and before the next prompt arrives — prevents double-submit. */
+  isWaitingForResponse: boolean;
   gameConfig: GameConfig | null;
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
@@ -81,6 +87,8 @@ interface GameState {
   scryDecision: (bottomCardIds: string[]) => void;
   surveilDecision: (graveyardCardIds: string[]) => void;
   digDecision: (chosenCardIds: string[]) => void;
+  discardDecision: (discardedCardIds: string[]) => void;
+  targetSpell: (spellId: string | null) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setupListeners: () => Promise<() => void>;
@@ -116,6 +124,7 @@ function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial
     const updates: Partial<GameState> = {
       gameView: prompt.gameView,
       debugInfo: `${source}: ${prompt.type}`,
+      isWaitingForResponse: false,
     };
     if (!isStateUpdate) {
       updates.currentPrompt = prompt;
@@ -132,6 +141,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   debugInfo: '',
   deferredQueue: [],
   isFlashing: false,
+  isWaitingForResponse: false,
   gameConfig: null,
 
   updateGameView: (view) => set({ gameView: view }),
@@ -151,7 +161,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         commanderName: commanderName ?? null,
       });
       // Clear old game state so stale gameView/prompts don't bleed into new game
-      set({ isGameActive: true, gameLog: [], gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, debugInfo: `Game started: ${result}. Polling...` });
+      set({ isGameActive: true, gameLog: [], gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, debugInfo: `Game started: ${result}. Polling...` });
     } catch (e) {
       set({ debugInfo: `Start failed: ${e}` });
       console.error('[store] Failed to start game:', e);
@@ -160,12 +170,13 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   respond: async (action) => {
     try {
-      // Clear the current prompt immediately so combat/action UI disappears
-      // as soon as the player commits — the next prompt will arrive via event.
-      set({ currentPrompt: null, debugInfo: `Responding: ${action.type}` });
+      // Mark as waiting so action buttons are disabled while the engine processes the response.
+      // We do NOT clear currentPrompt here — keeping it visible prevents a blank-state flash.
+      // The incoming next prompt will clear isWaitingForResponse and update currentPrompt.
+      set({ isWaitingForResponse: true, debugInfo: `Responding: ${action.type}` });
       await invoke('respond', { action });
     } catch (e) {
-      set({ debugInfo: `Respond error: ${e}` });
+      set({ isWaitingForResponse: false, debugInfo: `Respond error: ${e}` });
       console.error('Failed to respond:', e);
     }
   },
@@ -175,6 +186,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   },
 
   passPriority: () => {
+    if (get().isWaitingForResponse) return;
     const prompt = get().currentPrompt;
     if (!prompt) return;
     switch (prompt.type) {
@@ -236,6 +248,14 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().respond({ type: 'digDecision', chosenCardIds });
   },
 
+  discardDecision: (discardedCardIds) => {
+    get().respond({ type: 'discardDecision', discardedCardIds });
+  },
+
+  targetSpell: (spellId) => {
+    get().respond({ type: 'targetSpell', spellId });
+  },
+
   concede: () => {
     get().respond({ type: 'concede' });
   },
@@ -243,7 +263,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   endGame: async () => {
     try {
       await invoke('end_game');
-      set({ isGameActive: false, gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false });
+      set({ isGameActive: false, gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false });
     } catch (e) {
       console.error('Failed to end game:', e);
     }

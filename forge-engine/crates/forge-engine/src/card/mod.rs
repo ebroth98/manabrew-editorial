@@ -108,6 +108,19 @@ pub struct CardInstance {
     // Replacement effects — parsed from R$ lines in card abilities.
     // Mirrors Java `Card.getReplacementEffects()`.
     pub replacement_effects: Vec<ReplacementEffect>,
+
+    // Attachment tracking (Auras / Equipment).
+    // Mirrors Java `Card.getAttachedTo()` / `Card.getAttachedCards()`.
+    /// The permanent this card is currently attached to (for Auras/Equipment).
+    pub attached_to: Option<CardId>,
+    /// Cards currently attached to this permanent (inverse of `attached_to`).
+    pub attachments: Vec<CardId>,
+
+    // Memory for "Remember" parameters
+    /// Cards remembered by this card (for RememberCountered, etc.)
+    pub remembered_cards: Vec<CardId>,
+    /// CMC values remembered by this card
+    pub remembered_cmc: Vec<i32>,
 }
 
 impl CardInstance {
@@ -183,6 +196,10 @@ impl CardInstance {
             commander_cast_count: 0,
             is_token: false,
             replacement_effects,
+            attached_to: None,
+            attachments: Vec::new(),
+            remembered_cards: Vec::new(),
+            remembered_cmc: Vec::new(),
         }
     }
 
@@ -288,6 +305,14 @@ impl CardInstance {
             && !self.cant_block_static
             && self.zone == ZoneType::Battlefield
     }
+    
+    /// Check if this card can be controlled by the given player
+    /// (e.g., checks for "Other players can't gain control of CARDNAME.")
+    pub fn can_be_controlled_by(&self, _player: PlayerId) -> bool {
+        // TODO: Check for "Other players can't gain control of CARDNAME." keyword
+        // For now, return true - all cards can be controlled
+        true
+    }
 
     pub fn counter_count(&self, ct: CounterType) -> i32 {
         *self.counters.get(&ct).unwrap_or(&0)
@@ -321,6 +346,18 @@ impl CardInstance {
         if self.zone == ZoneType::Battlefield {
             self.summoning_sick = false;
         }
+    }
+    
+    /// Add a remembered card (for RememberCountered, etc.)
+    pub fn add_remembered_card(&mut self, card_id: CardId) {
+        if !self.remembered_cards.contains(&card_id) {
+            self.remembered_cards.push(card_id);
+        }
+    }
+    
+    /// Add a remembered CMC value
+    pub fn add_remembered_cmc(&mut self, cmc: i32) {
+        self.remembered_cmc.push(cmc);
     }
 }
 

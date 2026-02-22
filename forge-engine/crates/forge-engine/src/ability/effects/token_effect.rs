@@ -3,10 +3,7 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger, EffectContext};
 use crate::spellability::SpellAbility;
 
-pub fn resolve(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-) {
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Create token creature(s) on the battlefield.
     // Mirrors Java TokenEffect / TokenEffectBase.
     let amount: usize = sa

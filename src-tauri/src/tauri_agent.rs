@@ -9,6 +9,13 @@ use forge_foundation::ZoneType;
 use crate::game_view_dto::{card_to_dto, GameViewDto, CardDto};
 use crate::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, DisplayEvent, PlayerAction, TargetAnyChoice};
 
+/// Parse "stack-42" → 42u32 (stack entry ID).
+/// Matches the DTO format used in `game_view_dto.rs` (`format!("stack-{}", entry.id)`).
+fn parse_spell_id(s: &str) -> Option<u32> {
+    s.strip_prefix("stack-")
+        .and_then(|n| n.parse::<u32>().ok())
+}
+
 /// A PlayerAgent that sends prompts to the frontend and blocks waiting for a response.
 pub struct TauriAgent {
     pub human_player: PlayerId,
@@ -422,6 +429,41 @@ impl PlayerAgent for TauriAgent {
                 chosen_card_ids.iter().filter_map(|id| Self::parse_card_id(id)).collect()
             }
             _ => valid.iter().copied().take(max).collect(),
+        }
+    }
+
+    fn choose_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
+        if player != self.human_player {
+            return hand.iter().copied().take(num).collect();
+        }
+        let hand_card_ids: Vec<String> = hand.iter().map(|c| format!("card-{}", c.0)).collect();
+        self.send_prompt(AgentPromptInner::ChooseDiscard {
+            game_view: self.view(),
+            hand_card_ids,
+            num_to_discard: num,
+        });
+        match self.recv_action() {
+            PlayerAction::DiscardDecision { discarded_card_ids } => {
+                discarded_card_ids.iter().filter_map(|id| Self::parse_card_id(id)).collect()
+            }
+            _ => hand.iter().copied().take(num).collect(),
+        }
+    }
+
+    fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> {
+        if player != self.human_player {
+            return valid.first().copied();
+        }
+        let valid_spell_ids: Vec<String> = valid.iter().map(|id| format!("stack-{}", id)).collect();
+        self.send_prompt(AgentPromptInner::ChooseTargetSpell {
+            game_view: self.view(),
+            valid_spell_ids,
+        });
+        match self.recv_action() {
+            PlayerAction::TargetSpell { spell_id } => {
+                spell_id.and_then(|id| parse_spell_id(&id))
+            }
+            _ => valid.first().copied(),
         }
     }
 

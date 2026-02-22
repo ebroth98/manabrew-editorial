@@ -145,6 +145,8 @@ impl GameManager {
                     AgentPromptInner::Scry { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::Surveil { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::Dig { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseDiscard { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseTargetSpell { game_view, .. } => Some(game_view.clone()),
                 });
                 let mut view = base_view.unwrap_or_else(|| GameViewDto {
                     game_id: String::new(),

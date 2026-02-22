@@ -28,6 +28,8 @@ pub enum TargetKind {
         zone: ZoneType,
         filter: Option<String>,
     },
+    /// Spell on the stack (for Counter effects, e.g. "ValidTgts$ Spell")
+    Spell,
     /// No targets
     None,
 }
@@ -41,6 +43,8 @@ pub struct TargetRestrictions {
     pub valid_tgts: Vec<String>,
     /// Parsed target kind
     pub target_kind: TargetKind,
+    /// Additional target type filter (e.g. "Spell" from TargetType$ parameter)
+    pub target_type_filter: Option<String>,
     /// Minimum number of targets (default 1)
     pub min_targets: i32,
     /// Maximum number of targets (default 1)
@@ -55,13 +59,25 @@ impl TargetRestrictions {
     pub fn new(params: &BTreeMap<String, String>) -> Option<Self> {
         let valid_tgts_str = params.get("ValidTgts")?;
         let valid_tgts: Vec<String> = valid_tgts_str.split(',').map(|s| s.trim().to_string()).collect();
-        let target_kind = parse_target_kind(&valid_tgts[0]);
+        let mut target_kind = parse_target_kind(&valid_tgts[0]);
         let min_targets = params.get("TargetMin").and_then(|s| s.parse().ok()).unwrap_or(1);
         let max_targets = params.get("TargetMax").and_then(|s| s.parse().ok()).unwrap_or(1);
+
+        // Parse TargetType$ parameter if present (used by counterspells)
+        let target_type_filter = params.get("TargetType").cloned();
+        
+        // If TargetType$ Spell is specified, override to Spell targeting
+        // This handles cases like Counterspell: "ValidTgts$ Card | TargetType$ Spell"
+        if let Some(ref target_type) = target_type_filter {
+            if target_type.eq_ignore_ascii_case("Spell") {
+                target_kind = TargetKind::Spell;
+            }
+        }
 
         Some(TargetRestrictions {
             valid_tgts,
             target_kind,
+            target_type_filter,
             min_targets,
             max_targets,
             tgt_zone: vec![ZoneType::Battlefield],
@@ -87,7 +103,45 @@ impl TargetRestrictions {
             TargetKind::CardInZone { zone, filter } => {
                 has_valid_target_in_zone(game, player, *zone, filter.as_deref())
             }
+            TargetKind::Spell => {
+                // If we have a TargetType$ filter, apply it
+                if let Some(ref filter) = self.target_type_filter {
+                    has_valid_spell_with_filter(game, filter)
+                } else {
+                    !game.stack.is_empty()
+                }
+            }
         }
+    }
+}
+
+/// Check if there are valid spells on the stack matching the TargetType$ filter.
+pub fn has_valid_spell_with_filter(game: &GameState, filter: &str) -> bool {
+    // For now, we only support "Spell" filter which matches all spells
+    // In the future, we could filter by spell type (e.g., "Creature", "Instant", "Sorcery")
+    if filter.eq_ignore_ascii_case("Spell") {
+        // Look for any spell on the stack (abilities are not spells)
+        game.stack.iter().any(|entry| {
+            entry.spell_ability.is_spell
+        })
+    } else {
+        // Unknown filter, fall back to checking if stack is not empty
+        !game.stack.is_empty()
+    }
+}
+
+/// Filter stack entries to only include spells matching the TargetType$ filter.
+pub fn filter_spells_by_type(game: &GameState, candidates: &[u32], filter: &str) -> Vec<u32> {
+    if filter.eq_ignore_ascii_case("Spell") {
+        // Only include entries that are actual spells (not abilities)
+        candidates.iter().filter(|&&id| {
+            game.stack.iter().any(|entry| {
+                entry.id == id && entry.spell_ability.is_spell
+            })
+        }).cloned().collect()
+    } else {
+        // Unknown filter, return all candidates
+        candidates.to_vec()
     }
 }
 
@@ -99,6 +153,9 @@ fn parse_target_kind(val: &str) -> TargetKind {
     }
     if val.eq_ignore_ascii_case("Player") {
         return TargetKind::Player;
+    }
+    if val.eq_ignore_ascii_case("Spell") {
+        return TargetKind::Spell;
     }
     if val.starts_with("Creature") {
         let filter = val.strip_prefix("Creature").unwrap();
@@ -248,6 +305,9 @@ fn parse_target_kind_legacy(val: &str) -> TargetKind {
     if val.eq_ignore_ascii_case("Player") {
         return TargetKind::Player;
     }
+    if val.eq_ignore_ascii_case("Spell") {
+        return TargetKind::Spell;
+    }
     if val.starts_with("Creature") {
         let filter = val.strip_prefix("Creature").unwrap();
         if filter.is_empty() {
@@ -276,6 +336,12 @@ pub fn get_valid_cards_in_zone(
             .filter(|&cid| card_property::card_has_property(game.card(cid), f, player))
             .collect(),
     }
+}
+
+/// Get all stack entry IDs for spells that can be countered.
+/// Mirrors Java's `TargetRestrictions.getAllCandidates()` for Spell targets.
+pub fn get_all_candidates_spells(game: &GameState) -> Vec<u32> {
+    game.stack.iter().map(|e| e.id).collect()
 }
 
 /// Check if there are valid targets in a specific zone.

@@ -74,6 +74,14 @@ export function Card({ card, className, isTapped, onClick }: CardProps) {
             onError={() => setHasError(true)}
             loading="lazy"
           />
+          {/* Token indicator — top-center banner */}
+          {card.isToken && (
+            <div className="absolute top-0 left-0 right-0 flex justify-center z-20 pointer-events-none">
+              <span className="text-[8px] font-bold bg-amber-400/90 text-amber-900 px-1.5 py-0.5 rounded-b leading-none">
+                TOKEN
+              </span>
+            </div>
+          )}
           {/* Keyword chips — only on battlefield */}
           {onBattlefield && card.keywords && card.keywords.length > 0 && (
             <KeywordChips keywords={card.keywords} />
@@ -111,7 +119,14 @@ export function Card({ card, className, isTapped, onClick }: CardProps) {
         <div className="absolute inset-0 p-2 flex flex-col justify-between">
           <div className="flex justify-between items-start gap-1">
             <span className="font-bold text-xs leading-tight line-clamp-2">{card.name}</span>
-            <span className="text-xs font-mono shrink-0">{card.manaCost}</span>
+            <div className="flex flex-col items-end gap-0.5 shrink-0">
+              {card.isToken && (
+                <span className="text-[8px] font-bold bg-amber-400/90 text-amber-900 px-1 py-0.5 rounded leading-none">
+                  TOKEN
+                </span>
+              )}
+              <span className="text-xs font-mono">{card.manaCost}</span>
+            </div>
           </div>
           <div className="flex-1 flex items-center justify-center px-1">
             <span className="text-xs text-muted-foreground text-center line-clamp-5">

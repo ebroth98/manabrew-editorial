@@ -5,10 +5,7 @@ use crate::card::CardInstance;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-) {
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Clone a targeted permanent onto the battlefield under the controller's control.
     // Mirrors Java CopyPermanentEffect.
     // Supports: PumpKeywords$ (extra keywords on the copy).
@@ -40,7 +37,7 @@ pub fn resolve(
                 for kw in pump_kws.split(',') {
                     let kw = kw.trim().to_string();
                     if !kw.is_empty() {
-                        copy.granted_keywords.push(kw);
+                        copy.keywords.push(kw);
                     }
                 }
             }

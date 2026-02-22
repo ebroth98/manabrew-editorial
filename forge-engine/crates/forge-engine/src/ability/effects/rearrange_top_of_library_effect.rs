@@ -44,13 +44,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .choose_reorder_library(sa.activating_player, &top_n);
 
     // Validate: use reordered if it contains exactly the same cards.
-    let put_back = if reordered.len() == top_n.len()
-        && top_n.iter().all(|id| reordered.contains(id))
-    {
-        reordered
-    } else {
-        top_n
-    };
+    let put_back =
+        if reordered.len() == top_n.len() && top_n.iter().all(|id| reordered.contains(id)) {
+            reordered
+        } else {
+            top_n
+        };
 
     // Put cards back on top (append to end = top of library).
     for &id in &put_back {
@@ -59,8 +58,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Handle optional shuffle (default: no shuffle).
     if may_shuffle {
-        let wants_shuffle = ctx.agents[sa.activating_player.index()]
-            .choose_may_shuffle(sa.activating_player);
+        let wants_shuffle =
+            ctx.agents[sa.activating_player.index()].choose_may_shuffle(sa.activating_player);
         if wants_shuffle {
             let mut rng = rand::thread_rng();
             ctx.game.shuffle_library(target, &mut rng);

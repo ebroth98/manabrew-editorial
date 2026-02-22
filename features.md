@@ -113,7 +113,7 @@
 | `AnimateAllEffect.java` | Animate all matching permanents | Not implemented |
 | `AnimateEffectBase.java` | Base class for animate effects | Not implemented |
 | `AscendEffect.java` | Check/grant City's Blessing | Not implemented |
-| `AttachEffect.java` | Attach aura/equipment to permanent | Not implemented |
+| `AttachEffect.java` | Attach aura/equipment to permanent | **Implemented** — `attach.rs`: attaches source Equipment/Aura to target creature on battlefield; handles detach from previous host; `CardInstance.attached_to`/`attachments` fields added; `GameState.attach_to`/`detach`/`remove_from_stack` in `action.rs` |
 | `BalanceEffect.java` | Balance-type equalization effect | Not implemented |
 | `BecomeMonarchEffect.java` | Become the Monarch | Not implemented |
 | `BidLifeEffect.java` | Bid life (auction mechanic) | Not implemented |
@@ -129,10 +129,10 @@
 | `ChoosePlayerEffect.java` | Choose a player | Not implemented |
 | `CloneEffect.java` | Copy/clone a permanent | **Partial** — `CopyPermanent` handler in `game_loop.rs`: copies targeted battlefield permanent, supports `PumpKeywords$`; copies are flagged `is_token` and cease to exist off battlefield. `AtEOT$` cleanup not yet implemented. |
 | `ConniveEffect.java` | Connive N (draw + discard) | Not implemented |
-| `ControlGainEffect.java` | Gain control of permanent | Not implemented |
+| `ControlGainEffect.java` | Gain control of permanent | **Implemented** — `control_gain.rs`: changes controller of target battlefield permanent via `GameState.change_controller`; moves card between per-player zone lists |
 | `CopyPermanentEffect.java` | Copy a permanent onto battlefield | **Partial** — see `CloneEffect.java` above |
 | `CopySpellAbilityEffect.java` | Copy a spell on the stack | Not implemented |
-| `CounterEffect.java` | Counter a spell or ability | Not implemented |
+| `CounterEffect.java` | Counter a spell or ability | **Implemented** — `counter.rs`: removes targeted stack entry via `MagicStack.remove_by_id`; moves source card to graveyard (or Destination$); `TargetKind::Spell` + `target_stack_entry: Option<u32>` in targeting system; `ChooseTargetSpell` prompt + clickable stack UI |
 | `CountersPutEffect.java` | Put counters on a permanent/player | Not implemented |
 | `CountersRemoveEffect.java` | Remove counters | Not implemented |
 | `CountersMoveEffect.java` | Move counters between permanents | Not implemented |
@@ -149,13 +149,13 @@
 | `DestroyEffect.java` | Destroy target permanent | Not implemented |
 | `DestroyAllEffect.java` | Destroy all matching permanents | Not implemented |
 | `DigEffect.java` | Look at top N cards, choose some | **Implemented** — `dig.rs`: `DigNum$`, `ChangeNum$` (All/Any/N), `DestinationZone$`/`DestinationZone2$`, `ChangeValid$`, `LibraryPosition2$`, optional; agent `choose_dig`; TauriAgent `Dig` prompt + `DigDecision` response |
-| `DiscardEffect.java` | Force discard | Not implemented |
+| `DiscardEffect.java` | Force discard | **Implemented** — `discard.rs`: target player or Defined$ player discards N (`NumCards$`) cards; agent `choose_discard`; TauriAgent `ChooseDiscard` prompt (reuses `LibraryPeekModal` in "discard" mode) + `DiscardDecision` response; fires `Discarded` trigger |
 | `DiscoverEffect.java` | Discover N mechanic | Not implemented |
 | `DrawEffect.java` | Draw cards | **Partial** (`action.rs` draw_cards) |
 | `EffectEffect.java` | Create emblem/effect on battlefield | Not implemented |
 | `EndTurnEffect.java` | End the turn | Not implemented |
 | `ExploreEffect.java` | Explore mechanic | Not implemented |
-| `FightEffect.java` | Fight between creatures | Not implemented |
+| `FightEffect.java` | Fight between creatures | **Implemented** — `fight.rs`: source creature and target creature deal damage to each other equal to power simultaneously; fires `Fight` trigger; `TriggerType::Fight` + `RunParams.card2` added to event system |
 | `FlipCoinEffect.java` | Flip a coin | Not implemented |
 | `FogEffect.java` | Prevent all combat damage | Not implemented |
 | `GameDrawEffect.java` | Force game draw | Not implemented |
@@ -903,7 +903,7 @@
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
 | Core Game | 37 | 3 | 8 | 26 |
 | Ability System | 10 | 0 | 2 | 8 |
-| Ability Effects | 197 | 10 | 12 | 175 |
+| Ability Effects | 197 | 15 | 12 | 170 |
 | Card System | 28 | 4 | 3 | 21 |
 | Perpetual Effects | 8 | 0 | 0 | 8 |
 | Tokens | 1 | 0 | 0 | 1 |

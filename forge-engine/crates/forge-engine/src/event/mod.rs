@@ -12,6 +12,12 @@ pub enum TriggerType {
     SpellCast,
     Attacks,
     DamageDone,
+    /// Two creatures fought each other (SP$ Fight).
+    Fight,
+    /// A card was discarded (SP$ Discard).
+    Discarded,
+    /// A spell was countered (SP$ Counter).
+    Countered,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.
@@ -35,4 +41,10 @@ pub struct RunParams {
     pub defending_player: Option<PlayerId>,
     pub spell_card: Option<CardId>,
     pub spell_controller: Option<PlayerId>,
+    /// Second card involved (e.g. second creature in a Fight trigger).
+    pub card2: Option<CardId>,
+    /// SpellAbility that was countered
+    pub spell_ability: Option<crate::spellability::SpellAbility>,
+    /// Cause of the event (e.g. counterspell)
+    pub cause: Option<crate::spellability::SpellAbility>,
 }

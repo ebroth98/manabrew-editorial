@@ -1,6 +1,7 @@
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::PlayerId;
 use forge_foundation::ZoneType;
+use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
 
 use crate::card_db::{card_rules_to_instance, get_card_db};
@@ -83,6 +84,24 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Scry + Surveil + Mill + Dig (Preordain, Ransack the Lab, Thought Scour)".into(),
             color: "text-cyan-400".into(),
         },
+        PresetDeckInfo {
+            id: "blue_control".into(),
+            label: "Blue Control".into(),
+            desc: "Counterspell + Mind Rot + Control Magic (Counter / Discard / ControlGain effects)".into(),
+            color: "text-blue-500".into(),
+        },
+        PresetDeckInfo {
+            id: "green_fight".into(),
+            label: "Green Fight".into(),
+            desc: "Prey Upon + Ram Through + big green creatures (Fight effects)".into(),
+            color: "text-green-400".into(),
+        },
+        PresetDeckInfo {
+            id: "showcase".into(),
+            label: "Showcase".into(),
+            desc: "All mechanics: Counter + Burn + Bounce + Token + Scry + Discard + Fight + Sac + Control + Mill".into(),
+            color: "text-pink-400".into(),
+        },
     ]
 }
 
@@ -99,6 +118,9 @@ pub fn is_preset_id(id: &str) -> bool {
             | "token_swarm"
             | "sac_cost"
             | "library_manipulation"
+            | "blue_control"
+            | "green_fight"
+            | "showcase"
     )
 }
 
@@ -139,6 +161,18 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "library_manipulation" => {
             build_named_deck(game, p0, LIBRARY_MANIPULATION);
             build_named_deck(game, p1, RED_BURN);
+        }
+        "blue_control" => {
+            build_named_deck(game, p0, BLUE_CONTROL);
+            build_named_deck(game, p1, RED_BURN);
+        }
+        "green_fight" => {
+            build_named_deck(game, p0, GREEN_FIGHT);
+            build_named_deck(game, p1, WHITE_AGGRO);
+        }
+        "showcase" => {
+            build_named_deck(game, p0, SHOWCASE);
+            build_named_deck(game, p1, random_ai_deck());
         }
         _ => {
             // red_burn (default)
@@ -272,6 +306,108 @@ const LIBRARY_MANIPULATION: &[(&str, usize)] = &[
     ("Doom Blade", 4),         // Destroy non-black creature
     ("Vampire Nighthawk", 4),  // 2/3 Flying Deathtouch Lifelink
 ];
+
+/// Exercises issue #16: Counter (Counterspell, Cancel), Discard (Mind Rot),
+/// and ControlGain (Control Magic) effects.
+const BLUE_CONTROL: &[(&str, usize)] = &[
+    ("Island", 17),
+    ("Counterspell", 4),    // SP$ Counter: counter target spell
+    ("Cancel", 4),          // SP$ Counter: counter target spell (3 mana)
+    ("Mind Rot", 4),        // SP$ Discard: target player discards 2 cards
+    ("Control Magic", 3),   // ControlGain: gain control of target creature
+    ("Mulldrifter", 3),     // 2/2 Flying; ETB draw 2
+    ("Divination", 4),      // Draw 2
+    ("Wall of Ice", 4),     // Blocker
+    ("Sea Serpent", 4),     // Big blue creature
+];
+
+/// Exercises issue #16: Fight effects (Prey Upon, Ram Through).
+/// Big green creatures provide good fight targets.
+const GREEN_FIGHT: &[(&str, usize)] = &[
+    ("Forest", 17),
+    ("Prey Upon", 4),         // SP$ Fight: creature you control fights target creature
+    ("Ram Through", 4),       // SP$ Fight: similar fight spell
+    ("Garruk's Companion", 4), // 3/2 Trample
+    ("Centaur Courser", 4),   // 3/3
+    ("Giant Spider", 3),      // 2/4 Reach
+    ("Craw Wurm", 3),         // 6/4
+    ("Giant Growth", 4),      // Pump before fighting
+    ("Grizzly Bears", 4),     // 2/2
+];
+
+/// Exercises all implemented mechanics in one deck (Grixis: U/B/R).
+/// - Burn: Lightning Bolt, Shock (DealDamage)
+/// - Counter: Counterspell (Counter target spell)
+/// - Bounce: Unsummon (ChangeZone Battlefield→Hand)
+/// - Token: Dragon Fodder (2× 1/1 Goblin)
+/// - Scry/Draw: Preordain (Scry 2 + Draw)
+/// - Surveil/Draw: Notion Rain (Surveil 2, Draw 2)
+/// - Dig: Ransack the Lab (Dig 3)
+/// - Discard: Mind Rot (target player discards 2)
+/// - Mill: Thought Scour (Mill 2 + Draw)
+/// - Reanimate: Raise Dead (GY→Hand ChangeZone)
+/// - SacrificeCost: Severed Strands (Sac creature, destroy target)
+/// - ControlGain: Control Magic (gain control of creature)
+/// - Fight: Prey Upon (creature you control fights target)
+/// - Keywords: Typhoid Rats (Deathtouch), Vampire Nighthawk (Flying/Deathtouch/Lifelink)
+/// - ETB draw: Mulldrifter (Flying, ETB draw 2)
+const SHOWCASE: &[(&str, usize)] = &[
+    ("Island", 7),
+    ("Swamp", 6),
+    ("Mountain", 4),
+    // Burn
+    ("Lightning Bolt", 2),
+    ("Shock", 2),
+    // Counter
+    ("Counterspell", 2),
+    // Bounce
+    ("Unsummon", 2),
+    // Token
+    ("Dragon Fodder", 2),
+    // Scry + Draw
+    ("Preordain", 2),
+    // Surveil + Draw
+    ("Notion Rain", 2),
+    // Dig
+    ("Ransack the Lab", 2),
+    // Discard
+    ("Mind Rot", 2),
+    // Mill + Draw
+    ("Thought Scour", 2),
+    // Reanimate
+    ("Raise Dead", 2),
+    // Sacrifice cost
+    ("Severed Strands", 2),
+    // Control gain
+    ("Control Magic", 1),
+    // Fight
+    ("Prey Upon", 2),
+    // Keywords / threats
+    ("Typhoid Rats", 2),
+    ("Vampire Nighthawk", 2),
+    ("Mulldrifter", 2),
+];
+
+/// All AI-eligible deck lists, used for random opponent selection.
+const AI_DECK_OPTIONS: &[&[(&str, usize)]] = &[
+    RED_BURN,
+    GREEN_STOMPY,
+    WHITE_AGGRO,
+    BLACK_CONTROL,
+    WHITE_STATIC,
+    ZONE_CHANGE,
+    TOKEN_SWARM,
+    SAC_COST,
+    LIBRARY_MANIPULATION,
+    BLUE_CONTROL,
+    GREEN_FIGHT,
+];
+
+/// Pick a random deck from all AI-eligible presets.
+fn random_ai_deck() -> &'static [(&'static str, usize)] {
+    let mut rng = rand::thread_rng();
+    AI_DECK_OPTIONS.choose(&mut rng).copied().unwrap_or(RED_BURN)
+}
 
 // ── Deck builders ──────────────────────────────────────────────────
 

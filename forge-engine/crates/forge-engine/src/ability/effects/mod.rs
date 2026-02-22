@@ -4,26 +4,31 @@
 //! `ability/effects/` package (204 files). Effects are dispatched by
 //! API type string extracted from the ability text.
 
-pub mod change_zone_effect;
+pub mod attach_effect;
 pub mod change_zone_all_effect;
+pub mod change_zone_effect;
+pub mod control_gain_effect;
 pub mod copy_permanent_effect;
+pub mod counter_effect;
+pub mod counters_put_effect;
 pub mod damage_deal_effect;
 pub mod destroy_effect;
 pub mod dig_effect;
 pub mod dig_multiple_effect;
+pub mod discard_effect;
 pub mod draw_effect;
+pub mod fight_effect;
 pub mod life_gain_effect;
-pub mod look_at_effect;
 pub mod life_lose_effect;
+pub mod look_at_effect;
 pub mod mana_effect;
 pub mod mill_effect;
 pub mod pump_effect;
-pub mod counters_put_effect;
 pub mod rearrange_top_of_library_effect;
 pub mod reveal_effect;
 pub mod reveal_hand_effect;
-pub mod sacrifice_effect;
 pub mod sacrifice_all_effect;
+pub mod sacrifice_effect;
 pub mod scry_effect;
 pub mod surveil_effect;
 pub mod token_effect;
@@ -48,6 +53,10 @@ pub struct EffectContext<'a> {
     pub trigger_handler: &'a mut TriggerHandler,
     pub token_templates: &'a HashMap<String, CardInstance>,
     pub mana_pools: &'a mut Vec<ManaPool>,
+    /// CardId of the parent SA's chosen target card, propagated through the
+    /// sub-ability chain so that `Defined$ ParentTarget` effects can resolve it.
+    /// Mirrors Java's `SpellAbility.getParentTargetCard()` (via getRootAbility()).
+    pub parent_target_card: Option<CardId>,
 }
 
 /// Resolve a single SpellAbility node's effect by dispatching on its API type.
@@ -84,6 +93,12 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
         "Reveal" => reveal_effect::resolve(ctx, sa),
         "RevealHand" => reveal_hand_effect::resolve(ctx, sa),
         "LookAt" => look_at_effect::resolve(ctx, sa),
+        // Counter, Control, Fight, Discard, Attach (issue #16)
+        "Counter" => counter_effect::resolve(ctx, sa),
+        "ControlGain" => control_gain_effect::resolve(ctx, sa),
+        "Fight" => fight_effect::resolve(ctx, sa),
+        "Discard" => discard_effect::resolve(ctx, sa),
+        "Attach" => attach_effect::resolve(ctx, sa),
         _ => {} // Unimplemented effect — silently skip
     }
 }
@@ -141,6 +156,16 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "Reveal"
     } else if ability.contains("LookAt") {
         "LookAt"
+    } else if ability.contains("$ Counter") {
+        "Counter"
+    } else if ability.contains("ControlGain") {
+        "ControlGain"
+    } else if ability.contains("$ Fight") {
+        "Fight"
+    } else if ability.contains("$ Discard") {
+        "Discard"
+    } else if ability.contains("$ Attach") {
+        "Attach"
     } else {
         ""
     }
@@ -271,9 +296,7 @@ mod tests {
     #[test]
     fn parse_num_dmg_test() {
         assert_eq!(
-            parse_num_dmg(
-                "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3 | SpellDescription$ test"
-            ),
+            parse_num_dmg("SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3 | SpellDescription$ test"),
             3
         );
     }
@@ -288,17 +311,26 @@ mod tests {
             parse_param("SP$ Pump | NumAtt$ 3 | NumDef$ 3", "NumDef$ "),
             Some(3)
         );
-        assert_eq!(
-            parse_param("SP$ Draw | NumCards$ 2", "NumCards$ "),
-            Some(2)
-        );
+        assert_eq!(parse_param("SP$ Draw | NumCards$ 2", "NumCards$ "), Some(2));
     }
 
     #[test]
     fn detect_api_type_fallback() {
-        assert_eq!(detect_api_type_from_text("something with ChangeZoneAll"), "ChangeZoneAll");
-        assert_eq!(detect_api_type_from_text("something with ChangeZone"), "ChangeZone");
-        assert_eq!(detect_api_type_from_text("something with SacrificeAll"), "SacrificeAll");
-        assert_eq!(detect_api_type_from_text("something with Sacrifice"), "Sacrifice");
+        assert_eq!(
+            detect_api_type_from_text("something with ChangeZoneAll"),
+            "ChangeZoneAll"
+        );
+        assert_eq!(
+            detect_api_type_from_text("something with ChangeZone"),
+            "ChangeZone"
+        );
+        assert_eq!(
+            detect_api_type_from_text("something with SacrificeAll"),
+            "SacrificeAll"
+        );
+        assert_eq!(
+            detect_api_type_from_text("something with Sacrifice"),
+            "Sacrifice"
+        );
     }
 }

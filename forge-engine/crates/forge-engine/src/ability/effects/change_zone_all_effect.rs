@@ -4,12 +4,17 @@ use super::{emit_zone_trigger, matches_change_type, parse_zone_type, EffectConte
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 
-pub fn resolve(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-) {
-    let origin_str = sa.params.get("Origin").map(|s| s.as_str()).unwrap_or("Battlefield");
-    let destination_str = sa.params.get("Destination").map(|s| s.as_str()).unwrap_or("Graveyard");
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let origin_str = sa
+        .params
+        .get("Origin")
+        .map(|s| s.as_str())
+        .unwrap_or("Battlefield");
+    let destination_str = sa
+        .params
+        .get("Destination")
+        .map(|s| s.as_str())
+        .unwrap_or("Graveyard");
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
@@ -21,9 +26,10 @@ pub fn resolve(
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
 
-    if let (Some(dest_zone), Some(origin_zone)) =
-        (parse_zone_type(destination_str), parse_zone_type(origin_str))
-    {
+    if let (Some(dest_zone), Some(origin_zone)) = (
+        parse_zone_type(destination_str),
+        parse_zone_type(origin_str),
+    ) {
         let player_ids = ctx.game.player_order.clone();
         let mut to_move: Vec<(CardId, PlayerId)> = Vec::new();
 

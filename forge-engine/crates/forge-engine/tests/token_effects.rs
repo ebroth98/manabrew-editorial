@@ -264,7 +264,7 @@ fn test_copy_permanent_with_pump_keywords() {
 
     let copy_id = game.zone(ZoneType::Battlefield, p0).cards[0];
     assert!(
-        game.card(copy_id).granted_keywords.contains(&"Haste".to_string()),
+        game.card(copy_id).keywords.contains(&"Haste".to_string()),
         "Copy should have Haste from PumpKeywords$"
     );
 }

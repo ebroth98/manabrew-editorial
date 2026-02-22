@@ -109,7 +109,7 @@ impl PlayerAgent for ScriptedAgent {
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
     ) -> TargetChoice {
-        if let Some(&pid) = valid_players.first() {
+        if let Some(&pid) = valid_players.last() {
             TargetChoice::Player(pid)
         } else if let Some(&cid) = valid_cards.first() {
             TargetChoice::Card(cid)
@@ -412,7 +412,7 @@ fn full_game_runs() {
             valid_players: &[PlayerId],
             valid_cards: &[CardId],
         ) -> TargetChoice {
-            if let Some(&pid) = valid_players.first() {
+            if let Some(&pid) = valid_players.last() {
                 TargetChoice::Player(pid)
             } else if let Some(&cid) = valid_cards.first() {
                 TargetChoice::Card(cid)
@@ -797,7 +797,7 @@ fn upkeep_trigger_fires_each_turn() {
         fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
         fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
         fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.first() { TargetChoice::Player(pid) }
+            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
             else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
             else { TargetChoice::None }
         }
@@ -864,7 +864,7 @@ fn full_game_with_triggers_runs() {
         fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
         fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
         fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.first() { TargetChoice::Player(pid) }
+            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
             else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
             else { TargetChoice::None }
         }
@@ -1000,7 +1000,7 @@ fn llanowar_elves_taps_for_mana() {
         fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
         fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
         fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.first() { TargetChoice::Player(pid) }
+            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
             else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
             else { TargetChoice::None }
         }
@@ -1070,7 +1070,7 @@ fn summoning_sick_creature_cant_tap() {
         fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
         fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
         fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.first() { TargetChoice::Player(pid) }
+            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
             else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
             else { TargetChoice::None }
         }
@@ -1138,7 +1138,7 @@ fn prodigal_sorcerer_pings_opponent() {
         fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
         fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
             // Target opponent (player)
-            if let Some(&pid) = p.first() { TargetChoice::Player(pid) }
+            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
             else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
             else { TargetChoice::None }
         }
@@ -1212,7 +1212,7 @@ fn sakura_tribe_elder_fetches_land() {
         fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
         fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
         fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.first() { TargetChoice::Player(pid) }
+            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
             else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
             else { TargetChoice::None }
         }

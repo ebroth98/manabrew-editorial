@@ -21,7 +21,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let hand = ctx.game.cards_in_zone(ZoneType::Hand, target).to_vec();
 
-    let names: Vec<String> = hand.iter().map(|&id| ctx.game.card(id).card_name.clone()).collect();
+    let names: Vec<String> = hand
+        .iter()
+        .map(|&id| ctx.game.card(id).card_name.clone())
+        .collect();
     let msg = format!(
         "Player {} reveals their hand: [{}]",
         target.0,

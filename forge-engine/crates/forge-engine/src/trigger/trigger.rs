@@ -55,6 +55,11 @@ pub enum TriggerMode {
         valid_target: Option<String>,
         combat_damage_only: bool,
     },
+    /// A spell was countered (SP$ Counter).
+    Countered {
+        valid_card: Option<String>,
+        valid_cause: Option<String>,
+    },
 }
 
 impl TriggerMode {
@@ -224,6 +229,33 @@ impl TriggerMode {
                             return false;
                         }
                     } else {
+                        return false;
+                    }
+                }
+
+                true
+            }
+
+            TriggerMode::Countered {
+                valid_card,
+                valid_cause,
+            } => {
+                // Check ValidCard$
+                if let Some(filter) = valid_card {
+                    if let Some(card_id) = run_params.card {
+                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+
+                // Check ValidCause$
+                if let Some(_filter) = valid_cause {
+                    // TODO: Implement ValidCause checking
+                    // For now, assume it matches if we have a cause
+                    if run_params.cause.is_none() {
                         return false;
                     }
                 }
@@ -450,6 +482,14 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
                 valid_source,
                 valid_target,
                 combat_damage_only,
+            }
+        }
+        "Countered" => {
+            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_cause = params.get("ValidCause").map(|s| s.clone());
+            TriggerMode::Countered {
+                valid_card,
+                valid_cause,
             }
         }
         _ => return None,

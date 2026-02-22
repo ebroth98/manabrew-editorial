@@ -122,6 +122,18 @@ impl GameState {
         self.turn.active_player
     }
 
+    pub fn next_player(&self, player: PlayerId) -> PlayerId {
+        let current_idx = self.player_order.iter().position(|&p| p == player).unwrap_or(0);
+        for i in 1..self.player_order.len() {
+            let next_idx = (current_idx + i) % self.player_order.len();
+            let next_pid = self.player_order[next_idx];
+            if self.player(next_pid).is_alive() {
+                return next_pid;
+            }
+        }
+        player
+    }
+
     pub fn opponent_of(&self, player: PlayerId) -> PlayerId {
         for &pid in &self.player_order {
             if pid != player && self.player(pid).is_alive() {

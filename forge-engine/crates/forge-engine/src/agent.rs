@@ -140,6 +140,20 @@ pub trait PlayerAgent {
         false
     }
 
+    /// Choose which cards to discard from hand (for SP$ Discard effects).
+    /// `hand` is the full hand, `num` is how many must be discarded.
+    /// Default: discard the first `num` cards.
+    fn choose_discard(&mut self, _player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
+        hand.iter().copied().take(num).collect()
+    }
+
+    /// Choose a target spell on the stack (for SP$ Counter effects).
+    /// `valid` is a slice of stack entry IDs.
+    /// Default: target the first (topmost) spell.
+    fn choose_target_spell(&mut self, _player: PlayerId, valid: &[u32]) -> Option<u32> {
+        valid.first().copied()
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;
