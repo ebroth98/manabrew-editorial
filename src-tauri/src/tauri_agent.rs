@@ -498,10 +498,11 @@ impl PlayerAgent for TauriAgent {
         let _ = self.notify_tx.send(message.to_string());
     }
 
-    fn notify_card_played(&mut self, player: PlayerId, card_id: CardId, card_name: &str) {
+    fn notify_card_played(&mut self, player: PlayerId, card_id: CardId, card_name: &str, set_code: &str) {
         self.pending_display_events.push(DisplayEvent::CardPlayed {
             card_id: format!("card-{}", card_id.0),
             card_name: card_name.to_string(),
+            set_code: set_code.to_string(),
             player_id: format!("player-{}", player.0),
         });
         // Flush immediately so the frontend receives one event per card play.

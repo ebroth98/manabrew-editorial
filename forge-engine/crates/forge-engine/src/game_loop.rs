@@ -926,9 +926,10 @@ pub fn step_main_phase(
                 MainPhaseAction::Play(card_id) => {
                     let played = self.play_card(game, agents, priority_player, card_id);
                     if let Some((played_id, played_name)) = played {
+                        let set_code = game.card(played_id).set_code.clone().unwrap_or_default();
                         for agent in agents.iter_mut() {
                             agent.snapshot_state(game, &self.mana_pools);
-                            agent.notify_card_played(priority_player, played_id, &played_name);
+                            agent.notify_card_played(priority_player, played_id, &played_name, &set_code);
                         }
                     }
                     passed_count = 0;

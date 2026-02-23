@@ -139,21 +139,35 @@ pub fn card_to_dto(
     zone_label: &str,
 ) -> CardDto {
     let card = game.card(cid);
-    let types: Vec<String> = card.type_line.core_types.iter().map(|ct| ct.name().to_string()).collect();
+    let types: Vec<String> = card
+        .type_line
+        .core_types
+        .iter()
+        .map(|ct| ct.name().to_string())
+        .collect();
     let subtypes: Vec<String> = card.type_line.subtypes.clone();
-    let supertypes: Vec<String> = card.type_line.supertypes.iter().map(|st| st.name().to_string()).collect();
+    let supertypes: Vec<String> = card
+        .type_line
+        .supertypes
+        .iter()
+        .map(|st| st.name().to_string())
+        .collect();
 
     let power = card.base_power.map(|_| card.power().to_string());
     let toughness = card.base_toughness.map(|_| card.toughness().to_string());
 
     // Collect non-zero counters, using the variant name as key (e.g. "P1P1", "M1M1", "Loyalty")
-    let counters: HashMap<String, i32> = card.counters.iter()
+    let counters: HashMap<String, i32> = card
+        .counters
+        .iter()
         .filter(|(_, &v)| v > 0)
         .map(|(k, &v)| (format!("{k:?}"), v))
         .collect();
 
     // Build ability text from abilities
-    let text = card.abilities.iter()
+    let text = card
+        .abilities
+        .iter()
         .filter_map(|a| {
             // Extract SpellDescription$ if present
             for part in a.split('|') {
@@ -170,7 +184,7 @@ pub fn card_to_dto(
     CardDto {
         id: card_id_str(cid),
         name: card.card_name.clone(),
-        set_code: String::new(),
+        set_code: card.set_code.clone().unwrap_or_default(),
         card_number: String::new(),
         color: card.color.to_string(),
         mana_cost: card.mana_cost.to_string(),
@@ -251,22 +265,38 @@ impl GameViewDto {
         let mut battlefield = Vec::new();
         for &pid in &game.player_order {
             for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
-                battlefield.push(card_to_dto(game, cid, playable_ids, choosable_ids, "battlefield"));
+                battlefield.push(card_to_dto(
+                    game,
+                    cid,
+                    playable_ids,
+                    choosable_ids,
+                    "battlefield",
+                ));
             }
         }
 
         // Stack
-        let stack: Vec<StackObjectDto> = game.stack.iter().map(|entry| {
-            let name = entry.spell_ability.source
-                .map(|cid| game.card(cid).card_name.clone())
-                .unwrap_or_else(|| "Ability".to_string());
-            StackObjectDto {
-                id: format!("stack-{}", entry.id),
-                source_id: entry.spell_ability.source.map(|c| card_id_str(c)).unwrap_or_default(),
-                name,
-                text: entry.spell_ability.ability_text.clone(),
-            }
-        }).collect();
+        let stack: Vec<StackObjectDto> = game
+            .stack
+            .iter()
+            .map(|entry| {
+                let name = entry
+                    .spell_ability
+                    .source
+                    .map(|cid| game.card(cid).card_name.clone())
+                    .unwrap_or_else(|| "Ability".to_string());
+                StackObjectDto {
+                    id: format!("stack-{}", entry.id),
+                    source_id: entry
+                        .spell_ability
+                        .source
+                        .map(|c| card_id_str(c))
+                        .unwrap_or_default(),
+                    name,
+                    text: entry.spell_ability.ability_text.clone(),
+                }
+            })
+            .collect();
 
         // Graveyard — human player
         let graveyard: Vec<CardDto> = game
@@ -283,7 +313,11 @@ impl GameViewDto {
             .collect();
 
         // Opponent graveyard and exile
-        let opponent_player = game.player_order.iter().copied().find(|&pid| pid != human_player);
+        let opponent_player = game
+            .player_order
+            .iter()
+            .copied()
+            .find(|&pid| pid != human_player);
         let opponent_graveyard: Vec<CardDto> = opponent_player
             .map(|pid| {
                 game.cards_in_zone(ZoneType::Graveyard, pid)

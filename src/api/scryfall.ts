@@ -9,14 +9,26 @@ export async function searchCards(query: string, page: number = 1): Promise<Scry
   return response.json();
 }
 
-export async function getCardByName(name: string): Promise<ScryfallCard> {
-  const url = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}`;
+export async function getCardPrints(printsSearchUri: string): Promise<ScryfallListResponse> {
+  const response = await fetch(printsSearchUri);
+  if (!response.ok) {
+    throw new Error('Failed to fetch card prints from Scryfall');
+  }
+  return response.json();
+}
+
+export async function getCardByName(name: string, setCode?: string): Promise<ScryfallCard> {
+  const url = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}${setCode ? `&set=${setCode.toLowerCase()}` : ""}`;
   const response = await fetch(url);
   if (!response.ok) {
+    if (setCode) {
+      return getCardByName(name);
+    }
     throw new Error(`Card not found: ${name}`);
   }
   return response.json();
 }
+  
 
 /**
  * Convert an engine ColorSet string (e.g. "W", "WU", "C") to Scryfall color
@@ -62,12 +74,12 @@ export async function getTokenByName(name: string, color?: string): Promise<Scry
  * Batch-fetch cards by name using POST /cards/collection (up to 75 per request).
  * Returns a map keyed by lowercased card name → ScryfallCard.
  */
-export async function fetchCardCollection(names: string[]): Promise<Map<string, ScryfallCard>> {
+export async function fetchCardCollection(cards: { name: string; setCode?: string }[]): Promise<Map<string, ScryfallCard>> {
   const result = new Map<string, ScryfallCard>();
-  const unique = [...new Set(names)];
+  const unique = Array.from(new Map(cards.map((c) => [`${c.name}-${c.setCode || ""}`, c])).values());
   for (let i = 0; i < unique.length; i += 75) {
     const batch = unique.slice(i, i + 75);
-    const identifiers = batch.map((name) => ({ name }));
+    const identifiers = batch.map((c) => (c.setCode ? { name: c.name, set: c.setCode.toLowerCase() } : { name: c.name }));
     try {
       const response = await fetch("https://api.scryfall.com/cards/collection", {
         method: "POST",

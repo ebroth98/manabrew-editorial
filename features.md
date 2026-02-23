@@ -927,3 +927,21 @@
 > **Coverage: ~14.1% implemented or partially implemented** (108 of 769 features have some Rust counterpart)
 >
 > The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (135 files), and **costs** (58 files).
+
+---
+
+## UI Features (Tauri + React Frontend)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Set code on `CardInstance` | **Implemented** | `card.set_code: Option<String>` in `forge-engine/src/card/mod.rs` |
+| Set code in `CardDto` | **Implemented** | `set_code: String` in `game_view_dto.rs`; serialized as `setCode` via serde |
+| Set code in preset decks | **Implemented** | All 14 preset decks in `preset_decks.rs` carry a Scryfall set code per card entry (3-tuple format) |
+| Set code in custom decks | **Implemented** | `CardIdentity.set_code` propagated to engine via `build_custom_deck` |
+| Scryfall set-specific image fetch | **Implemented** | `getCardByName(name, setCode?)` in `scryfall.ts`; falls back to name-only on miss |
+| `useCardImage` set-aware | **Implemented** | Hook passes `setCode` to `getCardByName`; `Card.tsx` passes `card.setCode` |
+| Batch collection fetch with set | **Implemented** | `fetchCardCollection` sends `{ name, set }` identifiers to Scryfall `/cards/collection` |
+| Print picker modal | **Implemented** | `PrintPickerModal.tsx` — fetches all printings via `prints_search_uri`, updates deck via `updatePrint` |
+| Print picker in deck builder (list view) | **Implemented** | Image icon button on each `CardRow`; opens `PrintPickerModal` |
+| Print picker in deck builder (visual/stack) | **Implemented** | Image icon overlay on each `CardVisual`; opens `PrintPickerModal` |
+| Print picker for commander | **Implemented** | Commander card visual mode also exposes print picker |

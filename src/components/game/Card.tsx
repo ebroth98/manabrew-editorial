@@ -62,6 +62,7 @@ export function Card({
     card.imageUrl,
     card.isToken,
     card.color,
+    card.setCode,
   );
   const imageUrl = card.imageUrl || scryfallUrl;
 

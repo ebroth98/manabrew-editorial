@@ -28,7 +28,7 @@ interface CreateGameDialogProps {
   /** Pre-select a saved deck by ID (e.g. when launched from MyDecks) */
   preSelectedDeckId?: string;
   /** Called with the deck card names, format ID, optional commander name, and player count when Create is confirmed */
-  onStart: (cardNames: string[], formatId: string, commanderName?: string, playerCount?: number) => void;
+  onStart: (deckList: { name: string, setCode: string }[], formatId: string, commanderName?: string, playerCount?: number) => void;
 }
 
 export function CreateGameDialog({
@@ -59,9 +59,9 @@ export function CreateGameDialog({
       id: "current",
       name: currentDeck.name,
       badge: "editing",
-      cardNames: [
-        ...currentDeck.cards.map((c) => c.name),
-        ...(currentDeck.commander ? [currentDeck.commander.name] : []),
+      deckList: [
+        ...currentDeck.cards.map((c) => ({ name: c.name, setCode: c.setCode || "" })),
+        ...(currentDeck.commander ? [{ name: currentDeck.commander.name, setCode: currentDeck.commander.setCode || "" }] : []),
       ],
       isPreset: false as const,
       cards: currentDeck.cards,
@@ -71,9 +71,9 @@ export function CreateGameDialog({
       id: s.id,
       name: s.deck.name,
       badge: null as string | null,
-      cardNames: [
-        ...s.deck.cards.map((c) => c.name),
-        ...(s.deck.commander ? [s.deck.commander.name] : []),
+      deckList: [
+        ...s.deck.cards.map((c) => ({ name: c.name, setCode: c.setCode || "" })),
+        ...(s.deck.commander ? [{ name: s.deck.commander.name, setCode: s.deck.commander.setCode || "" }] : []),
       ],
       isPreset: false as const,
       cards: s.deck.cards,
@@ -87,7 +87,7 @@ export function CreateGameDialog({
     name: deck.label,
     desc: deck.desc,
     color: deck.color,
-    cardNames: [deck.id],
+    deckList: [{ name: deck.id, setCode: "" }],
     isPreset: true as const,
     cards: [],
     commanderName: undefined as string | undefined,
@@ -103,10 +103,10 @@ export function CreateGameDialog({
   }, [selectedDeck]);
 
   const selectedDeckEntry = allDecks.find((d) => d.id === selectedDeck);
-  const selectedDeckNames = selectedDeckEntry?.cardNames ?? [];
+  const selectedDeckList = selectedDeckEntry?.deckList ?? [];
   const selectedDeckValidation = selectedDeckEntry?.isPreset
     ? { legal: true, errors: [] as string[] }
-    : validateDeck(selectedDeckNames, selectedFormat);
+    : validateDeck(selectedDeckList.map(c => c.name), selectedFormat);
 
   const legendaryCreatures = selectedDeckEntry
     ? Array.from(
@@ -142,7 +142,7 @@ export function CreateGameDialog({
       return;
     }
     onOpenChange(false);
-    onStart(selectedDeckNames, selectedFormat.id, needsCommander ? selectedCommander : undefined, playerCount);
+    onStart(selectedDeckList, selectedFormat.id, needsCommander ? selectedCommander : undefined, playerCount);
   }
 
   return (
@@ -340,7 +340,7 @@ export function CreateGameDialog({
               ) : (
                 <div className="grid grid-cols-3 gap-2">
                   {userDecks.map((d) => {
-                    const validation = validateDeck(d.cardNames, selectedFormat);
+                    const validation = validateDeck(d.deckList.map((c) => c.name), selectedFormat);
                     const isSelected = selectedDeck === d.id;
                     const colorPips = getDeckColors(d.cards);
                     const breakdown = getDeckTypeBreakdown(d.cards);
@@ -384,7 +384,7 @@ export function CreateGameDialog({
                         {/* Footer: card count + badge */}
                         <div className="flex items-center justify-between mt-1.5">
                           <span className="text-[10px] text-muted-foreground">
-                            {d.cardNames.length} cards
+                            {d.deckList.length} cards
                           </span>
                           {d.badge && (
                             <Badge variant="outline" className="text-[9px] h-4 px-1">
