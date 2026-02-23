@@ -514,6 +514,20 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
+    fn choose_optional_trigger(&mut self, player: PlayerId, description: &str) -> bool {
+        if player != self.human_player {
+            return true; // AI always accepts optional triggers
+        }
+        self.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
+            game_view: self.view(),
+            description: description.to_string(),
+        });
+        match self.recv_action() {
+            PlayerAction::OptionalTriggerDecision { accept } => accept,
+            _ => true,
+        }
+    }
+
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
         None
     }

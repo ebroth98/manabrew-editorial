@@ -305,8 +305,8 @@ impl GameLoop {
                 self.step_combat(game, agents);
             }
             TurnEvent::CleanupStep => {
-                self.with_shared_state_mutation(game, agents, |this, game, _agents| {
-                    this.step_cleanup(game);
+                self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                    this.step_cleanup(game, agents);
                 });
             }
             TurnEvent::AdvanceTurn => {
@@ -327,7 +327,18 @@ impl GameLoop {
         let active = game.active_player();
         // Skip draw on turn 1
         if game.turn.turn_number > 1 {
-            game.draw_card(active);
+            if let Some(card_id) = game.draw_card(active) {
+                // Fire Drawn trigger for turn draw
+                self.trigger_handler.run_trigger(
+                    TriggerType::Drawn,
+                    RunParams {
+                        card: Some(card_id),
+                        player: Some(active),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
         }
     }
 
@@ -547,6 +558,18 @@ impl GameLoop {
             }
             game.card_mut(attacker_id).attacked_this_turn = true;
             self.combat.declare_attacker(attacker_id, defending);
+
+            // Fire Attacks trigger for each attacker
+            self.trigger_handler.run_trigger(
+                TriggerType::Attacks,
+                RunParams {
+                    attacker: Some(attacker_id),
+                    card: Some(attacker_id),
+                    defending_player: Some(defending),
+                    ..Default::default()
+                },
+                false,
+            );
         }
         self.step_with_priority(game, agents, false);
         if game.game_over {
@@ -580,6 +603,18 @@ impl GameLoop {
                         continue; // illegal block
                     }
                     self.combat.declare_blocker(blocker, attacker);
+
+                    // Fire Blocks trigger for each (blocker, attacker) pair
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Blocks,
+                        RunParams {
+                            blocker: Some(blocker),
+                            blocked_attacker: Some(attacker),
+                            card: Some(blocker),
+                            ..Default::default()
+                        },
+                        false,
+                    );
                 }
             }
         }
@@ -589,13 +624,39 @@ impl GameLoop {
             return;
         }
 
+        // Fire AttackerBlocked / AttackerUnblocked triggers
+        for &(attacker_id, _) in &self.combat.attackers.clone() {
+            if self.combat.is_blocked(attacker_id) {
+                self.trigger_handler.run_trigger(
+                    TriggerType::AttackerBlocked,
+                    RunParams {
+                        attacker: Some(attacker_id),
+                        card: Some(attacker_id),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            } else {
+                self.trigger_handler.run_trigger(
+                    TriggerType::AttackerUnblocked,
+                    RunParams {
+                        attacker: Some(attacker_id),
+                        card: Some(attacker_id),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+        }
+
         // Determine if we need first strike damage step
         let has_first_strikers = self.combat.has_first_strikers(game);
 
         if has_first_strikers && self.combat.has_attackers() {
             // First Strike Damage step
             self.set_phase(game, agents, PhaseType::CombatFirstStrikeDamage);
-            self.combat.resolve_damage_step(game, true);
+            let fs_events = self.combat.resolve_damage_step(game, true);
+            self.fire_combat_damage_triggers(&fs_events);
 
             // SBA between damage steps
             loop {
@@ -617,7 +678,8 @@ impl GameLoop {
 
         // Regular Combat Damage step
         self.set_phase(game, agents, PhaseType::CombatDamage);
-        self.combat.resolve_damage_step(game, false);
+        let dmg_events = self.combat.resolve_damage_step(game, false);
+        self.fire_combat_damage_triggers(&dmg_events);
 
         // SBA after combat
         loop {
@@ -638,18 +700,37 @@ impl GameLoop {
         self.combat.clear();
     }
 
-    pub fn step_cleanup(&self, game: &mut GameState) {
+    pub fn step_cleanup(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         let active = game.active_player();
 
-        // Discard down to max hand size
+        // Discard down to max hand size — player chooses which cards to discard.
+        // Mirrors Java's Player.discard() during cleanup step.
         let hand_size = game.zone(ZoneType::Hand, active).len() as i32;
         let max = game.player(active).max_hand_size;
         if hand_size > max {
             let to_discard = (hand_size - max) as usize;
-            for _ in 0..to_discard {
-                // Discard last card in hand (simplified — no choice)
-                if let Some(&card_id) = game.zone(ZoneType::Hand, active).cards.last() {
-                    game.move_card(card_id, ZoneType::Graveyard, active);
+            let hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, active).to_vec();
+            agents[active.index()].snapshot_state(game, &self.mana_pools);
+            let chosen = agents[active.index()].choose_discard(active, &hand, to_discard);
+            for card_id in chosen.iter().take(to_discard) {
+                if game.card(*card_id).zone == ZoneType::Hand {
+                    game.move_card(*card_id, ZoneType::Graveyard, active);
+                    // Fire Discarded trigger
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Discarded,
+                        RunParams {
+                            card: Some(*card_id),
+                            player: Some(active),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                    effects::emit_zone_trigger(
+                        &mut self.trigger_handler,
+                        *card_id,
+                        ZoneType::Hand,
+                        ZoneType::Graveyard,
+                    );
                 }
             }
         }
@@ -789,6 +870,17 @@ impl GameLoop {
             game.move_card(card_id, ZoneType::Battlefield, player);
             game.player_mut(player).lands_played_this_turn += 1;
             agents[player.index()].notify(&format!("Played land: {}", card_name));
+
+            // Fire LandPlayed trigger
+            self.trigger_handler.run_trigger(
+                TriggerType::LandPlayed,
+                RunParams {
+                    card: Some(card_id),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
         } else {
             // Cast spell — tap lands for mana, put on stack, resolve
             let mana_cost = game.card(card_id).mana_cost.clone();
@@ -857,6 +949,19 @@ impl GameLoop {
             let mut sa = build_spell_ability(game, card_id, &ability_text, player);
             sa.is_spell = true;
             sa.setup_targets(game, agents, &self.mana_pools);
+
+            // Fire BecomesTarget trigger if a card was targeted
+            if let Some(target_card) = sa.target_chosen.target_card {
+                self.trigger_handler.run_trigger(
+                    TriggerType::BecomesTarget,
+                    RunParams {
+                        card: Some(target_card),
+                        cause_player: Some(player),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
 
             let entry = StackEntry {
                 id: 0,
@@ -986,12 +1091,52 @@ impl GameLoop {
         );
     }
 
+    /// Fire DamageDone and LifeGained triggers from combat damage events.
+    fn fire_combat_damage_triggers(&mut self, events: &[combat::CombatDamageEvent]) {
+        for event in events {
+            self.trigger_handler.run_trigger(
+                TriggerType::DamageDone,
+                RunParams {
+                    damage_source: Some(event.source),
+                    damage_target_player: event.target_player,
+                    damage_target_card: event.target_card,
+                    damage_amount: Some(event.amount),
+                    is_combat_damage: Some(event.is_combat),
+                    ..Default::default()
+                },
+                false,
+            );
+            if let Some(player) = event.lifelink_player {
+                if event.lifelink_amount > 0 {
+                    self.trigger_handler.run_trigger(
+                        TriggerType::LifeGained,
+                        RunParams {
+                            player: Some(player),
+                            life_amount: Some(event.lifelink_amount),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+            }
+        }
+    }
+
     /// Process pending triggers: drain the waiting queue, put abilities on stack, resolve.
     /// Mirrors Java's runWaitingTriggers() called between stack resolution windows.
-    fn process_triggers(&mut self, game: &mut GameState, _agents: &mut [Box<dyn PlayerAgent>]) {
-        let entries = self.trigger_handler.run_waiting_triggers(game);
-        for entry in entries {
-            game.stack.push(entry);
+    /// Handles OptionalDecider$ by prompting the deciding player.
+    fn process_triggers(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
+        let pending = self.trigger_handler.run_waiting_triggers(game);
+        for pt in pending {
+            if pt.optional {
+                // Prompt the deciding player
+                let accepted = agents[pt.decider.index()]
+                    .choose_optional_trigger(pt.decider, &pt.description);
+                if !accepted {
+                    continue; // Player declined the optional trigger
+                }
+            }
+            game.stack.push(pt.entry);
         }
     }
 
@@ -1063,6 +1208,16 @@ impl GameLoop {
             match part {
                 CostPart::Tap => {
                     game.tap(card_id);
+                    // Fire Taps trigger
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Taps,
+                        RunParams {
+                            card: Some(card_id),
+                            player: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
                 }
                 CostPart::Mana(mana_cost) => {
                     mana::auto_tap_lands(
@@ -1075,6 +1230,16 @@ impl GameLoop {
                 }
                 CostPart::PayLife(amount) => {
                     game.player_mut(player).lose_life(*amount);
+                    // Fire LifeLost trigger
+                    self.trigger_handler.run_trigger(
+                        TriggerType::LifeLost,
+                        RunParams {
+                            player: Some(player),
+                            life_amount: Some(*amount),
+                            ..Default::default()
+                        },
+                        false,
+                    );
                 }
                 CostPart::Sacrifice {
                     type_filter,
@@ -1082,6 +1247,16 @@ impl GameLoop {
                 } => {
                     if type_filter == "CARDNAME" {
                         let owner = game.card(card_id).owner;
+                        // Fire Sacrificed trigger before moving
+                        self.trigger_handler.run_trigger(
+                            TriggerType::Sacrificed,
+                            RunParams {
+                                card: Some(card_id),
+                                player: Some(player),
+                                ..Default::default()
+                            },
+                            false,
+                        );
                         game.move_card(card_id, ZoneType::Graveyard, owner);
                     } else {
                         self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
@@ -1108,6 +1283,16 @@ impl GameLoop {
                 CostPart::Mana(_) | CostPart::Tap => {}
                 CostPart::PayLife(amount) => {
                     game.player_mut(player).lose_life(*amount);
+                    // Fire LifeLost trigger
+                    self.trigger_handler.run_trigger(
+                        TriggerType::LifeLost,
+                        RunParams {
+                            player: Some(player),
+                            life_amount: Some(*amount),
+                            ..Default::default()
+                        },
+                        false,
+                    );
                 }
                 CostPart::Sacrifice {
                     type_filter,
@@ -1139,6 +1324,16 @@ impl GameLoop {
             }
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
                 let owner = game.card(chosen).owner;
+                // Fire Sacrificed trigger before moving
+                self.trigger_handler.run_trigger(
+                    TriggerType::Sacrificed,
+                    RunParams {
+                        card: Some(chosen),
+                        player: Some(player),
+                        ..Default::default()
+                    },
+                    false,
+                );
                 game.move_card(chosen, ZoneType::Graveyard, owner);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
@@ -1167,6 +1362,17 @@ impl GameLoop {
                 self.pool_mut(player).add(atom, 1);
             }
         }
+
+        // Fire TapsForMana trigger (mana abilities produce mana)
+        self.trigger_handler.run_trigger(
+            TriggerType::TapsForMana,
+            RunParams {
+                card: Some(card_id),
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
     }
 
     /// Activate a non-mana ability: choose targets, pay costs, put on stack.
@@ -1185,6 +1391,19 @@ impl GameLoop {
         sa.is_activated = true;
         sa.setup_targets(game, agents, &self.mana_pools);
 
+        // Fire BecomesTarget trigger if a card was targeted
+        if let Some(target_card) = sa.target_chosen.target_card {
+            self.trigger_handler.run_trigger(
+                TriggerType::BecomesTarget,
+                RunParams {
+                    card: Some(target_card),
+                    cause_player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+
         // Pay costs
         self.pay_ability_cost(game, agents, player, card_id, &ab.cost);
 
@@ -1198,6 +1417,17 @@ impl GameLoop {
         };
         game.stack.push(entry);
         agents[player.index()].notify(&format!("Activated ability of {}", card_name));
+
+        // Fire AbilityActivated trigger
+        self.trigger_handler.run_trigger(
+            TriggerType::AbilityActivated,
+            RunParams {
+                card: Some(card_id),
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
     }
 
     /// Give players priority to take actions (play cards, activate abilities).
@@ -1334,6 +1564,26 @@ impl GameLoop {
                         if let Some(atom) = atom_opt {
                             game.tap(land_id);
                             this.pool_mut(priority_player).add(atom, 1);
+                            // Fire Taps trigger
+                            this.trigger_handler.run_trigger(
+                                TriggerType::Taps,
+                                RunParams {
+                                    card: Some(land_id),
+                                    player: Some(priority_player),
+                                    ..Default::default()
+                                },
+                                false,
+                            );
+                            // Fire TapsForMana trigger
+                            this.trigger_handler.run_trigger(
+                                TriggerType::TapsForMana,
+                                RunParams {
+                                    card: Some(land_id),
+                                    player: Some(priority_player),
+                                    ..Default::default()
+                                },
+                                false,
+                            );
                         }
                     });
                     passed_count = 0;
@@ -1362,6 +1612,16 @@ impl GameLoop {
                         if let Some(atom) = atom_opt {
                             game.untap(land_id);
                             this.pool_mut(priority_player).remove(atom, 1);
+                            // Fire Untaps trigger
+                            this.trigger_handler.run_trigger(
+                                TriggerType::Untaps,
+                                RunParams {
+                                    card: Some(land_id),
+                                    player: Some(priority_player),
+                                    ..Default::default()
+                                },
+                                false,
+                            );
                         }
                     });
                     passed_count = 0;

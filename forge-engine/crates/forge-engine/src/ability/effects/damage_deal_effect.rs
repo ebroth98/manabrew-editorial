@@ -20,12 +20,38 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if let Some(target_player) = target_player {
         println!("DEBUG: targeting player {:?}", target_player);
         ctx.game.deal_damage_to_player(target_player, damage);
+
+        // Fire DamageDone trigger
+        ctx.trigger_handler.run_trigger(
+            crate::event::TriggerType::DamageDone,
+            crate::event::RunParams {
+                damage_source: sa.source,
+                damage_target_player: Some(target_player),
+                damage_amount: Some(damage),
+                is_combat_damage: Some(false),
+                ..Default::default()
+            },
+            false,
+        );
     } else {
         println!("DEBUG: target_player is NONE");
     }
     if let Some(target_card) = sa.target_chosen.target_card {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {
             ctx.game.deal_damage_to_card(target_card, damage);
+
+            // Fire DamageDone trigger
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::DamageDone,
+                crate::event::RunParams {
+                    damage_source: sa.source,
+                    damage_target_card: Some(target_card),
+                    damage_amount: Some(damage),
+                    is_combat_damage: Some(false),
+                    ..Default::default()
+                },
+                false,
+            );
         }
     }
 }

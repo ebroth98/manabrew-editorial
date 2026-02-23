@@ -32,6 +32,18 @@ pub struct DelayedTrigger {
     pub source_card: CardId,
 }
 
+/// A triggered ability ready to be placed on the stack, with optional metadata.
+#[derive(Debug)]
+pub struct PendingTrigger {
+    pub entry: StackEntry,
+    /// Whether this trigger is optional (has OptionalDecider$).
+    pub optional: bool,
+    /// The player who decides whether the trigger fires (usually the controller).
+    pub decider: PlayerId,
+    /// Description text for the trigger (shown to player for optional triggers).
+    pub description: String,
+}
+
 /// Mirrors Java's TriggerHandler — central trigger dispatcher.
 /// In Java, lives on Game. In Rust, lives on GameLoop because
 /// active_triggers and waiting_triggers are transient processing state.
@@ -64,14 +76,15 @@ impl TriggerHandler {
     }
 
     /// Mirrors Java's runWaitingTriggers().
-    /// Drains waiting queue, matches triggers, returns StackEntries.
-    pub fn run_waiting_triggers(&mut self, game: &GameState) -> Vec<StackEntry> {
-        if self.waiting_triggers.is_empty() {
+    /// Drains waiting queue, matches triggers, returns PendingTriggers.
+    /// The caller (game_loop) handles OptionalDecider$ prompting.
+    pub fn run_waiting_triggers(&mut self, game: &GameState) -> Vec<PendingTrigger> {
+        if self.waiting_triggers.is_empty() && self.delayed_triggers.is_empty() {
             return Vec::new();
         }
 
         let waiting = std::mem::take(&mut self.waiting_triggers);
-        let mut entries = Vec::new();
+        let mut entries: Vec<(PendingTrigger, PlayerId)> = Vec::new();
 
         for event in &waiting {
             // Check each active trigger
@@ -115,8 +128,53 @@ impl TriggerHandler {
                         is_creature_spell: false,
                         is_permanent_spell: false,
                     };
-                    entries.push((entry, host_controller));
+
+                    let pending = PendingTrigger {
+                        entry,
+                        optional: trigger.optional,
+                        decider: host_controller,
+                        description: trigger.description.clone(),
+                    };
+                    entries.push((pending, host_controller));
                 }
+            }
+
+            // Check delayed triggers (one-shot, removed after firing).
+            let mut fired_indices = Vec::new();
+            for (idx, delayed) in self.delayed_triggers.iter().enumerate() {
+                let trigger_type = delayed.mode;
+                if trigger_type != event.mode {
+                    continue;
+                }
+                // Delayed triggers always match (no performTest filter beyond type).
+                let mut sa = build_spell_ability(
+                    game,
+                    delayed.source_card,
+                    &delayed.execute_svar,
+                    delayed.controller,
+                );
+                sa.is_trigger = true;
+                sa.trigger_source = Some(delayed.source_card);
+
+                let entry = StackEntry {
+                    id: 0,
+                    spell_ability: sa,
+                    is_creature_spell: false,
+                    is_permanent_spell: false,
+                };
+                let pending = PendingTrigger {
+                    entry,
+                    optional: false,
+                    decider: delayed.controller,
+                    description: String::new(),
+                };
+                entries.push((pending, delayed.controller));
+                fired_indices.push(idx);
+            }
+
+            // Remove fired delayed triggers (reverse order to preserve indices).
+            for idx in fired_indices.into_iter().rev() {
+                self.delayed_triggers.remove(idx);
             }
         }
 
@@ -124,7 +182,13 @@ impl TriggerHandler {
         let active_player = game.active_player();
         entries.sort_by_key(|(_, controller)| if *controller == active_player { 0 } else { 1 });
 
-        entries.into_iter().map(|(entry, _)| entry).collect()
+        entries.into_iter().map(|(pending, _)| pending).collect()
+    }
+
+    /// Register a delayed trigger (one-shot, fires once then is removed).
+    /// Mirrors Java's `TriggerHandler.registerDelayedTrigger()`.
+    pub fn register_delayed_trigger(&mut self, delayed: DelayedTrigger) {
+        self.delayed_triggers.push(delayed);
     }
 
     /// Mirrors Java's resetActiveTriggers().
@@ -195,6 +259,32 @@ impl TriggerHandler {
             TriggerMode::Attacks { .. } => TriggerType::Attacks,
             TriggerMode::DamageDone { .. } => TriggerType::DamageDone,
             TriggerMode::Countered { .. } => TriggerType::Countered,
+            // New trigger modes (issue #19)
+            TriggerMode::Blocks { .. } => TriggerType::Blocks,
+            TriggerMode::AttackerBlocked { .. } => TriggerType::AttackerBlocked,
+            TriggerMode::AttackerUnblocked { .. } => TriggerType::AttackerUnblocked,
+            TriggerMode::LifeGained { .. } => TriggerType::LifeGained,
+            TriggerMode::LifeLost { .. } => TriggerType::LifeLost,
+            TriggerMode::CounterAdded { .. } => TriggerType::CounterAdded,
+            TriggerMode::CounterRemoved { .. } => TriggerType::CounterRemoved,
+            TriggerMode::Sacrificed { .. } => TriggerType::Sacrificed,
+            TriggerMode::Drawn { .. } => TriggerType::Drawn,
+            TriggerMode::Milled { .. } => TriggerType::Milled,
+            TriggerMode::Taps { .. } => TriggerType::Taps,
+            TriggerMode::Untaps { .. } => TriggerType::Untaps,
+            TriggerMode::Transformed { .. } => TriggerType::Transformed,
+            TriggerMode::Attached { .. } => TriggerType::Attached,
+            TriggerMode::Unattached { .. } => TriggerType::Unattached,
+            TriggerMode::LandPlayed { .. } => TriggerType::LandPlayed,
+            TriggerMode::BecomesTarget { .. } => TriggerType::BecomesTarget,
+            TriggerMode::TapsForMana { .. } => TriggerType::TapsForMana,
+            TriggerMode::AbilityActivated { .. } => TriggerType::AbilityActivated,
+            TriggerMode::Explored { .. } => TriggerType::Explored,
+            TriggerMode::BecomeMonarch { .. } => TriggerType::BecomeMonarch,
+            TriggerMode::DamageDealtOnce { .. } => TriggerType::DamageDealtOnce,
+            TriggerMode::Destroyed { .. } => TriggerType::Destroyed,
+            TriggerMode::Exiled { .. } => TriggerType::Exiled,
+            TriggerMode::TokenCreated { .. } => TriggerType::TokenCreated,
         };
 
         if trigger_type != *mode {

@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use super::{parse_counter_type, parse_param, EffectContext};
 use crate::card::CounterType;
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -16,6 +17,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if let Some(card_id) = sa.source {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
             ctx.game.card_mut(card_id).add_counter(counter_type, count);
+
+            // Fire CounterAdded trigger
+            ctx.trigger_handler.run_trigger(
+                TriggerType::CounterAdded,
+                RunParams {
+                    card: Some(card_id),
+                    counter_type: Some(format!("{:?}", counter_type)),
+                    counter_amount: Some(count),
+                    ..Default::default()
+                },
+                false,
+            );
         }
     }
 }

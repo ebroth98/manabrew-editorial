@@ -181,6 +181,9 @@ impl GameManager {
                         Some(game_view.clone())
                     }
                     AgentPromptInner::ChooseMode { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseOptionalTrigger { game_view, .. } => {
+                        Some(game_view.clone())
+                    }
                 });
                 let mut view = base_view.unwrap_or_else(|| GameViewDto {
                     game_id: String::new(),

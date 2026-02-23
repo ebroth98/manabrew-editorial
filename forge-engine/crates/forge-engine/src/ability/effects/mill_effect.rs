@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, parse_param, resolve_defined_player, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `MillEffect.java`.
@@ -33,6 +34,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 card_id,
                 ZoneType::Library,
                 ZoneType::Graveyard,
+            );
+            // Fire Milled trigger per card
+            ctx.trigger_handler.run_trigger(
+                TriggerType::Milled,
+                RunParams {
+                    card: Some(card_id),
+                    player: Some(target),
+                    ..Default::default()
+                },
+                false,
             );
         }
     }

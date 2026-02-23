@@ -50,6 +50,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Perform the transform.
     ctx.game.card_mut(source_id).transform();
 
+    // Fire Transformed trigger
+    ctx.trigger_handler.run_trigger(
+        crate::event::TriggerType::Transformed,
+        crate::event::RunParams {
+            card: Some(source_id),
+            ..Default::default()
+        },
+        false,
+    );
+
     // Re-scan active triggers so the new face's trigger list takes effect.
     ctx.trigger_handler.reset_active_triggers(ctx.game);
 }

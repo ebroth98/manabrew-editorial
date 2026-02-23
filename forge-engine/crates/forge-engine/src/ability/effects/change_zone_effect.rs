@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_change_type, parse_zone_type, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -87,6 +88,20 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
                 ctx.trigger_handler
                     .register_active_trigger(ctx.game, card_id);
+            }
+
+            // Fire Exiled trigger when a card moves to exile
+            if dest_zone == ZoneType::Exile {
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::Exiled,
+                    RunParams {
+                        card: Some(card_id),
+                        origin: Some(old_zone),
+                        destination: Some(dest_zone),
+                        ..Default::default()
+                    },
+                    false,
+                );
             }
 
             emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, dest_zone);

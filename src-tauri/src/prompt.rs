@@ -161,6 +161,13 @@ pub enum AgentPromptInner {
         #[serde(rename = "validSpellIds")]
         valid_spell_ids: Vec<String>,
     },
+    /// Choose whether an optional triggered ability fires.
+    ChooseOptionalTrigger {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// Description of the trigger.
+        description: String,
+    },
     /// Choose N modes for a modal spell (SP$ Charm).
     ChooseMode {
         #[serde(rename = "gameView")]
@@ -237,6 +244,10 @@ pub enum PlayerAction {
     TargetSpell {
         #[serde(rename = "spellId")]
         spell_id: Option<String>,
+    },
+    /// Response to ChooseOptionalTrigger: whether the player accepts.
+    OptionalTriggerDecision {
+        accept: bool,
     },
     /// Response to ChooseMode prompt: indices (0-based) of chosen modes.
     ModeDecision {

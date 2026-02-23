@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use crate::ids::{CardId, PlayerId};
 
 /// Event types — mirrors Java TriggerType enum (subset).
-/// Start with 5 most common types, expand to full 160+ over time.
+/// Expanded to 25 core trigger types (issue #19).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TriggerType {
     ChangesZone,
@@ -18,6 +18,57 @@ pub enum TriggerType {
     Discarded,
     /// A spell was countered (SP$ Counter).
     Countered,
+    // ── New trigger types (issue #19) ──
+    /// A creature blocks an attacker.
+    Blocks,
+    /// An attacker is blocked by at least one creature.
+    AttackerBlocked,
+    /// An attacker is not blocked.
+    AttackerUnblocked,
+    /// A player gained life.
+    LifeGained,
+    /// A player lost life.
+    LifeLost,
+    /// A counter was added to a permanent.
+    CounterAdded,
+    /// A counter was removed from a permanent.
+    CounterRemoved,
+    /// A permanent was sacrificed.
+    Sacrificed,
+    /// A card was drawn.
+    Drawn,
+    /// A card was milled (library → graveyard).
+    Milled,
+    /// A permanent was tapped.
+    Taps,
+    /// A permanent was untapped.
+    Untaps,
+    /// A DFC was transformed.
+    Transformed,
+    /// An aura/equipment was attached.
+    Attached,
+    /// An aura/equipment was unattached.
+    Unattached,
+    /// A land was played.
+    LandPlayed,
+    /// A permanent became the target of a spell or ability.
+    BecomesTarget,
+    /// A permanent was tapped for mana.
+    TapsForMana,
+    /// An activated ability was activated.
+    AbilityActivated,
+    /// A creature explored.
+    Explored,
+    /// A player became the monarch.
+    BecomeMonarch,
+    /// Damage was dealt to a player/creature for the first time this turn.
+    DamageDealtOnce,
+    /// A permanent was destroyed.
+    Destroyed,
+    /// A card was exiled.
+    Exiled,
+    /// A token was created.
+    TokenCreated,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.
@@ -47,4 +98,15 @@ pub struct RunParams {
     pub spell_ability: Option<crate::spellability::SpellAbility>,
     /// Cause of the event (e.g. counterspell)
     pub cause: Option<crate::spellability::SpellAbility>,
+    // ── New fields (issue #19) ──
+    /// Blocking creature (for Blocks trigger).
+    pub blocker: Option<CardId>,
+    /// Attacker being blocked (for Blocks trigger).
+    pub blocked_attacker: Option<CardId>,
+    /// Life amount gained or lost (for LifeGained/LifeLost triggers).
+    pub life_amount: Option<i32>,
+    /// Counter type name (for CounterAdded/CounterRemoved triggers).
+    pub counter_type: Option<String>,
+    /// Number of counters added/removed.
+    pub counter_amount: Option<i32>,
 }

@@ -121,6 +121,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Izzet Charm + Grixis Charm — choose-your-mode modal spells (SP$ Charm)".into(),
             color: "text-violet-400".into(),
         },
+        PresetDeckInfo {
+            id: "trigger_test".into(),
+            label: "Trigger Test".into(),
+            desc: "Soul Warden + Guttersnipe + combat triggers — exercises expanded trigger types".into(),
+            color: "text-teal-400".into(),
+        },
     ]
 }
 
@@ -142,6 +148,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "showcase"
             | "mass_effects"
             | "charm_modal"
+            | "trigger_test"
     )
 }
 
@@ -202,6 +209,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "charm_modal" => {
             build_named_deck(game, p0, CHARM_MODAL);
             build_named_deck(game, p1, RED_BURN);
+        }
+        "trigger_test" => {
+            build_named_deck(game, p0, TRIGGER_TEST);
+            build_named_deck(game, p1, GREEN_STOMPY);
         }
         _ => {
             // red_burn (default)
@@ -451,6 +462,27 @@ const CHARM_MODAL: &[(&str, usize, &str)] = &[
     ("Guttersnipe", 4, "rtr"),        // Return to Ravnica
     ("Delver of Secrets", 24, "isd"), // Innistrad — original printing (DFC)
     ("Gray Ogre", 3, "7ed"),
+];
+
+/// Exercises issue #19: expanded trigger types.
+/// - Soul Warden: ETB life gain trigger (ChangesZone + LifeGained)
+/// - Guttersnipe: SpellCast trigger → DamageDone
+/// - Savannah Lions + Serra Angel: attack/block trigger testing
+/// - Lightning Bolt + Shock: DamageDone triggers on spell damage
+/// - Raise the Alarm: tokens entering → ChangesZone triggers
+/// - Vampire Nighthawk: Lifelink → LifeGained triggers via combat damage
+const TRIGGER_TEST: &[(&str, usize, &str)] = &[
+    ("Plains", 10, "akh"),
+    ("Mountain", 7, "akh"),
+    ("Soul Warden", 7, "m11"),       // ETB triggers → LifeGained
+    ("Guttersnipe", 7, "rtr"),       // SpellCast triggers → DamageDone
+    ("Savannah Lions", 4, "m10"),    // Cheap attackers for Attacks triggers
+    ("Serra Angel", 3, "m21"),       // Vigilance — attacks without tapping
+    ("Lightning Bolt", 4, "m11"),    // DamageDone triggers
+    ("Shock", 4, "m21"),             // DamageDone triggers
+    ("Raise the Alarm", 4, "m15"),   // Token ETB → ChangesZone triggers
+    ("Vampire Nighthawk", 3, "m13"), // Lifelink → LifeGained from combat
+    ("White Knight", 3, "m10"),      // First strike blocker
 ];
 
 /// All AI-eligible deck lists, used for random opponent selection.

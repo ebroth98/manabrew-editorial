@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_change_type, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
 
@@ -53,6 +54,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if let Some(card_id) = card_to_sacrifice {
             if ctx.game.card(card_id).zone == ZoneType::Battlefield {
                 let owner = ctx.game.card(card_id).owner;
+                // Fire Sacrificed trigger
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::Sacrificed,
+                    RunParams {
+                        card: Some(card_id),
+                        player: Some(sacrificing_player),
+                        ..Default::default()
+                    },
+                    false,
+                );
                 ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
                 emit_zone_trigger(
                     ctx.trigger_handler,

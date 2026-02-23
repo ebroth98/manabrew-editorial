@@ -690,7 +690,7 @@
 |-----------|---------|:-------------------:|
 | `TriggerHandler.java` | Central trigger management & dispatch | **Implemented** (`trigger_handler.rs`) |
 | `Trigger.java` | Abstract base trigger class | **Implemented** (`trigger.rs` Trigger struct) |
-| `TriggerType.java` | Enum of all trigger types | **Partial** (5 types in `event.rs`) |
+| `TriggerType.java` | Enum of all trigger types | **Implemented** (33 types in `event.rs`: 8 original + 25 new) |
 | `WrappedAbility.java` | Ability wrapper for trigger execution | Not implemented |
 | `TriggerWaiting.java` | Waiting trigger queue | **Implemented** (waiting_triggers in handler) |
 | **Zone Change Triggers** | | |
@@ -702,78 +702,79 @@
 | `TriggerTurnBegin.java` | Turn begins | Not implemented |
 | `TriggerNewGame.java` | Game starts | Not implemented |
 | **Combat Triggers** | | |
-| `TriggerAttacks.java` | Creature attacks | **Implemented** |
+| `TriggerAttacks.java` | Creature attacks | **Implemented** (fires in game_loop.rs) |
 | `TriggerAttackersDeclared.java` | All attackers declared | Not implemented |
-| `TriggerAttackerBlocked.java` | Attacker is blocked | Not implemented |
+| `TriggerAttackerBlocked.java` | Attacker is blocked | **Implemented** (fires in game_loop.rs) |
 | `TriggerAttackerBlockedByCreature.java` | Specific blocker | Not implemented |
 | `TriggerAttackerBlockedOnce.java` | Blocked once per combat | Not implemented |
-| `TriggerAttackerUnblocked.java` | Attacker unblocked | Not implemented |
+| `TriggerAttackerUnblocked.java` | Attacker unblocked | **Implemented** (fires in game_loop.rs) |
 | `TriggerAttackerUnblockedOnce.java` | Unblocked once | Not implemented |
 | `TriggerBlockersDeclared.java` | All blockers declared | Not implemented |
-| `TriggerBlocks.java` | Creature blocks | Not implemented |
+| `TriggerBlocks.java` | Creature blocks | **Implemented** (fires in game_loop.rs) |
 | **Spell Triggers** | | |
 | `TriggerSpellCast.java` | Spell is cast | **Implemented** |
 | `TriggerSpellCastAll.java` | All spell casts | Not implemented |
 | `TriggerSpellCastOnce.java` | First spell cast per turn | Not implemented |
 | `TriggerSpellCastOfType.java` | Specific spell type cast | Not implemented |
 | `TriggerAbilityResolves.java` | Ability resolves | Not implemented |
-| `TriggerCountered.java` | Spell countered | Not implemented |
+| `TriggerAbilityTriggered.java` | Ability triggered | Not implemented |
+| `TriggerCountered.java` | Spell countered | **Implemented** (fires in counter_effect) |
 | **Damage Triggers** | | |
-| `TriggerDamageDone.java` | Damage dealt | **Implemented** |
+| `TriggerDamageDone.java` | Damage dealt | **Implemented** (fires in combat, damage_deal, damage_all) |
 | `TriggerDamageDoneOnce.java` | Damage dealt once | Not implemented |
 | `TriggerDamageDoneOnceByController.java` | Once per controller | Not implemented |
 | `TriggerDamageAll.java` | All damage events | Not implemented |
-| `TriggerDamageDealtOnce.java` | Once per damage event | Not implemented |
+| `TriggerDamageDealtOnce.java` | Once per damage event | **Partial** (TriggerType + TriggerMode defined, per-turn tracking not yet implemented) |
 | `TriggerDamagePreventedOnce.java` | Damage prevented | Not implemented |
 | `TriggerExcessDamage.java` | Excess damage (trample) | Not implemented |
 | `TriggerExcessDamageAll.java` | All excess damage | Not implemented |
 | **Life Triggers** | | |
-| `TriggerLifeGained.java` | Life gained | Not implemented |
-| `TriggerLifeLost.java` | Life lost | Not implemented |
+| `TriggerLifeGained.java` | Life gained | **Implemented** (fires in life_gain_effect, combat lifelink) |
+| `TriggerLifeLost.java` | Life lost | **Implemented** (fires in life_lose_effect, pay costs) |
 | `TriggerLifeLostAll.java` | All life loss | Not implemented |
 | `TriggerPayLife.java` | Life paid as cost | Not implemented |
 | `TriggerLosesGame.java` | Player loses | Not implemented |
 | **Counter Triggers** | | |
-| `TriggerCounterAdded.java` | Counter added | Not implemented |
+| `TriggerCounterAdded.java` | Counter added | **Implemented** (fires in counters_put_effect) |
 | `TriggerCounterAddedAll.java` | All counter additions | Not implemented |
 | `TriggerCounterAddedOnce.java` | Counter added once | Not implemented |
-| `TriggerCounterRemoved.java` | Counter removed | Not implemented |
+| `TriggerCounterRemoved.java` | Counter removed | **Implemented** (TriggerType + TriggerMode + perform_test, ready to fire from counter removal effects) |
 | `TriggerCounterRemovedOnce.java` | Counter removed once | Not implemented |
 | `TriggerCounterPlayerAddedAll.java` | Player counters | Not implemented |
 | `TriggerCounterTypeAddedAll.java` | Specific counter type | Not implemented |
 | **Card Action Triggers** | | |
-| `TriggerDrawn.java` | Card drawn | Not implemented |
-| `TriggerDiscarded.java` | Card discarded | Not implemented |
+| `TriggerDrawn.java` | Card drawn | **Implemented** (fires in draw_effect, step_draw) |
+| `TriggerDiscarded.java` | Card discarded | **Implemented** (fires in discard_effect) |
 | `TriggerDiscardedAll.java` | All discards | Not implemented |
-| `TriggerMilled.java` | Card milled | Not implemented |
+| `TriggerMilled.java` | Card milled | **Implemented** (fires in mill_effect) |
 | `TriggerMilledAll.java` | All mills | Not implemented |
 | `TriggerMilledOnce.java` | Milled once | Not implemented |
-| `TriggerExiled.java` | Card exiled | Not implemented |
-| `TriggerSacrificed.java` | Card sacrificed | Not implemented |
+| `TriggerExiled.java` | Card exiled | **Implemented** (fires in change_zone_effect when destination is Exile) |
+| `TriggerSacrificed.java` | Card sacrificed | **Implemented** (fires in sacrifice_effect, sacrifice_all_effect, game_loop) |
 | `TriggerSacrificedOnce.java` | Sacrificed once | Not implemented |
-| `TriggerDestroyed.java` | Card destroyed | Not implemented |
+| `TriggerDestroyed.java` | Card destroyed | **Implemented** (fires in destroy_effect) |
 | `TriggerCycled.java` | Card cycled | Not implemented |
-| `TriggerLandPlayed.java` | Land played | Not implemented |
-| `TriggerTaps.java` | Permanent tapped | Not implemented |
+| `TriggerLandPlayed.java` | Land played | **Implemented** (fires in game_loop play_card) |
+| `TriggerTaps.java` | Permanent tapped | **Implemented** (fires in tap_all_effect, game_loop) |
 | `TriggerTapAll.java` | All taps | Not implemented |
-| `TriggerUntaps.java` | Permanent untapped | Not implemented |
+| `TriggerUntaps.java` | Permanent untapped | **Implemented** (fires in untap_all_effect, game_loop) |
 | `TriggerUntapAll.java` | All untaps | Not implemented |
-| `TriggerTapsForMana.java` | Tapped for mana | Not implemented |
+| `TriggerTapsForMana.java` | Tapped for mana | **Implemented** (fires in game_loop ActivateMana + resolve_mana_ability) |
 | **Keyword Mechanic Triggers** | | |
-| `TriggerBecomesTarget.java` | Becomes target | Not implemented |
+| `TriggerBecomesTarget.java` | Becomes target | **Implemented** (fires in game_loop play_card + activate_ability_on_stack) |
 | `TriggerBecomesTargetOnce.java` | Targeted once | Not implemented |
 | `TriggerEvolved.java` | Creature evolves | Not implemented |
-| `TriggerExplores.java` | Creature explores | Not implemented |
+| `TriggerExplores.java` | Creature explores | **Partial** (TriggerType + TriggerMode defined, explore mechanic not yet implemented) |
 | `TriggerMutates.java` | Creature mutates | Not implemented |
 | `TriggerAdapt.java` | Creature adapts | Not implemented |
 | `TriggerBecomeMonstrous.java` | Becomes monstrous | Not implemented |
 | `TriggerBecomeRenowned.java` | Becomes renowned | Not implemented |
-| `TriggerBecomeMonarch.java` | Becomes monarch | Not implemented |
+| `TriggerBecomeMonarch.java` | Becomes monarch | **Partial** (TriggerType + TriggerMode defined, monarch mechanic not yet implemented) |
 | `TriggerBecomesCrewed.java` | Vehicle crewed | Not implemented |
 | `TriggerBecomesSaddled.java` | Mount saddled | Not implemented |
 | `TriggerBecomesPlotted.java` | Card plotted | Not implemented |
 | `TriggerFlippedCoin.java` | Coin flipped | Not implemented |
-| `TriggerFight.java` | Creatures fight | Not implemented |
+| `TriggerFight.java` | Creatures fight | **Implemented** (fires in fight_effect) |
 | `TriggerFightOnce.java` | Fight once | Not implemented |
 | `TriggerExerted.java` | Creature exerted | Not implemented |
 | `TriggerExploited.java` | Creature exploited | Not implemented |
@@ -790,18 +791,18 @@
 | **Misc Triggers** | | |
 | `TriggerAlways.java` | Always fires | Not implemented |
 | `TriggerImmediate.java` | Immediate trigger | Not implemented |
-| `TriggerAttached.java` | Aura/equipment attached | Not implemented |
-| `TriggerUnattach.java` | Detached | Not implemented |
+| `TriggerAttached.java` | Aura/equipment attached | **Implemented** (fires in attach_effect) |
+| `TriggerUnattach.java` | Detached | **Implemented** (TriggerType + TriggerMode + perform_test, ready to fire from detach effects) |
 | `TriggerPhaseIn.java` | Phased in | Not implemented |
 | `TriggerPhaseOut.java` | Phased out | Not implemented |
 | `TriggerPhaseOutAll.java` | All phased out | Not implemented |
-| `TriggerTransformed.java` | Card transformed | Not implemented |
+| `TriggerTransformed.java` | Card transformed | **Implemented** (fires in set_state_effect) |
 | `TriggerTurnFaceUp.java` | Turned face up | Not implemented |
 | `TriggerSearchedLibrary.java` | Library searched | Not implemented |
 | `TriggerShuffled.java` | Library shuffled | Not implemented |
 | `TriggerManaAdded.java` | Mana added | Not implemented |
 | `TriggerManaExpend.java` | Mana expended | Not implemented |
-| `TriggerTokenCreated.java` | Token created | Not implemented |
+| `TriggerTokenCreated.java` | Token created | **Implemented** (fires in token_effect) |
 | `TriggerTokenCreatedOnce.java` | Token created once | Not implemented |
 | `TriggerClassLevelGained.java` | Class leveled up | Not implemented |
 | `TriggerCompletedDungeon.java` | Dungeon completed | Not implemented |
@@ -882,10 +883,10 @@
 | `mana_pool.rs` | **Complete** | Full mana payment: hybrid, phyrexian, colorless, generic |
 | `combat.rs` | **Complete** | Attack/block declaration, queries |
 | `action.rs` | **Complete** | move_card, damage, SBAs (lethal, poison, commander), draw, shuffle, tap/untap |
-| `event.rs` | **Complete** | TriggerType enum (5 types), RunParams (~20 fields) |
+| `event.rs` | **Complete** | TriggerType enum (33 types: 8 original + 25 new), RunParams (~30 fields) |
 | `trigger.rs` | **Complete** | Trigger matching, ValidCard/ValidPlayer filters, parsing |
-| `trigger_handler.rs` | **Partial** | Active/waiting/delayed triggers, dispatch (some stubs) |
-| `agent.rs` | **Complete** | PlayerAgent trait (14 callbacks incl. choose_sacrifice), MainPhaseAction, TargetChoice |
+| `trigger_handler.rs` | **Complete** | Active/waiting/delayed triggers, dispatch, OptionalDecider$ support, APNAP ordering |
+| `agent.rs` | **Complete** | PlayerAgent trait (15 callbacks incl. choose_optional_trigger), MainPhaseAction, TargetChoice |
 | `game_loop.rs` | **Partial** | Game flow orchestration with APNAP priority handoff, `priority_player` tracking, draw/combat/end priority windows, and illegal-action guardrails; still missing full Java parity for extra turns/phases and advanced phase replacement hooks |
 | `spellability/mod.rs` | **Complete** | SpellAbility module structure |
 | `spellability/targeting.rs` | **Complete** | Targeting system: parse_valid_targets, choose_targets, CardInZone support for graveyard/exile targeting |
@@ -920,13 +921,13 @@
 | Replacement Effects | 46 | 4 | 4 | 38 |
 | Spell Abilities | 25 | 3 | 2 | 20 |
 | Static Abilities | 60 | 2 | 4 | 54 |
-| Triggers | 140 | 4 | 1 | 135 |
+| Triggers | 140 | 26 | 5 | 109 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **50** | **58** | **661** |
+| **TOTAL** | **769** | **72** | **62** | **635** |
 
-> **Coverage: ~14.1% implemented or partially implemented** (108 of 769 features have some Rust counterpart)
+> **Coverage: ~17.4% implemented or partially implemented** (134 of 769 features have some Rust counterpart)
 >
-> The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (135 files), and **costs** (58 files).
+> The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The trigger system now supports **33 trigger types** (8 original + 25 new) with OptionalDecider$ prompting, delayed trigger infrastructure, and comprehensive ValidCard$/ValidPlayer$ filtering. The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (109 still not implemented), and **costs** (58 files).
 
 ---
 

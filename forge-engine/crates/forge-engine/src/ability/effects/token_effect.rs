@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -42,6 +43,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .move_card(token_id, ZoneType::Battlefield, token_controller);
             ctx.trigger_handler
                 .register_active_trigger(ctx.game, token_id);
+            // Fire TokenCreated trigger
+            ctx.trigger_handler.run_trigger(
+                TriggerType::TokenCreated,
+                RunParams {
+                    card: Some(token_id),
+                    player: Some(token_controller),
+                    ..Default::default()
+                },
+                false,
+            );
+
             emit_zone_trigger(
                 ctx.trigger_handler,
                 token_id,

@@ -36,6 +36,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for card_id in to_tap {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
             ctx.game.tap(card_id);
+            // Fire Taps trigger per card
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::Taps,
+                crate::event::RunParams {
+                    card: Some(card_id),
+                    ..Default::default()
+                },
+                false,
+            );
         }
     }
 }

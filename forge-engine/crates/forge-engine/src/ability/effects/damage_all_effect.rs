@@ -42,9 +42,23 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Pass 2 — apply damage to collected permanents
+    let source = sa.source;
     for card_id in to_damage {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
             ctx.game.deal_damage_to_card(card_id, num_dmg);
+
+            // Fire DamageDone trigger per card
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::DamageDone,
+                crate::event::RunParams {
+                    damage_source: source,
+                    damage_target_card: Some(card_id),
+                    damage_amount: Some(num_dmg),
+                    is_combat_damage: Some(false),
+                    ..Default::default()
+                },
+                false,
+            );
         }
     }
 
@@ -52,6 +66,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if !valid_players.is_empty() {
         for pid in player_ids {
             ctx.game.deal_damage_to_player(pid, num_dmg);
+
+            // Fire DamageDone trigger per player
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::DamageDone,
+                crate::event::RunParams {
+                    damage_source: source,
+                    damage_target_player: Some(pid),
+                    damage_amount: Some(num_dmg),
+                    is_combat_damage: Some(false),
+                    ..Default::default()
+                },
+                false,
+            );
         }
     }
 }

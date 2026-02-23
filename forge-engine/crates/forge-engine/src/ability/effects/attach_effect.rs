@@ -26,4 +26,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     ctx.game.attach_to(aura_id, target);
+
+    // Fire Attached trigger
+    ctx.trigger_handler.run_trigger(
+        crate::event::TriggerType::Attached,
+        crate::event::RunParams {
+            card: Some(aura_id),
+            ..Default::default()
+        },
+        false,
+    );
 }

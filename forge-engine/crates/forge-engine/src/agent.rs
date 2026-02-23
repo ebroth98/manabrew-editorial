@@ -173,6 +173,14 @@ pub trait PlayerAgent {
         (0..min.min(descriptions.len())).collect()
     }
 
+    /// Choose whether an optional triggered ability fires.
+    /// `description` is the trigger text shown to the player.
+    /// Returns true to allow the trigger, false to decline.
+    /// Default: always allow (non-interactive agents accept all optional triggers).
+    fn choose_optional_trigger(&mut self, _player: PlayerId, _description: &str) -> bool {
+        true
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;

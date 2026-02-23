@@ -48,6 +48,8 @@ interface AgentPrompt {
   minChoices?: number;
   /** chooseMode: maximum number of modes that can be chosen */
   maxChoices?: number;
+  /** chooseOptionalTrigger: trigger description text */
+  description?: string;
 }
 
 interface GameConfig {
@@ -85,7 +87,7 @@ interface GameState {
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
   // Actions
-  startGame: (cardNames: string[], formatId?: string, commanderName?: string) => Promise<void>;
+  startGame: (deckList: { name: string, setCode: string }[], formatId?: string, commanderName?: string) => Promise<void>;
   startMultiplayerGame: (playerNames: string[], hostPlayerIndex: number, startingLife: number) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
   castSpell: (cardId: string) => void;
@@ -104,6 +106,7 @@ interface GameState {
   discardDecision: (discardedCardIds: string[]) => void;
   targetSpell: (spellId: string | null) => void;
   modeDecision: (chosenIndices: number[]) => void;
+  optionalTriggerDecision: (accept: boolean) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
@@ -306,6 +309,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   modeDecision: (chosenIndices) => {
     get().respond({ type: 'modeDecision', chosenIndices });
+  },
+
+  optionalTriggerDecision: (accept) => {
+    get().respond({ type: 'optionalTriggerDecision', accept });
   },
 
   concede: () => {

@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{resolve_defined_player, EffectContext};
+use super::{emit_zone_trigger, resolve_defined_player, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
@@ -47,6 +47,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     ..Default::default()
                 },
                 false,
+            );
+            emit_zone_trigger(
+                ctx.trigger_handler,
+                card_id,
+                ZoneType::Hand,
+                ZoneType::Graveyard,
             );
         }
     }

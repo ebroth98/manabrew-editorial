@@ -1,7 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_valid_cards, EffectContext};
-use crate::ids::{CardId, PlayerId};
+use crate::event::{RunParams, TriggerType};
+use crate::ids::CardId;
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -57,6 +58,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         let owner = ctx.game.card(card_id).owner;
         ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
+        ctx.trigger_handler.run_trigger(
+            TriggerType::Destroyed,
+            RunParams {
+                card: Some(card_id),
+                ..Default::default()
+            },
+            false,
+        );
         emit_zone_trigger(
             ctx.trigger_handler,
             card_id,

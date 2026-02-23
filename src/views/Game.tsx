@@ -12,6 +12,7 @@ import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
 import { LibraryPeekModal, type LibraryPeekMode } from "@/components/game/LibraryPeekModal";
 import { SpellStackModal } from "@/components/game/SpellStackModal";
 import { ChooseModeModal } from "@/components/game/ChooseModeModal";
+import { ChooseOptionalTriggerModal } from "@/components/game/ChooseOptionalTriggerModal";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
 import { Button } from "@/components/ui/button";
@@ -589,6 +590,7 @@ const PROMPT_LABELS: Record<string, string> = {
   chooseTargetCardFromZone:"Choose a target card from the zone",
   chooseTargetSpell:       "Choose a spell on the stack to counter",
   chooseMode:              "Choose a mode for the spell",
+  chooseOptionalTrigger:   "An optional ability would trigger",
   scry:                    "Scry — choose cards to put on the bottom",
   surveil:                 "Surveil — choose cards to send to the graveyard",
   dig:                     "Dig — choose cards to take to your hand",
@@ -743,6 +745,7 @@ export default function Game() {
     discardDecision,
     targetSpell,
     modeDecision,
+    optionalTriggerDecision,
     concede,
     endGame,
     setupListeners,
@@ -822,6 +825,9 @@ export default function Game() {
 
   // Choose mode modal (SP$ Charm — modal spells)
   const [chooseModeOpen, setChooseModeOpen] = useState(false);
+
+  // Optional trigger modal (OptionalDecider$)
+  const [optionalTriggerOpen, setOptionalTriggerOpen] = useState(false);
 
   // Concede confirmation
   const [confirmConcede, setConfirmConcede] = useState(false);
@@ -1133,6 +1139,15 @@ export default function Game() {
       setChooseModeOpen(true);
     } else {
       setChooseModeOpen(false);
+    }
+  }, [promptType]);
+
+  // Auto-open the optional trigger modal for OptionalDecider$ prompts
+  useEffect(() => {
+    if (promptType === "chooseOptionalTrigger") {
+      setOptionalTriggerOpen(true);
+    } else {
+      setOptionalTriggerOpen(false);
     }
   }, [promptType]);
 
@@ -1851,6 +1866,17 @@ export default function Game() {
           onConfirm={(chosenIndices) => {
             modeDecision(chosenIndices);
             setChooseModeOpen(false);
+          }}
+        />
+      )}
+
+      {/* ── Optional trigger modal (OptionalDecider$) ──── */}
+      {optionalTriggerOpen && currentPrompt?.description != null && (
+        <ChooseOptionalTriggerModal
+          description={currentPrompt.description}
+          onConfirm={(accept) => {
+            optionalTriggerDecision(accept);
+            setOptionalTriggerOpen(false);
           }}
         />
       )}

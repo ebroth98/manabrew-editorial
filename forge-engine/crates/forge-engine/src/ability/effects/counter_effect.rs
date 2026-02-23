@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::EffectContext;
+use super::{emit_zone_trigger, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
@@ -44,6 +44,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
 
             ctx.game.move_card(source_card, dest_zone, owner);
+            emit_zone_trigger(
+                ctx.trigger_handler,
+                source_card,
+                ZoneType::Stack,
+                dest_zone,
+            );
 
             // Fire Countered trigger
             ctx.trigger_handler.run_trigger(
