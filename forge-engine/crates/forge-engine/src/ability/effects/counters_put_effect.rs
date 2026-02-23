@@ -4,10 +4,7 @@ use super::{parse_counter_type, parse_param, EffectContext};
 use crate::card::CounterType;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-) {
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let counter_type = sa
         .params
         .get("CounterType")

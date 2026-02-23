@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hasher};
 
 use forge_foundation::{PhaseType, ZoneType};
 
@@ -10,12 +11,12 @@ use crate::cost::{self, can_pay, parse_cost, CostPart};
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::mana::{self, ManaPool, basic_land_mana_atom, mana_atom_from_produced};
-use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
+use crate::mana::{self, basic_land_mana_atom, mana_atom_from_produced, ManaPool};
 use crate::spellability::target_restrictions;
+use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
 use crate::staticability::layer::apply_continuous_effects;
-use crate::trigger::parse_pipe_params;
 use crate::trigger::handler::TriggerHandler;
+use crate::trigger::parse_pipe_params;
 
 // ── GameLoop ────────────────────────────────────────────────────────
 
@@ -27,6 +28,35 @@ pub struct GameLoop {
     /// Token templates keyed by their script filename stem (e.g. "r_1_1_goblin").
     /// Populated at game start by the Tauri layer; used by the Token effect handler.
     pub token_templates: HashMap<String, CardInstance>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TurnMachineState {
+    Untap,
+    Upkeep,
+    Draw,
+    Main1,
+    Combat,
+    Main2,
+    EndOfTurn,
+    Cleanup,
+    Done,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TurnEvent {
+    EnterPhase {
+        phase: PhaseType,
+        emit_phase_trigger: bool,
+    },
+    PriorityWindow {
+        is_main_phase: bool,
+    },
+    UntapStep,
+    DrawStep,
+    CombatStep,
+    CleanupStep,
+    AdvanceTurn,
 }
 
 impl GameLoop {
@@ -103,50 +133,188 @@ impl GameLoop {
         // Recompute continuous static effects for the new turn.
         apply_continuous_effects(game);
 
-        // Beginning phase: Untap, Upkeep, Draw
-        game.turn.phase = PhaseType::Untap;
-        self.step_untap(game);
+        self.run_turn_state_machine(game, agents);
+    }
 
-        game.turn.phase = PhaseType::Upkeep;
-        self.emit_phase_trigger(game, PhaseType::Upkeep);
-        self.step_with_priority(game, agents, false);
+    fn run_turn_state_machine(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) {
+        let mut state = TurnMachineState::Untap;
+        while !game.game_over && state != TurnMachineState::Done {
+            state = match state {
+                TurnMachineState::Untap => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Untap,
+                            emit_phase_trigger: false,
+                        },
+                    );
+                    self.apply_turn_event(game, agents, TurnEvent::UntapStep);
+                    TurnMachineState::Upkeep
+                }
+                TurnMachineState::Upkeep => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Upkeep,
+                            emit_phase_trigger: true,
+                        },
+                    );
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::PriorityWindow {
+                            is_main_phase: false,
+                        },
+                    );
+                    TurnMachineState::Draw
+                }
+                TurnMachineState::Draw => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Draw,
+                            emit_phase_trigger: true,
+                        },
+                    );
+                    self.apply_turn_event(game, agents, TurnEvent::DrawStep);
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::PriorityWindow {
+                            is_main_phase: false,
+                        },
+                    );
+                    TurnMachineState::Main1
+                }
+                TurnMachineState::Main1 => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Main1,
+                            emit_phase_trigger: true,
+                        },
+                    );
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::PriorityWindow {
+                            is_main_phase: true,
+                        },
+                    );
+                    TurnMachineState::Combat
+                }
+                TurnMachineState::Combat => {
+                    self.apply_turn_event(game, agents, TurnEvent::CombatStep);
+                    TurnMachineState::Main2
+                }
+                TurnMachineState::Main2 => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Main2,
+                            emit_phase_trigger: true,
+                        },
+                    );
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::PriorityWindow {
+                            is_main_phase: true,
+                        },
+                    );
+                    TurnMachineState::EndOfTurn
+                }
+                TurnMachineState::EndOfTurn => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::EndOfTurn,
+                            emit_phase_trigger: true,
+                        },
+                    );
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::PriorityWindow {
+                            is_main_phase: false,
+                        },
+                    );
+                    TurnMachineState::Cleanup
+                }
+                TurnMachineState::Cleanup => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Cleanup,
+                            emit_phase_trigger: false,
+                        },
+                    );
+                    self.apply_turn_event(game, agents, TurnEvent::CleanupStep);
+                    self.apply_turn_event(game, agents, TurnEvent::AdvanceTurn);
+                    TurnMachineState::Done
+                }
+                TurnMachineState::Done => TurnMachineState::Done,
+            };
+        }
+    }
 
-        game.turn.phase = PhaseType::Draw;
-        self.step_draw(game);
-
-        // Main Phase 1
-        game.turn.phase = PhaseType::Main1;
-        self.step_main_phase(game, agents);
-
+    fn apply_turn_event(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        event: TurnEvent,
+    ) {
         if game.game_over {
             return;
         }
-
-        // Combat Phase
-        self.step_combat(game, agents);
-
-        if game.game_over {
-            return;
+        match event {
+            TurnEvent::EnterPhase {
+                phase,
+                emit_phase_trigger,
+            } => {
+                self.set_phase(game, agents, phase);
+                if emit_phase_trigger {
+                    self.emit_phase_trigger(game, phase);
+                }
+            }
+            TurnEvent::PriorityWindow { is_main_phase } => {
+                self.step_with_priority(game, agents, is_main_phase);
+            }
+            TurnEvent::UntapStep => {
+                self.with_shared_state_mutation(game, agents, |this, game, _agents| {
+                    this.step_untap(game);
+                });
+            }
+            TurnEvent::DrawStep => {
+                self.with_shared_state_mutation(game, agents, |this, game, _agents| {
+                    this.step_draw(game);
+                });
+            }
+            TurnEvent::CombatStep => {
+                self.step_combat(game, agents);
+            }
+            TurnEvent::CleanupStep => {
+                self.with_shared_state_mutation(game, agents, |this, game, _agents| {
+                    this.step_cleanup(game);
+                });
+            }
+            TurnEvent::AdvanceTurn => {
+                self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                    game.turn.next_player_turn(&game.player_order.clone());
+                });
+            }
         }
-
-        // Main Phase 2
-        game.turn.phase = PhaseType::Main2;
-        self.step_main_phase(game, agents);
-
-        if game.game_over {
-            return;
-        }
-
-        // End phase
-        game.turn.phase = PhaseType::EndOfTurn;
-        self.emit_phase_trigger(game, PhaseType::EndOfTurn);
-        self.step_with_priority(game, agents, false);
-
-        game.turn.phase = PhaseType::Cleanup;
-        self.step_cleanup(game);
-
-        // Advance to next player's turn
-        game.turn.next_player_turn(&game.player_order.clone());
     }
 
     pub fn step_untap(&mut self, game: &mut GameState) {
@@ -163,20 +331,167 @@ impl GameLoop {
         }
     }
 
-    
+    fn notify_phase_changed(&mut self, game: &GameState, agents: &mut [Box<dyn PlayerAgent>]) {
+        for agent in agents.iter_mut() {
+            agent.snapshot_state(game, &self.mana_pools);
+            agent.notify_phase_changed(game.turn.phase);
+        }
+    }
+
+    fn notify_state_changed(&mut self, game: &GameState, agents: &mut [Box<dyn PlayerAgent>]) {
+        for agent in agents.iter_mut() {
+            agent.snapshot_state(game, &self.mana_pools);
+            agent.notify_state_changed();
+        }
+    }
+
+    fn state_fingerprint(&self, game: &GameState) -> u64 {
+        let mut hasher = DefaultHasher::new();
+
+        hasher.write_u32(game.turn.turn_number);
+        hasher.write_u32(game.turn.active_player.0);
+        hasher.write_u8(game.turn.phase as u8);
+        hasher.write_u32(game.turn.priority_player.0);
+        hasher.write_u8(game.game_over as u8);
+        hasher.write_u32(game.winner.map(|p| p.0).unwrap_or(u32::MAX));
+
+        for p in &game.players {
+            hasher.write_u32(p.id.0);
+            hasher.write_i32(p.life);
+            hasher.write_i32(p.poison_counters);
+            hasher.write_i32(p.lands_played_this_turn);
+            hasher.write_i32(p.spells_cast_this_turn);
+            hasher.write_i32(p.drawn_this_turn);
+        }
+
+        for pool in &self.mana_pools {
+            hasher.write_i32(pool.white);
+            hasher.write_i32(pool.blue);
+            hasher.write_i32(pool.black);
+            hasher.write_i32(pool.red);
+            hasher.write_i32(pool.green);
+            hasher.write_i32(pool.colorless);
+        }
+
+        for c in &game.cards {
+            hasher.write_u32(c.id.0);
+            hasher.write_u32(c.owner.0);
+            hasher.write_u32(c.controller.0);
+            hasher.write_u8(c.zone as u8);
+            hasher.write_u8(c.tapped as u8);
+            hasher.write_u8(c.summoning_sick as u8);
+            hasher.write_i32(c.damage);
+            hasher.write_i32(c.power_modifier);
+            hasher.write_i32(c.toughness_modifier);
+            hasher.write_u8(c.has_deathtouch_damage as u8);
+            hasher.write_u8(c.is_token as u8);
+            hasher.write_u8(c.is_commander as u8);
+            hasher.write_u32(c.commander_cast_count as u32);
+        }
+
+        for entry in game.stack.iter() {
+            hasher.write_u32(entry.id);
+            hasher.write_u32(entry.spell_ability.activating_player.0);
+            hasher.write_u8(entry.is_creature_spell as u8);
+            hasher.write_u8(entry.is_permanent_spell as u8);
+            hasher.write_u32(entry.spell_ability.source.map(|s| s.0).unwrap_or(u32::MAX));
+            hasher.write(entry.spell_ability.ability_text.as_bytes());
+        }
+
+        let mut zone_rows: Vec<String> = game
+            .zones
+            .iter()
+            .map(|(k, z)| {
+                let ids = z
+                    .cards
+                    .iter()
+                    .map(|c| c.0.to_string())
+                    .collect::<Vec<_>>()
+                    .join(",");
+                format!("{:?}:{}:{ids}", k.zone_type, k.owner.0)
+            })
+            .collect();
+        zone_rows.sort_unstable();
+        for row in zone_rows {
+            hasher.write(row.as_bytes());
+        }
+
+        hasher.write_u32(
+            self.combat
+                .attacking_player
+                .map(|p| p.0)
+                .unwrap_or(u32::MAX),
+        );
+        hasher.write_u32(
+            self.combat
+                .defending_player
+                .map(|p| p.0)
+                .unwrap_or(u32::MAX),
+        );
+        for (attacker, defending_player) in &self.combat.attackers {
+            hasher.write_u32(attacker.0);
+            hasher.write_u32(defending_player.0);
+        }
+        for (blocker, attacker) in &self.combat.blockers {
+            hasher.write_u32(blocker.0);
+            hasher.write_u32(attacker.0);
+        }
+
+        hasher.finish()
+    }
+
+    fn with_shared_state_mutation<R>(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        f: impl FnOnce(&mut Self, &mut GameState, &mut [Box<dyn PlayerAgent>]) -> R,
+    ) -> R {
+        let before = self.state_fingerprint(game);
+        let out = f(self, game, agents);
+        let after = self.state_fingerprint(game);
+        if before != after {
+            self.notify_state_changed(game, agents);
+        }
+        out
+    }
+
+    fn set_phase(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        phase: PhaseType,
+    ) {
+        game.turn.phase = phase;
+        self.notify_phase_changed(game, agents);
+    }
+
     /// Run a priority loop until everyone passes and the stack is empty.
     /// This should be called in any phase/step where players get priority (Upkeep, Main, Combat, End).
-    pub fn step_with_priority(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>], is_main_phase: bool) {
+    pub fn step_with_priority(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        is_main_phase: bool,
+    ) {
+        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+            game.turn.priority_player = game.active_player();
+        });
         loop {
-            if game.game_over { return; }
+            if game.game_over {
+                return;
+            }
 
             // 1. Process any pending triggers and put them on the stack
-            self.process_triggers(game, agents);
+            self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                this.process_triggers(game, agents);
+            });
 
             // 2. Give players priority
             self.priority_round(game, agents, is_main_phase);
 
-            if game.game_over { return; }
+            if game.game_over {
+                return;
+            }
 
             // 3. If stack is empty after everyone passed, the phase ends
             if game.stack.is_empty() {
@@ -184,22 +499,16 @@ impl GameLoop {
             }
 
             // 4. Resolve top of stack (resolve_stack resolves one and gives priority)
-            self.resolve_stack(game, agents);
+            self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                this.resolve_stack(game, agents);
+            });
         }
     }
-pub fn step_main_phase(
-        &mut self,
-        game: &mut GameState,
-        agents: &mut [Box<dyn PlayerAgent>],
-    ) {
+    pub fn step_main_phase(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         self.step_with_priority(game, agents, true);
     }
 
-    pub fn step_combat(
-        &mut self,
-        game: &mut GameState,
-        agents: &mut [Box<dyn PlayerAgent>],
-    ) {
+    pub fn step_combat(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         let active = game.active_player();
         let defending = game.opponent_of(active);
         self.combat.clear();
@@ -207,31 +516,29 @@ pub fn step_main_phase(
         self.combat.defending_player = Some(defending);
 
         // Begin Combat
-        game.turn.phase = PhaseType::CombatBegin;
+        self.set_phase(game, agents, PhaseType::CombatBegin);
+        self.emit_phase_trigger(game, PhaseType::CombatBegin);
+        self.step_with_priority(game, agents, false);
+        if game.game_over {
+            self.combat.clear();
+            return;
+        }
 
         // Recompute continuous effects before evaluating attack/block legality.
         // CantAttack / CantBlock flags are set here.
         apply_continuous_effects(game);
 
         // Declare Attackers
-        game.turn.phase = PhaseType::CombatDeclareAttackers;
+        self.set_phase(game, agents, PhaseType::CombatDeclareAttackers);
         let available_attackers = combat::get_available_attackers(game, active);
 
-        if available_attackers.is_empty() {
-            game.turn.phase = PhaseType::CombatEnd;
-            self.combat.clear();
-            return;
-        }
-
-        agents[active.index()].snapshot_state(game, &self.mana_pools);
-        let agent = &mut agents[active.index()];
-        let chosen_attackers = agent.choose_attackers(active, &available_attackers);
-
-        if chosen_attackers.is_empty() {
-            game.turn.phase = PhaseType::CombatEnd;
-            self.combat.clear();
-            return;
-        }
+        let chosen_attackers = if available_attackers.is_empty() {
+            Vec::new()
+        } else {
+            agents[active.index()].snapshot_state(game, &self.mana_pools);
+            let agent = &mut agents[active.index()];
+            agent.choose_attackers(active, &available_attackers)
+        };
 
         // Tap attackers (Vigilance skips tapping)
         for &attacker_id in &chosen_attackers {
@@ -241,14 +548,20 @@ pub fn step_main_phase(
             game.card_mut(attacker_id).attacked_this_turn = true;
             self.combat.declare_attacker(attacker_id, defending);
         }
+        self.step_with_priority(game, agents, false);
+        if game.game_over {
+            self.combat.clear();
+            return;
+        }
 
         // Declare Blockers
-        game.turn.phase = PhaseType::CombatDeclareBlockers;
+        self.set_phase(game, agents, PhaseType::CombatDeclareBlockers);
         let available_blockers = combat::get_available_blockers(game, defending);
 
         if !available_blockers.is_empty() {
             // Filter out illegal blocks (flying can only be blocked by flying/reach)
-            let legal_blockers = combat::filter_legal_blockers(game, &chosen_attackers, &available_blockers);
+            let legal_blockers =
+                combat::filter_legal_blockers(game, &chosen_attackers, &available_blockers);
 
             if !legal_blockers.is_empty() {
                 agents[defending.index()].snapshot_state(game, &self.mana_pools);
@@ -270,13 +583,18 @@ pub fn step_main_phase(
                 }
             }
         }
+        self.step_with_priority(game, agents, false);
+        if game.game_over {
+            self.combat.clear();
+            return;
+        }
 
         // Determine if we need first strike damage step
         let has_first_strikers = self.combat.has_first_strikers(game);
 
-        if has_first_strikers {
+        if has_first_strikers && self.combat.has_attackers() {
             // First Strike Damage step
-            game.turn.phase = PhaseType::CombatFirstStrikeDamage;
+            self.set_phase(game, agents, PhaseType::CombatFirstStrikeDamage);
             self.combat.resolve_damage_step(game, true);
 
             // SBA between damage steps
@@ -286,14 +604,19 @@ pub fn step_main_phase(
                 }
             }
             if game.game_over {
-                game.turn.phase = PhaseType::CombatEnd;
+                self.set_phase(game, agents, PhaseType::CombatEnd);
+                self.combat.clear();
+                return;
+            }
+            self.step_with_priority(game, agents, false);
+            if game.game_over {
                 self.combat.clear();
                 return;
             }
         }
 
         // Regular Combat Damage step
-        game.turn.phase = PhaseType::CombatDamage;
+        self.set_phase(game, agents, PhaseType::CombatDamage);
         self.combat.resolve_damage_step(game, false);
 
         // SBA after combat
@@ -302,9 +625,16 @@ pub fn step_main_phase(
                 break;
             }
         }
+        self.step_with_priority(game, agents, false);
+        if game.game_over {
+            self.combat.clear();
+            return;
+        }
 
         // End combat
-        game.turn.phase = PhaseType::CombatEnd;
+        self.set_phase(game, agents, PhaseType::CombatEnd);
+        self.emit_phase_trigger(game, PhaseType::CombatEnd);
+        self.step_with_priority(game, agents, false);
         self.combat.clear();
     }
 
@@ -352,7 +682,12 @@ pub fn step_main_phase(
     }
 
     /// Get cards the active player can play.
-    fn get_playable_cards(&self, game: &GameState, player: PlayerId, must_be_instant: bool) -> Vec<CardId> {
+    fn get_playable_cards(
+        &self,
+        game: &GameState,
+        player: PlayerId,
+        must_be_instant: bool,
+    ) -> Vec<CardId> {
         let mut playable = Vec::new();
         let hand = game.cards_in_zone(ZoneType::Hand, player);
 
@@ -366,13 +701,13 @@ pub fn step_main_phase(
                     continue;
                 }
                 let tax = card.commander_cast_count as i32 * 2;
-                let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
                 if available_mana.can_pay_with_extra_generic(&card.mana_cost, tax) {
                     playable.push(card_id);
                 }
             }
         }
-
 
         for &card_id in hand {
             let card = game.card(card_id);
@@ -387,18 +722,23 @@ pub fn step_main_phase(
                 }
 
                 // Check if we can pay the mana cost
-                let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
                 if available_mana.can_pay(&card.mana_cost) {
                     // Check additional costs from SP$ line (e.g. Sac<1/Creature>).
                     // Mirrors Java's CostPayment.canPayAdditionalCosts().
                     let spell_cost = Self::parse_spell_cost(&card.abilities);
                     let additional_costs_ok = if let Some(ref sc) = spell_cost {
                         sc.parts.iter().all(|part| match part {
-                            CostPart::Sacrifice { type_filter, amount } => {
+                            CostPart::Sacrifice {
+                                type_filter,
+                                amount,
+                            } => {
                                 if type_filter == "CARDNAME" {
                                     true // source-sacrifice checked separately
                                 } else {
-                                    let targets = cost::get_sacrifice_targets(game, player, type_filter);
+                                    let targets =
+                                        cost::get_sacrifice_targets(game, player, type_filter);
                                     (targets.len() as i32) >= *amount
                                 }
                             }
@@ -414,7 +754,12 @@ pub fn step_main_phase(
                         // exists across the entire SubAbility chain.
                         // Mirrors Java's setupTargets() walking the chain.
                         let all_valid = card.abilities.iter().all(|ab| {
-                            target_restrictions::has_candidates_in_chain(game, player, ab, Some(card_id))
+                            target_restrictions::has_candidates_in_chain(
+                                game,
+                                player,
+                                ab,
+                                Some(card_id),
+                            )
                         });
                         if all_valid {
                             playable.push(card_id);
@@ -451,8 +796,8 @@ pub fn step_main_phase(
             let is_permanent = game.card(card_id).is_permanent();
 
             // Detect commander cast from Command zone (for commander tax)
-            let is_commander_cast = game.card(card_id).is_commander
-                && game.card(card_id).zone == ZoneType::Command;
+            let is_commander_cast =
+                game.card(card_id).is_commander && game.card(card_id).zone == ZoneType::Command;
             let commander_tax = if is_commander_cast {
                 game.card(card_id).commander_cast_count as i32 * 2
             } else {
@@ -548,7 +893,11 @@ pub fn step_main_phase(
             if entry.is_creature_spell || entry.is_permanent_spell {
                 // Permanent spell: move to battlefield
                 let origin = game.card(card_id).zone;
-                game.move_card(card_id, ZoneType::Battlefield, entry.spell_ability.activating_player);
+                game.move_card(
+                    card_id,
+                    ZoneType::Battlefield,
+                    entry.spell_ability.activating_player,
+                );
 
                 // Register triggers for the new permanent
                 self.trigger_handler.register_active_trigger(game, card_id);
@@ -565,7 +914,10 @@ pub fn step_main_phase(
                 self.resolve_spell_effect(game, agents, &entry);
                 let owner = game.card(card_id).owner;
                 // Only move to graveyard if it's still in stack zone
-                if game.card(card_id).zone != ZoneType::Exile && game.card(card_id).zone != ZoneType::Library && game.card(card_id).zone != ZoneType::Hand {
+                if game.card(card_id).zone != ZoneType::Exile
+                    && game.card(card_id).zone != ZoneType::Library
+                    && game.card(card_id).zone != ZoneType::Hand
+                {
                     game.move_card(card_id, ZoneType::Graveyard, owner);
                 }
             }
@@ -580,7 +932,12 @@ pub fn step_main_phase(
         self.process_triggers(game, agents);
     }
 
-    fn resolve_spell_effect(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>], entry: &StackEntry) {
+    fn resolve_spell_effect(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        entry: &StackEntry,
+    ) {
         // Walk the SpellAbility chain: resolve each node's effect, propagating
         // the parent SA's chosen target card so sub-abilities can resolve
         // `Defined$ ParentTarget`. Mirrors Java's resolveApiAbility() + resolveSubAbilities().
@@ -708,13 +1065,21 @@ pub fn step_main_phase(
                     game.tap(card_id);
                 }
                 CostPart::Mana(mana_cost) => {
-                    mana::auto_tap_lands(game, &mut self.mana_pools[player.index()], player, mana_cost);
+                    mana::auto_tap_lands(
+                        game,
+                        &mut self.mana_pools[player.index()],
+                        player,
+                        mana_cost,
+                    );
                     self.mana_pools[player.index()].try_pay(mana_cost);
                 }
                 CostPart::PayLife(amount) => {
                     game.player_mut(player).lose_life(*amount);
                 }
-                CostPart::Sacrifice { type_filter, amount } => {
+                CostPart::Sacrifice {
+                    type_filter,
+                    amount,
+                } => {
                     if type_filter == "CARDNAME" {
                         let owner = game.card(card_id).owner;
                         game.move_card(card_id, ZoneType::Graveyard, owner);
@@ -744,7 +1109,10 @@ pub fn step_main_phase(
                 CostPart::PayLife(amount) => {
                     game.player_mut(player).lose_life(*amount);
                 }
-                CostPart::Sacrifice { type_filter, amount } => {
+                CostPart::Sacrifice {
+                    type_filter,
+                    amount,
+                } => {
                     if type_filter != "CARDNAME" {
                         self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
                     }
@@ -832,8 +1200,6 @@ pub fn step_main_phase(
         agents[player.index()].notify(&format!("Activated ability of {}", card_name));
     }
 
-
-
     /// Give players priority to take actions (play cards, activate abilities).
     /// Returns when all players pass in succession.
     pub fn priority_round(
@@ -847,25 +1213,33 @@ pub fn step_main_phase(
         let num_players = game.players.len();
 
         while passed_count < num_players {
-            if game.game_over { return; }
+            if game.game_over {
+                return;
+            }
+            self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                game.turn.priority_player = priority_player;
+            });
 
             // Check SBA before any player gets priority
             loop {
-                if !game.check_state_based_actions() { break; }
+                if !game.check_state_based_actions() {
+                    break;
+                }
             }
-            if game.game_over { return; }
+            if game.game_over {
+                return;
+            }
 
             // A player can play sorcery-speed cards if:
             // - It's their own turn
             // - It's a main phase
             // - The stack is empty
-            let can_play_sorcery = is_main_phase 
-                && priority_player == game.active_player() 
-                && game.stack.is_empty();
+            let can_play_sorcery =
+                is_main_phase && priority_player == game.active_player() && game.stack.is_empty();
             let must_be_instant = !can_play_sorcery;
 
             let playable = self.get_playable_cards(game, priority_player, must_be_instant);
-            
+
             let tappable_lands: Vec<CardId> = game
                 .cards_in_zone(ZoneType::Battlefield, priority_player)
                 .to_vec()
@@ -883,7 +1257,9 @@ pub fn step_main_phase(
                 .into_iter()
                 .filter(|&cid| {
                     let c = game.card(cid);
-                    if !c.is_land() || !c.tapped { return false; }
+                    if !c.is_land() || !c.tapped {
+                        return false;
+                    }
                     if let Some(atom) = basic_land_mana_atom(c) {
                         pool_snapshot.has_atom(atom, 1)
                     } else {
@@ -893,21 +1269,6 @@ pub fn step_main_phase(
                 .collect();
 
             let activatable = self.get_activatable_abilities(game, priority_player);
-
-            // At instant speed (must_be_instant), tappable lands alone don't justify holding
-            // priority — there's nothing instant-speed to spend the mana on. Only offer priority
-            // if there are actual instant-speed spells or activatable abilities to use.
-            let can_hold_priority = if must_be_instant {
-                !playable.is_empty() || !untappable_lands.is_empty() || !activatable.is_empty()
-            } else {
-                !playable.is_empty() || !tappable_lands.is_empty() || !untappable_lands.is_empty() || !activatable.is_empty()
-            };
-
-            if !can_hold_priority {
-                passed_count += 1;
-                priority_player = game.next_player(priority_player);
-                continue;
-            }
 
             agents[priority_player.index()].snapshot_state(game, &self.mana_pools);
             let action = agents[priority_player.index()].choose_action(
@@ -922,9 +1283,25 @@ pub fn step_main_phase(
                 MainPhaseAction::Pass => {
                     passed_count += 1;
                     priority_player = game.next_player(priority_player);
+                    self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                        game.turn.priority_player = priority_player;
+                    });
                 }
                 MainPhaseAction::Play(card_id) => {
-                    let played = self.play_card(game, agents, priority_player, card_id);
+                    if !playable.contains(&card_id) {
+                        agents[priority_player.index()]
+                            .notify("Illegal action ignored: unplayable card");
+                        passed_count += 1;
+                        priority_player = game.next_player(priority_player);
+                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                            game.turn.priority_player = priority_player;
+                        });
+                        continue;
+                    }
+                    let played =
+                        self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                            this.play_card(game, agents, priority_player, card_id)
+                        });
                     if let Some((played_id, played_name)) = played {
                         let set_code = game.card(played_id).set_code.clone().unwrap_or_default();
                         for agent in agents.iter_mut() {
@@ -935,34 +1312,345 @@ pub fn step_main_phase(
                     passed_count = 0;
                 }
                 MainPhaseAction::ActivateMana(land_id) => {
-                    let atom_opt = {
-                        let c = game.card(land_id);
-                        if c.is_land() && !c.tapped { basic_land_mana_atom(c) } else { None }
-                    };
-                    if let Some(atom) = atom_opt {
-                        game.tap(land_id);
-                        self.pool_mut(priority_player).add(atom, 1);
+                    if !tappable_lands.contains(&land_id) {
+                        agents[priority_player.index()]
+                            .notify("Illegal action ignored: land can't tap for mana");
+                        passed_count += 1;
+                        priority_player = game.next_player(priority_player);
+                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                            game.turn.priority_player = priority_player;
+                        });
+                        continue;
                     }
+                    self.with_shared_state_mutation(game, agents, |this, game, _agents| {
+                        let atom_opt = {
+                            let c = game.card(land_id);
+                            if c.is_land() && !c.tapped {
+                                basic_land_mana_atom(c)
+                            } else {
+                                None
+                            }
+                        };
+                        if let Some(atom) = atom_opt {
+                            game.tap(land_id);
+                            this.pool_mut(priority_player).add(atom, 1);
+                        }
+                    });
                     passed_count = 0;
                 }
                 MainPhaseAction::UntapMana(land_id) => {
-                    let atom_opt = {
-                        let c = game.card(land_id);
-                        if c.is_land() && c.tapped { basic_land_mana_atom(c) } else { None }
-                    };
-                    if let Some(atom) = atom_opt {
-                        game.untap(land_id);
-                        self.pool_mut(priority_player).remove(atom, 1);
+                    if !untappable_lands.contains(&land_id) {
+                        agents[priority_player.index()].notify(
+                            "Illegal action ignored: land can't be untapped for mana rollback",
+                        );
+                        passed_count += 1;
+                        priority_player = game.next_player(priority_player);
+                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                            game.turn.priority_player = priority_player;
+                        });
+                        continue;
                     }
+                    self.with_shared_state_mutation(game, agents, |this, game, _agents| {
+                        let atom_opt = {
+                            let c = game.card(land_id);
+                            if c.is_land() && c.tapped {
+                                basic_land_mana_atom(c)
+                            } else {
+                                None
+                            }
+                        };
+                        if let Some(atom) = atom_opt {
+                            game.untap(land_id);
+                            this.pool_mut(priority_player).remove(atom, 1);
+                        }
+                    });
                     passed_count = 0;
                 }
                 MainPhaseAction::ActivateAbility(card_id, ability_idx) => {
-                    self.activate_ability(game, agents, priority_player, card_id, ability_idx);
+                    if !activatable.contains(&(card_id, ability_idx)) {
+                        agents[priority_player.index()]
+                            .notify("Illegal action ignored: ability not activatable");
+                        passed_count += 1;
+                        priority_player = game.next_player(priority_player);
+                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                            game.turn.priority_player = priority_player;
+                        });
+                        continue;
+                    }
+                    self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                        this.activate_ability(game, agents, priority_player, card_id, ability_idx);
+                    });
                     passed_count = 0;
                 }
             }
         }
-    
-
+        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+            game.turn.priority_player = game.active_player();
+        });
+    }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Mutex};
+
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
+    use rand::SeedableRng;
+
+    use crate::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+    use crate::card::CardInstance;
+
+    use super::*;
+
+    struct RecordingPassAgent {
+        phases_seen: Arc<Mutex<Vec<PhaseType>>>,
+        bad_priority_seen: Arc<AtomicBool>,
+        last_phase: Option<PhaseType>,
+        last_priority: Option<PlayerId>,
+    }
+
+    struct InvalidPlayAgent;
+
+    impl PlayerAgent for InvalidPlayAgent {
+        fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+            true
+        }
+
+        fn choose_action(
+            &mut self,
+            _player: PlayerId,
+            _playable: &[CardId],
+            _tappable_lands: &[CardId],
+            _untappable_lands: &[CardId],
+            _activatable: &[(CardId, usize)],
+        ) -> MainPhaseAction {
+            MainPhaseAction::Play(CardId(u32::MAX))
+        }
+
+        fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId]) -> Vec<CardId> {
+            Vec::new()
+        }
+
+        fn choose_blockers(
+            &mut self,
+            _player: PlayerId,
+            _attackers: &[CardId],
+            _available_blockers: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new()
+        }
+
+        fn choose_target_player(
+            &mut self,
+            _player: PlayerId,
+            valid: &[PlayerId],
+        ) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+
+        fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+            valid.first().copied()
+        }
+
+        fn choose_target_any(
+            &mut self,
+            _player: PlayerId,
+            valid_players: &[PlayerId],
+            valid_cards: &[CardId],
+        ) -> TargetChoice {
+            if let Some(&pid) = valid_players.first() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = valid_cards.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
+        }
+
+        fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
+            None
+        }
+
+        fn notify(&mut self, _message: &str) {}
+    }
+
+    impl RecordingPassAgent {
+        fn new(
+            phases_seen: Arc<Mutex<Vec<PhaseType>>>,
+            bad_priority_seen: Arc<AtomicBool>,
+        ) -> Self {
+            Self {
+                phases_seen,
+                bad_priority_seen,
+                last_phase: None,
+                last_priority: None,
+            }
+        }
+    }
+
+    impl PlayerAgent for RecordingPassAgent {
+        fn snapshot_state(&mut self, game: &GameState, _mana_pools: &[ManaPool]) {
+            self.last_phase = Some(game.turn.phase);
+            self.last_priority = Some(game.turn.priority_player);
+        }
+
+        fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+            true
+        }
+
+        fn choose_action(
+            &mut self,
+            player: PlayerId,
+            _playable: &[CardId],
+            _tappable_lands: &[CardId],
+            _untappable_lands: &[CardId],
+            _activatable: &[(CardId, usize)],
+        ) -> MainPhaseAction {
+            if self.last_priority != Some(player) {
+                self.bad_priority_seen.store(true, Ordering::SeqCst);
+            }
+            if let Some(phase) = self.last_phase {
+                self.phases_seen.lock().unwrap().push(phase);
+            }
+            MainPhaseAction::Pass
+        }
+
+        fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId]) -> Vec<CardId> {
+            Vec::new()
+        }
+
+        fn choose_blockers(
+            &mut self,
+            _player: PlayerId,
+            _attackers: &[CardId],
+            _available_blockers: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new()
+        }
+
+        fn choose_target_player(
+            &mut self,
+            _player: PlayerId,
+            valid: &[PlayerId],
+        ) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+
+        fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+            valid.first().copied()
+        }
+
+        fn choose_target_any(
+            &mut self,
+            _player: PlayerId,
+            valid_players: &[PlayerId],
+            valid_cards: &[CardId],
+        ) -> TargetChoice {
+            if let Some(&pid) = valid_players.first() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = valid_cards.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
+        }
+
+        fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
+            None
+        }
+
+        fn notify(&mut self, _message: &str) {}
+    }
+
+    fn zero_cost_instant(owner: PlayerId) -> CardInstance {
+        CardInstance::new(
+            CardId(0),
+            "Test Instant".to_string(),
+            owner,
+            CardTypeLine::parse("Instant"),
+            ManaCost::no_cost(),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        )
+    }
+
+    #[test]
+    fn run_turn_opens_draw_and_combat_priority_windows() {
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        let mut game = GameState::new(&["A", "B"], 20);
+
+        let c0 = game.create_card(zero_cost_instant(p0));
+        let c1 = game.create_card(zero_cost_instant(p1));
+        game.move_card(c0, ZoneType::Hand, p0);
+        game.move_card(c1, ZoneType::Hand, p1);
+
+        let seen0 = Arc::new(Mutex::new(Vec::new()));
+        let seen1 = Arc::new(Mutex::new(Vec::new()));
+        let bad0 = Arc::new(AtomicBool::new(false));
+        let bad1 = Arc::new(AtomicBool::new(false));
+
+        let a0 = RecordingPassAgent::new(seen0.clone(), bad0.clone());
+        let a1 = RecordingPassAgent::new(seen1.clone(), bad1.clone());
+
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(a0), Box::new(a1)];
+        let mut game_loop = GameLoop::new(2);
+        let mut rng = rand::rngs::StdRng::seed_from_u64(7);
+
+        // Turn 2 ensures the draw step draw action is exercised.
+        game.turn.turn_number = 2;
+        game.turn.active_player = p0;
+        game.turn.priority_player = p0;
+
+        game_loop.run_turn(&mut game, &mut agents, &mut rng);
+
+        let mut all_phases = seen0.lock().unwrap().clone();
+        all_phases.extend(seen1.lock().unwrap().iter().copied());
+
+        assert!(all_phases.contains(&PhaseType::Draw));
+        assert!(all_phases.contains(&PhaseType::CombatBegin));
+        assert!(all_phases.contains(&PhaseType::CombatDeclareAttackers));
+        assert!(all_phases.contains(&PhaseType::CombatDeclareBlockers));
+        assert!(all_phases.contains(&PhaseType::CombatDamage));
+        assert!(all_phases.contains(&PhaseType::CombatEnd));
+        assert!(all_phases.contains(&PhaseType::EndOfTurn));
+
+        assert!(!bad0.load(Ordering::SeqCst));
+        assert!(!bad1.load(Ordering::SeqCst));
+    }
+
+    #[test]
+    fn priority_round_ignores_illegal_actions() {
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        let mut game = GameState::new(&["A", "B"], 20);
+
+        let c0 = game.create_card(zero_cost_instant(p0));
+        let c1 = game.create_card(zero_cost_instant(p1));
+        game.move_card(c0, ZoneType::Hand, p0);
+        game.move_card(c1, ZoneType::Hand, p1);
+
+        game.turn.active_player = p0;
+        game.turn.priority_player = p0;
+        game.turn.phase = PhaseType::Upkeep;
+
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let bad = Arc::new(AtomicBool::new(false));
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+            Box::new(InvalidPlayAgent),
+            Box::new(RecordingPassAgent::new(seen, bad)),
+        ];
+
+        let mut game_loop = GameLoop::new(2);
+        game_loop.priority_round(&mut game, &mut agents, false);
+
+        assert!(game.stack.is_empty());
+        assert!(game.cards_in_zone(ZoneType::Hand, p0).contains(&c0));
+        assert!(game.cards_in_zone(ZoneType::Hand, p1).contains(&c1));
+        assert_eq!(game.turn.priority_player, game.active_player());
+    }
 }

@@ -5,7 +5,7 @@ use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
-use forge_foundation::ZoneType;
+use forge_foundation::{PhaseType, ZoneType};
 
 use crate::game_view_dto::{card_to_dto, CardDto, GameViewDto};
 use crate::prompt::{
@@ -16,8 +16,7 @@ const RESPONSE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// Parse "stack-42" → 42u32 (stack entry ID).
 fn parse_spell_id(s: &str) -> Option<u32> {
-    s.strip_prefix("stack-")
-        .and_then(|n| n.parse::<u32>().ok())
+    s.strip_prefix("stack-").and_then(|n| n.parse::<u32>().ok())
 }
 
 /// A PlayerAgent that sends prompts to a remote player via the server relay
@@ -143,10 +142,14 @@ impl PlayerAgent for RemotePlayerAgent {
     ) -> MainPhaseAction {
         let playable_card_ids: Vec<String> =
             playable.iter().map(|c| format!("card-{}", c.0)).collect();
-        let tappable_land_ids: Vec<String> =
-            tappable_lands.iter().map(|c| format!("card-{}", c.0)).collect();
-        let untappable_land_ids: Vec<String> =
-            untappable_lands.iter().map(|c| format!("card-{}", c.0)).collect();
+        let tappable_land_ids: Vec<String> = tappable_lands
+            .iter()
+            .map(|c| format!("card-{}", c.0))
+            .collect();
+        let untappable_land_ids: Vec<String> = untappable_lands
+            .iter()
+            .map(|c| format!("card-{}", c.0))
+            .collect();
 
         let mut view = self.view();
         for card in &mut view.my_hand {
@@ -200,8 +203,7 @@ impl PlayerAgent for RemotePlayerAgent {
         attackers: &[CardId],
         available_blockers: &[CardId],
     ) -> Vec<(CardId, CardId)> {
-        let attacker_ids: Vec<String> =
-            attackers.iter().map(|c| format!("card-{}", c.0)).collect();
+        let attacker_ids: Vec<String> = attackers.iter().map(|c| format!("card-{}", c.0)).collect();
         let available_blocker_ids: Vec<String> = available_blockers
             .iter()
             .map(|c| format!("card-{}", c.0))
@@ -259,9 +261,7 @@ impl PlayerAgent for RemotePlayerAgent {
             valid_card_ids,
         });
         match self.recv_action() {
-            PlayerAction::TargetCard { card_id } => {
-                card_id.and_then(|id| Self::parse_card_id(&id))
-            }
+            PlayerAction::TargetCard { card_id } => card_id.and_then(|id| Self::parse_card_id(&id)),
             _ => valid.first().copied(),
         }
     }
@@ -304,9 +304,7 @@ impl PlayerAgent for RemotePlayerAgent {
             zone_cards,
         });
         match self.recv_action() {
-            PlayerAction::TargetCard { card_id } => {
-                card_id.and_then(|id| Self::parse_card_id(&id))
-            }
+            PlayerAction::TargetCard { card_id } => card_id.and_then(|id| Self::parse_card_id(&id)),
             _ => valid.first().copied(),
         }
     }
@@ -321,8 +319,10 @@ impl PlayerAgent for RemotePlayerAgent {
             .iter()
             .map(|p| format!("player-{}", p.0))
             .collect();
-        let valid_card_ids: Vec<String> =
-            valid_cards.iter().map(|c| format!("card-{}", c.0)).collect();
+        let valid_card_ids: Vec<String> = valid_cards
+            .iter()
+            .map(|c| format!("card-{}", c.0))
+            .collect();
         let mut view = self.view();
         for card in &mut view.battlefield {
             card.is_choosable = valid_card_ids.contains(&card.id);
@@ -365,9 +365,7 @@ impl PlayerAgent for RemotePlayerAgent {
             valid_card_ids,
         });
         match self.recv_action() {
-            PlayerAction::TargetCard { card_id } => {
-                card_id.and_then(|id| Self::parse_card_id(&id))
-            }
+            PlayerAction::TargetCard { card_id } => card_id.and_then(|id| Self::parse_card_id(&id)),
             _ => valid.first().copied(),
         }
     }
@@ -405,9 +403,7 @@ impl PlayerAgent for RemotePlayerAgent {
             cards: peeked,
         });
         match self.recv_action() {
-            PlayerAction::SurveilDecision {
-                graveyard_card_ids,
-            } => graveyard_card_ids
+            PlayerAction::SurveilDecision { graveyard_card_ids } => graveyard_card_ids
                 .iter()
                 .filter_map(|id| Self::parse_card_id(id))
                 .collect(),
@@ -452,9 +448,7 @@ impl PlayerAgent for RemotePlayerAgent {
             num_to_discard: num,
         });
         match self.recv_action() {
-            PlayerAction::DiscardDecision {
-                discarded_card_ids,
-            } => discarded_card_ids
+            PlayerAction::DiscardDecision { discarded_card_ids } => discarded_card_ids
                 .iter()
                 .filter_map(|id| Self::parse_card_id(id))
                 .collect(),
@@ -469,9 +463,7 @@ impl PlayerAgent for RemotePlayerAgent {
             valid_spell_ids,
         });
         match self.recv_action() {
-            PlayerAction::TargetSpell { spell_id } => {
-                spell_id.and_then(|id| parse_spell_id(&id))
-            }
+            PlayerAction::TargetSpell { spell_id } => spell_id.and_then(|id| parse_spell_id(&id)),
             _ => valid.first().copied(),
         }
     }
@@ -484,10 +476,17 @@ impl PlayerAgent for RemotePlayerAgent {
         // Notifications for remote players are sent via StateUpdate prompts
     }
 
-    fn notify_card_played(&mut self, player: PlayerId, card_id: CardId, card_name: &str) {
+    fn notify_card_played(
+        &mut self,
+        player: PlayerId,
+        card_id: CardId,
+        card_name: &str,
+        set_code: &str,
+    ) {
         self.pending_display_events.push(DisplayEvent::CardPlayed {
             card_id: format!("card-{}", card_id.0),
             card_name: card_name.to_string(),
+            set_code: set_code.to_string(),
             player_id: format!("player-{}", player.0),
         });
         self.send_prompt(AgentPromptInner::StateUpdate {
@@ -503,12 +502,23 @@ impl PlayerAgent for RemotePlayerAgent {
             .and_then(|v| v.players.iter().find(|p| p.id == player_id))
             .map(|p| p.name.clone())
             .unwrap_or_else(|| format!("Player {}", active_player.0));
-        self.pending_display_events
-            .push(DisplayEvent::TurnChanged {
-                active_player_id: player_id,
-                active_player_name,
-                turn_number,
-            });
+        self.pending_display_events.push(DisplayEvent::TurnChanged {
+            active_player_id: player_id,
+            active_player_name,
+            turn_number,
+        });
+        self.send_prompt(AgentPromptInner::StateUpdate {
+            game_view: self.view(),
+        });
+    }
+
+    fn notify_phase_changed(&mut self, _phase: PhaseType) {
+        self.send_prompt(AgentPromptInner::StateUpdate {
+            game_view: self.view(),
+        });
+    }
+
+    fn notify_state_changed(&mut self) {
         self.send_prompt(AgentPromptInner::StateUpdate {
             game_view: self.view(),
         });

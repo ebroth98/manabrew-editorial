@@ -247,7 +247,9 @@ impl CardTypeLine {
     }
 
     pub fn has_subtype(&self, subtype: &str) -> bool {
-        self.subtypes.iter().any(|s| s.eq_ignore_ascii_case(subtype))
+        self.subtypes
+            .iter()
+            .any(|s| s.eq_ignore_ascii_case(subtype))
     }
 
     pub fn add_type(&mut self, t: &str) {

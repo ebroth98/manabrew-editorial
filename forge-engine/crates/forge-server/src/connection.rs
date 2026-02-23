@@ -17,9 +17,8 @@ type WsSender = futures_util::stream::SplitSink<
     tokio_tungstenite::tungstenite::Message,
 >;
 
-type WsReceiver = futures_util::stream::SplitStream<
-    tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>,
->;
+type WsReceiver =
+    futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>>;
 
 /// Background task: drains channel and writes to the WebSocket sink.
 async fn write_loop(mut rx: mpsc::UnboundedReceiver<Message>, mut sink: WsSender) {
@@ -66,7 +65,10 @@ pub fn broadcast_to_room_except(
     };
 
     let sender_name = get_username(state, sender_player_id);
-    let target_count = player_ids.iter().filter(|p| p.as_str() != sender_player_id).count();
+    let target_count = player_ids
+        .iter()
+        .filter(|p| p.as_str() != sender_player_id)
+        .count();
     debug!(
         "[broadcast] room={} from='{}' type={} targets={}",
         &room_id[..8],
@@ -83,11 +85,7 @@ pub fn broadcast_to_room_except(
     }
 }
 
-pub fn broadcast_to_room(
-    state: &Arc<ServerState>,
-    room_id: &str,
-    msg: &ServerMessage,
-) {
+pub fn broadcast_to_room(state: &Arc<ServerState>, room_id: &str, msg: &ServerMessage) {
     let json = match serde_json::to_string(msg) {
         Ok(j) => j,
         Err(_) => return,
@@ -142,9 +140,19 @@ pub async fn handle_connection(
         };
 
     if reconnected {
-        info!("[auth] '{}' reconnected from {} (id={})", username, addr, &player_id[..8]);
+        info!(
+            "[auth] '{}' reconnected from {} (id={})",
+            username,
+            addr,
+            &player_id[..8]
+        );
     } else {
-        info!("[auth] '{}' authenticated from {} (id={})", username, addr, &player_id[..8]);
+        info!(
+            "[auth] '{}' authenticated from {} (id={})",
+            username,
+            addr,
+            &player_id[..8]
+        );
     }
 
     while let Some(frame) = receiver.next().await {
@@ -238,9 +246,16 @@ async fn authenticate(
             }
 
             // Check for reconnection
-            if let Some((existing_pid, room_id, old_gen)) = state.find_disconnected_by_username(&username) {
+            if let Some((existing_pid, room_id, old_gen)) =
+                state.find_disconnected_by_username(&username)
+            {
                 let new_gen = old_gen + 1;
-                info!("[auth] reclaiming session for '{}' (id={}, gen={})", username, &existing_pid[..8], new_gen);
+                info!(
+                    "[auth] reclaiming session for '{}' (id={}, gen={})",
+                    username,
+                    &existing_pid[..8],
+                    new_gen
+                );
 
                 if let Some(mut player) = state.players.get_mut(&existing_pid) {
                     player.sender = sender.clone();
@@ -346,7 +361,10 @@ fn handle_client_message(
 ) {
     match msg {
         ClientMessage::Authenticate { .. } => {
-            warn!("[recv] '{}' sent Authenticate while already authenticated", username);
+            warn!(
+                "[recv] '{}' sent Authenticate while already authenticated",
+                username
+            );
             send_msg(
                 sender,
                 &ServerMessage::Error {
@@ -377,7 +395,11 @@ fn handle_client_message(
                     room_id: entry.value().room_id.clone(),
                 })
                 .collect();
-            debug!("[emit] -> '{}': PlayerList ({} players)", username, players.len());
+            debug!(
+                "[emit] -> '{}': PlayerList ({} players)",
+                username,
+                players.len()
+            );
             send_msg(sender, &ServerMessage::PlayerList { players });
         }
 
@@ -386,10 +408,17 @@ fn handle_client_message(
             max_players,
             format,
         } => {
-            info!("[lobby] '{}' creating room '{}' (max={}, format={:?})", username, room_name, max_players, format);
+            info!(
+                "[lobby] '{}' creating room '{}' (max={}, format={:?})",
+                username, room_name, max_players, format
+            );
             match lobby::create_room_sync(state, player_id, room_name, max_players, format) {
                 Ok(info) => {
-                    info!("[lobby] room created: {} (id={})", info.room_name, &info.room_id[..8]);
+                    info!(
+                        "[lobby] room created: {} (id={})",
+                        info.room_name,
+                        &info.room_id[..8]
+                    );
                     send_msg(
                         sender,
                         &ServerMessage::RoomCreated {
@@ -413,7 +442,11 @@ fn handle_client_message(
         }
 
         ClientMessage::JoinRoom { room_id } => {
-            info!("[lobby] '{}' joining room {}", username, &room_id[..8.min(room_id.len())]);
+            info!(
+                "[lobby] '{}' joining room {}",
+                username,
+                &room_id[..8.min(room_id.len())]
+            );
             match lobby::join_room_sync(state, player_id, &room_id) {
                 Ok(info) => {
                     info!("[lobby] '{}' joined room '{}'", username, info.room_name);
@@ -441,10 +474,7 @@ fn handle_client_message(
         }
 
         ClientMessage::LeaveRoom => {
-            let room_id_before = state
-                .players
-                .get(player_id)
-                .and_then(|p| p.room_id.clone());
+            let room_id_before = state.players.get(player_id).and_then(|p| p.room_id.clone());
 
             info!("[lobby] '{}' leaving room", username);
             match lobby::leave_room_sync(state, player_id) {
@@ -522,7 +552,11 @@ fn handle_client_message(
             info!("[game] '{}' starting game", username);
             match lobby::start_game_sync(state, player_id) {
                 Ok((room_id, player_order)) => {
-                    info!("[game] game started in room {} | order: {:?}", &room_id[..8], player_order);
+                    info!(
+                        "[game] game started in room {} | order: {:?}",
+                        &room_id[..8],
+                        player_order
+                    );
                     broadcast_to_room(
                         state,
                         &room_id,
@@ -546,11 +580,13 @@ fn handle_client_message(
         }
 
         ClientMessage::BroadcastState { state: game_state } => {
-            let room_id = {
-                state.players.get(player_id).and_then(|p| p.room_id.clone())
-            };
+            let room_id = { state.players.get(player_id).and_then(|p| p.room_id.clone()) };
             if let Some(rid) = room_id {
-                debug!("[game] '{}' broadcasting state to room {}", username, &rid[..8]);
+                debug!(
+                    "[game] '{}' broadcasting state to room {}",
+                    username,
+                    &rid[..8]
+                );
                 broadcast_to_room_except(
                     state,
                     player_id,
@@ -561,7 +597,10 @@ fn handle_client_message(
                     },
                 );
             } else {
-                warn!("[game] '{}' tried to broadcast state but not in a room", username);
+                warn!(
+                    "[game] '{}' tried to broadcast state but not in a room",
+                    username
+                );
                 send_msg(
                     sender,
                     &ServerMessage::Error {
@@ -576,13 +615,14 @@ fn handle_client_message(
             new_active_player,
             turn_number,
         } => {
-            let room_id = {
-                state.players.get(player_id).and_then(|p| p.room_id.clone())
-            };
+            let room_id = { state.players.get(player_id).and_then(|p| p.room_id.clone()) };
             if let Some(rid) = room_id {
                 info!(
                     "[game] turn change in room {}: '{}' -> '{}' (turn {})",
-                    &rid[..8], username, new_active_player, turn_number
+                    &rid[..8],
+                    username,
+                    new_active_player,
+                    turn_number
                 );
                 broadcast_to_room_except(
                     state,
@@ -608,11 +648,7 @@ fn handle_client_message(
     }
 }
 
-fn mark_disconnected(
-    state: &Arc<ServerState>,
-    player_id: &str,
-    our_generation: u64,
-) {
+fn mark_disconnected(state: &Arc<ServerState>, player_id: &str, our_generation: u64) {
     let (username, room_id) = {
         if let Some(mut player) = state.players.get_mut(player_id) {
             if player.generation != our_generation {
@@ -646,7 +682,10 @@ fn mark_disconnected(
                 };
 
                 if all_disconnected {
-                    info!("[cleanup] all players disconnected from in-game room {} -- removing", &rid[..8]);
+                    info!(
+                        "[cleanup] all players disconnected from in-game room {} -- removing",
+                        &rid[..8]
+                    );
                     if let Some((_, room)) = state.rooms.remove(rid) {
                         for slot in &room.players {
                             state.players.remove(&slot.player_id);
@@ -675,7 +714,11 @@ fn mark_disconnected(
             }
             Some(RoomStatus::Lobby) => {
                 // Lobby: treat like a leave — remove player, clean up room, free username
-                info!("[disconnect] '{}' disconnected from lobby room {} -- treating as leave", username, &rid[..8]);
+                info!(
+                    "[disconnect] '{}' disconnected from lobby room {} -- treating as leave",
+                    username,
+                    &rid[..8]
+                );
 
                 let room_empty = {
                     if let Some(mut room) = state.rooms.get_mut(rid) {
@@ -692,7 +735,10 @@ fn mark_disconnected(
                 }
 
                 if room_empty {
-                    info!("[cleanup] lobby room {} is now empty -- removing", &rid[..8]);
+                    info!(
+                        "[cleanup] lobby room {} is now empty -- removing",
+                        &rid[..8]
+                    );
                     state.rooms.remove(rid);
                 } else {
                     // Notify remaining players

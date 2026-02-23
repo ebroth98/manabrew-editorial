@@ -1,6 +1,5 @@
 /// Integration tests for Zone Change Effects (Issue #13):
 /// ChangeZone, ChangeZoneAll, Sacrifice, SacrificeAll
-
 use forge_engine_core::agent::{PassAgent, PlayerAgent};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
@@ -297,7 +296,8 @@ fn test_change_zone_all_board_wipe() {
     game.move_card(alice_forest, ZoneType::Battlefield, p0);
 
     // Exile all creatures (Cataclysm-style)
-    let ability = "SP$ ChangeZoneAll | Origin$ Battlefield | Destination$ Exile | ValidCards$ Creature";
+    let ability =
+        "SP$ ChangeZoneAll | Origin$ Battlefield | Destination$ Exile | ValidCards$ Creature";
     let mut sa = SpellAbility::new_simple(None, p0, ability);
     sa.is_activated = true;
     let entry = StackEntry {
@@ -492,8 +492,16 @@ fn test_sacrifice_each_player() {
         ZoneType::Graveyard,
         "Bob's creature should be sacrificed (Defined$ Player affects each player)"
     );
-    assert_eq!(game.zone(ZoneType::Battlefield, p0).len(), 0, "Alice's battlefield should be empty");
-    assert_eq!(game.zone(ZoneType::Battlefield, p1).len(), 0, "Bob's battlefield should be empty");
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p0).len(),
+        0,
+        "Alice's battlefield should be empty"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p1).len(),
+        0,
+        "Bob's battlefield should be empty"
+    );
 }
 
 // ── Test 9: Tuck to Library Bottom (LibraryPosition$ -1) ─────────────
@@ -516,7 +524,8 @@ fn test_tuck_to_library_bottom() {
     game.move_card(bears, ZoneType::Battlefield, p1);
 
     // Alice casts Condemn on Bob's attacking creature — puts it on bottom of its owner's library
-    let ability = "SP$ ChangeZone | Origin$ Battlefield | Destination$ Library | LibraryPosition$ -1";
+    let ability =
+        "SP$ ChangeZone | Origin$ Battlefield | Destination$ Library | LibraryPosition$ -1";
     let mut sa = SpellAbility::new_simple(None, p0, ability);
     sa.is_activated = true;
     sa.target_chosen.target_card = Some(bears);
@@ -549,8 +558,7 @@ fn test_tuck_to_library_bottom() {
     let bob_library = &game.zone(ZoneType::Library, p1).cards;
     assert_eq!(bob_library.len(), 1, "Bob's library should have 1 card");
     assert_eq!(
-        bob_library[0],
-        bears,
+        bob_library[0], bears,
         "Tucked creature should be at bottom of Bob's library (index 0)"
     );
 

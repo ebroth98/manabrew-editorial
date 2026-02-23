@@ -36,14 +36,19 @@ impl ServerState {
             .any(|entry| entry.value().username == username && entry.value().connected)
     }
 
-    pub fn find_disconnected_by_username(&self, username: &str) -> Option<(String, Option<String>, u64)> {
+    pub fn find_disconnected_by_username(
+        &self,
+        username: &str,
+    ) -> Option<(String, Option<String>, u64)> {
         self.players
             .iter()
             .find(|entry| entry.value().username == username && !entry.value().connected)
-            .map(|entry| (
-                entry.value().player_id.clone(),
-                entry.value().room_id.clone(),
-                entry.value().generation,
-            ))
+            .map(|entry| {
+                (
+                    entry.value().player_id.clone(),
+                    entry.value().room_id.clone(),
+                    entry.value().generation,
+                )
+            })
     }
 }

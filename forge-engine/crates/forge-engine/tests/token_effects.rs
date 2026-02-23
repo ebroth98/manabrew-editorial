@@ -1,5 +1,4 @@
 /// Integration tests for Token Creation and Copy Effects (Issue #14).
-
 use forge_engine_core::agent::{PassAgent, PlayerAgent};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
@@ -104,7 +103,10 @@ fn test_create_single_token() {
         "Alice should have 1 token on the battlefield"
     );
     let token_id = game.zone(ZoneType::Battlefield, p0).cards[0];
-    assert!(game.card(token_id).is_token, "Created card should be a token");
+    assert!(
+        game.card(token_id).is_token,
+        "Created card should be a token"
+    );
     assert_eq!(game.card(token_id).card_name, "Goblin Token");
     assert_eq!(game.card(token_id).base_power, Some(1));
     assert_eq!(game.card(token_id).base_toughness, Some(1));
@@ -171,7 +173,11 @@ fn test_missing_token_script_is_silent() {
     // Intentionally do NOT register the script
     game_loop.resolve_stack(&mut game, &mut agents);
 
-    assert_eq!(game.zone(ZoneType::Battlefield, p0).len(), 0, "No token should be created");
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p0).len(),
+        0,
+        "No token should be created"
+    );
 }
 
 // ── Token Cease-to-Exist Tests ────────────────────────────────────────
@@ -192,9 +198,21 @@ fn test_token_ceases_to_exist_on_death() {
     game.check_state_based_actions();
 
     // Token should be gone from all zones
-    assert_eq!(game.zone(ZoneType::Battlefield, p0).len(), 0, "Token should leave battlefield");
-    assert_eq!(game.zone(ZoneType::Graveyard, p0).len(), 0, "Token should NOT go to graveyard");
-    assert_eq!(game.card(token).zone, ZoneType::None, "Token zone should be None (ceased to exist)");
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p0).len(),
+        0,
+        "Token should leave battlefield"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Graveyard, p0).len(),
+        0,
+        "Token should NOT go to graveyard"
+    );
+    assert_eq!(
+        game.card(token).zone,
+        ZoneType::None,
+        "Token zone should be None (ceased to exist)"
+    );
 }
 
 /// Regular (non-token) creatures still go to the graveyard when they die.
@@ -208,7 +226,11 @@ fn test_non_token_goes_to_graveyard_on_death() {
     game.deal_damage_to_card(bears, 5);
     game.check_state_based_actions();
 
-    assert_eq!(game.zone(ZoneType::Graveyard, p0).len(), 1, "Regular creature should go to graveyard");
+    assert_eq!(
+        game.zone(ZoneType::Graveyard, p0).len(),
+        1,
+        "Regular creature should go to graveyard"
+    );
     assert_eq!(game.card(bears).zone, ZoneType::Graveyard);
 }
 
@@ -234,12 +256,23 @@ fn test_copy_permanent() {
     game_loop.resolve_stack(&mut game, &mut agents);
 
     // Alice should now have a copy
-    assert_eq!(game.zone(ZoneType::Battlefield, p0).len(), 1, "Alice should have the copy");
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p0).len(),
+        1,
+        "Alice should have the copy"
+    );
     // Bob still has the original
-    assert_eq!(game.zone(ZoneType::Battlefield, p1).len(), 1, "Bob still has the original");
+    assert_eq!(
+        game.zone(ZoneType::Battlefield, p1).len(),
+        1,
+        "Bob still has the original"
+    );
 
     let copy_id = game.zone(ZoneType::Battlefield, p0).cards[0];
-    assert!(game.card(copy_id).is_token, "Copy should be flagged as token");
+    assert!(
+        game.card(copy_id).is_token,
+        "Copy should be flagged as token"
+    );
     assert_eq!(game.card(copy_id).card_name, "Grizzly Bears");
     assert_eq!(game.card(copy_id).base_power, Some(2));
     assert_eq!(game.card(copy_id).base_toughness, Some(2));
@@ -290,6 +323,14 @@ fn test_copy_ceases_to_exist_on_leaving() {
     // Move copy to graveyard (simulating death)
     game.move_card(copy_id, ZoneType::Graveyard, p0);
 
-    assert_eq!(game.card(copy_id).zone, ZoneType::None, "Copy should cease to exist");
-    assert_eq!(game.zone(ZoneType::Graveyard, p0).len(), 0, "Copy should NOT be in graveyard");
+    assert_eq!(
+        game.card(copy_id).zone,
+        ZoneType::None,
+        "Copy should cease to exist"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Graveyard, p0).len(),
+        0,
+        "Copy should NOT be in graveyard"
+    );
 }

@@ -17,8 +17,7 @@ impl ServerConfig {
                 .ok()
                 .and_then(|r| r.parse().ok())
                 .unwrap_or(100),
-            server_key: std::env::var("FORGE_SERVER_KEY")
-                .unwrap_or_else(|_| "forge".into()),
+            server_key: std::env::var("FORGE_SERVER_KEY").unwrap_or_else(|_| "forge".into()),
         }
     }
 }

@@ -14,21 +14,48 @@ use rand::SeedableRng;
 // ── Card constructors ────────────────────────────────────────────────
 
 fn make_mountain(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Mountain".to_string(), owner,
+    CardInstance::new(
+        CardId(0),
+        "Mountain".to_string(),
+        owner,
         CardTypeLine::parse("Basic Land - Mountain"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
 }
 
 fn make_forest(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Forest".to_string(), owner,
+    CardInstance::new(
+        CardId(0),
+        "Forest".to_string(),
+        owner,
         CardTypeLine::parse("Basic Land - Forest"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
 }
 
 fn make_plains(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Plains".to_string(), owner,
+    CardInstance::new(
+        CardId(0),
+        "Plains".to_string(),
+        owner,
         CardTypeLine::parse("Basic Land - Plains"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None, vec![], vec![])
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    )
 }
 
 fn make_lightning_bolt(owner: PlayerId) -> CardInstance {
@@ -46,9 +73,18 @@ fn make_shock(owner: PlayerId) -> CardInstance {
 }
 
 fn make_grizzly_bears(owner: PlayerId) -> CardInstance {
-    CardInstance::new(CardId(0), "Grizzly Bears".to_string(), owner,
+    CardInstance::new(
+        CardId(0),
+        "Grizzly Bears".to_string(),
+        owner,
         CardTypeLine::parse("Creature - Bear"),
-        ManaCost::parse("1 G"), ColorSet::GREEN, Some(2), Some(2), vec![], vec![])
+        ManaCost::parse("1 G"),
+        ColorSet::GREEN,
+        Some(2),
+        Some(2),
+        vec![],
+        vec![],
+    )
 }
 
 fn make_soul_warden(owner: PlayerId) -> CardInstance {
@@ -58,11 +94,23 @@ fn make_soul_warden(owner: PlayerId) -> CardInstance {
         &mut next_id,
     ).unwrap();
     let mut svars = BTreeMap::new();
-    svars.insert("TrigGain".to_string(), "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string());
+    svars.insert(
+        "TrigGain".to_string(),
+        "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string(),
+    );
 
-    let mut card = CardInstance::new(CardId(0), "Soul Warden".to_string(), owner,
+    let mut card = CardInstance::new(
+        CardId(0),
+        "Soul Warden".to_string(),
+        owner,
         CardTypeLine::parse("Creature - Human Cleric"),
-        ManaCost::parse("W"), ColorSet::WHITE, Some(1), Some(1), vec![], vec![]);
+        ManaCost::parse("W"),
+        ColorSet::WHITE,
+        Some(1),
+        Some(1),
+        vec![],
+        vec![],
+    );
     card.triggers = vec![trigger];
     card.svars = svars;
     card
@@ -75,11 +123,23 @@ fn make_guttersnipe(owner: PlayerId) -> CardInstance {
         &mut next_id,
     ).unwrap();
     let mut svars = BTreeMap::new();
-    svars.insert("TrigDmg".to_string(), "DB$ DealDamage | Defined$ Opponent | NumDmg$ 2".to_string());
+    svars.insert(
+        "TrigDmg".to_string(),
+        "DB$ DealDamage | Defined$ Opponent | NumDmg$ 2".to_string(),
+    );
 
-    let mut card = CardInstance::new(CardId(0), "Guttersnipe".to_string(), owner,
+    let mut card = CardInstance::new(
+        CardId(0),
+        "Guttersnipe".to_string(),
+        owner,
         CardTypeLine::parse("Creature - Goblin Shaman"),
-        ManaCost::parse("2 R"), ColorSet::RED, Some(2), Some(2), vec![], vec![]);
+        ManaCost::parse("2 R"),
+        ColorSet::RED,
+        Some(2),
+        Some(2),
+        vec![],
+        vec![],
+    );
     card.triggers = vec![trigger];
     card.svars = svars;
     card
@@ -93,12 +153,23 @@ fn make_mulldrifter(owner: PlayerId) -> CardInstance {
         &mut next_id,
     ).unwrap();
     let mut svars = BTreeMap::new();
-    svars.insert("TrigDraw".to_string(), "DB$ Draw | Defined$ You | NumCards$ 2".to_string());
+    svars.insert(
+        "TrigDraw".to_string(),
+        "DB$ Draw | Defined$ You | NumCards$ 2".to_string(),
+    );
 
-    let mut card = CardInstance::new(CardId(0), "Mulldrifter".to_string(), owner,
+    let mut card = CardInstance::new(
+        CardId(0),
+        "Mulldrifter".to_string(),
+        owner,
         CardTypeLine::parse("Creature - Elemental"),
-        ManaCost::parse("4 U"), ColorSet::BLUE, Some(2), Some(2),
-        vec!["Flying".to_string()], vec![]);
+        ManaCost::parse("4 U"),
+        ColorSet::BLUE,
+        Some(2),
+        Some(2),
+        vec!["Flying".to_string()],
+        vec![],
+    );
     card.triggers = vec![trigger];
     card.svars = svars;
     card
@@ -111,11 +182,23 @@ fn make_upkeep_pinger(owner: PlayerId) -> CardInstance {
         &mut next_id,
     ).unwrap();
     let mut svars = BTreeMap::new();
-    svars.insert("TrigPing".to_string(), "DB$ DealDamage | Defined$ Opponent | NumDmg$ 1".to_string());
+    svars.insert(
+        "TrigPing".to_string(),
+        "DB$ DealDamage | Defined$ Opponent | NumDmg$ 1".to_string(),
+    );
 
-    let mut card = CardInstance::new(CardId(0), "Sulfuric Vortex".to_string(), owner,
+    let mut card = CardInstance::new(
+        CardId(0),
+        "Sulfuric Vortex".to_string(),
+        owner,
         CardTypeLine::parse("Creature - Spirit"),
-        ManaCost::parse("1 R"), ColorSet::RED, Some(0), Some(1), vec![], vec![]);
+        ManaCost::parse("1 R"),
+        ColorSet::RED,
+        Some(0),
+        Some(1),
+        vec![],
+        vec![],
+    );
     card.triggers = vec![trigger];
     card.svars = svars;
     card
@@ -128,18 +211,40 @@ struct VerboseAgent {
 }
 
 impl VerboseAgent {
-    fn new(name: &str) -> Self { VerboseAgent { name: name.to_string() } }
+    fn new(name: &str) -> Self {
+        VerboseAgent {
+            name: name.to_string(),
+        }
+    }
 }
 
 impl PlayerAgent for VerboseAgent {
-    fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
-    fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId], _: &[(CardId, usize)]) -> MainPhaseAction {
-        playable.first().copied().map(MainPhaseAction::Play).unwrap_or(MainPhaseAction::Pass)
+    fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        true
+    }
+    fn choose_action(
+        &mut self,
+        _: PlayerId,
+        playable: &[CardId],
+        _: &[CardId],
+        _: &[CardId],
+        _: &[(CardId, usize)],
+    ) -> MainPhaseAction {
+        playable
+            .first()
+            .copied()
+            .map(MainPhaseAction::Play)
+            .unwrap_or(MainPhaseAction::Pass)
     }
     fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {
         available.to_vec()
     }
-    fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> {
+    fn choose_blockers(
+        &mut self,
+        _: PlayerId,
+        _: &[CardId],
+        _: &[CardId],
+    ) -> Vec<(CardId, CardId)> {
         Vec::new()
     }
     fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
@@ -149,11 +254,17 @@ impl PlayerAgent for VerboseAgent {
         valid.first().copied()
     }
     fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-        if let Some(&pid) = p.first() { TargetChoice::Player(pid) }
-        else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
-        else { TargetChoice::None }
+        if let Some(&pid) = p.first() {
+            TargetChoice::Player(pid)
+        } else if let Some(&cid) = c.first() {
+            TargetChoice::Card(cid)
+        } else {
+            TargetChoice::None
+        }
     }
-    fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+    fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+        None
+    }
     fn notify(&mut self, msg: &str) {
         println!("    [{}] {}", self.name, msg);
     }
@@ -165,38 +276,60 @@ fn print_board(game: &GameState, p0: PlayerId, p1: PlayerId) {
     let p0s = game.player(p0);
     let p1s = game.player(p1);
 
-    let bf0: Vec<String> = game.cards_in_zone(ZoneType::Battlefield, p0).iter()
+    let bf0: Vec<String> = game
+        .cards_in_zone(ZoneType::Battlefield, p0)
+        .iter()
         .map(|&cid| {
             let c = game.card(cid);
             if c.is_creature() {
-                let trigs = if c.triggers.is_empty() { String::new() }
-                    else { format!(" *TRIGGER*") };
+                let trigs = if c.triggers.is_empty() {
+                    String::new()
+                } else {
+                    format!(" *TRIGGER*")
+                };
                 format!("{} {}/{}{}", c.card_name, c.power(), c.toughness(), trigs)
-            } else { c.card_name.clone() }
-        }).collect();
-    let bf1: Vec<String> = game.cards_in_zone(ZoneType::Battlefield, p1).iter()
+            } else {
+                c.card_name.clone()
+            }
+        })
+        .collect();
+    let bf1: Vec<String> = game
+        .cards_in_zone(ZoneType::Battlefield, p1)
+        .iter()
         .map(|&cid| {
             let c = game.card(cid);
             if c.is_creature() {
-                let trigs = if c.triggers.is_empty() { String::new() }
-                    else { format!(" *TRIGGER*") };
+                let trigs = if c.triggers.is_empty() {
+                    String::new()
+                } else {
+                    format!(" *TRIGGER*")
+                };
                 format!("{} {}/{}{}", c.card_name, c.power(), c.toughness(), trigs)
-            } else { c.card_name.clone() }
-        }).collect();
+            } else {
+                c.card_name.clone()
+            }
+        })
+        .collect();
 
     println!("  ┌─────────────────────────────────────────────────┐");
-    println!("  │ {} (Life: {}, Hand: {}, Lib: {})",
-        p0s.name, p0s.life,
+    println!(
+        "  │ {} (Life: {}, Hand: {}, Lib: {})",
+        p0s.name,
+        p0s.life,
         game.zone(ZoneType::Hand, p0).len(),
-        game.zone(ZoneType::Library, p0).len());
+        game.zone(ZoneType::Library, p0).len()
+    );
     if !bf0.is_empty() {
         println!("  │   BF: {}", bf0.join(", "));
     }
     println!("  │ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─");
-    println!("  │ {} (Life: {}, Hand: {}, Lib: {})",
-        p1s.name, p1s.life,
+    println!(
+        "  │ {} (Life: {}, Hand: {}, Lib: {})",
+        p1s.name,
+        p1s.life,
         game.zone(ZoneType::Hand, p1).len(),
-        game.zone(ZoneType::Library, p1).len());
+        game.zone(ZoneType::Library, p1).len()
+    );
     if !bf1.is_empty() {
         println!("  │   BF: {}", bf1.join(", "));
     }
@@ -219,17 +352,44 @@ fn trigger_demo_game() {
 
     // ── Alice's deck: Mountains, Bolts, Shocks, Guttersnipe, Sulfuric Vortex ──
     // Stack order: bottom → top (last added = drawn first)
-    for _ in 0..8 { let c = game.create_card(make_mountain(p0)); game.move_card(c, ZoneType::Library, p0); }
-    for _ in 0..3 { let c = game.create_card(make_lightning_bolt(p0)); game.move_card(c, ZoneType::Library, p0); }
-    for _ in 0..3 { let c = game.create_card(make_shock(p0)); game.move_card(c, ZoneType::Library, p0); }
-    for _ in 0..2 { let c = game.create_card(make_guttersnipe(p0)); game.move_card(c, ZoneType::Library, p0); }
-    for _ in 0..2 { let c = game.create_card(make_upkeep_pinger(p0)); game.move_card(c, ZoneType::Library, p0); }
+    for _ in 0..8 {
+        let c = game.create_card(make_mountain(p0));
+        game.move_card(c, ZoneType::Library, p0);
+    }
+    for _ in 0..3 {
+        let c = game.create_card(make_lightning_bolt(p0));
+        game.move_card(c, ZoneType::Library, p0);
+    }
+    for _ in 0..3 {
+        let c = game.create_card(make_shock(p0));
+        game.move_card(c, ZoneType::Library, p0);
+    }
+    for _ in 0..2 {
+        let c = game.create_card(make_guttersnipe(p0));
+        game.move_card(c, ZoneType::Library, p0);
+    }
+    for _ in 0..2 {
+        let c = game.create_card(make_upkeep_pinger(p0));
+        game.move_card(c, ZoneType::Library, p0);
+    }
 
     // ── Bob's deck: Forests, Plains, Bears, Soul Wardens, Mulldrifter ──
-    for _ in 0..7 { let c = game.create_card(make_forest(p1)); game.move_card(c, ZoneType::Library, p1); }
-    for _ in 0..4 { let c = game.create_card(make_plains(p1)); game.move_card(c, ZoneType::Library, p1); }
-    for _ in 0..3 { let c = game.create_card(make_grizzly_bears(p1)); game.move_card(c, ZoneType::Library, p1); }
-    for _ in 0..3 { let c = game.create_card(make_soul_warden(p1)); game.move_card(c, ZoneType::Library, p1); }
+    for _ in 0..7 {
+        let c = game.create_card(make_forest(p1));
+        game.move_card(c, ZoneType::Library, p1);
+    }
+    for _ in 0..4 {
+        let c = game.create_card(make_plains(p1));
+        game.move_card(c, ZoneType::Library, p1);
+    }
+    for _ in 0..3 {
+        let c = game.create_card(make_grizzly_bears(p1));
+        game.move_card(c, ZoneType::Library, p1);
+    }
+    for _ in 0..3 {
+        let c = game.create_card(make_soul_warden(p1));
+        game.move_card(c, ZoneType::Library, p1);
+    }
 
     println!("  Alice's deck: 8 Mountains, 3 Lightning Bolt, 3 Shock,");
     println!("                2 Guttersnipe, 2 Sulfuric Vortex");
@@ -287,18 +447,26 @@ fn trigger_demo_game() {
         print_board(&game, p0, p1);
         println!();
 
-        if game.game_over { break; }
+        if game.game_over {
+            break;
+        }
     }
 
     // Final result
     println!("═══════════════════════════════════════════════════════");
     if let Some(winner) = game.winner {
-        println!("  WINNER: {} on turn {}!",
-            game.player(winner).name, game.turn.turn_number);
+        println!(
+            "  WINNER: {} on turn {}!",
+            game.player(winner).name,
+            game.turn.turn_number
+        );
     } else {
         println!("  Game reached turn limit ({} turns).", max_turns);
     }
-    println!("  Final life: Alice = {}, Bob = {}",
-        game.player(p0).life, game.player(p1).life);
+    println!(
+        "  Final life: Alice = {}, Bob = {}",
+        game.player(p0).life,
+        game.player(p1).life
+    );
     println!("═══════════════════════════════════════════════════════");
 }

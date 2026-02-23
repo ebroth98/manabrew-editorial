@@ -18,8 +18,7 @@ fn cards_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("CARDS_DIR") {
         PathBuf::from(dir)
     } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../forge/forge-gui/res/cardsfolder")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../forge/forge-gui/res/cardsfolder")
     }
 }
 
@@ -28,8 +27,7 @@ fn token_scripts_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("TOKEN_SCRIPTS_DIR") {
         PathBuf::from(dir)
     } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../forge/forge-gui/res/tokenscripts")
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../forge/forge-gui/res/tokenscripts")
     }
 }
 

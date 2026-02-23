@@ -141,10 +141,8 @@ function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial
       gameView: prompt.gameView,
       debugInfo: `${source}: ${prompt.type}`,
       isWaitingForResponse: false,
+      currentPrompt: isStateUpdate ? null : prompt,
     };
-    if (!isStateUpdate) {
-      updates.currentPrompt = prompt;
-    }
     set(updates);
   }
 }
@@ -352,14 +350,11 @@ export const useGameStore = create<GameState>((set, get) => ({
         const { forPlayer, prompt } = event.payload;
         const { myPlayerSlot } = get();
         if (forPlayer === myPlayerSlot) {
-          // This prompt is for us — render it fully
+          // This prompt is for us — render it fully.
           applyPrompt(prompt, 'Remote', set, get);
-        } else {
-          // Not for us — update board display only (opponent's game state)
-          if (prompt?.gameView) {
-            set({ gameView: prompt.gameView });
-          }
         }
+        // Prompts for other players are intentionally ignored. Applying a different
+        // player's perspective can desync local actionability/state interpretation.
       });
       unlisteners.push(unlisten3);
     } catch (e) {

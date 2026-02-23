@@ -67,10 +67,7 @@ pub async fn server_leave_room(client: State<'_, ServerClient>) -> Result<(), St
 }
 
 #[tauri::command]
-pub async fn server_set_ready(
-    client: State<'_, ServerClient>,
-    ready: bool,
-) -> Result<(), String> {
+pub async fn server_set_ready(client: State<'_, ServerClient>, ready: bool) -> Result<(), String> {
     let msg = serde_json::json!({
         "type": "SetReady",
         "ready": ready,

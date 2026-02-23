@@ -245,7 +245,7 @@ impl GameManager {
         if let Some(session) = session_guard.take() {
             drop(session.response_tx); // signals game thread to stop
             drop(session.remote_response_txs); // drop remote channels too
-            // Don't join here — let the thread wind down on its own so end_game returns fast
+                                               // Don't join here — let the thread wind down on its own so end_game returns fast
         }
         // Clear latest prompt so the next game doesn't see stale state
         if let Ok(mut lp) = self.latest_prompt.lock() {
@@ -575,13 +575,8 @@ fn run_multiplayer_game(
             let resp_rx = remote_rx_map
                 .remove(&i)
                 .expect("Missing response rx for remote player");
-            let agent = RemotePlayerAgent::new(
-                pid,
-                i,
-                game_id.clone(),
-                remote_prompt_tx.clone(),
-                resp_rx,
-            );
+            let agent =
+                RemotePlayerAgent::new(pid, i, game_id.clone(), remote_prompt_tx.clone(), resp_rx);
             agents.push(Box::new(agent));
         }
     }
@@ -608,14 +603,8 @@ fn run_multiplayer_game(
 
     // Send final game-over prompt to the host
     let host_pid = PlayerId(host_player_index as u32);
-    let host_final_view = GameViewDto::from_engine(
-        &game,
-        &game_loop.mana_pools,
-        host_pid,
-        &game_id,
-        &[],
-        &[],
-    );
+    let host_final_view =
+        GameViewDto::from_engine(&game, &game_loop.mana_pools, host_pid, &game_id, &[], &[]);
     let _ = host_prompt_tx.send(AgentPrompt {
         display_events: vec![],
         inner: AgentPromptInner::GameOver {
@@ -629,14 +618,8 @@ fn run_multiplayer_game(
             continue;
         }
         let pid = PlayerId(i as u32);
-        let remote_view = GameViewDto::from_engine(
-            &game,
-            &game_loop.mana_pools,
-            pid,
-            &game_id,
-            &[],
-            &[],
-        );
+        let remote_view =
+            GameViewDto::from_engine(&game, &game_loop.mana_pools, pid, &game_id, &[], &[]);
         let _ = remote_prompt_tx.send((
             i,
             AgentPrompt {

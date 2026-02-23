@@ -1,17 +1,16 @@
+use forge_engine_core::ability::effects::{resolve_effect, EffectContext};
 /// Integration test for counterspells and control effects
-/// 
+///
 /// This test verifies that:
 /// 1. Counterspells properly counter spells on the stack
 /// 2. Control effects properly change controller of permanents
-/// 
+///
 /// These features were identified as broken in PR #37's priority system implementation.
-
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
-use forge_engine_core::spellability::{SpellAbility, StackEntry};
-use forge_engine_core::ability::effects::{resolve_effect, EffectContext};
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 /// A simple agent that always passes (for testing)
@@ -23,12 +22,12 @@ impl PlayerAgent for PassAgent {
     }
 
     fn choose_action(
-        &mut self, 
-        _player: PlayerId, 
-        _playable: &[CardId], 
-        _tappable_lands: &[CardId], 
-        _untappable_lands: &[CardId], 
-        _activatable: &[(CardId, usize)]
+        &mut self,
+        _player: PlayerId,
+        _playable: &[CardId],
+        _tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+        _activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
         MainPhaseAction::Pass
     }
@@ -117,24 +116,27 @@ fn test_basic_control_change() {
     let bears = game.create_card(make_grizzly_bears(p1));
     game.move_card(bears, ZoneType::Battlefield, p1);
     game.card_mut(bears).summoning_sick = false;
-    
+
     // Verify initial state
     let bears_card = game.card(bears);
-    assert_eq!(bears_card.controller, p1, "Bears initially controlled by Bob");
+    assert_eq!(
+        bears_card.controller, p1,
+        "Bears initially controlled by Bob"
+    );
     assert_eq!(bears_card.owner, p1, "Bears owned by Bob");
-    
+
     // Change control to Alice
     game.change_controller(bears, p0);
-    
+
     // Verify new state
     let bears_card = game.card(bears);
     assert_eq!(bears_card.controller, p0, "Bears now controlled by Alice");
     assert_eq!(bears_card.owner, p1, "Bears still owned by Bob");
-    
+
     // Verify zone tracking
     let alice_battlefield = game.zone(ZoneType::Battlefield, p0);
     let bob_battlefield = game.zone(ZoneType::Battlefield, p1);
-    
+
     assert_eq!(alice_battlefield.len(), 1, "Alice should have Bears");
     assert_eq!(bob_battlefield.len(), 0, "Bob should have no creatures");
 }
@@ -145,7 +147,7 @@ fn test_counterspell_moves_to_graveyard() {
     let mut game = GameState::new(&["Alice", "Bob"], 20);
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
-    
+
     // Create a Lightning Bolt to be countered
     let lightning_bolt = CardInstance::new(
         CardId(0),
@@ -161,9 +163,13 @@ fn test_counterspell_moves_to_graveyard() {
     );
     let bolt_card = game.create_card(lightning_bolt);
     game.move_card(bolt_card, ZoneType::Stack, p1);
-    
+
     // Put the bolt on the stack
-    let sa = SpellAbility::new_simple(Some(bolt_card), p1, "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3");
+    let sa = SpellAbility::new_simple(
+        Some(bolt_card),
+        p1,
+        "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3",
+    );
     let entry = StackEntry {
         id: 0,
         spell_ability: sa,
@@ -171,9 +177,9 @@ fn test_counterspell_moves_to_graveyard() {
         is_permanent_spell: false,
     };
     game.stack.push(entry);
-    
+
     let bolt_on_stack = game.stack.peek().unwrap().id;
-    
+
     // Create counterspell SA targeting the bolt
     let counterspell = CardInstance::new(
         CardId(0),
@@ -188,15 +194,19 @@ fn test_counterspell_moves_to_graveyard() {
         vec!["SP$ Counter | TargetType$ Spell".to_string()],
     );
     let counterspell_card = game.create_card(counterspell);
-    
-    let mut counter_sa = SpellAbility::new_simple(Some(counterspell_card), p0, "SP$ Counter | TargetType$ Spell");
+
+    let mut counter_sa = SpellAbility::new_simple(
+        Some(counterspell_card),
+        p0,
+        "SP$ Counter | TargetType$ Spell",
+    );
     counter_sa.target_chosen.target_stack_entry = Some(bolt_on_stack);
-    
+
     // Setup game loop for effect resolution
     use forge_engine_core::game_loop::GameLoop;
     let mut game_loop = GameLoop::new(2);
     let mut pass_agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
-    
+
     let mut ctx = EffectContext {
         game: &mut game,
         agents: &mut pass_agents,
@@ -205,19 +215,23 @@ fn test_counterspell_moves_to_graveyard() {
         mana_pools: &mut game_loop.mana_pools,
         parent_target_card: None,
     };
-    
+
     // Resolve the counter effect
     resolve_effect(&mut ctx, &counter_sa);
-    
+
     // Verify Bolt moved to graveyard
     let bob_graveyard = game.zone(ZoneType::Graveyard, p1);
-    assert_eq!(bob_graveyard.len(), 1, "Bob should have 1 card in graveyard");
+    assert_eq!(
+        bob_graveyard.len(),
+        1,
+        "Bob should have 1 card in graveyard"
+    );
     assert_eq!(
         game.card(bob_graveyard.cards[0]).card_name,
         "Lightning Bolt",
         "Countered Lightning Bolt should be in graveyard"
     );
-    
+
     // Verify stack is empty
     assert!(game.stack.is_empty(), "Stack should be empty after counter");
 }
@@ -228,18 +242,21 @@ fn test_control_gain_with_untap() {
     let mut game = GameState::new(&["Alice", "Bob"], 20);
     let p0 = PlayerId(0); // Alice gaining control
     let p1 = PlayerId(1); // Bob losing control
-    
+
     // Create a tapped Grizzly Bears for Bob
     let bears = game.create_card(make_grizzly_bears(p1));
     game.move_card(bears, ZoneType::Battlefield, p1);
     game.card_mut(bears).tapped = true;
     game.card_mut(bears).summoning_sick = false;
-    
+
     // Verify initial state
     let bears_card = game.card(bears);
-    assert_eq!(bears_card.controller, p1, "Bears initially controlled by Bob");
+    assert_eq!(
+        bears_card.controller, p1,
+        "Bears initially controlled by Bob"
+    );
     assert!(bears_card.tapped, "Bears initially tapped");
-    
+
     // Create ControlGain spell with Untap
     let control_spell = CardInstance::new(
         CardId(0),
@@ -254,15 +271,19 @@ fn test_control_gain_with_untap() {
         vec!["SP$ ControlGain | ValidTgts$ Creature | Untap$ True".to_string()],
     );
     let control_card = game.create_card(control_spell);
-    
-    let mut control_sa = SpellAbility::new_simple(Some(control_card), p0, "SP$ ControlGain | ValidTgts$ Creature | Untap$ True");
+
+    let mut control_sa = SpellAbility::new_simple(
+        Some(control_card),
+        p0,
+        "SP$ ControlGain | ValidTgts$ Creature | Untap$ True",
+    );
     control_sa.target_chosen.target_card = Some(bears);
-    
+
     // Setup game loop for effect resolution
     use forge_engine_core::game_loop::GameLoop;
     let mut game_loop = GameLoop::new(2);
     let mut pass_agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
-    
+
     let mut ctx = EffectContext {
         game: &mut game,
         agents: &mut pass_agents,
@@ -271,10 +292,10 @@ fn test_control_gain_with_untap() {
         mana_pools: &mut game_loop.mana_pools,
         parent_target_card: None,
     };
-    
+
     // Resolve the control effect
     resolve_effect(&mut ctx, &control_sa);
-    
+
     // Verify control changed and creature untapped
     let bears_card = game.card(bears);
     assert_eq!(bears_card.controller, p0, "Bears now controlled by Alice");

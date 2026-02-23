@@ -123,7 +123,11 @@ impl GameState {
     }
 
     pub fn next_player(&self, player: PlayerId) -> PlayerId {
-        let current_idx = self.player_order.iter().position(|&p| p == player).unwrap_or(0);
+        let current_idx = self
+            .player_order
+            .iter()
+            .position(|&p| p == player)
+            .unwrap_or(0);
         for i in 1..self.player_order.len() {
             let next_idx = (current_idx + i) % self.player_order.len();
             let next_pid = self.player_order[next_idx];

@@ -57,7 +57,14 @@ impl ServerClient {
         }
     }
 
-    pub fn connect(&self, app: AppHandle, host: String, port: u16, username: String, password: String) -> Result<(), String> {
+    pub fn connect(
+        &self,
+        app: AppHandle,
+        host: String,
+        port: u16,
+        username: String,
+        password: String,
+    ) -> Result<(), String> {
         self.disconnect();
 
         let (tx, rx) = mpsc::unbounded_channel::<String>();
@@ -74,7 +81,10 @@ impl ServerClient {
 
         let handle = tauri::async_runtime::spawn(async move {
             if let Err(e) = run_ws_client(app.clone(), url, username, password, tx, rx).await {
-                let _ = app.emit("server:error", serde_json::json!({"code": "connection_error", "message": e}));
+                let _ = app.emit(
+                    "server:error",
+                    serde_json::json!({"code": "connection_error", "message": e}),
+                );
                 let _ = app.emit("server:disconnected", serde_json::json!({}));
             }
         });
@@ -154,7 +164,11 @@ async fn run_ws_client(
 
 fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
     // Handle game envelopes in StateUpdate specially
-    if let ServerMessage::StateUpdate { from_player: _, state } = msg {
+    if let ServerMessage::StateUpdate {
+        from_player: _,
+        state,
+    } = msg
+    {
         if let Some(kind) = state.get("kind").and_then(|v| v.as_str()) {
             if kind == "response" {
                 // Route to game manager (host only) — don't emit to frontend
@@ -171,7 +185,12 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
     }
 
     let (event, payload) = match msg {
-        ServerMessage::AuthResult { success, player_id, reconnected, error } => (
+        ServerMessage::AuthResult {
+            success,
+            player_id,
+            reconnected,
+            error,
+        } => (
             "server:auth_result",
             serde_json::json!({
                 "success": success,
@@ -180,10 +199,9 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
                 "error": error,
             }),
         ),
-        ServerMessage::RoomList { rooms } => (
-            "server:room_list",
-            serde_json::json!({ "rooms": rooms }),
-        ),
+        ServerMessage::RoomList { rooms } => {
+            ("server:room_list", serde_json::json!({ "rooms": rooms }))
+        }
         ServerMessage::PlayerList { players } => (
             "server:player_list",
             serde_json::json!({ "players": players }),
@@ -212,11 +230,13 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
             "server:ready_changed",
             serde_json::json!({ "username": username, "ready": ready }),
         ),
-        ServerMessage::RoomUpdate { room } => (
-            "server:room_update",
-            serde_json::json!({ "room": room }),
-        ),
-        ServerMessage::GameStarted { room_id, player_order } => (
+        ServerMessage::RoomUpdate { room } => {
+            ("server:room_update", serde_json::json!({ "room": room }))
+        }
+        ServerMessage::GameStarted {
+            room_id,
+            player_order,
+        } => (
             "server:game_started",
             serde_json::json!({ "room_id": room_id, "player_order": player_order }),
         ),
@@ -224,7 +244,11 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
             "server:state_update",
             serde_json::json!({ "from_player": from_player, "state": state }),
         ),
-        ServerMessage::TurnChanged { from_player, new_active_player, turn_number } => (
+        ServerMessage::TurnChanged {
+            from_player,
+            new_active_player,
+            turn_number,
+        } => (
             "server:turn_changed",
             serde_json::json!({ "from_player": from_player, "new_active_player": new_active_player, "turn_number": turn_number }),
         ),

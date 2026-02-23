@@ -102,10 +102,7 @@ pub fn join_room_sync(
     Ok(info)
 }
 
-pub fn leave_room_sync(
-    state: &Arc<ServerState>,
-    player_id: &str,
-) -> Result<(), ServerError> {
+pub fn leave_room_sync(state: &Arc<ServerState>, player_id: &str) -> Result<(), ServerError> {
     let room_id = {
         state
             .players

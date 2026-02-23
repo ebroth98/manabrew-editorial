@@ -83,7 +83,11 @@ impl ManaPool {
 
     /// Returns true if the pool can pay `cost` plus `extra_generic` additional generic mana.
     /// Used for commander tax checks.
-    pub fn can_pay_with_extra_generic(&self, cost: &forge_foundation::ManaCost, extra_generic: i32) -> bool {
+    pub fn can_pay_with_extra_generic(
+        &self,
+        cost: &forge_foundation::ManaCost,
+        extra_generic: i32,
+    ) -> bool {
         let mut pool = self.clone();
         if !pool.try_pay(cost) {
             return false;
@@ -268,9 +272,7 @@ pub fn auto_tap_lands(
     player: PlayerId,
     cost: &ManaCost,
 ) {
-    let lands: Vec<CardId> = game
-        .cards_in_zone(ZoneType::Battlefield, player)
-        .to_vec();
+    let lands: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
 
     // First, tap lands for colored requirements
     for shard in cost.shards() {
@@ -343,11 +345,7 @@ pub fn auto_tap_lands_generic(
 }
 
 /// Calculate available mana from the current pool plus untapped lands and non-land mana sources.
-pub fn calculate_available_mana(
-    pool: &ManaPool,
-    game: &GameState,
-    player: PlayerId,
-) -> ManaPool {
+pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: PlayerId) -> ManaPool {
     let mut available = pool.clone();
     let battlefield = game.cards_in_zone(ZoneType::Battlefield, player);
 
@@ -360,9 +358,7 @@ pub fn calculate_available_mana(
         } else {
             // Check non-land permanents for mana abilities
             for ab in &card.activated_abilities {
-                if ab.is_mana_ability
-                    && can_pay_ignoring_mana(&ab.cost, game, card_id, player)
-                {
+                if ab.is_mana_ability && can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
                     if let Some(produced) = ab.params.get("Produced") {
                         if let Some(atom) = mana_atom_from_produced(produced) {
                             available.add(atom, 1);

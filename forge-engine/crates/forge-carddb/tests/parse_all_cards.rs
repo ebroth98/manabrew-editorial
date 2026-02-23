@@ -4,8 +4,8 @@ use std::path::Path;
 #[test]
 #[ignore] // Run with: cargo test --test parse_all_cards -- --ignored
 fn parse_all_card_scripts() {
-    let cards_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../forge/forge-gui/res/cardsfolder");
+    let cards_dir =
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../forge/forge-gui/res/cardsfolder");
 
     if !cards_dir.exists() {
         eprintln!(

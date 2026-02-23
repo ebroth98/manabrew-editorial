@@ -67,10 +67,7 @@ impl PhaseType {
 
     /// Index in the turn order (0-12).
     pub fn index(self) -> usize {
-        Self::TURN_ORDER
-            .iter()
-            .position(|&p| p == self)
-            .unwrap()
+        Self::TURN_ORDER.iter().position(|&p| p == self).unwrap()
     }
 
     /// Get the next phase in the turn sequence. Wraps from Cleanup -> Untap.

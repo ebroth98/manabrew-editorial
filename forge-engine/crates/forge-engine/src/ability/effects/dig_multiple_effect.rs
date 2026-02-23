@@ -1,6 +1,9 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, matches_change_type, parse_param, parse_zone_type, resolve_defined_player, EffectContext};
+use super::{
+    emit_zone_trigger, matches_change_type, parse_param, parse_zone_type, resolve_defined_player,
+    EffectContext,
+};
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `DigEffect.java`.
@@ -13,8 +16,16 @@ use crate::spellability::SpellAbility;
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let dig_num = parse_param(&sa.ability_text, "DigNum$ ").unwrap_or(1) as usize;
     let optional = sa.params.contains_key("Optional");
-    let change_all = sa.params.get("ChangeNum").map(|s| s.eq_ignore_ascii_case("All")).unwrap_or(false);
-    let any_number = sa.params.get("ChangeNum").map(|s| s.eq_ignore_ascii_case("Any")).unwrap_or(false);
+    let change_all = sa
+        .params
+        .get("ChangeNum")
+        .map(|s| s.eq_ignore_ascii_case("All"))
+        .unwrap_or(false);
+    let any_number = sa
+        .params
+        .get("ChangeNum")
+        .map(|s| s.eq_ignore_ascii_case("Any"))
+        .unwrap_or(false);
     let change_num = if change_all || any_number {
         dig_num
     } else {
@@ -82,8 +93,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Ask the chooser (activating player) which cards to take.
     let max_take = change_num.min(valid.len());
-    let chosen = ctx.agents[sa.activating_player.index()]
-        .choose_dig(sa.activating_player, &valid, max_take, optional || any_number);
+    let chosen = ctx.agents[sa.activating_player.index()].choose_dig(
+        sa.activating_player,
+        &valid,
+        max_take,
+        optional || any_number,
+    );
 
     let chosen: Vec<_> = chosen
         .into_iter()
@@ -91,7 +106,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .take(max_take)
         .collect();
 
-    let rest: Vec<_> = top_n.iter().copied().filter(|id| !chosen.contains(id)).collect();
+    let rest: Vec<_> = top_n
+        .iter()
+        .copied()
+        .filter(|id| !chosen.contains(id))
+        .collect();
 
     // Move chosen cards to dest_zone1.
     for &id in &chosen {
@@ -117,7 +136,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 ctx.game.cards[id.index()].zone = ZoneType::Library;
             } else {
                 // bottom of library
-                ctx.game.zone_mut(ZoneType::Library, owner).cards.insert(0, id);
+                ctx.game
+                    .zone_mut(ZoneType::Library, owner)
+                    .cards
+                    .insert(0, id);
                 ctx.game.cards[id.index()].zone = ZoneType::Library;
             }
         } else {
@@ -165,22 +187,59 @@ mod tests {
     /// Agent that always picks the first card offered during dig.
     struct TakeFirstAgent;
     impl PlayerAgent for TakeFirstAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
-        fn choose_action(&mut self, _: PlayerId, _: &[CardId], _: &[CardId], _: &[CardId], _: &[(CardId, usize)]) -> crate::agent::MainPhaseAction {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+            true
+        }
+        fn choose_action(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+            _: &[CardId],
+            _: &[(CardId, usize)],
+        ) -> crate::agent::MainPhaseAction {
             crate::agent::MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> { vec![] }
-        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { vec![] }
-        fn choose_target_player(&mut self, _: PlayerId, v: &[PlayerId]) -> Option<PlayerId> { v.first().copied() }
-        fn choose_target_card(&mut self, _: PlayerId, v: &[CardId]) -> Option<CardId> { v.first().copied() }
-        fn choose_target_any(&mut self, _: PlayerId, vp: &[PlayerId], vc: &[CardId]) -> crate::agent::TargetChoice {
-            vp.first().copied().map(crate::agent::TargetChoice::Player)
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+            vec![]
+        }
+        fn choose_blockers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            vec![]
+        }
+        fn choose_target_player(&mut self, _: PlayerId, v: &[PlayerId]) -> Option<PlayerId> {
+            v.first().copied()
+        }
+        fn choose_target_card(&mut self, _: PlayerId, v: &[CardId]) -> Option<CardId> {
+            v.first().copied()
+        }
+        fn choose_target_any(
+            &mut self,
+            _: PlayerId,
+            vp: &[PlayerId],
+            vc: &[CardId],
+        ) -> crate::agent::TargetChoice {
+            vp.first()
+                .copied()
+                .map(crate::agent::TargetChoice::Player)
                 .or_else(|| vc.first().copied().map(crate::agent::TargetChoice::Card))
                 .unwrap_or(crate::agent::TargetChoice::None)
         }
-        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+            None
+        }
         fn notify(&mut self, _: &str) {}
-        fn choose_dig(&mut self, _player: PlayerId, cards: &[CardId], max: usize, _optional: bool) -> Vec<CardId> {
+        fn choose_dig(
+            &mut self,
+            _player: PlayerId,
+            cards: &[CardId],
+            max: usize,
+            _optional: bool,
+        ) -> Vec<CardId> {
             cards.iter().copied().take(max).collect()
         }
     }
@@ -203,10 +262,8 @@ mod tests {
             "SP$ Dig | DigNum$ 3 | ChangeNum$ 1 | DestinationZone2$ Graveyard | NoReveal$ True",
         );
         let mut trigger_handler = TriggerHandler::new();
-        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-            Box::new(TakeFirstAgent),
-            Box::new(PassAgent),
-        ];
+        let mut agents: Vec<Box<dyn PlayerAgent>> =
+            vec![Box::new(TakeFirstAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
         let mut ctx = EffectContext {

@@ -76,7 +76,10 @@ pub fn parse_cost(raw: &str) -> Cost {
                 });
             }
         } else if token.starts_with("PayLife<") {
-            if let Some(inner) = token.strip_prefix("PayLife<").and_then(|s| s.strip_suffix('>')) {
+            if let Some(inner) = token
+                .strip_prefix("PayLife<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let amount = inner.parse::<i32>().unwrap_or(0);
                 parts.push(CostPart::PayLife(amount));
             }
@@ -138,11 +141,7 @@ fn split_cost_tokens(raw: &str) -> Vec<&str> {
 
 /// Find valid sacrifice targets on the battlefield for a player, filtered by type.
 /// Mirrors Java's `CostSacrifice.getMaxAmountX()` + `CardLists.getValidCards()`.
-pub fn get_sacrifice_targets(
-    game: &GameState,
-    player: PlayerId,
-    type_filter: &str,
-) -> Vec<CardId> {
+pub fn get_sacrifice_targets(game: &GameState, player: PlayerId, type_filter: &str) -> Vec<CardId> {
     game.cards_in_zone(ZoneType::Battlefield, player)
         .to_vec()
         .into_iter()

@@ -151,9 +151,10 @@ impl TriggerHandler {
         for (trig_idx, trigger) in card.triggers.iter().enumerate() {
             if trigger.active_zones.contains(&card.zone) {
                 // Avoid duplicates
-                let already_registered = self.active_triggers.iter().any(|at| {
-                    at.card_id == card_id && at.trigger_index == trig_idx
-                });
+                let already_registered = self
+                    .active_triggers
+                    .iter()
+                    .any(|at| at.card_id == card_id && at.trigger_index == trig_idx);
                 if !already_registered {
                     self.active_triggers.push(ActiveTrigger {
                         card_id,
@@ -166,8 +167,7 @@ impl TriggerHandler {
 
     /// Remove triggers for a card that left a trigger zone.
     pub fn unregister_active_triggers(&mut self, card_id: CardId) {
-        self.active_triggers
-            .retain(|at| at.card_id != card_id);
+        self.active_triggers.retain(|at| at.card_id != card_id);
     }
 
     /// Mirrors Java's canRunTrigger().

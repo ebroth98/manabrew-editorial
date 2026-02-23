@@ -58,14 +58,23 @@ impl TargetRestrictions {
     /// parameter exists (mirrors Java: null targetRestrictions means no targeting).
     pub fn new(params: &BTreeMap<String, String>) -> Option<Self> {
         let valid_tgts_str = params.get("ValidTgts")?;
-        let valid_tgts: Vec<String> = valid_tgts_str.split(',').map(|s| s.trim().to_string()).collect();
+        let valid_tgts: Vec<String> = valid_tgts_str
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .collect();
         let mut target_kind = parse_target_kind(&valid_tgts[0]);
-        let min_targets = params.get("TargetMin").and_then(|s| s.parse().ok()).unwrap_or(1);
-        let max_targets = params.get("TargetMax").and_then(|s| s.parse().ok()).unwrap_or(1);
+        let min_targets = params
+            .get("TargetMin")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
+        let max_targets = params
+            .get("TargetMax")
+            .and_then(|s| s.parse().ok())
+            .unwrap_or(1);
 
         // Parse TargetType$ parameter if present (used by counterspells)
         let target_type_filter = params.get("TargetType").cloned();
-        
+
         // If TargetType$ Spell is specified, override to Spell targeting
         // This handles cases like Counterspell: "ValidTgts$ Card | TargetType$ Spell"
         if let Some(ref target_type) = target_type_filter {
@@ -94,8 +103,7 @@ impl TargetRestrictions {
             TargetKind::Player => !game.alive_players().is_empty(),
             // "any target" = any alive player or any creature on the battlefield.
             TargetKind::Any => {
-                !game.alive_players().is_empty()
-                    || !get_all_candidates_creatures(game).is_empty()
+                !game.alive_players().is_empty() || !get_all_candidates_creatures(game).is_empty()
             }
             TargetKind::Creature(ref filter) => {
                 !get_all_candidates_creature_filtered(game, filter.as_deref(), player).is_empty()
@@ -121,9 +129,7 @@ pub fn has_valid_spell_with_filter(game: &GameState, filter: &str) -> bool {
     // In the future, we could filter by spell type (e.g., "Creature", "Instant", "Sorcery")
     if filter.eq_ignore_ascii_case("Spell") {
         // Look for any spell on the stack (abilities are not spells)
-        game.stack.iter().any(|entry| {
-            entry.spell_ability.is_spell
-        })
+        game.stack.iter().any(|entry| entry.spell_ability.is_spell)
     } else {
         // Unknown filter, fall back to checking if stack is not empty
         !game.stack.is_empty()
@@ -134,11 +140,15 @@ pub fn has_valid_spell_with_filter(game: &GameState, filter: &str) -> bool {
 pub fn filter_spells_by_type(game: &GameState, candidates: &[u32], filter: &str) -> Vec<u32> {
     if filter.eq_ignore_ascii_case("Spell") {
         // Only include entries that are actual spells (not abilities)
-        candidates.iter().filter(|&&id| {
-            game.stack.iter().any(|entry| {
-                entry.id == id && entry.spell_ability.is_spell
+        candidates
+            .iter()
+            .filter(|&&id| {
+                game.stack
+                    .iter()
+                    .any(|entry| entry.id == id && entry.spell_ability.is_spell)
             })
-        }).cloned().collect()
+            .cloned()
+            .collect()
     } else {
         // Unknown filter, return all candidates
         candidates.to_vec()
@@ -268,7 +278,7 @@ fn parse_zone_type(s: &str) -> Option<ZoneType> {
 /// (e.g., Raise Dead with Origin$ Graveyard).
 fn parse_target_kind_enhanced(val: &str, origin_zone: Option<ZoneType>) -> TargetKind {
     let val = val.trim();
-    
+
     // Handle the special case of CardInZone targeting first
     if let Some(zone) = origin_zone {
         if zone != ZoneType::Battlefield {
@@ -291,7 +301,7 @@ fn parse_target_kind_enhanced(val: &str, origin_zone: Option<ZoneType>) -> Targe
             return TargetKind::CardInZone { zone, filter };
         }
     }
-    
+
     // For battlefield targeting (or no origin specified), use traditional parsing
     parse_target_kind_legacy(val)
 }
@@ -328,7 +338,7 @@ pub fn get_valid_cards_in_zone(
     filter: Option<&str>,
 ) -> Vec<CardId> {
     let zone_cards = game.cards_in_zone(zone, player).to_vec();
-    
+
     match filter {
         None => zone_cards,
         Some(f) => zone_cards
@@ -393,9 +403,16 @@ mod tests {
     #[test]
     fn parse_valid_targets_graveyard_creature() {
         // Test parsing for Raise Dead style: ValidTgts$ Creature with Origin$ Graveyard
-        let ability = "SP$ ChangeZone | Origin$ Graveyard | Destination$ Hand | ValidTgts$ Creature.YouCtrl";
+        let ability =
+            "SP$ ChangeZone | Origin$ Graveyard | Destination$ Hand | ValidTgts$ Creature.YouCtrl";
         let target_kind = parse_valid_targets(ability);
-        assert!(matches!(target_kind, TargetKind::CardInZone { zone: ZoneType::Graveyard, .. }));
+        assert!(matches!(
+            target_kind,
+            TargetKind::CardInZone {
+                zone: ZoneType::Graveyard,
+                ..
+            }
+        ));
     }
 
     #[test]

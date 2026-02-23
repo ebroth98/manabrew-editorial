@@ -911,8 +911,11 @@ export default function Game() {
     const deferred = deferredStateRef.current;
     if (!deferred) return;
     deferredStateRef.current = null;
-    const updates: Record<string, unknown> = { gameView: deferred.gameView, isWaitingForResponse: false };
-    if (deferred.prompt) updates.currentPrompt = deferred.prompt;
+    const updates: Record<string, unknown> = {
+      gameView: deferred.gameView,
+      isWaitingForResponse: false,
+      currentPrompt: deferred.prompt ?? null,
+    };
     useGameStore.setState(updates);
   }
 
@@ -930,8 +933,11 @@ export default function Game() {
 
     if (snapshot.displayEvents.length === 0) {
       // No flashes — apply state immediately and continue to next in queue.
-      const updates: Record<string, unknown> = { gameView: snapshot.gameView, isWaitingForResponse: false };
-      if (snapshot.prompt) updates.currentPrompt = snapshot.prompt;
+      const updates: Record<string, unknown> = {
+        gameView: snapshot.gameView,
+        isWaitingForResponse: false,
+        currentPrompt: snapshot.prompt ?? null,
+      };
       useGameStore.setState(updates);
       if (rest.length > 0) {
         setTimeout(startNextSnapshot, 0);

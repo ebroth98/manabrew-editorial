@@ -1,12 +1,11 @@
 /// Reproduces the bug: Counterspell resolves but Shock still deals damage
 /// This should NOT happen - countered spells should never resolve
-
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use std::cell::RefCell;
 use std::rc::Rc;
@@ -20,7 +19,11 @@ struct ShockTestAgent {
 
 impl ShockTestAgent {
     fn new(is_alice: bool, game_state: Rc<RefCell<GameState>>) -> Self {
-        ShockTestAgent { step: 0, is_alice, game_state }
+        ShockTestAgent {
+            step: 0,
+            is_alice,
+            game_state,
+        }
     }
 }
 
@@ -30,17 +33,17 @@ impl PlayerAgent for ShockTestAgent {
     }
 
     fn choose_action(
-        &mut self, 
-        player: PlayerId, 
-        playable: &[CardId], 
-        tappable_lands: &[CardId], 
-        _untappable_lands: &[CardId], 
-        _activatable: &[(CardId, usize)]
+        &mut self,
+        player: PlayerId,
+        playable: &[CardId],
+        tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+        _activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
         self.step += 1;
-        
+
         let game = self.game_state.borrow();
-        
+
         if self.is_alice {
             // Alice: Cast Counterspell to counter Shock
             match self.step {
@@ -54,7 +57,7 @@ impl PlayerAgent for ShockTestAgent {
                         MainPhaseAction::Pass
                     }
                 }
-                _ => MainPhaseAction::Pass
+                _ => MainPhaseAction::Pass,
             }
         } else {
             // Bob: Cast Shock at Alice
@@ -69,7 +72,7 @@ impl PlayerAgent for ShockTestAgent {
                         MainPhaseAction::Pass
                     }
                 }
-                _ => MainPhaseAction::Pass
+                _ => MainPhaseAction::Pass,
             }
         }
     }
@@ -88,7 +91,12 @@ impl PlayerAgent for ShockTestAgent {
         Vec::new()
     }
 
-    fn choose_blockers(&mut self, _player: PlayerId, _attackers: &[CardId], _available_blockers: &[CardId]) -> Vec<(CardId, CardId)> {
+    fn choose_blockers(
+        &mut self,
+        _player: PlayerId,
+        _attackers: &[CardId],
+        _available_blockers: &[CardId],
+    ) -> Vec<(CardId, CardId)> {
         Vec::new()
     }
 
@@ -96,7 +104,12 @@ impl PlayerAgent for ShockTestAgent {
         valid.first().copied()
     }
 
-    fn choose_target_any(&mut self, _player: PlayerId, valid_players: &[PlayerId], valid_cards: &[CardId]) -> TargetChoice {
+    fn choose_target_any(
+        &mut self,
+        _player: PlayerId,
+        valid_players: &[PlayerId],
+        valid_cards: &[CardId],
+    ) -> TargetChoice {
         if let Some(&pid) = valid_players.last() {
             TargetChoice::Player(pid)
         } else if let Some(&cid) = valid_cards.first() {
@@ -111,7 +124,11 @@ impl PlayerAgent for ShockTestAgent {
     }
 
     fn notify(&mut self, _message: &str) {
-        println!("[{}] {}", if self.is_alice { "Alice" } else { "Bob" }, _message);
+        println!(
+            "[{}] {}",
+            if self.is_alice { "Alice" } else { "Bob" },
+            _message
+        );
     }
 }
 
@@ -180,47 +197,50 @@ fn test_counterspell_should_stop_damage() {
     let mut game = GameState::new(&["Alice", "Bob"], 20);
     let p0 = PlayerId(0); // Alice
     let p1 = PlayerId(1); // Bob
-    
+
     // Setup Alice: 2 Islands + Counterspell in hand
     let island1 = game.create_card(make_island(p0));
     let island2 = game.create_card(make_island(p0));
     let counterspell = game.create_card(make_counterspell(p0));
-    
+
     game.move_card(island1, ZoneType::Battlefield, p0);
     game.move_card(island2, ZoneType::Battlefield, p0);
     game.move_card(counterspell, ZoneType::Hand, p0);
-    
+
     // Setup Bob: Mountain + Shock in hand
     let mountain = game.create_card(make_mountain(p1));
     let shock = game.create_card(make_shock(p1));
-    
+
     game.move_card(mountain, ZoneType::Battlefield, p1);
     game.move_card(shock, ZoneType::Hand, p1);
-    
+
     // Initial life totals
     let alice_initial_life = game.player(p0).life;
     let bob_initial_life = game.player(p1).life;
-    println!("Initial life - Alice: {}, Bob: {}", alice_initial_life, bob_initial_life);
-    
+    println!(
+        "Initial life - Alice: {}, Bob: {}",
+        alice_initial_life, bob_initial_life
+    );
+
     // Create game loop
     let mut game_loop = GameLoop::new(2);
-    
+
     // Bob's turn: He casts Shock at Alice
     game.turn.active_player = p1;
     game.new_turn_for_player(p1);
-    
+
     println!("\n=== Bob casts Shock at Alice ===");
-    
+
     // Bob casts Shock manually for the test
     let shock_card = *game.cards_in_zone(ZoneType::Hand, p1).first().unwrap();
     let mut shock_sa = SpellAbility::new_simple(
-        Some(shock_card), 
-        p1, 
-        "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 2"
+        Some(shock_card),
+        p1,
+        "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 2",
     );
     shock_sa.is_spell = true;
     shock_sa.target_chosen.target_player = Some(p0); // Target Alice
-    
+
     let shock_entry = StackEntry {
         id: 0, // Will be overwritten
         spell_ability: shock_sa,
@@ -229,24 +249,24 @@ fn test_counterspell_should_stop_damage() {
     };
     let shock_stack_id = game.stack.push(shock_entry);
     println!("Shock placed on stack with ID: {}", shock_stack_id);
-    
+
     // Verify Shock is on stack
     assert_eq!(game.stack.len(), 1, "Shock should be on stack");
-    
+
     // Alice gets priority and casts Counterspell
     println!("\n=== Alice casts Counterspell ===");
-    
+
     let counterspell_card = *game.cards_in_zone(ZoneType::Hand, p0).first().unwrap();
     let mut counterspell_sa = SpellAbility::new_simple(
-        Some(counterspell_card), 
-        p0, 
-        "SP$ Counter | TargetType$ Spell | ValidTgts$ Card"
+        Some(counterspell_card),
+        p0,
+        "SP$ Counter | TargetType$ Spell | ValidTgts$ Card",
     );
     counterspell_sa.is_spell = true;
-    
+
     // Choose target: the Shock (use its actual stack ID)
     counterspell_sa.target_chosen.target_stack_entry = Some(shock_stack_id);
-    
+
     // Put Counterspell on stack
     let counter_entry = StackEntry {
         id: 0, // Will be overwritten
@@ -257,17 +277,25 @@ fn test_counterspell_should_stop_damage() {
     let counter_id = game.stack.push(counter_entry);
     println!("Counterspell placed on stack with ID: {}", counter_id);
     println!("Stack now has {} entries", game.stack.len());
-    
+
     // Verify Counterspell is targeting Shock
-    let counterspell_on_stack = &game.stack.iter().find(|e| e.id == counter_id).unwrap().spell_ability;
-    assert_eq!(counterspell_on_stack.target_chosen.target_stack_entry, Some(shock_stack_id));
-    
+    let counterspell_on_stack = &game
+        .stack
+        .iter()
+        .find(|e| e.id == counter_id)
+        .unwrap()
+        .spell_ability;
+    assert_eq!(
+        counterspell_on_stack.target_chosen.target_stack_entry,
+        Some(shock_stack_id)
+    );
+
     // Both players pass priority
     let mut pass_agents: Vec<Box<dyn PlayerAgent>> = vec![
         Box::new(forge_engine_core::agent::PassAgent),
         Box::new(forge_engine_core::agent::PassAgent),
     ];
-    
+
     println!("\n=== Both players pass priority ===");
     println!("Stack before resolution: {} entries", game.stack.len());
     for entry in game.stack.iter() {
@@ -279,7 +307,7 @@ fn test_counterspell_should_stop_damage() {
         };
         println!("  - {} (ID: {}, is_spell: {})", name, entry.id, sa.is_spell);
     }
-    
+
     // Both players pass priority → step_with_priority resolves the stack (LIFO: Counterspell first)
     game_loop.step_with_priority(&mut game, &mut pass_agents, false);
 
@@ -294,26 +322,34 @@ fn test_counterspell_should_stop_damage() {
         };
         println!("  - {} (ID: {})", name, entry.id);
     }
-    
+
     // Check final life totals
     let alice_final_life = game.player(p0).life;
     let bob_final_life = game.player(p1).life;
-    println!("\nFinal life - Alice: {}, Bob: {}", alice_final_life, bob_final_life);
-    
+    println!(
+        "\nFinal life - Alice: {}, Bob: {}",
+        alice_final_life, bob_final_life
+    );
+
     // CRITICAL ASSERTION: Alice should NOT have taken damage
     if alice_final_life != alice_initial_life {
-        panic!("BUG CONFIRMED: Alice took damage from a countered Shock! Life changed from {} to {}", 
-            alice_initial_life, alice_final_life);
+        panic!(
+            "BUG CONFIRMED: Alice took damage from a countered Shock! Life changed from {} to {}",
+            alice_initial_life, alice_final_life
+        );
     }
-    
+
     assert_eq!(alice_final_life, alice_initial_life, 
         "BUG: Alice took damage from a countered Shock! Counterspell should have prevented all damage.");
-    
+
     // Shock should be in Bob's graveyard
     let bob_graveyard = game.zone(ZoneType::Graveyard, p1);
     assert_eq!(bob_graveyard.len(), 1, "Shock should be in Bob's graveyard");
     let graveyard_card = game.card(bob_graveyard.cards[0]);
-    assert_eq!(graveyard_card.card_name, "Shock", "Countered spell should be Shock");
-    
+    assert_eq!(
+        graveyard_card.card_name, "Shock",
+        "Countered spell should be Shock"
+    );
+
     println!("✓ Test passed: Counterspell successfully prevented Shock damage");
 }

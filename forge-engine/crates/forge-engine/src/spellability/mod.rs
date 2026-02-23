@@ -125,13 +125,13 @@ impl SpellAbility {
     }
 
     /// Create a simple SpellAbility for tests and triggers.
-    pub fn new_simple(
-        source: Option<CardId>,
-        player: PlayerId,
-        ability_text: &str,
-    ) -> Self {
+    pub fn new_simple(source: Option<CardId>, player: PlayerId, ability_text: &str) -> Self {
         let params = parse_pipe_params(ability_text);
-        let api = params.get("SP").or_else(|| params.get("DB")).or_else(|| params.get("AB")).cloned();
+        let api = params
+            .get("SP")
+            .or_else(|| params.get("DB"))
+            .or_else(|| params.get("AB"))
+            .cloned();
         let target_restrictions = TargetRestrictions::new(&params);
         let cost = params.get("Cost").map(|s| parse_cost(s));
 
@@ -164,14 +164,20 @@ pub fn build_spell_ability(
     player: PlayerId,
 ) -> SpellAbility {
     let params = parse_pipe_params(ability_text);
-    let api = params.get("SP").or_else(|| params.get("DB")).or_else(|| params.get("AB")).cloned();
+    let api = params
+        .get("SP")
+        .or_else(|| params.get("DB"))
+        .or_else(|| params.get("AB"))
+        .cloned();
     let target_restrictions = TargetRestrictions::new(&params);
     let cost = params.get("Cost").map(|s| parse_cost(s));
 
     // Recursively build sub-ability chain from SVars
     let sub_ability = if let Some(sub_svar_name) = params.get("SubAbility") {
         if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name).cloned() {
-            Some(Box::new(build_spell_ability(game, card_id, &sub_text, player)))
+            Some(Box::new(build_spell_ability(
+                game, card_id, &sub_text, player,
+            )))
         } else {
             None
         }
@@ -257,12 +263,17 @@ fn choose_targets_for(
             );
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            sa.target_chosen.target_card = agent.choose_target_card_from_zone(player, *zone, &valid);
+            sa.target_chosen.target_card =
+                agent.choose_target_card_from_zone(player, *zone, &valid);
         }
         TargetKind::Spell => {
             let valid = target_restrictions::get_all_candidates_spells(game);
             // Apply TargetType$ filter if present
-            let valid = if let Some(ref filter) = sa.target_restrictions.as_ref().and_then(|tr| tr.target_type_filter.as_ref()) {
+            let valid = if let Some(ref filter) = sa
+                .target_restrictions
+                .as_ref()
+                .and_then(|tr| tr.target_type_filter.as_ref())
+            {
                 target_restrictions::filter_spells_by_type(game, &valid, filter)
             } else {
                 valid

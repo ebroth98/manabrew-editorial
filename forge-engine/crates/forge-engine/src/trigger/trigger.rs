@@ -278,9 +278,9 @@ fn matches_valid_card(
 ) -> bool {
     // Comma-separated = OR conditions
     if filter.contains(',') && !filter.contains('.') {
-        return filter
-            .split(',')
-            .any(|part| matches_single_valid_card(part.trim(), card_id, host_card, host_controller, game));
+        return filter.split(',').any(|part| {
+            matches_single_valid_card(part.trim(), card_id, host_card, host_controller, game)
+        });
     }
 
     matches_single_valid_card(filter, card_id, host_card, host_controller, game)
@@ -429,20 +429,20 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
     let mode_str = params.get("Mode")?;
     let mode = match mode_str.as_str() {
         "ChangesZone" => {
-            let origin = params.get("Origin").and_then(|s| {
-                if s == "Any" {
-                    None
-                } else {
-                    parse_zone(s)
-                }
-            });
-            let destination = params.get("Destination").and_then(|s| {
-                if s == "Any" {
-                    None
-                } else {
-                    parse_zone(s)
-                }
-            });
+            let origin =
+                params
+                    .get("Origin")
+                    .and_then(|s| if s == "Any" { None } else { parse_zone(s) });
+            let destination =
+                params.get("Destination").and_then(
+                    |s| {
+                        if s == "Any" {
+                            None
+                        } else {
+                            parse_zone(s)
+                        }
+                    },
+                );
             let valid_card = params.get("ValidCard").map(|s| s.clone());
             TriggerMode::ChangesZone {
                 origin,
@@ -460,8 +460,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         }
         "SpellCast" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_activating_player =
-                params.get("ValidActivatingPlayer").map(|s| s.clone());
+            let valid_activating_player = params.get("ValidActivatingPlayer").map(|s| s.clone());
             TriggerMode::SpellCast {
                 valid_card,
                 valid_activating_player,

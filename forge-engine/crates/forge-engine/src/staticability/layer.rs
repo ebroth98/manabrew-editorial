@@ -21,7 +21,7 @@
 //! # Layer ordering (CR 613)
 //!
 //! 1. Copy effects (not yet implemented)
-//! 2. Control-changing (not yet implemented)
+//! 2. Control-changing
 //! 3. Text-changing (not yet implemented)
 //! 4. Type-changing  → [`Layer::Type`]
 //! 5. Color-changing → [`Layer::Color`]
@@ -34,7 +34,7 @@
 use forge_foundation::ZoneType;
 
 use crate::game::GameState;
-use crate::ids::CardId;
+use crate::ids::{CardId, PlayerId};
 use crate::staticability::{CardFilter, Layer, StaticAbility, StaticMode};
 
 // ── Effect collection ────────────────────────────────────────────────────────
@@ -50,8 +50,17 @@ struct PendingEffect {
 }
 
 enum EffectKind {
-    AddPT { power: i32, toughness: i32 },
-    SetPT { power: Option<i32>, toughness: Option<i32> },
+    SetController {
+        controller: PlayerId,
+    },
+    AddPT {
+        power: i32,
+        toughness: i32,
+    },
+    SetPT {
+        power: Option<i32>,
+        toughness: Option<i32>,
+    },
     GrantKeyword(String),
 }
 
@@ -102,15 +111,23 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             .or_else(|| sa.params.get("ValidCards"))
             .map(String::as_str)
             .unwrap_or("Creature.YouControl");
-        let filter = CardFilter::parse(affected_str);
-
-        // Collect matching target IDs before any mutation.
-        let targets: Vec<CardId> = game
-            .cards
-            .iter()
-            .filter(|c| c.zone == ZoneType::Battlefield && filter.matches(c, source_card))
-            .map(|c| c.id)
-            .collect();
+        let targets: Vec<CardId> = if affected_str.eq_ignore_ascii_case("Card.EnchantedBy") {
+            // Aura-like static effects (e.g. Control Magic): affect what this
+            // source is attached to.
+            source_card
+                .attached_to
+                .filter(|&cid| game.card(cid).zone == ZoneType::Battlefield)
+                .into_iter()
+                .collect()
+        } else {
+            let filter = CardFilter::parse(affected_str);
+            // Collect matching target IDs before any mutation.
+            game.cards
+                .iter()
+                .filter(|c| c.zone == ZoneType::Battlefield && filter.matches(c, source_card))
+                .map(|c| c.id)
+                .collect()
+        };
 
         match sa.mode {
             // ── Continuous: queue effect for later sorted application ────
@@ -120,6 +137,23 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                 };
                 for target in targets {
                     match layer {
+                        Layer::Control => {
+                            let Some(gain_control) = sa.params.get("GainControl") else {
+                                continue;
+                            };
+                            let new_controller = match gain_control.as_str() {
+                                "You" | "YouCtrl" => source_card.controller,
+                                "Opponent" => game.opponent_of(source_card.controller),
+                                _ => continue,
+                            };
+                            pending.push(PendingEffect {
+                                layer,
+                                target,
+                                kind: EffectKind::SetController {
+                                    controller: new_controller,
+                                },
+                            });
+                        }
                         Layer::ModifyPT => {
                             let p = sa
                                 .params
@@ -134,7 +168,10 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                             pending.push(PendingEffect {
                                 layer,
                                 target,
-                                kind: EffectKind::AddPT { power: p, toughness: t },
+                                kind: EffectKind::AddPT {
+                                    power: p,
+                                    toughness: t,
+                                },
                             });
                         }
                         Layer::SetPT => {
@@ -143,17 +180,16 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                             pending.push(PendingEffect {
                                 layer,
                                 target,
-                                kind: EffectKind::SetPT { power: sp, toughness: st },
+                                kind: EffectKind::SetPT {
+                                    power: sp,
+                                    toughness: st,
+                                },
                             });
                         }
                         Layer::Ability => {
                             // AddKeyword$ supports multiple keywords separated by " & ".
                             // Reference: StaticAbilityContinuous.java, AddKeyword handling.
-                            let kws = sa
-                                .params
-                                .get("AddKeyword")
-                                .cloned()
-                                .unwrap_or_default();
+                            let kws = sa.params.get("AddKeyword").cloned().unwrap_or_default();
                             for kw in kws.split('&').map(str::trim).filter(|s| !s.is_empty()) {
                                 pending.push(PendingEffect {
                                     layer,
@@ -193,13 +229,17 @@ pub fn apply_continuous_effects(game: &mut GameState) {
     pending.sort_by_key(|e| e.layer);
 
     for effect in pending {
-        let card = &mut game.cards[effect.target.index()];
         match effect.kind {
+            EffectKind::SetController { controller } => {
+                game.change_controller(effect.target, controller);
+            }
             EffectKind::AddPT { power, toughness } => {
+                let card = &mut game.cards[effect.target.index()];
                 card.static_power_modifier += power;
                 card.static_toughness_modifier += toughness;
             }
             EffectKind::SetPT { power, toughness } => {
+                let card = &mut game.cards[effect.target.index()];
                 // Layer 7b: override the base P/T for this calculation cycle.
                 // We use `static_set_power` rather than mutating `base_power`
                 // so the original base value is preserved for the next reset.
@@ -211,8 +251,13 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                 }
             }
             EffectKind::GrantKeyword(kw) => {
+                let card = &mut game.cards[effect.target.index()];
                 // Avoid duplicates (case-insensitive).
-                if !card.granted_keywords.iter().any(|k| k.eq_ignore_ascii_case(&kw)) {
+                if !card
+                    .granted_keywords
+                    .iter()
+                    .any(|k| k.eq_ignore_ascii_case(&kw))
+                {
                     card.granted_keywords.push(kw);
                 }
             }
@@ -311,11 +356,7 @@ mod tests {
         id
     }
 
-    fn add_enchantment(
-        game: &mut GameState,
-        owner: PlayerId,
-        abilities: Vec<String>,
-    ) -> CardId {
+    fn add_enchantment(game: &mut GameState, owner: PlayerId, abilities: Vec<String>) -> CardId {
         let card = CardInstance::new(
             CardId(0),
             "Enchantment".to_string(),
@@ -362,7 +403,11 @@ mod tests {
         assert_eq!(game.card(a2).toughness(), 2);
 
         // Bob's creature is unaffected.
-        assert_eq!(game.card(b1).power(), 2, "Bob's creature should be unchanged");
+        assert_eq!(
+            game.card(b1).power(),
+            2,
+            "Bob's creature should be unchanged"
+        );
         assert_eq!(game.card(b1).toughness(), 2);
     }
 
@@ -385,7 +430,11 @@ mod tests {
         game.move_card(anthem, ZoneType::Graveyard, alice);
         apply_continuous_effects(&mut game);
 
-        assert_eq!(game.card(creature).power(), 2, "Bonus should be gone after anthem leaves");
+        assert_eq!(
+            game.card(creature).power(),
+            2,
+            "Bonus should be gone after anthem leaves"
+        );
     }
 
     #[test]
@@ -430,8 +479,14 @@ mod tests {
 
         apply_continuous_effects(&mut game);
 
-        assert!(game.card(a1).has_flying(), "Alice's creature should have flying");
-        assert!(!game.card(b1).has_flying(), "Bob's creature should not have flying");
+        assert!(
+            game.card(a1).has_flying(),
+            "Alice's creature should have flying"
+        );
+        assert!(
+            !game.card(b1).has_flying(),
+            "Bob's creature should not have flying"
+        );
     }
 
     #[test]
@@ -550,7 +605,10 @@ mod tests {
 
         game.move_card(restrictor, ZoneType::Graveyard, alice);
         apply_continuous_effects(&mut game);
-        assert!(!game.card(creature).cant_attack_static, "Flag should clear after enchantment leaves");
+        assert!(
+            !game.card(creature).cant_attack_static,
+            "Flag should clear after enchantment leaves"
+        );
     }
 
     // ── ETB Tapped ────────────────────────────────────────────────────────
@@ -577,7 +635,10 @@ mod tests {
         game.move_card(id, ZoneType::Battlefield, alice);
         apply_etb_tapped(&mut game, id);
 
-        assert!(game.card(id).tapped, "Card with ETBTapped should enter tapped");
+        assert!(
+            game.card(id).tapped,
+            "Card with ETBTapped should enter tapped"
+        );
     }
 
     #[test]
@@ -587,6 +648,9 @@ mod tests {
 
         let id = add_creature(&mut game, alice, 2, 2, vec![], vec![]);
         // Fresh ETB, no static — should not be tapped.
-        assert!(!game.card(id).tapped, "Normal creature should not enter tapped");
+        assert!(
+            !game.card(id).tapped,
+            "Normal creature should not enter tapped"
+        );
     }
 }

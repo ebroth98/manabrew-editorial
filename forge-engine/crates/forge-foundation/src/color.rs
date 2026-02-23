@@ -177,9 +177,7 @@ impl ColorSet {
     }
 
     pub fn iter(self) -> impl Iterator<Item = Color> {
-        Color::ALL
-            .into_iter()
-            .filter(move |c| self.has_color(*c))
+        Color::ALL.into_iter().filter(move |c| self.has_color(*c))
     }
 
     pub fn from_names(s: &str) -> Self {

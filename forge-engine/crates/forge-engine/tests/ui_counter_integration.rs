@@ -1,14 +1,13 @@
 /// Integration test to verify counterspell and priority system works end-to-end
 /// This validates that the UI components (chooseTargetSpell, stack rendering, priority passing)
 /// have proper backend support
-
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType, PhaseType};
+use forge_engine_core::spellability::{SpellAbility, StackEntry};
+use forge_foundation::{CardTypeLine, ColorSet, ManaCost, PhaseType, ZoneType};
 
 /// Mock agent that simulates a human player casting counterspells
 struct CounterspellAgent {
@@ -27,15 +26,15 @@ impl PlayerAgent for CounterspellAgent {
     }
 
     fn choose_action(
-        &mut self, 
-        player: PlayerId, 
-        playable: &[CardId], 
-        tappable_lands: &[CardId], 
-        _untappable_lands: &[CardId], 
-        _activatable: &[(CardId, usize)]
+        &mut self,
+        player: PlayerId,
+        playable: &[CardId],
+        tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+        _activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
         self.step += 1;
-        
+
         match self.step {
             1 => {
                 // Turn 1: Play first playable card (should be a land)
@@ -56,7 +55,7 @@ impl PlayerAgent for CounterspellAgent {
                     MainPhaseAction::Pass
                 }
             }
-            _ => MainPhaseAction::Pass
+            _ => MainPhaseAction::Pass,
         }
     }
 
@@ -164,7 +163,7 @@ fn test_counterspell_targeting_flow() {
     let island1 = game.create_card(make_island(p0));
     let island2 = game.create_card(make_island(p0));
     let counterspell = game.create_card(make_counterspell(p0));
-    
+
     game.move_card(island1, ZoneType::Hand, p0);
     game.move_card(island2, ZoneType::Hand, p0);
     game.move_card(counterspell, ZoneType::Hand, p0);
@@ -172,7 +171,7 @@ fn test_counterspell_targeting_flow() {
     // Setup Bob: Mountain + Lightning Bolt in hand
     let mountain = game.create_card(make_island(p1)); // Use Island as generic land
     let bolt = game.create_card(make_lightning_bolt(p1));
-    
+
     game.move_card(mountain, ZoneType::Hand, p1);
     game.move_card(bolt, ZoneType::Hand, p1);
 
@@ -188,7 +187,7 @@ fn test_counterspell_targeting_flow() {
     game.turn.phase = PhaseType::Main1;
     game.new_turn_for_player(p0);
     game_loop.step_main_phase(&mut game, &mut agents);
-    
+
     // Verify Island is on battlefield
     let alice_battlefield = game.zone(ZoneType::Battlefield, p0);
     assert_eq!(alice_battlefield.len(), 1, "Alice should have 1 land");
@@ -197,8 +196,11 @@ fn test_counterspell_targeting_flow() {
     // (Bob only has an Island which produces U, not R needed for Bolt — so we skip
     //  the full main-phase and manually model the "Bob just cast Bolt" state.)
     game.move_card(bolt, ZoneType::Stack, p1);
-    let bolt_sa = SpellAbility::new_simple(Some(bolt), p1,
-        "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3");
+    let bolt_sa = SpellAbility::new_simple(
+        Some(bolt),
+        p1,
+        "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3",
+    );
     let bolt_entry = StackEntry {
         id: 0,
         spell_ability: bolt_sa,
@@ -207,20 +209,21 @@ fn test_counterspell_targeting_flow() {
     };
     let bolt_entry_id = game.stack.push(bolt_entry);
     assert_eq!(game.stack.len(), 1, "Lightning Bolt should be on stack");
-    
+
     // Simulate Alice targeting the Bolt with Counterspell
     // This tests the targetSpell prompt and selection
-    let mut counterspell_sa = SpellAbility::new_simple(Some(counterspell), p0, "SP$ Counter | TargetType$ Spell");
+    let mut counterspell_sa =
+        SpellAbility::new_simple(Some(counterspell), p0, "SP$ Counter | TargetType$ Spell");
     counterspell_sa.target_chosen.target_stack_entry = Some(bolt_entry_id);
-    
+
     use forge_engine_core::ability::effects::{resolve_effect, EffectContext};
-    
+
     // Setup context and resolve counterspell
     let mut pass_agents: Vec<Box<dyn PlayerAgent>> = vec![
         Box::new(forge_engine_core::agent::PassAgent),
         Box::new(forge_engine_core::agent::PassAgent),
     ];
-    
+
     let mut ctx = EffectContext {
         game: &mut game,
         agents: &mut pass_agents,
@@ -229,16 +232,23 @@ fn test_counterspell_targeting_flow() {
         mana_pools: &mut game_loop.mana_pools,
         parent_target_card: None,
     };
-    
+
     resolve_effect(&mut ctx, &counterspell_sa);
-    
+
     // Verify stack is now empty (Bolt was countered)
-    assert!(game.stack.is_empty(), "Stack should be empty after counterspell");
-    
+    assert!(
+        game.stack.is_empty(),
+        "Stack should be empty after counterspell"
+    );
+
     // Verify Bolt went to Bob's graveyard
     let bob_graveyard = game.zone(ZoneType::Graveyard, p1);
-    assert_eq!(bob_graveyard.len(), 1, "Bob should have Lightning Bolt in graveyard");
-    
+    assert_eq!(
+        bob_graveyard.len(),
+        1,
+        "Bob should have Lightning Bolt in graveyard"
+    );
+
     // Verify Alice still has Counterspell in hand (didn't cast it yet in this test)
     // In a real game, we'd have to pay mana, etc.
 }
@@ -249,19 +259,23 @@ fn test_priority_passing_during_counter_war() {
     let mut game = GameState::new(&["Alice", "Bob"], 20);
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
-    
+
     // Setup: Both players have counterspells ready
     let counterspell1 = game.create_card(make_counterspell(p0));
     let counterspell2 = game.create_card(make_counterspell(p1));
-    
+
     game.move_card(counterspell1, ZoneType::Hand, p0);
     game.move_card(counterspell2, ZoneType::Hand, p1);
-    
+
     // Put a Lightning Bolt on stack (simulating being cast)
     let bolt = game.create_card(make_lightning_bolt(p0));
     game.move_card(bolt, ZoneType::Stack, p0);
-    
-    let sa = SpellAbility::new_simple(Some(bolt), p0, "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3");
+
+    let sa = SpellAbility::new_simple(
+        Some(bolt),
+        p0,
+        "SP$ DealDamage | ValidTgts$ Any | NumDmg$ 3",
+    );
     let entry = StackEntry {
         id: 0, // Will be overwritten
         spell_ability: sa,
@@ -269,10 +283,10 @@ fn test_priority_passing_during_counter_war() {
         is_permanent_spell: false,
     };
     let bolt_stack_id = game.stack.push(entry);
-    
+
     // Verify initial state
     assert_eq!(game.stack.len(), 1, "Should start with Bolt on stack");
-    
+
     // Priority system: players can respond in order
     // This tests that the priority_round function works correctly
     let mut game_loop = GameLoop::new(2);
@@ -280,12 +294,16 @@ fn test_priority_passing_during_counter_war() {
         Box::new(forge_engine_core::agent::PassAgent),
         Box::new(forge_engine_core::agent::PassAgent),
     ];
-    
+
     // Both players pass priority → step_with_priority resolves the stack
     game_loop.step_with_priority(&mut game, &mut pass_agents, false);
 
     // After both pass with empty stack response, the spell resolves
-    assert_eq!(game.stack.len(), 0, "Stack should resolve after both players pass");
+    assert_eq!(
+        game.stack.len(),
+        0,
+        "Stack should resolve after both players pass"
+    );
 }
 
 /// Test that UI can differentiate between valid and invalid counter targets
@@ -294,11 +312,11 @@ fn test_valid_counter_target_filtering() {
     let mut game = GameState::new(&["Alice", "Bob"], 20);
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
-    
+
     // Create spells with different characteristics
     let counterable_spell = game.create_card(make_lightning_bolt(p1));
     game.move_card(counterable_spell, ZoneType::Stack, p1);
-    
+
     let sa = SpellAbility::new_simple(Some(counterable_spell), p1, "SP$ DealDamage");
     let entry = StackEntry {
         id: 1, // Will be overwritten
@@ -307,11 +325,14 @@ fn test_valid_counter_target_filtering() {
         is_permanent_spell: false,
     };
     let spell_stack_id = game.stack.push(entry);
-    
+
     // The UI should be able to show this as a valid target
     // This tests that validSpellIds is properly populated
     let valid_targets: Vec<u32> = game.stack.iter().map(|e| e.id).collect();
-    
+
     assert_eq!(valid_targets.len(), 1, "Should have 1 valid counter target");
-    assert_eq!(valid_targets[0], spell_stack_id, "Target should be the Lightning Bolt");
+    assert_eq!(
+        valid_targets[0], spell_stack_id,
+        "Target should be the Lightning Bolt"
+    );
 }
