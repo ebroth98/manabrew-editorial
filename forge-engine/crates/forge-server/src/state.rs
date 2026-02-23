@@ -1,0 +1,54 @@
+use dashmap::DashMap;
+use tokio::sync::mpsc;
+use tokio_tungstenite::tungstenite::Message;
+
+use crate::room::Room;
+
+pub struct ConnectedPlayer {
+    pub player_id: String,
+    pub username: String,
+    pub room_id: Option<String>,
+    pub sender: mpsc::UnboundedSender<Message>,
+    pub connected: bool,
+    pub generation: u64,
+}
+
+pub struct ServerState {
+    pub players: DashMap<String, ConnectedPlayer>,
+    pub rooms: DashMap<String, Room>,
+    pub server_key: String,
+    pub max_rooms: usize,
+}
+
+impl ServerState {
+    pub fn new(server_key: String, max_rooms: usize) -> Self {
+        ServerState {
+            players: DashMap::new(),
+            rooms: DashMap::new(),
+            server_key,
+            max_rooms,
+        }
+    }
+
+    pub fn username_taken_by_connected(&self, username: &str) -> bool {
+        self.players
+            .iter()
+            .any(|entry| entry.value().username == username && entry.value().connected)
+    }
+
+    pub fn find_disconnected_by_username(
+        &self,
+        username: &str,
+    ) -> Option<(String, Option<String>, u64)> {
+        self.players
+            .iter()
+            .find(|entry| entry.value().username == username && !entry.value().connected)
+            .map(|entry| {
+                (
+                    entry.value().player_id.clone(),
+                    entry.value().room_id.clone(),
+                    entry.value().generation,
+                )
+            })
+    }
+}

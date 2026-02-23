@@ -1,12 +1,11 @@
 /// Test for Control Magic (2UU) - Enchant creature, you control enchanted creature
 /// This tests static control gain from auras - demonstrates the missing layer 2 implementation
-
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 /// Simple agent that always passes
@@ -17,7 +16,14 @@ impl PlayerAgent for PassAgent {
         true
     }
 
-    fn choose_action(&mut self, _player: PlayerId, _playable: &[CardId], _tappable_lands: &[CardId], _untappable_lands: &[CardId], _activatable: &[(CardId, usize)]) -> MainPhaseAction {
+    fn choose_action(
+        &mut self,
+        _player: PlayerId,
+        _playable: &[CardId],
+        _tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+        _activatable: &[(CardId, usize)],
+    ) -> MainPhaseAction {
         MainPhaseAction::Pass
     }
 
@@ -33,7 +39,12 @@ impl PlayerAgent for PassAgent {
         Vec::new()
     }
 
-    fn choose_blockers(&mut self, _player: PlayerId, _attackers: &[CardId], _available_blockers: &[CardId]) -> Vec<(CardId, CardId)> {
+    fn choose_blockers(
+        &mut self,
+        _player: PlayerId,
+        _attackers: &[CardId],
+        _available_blockers: &[CardId],
+    ) -> Vec<(CardId, CardId)> {
         Vec::new()
     }
 
@@ -45,7 +56,12 @@ impl PlayerAgent for PassAgent {
         valid.first().copied()
     }
 
-    fn choose_target_any(&mut self, _player: PlayerId, valid_players: &[PlayerId], valid_cards: &[CardId]) -> TargetChoice {
+    fn choose_target_any(
+        &mut self,
+        _player: PlayerId,
+        valid_players: &[PlayerId],
+        valid_cards: &[CardId],
+    ) -> TargetChoice {
         if let Some(&pid) = valid_players.last() {
             TargetChoice::Player(pid)
         } else if let Some(&cid) = valid_cards.first() {
@@ -72,19 +88,19 @@ fn make_control_magic(owner: PlayerId) -> CardInstance {
         vec![],
         vec![],
     );
-    
+
     // Add the static ability that grants control
     // S:Mode$ Continuous | Affected$ Card.EnchantedBy | GainControl$ You
     let mut params = std::collections::BTreeMap::new();
     params.insert("Mode".to_string(), "Continuous".to_string());
     params.insert("Affected".to_string(), "Card.EnchantedBy".to_string());
     params.insert("GainControl".to_string(), "You".to_string());
-    
+
     let sa = forge_engine_core::staticability::StaticAbility {
         mode: forge_engine_core::staticability::StaticMode::Continuous,
         params,
     };
-    
+
     card.static_abilities.push(sa);
     card
 }
@@ -125,57 +141,81 @@ fn test_control_magic_grants_control() {
     let mut game = GameState::new(&["Alice", "Bob"], 20);
     let p0 = PlayerId(0); // Alice (casts Control Magic)
     let p1 = PlayerId(1); // Bob (owns Grizzly Bears)
-    
+
     // Setup battlefield: Alice has 4 Islands, Bob has Grizzly Bears
     for _ in 0..4 {
         let island = game.create_card(make_island(p0));
         game.move_card(island, ZoneType::Battlefield, p0);
     }
-    
+
     let bears = game.create_card(make_grizzly_bears(p1));
     game.move_card(bears, ZoneType::Battlefield, p1);
-    
+
     // Initial state: Bob controls the Bears
     let bears_initial = game.card(bears);
-    assert_eq!(bears_initial.controller, p1, "Bears should initially be controlled by Bob");
-    
+    assert_eq!(
+        bears_initial.controller, p1,
+        "Bears should initially be controlled by Bob"
+    );
+
     // Put Control Magic on battlefield attached to Bears
     let control_magic = game.create_card(make_control_magic(p0));
     game.move_card(control_magic, ZoneType::Battlefield, p0);
-    
+
     // Attach Control Magic to Grizzly Bears
     game.attach_to(control_magic, bears);
-    
+
     // Verify attachment
     let aura = game.card(control_magic);
-    assert_eq!(aura.attached_to, Some(bears), "Control Magic should be attached to Bears");
-    assert_eq!(aura.controller, p0, "Control Magic should be controlled by Alice");
-    
+    assert_eq!(
+        aura.attached_to,
+        Some(bears),
+        "Control Magic should be attached to Bears"
+    );
+    assert_eq!(
+        aura.controller, p0,
+        "Control Magic should be controlled by Alice"
+    );
+
     let bears_card = game.card(bears);
-    assert!(bears_card.attachments.contains(&control_magic), "Bears should have Control Magic attached");
-    
+    assert!(
+        bears_card.attachments.contains(&control_magic),
+        "Bears should have Control Magic attached"
+    );
+
     println!("Before applying continuous effects:");
     println!("  Bears controller: {:?}", game.card(bears).controller);
-    println!("  Aura controller: {:?}", game.card(control_magic).controller);
-    println!("  Aura attached to: {:?}", game.card(control_magic).attached_to);
-    
+    println!(
+        "  Aura controller: {:?}",
+        game.card(control_magic).controller
+    );
+    println!(
+        "  Aura attached to: {:?}",
+        game.card(control_magic).attached_to
+    );
+
     // Apply static abilities (this should grant control, but doesn't due to missing layer 2)
     forge_engine_core::staticability::layer::apply_continuous_effects(&mut game);
-    
+
     println!("After applying continuous effects:");
     println!("  Bears controller: {:?}", game.card(bears).controller);
-    
+
     // BUG: Control doesn't change because layer 2 (control-changing) is not implemented
     let bears_after = game.card(bears);
     if bears_after.controller != p0 {
         println!("BUG CONFIRMED: Control Magic didn't grant control!");
-        println!("Expected controller: {:?}, Actual controller: {:?}", p0, bears_after.controller);
+        println!(
+            "Expected controller: {:?}, Actual controller: {:?}",
+            p0, bears_after.controller
+        );
         println!("\nReason: Layer 2 (control-changing) effects are not implemented in the static ability system.");
     }
-    
+
     // This assertion will FAIL until layer 2 is implemented
-    assert_eq!(bears_after.controller, p0, 
-        "BUG: Control Magic should grant control but doesn't - Layer 2 not implemented");
+    assert_eq!(
+        bears_after.controller, p0,
+        "BUG: Control Magic should grant control but doesn't - Layer 2 not implemented"
+    );
 }
 
 #[test]
@@ -184,22 +224,22 @@ fn test_control_magic_attachment_tracking() {
     let mut game = GameState::new(&["Alice", "Bob"], 20);
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
-    
+
     let bears = game.create_card(make_grizzly_bears(p1));
     game.move_card(bears, ZoneType::Battlefield, p1);
-    
+
     let control_magic = game.create_card(make_control_magic(p0));
     game.move_card(control_magic, ZoneType::Battlefield, p0);
-    
+
     // Attach
     game.attach_to(control_magic, bears);
-    
+
     // Verify the attachment
     let aura_after = game.card(control_magic);
     assert_eq!(aura_after.attached_to, Some(bears));
-    
+
     let bears_after = game.card(bears);
     assert!(bears_after.attachments.contains(&control_magic));
-    
+
     println!("✓ Attachment mechanics work correctly");
 }

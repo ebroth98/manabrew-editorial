@@ -38,3 +38,14 @@ pub async fn get_prompt(gm: State<'_, GameManager>) -> Result<Option<AgentPrompt
 pub fn get_preset_decks() -> Vec<PresetDeckInfo> {
     crate::preset_decks::list_preset_decks()
 }
+
+#[tauri::command]
+pub async fn start_multiplayer_game(
+    app: AppHandle,
+    gm: State<'_, GameManager>,
+    player_names: Vec<String>,
+    host_player_index: usize,
+    starting_life: i32,
+) -> Result<String, String> {
+    gm.start_multiplayer_game(app, player_names, host_player_index, starting_life)
+}

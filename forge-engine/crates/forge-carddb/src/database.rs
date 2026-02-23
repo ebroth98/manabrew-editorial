@@ -63,14 +63,8 @@ impl CardDatabase {
             let lines: Vec<&str> = content.lines().collect();
             match parser.parse(lines, Some(filename)) {
                 Ok(card) => {
-                    let key = card
-                        .normalized_name
-                        .clone();
-                    let key = if key.is_empty() {
-                        card.name()
-                    } else {
-                        key
-                    };
+                    let key = card.normalized_name.clone();
+                    let key = if key.is_empty() { card.name() } else { key };
                     db.cards.insert(key, card);
                     result.loaded += 1;
                 }

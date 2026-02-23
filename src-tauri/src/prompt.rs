@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::game_view_dto::{GameViewDto, CardDto};
+use crate::game_view_dto::{CardDto, GameViewDto};
 
 /// A display-only event that the frontend should animate before rendering the prompt's game state.
 #[derive(Debug, Clone, Serialize, Deserialize)]

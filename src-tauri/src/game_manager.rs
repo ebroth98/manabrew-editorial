@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -18,6 +19,8 @@ use crate::preset_decks::{
     build_ai_opponent, build_custom_deck, build_preset_decks, is_preset_id, CardIdentity,
 };
 use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
+use crate::remote_agent::RemotePlayerAgent;
+use crate::server_client::ServerClient;
 use crate::tauri_agent::TauriAgent;
 
 pub struct GameManager {
@@ -28,7 +31,10 @@ pub struct GameManager {
 pub struct GameSession {
     pub game_id: String,
     pub response_tx: mpsc::Sender<PlayerAction>,
+    /// Per-remote-player response channels (player_index → sender).
+    pub remote_response_txs: HashMap<usize, mpsc::Sender<PlayerAction>>,
     pub thread_handle: Option<thread::JoinHandle<()>>,
+    pub is_multiplayer: bool,
 }
 
 impl GameManager {
@@ -139,7 +145,9 @@ impl GameManager {
         *session_guard = Some(GameSession {
             game_id: game_id.clone(),
             response_tx: response_tx_clone,
+            remote_response_txs: HashMap::new(),
             thread_handle: Some(handle),
+            is_multiplayer: false,
         });
 
         Ok(game_id)
@@ -236,13 +244,217 @@ impl GameManager {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
         if let Some(session) = session_guard.take() {
             drop(session.response_tx); // signals game thread to stop
-                                       // Don't join here — let the thread wind down on its own so end_game returns fast
+            drop(session.remote_response_txs); // drop remote channels too
+                                               // Don't join here — let the thread wind down on its own so end_game returns fast
         }
         // Clear latest prompt so the next game doesn't see stale state
         if let Ok(mut lp) = self.latest_prompt.lock() {
             *lp = None;
         }
         Ok(())
+    }
+
+    pub fn start_multiplayer_game(
+        &self,
+        app: AppHandle,
+        player_names: Vec<String>,
+        host_player_index: usize,
+        starting_life: i32,
+    ) -> Result<String, String> {
+        let num_players = player_names.len();
+        if num_players < 2 {
+            return Err("Need at least 2 players".into());
+        }
+        if host_player_index >= num_players {
+            return Err("Invalid host player index".into());
+        }
+
+        let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
+
+        // End existing session if any
+        if let Some(old) = session_guard.take() {
+            drop(old.response_tx);
+            drop(old.remote_response_txs);
+        }
+        if let Ok(mut lp) = self.latest_prompt.lock() {
+            *lp = None;
+        }
+
+        let game_id = format!("game-{}", uuid_simple());
+        let game_id_clone = game_id.clone();
+
+        // Host player channels (TauriAgent)
+        let (host_prompt_tx, host_prompt_rx) = mpsc::channel::<AgentPrompt>();
+        let (host_response_tx, host_response_rx) = mpsc::channel::<PlayerAction>();
+        let (host_notify_tx, notify_rx) = mpsc::channel::<String>();
+
+        let host_response_tx_clone = host_response_tx.clone();
+
+        // Remote players: shared prompt channel and per-player response channels
+        let (remote_prompt_tx, remote_prompt_rx) = mpsc::channel::<(usize, AgentPrompt)>();
+        let mut remote_response_txs: HashMap<usize, mpsc::Sender<PlayerAction>> = HashMap::new();
+        let mut remote_response_rxs: Vec<(usize, mpsc::Receiver<PlayerAction>)> = Vec::new();
+
+        for i in 0..num_players {
+            if i != host_player_index {
+                let (resp_tx, resp_rx) = mpsc::channel::<PlayerAction>();
+                remote_response_txs.insert(i, resp_tx);
+                remote_response_rxs.push((i, resp_rx));
+            }
+        }
+
+        // Keep clones for the game thread (which builds agents internally)
+        let game_host_prompt_tx = host_prompt_tx.clone();
+        let game_remote_prompt_tx = remote_prompt_tx.clone();
+
+        // Drop extra senders so forwarders terminate when the game thread ends
+        drop(host_prompt_tx);
+        drop(remote_prompt_tx);
+
+        // Host prompt forwarder (same as single-player)
+        let app_prompt = app.clone();
+        let latest_prompt = self.latest_prompt.clone();
+        thread::spawn(move || {
+            eprintln!("[prompt_fwd] Host prompt forwarder started");
+            while let Ok(prompt) = host_prompt_rx.recv() {
+                if let Ok(mut lp) = latest_prompt.lock() {
+                    *lp = Some(prompt.clone());
+                }
+                let _ = app_prompt.emit("game:prompt", &prompt);
+            }
+            eprintln!("[prompt_fwd] Host prompt forwarder ended");
+        });
+
+        // Notify forwarder
+        let app_notify = app.clone();
+        thread::spawn(move || {
+            let window = app_notify.get_webview_window("main");
+            while let Ok(msg) = notify_rx.recv() {
+                let _ = if let Some(ref w) = window {
+                    w.emit("game:log", &msg)
+                } else {
+                    app_notify.emit("game:log", &msg)
+                };
+            }
+        });
+
+        // Remote prompt forwarder: reads (player_index, prompt) and broadcasts via server
+        let app_remote = app.clone();
+        thread::spawn(move || {
+            eprintln!("[remote_fwd] Remote prompt forwarder started");
+            while let Ok((player_index, prompt)) = remote_prompt_rx.recv() {
+                let envelope = serde_json::json!({
+                    "kind": "prompt",
+                    "forPlayer": format!("player-{}", player_index),
+                    "prompt": prompt,
+                });
+                let msg = serde_json::json!({
+                    "type": "BroadcastState",
+                    "state": envelope,
+                });
+                if let Some(client) = app_remote.try_state::<ServerClient>() {
+                    let _ = client.send(&msg.to_string());
+                }
+            }
+            eprintln!("[remote_fwd] Remote prompt forwarder ended");
+        });
+
+        // Game thread
+        let player_name_strs = player_names.clone();
+        let handle = thread::spawn(move || {
+            eprintln!(
+                "[game_thread] Starting multiplayer game: {} with {} players",
+                game_id_clone, num_players
+            );
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                run_multiplayer_game(
+                    game_id_clone.clone(),
+                    player_name_strs,
+                    host_player_index,
+                    starting_life,
+                    game_host_prompt_tx,
+                    host_response_rx,
+                    host_notify_tx,
+                    game_remote_prompt_tx,
+                    remote_response_rxs,
+                );
+            }));
+            match result {
+                Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
+                Err(e) => {
+                    let msg = if let Some(s) = e.downcast_ref::<String>() {
+                        s.clone()
+                    } else if let Some(s) = e.downcast_ref::<&str>() {
+                        s.to_string()
+                    } else {
+                        "Unknown panic".to_string()
+                    };
+                    eprintln!("[game_thread] PANIC in game {}: {}", game_id_clone, msg);
+                }
+            }
+        });
+
+        *session_guard = Some(GameSession {
+            game_id: game_id.clone(),
+            response_tx: host_response_tx_clone,
+            remote_response_txs,
+            thread_handle: Some(handle),
+            is_multiplayer: true,
+        });
+
+        Ok(game_id)
+    }
+
+    /// Route a response from a remote player to the appropriate agent's channel.
+    pub fn route_remote_response(&self, state: &serde_json::Value) {
+        let from_player = match state.get("fromPlayer").and_then(|v| v.as_str()) {
+            Some(s) => s,
+            None => {
+                eprintln!("[route] Missing fromPlayer in response envelope");
+                return;
+            }
+        };
+
+        // Parse "player-N" → N
+        let player_index: usize = match from_player
+            .strip_prefix("player-")
+            .and_then(|n| n.parse().ok())
+        {
+            Some(idx) => idx,
+            None => {
+                eprintln!("[route] Invalid fromPlayer: {}", from_player);
+                return;
+            }
+        };
+
+        let action: PlayerAction = match state.get("action") {
+            Some(v) => match serde_json::from_value(v.clone()) {
+                Ok(a) => a,
+                Err(e) => {
+                    eprintln!("[route] Failed to deserialize action: {}", e);
+                    return;
+                }
+            },
+            None => {
+                eprintln!("[route] Missing action in response envelope");
+                return;
+            }
+        };
+
+        let session_guard = match self.session.lock() {
+            Ok(g) => g,
+            Err(_) => return,
+        };
+
+        if let Some(session) = session_guard.as_ref() {
+            if let Some(tx) = session.remote_response_txs.get(&player_index) {
+                if let Err(e) = tx.send(action) {
+                    eprintln!("[route] Failed to send to player {}: {}", player_index, e);
+                }
+            } else {
+                eprintln!("[route] No channel for player index {}", player_index);
+            }
+        }
     }
 }
 
@@ -324,4 +536,98 @@ fn run_game(
     });
 
     let _ = winner; // winner is also in the game_view
+}
+
+fn run_multiplayer_game(
+    game_id: String,
+    player_names: Vec<String>,
+    host_player_index: usize,
+    starting_life: i32,
+    host_prompt_tx: mpsc::Sender<AgentPrompt>,
+    host_response_rx: mpsc::Receiver<PlayerAction>,
+    host_notify_tx: mpsc::Sender<String>,
+    remote_prompt_tx: mpsc::Sender<(usize, AgentPrompt)>,
+    remote_response_rxs: Vec<(usize, mpsc::Receiver<PlayerAction>)>,
+) {
+    let num_players = player_names.len();
+    let name_refs: Vec<&str> = player_names.iter().map(|s| s.as_str()).collect();
+    let mut game = GameState::new(&name_refs, starting_life);
+
+    // Build agents inside the thread (avoids Send issues with trait objects).
+    let host_pid = PlayerId(host_player_index as u32);
+    let mut host_agent: Option<Box<dyn PlayerAgent>> = Some(Box::new(TauriAgent::new(
+        host_pid,
+        game_id.clone(),
+        host_prompt_tx.clone(),
+        host_response_rx,
+        host_notify_tx,
+    )));
+
+    let mut remote_rx_map: HashMap<usize, mpsc::Receiver<PlayerAction>> =
+        remote_response_rxs.into_iter().collect();
+
+    let mut agents: Vec<Box<dyn PlayerAgent>> = Vec::with_capacity(num_players);
+    for i in 0..num_players {
+        if i == host_player_index {
+            agents.push(host_agent.take().unwrap());
+        } else {
+            let pid = PlayerId(i as u32);
+            let resp_rx = remote_rx_map
+                .remove(&i)
+                .expect("Missing response rx for remote player");
+            let agent =
+                RemotePlayerAgent::new(pid, i, game_id.clone(), remote_prompt_tx.clone(), resp_rx);
+            agents.push(Box::new(agent));
+        }
+    }
+
+    // For now, all players get the red burn preset deck.
+    // Deck selection for multiplayer will be added later.
+    for i in 0..num_players {
+        let pid = PlayerId(i as u32);
+        build_ai_opponent(&mut game, pid);
+    }
+
+    let mut game_loop = GameLoop::new(num_players);
+
+    let p0 = PlayerId(0);
+    let token_db = get_token_db();
+    for (script_name, rules) in token_db.iter() {
+        let template = card_rules_to_instance(rules, p0);
+        game_loop.register_token(script_name.clone(), template);
+    }
+
+    let mut rng = rand::rngs::StdRng::from_entropy();
+
+    let _winner = game_loop.run(&mut game, &mut agents, &mut rng, 50);
+
+    // Send final game-over prompt to the host
+    let host_pid = PlayerId(host_player_index as u32);
+    let host_final_view =
+        GameViewDto::from_engine(&game, &game_loop.mana_pools, host_pid, &game_id, &[], &[]);
+    let _ = host_prompt_tx.send(AgentPrompt {
+        display_events: vec![],
+        inner: AgentPromptInner::GameOver {
+            game_view: host_final_view,
+        },
+    });
+
+    // Send final game-over prompt to each remote player
+    for i in 0..num_players {
+        if i == host_player_index {
+            continue;
+        }
+        let pid = PlayerId(i as u32);
+        let remote_view =
+            GameViewDto::from_engine(&game, &game_loop.mana_pools, pid, &game_id, &[], &[]);
+        let _ = remote_prompt_tx.send((
+            i,
+            AgentPrompt {
+                display_events: vec![],
+                inner: AgentPromptInner::GameOver {
+                    game_view: remote_view,
+                },
+            },
+        ));
+    }
 }

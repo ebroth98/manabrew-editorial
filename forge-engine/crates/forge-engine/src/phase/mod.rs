@@ -58,10 +58,7 @@ impl TurnState {
 
     /// Advance to the next player's turn (for multiplayer).
     pub fn next_player_turn(&mut self, player_order: &[PlayerId]) {
-        if let Some(pos) = player_order
-            .iter()
-            .position(|&p| p == self.active_player)
-        {
+        if let Some(pos) = player_order.iter().position(|&p| p == self.active_player) {
             let next = (pos + 1) % player_order.len();
             self.active_player = player_order[next];
             self.priority_player = self.active_player;

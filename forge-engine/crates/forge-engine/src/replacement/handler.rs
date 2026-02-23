@@ -181,7 +181,11 @@ fn execute_effect(effect: &ReplacementEffect, event: &mut ReplacementEvent) -> R
     match event {
         ReplacementEvent::Draw { .. } => {
             // Prevent$ True or Skip$ True → skip the draw.
-            if effect.params.get("Prevent").map(|s| s == "True").unwrap_or(false)
+            if effect
+                .params
+                .get("Prevent")
+                .map(|s| s == "True")
+                .unwrap_or(false)
                 || effect.params.contains_key("Skip")
             {
                 return ReplacementResult::Skipped;
@@ -190,7 +194,12 @@ fn execute_effect(effect: &ReplacementEffect, event: &mut ReplacementEvent) -> R
         }
 
         ReplacementEvent::DamageToCard { amount, .. } => {
-            if effect.params.get("Prevent").map(|s| s == "True").unwrap_or(false) {
+            if effect
+                .params
+                .get("Prevent")
+                .map(|s| s == "True")
+                .unwrap_or(false)
+            {
                 *amount = 0;
                 return ReplacementResult::Prevented;
             }
@@ -198,7 +207,12 @@ fn execute_effect(effect: &ReplacementEffect, event: &mut ReplacementEvent) -> R
         }
 
         ReplacementEvent::DamageToPlayer { amount, .. } => {
-            if effect.params.get("Prevent").map(|s| s == "True").unwrap_or(false) {
+            if effect
+                .params
+                .get("Prevent")
+                .map(|s| s == "True")
+                .unwrap_or(false)
+            {
                 *amount = 0;
                 return ReplacementResult::Prevented;
             }
@@ -320,7 +334,10 @@ mod tests {
             &mut game,
             alice,
             "SkipDraw",
-            vec!["R$ Event$ Draw | ActiveZones$ Battlefield | ValidPlayer$ You | Prevent$ True".to_string()],
+            vec![
+                "R$ Event$ Draw | ActiveZones$ Battlefield | ValidPlayer$ You | Prevent$ True"
+                    .to_string(),
+            ],
         );
         // Card stays in hand, not battlefield.
         game.move_card(cid, ZoneType::Hand, alice);
@@ -507,7 +524,9 @@ mod tests {
     #[test]
     fn no_effects_returns_not_replaced() {
         let game = make_game();
-        let mut event = ReplacementEvent::Draw { player: PlayerId(0) };
+        let mut event = ReplacementEvent::Draw {
+            player: PlayerId(0),
+        };
         let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }

@@ -46,7 +46,14 @@ impl PlayerAgent for ScriptedAgent {
         true // always keep
     }
 
-    fn choose_action(&mut self, _player: PlayerId, playable: &[CardId], _tappable_lands: &[CardId], _untappable_lands: &[CardId], _activatable: &[(CardId, usize)]) -> MainPhaseAction {
+    fn choose_action(
+        &mut self,
+        _player: PlayerId,
+        playable: &[CardId],
+        _tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+        _activatable: &[(CardId, usize)],
+    ) -> MainPhaseAction {
         if self.action_idx >= self.actions.len() {
             return MainPhaseAction::Pass;
         }
@@ -335,7 +342,11 @@ fn grizzly_bears_attacks() {
         .filter(|&&cid| game.card(cid).is_creature())
         .copied()
         .collect();
-    assert_eq!(bears_on_bf.len(), 1, "Should have 1 creature on battlefield");
+    assert_eq!(
+        bears_on_bf.len(),
+        1,
+        "Should have 1 creature on battlefield"
+    );
 
     // Bears have summoning sickness, so we need to remove it for the attack test
     game.card_mut(bears).summoning_sick = false;
@@ -386,8 +397,19 @@ fn full_game_runs() {
         fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
             true
         }
-        fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId], _: &[(CardId, usize)]) -> MainPhaseAction {
-            playable.first().copied().map(MainPhaseAction::Play).unwrap_or(MainPhaseAction::Pass)
+        fn choose_action(
+            &mut self,
+            _: PlayerId,
+            playable: &[CardId],
+            _: &[CardId],
+            _: &[CardId],
+            _: &[(CardId, usize)],
+        ) -> MainPhaseAction {
+            playable
+                .first()
+                .copied()
+                .map(MainPhaseAction::Play)
+                .unwrap_or(MainPhaseAction::Pass)
         }
         fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {
             available.to_vec() // attack with everything
@@ -505,13 +527,22 @@ fn make_mulldrifter(owner: PlayerId) -> CardInstance {
     ).unwrap();
 
     let mut svars = BTreeMap::new();
-    svars.insert("TrigDraw".to_string(), "DB$ Draw | Defined$ You | NumCards$ 2".to_string());
+    svars.insert(
+        "TrigDraw".to_string(),
+        "DB$ Draw | Defined$ You | NumCards$ 2".to_string(),
+    );
 
     let mut card = CardInstance::new(
-        CardId(0), "Mulldrifter".to_string(), owner,
+        CardId(0),
+        "Mulldrifter".to_string(),
+        owner,
         CardTypeLine::parse("Creature - Elemental"),
-        ManaCost::parse("4 U"), ColorSet::BLUE, Some(2), Some(2),
-        vec!["Flying".to_string()], vec![],
+        ManaCost::parse("4 U"),
+        ColorSet::BLUE,
+        Some(2),
+        Some(2),
+        vec!["Flying".to_string()],
+        vec![],
     );
     card.triggers = vec![trigger];
     card.svars = svars;
@@ -526,13 +557,22 @@ fn make_soul_warden(owner: PlayerId) -> CardInstance {
     ).unwrap();
 
     let mut svars = BTreeMap::new();
-    svars.insert("TrigGain".to_string(), "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string());
+    svars.insert(
+        "TrigGain".to_string(),
+        "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string(),
+    );
 
     let mut card = CardInstance::new(
-        CardId(0), "Soul Warden".to_string(), owner,
+        CardId(0),
+        "Soul Warden".to_string(),
+        owner,
         CardTypeLine::parse("Creature - Human Cleric"),
-        ManaCost::parse("W"), ColorSet::WHITE, Some(1), Some(1),
-        vec![], vec![],
+        ManaCost::parse("W"),
+        ColorSet::WHITE,
+        Some(1),
+        Some(1),
+        vec![],
+        vec![],
     );
     card.triggers = vec![trigger];
     card.svars = svars;
@@ -547,13 +587,22 @@ fn make_guttersnipe(owner: PlayerId) -> CardInstance {
     ).unwrap();
 
     let mut svars = BTreeMap::new();
-    svars.insert("TrigDmg".to_string(), "DB$ DealDamage | Defined$ Opponent | NumDmg$ 2".to_string());
+    svars.insert(
+        "TrigDmg".to_string(),
+        "DB$ DealDamage | Defined$ Opponent | NumDmg$ 2".to_string(),
+    );
 
     let mut card = CardInstance::new(
-        CardId(0), "Guttersnipe".to_string(), owner,
+        CardId(0),
+        "Guttersnipe".to_string(),
+        owner,
         CardTypeLine::parse("Creature - Goblin Shaman"),
-        ManaCost::parse("2 R"), ColorSet::RED, Some(2), Some(2),
-        vec![], vec![],
+        ManaCost::parse("2 R"),
+        ColorSet::RED,
+        Some(2),
+        Some(2),
+        vec![],
+        vec![],
     );
     card.triggers = vec![trigger];
     card.svars = svars;
@@ -568,13 +617,22 @@ fn make_upkeep_pinger(owner: PlayerId) -> CardInstance {
     ).unwrap();
 
     let mut svars = BTreeMap::new();
-    svars.insert("TrigPing".to_string(), "DB$ DealDamage | Defined$ Opponent | NumDmg$ 1".to_string());
+    svars.insert(
+        "TrigPing".to_string(),
+        "DB$ DealDamage | Defined$ Opponent | NumDmg$ 1".to_string(),
+    );
 
     let mut card = CardInstance::new(
-        CardId(0), "Upkeep Pinger".to_string(), owner,
+        CardId(0),
+        "Upkeep Pinger".to_string(),
+        owner,
         CardTypeLine::parse("Creature - Spirit"),
-        ManaCost::parse("1 R"), ColorSet::RED, Some(1), Some(1),
-        vec![], vec![],
+        ManaCost::parse("1 R"),
+        ColorSet::RED,
+        Some(1),
+        Some(1),
+        vec![],
+        vec![],
     );
     card.triggers = vec![trigger];
     card.svars = svars;
@@ -583,19 +641,31 @@ fn make_upkeep_pinger(owner: PlayerId) -> CardInstance {
 
 fn make_island(owner: PlayerId) -> CardInstance {
     CardInstance::new(
-        CardId(0), "Island".to_string(), owner,
+        CardId(0),
+        "Island".to_string(),
+        owner,
         CardTypeLine::parse("Basic Land - Island"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None,
-        vec![], vec![],
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
     )
 }
 
 fn make_plains(owner: PlayerId) -> CardInstance {
     CardInstance::new(
-        CardId(0), "Plains".to_string(), owner,
+        CardId(0),
+        "Plains".to_string(),
+        owner,
         CardTypeLine::parse("Basic Land - Plains"),
-        ManaCost::no_cost(), ColorSet::COLORLESS, None, None,
-        vec![], vec![],
+        ManaCost::no_cost(),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
     )
 }
 
@@ -642,14 +712,23 @@ fn mulldrifter_etb_draws_two_cards() {
     game_loop.resolve_stack(&mut game, &mut agents);
 
     // Mulldrifter should be on battlefield
-    assert_eq!(game.card(mulldrifter).zone, ZoneType::Battlefield,
-        "Mulldrifter should be on battlefield");
+    assert_eq!(
+        game.card(mulldrifter).zone,
+        ZoneType::Battlefield,
+        "Mulldrifter should be on battlefield"
+    );
 
     // Alice should have drawn 2 cards (from the 5 islands in library)
-    assert_eq!(game.zone(ZoneType::Hand, p0).len(), 2,
-        "Alice should have drawn 2 cards from Mulldrifter ETB trigger");
-    assert_eq!(game.zone(ZoneType::Library, p0).len(), 3,
-        "Alice should have 3 cards left in library");
+    assert_eq!(
+        game.zone(ZoneType::Hand, p0).len(),
+        2,
+        "Alice should have drawn 2 cards from Mulldrifter ETB trigger"
+    );
+    assert_eq!(
+        game.zone(ZoneType::Library, p0).len(),
+        3,
+        "Alice should have 3 cards left in library"
+    );
 }
 
 /// Test: Soul Warden — another creature entering gives 1 life, self entering does NOT trigger.
@@ -666,7 +745,9 @@ fn soul_warden_gains_life_on_other_creature_etb() {
     let mut game_loop = GameLoop::new(2);
 
     // Register Soul Warden's triggers
-    game_loop.trigger_handler.register_active_trigger(&game, soul_warden);
+    game_loop
+        .trigger_handler
+        .register_active_trigger(&game, soul_warden);
 
     // Now put a Grizzly Bears on the stack and resolve
     let bears = game.create_card(make_grizzly_bears(p0));
@@ -686,8 +767,11 @@ fn soul_warden_gains_life_on_other_creature_etb() {
     game_loop.resolve_stack(&mut game, &mut agents);
 
     // Alice should have gained 1 life (Soul Warden triggered on bears entering)
-    assert_eq!(game.player(p0).life, 21,
-        "Alice should be at 21 life after Soul Warden trigger");
+    assert_eq!(
+        game.player(p0).life,
+        21,
+        "Alice should be at 21 life after Soul Warden trigger"
+    );
 }
 
 /// Test: Soul Warden entering battlefield does NOT trigger its own ability (Creature.Other filter).
@@ -717,8 +801,11 @@ fn soul_warden_does_not_trigger_on_self_etb() {
     game_loop.resolve_stack(&mut game, &mut agents);
 
     // Life should still be 20 — Soul Warden should NOT trigger on itself
-    assert_eq!(game.player(p0).life, 20,
-        "Soul Warden should NOT trigger on itself entering (Creature.Other)");
+    assert_eq!(
+        game.player(p0).life,
+        20,
+        "Soul Warden should NOT trigger on itself entering (Creature.Other)"
+    );
 }
 
 /// Test: Guttersnipe — cast instant → 2 damage to opponent.
@@ -744,7 +831,9 @@ fn guttersnipe_deals_damage_on_instant_cast() {
 
     let mut game_loop = GameLoop::new(2);
     // Register Guttersnipe's triggers
-    game_loop.trigger_handler.register_active_trigger(&game, guttersnipe);
+    game_loop
+        .trigger_handler
+        .register_active_trigger(&game, guttersnipe);
 
     // Set up agent: play Mountain, cast Lightning Bolt, pass
     let mut alice = ScriptedAgent::new("Alice");
@@ -761,8 +850,11 @@ fn guttersnipe_deals_damage_on_instant_cast() {
     game_loop.step_main_phase(&mut game, &mut agents);
 
     // Bob should have taken 3 (Bolt) + 2 (Guttersnipe) = 5 damage
-    assert_eq!(game.player(p1).life, 15,
-        "Bob should be at 15 life (3 from Bolt + 2 from Guttersnipe)");
+    assert_eq!(
+        game.player(p1).life,
+        15,
+        "Bob should be at 15 life (3 from Bolt + 2 from Guttersnipe)"
+    );
 }
 
 /// Test: Phase trigger — upkeep trigger deals 1 damage to opponent each turn.
@@ -790,18 +882,48 @@ fn upkeep_trigger_fires_each_turn() {
     // Simple agents that just pass
     struct PassAgent;
     impl PlayerAgent for PassAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
-        fn choose_action(&mut self, _: PlayerId, _: &[CardId], _: &[CardId], _: &[CardId], _: &[(CardId, usize)]) -> MainPhaseAction { MainPhaseAction::Pass }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> { Vec::new() }
-        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
-            else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
-            else { TargetChoice::None }
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+            true
         }
-        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn choose_action(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+            _: &[CardId],
+            _: &[(CardId, usize)],
+        ) -> MainPhaseAction {
+            MainPhaseAction::Pass
+        }
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+            Vec::new()
+        }
+        fn choose_blockers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new()
+        }
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+            valid.first().copied()
+        }
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+            if let Some(&pid) = p.last() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = c.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
+        }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+            None
+        }
         fn notify(&mut self, _: &str) {}
     }
 
@@ -814,8 +936,11 @@ fn upkeep_trigger_fires_each_turn() {
     game_loop.run_turn(&mut game, &mut agents, &mut rng);
 
     // Bob should have taken 1 damage from upkeep trigger
-    assert_eq!(game.player(p1).life, 19,
-        "Bob should be at 19 life after upkeep pinger trigger");
+    assert_eq!(
+        game.player(p1).life,
+        19,
+        "Bob should be at 19 life after upkeep pinger trigger"
+    );
 }
 
 /// Test: Full game with trigger cards completes without panicking.
@@ -855,20 +980,52 @@ fn full_game_with_triggers_runs() {
 
     struct SimpleAgent;
     impl PlayerAgent for SimpleAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
-        fn choose_action(&mut self, _: PlayerId, playable: &[CardId], _: &[CardId], _: &[CardId], _: &[(CardId, usize)]) -> MainPhaseAction {
-            playable.first().copied().map(MainPhaseAction::Play).unwrap_or(MainPhaseAction::Pass)
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+            true
         }
-        fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> { available.to_vec() }
-        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
+        fn choose_action(
+            &mut self,
+            _: PlayerId,
+            playable: &[CardId],
+            _: &[CardId],
+            _: &[CardId],
+            _: &[(CardId, usize)],
+        ) -> MainPhaseAction {
+            playable
+                .first()
+                .copied()
+                .map(MainPhaseAction::Play)
+                .unwrap_or(MainPhaseAction::Pass)
+        }
+        fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {
+            available.to_vec()
+        }
+        fn choose_blockers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new()
+        }
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+            valid.first().copied()
+        }
         fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
-            else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
-            else { TargetChoice::None }
+            if let Some(&pid) = p.last() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = c.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
         }
-        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+            None
+        }
         fn notify(&mut self, _: &str) {}
     }
 
@@ -881,10 +1038,16 @@ fn full_game_with_triggers_runs() {
     assert!(game.game_over, "Game should be over");
     assert!(winner.is_some(), "There should be a winner");
 
-    println!("Winner: {} (Player {})",
-        game.player(winner.unwrap()).name, winner.unwrap().0);
-    println!("Final life: Alice={}, Bob={}",
-        game.player(p0).life, game.player(p1).life);
+    println!(
+        "Winner: {} (Player {})",
+        game.player(winner.unwrap()).name,
+        winner.unwrap().0
+    );
+    println!(
+        "Final life: Alice={}, Bob={}",
+        game.player(p0).life,
+        game.player(p1).life
+    );
     println!("Game ended on turn {}", game.turn.turn_number);
 }
 
@@ -965,7 +1128,9 @@ fn llanowar_elves_taps_for_mana() {
         step: usize,
     }
     impl PlayerAgent for ElvesAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+            true
+        }
         fn choose_action(
             &mut self,
             _: PlayerId,
@@ -995,43 +1160,72 @@ fn llanowar_elves_taps_for_mana() {
                 _ => MainPhaseAction::Pass,
             }
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> { Vec::new() }
-        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
-            else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
-            else { TargetChoice::None }
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+            Vec::new()
         }
-        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn choose_blockers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new()
+        }
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+            valid.first().copied()
+        }
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+            if let Some(&pid) = p.last() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = c.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
+        }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+            None
+        }
         fn notify(&mut self, _: &str) {}
     }
 
     let bob_agent = ScriptedAgent::new("Bob");
     let mut game_loop = GameLoop::new(2);
-    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-        Box::new(ElvesAgent { step: 0 }),
-        Box::new(bob_agent),
-    ];
+    let mut agents: Vec<Box<dyn PlayerAgent>> =
+        vec![Box::new(ElvesAgent { step: 0 }), Box::new(bob_agent)];
 
     game.turn.active_player = p0;
     game.turn.phase = forge_foundation::PhaseType::Main1;
     game_loop.step_main_phase(&mut game, &mut agents);
 
     // Llanowar Elves should be tapped
-    assert!(game.card(elves).tapped, "Llanowar Elves should be tapped after mana ability");
+    assert!(
+        game.card(elves).tapped,
+        "Llanowar Elves should be tapped after mana ability"
+    );
 
     // Grizzly Bears should be on battlefield
-    let creatures: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, p0)
+    let creatures: Vec<CardId> = game
+        .cards_in_zone(ZoneType::Battlefield, p0)
         .iter()
         .filter(|&&cid| game.card(cid).is_creature())
         .copied()
         .collect();
-    assert_eq!(creatures.len(), 2, "Should have Llanowar Elves + Grizzly Bears on battlefield");
+    assert_eq!(
+        creatures.len(),
+        2,
+        "Should have Llanowar Elves + Grizzly Bears on battlefield"
+    );
 
     // Hand should be empty
-    assert_eq!(game.zone(ZoneType::Hand, p0).len(), 0, "Hand should be empty after casting Bears");
+    assert_eq!(
+        game.zone(ZoneType::Hand, p0).len(),
+        0,
+        "Hand should be empty after casting Bears"
+    );
 }
 
 /// Test: Summoning sick creature can't activate tap abilities.
@@ -1051,9 +1245,13 @@ fn summoning_sick_creature_cant_tap() {
     game.move_card(bob_forest, ZoneType::Library, p1);
 
     // Agent that tries to activate Llanowar Elves — should not have it as an option
-    struct CheckAgent { saw_activatable: bool }
+    struct CheckAgent {
+        saw_activatable: bool,
+    }
     impl PlayerAgent for CheckAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+            true
+        }
         fn choose_action(
             &mut self,
             _: PlayerId,
@@ -1065,26 +1263,44 @@ fn summoning_sick_creature_cant_tap() {
             self.saw_activatable = !activatable.is_empty();
             MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> { Vec::new() }
-        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
-            else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
-            else { TargetChoice::None }
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+            Vec::new()
         }
-        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn choose_blockers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new()
+        }
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+            valid.first().copied()
+        }
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+            if let Some(&pid) = p.last() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = c.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
+        }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+            None
+        }
         fn notify(&mut self, _: &str) {}
     }
 
     let bob_agent = ScriptedAgent::new("Bob");
     let mut game_loop = GameLoop::new(2);
-    let check_agent = CheckAgent { saw_activatable: false };
-    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-        Box::new(check_agent),
-        Box::new(bob_agent),
-    ];
+    let check_agent = CheckAgent {
+        saw_activatable: false,
+    };
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(check_agent), Box::new(bob_agent)];
 
     game.turn.active_player = p0;
     game.turn.phase = forge_foundation::PhaseType::Main1;
@@ -1093,7 +1309,10 @@ fn summoning_sick_creature_cant_tap() {
     // Verify the card state
     let elves_card = game.card(elves);
     assert!(elves_card.summoning_sick, "Elves should be summoning sick");
-    assert!(!elves_card.tapped, "Elves should NOT have been tapped (summoning sickness)");
+    assert!(
+        !elves_card.tapped,
+        "Elves should NOT have been tapped (summoning sickness)"
+    );
 }
 
 /// Test: Prodigal Sorcerer deals 1 damage via activated ability on stack.
@@ -1113,9 +1332,13 @@ fn prodigal_sorcerer_pings_opponent() {
     game.move_card(bob_forest, ZoneType::Library, p1);
 
     // Agent: activate Prodigal Sorcerer, then pass
-    struct PingAgent { activated: bool }
+    struct PingAgent {
+        activated: bool,
+    }
     impl PlayerAgent for PingAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+            true
+        }
         fn choose_action(
             &mut self,
             _: PlayerId,
@@ -1132,17 +1355,36 @@ fn prodigal_sorcerer_pings_opponent() {
             }
             MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> { Vec::new() }
-        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+            Vec::new()
+        }
+        fn choose_blockers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new()
+        }
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+            valid.first().copied()
+        }
         fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
             // Target opponent (player)
-            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
-            else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
-            else { TargetChoice::None }
+            if let Some(&pid) = p.last() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = c.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
         }
-        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+            None
+        }
         fn notify(&mut self, _: &str) {}
     }
 
@@ -1158,11 +1400,17 @@ fn prodigal_sorcerer_pings_opponent() {
     game_loop.step_main_phase(&mut game, &mut agents);
 
     // Prodigal Sorcerer should be tapped
-    assert!(game.card(sorcerer).tapped, "Prodigal Sorcerer should be tapped");
+    assert!(
+        game.card(sorcerer).tapped,
+        "Prodigal Sorcerer should be tapped"
+    );
 
     // Bob should be at 19 life (took 1 damage)
-    assert_eq!(game.player(p1).life, 19,
-        "Bob should be at 19 life after Prodigal Sorcerer ping");
+    assert_eq!(
+        game.player(p1).life,
+        19,
+        "Bob should be at 19 life after Prodigal Sorcerer ping"
+    );
 }
 
 /// Test: Sakura-Tribe Elder sacrifices as cost, fetches a basic land tapped.
@@ -1188,9 +1436,13 @@ fn sakura_tribe_elder_fetches_land() {
     game.move_card(bob_forest, ZoneType::Library, p1);
 
     // Agent: activate Elder, then pass
-    struct SacAgent { activated: bool }
+    struct SacAgent {
+        activated: bool,
+    }
     impl PlayerAgent for SacAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool { true }
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+            true
+        }
         fn choose_action(
             &mut self,
             _: PlayerId,
@@ -1207,46 +1459,77 @@ fn sakura_tribe_elder_fetches_land() {
             }
             MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> { Vec::new() }
-        fn choose_blockers(&mut self, _: PlayerId, _: &[CardId], _: &[CardId]) -> Vec<(CardId, CardId)> { Vec::new() }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> { valid.first().copied() }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> { valid.first().copied() }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
-            if let Some(&pid) = p.last() { TargetChoice::Player(pid) }
-            else if let Some(&cid) = c.first() { TargetChoice::Card(cid) }
-            else { TargetChoice::None }
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+            Vec::new()
         }
-        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> { None }
+        fn choose_blockers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[CardId],
+        ) -> Vec<(CardId, CardId)> {
+            Vec::new()
+        }
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+            valid.first().copied()
+        }
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+            if let Some(&pid) = p.last() {
+                TargetChoice::Player(pid)
+            } else if let Some(&cid) = c.first() {
+                TargetChoice::Card(cid)
+            } else {
+                TargetChoice::None
+            }
+        }
+        fn choose_land_or_spell(&mut self, _: PlayerId) -> Option<bool> {
+            None
+        }
         fn notify(&mut self, _: &str) {}
     }
 
     let bob_agent = ScriptedAgent::new("Bob");
     let mut game_loop = GameLoop::new(2);
-    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-        Box::new(SacAgent { activated: false }),
-        Box::new(bob_agent),
-    ];
+    let mut agents: Vec<Box<dyn PlayerAgent>> =
+        vec![Box::new(SacAgent { activated: false }), Box::new(bob_agent)];
 
     game.turn.active_player = p0;
     game.turn.phase = forge_foundation::PhaseType::Main1;
     game_loop.step_main_phase(&mut game, &mut agents);
 
     // Elder should be in graveyard (sacrificed as cost)
-    assert_eq!(game.card(elder).zone, ZoneType::Graveyard,
-        "Sakura-Tribe Elder should be in graveyard (sacrificed)");
+    assert_eq!(
+        game.card(elder).zone,
+        ZoneType::Graveyard,
+        "Sakura-Tribe Elder should be in graveyard (sacrificed)"
+    );
 
     // A basic land should be on the battlefield, tapped
-    let bf_lands: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, p0)
+    let bf_lands: Vec<CardId> = game
+        .cards_in_zone(ZoneType::Battlefield, p0)
         .iter()
         .filter(|&&cid| game.card(cid).is_land())
         .copied()
         .collect();
-    assert_eq!(bf_lands.len(), 1, "Should have fetched 1 basic land to battlefield");
-    assert!(game.card(bf_lands[0]).tapped, "Fetched land should be tapped");
+    assert_eq!(
+        bf_lands.len(),
+        1,
+        "Should have fetched 1 basic land to battlefield"
+    );
+    assert!(
+        game.card(bf_lands[0]).tapped,
+        "Fetched land should be tapped"
+    );
 
     // Library should have 1 fewer card
-    assert_eq!(game.zone(ZoneType::Library, p0).len(), 1,
-        "Library should have 1 card left after fetching");
+    assert_eq!(
+        game.zone(ZoneType::Library, p0).len(),
+        1,
+        "Library should have 1 card left after fetching"
+    );
 }
 
 /// Test: Llanowar Elves ability is parsed correctly from card constructor.
@@ -1335,9 +1618,17 @@ fn youctrl_forge_alias_applies_anthem() {
 
     apply_continuous_effects(&mut game);
 
-    assert_eq!(game.card(lions_id).power(), 3, "Alice's 2/1 should be 3/2 under anthem");
+    assert_eq!(
+        game.card(lions_id).power(),
+        3,
+        "Alice's 2/1 should be 3/2 under anthem"
+    );
     assert_eq!(game.card(lions_id).toughness(), 2);
-    assert_eq!(game.card(bears_id).power(), 2, "Bob's 2/2 should be unaffected");
+    assert_eq!(
+        game.card(bears_id).power(),
+        2,
+        "Bob's 2/2 should be unaffected"
+    );
     assert_eq!(game.card(bears_id).toughness(), 2);
 }
 
@@ -1396,7 +1687,10 @@ fn youctrl_keyword_grant_gives_flying() {
 
     apply_continuous_effects(&mut game);
 
-    assert!(game.card(alice_id).has_flying(), "Alice's creature should gain Flying");
+    assert!(
+        game.card(alice_id).has_flying(),
+        "Alice's creature should gain Flying"
+    );
     // Bob's Serra Angel already has Flying natively; the enchantment shouldn't grant it
     // (and since it's Bob's enchantment that's missing, it doesn't matter, but
     // we verify Bob's creature is not affected by Alice's enchantment).
@@ -1405,7 +1699,10 @@ fn youctrl_keyword_grant_gives_flying() {
         .granted_keywords
         .iter()
         .any(|k| k.eq_ignore_ascii_case("Flying"));
-    assert!(!alice_enchantment_affects_bob, "Bob's creature should not receive Alice's grant");
+    assert!(
+        !alice_enchantment_affects_bob,
+        "Bob's creature should not receive Alice's grant"
+    );
 }
 
 // ── Replacement Effects Framework (PR #27) ───────────────────────────────────

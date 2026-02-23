@@ -139,28 +139,16 @@ impl ManaCostShard {
             Self::BlackPhyrexian => ManaAtom::BLACK | ManaAtom::OR_2_LIFE,
             Self::RedPhyrexian => ManaAtom::RED | ManaAtom::OR_2_LIFE,
             Self::GreenPhyrexian => ManaAtom::GREEN | ManaAtom::OR_2_LIFE,
-            Self::BlackGreenPhyrexian => {
-                ManaAtom::BLACK | ManaAtom::GREEN | ManaAtom::OR_2_LIFE
-            }
+            Self::BlackGreenPhyrexian => ManaAtom::BLACK | ManaAtom::GREEN | ManaAtom::OR_2_LIFE,
             Self::BlackRedPhyrexian => ManaAtom::BLACK | ManaAtom::RED | ManaAtom::OR_2_LIFE,
-            Self::GreenBluePhyrexian => {
-                ManaAtom::GREEN | ManaAtom::BLUE | ManaAtom::OR_2_LIFE
-            }
-            Self::GreenWhitePhyrexian => {
-                ManaAtom::GREEN | ManaAtom::WHITE | ManaAtom::OR_2_LIFE
-            }
+            Self::GreenBluePhyrexian => ManaAtom::GREEN | ManaAtom::BLUE | ManaAtom::OR_2_LIFE,
+            Self::GreenWhitePhyrexian => ManaAtom::GREEN | ManaAtom::WHITE | ManaAtom::OR_2_LIFE,
             Self::RedGreenPhyrexian => ManaAtom::RED | ManaAtom::GREEN | ManaAtom::OR_2_LIFE,
             Self::RedWhitePhyrexian => ManaAtom::RED | ManaAtom::WHITE | ManaAtom::OR_2_LIFE,
-            Self::BlueBlackPhyrexian => {
-                ManaAtom::BLUE | ManaAtom::BLACK | ManaAtom::OR_2_LIFE
-            }
+            Self::BlueBlackPhyrexian => ManaAtom::BLUE | ManaAtom::BLACK | ManaAtom::OR_2_LIFE,
             Self::BlueRedPhyrexian => ManaAtom::BLUE | ManaAtom::RED | ManaAtom::OR_2_LIFE,
-            Self::WhiteBlackPhyrexian => {
-                ManaAtom::WHITE | ManaAtom::BLACK | ManaAtom::OR_2_LIFE
-            }
-            Self::WhiteBluePhyrexian => {
-                ManaAtom::WHITE | ManaAtom::BLUE | ManaAtom::OR_2_LIFE
-            }
+            Self::WhiteBlackPhyrexian => ManaAtom::WHITE | ManaAtom::BLACK | ManaAtom::OR_2_LIFE,
+            Self::WhiteBluePhyrexian => ManaAtom::WHITE | ManaAtom::BLUE | ManaAtom::OR_2_LIFE,
             Self::X => ManaAtom::IS_X,
             Self::ColoredX => {
                 ManaAtom::WHITE
@@ -286,8 +274,7 @@ impl ManaCostShard {
             atoms |= ManaAtom::from_char(c);
         }
         // For cases when input is "2" or "12" or "20" — pure numeric
-        if atoms == ManaAtom::OR_2_GENERIC
-            || atoms == (ManaAtom::OR_2_GENERIC | ManaAtom::GENERIC)
+        if atoms == ManaAtom::OR_2_GENERIC || atoms == (ManaAtom::OR_2_GENERIC | ManaAtom::GENERIC)
         {
             atoms = ManaAtom::GENERIC;
         }

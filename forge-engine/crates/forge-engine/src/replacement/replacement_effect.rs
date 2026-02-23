@@ -474,7 +474,10 @@ mod tests {
     #[test]
     fn non_replacement_line_returns_none() {
         assert!(parse_replacement_effect("AB$ Mana | Cost$ T | Produced$ G").is_none());
-        assert!(parse_replacement_effect("S$ Mode$ Continuous | Affected$ Creature.YouControl").is_none());
+        assert!(
+            parse_replacement_effect("S$ Mode$ Continuous | Affected$ Creature.YouControl")
+                .is_none()
+        );
         assert!(parse_replacement_effect("").is_none());
     }
 
@@ -537,10 +540,9 @@ mod tests {
     #[test]
     fn can_replace_damage_player_target() {
         let source = make_creature(0, 0);
-        let re = parse_replacement_effect(
-            "R$ Event$ DamageDone | ValidTarget$ Player | Prevent$ True",
-        )
-        .unwrap();
+        let re =
+            parse_replacement_effect("R$ Event$ DamageDone | ValidTarget$ Player | Prevent$ True")
+                .unwrap();
         assert!(re.can_replace_damage(true, &source)); // targets player
         assert!(!re.can_replace_damage(false, &source)); // targets card → no match
     }
@@ -553,12 +555,7 @@ mod tests {
         )
         .unwrap();
         // Correct origin/destination + self → matches.
-        assert!(re.can_replace_moved(
-            ZoneType::Battlefield,
-            ZoneType::Graveyard,
-            &source,
-            &source
-        ));
+        assert!(re.can_replace_moved(ZoneType::Battlefield, ZoneType::Graveyard, &source, &source));
     }
 
     #[test]
@@ -569,12 +566,7 @@ mod tests {
         )
         .unwrap();
         // Destination is Exile, not Graveyard → no match.
-        assert!(!re.can_replace_moved(
-            ZoneType::Battlefield,
-            ZoneType::Exile,
-            &source,
-            &source
-        ));
+        assert!(!re.can_replace_moved(ZoneType::Battlefield, ZoneType::Exile, &source, &source));
     }
 
     #[test]
@@ -586,12 +578,7 @@ mod tests {
         )
         .unwrap();
         // `other` is not `source` → no match with Card.Self.
-        assert!(!re.can_replace_moved(
-            ZoneType::Battlefield,
-            ZoneType::Graveyard,
-            &other,
-            &source
-        ));
+        assert!(!re.can_replace_moved(ZoneType::Battlefield, ZoneType::Graveyard, &other, &source));
     }
 
     #[test]

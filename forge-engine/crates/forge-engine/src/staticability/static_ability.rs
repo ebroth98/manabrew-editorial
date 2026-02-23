@@ -12,8 +12,8 @@
 
 use std::collections::BTreeMap;
 
-use serde::{Deserialize, Serialize};
 use forge_foundation::ColorSet;
+use serde::{Deserialize, Serialize};
 
 use crate::card::CardInstance;
 
@@ -64,6 +64,8 @@ pub enum StaticMode {
 /// Reference: <https://magic.wizards.com/en/rules> CR 613
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Layer {
+    /// Layer 2 — control-changing effects (`GainControl$`).
+    Control = 2,
     /// Layer 4 — type-changing effects (`AddType$`, `RemoveType$`).
     Type = 4,
     /// Layer 5 — color-changing effects (`AddColor$`).
@@ -110,6 +112,8 @@ impl StaticAbility {
             Some(Layer::SetPT)
         } else if self.params.contains_key("AddKeyword") {
             Some(Layer::Ability)
+        } else if self.params.contains_key("GainControl") {
+            Some(Layer::Control)
         } else if self.params.contains_key("AddType") || self.params.contains_key("RemoveType") {
             Some(Layer::Type)
         } else if self.params.contains_key("AddColor") {
@@ -185,11 +189,11 @@ impl CardFilter {
             "YouControl" | "YouCtrl" => f.controller_only = true,
             "Other" => f.other_only = true,
             // Color qualifiers (e.g. "Creature.White+YouCtrl" for Honor of the Pure).
-            "White"     => f.required_color = Some(ColorSet::WHITE),
-            "Blue"      => f.required_color = Some(ColorSet::BLUE),
-            "Black"     => f.required_color = Some(ColorSet::BLACK),
-            "Red"       => f.required_color = Some(ColorSet::RED),
-            "Green"     => f.required_color = Some(ColorSet::GREEN),
+            "White" => f.required_color = Some(ColorSet::WHITE),
+            "Blue" => f.required_color = Some(ColorSet::BLUE),
+            "Black" => f.required_color = Some(ColorSet::BLACK),
+            "Red" => f.required_color = Some(ColorSet::RED),
+            "Green" => f.required_color = Some(ColorSet::GREEN),
             "Colorless" => f.colorless_only = true,
             s => {
                 // Unknown tokens are treated as subtype filters (e.g. "Goblin").
@@ -370,7 +374,8 @@ mod tests {
 
     #[test]
     fn parse_set_pt() {
-        let raw = "S$ Mode$ Continuous | Affected$ Creature.YouControl | SetPower$ 0 | SetToughness$ 1";
+        let raw =
+            "S$ Mode$ Continuous | Affected$ Creature.YouControl | SetPower$ 0 | SetToughness$ 1";
         let sa = parse_static_ability(raw).expect("should parse");
         assert_eq!(sa.continuous_layer(), Some(Layer::SetPT));
     }
@@ -378,7 +383,8 @@ mod tests {
     #[test]
     fn parse_s_colon_prefix() {
         // Some older Forge card scripts use "S:" instead of "S$".
-        let raw = "S: Mode$ Continuous | Affected$ Creature.YouControl | AddPower$ 2 | AddToughness$ 2";
+        let raw =
+            "S: Mode$ Continuous | Affected$ Creature.YouControl | AddPower$ 2 | AddToughness$ 2";
         let sa = parse_static_ability(raw).expect("should parse S: prefix");
         assert_eq!(sa.mode, StaticMode::Continuous);
     }
@@ -482,7 +488,10 @@ mod tests {
         assert!(f.creatures_only);
         assert!(f.controller_only);
         assert_eq!(f.required_color, Some(ColorSet::WHITE));
-        assert!(f.subtype.is_none(), "White should not be treated as a subtype");
+        assert!(
+            f.subtype.is_none(),
+            "White should not be treated as a subtype"
+        );
     }
 
     #[test]
@@ -497,8 +506,14 @@ mod tests {
 
         let f = CardFilter::parse("Creature.White+YouCtrl");
         assert!(f.matches(&white_ally, &source), "white ally should match");
-        assert!(!f.matches(&green_ally, &source), "green creature should not match");
-        assert!(!f.matches(&white_opponent, &source), "opponent's white creature should not match");
+        assert!(
+            !f.matches(&green_ally, &source),
+            "green creature should not match"
+        );
+        assert!(
+            !f.matches(&white_opponent, &source),
+            "opponent's white creature should not match"
+        );
     }
 
     #[test]
@@ -517,6 +532,9 @@ mod tests {
             vec![],
         );
         let f = CardFilter::parse("Creature.White+YouCtrl");
-        assert!(!f.matches(&colorless, &source), "colorless artifact should not be white");
+        assert!(
+            !f.matches(&colorless, &source),
+            "colorless artifact should not be white"
+        );
     }
 }

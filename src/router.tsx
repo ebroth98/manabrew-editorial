@@ -5,6 +5,7 @@ import Lobby from "@/views/Lobby";
 import DeckEditor from "@/views/DeckEditor";
 import MyDecks from "@/views/MyDecks";
 import Game from "@/views/Game";
+import Play from "@/views/Play";
 import Draft from "@/views/Draft";
 import Settings from "@/views/Settings";
 
@@ -23,7 +24,7 @@ export const router = createBrowserRouter([
       },
       {
         path: "play",
-        element: <Game />,
+        element: <Play />,
       },
       {
         path: "lobby",

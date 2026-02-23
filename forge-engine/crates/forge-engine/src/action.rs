@@ -2,9 +2,9 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::staticability::layer::apply_etb_tapped;
-use crate::replacement::ReplacementResult;
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
+use crate::staticability::layer::apply_etb_tapped;
 
 /// Game state mutation methods — moving cards, dealing damage, state-based actions.
 impl GameState {
@@ -126,7 +126,11 @@ impl GameState {
             source: None,
         };
         apply_replacements(self, &mut event);
-        if let ReplacementEvent::DamageToCard { amount: final_amount, .. } = event {
+        if let ReplacementEvent::DamageToCard {
+            amount: final_amount,
+            ..
+        } = event
+        {
             if final_amount > 0 {
                 self.cards[target.index()].damage += final_amount;
             }
@@ -147,7 +151,11 @@ impl GameState {
             source: None,
         };
         apply_replacements(self, &mut event);
-        if let ReplacementEvent::DamageToPlayer { amount: final_amount, .. } = event {
+        if let ReplacementEvent::DamageToPlayer {
+            amount: final_amount,
+            ..
+        } = event
+        {
             if final_amount > 0 {
                 self.players[target.index()].deal_damage(final_amount);
             }
@@ -196,14 +204,18 @@ impl GameState {
             let card = &self.cards[cid.index()];
             if card.is_creature() {
                 let zero_toughness = card.toughness() <= 0;
-                let lethal = card.lethal_damage() || (card.damage > 0 && card.has_deathtouch_damage);
+                let lethal =
+                    card.lethal_damage() || (card.damage > 0 && card.has_deathtouch_damage);
                 let should_die = zero_toughness || lethal;
                 if should_die {
                     let owner = card.owner;
                     // CR 702.12: Indestructible prevents death from lethal damage and
                     // "destroy" effects, but NOT from toughness ≤ 0 (CR 704.5f vs 704.5g).
                     // This covers K:Indestructible from Forge card scripts (e.g. Darksteel Myr).
-                    if lethal && !zero_toughness && self.cards[cid.index()].has_keyword("Indestructible") {
+                    if lethal
+                        && !zero_toughness
+                        && self.cards[cid.index()].has_keyword("Indestructible")
+                    {
                         continue;
                     }
                     // Run Destroy replacement effects (R$-based indestructible, etc.).
@@ -249,9 +261,7 @@ impl GameState {
 
     /// Untap all permanents controlled by a player.
     pub fn untap_all(&mut self, player: PlayerId) {
-        let cards: Vec<CardId> = self
-            .cards_in_zone(ZoneType::Battlefield, player)
-            .to_vec();
+        let cards: Vec<CardId> = self.cards_in_zone(ZoneType::Battlefield, player).to_vec();
         for cid in cards {
             self.cards[cid.index()].tapped = false;
         }
@@ -303,9 +313,7 @@ impl GameState {
     pub fn new_turn_for_player(&mut self, player: PlayerId) {
         self.player_mut(player).new_turn();
 
-        let all_card_ids: Vec<CardId> = (0..self.cards.len())
-            .map(|i| CardId(i as u32))
-            .collect();
+        let all_card_ids: Vec<CardId> = (0..self.cards.len()).map(|i| CardId(i as u32)).collect();
         for cid in all_card_ids {
             if self.cards[cid.index()].controller == player {
                 self.cards[cid.index()].new_turn();
@@ -368,7 +376,9 @@ impl GameState {
     /// Mirrors Java's `Card.unattachFromEntity()`.
     pub fn detach(&mut self, aura_id: CardId) {
         if let Some(host_id) = self.cards[aura_id.index()].attached_to.take() {
-            self.cards[host_id.index()].attachments.retain(|&a| a != aura_id);
+            self.cards[host_id.index()]
+                .attachments
+                .retain(|&a| a != aura_id);
         }
     }
 

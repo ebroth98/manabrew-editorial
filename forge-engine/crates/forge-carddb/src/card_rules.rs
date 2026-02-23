@@ -117,8 +117,7 @@ mod tests {
     fn color_identity_basic() {
         let mut face = CardFace::new("Lightning Bolt".to_string());
         face.mana_cost = ManaCost::parse("R");
-        face.oracle_text =
-            "Lightning Bolt deals 3 damage to any target.".to_string();
+        face.oracle_text = "Lightning Bolt deals 3 damage to any target.".to_string();
         face.assign_missing_fields();
 
         let ci = CardRules::calculate_color_identity(&face);

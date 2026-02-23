@@ -28,19 +28,23 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // Only move if the card is still "virtual" (on the stack, zone = None is fine)
             // — it was removed from hand when cast; move it to dest zone now.
             let owner = ctx.game.card(source_card).owner;
-            
+
             // Remember parameters if needed
             if sa.params.contains_key("RememberCountered") {
-                ctx.game.card_mut(sa.source.unwrap()).add_remembered_card(source_card);
+                ctx.game
+                    .card_mut(sa.source.unwrap())
+                    .add_remembered_card(source_card);
             }
             if sa.params.contains_key("RememberCounteredCMC") {
                 // Store CMC value
                 let cmc = ctx.game.card(source_card).mana_cost.cmc();
-                ctx.game.card_mut(sa.source.unwrap()).add_remembered_cmc(cmc);
+                ctx.game
+                    .card_mut(sa.source.unwrap())
+                    .add_remembered_cmc(cmc);
             }
-            
+
             ctx.game.move_card(source_card, dest_zone, owner);
-            
+
             // Fire Countered trigger
             ctx.trigger_handler.run_trigger(
                 TriggerType::Countered,

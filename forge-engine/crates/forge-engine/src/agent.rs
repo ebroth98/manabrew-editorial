@@ -1,6 +1,7 @@
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
+use forge_foundation::PhaseType;
 
 /// A target choice that can be a player, a card, or nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -186,6 +187,14 @@ pub trait PlayerAgent {
     /// Display-only notification: a new turn is starting for the given player.
     /// Called on all agents before any turn actions so the UI can show the turn flash first.
     fn notify_turn_changed(&mut self, _active_player: PlayerId, _turn_number: u32) {}
+
+    /// Display-only notification: phase/step changed.
+    /// Called on all agents so each client can update step UI even when no prompt is needed.
+    fn notify_phase_changed(&mut self, _phase: PhaseType) {}
+
+    /// Display-only notification: authoritative game state changed without
+    /// necessarily changing turn/phase (e.g. stack item resolved).
+    fn notify_state_changed(&mut self) {}
 }
 
 /// A simple agent that always passes priority and makes no choices.
@@ -221,11 +230,7 @@ impl PlayerAgent for PassAgent {
         Vec::new() // no blockers
     }
 
-    fn choose_target_player(
-        &mut self,
-        _player: PlayerId,
-        valid: &[PlayerId],
-    ) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
         valid.first().copied()
     }
 

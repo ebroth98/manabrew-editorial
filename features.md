@@ -481,7 +481,7 @@
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `PhaseType.java` | Enum of all phases/steps | **Implemented** (`foundation/phase.rs`) |
-| `PhaseHandler.java` | Turn/phase state machine with priority | **Partial** (`phase.rs` TurnState + `game_loop.rs`) |
+| `PhaseHandler.java` | Turn/phase state machine with priority | **Partial** (`phase.rs` TurnState + `game_loop.rs`: APNAP priority rotation, draw/combat/end priority windows, shared state-mutation gateway (`with_shared_state_mutation`) with implicit state broadcast on mutation (including priority handoff/pass windows); extra turns/phases and full replacement-phase interactions still missing) |
 | `Phase.java` | Individual phase instance | **Partial** (advance_phase in `phase.rs`) |
 | `ExtraTurn.java` | Extra turn tracking | Not implemented |
 | `ExtraPhase.java` | Extra phase tracking | Not implemented |
@@ -628,9 +628,9 @@
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `StaticAbility.java` | Core static ability class with layer system | **Partial** (`static_ability.rs`: `StaticAbility` struct + parser, `StaticMode` enum (6 modes), `CardFilter` for `Affected$`/`ValidCards$`; missing: 74+ modes, dependency graph, timestamp tracking) |
-| `StaticAbilityLayer.java` | Enum: copy, control, text, type, color, abilities, P/T, rules | **Partial** (`static_ability.rs`: `Layer` enum — Type(4), Color(5), Ability(6), SetPT(7b), ModifyPT(7c); missing: copy/control/text/7a/rules layers) |
+| `StaticAbilityLayer.java` | Enum: copy, control, text, type, color, abilities, P/T, rules | **Partial** (`static_ability.rs`: `Layer` enum — Control(2), Type(4), Color(5), Ability(6), SetPT(7b), ModifyPT(7c); missing: copy/text/7a/rules layers) |
 | `StaticAbilityMode.java` | Enum: 80+ static ability modes | **Partial** (`static_ability.rs` `StaticMode`: Continuous, CantAttack, CantBlock, ETBTapped, CantBeCast, ReduceCost, IncreaseCost; 73+ modes not yet handled) |
-| `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: ModifyPT (7c), SetPT (7b), Ability/keyword-grant (6) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped; missing: type/color layers, dependency resolution) |
+| `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: Control (2, `GainControl$` incl. aura `Card.EnchantedBy`), Ability/keyword-grant (6), SetPT (7b), ModifyPT (7c) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped; missing: type/color layers, dependency resolution) |
 | `StaticAbilityCantAttack.java` | Prevents attacking | **Implemented** (`layer.rs`: `Mode$ CantAttack` sets `cant_attack_static` flag; `card.rs` `can_attack()` respects it) |
 | `StaticAbilityCantBlock.java` | Prevents blocking | **Implemented** (`layer.rs`: `Mode$ CantBlock` sets `cant_block_static` flag; `card.rs` `can_block()` respects it) |
 | `StaticAbilityCantBeSacrificed.java` | Prevents sacrifice | Not implemented |
@@ -886,7 +886,7 @@
 | `trigger.rs` | **Complete** | Trigger matching, ValidCard/ValidPlayer filters, parsing |
 | `trigger_handler.rs` | **Partial** | Active/waiting/delayed triggers, dispatch (some stubs) |
 | `agent.rs` | **Complete** | PlayerAgent trait (14 callbacks incl. choose_sacrifice), MainPhaseAction, TargetChoice |
-| `game_loop.rs` | **Partial** | Game flow orchestration (framework, some phases incomplete) |
+| `game_loop.rs` | **Partial** | Game flow orchestration with APNAP priority handoff, `priority_player` tracking, draw/combat/end priority windows, and illegal-action guardrails; still missing full Java parity for extra turns/phases and advanced phase replacement hooks |
 | `spellability/mod.rs` | **Complete** | SpellAbility module structure |
 | `spellability/targeting.rs` | **Complete** | Targeting system: parse_valid_targets, choose_targets, CardInZone support for graveyard/exile targeting |
 
