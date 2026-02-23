@@ -767,7 +767,7 @@ export default function Game() {
 
   // Display flash queue — sequential visual-only flashes.
   type FlashItem =
-    | { kind: "card"; cardId: string; cardName: string }
+    | { kind: "card"; cardId: string; cardName: string; setCode: string }
     | { kind: "turn"; playerId: string; playerName: string };
   const [activeFlash, setActiveFlash] = useState<FlashItem | null>(null);
   const flashQueueRef = useRef<FlashItem[]>([]);
@@ -952,6 +952,7 @@ export default function Game() {
           kind: "card",
           cardId: evt.cardId!,
           cardName: evt.cardName!,
+          setCode: evt.setCode ?? "",
         });
       } else if (evt.kind === "turnChanged") {
         flashQueueRef.current.push({
@@ -1864,7 +1865,7 @@ export default function Game() {
                 card={{
                   id: activeFlash.cardId,
                   name: activeFlash.cardName,
-                  setCode: "",
+                  setCode: activeFlash.setCode,
                   cardNumber: "",
                   color: "",
                   manaCost: "",

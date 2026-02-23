@@ -8,7 +8,7 @@ use crate::prompt::{AgentPrompt, PlayerAction};
 pub async fn start_game(
     app: AppHandle,
     gm: State<'_, GameManager>,
-    deck_list: Vec<String>,
+    deck_list: Vec<crate::preset_decks::CardIdentity>,
     starting_life: i32,
     commander_name: Option<String>,
 ) -> Result<String, String> {

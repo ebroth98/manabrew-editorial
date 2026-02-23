@@ -8,6 +8,7 @@ interface DisplayEvent {
   kind: string;
   cardId?: string;
   cardName?: string;
+  setCode?: string;
   playerId?: string;
   activePlayerId?: string;
   activePlayerName?: string;
@@ -78,7 +79,7 @@ interface GameState {
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
   // Actions
-  startGame: (cardNames: string[], formatId?: string, commanderName?: string) => Promise<void>;
+  startGame: (deckList: { name: string, setCode: string }[], formatId?: string, commanderName?: string) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
   castSpell: (cardId: string) => void;
   passPriority: () => void;
@@ -155,7 +156,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setGameConfig: (config) => set({ gameConfig: config }),
 
-  startGame: async (cardNames, formatId, commanderName) => {
+  startGame: async (deckList, formatId, commanderName) => {
     try {
       set({ debugInfo: 'Starting game...' });
       const format = formatId ? getFormat(formatId) : undefined;
@@ -163,7 +164,7 @@ export const useGameStore = create<GameState>((set, get) => ({
       const gameConfig: GameConfig = { formatId: formatId ?? 'constructed', startingLife };
       set({ gameConfig });
       const result = await invoke('start_game', {
-        deckList: cardNames,
+        deckList: deckList,
         startingLife,
         commanderName: commanderName ?? null,
       });

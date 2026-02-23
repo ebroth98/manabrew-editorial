@@ -144,6 +144,9 @@ pub struct CardInstance {
     pub is_transformed: bool,
     /// Back-face characteristics for DFC cards. `None` for single-faced cards.
     pub other_part: Option<CardOtherPart>,
+
+    /// Optional set code (e.g., "M21") for specific printings.
+    pub set_code: Option<String>,
 }
 
 impl CardInstance {
@@ -225,6 +228,7 @@ impl CardInstance {
             remembered_cmc: Vec::new(),
             is_transformed: false,
             other_part: None,
+            set_code: None,
         }
     }
 
@@ -236,7 +240,9 @@ impl CardInstance {
     /// - Temporary: `power_modifier` (from spells like Giant Growth) is added.
     /// - Layer 7d: +1/+1 and -1/-1 counters are factored in.
     pub fn power(&self) -> i32 {
-        let base = self.static_set_power.unwrap_or(self.base_power.unwrap_or(0));
+        let base = self
+            .static_set_power
+            .unwrap_or(self.base_power.unwrap_or(0));
         base + self.static_power_modifier
             + self.power_modifier
             + self.counter_count(CounterType::P1P1)
@@ -245,7 +251,9 @@ impl CardInstance {
 
     /// Effective toughness, accounting for all layer effects and counters.
     pub fn toughness(&self) -> i32 {
-        let base = self.static_set_toughness.unwrap_or(self.base_toughness.unwrap_or(0));
+        let base = self
+            .static_set_toughness
+            .unwrap_or(self.base_toughness.unwrap_or(0));
         base + self.static_toughness_modifier
             + self.toughness_modifier
             + self.counter_count(CounterType::P1P1)
@@ -272,7 +280,10 @@ impl CardInstance {
     /// by a continuous static effect (Layer 6).
     pub fn has_keyword(&self, kw: &str) -> bool {
         self.keywords.iter().any(|k| k.eq_ignore_ascii_case(kw))
-            || self.granted_keywords.iter().any(|k| k.eq_ignore_ascii_case(kw))
+            || self
+                .granted_keywords
+                .iter()
+                .any(|k| k.eq_ignore_ascii_case(kw))
     }
 
     pub fn has_haste(&self) -> bool {
@@ -330,7 +341,7 @@ impl CardInstance {
             && !self.cant_block_static
             && self.zone == ZoneType::Battlefield
     }
-    
+
     /// Check if this card can be controlled by the given player
     /// (e.g., checks for "Other players can't gain control of CARDNAME.")
     pub fn can_be_controlled_by(&self, _player: PlayerId) -> bool {
@@ -372,14 +383,14 @@ impl CardInstance {
             self.summoning_sick = false;
         }
     }
-    
+
     /// Add a remembered card (for RememberCountered, etc.)
     pub fn add_remembered_card(&mut self, card_id: CardId) {
         if !self.remembered_cards.contains(&card_id) {
             self.remembered_cards.push(card_id);
         }
     }
-    
+
     /// Add a remembered CMC value
     pub fn add_remembered_cmc(&mut self, cmc: i32) {
         self.remembered_cmc.push(cmc);
@@ -409,7 +420,9 @@ impl CardInstance {
             self.granted_keywords.clear();
 
             // Re-parse activated abilities from new face's abilities
-            self.activated_abilities = self.abilities.iter()
+            self.activated_abilities = self
+                .abilities
+                .iter()
                 .enumerate()
                 .filter_map(|(i, raw)| parse_activated_ability(raw, i))
                 .collect();

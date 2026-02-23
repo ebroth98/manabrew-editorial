@@ -6,12 +6,19 @@ use serde::{Deserialize, Serialize};
 
 use crate::card_db::{card_rules_to_instance, get_card_db};
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardIdentity {
+    pub name: String,
+    pub set_code: String,
+}
+
 // ── Preset deck registry ───────────────────────────────────────────
 
 /// Metadata for a preset deck, returned to the frontend via `get_preset_decks`.
 ///
 /// Adding a new preset deck requires:
-/// 1. Add a `const MY_DECK: &[(&str, usize)]` below.
+/// 1. Add a `const MY_DECK: &[(&str, usize, &str)]` below.
 /// 2. Add a `PresetDeckInfo` entry to `list_preset_decks()`.
 /// 3. Add the `"my_id"` arm to the `match` in `build_preset_decks()`.
 /// 4. Add the id to `is_preset_id()`.
@@ -206,60 +213,60 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
 
 // ── Preset deck lists ──────────────────────────────────────────────
 //
-// Each entry is (card_name, count). Card definitions come exclusively from
-// the Forge card scripts in forge/forge-gui/res/cardsfolder/ — no stats are
-// hardcoded here.
+// Each entry is (card_name, count, set_code). The set_code is the Scryfall
+// set abbreviation (e.g. "m21", "isd") used by the UI to fetch the specific
+// printing artwork. An empty string means no set preference (Scryfall default).
 
-const RED_BURN: &[(&str, usize)] = &[
-    ("Mountain", 17),
-    ("Lightning Bolt", 4),
-    ("Shock", 4),
-    ("Gray Ogre", 3),
-    ("Hill Giant", 3),
-    ("Guttersnipe", 3),
+const RED_BURN: &[(&str, usize, &str)] = &[
+    ("Mountain", 17, "akh"),      // Amonkhet full-art basics
+    ("Lightning Bolt", 4, "m11"), // Magic 2011 — iconic artwork
+    ("Shock", 4, "m21"),          // Core Set 2021
+    ("Gray Ogre", 3, "7ed"),      // Seventh Edition
+    ("Hill Giant", 3, "m14"),     // Magic 2014
+    ("Guttersnipe", 3, "rtr"),    // Return to Ravnica — original printing
 ];
 
-const GREEN_STOMPY: &[(&str, usize)] = &[
-    ("Forest", 17),
-    ("Giant Growth", 4),
-    ("Grizzly Bears", 3),
-    ("Centaur Courser", 2),
-    ("Garruk's Companion", 3),
-    ("Giant Spider", 2),
-    ("Wall of Ice", 2),
-    ("Craw Wurm", 2),
+const GREEN_STOMPY: &[(&str, usize, &str)] = &[
+    ("Forest", 17, "akh"),            // Amonkhet full-art basics
+    ("Giant Growth", 4, "m11"),       // Magic 2011
+    ("Grizzly Bears", 3, "m12"),      // Magic 2012
+    ("Centaur Courser", 2, "m14"),    // Magic 2014
+    ("Garruk's Companion", 3, "m13"), // Magic 2013
+    ("Giant Spider", 2, "m14"),       // Magic 2014
+    ("Wall of Ice", 2, "7ed"),        // Seventh Edition
+    ("Craw Wurm", 2, "m11"),          // Magic 2011
 ];
 
-const WHITE_AGGRO: &[(&str, usize)] = &[
-    ("Plains", 17),
-    ("Savannah Lions", 4),
-    ("White Knight", 3),
-    ("Serra Angel", 3),
-    ("Soul Warden", 3),
+const WHITE_AGGRO: &[(&str, usize, &str)] = &[
+    ("Plains", 17, "akh"),        // Amonkhet full-art basics
+    ("Savannah Lions", 4, "m10"), // Magic 2010
+    ("White Knight", 3, "m10"),   // Magic 2010
+    ("Serra Angel", 3, "m21"),    // Core Set 2021
+    ("Soul Warden", 3, "m11"),    // Magic 2011
 ];
 
 /// Exercises PR #26 (static abilities / layer system) and PR #27 (replacement effects).
 /// Glorious Anthem tests the YouCtrl alias fix and layer 7c anthem stacking.
 /// Darksteel Myr tests the indestructible Destroy replacement effect.
 /// Honor of the Pure tests color-based filtering (White creatures).
-const WHITE_STATIC: &[(&str, usize)] = &[
-    ("Plains", 16),
-    ("Glorious Anthem", 3),
-    ("Honor of the Pure", 3),
-    ("Darksteel Myr", 3),
-    ("Savannah Lions", 4),
-    ("White Knight", 4),
-    ("Serra Angel", 3),
+const WHITE_STATIC: &[(&str, usize, &str)] = &[
+    ("Plains", 16, "akh"),           // Amonkhet full-art basics
+    ("Glorious Anthem", 3, "m14"),   // Magic 2014
+    ("Honor of the Pure", 3, "m11"), // Magic 2011
+    ("Darksteel Myr", 3, "som"),     // Scars of Mirrodin — original printing
+    ("Savannah Lions", 4, "m10"),    // Magic 2010
+    ("White Knight", 4, "m10"),      // Magic 2010
+    ("Serra Angel", 3, "m21"),       // Core Set 2021
 ];
 
-const BLACK_CONTROL: &[(&str, usize)] = &[
-    ("Swamp", 13),
-    ("Island", 4),
-    ("Doom Blade", 4),
-    ("Divination", 2),
-    ("Typhoid Rats", 3),
-    ("Vampire Nighthawk", 3),
-    ("Mulldrifter", 2),
+const BLACK_CONTROL: &[(&str, usize, &str)] = &[
+    ("Swamp", 13, "akh"), // Amonkhet full-art basics
+    ("Island", 4, "akh"),
+    ("Doom Blade", 4, "m14"),        // Magic 2014
+    ("Divination", 2, "m14"),        // Magic 2014
+    ("Typhoid Rats", 3, "isd"),      // Innistrad — original printing
+    ("Vampire Nighthawk", 3, "m13"), // Magic 2013
+    ("Mulldrifter", 2, "mma"),       // Modern Masters
 ];
 
 /// Exercises issue #13: ChangeZone (bounce / reanimate), Sacrifice, and SacrificeAll effects.
@@ -267,43 +274,43 @@ const BLACK_CONTROL: &[(&str, usize)] = &[
 /// Raise Dead tests Graveyard→Hand ChangeZone.
 /// Diabolic Edict tests targeted Sacrifice (opponent's creature).
 /// Innocent Blood tests Sacrifice applied to all players (Defined$ Player).
-const ZONE_CHANGE: &[(&str, usize)] = &[
-    ("Swamp", 12),
-    ("Island", 4),
-    ("Unsummon", 4),       // ChangeZone: Battlefield → Hand
-    ("Boomerang", 2),      // ChangeZone: Battlefield → Hand (any permanent)
-    ("Raise Dead", 13),    // ChangeZone: Graveyard → Hand
-    ("Diabolic Edict", 3), // Sacrifice: target player sacrifices a creature
-    ("Innocent Blood", 3), // Sacrifice: each player sacrifices a creature
-    ("Typhoid Rats", 4),
-    ("Vampire Nighthawk", 3),
-    ("Doom Blade", 2),
+const ZONE_CHANGE: &[(&str, usize, &str)] = &[
+    ("Swamp", 12, "akh"),
+    ("Island", 4, "akh"),
+    ("Unsummon", 4, "m14"),      // Magic 2014 — ChangeZone: Battlefield → Hand
+    ("Boomerang", 2, "3ed"),     // Revised Edition — ChangeZone: any permanent
+    ("Raise Dead", 13, "m13"),   // Magic 2013 — ChangeZone: Graveyard → Hand
+    ("Diabolic Edict", 3, "te"), // Tempest — targeted Sacrifice
+    ("Innocent Blood", 3, "od"), // Odyssey — each player sacrifices
+    ("Typhoid Rats", 4, "isd"),
+    ("Vampire Nighthawk", 3, "m13"),
+    ("Doom Blade", 2, "m14"),
 ];
 
 /// Exercises sacrifice-as-additional-cost (CostSacrifice).
 /// Village Rites tests `Cost$ B Sac<1/Creature>` — sacrifice a creature to draw two cards.
 /// Cheap creatures provide sacrifice fodder; Raise Dead lets you recur them.
-const SAC_COST: &[(&str, usize)] = &[
-    ("Swamp", 17),
-    ("Severed Strands", 10),
-    ("Typhoid Rats", 4),      // Cheap sacrifice fodder (1/1 deathtouch)
-    ("Vampire Nighthawk", 3), // Evasive threat
-    ("Doom Blade", 3),        // Removal
-    ("Raise Dead", 3),        // Recur creatures from graveyard
+const SAC_COST: &[(&str, usize, &str)] = &[
+    ("Swamp", 17, "akh"),
+    ("Severed Strands", 10, "grn"), // Guilds of Ravnica — original printing
+    ("Typhoid Rats", 4, "isd"),     // Cheap sacrifice fodder (1/1 deathtouch)
+    ("Vampire Nighthawk", 3, "m13"), // Evasive threat
+    ("Doom Blade", 3, "m14"),       // Removal
+    ("Raise Dead", 3, "m13"),       // Recur creatures from graveyard
 ];
 
 /// Exercises issue #14: Token creation (SP$ Token) and CopyPermanent effects.
 /// Raise the Alarm / Krenko's Command / Dragon Fodder create tokens directly.
 /// Goblin creatures give the AI something to fight against.
-const TOKEN_SWARM: &[(&str, usize)] = &[
-    ("Plains", 8),
-    ("Mountain", 8),
-    ("Raise the Alarm", 4),  // SP$ Token: 2× 1/1 white Soldier
-    ("Krenko's Command", 4), // SP$ Token: 2× 1/1 red Goblin
-    ("Dragon Fodder", 4),    // SP$ Token: 2× 1/1 red Goblin
-    ("Savannah Lions", 4),
-    ("Lightning Bolt", 4),
-    ("Shock", 4),
+const TOKEN_SWARM: &[(&str, usize, &str)] = &[
+    ("Plains", 8, "akh"),
+    ("Mountain", 8, "akh"),
+    ("Raise the Alarm", 4, "m15"),  // Magic 2015 — 2× 1/1 white Soldier
+    ("Krenko's Command", 4, "m13"), // Magic 2013 — 2× 1/1 red Goblin
+    ("Dragon Fodder", 4, "ktk"),    // Khans of Tarkir — 2× 1/1 red Goblin
+    ("Savannah Lions", 4, "m10"),
+    ("Lightning Bolt", 4, "m11"),
+    ("Shock", 4, "m21"),
 ];
 
 /// Exercises issue #15: library manipulation — Scry, Surveil, Mill, Dig, RearrangeTopOfLibrary.
@@ -313,48 +320,48 @@ const TOKEN_SWARM: &[(&str, usize)] = &[
 /// Ransack the Lab tests Dig 3 / take 1 to hand / rest to graveyard.
 /// Taigam's Scheming tests Surveil 5.
 /// Notion Rain tests Surveil 2 + Draw 2 + DealDamage to self.
-const LIBRARY_MANIPULATION: &[(&str, usize)] = &[
-    ("Island", 16),
-    ("Swamp", 4),
-    ("Preordain", 4),         // SP$ Scry 2, then draw a card
-    ("Ponder", 4),            // SP$ RearrangeTopOfLibrary 3, may shuffle, draw
-    ("Thought Scour", 4),     // SP$ Mill 2 target player, draw a card
-    ("Ransack the Lab", 4),   // SP$ Dig 3, take 1 to hand, rest to graveyard
-    ("Taigam's Scheming", 2), // SP$ Surveil 5
-    ("Notion Rain", 2),       // SP$ Surveil 2, draw 2, deal 2 to self
-    ("Divination", 4),        // Draw 2
-    ("Mulldrifter", 4),       // Flying ETB draw 2
-    ("Typhoid Rats", 4),      // 1/1 Deathtouch
-    ("Doom Blade", 4),        // Destroy non-black creature
-    ("Vampire Nighthawk", 4), // 2/3 Flying Deathtouch Lifelink
+const LIBRARY_MANIPULATION: &[(&str, usize, &str)] = &[
+    ("Island", 16, "akh"),
+    ("Swamp", 4, "akh"),
+    ("Preordain", 4, "m11"),         // Magic 2011 — Scry 2, draw
+    ("Ponder", 4, "m12"),            // Magic 2012 — rearrange top 3, draw
+    ("Thought Scour", 4, "dka"),     // Dark Ascension — Mill 2, draw
+    ("Ransack the Lab", 4, "mh1"),   // Modern Horizons — Dig 3
+    ("Taigam's Scheming", 2, "ktk"), // Khans of Tarkir — Surveil 5
+    ("Notion Rain", 2, "grn"),       // Guilds of Ravnica — Surveil 2, draw 2
+    ("Divination", 4, "m14"),        // Draw 2
+    ("Mulldrifter", 4, "mma"),       // Modern Masters — Flying ETB draw 2
+    ("Typhoid Rats", 4, "isd"),      // 1/1 Deathtouch
+    ("Doom Blade", 4, "m14"),        // Destroy non-black creature
+    ("Vampire Nighthawk", 4, "m13"), // 2/3 Flying Deathtouch Lifelink
 ];
 
 /// Exercises issue #16: Counter (Counterspell, Cancel), Discard (Mind Rot),
 /// and ControlGain (Control Magic) effects.
-const BLUE_CONTROL: &[(&str, usize)] = &[
-    ("Island", 17),
-    ("Counterspell", 4),  // SP$ Counter: counter target spell
-    ("Cancel", 4),        // SP$ Counter: counter target spell (3 mana)
-    ("Mind Rot", 4),      // SP$ Discard: target player discards 2 cards
-    ("Control Magic", 3), // ControlGain: gain control of target creature
-    ("Mulldrifter", 3),   // 2/2 Flying; ETB draw 2
-    ("Divination", 4),    // Draw 2
-    ("Wall of Ice", 4),   // Blocker
-    ("Sea Serpent", 4),   // Big blue creature
+const BLUE_CONTROL: &[(&str, usize, &str)] = &[
+    ("Island", 17, "akh"),
+    ("Counterspell", 4, "mma"),  // Modern Masters — counter target spell
+    ("Cancel", 4, "m14"),        // Magic 2014 — counter target spell (3 mana)
+    ("Mind Rot", 4, "m14"),      // Magic 2014 — target player discards 2
+    ("Control Magic", 3, "mma"), // Modern Masters — gain control of creature
+    ("Mulldrifter", 3, "mma"),   // 2/2 Flying; ETB draw 2
+    ("Divination", 4, "m14"),    // Draw 2
+    ("Wall of Ice", 4, "7ed"),   // Blocker
+    ("Sea Serpent", 4, "m10"),   // Magic 2010 — big blue creature
 ];
 
 /// Exercises issue #16: Fight effects (Prey Upon, Ram Through).
 /// Big green creatures provide good fight targets.
-const GREEN_FIGHT: &[(&str, usize)] = &[
-    ("Forest", 17),
-    ("Prey Upon", 4),   // SP$ Fight: creature you control fights target creature
-    ("Ram Through", 4), // SP$ Fight: similar fight spell
-    ("Garruk's Companion", 4), // 3/2 Trample
-    ("Centaur Courser", 4), // 3/3
-    ("Giant Spider", 3), // 2/4 Reach
-    ("Craw Wurm", 3),   // 6/4
-    ("Giant Growth", 4), // Pump before fighting
-    ("Grizzly Bears", 4), // 2/2
+const GREEN_FIGHT: &[(&str, usize, &str)] = &[
+    ("Forest", 17, "akh"),
+    ("Prey Upon", 4, "isd"),          // Innistrad — creature fights target
+    ("Ram Through", 4, "iko"),        // Ikoria — similar fight spell
+    ("Garruk's Companion", 4, "m13"), // 3/2 Trample
+    ("Centaur Courser", 4, "m14"),    // 3/3
+    ("Giant Spider", 3, "m14"),       // 2/4 Reach
+    ("Craw Wurm", 3, "m11"),          // 6/4
+    ("Giant Growth", 4, "m11"),       // Pump before fighting
+    ("Grizzly Bears", 4, "m12"),      // 2/2
 ];
 
 /// Exercises all implemented mechanics in one deck (Grixis: U/B/R).
@@ -373,41 +380,41 @@ const GREEN_FIGHT: &[(&str, usize)] = &[
 /// - Fight: Prey Upon (creature you control fights target)
 /// - Keywords: Typhoid Rats (Deathtouch), Vampire Nighthawk (Flying/Deathtouch/Lifelink)
 /// - ETB draw: Mulldrifter (Flying, ETB draw 2)
-const SHOWCASE: &[(&str, usize)] = &[
-    ("Island", 7),
-    ("Swamp", 6),
-    ("Mountain", 4),
+const SHOWCASE: &[(&str, usize, &str)] = &[
+    ("Island", 7, "akh"),
+    ("Swamp", 6, "akh"),
+    ("Mountain", 4, "akh"),
     // Burn
-    ("Lightning Bolt", 2),
-    ("Shock", 2),
+    ("Lightning Bolt", 2, "m11"),
+    ("Shock", 2, "m21"),
     // Counter
-    ("Counterspell", 2),
+    ("Counterspell", 2, "mma"),
     // Bounce
-    ("Unsummon", 2),
+    ("Unsummon", 2, "m14"),
     // Token
-    ("Dragon Fodder", 2),
+    ("Dragon Fodder", 2, "ktk"),
     // Scry + Draw
-    ("Preordain", 2),
+    ("Preordain", 2, "m11"),
     // Surveil + Draw
-    ("Notion Rain", 2),
+    ("Notion Rain", 2, "grn"),
     // Dig
-    ("Ransack the Lab", 2),
+    ("Ransack the Lab", 2, "mh1"),
     // Discard
-    ("Mind Rot", 2),
+    ("Mind Rot", 2, "m14"),
     // Mill + Draw
-    ("Thought Scour", 2),
+    ("Thought Scour", 2, "dka"),
     // Reanimate
-    ("Raise Dead", 2),
+    ("Raise Dead", 2, "m13"),
     // Sacrifice cost
-    ("Severed Strands", 2),
+    ("Severed Strands", 2, "grn"),
     // Control gain
-    ("Control Magic", 1),
+    ("Control Magic", 1, "mma"),
     // Fight
-    ("Prey Upon", 2),
+    ("Prey Upon", 2, "isd"),
     // Keywords / threats
-    ("Typhoid Rats", 2),
-    ("Vampire Nighthawk", 2),
-    ("Mulldrifter", 2),
+    ("Typhoid Rats", 2, "isd"),
+    ("Vampire Nighthawk", 2, "m13"),
+    ("Mulldrifter", 2, "mma"),
 ];
 
 /// Exercises issue #17: mass/board-wide effects.
@@ -416,16 +423,16 @@ const SHOWCASE: &[(&str, usize)] = &[
 /// - Righteous Charge: PumpAll +2/+2 to all your creatures until EOT
 /// - Rising Miasma: PumpAll -2/-2 to all creatures until EOT
 /// - Savannah Lions / White Knight / Serra Angel: creatures to interact with mass effects
-const MASS_EFFECTS: &[(&str, usize)] = &[
-    ("Plains", 18),
-    ("Wrath of God", 4), // SP$ DestroyAll | ValidCards$ Creature | NoRegen$ True
-    ("Pyroclasm", 4),    // SP$ DamageAll | NumDmg$ 2 | ValidCards$ Creature
-    ("Righteous Charge", 4), // SP$ PumpAll | ValidCards$ Creature.YouCtrl | NumAtt$ +2 | NumDef$ +2
-    ("Rising Miasma", 4), // SP$ PumpAll | ValidCards$ Creature | NumAtt$ -2 | NumDef$ -2
-    ("Savannah Lions", 4), // 2/1 attacker
-    ("White Knight", 4), // 2/2 First Strike + Protection
-    ("Serra Angel", 4),  // 4/4 Flying + Vigilance
-    ("Darksteel Myr", 4), // Indestructible (survives Wrath of God)
+const MASS_EFFECTS: &[(&str, usize, &str)] = &[
+    ("Plains", 18, "akh"),
+    ("Wrath of God", 4, "m14"),     // Magic 2014
+    ("Pyroclasm", 4, "m11"),        // Magic 2011
+    ("Righteous Charge", 4, "m13"), // Magic 2013
+    ("Rising Miasma", 4, "m15"),    // Magic 2015
+    ("Savannah Lions", 4, "m10"),
+    ("White Knight", 4, "m10"),
+    ("Serra Angel", 4, "m21"),
+    ("Darksteel Myr", 4, "som"), // Scars of Mirrodin — survives Wrath
 ];
 
 /// Exercises issue #18: modal spells (SP$ Charm).
@@ -433,21 +440,21 @@ const MASS_EFFECTS: &[(&str, usize)] = &[
 /// - Grixis Charm: choose from Bounce / Pump -4/-4 / PumpAll +2/+0
 /// - Guttersnipe: burns opponent for each instant/sorcery cast
 /// - Delver of Secrets: evasive threat that pairs with instants
-const CHARM_MODAL: &[(&str, usize)] = &[
-    ("Island", 8),
-    ("Mountain", 6),
-    ("Swamp", 4),
-    ("Izzet Charm", 4),  // Counter / DealDamage / Draw+Discard
-    ("Grixis Charm", 4), // Bounce / Pump -4/-4 / PumpAll +2/+0
-    ("Lightning Bolt", 4),
-    ("Counterspell", 3),
-    ("Guttersnipe", 4),
-    ("Delver of Secrets", 24),
-    ("Gray Ogre", 3),
+const CHARM_MODAL: &[(&str, usize, &str)] = &[
+    ("Island", 8, "m11"),
+    ("Mountain", 6, "m11"),
+    ("Swamp", 4, "m11"),
+    ("Izzet Charm", 4, "rtr"),  // Return to Ravnica — original printing
+    ("Grixis Charm", 4, "con"), // Conflux — original printing
+    ("Lightning Bolt", 4, "m11"),
+    ("Counterspell", 3, "mma"),
+    ("Guttersnipe", 4, "rtr"),        // Return to Ravnica
+    ("Delver of Secrets", 24, "isd"), // Innistrad — original printing (DFC)
+    ("Gray Ogre", 3, "7ed"),
 ];
 
 /// All AI-eligible deck lists, used for random opponent selection.
-const AI_DECK_OPTIONS: &[&[(&str, usize)]] = &[
+const AI_DECK_OPTIONS: &[&[(&str, usize, &str)]] = &[
     RED_BURN,
     GREEN_STOMPY,
     WHITE_AGGRO,
@@ -462,7 +469,7 @@ const AI_DECK_OPTIONS: &[&[(&str, usize)]] = &[
 ];
 
 /// Pick a random deck from all AI-eligible presets.
-fn random_ai_deck() -> &'static [(&'static str, usize)] {
+fn random_ai_deck() -> &'static [(&'static str, usize, &'static str)] {
     let mut rng = rand::thread_rng();
     AI_DECK_OPTIONS
         .choose(&mut rng)
@@ -479,15 +486,20 @@ pub fn build_ai_opponent(game: &mut GameState, owner: PlayerId) {
     build_named_deck(game, owner, RED_BURN);
 }
 
-/// Build a preset deck from a (name, count) list, loading each card definition
-/// from the global CardDatabase (parsed from the Forge card scripts).
-fn build_named_deck(game: &mut GameState, owner: PlayerId, deck: &[(&str, usize)]) {
+/// Build a preset deck from a (name, count, set_code) list, loading each card
+/// definition from the global CardDatabase (parsed from the Forge card scripts).
+/// The set_code is stored on each card instance so the UI can request the
+/// specific printing from Scryfall. An empty set_code means no preference.
+fn build_named_deck(game: &mut GameState, owner: PlayerId, deck: &[(&str, usize, &str)]) {
     let db = get_card_db();
-    for (name, count) in deck {
+    for (name, count, set_code) in deck {
         match db.get_by_card_name(name) {
             Some(rules) => {
                 for _ in 0..*count {
-                    let card = card_rules_to_instance(rules, owner);
+                    let mut card = card_rules_to_instance(rules, owner);
+                    if !set_code.is_empty() {
+                        card.set_code = Some(set_code.to_string());
+                    }
                     let id = game.create_card(card);
                     game.move_card(id, ZoneType::Library, owner);
                 }
@@ -497,15 +509,19 @@ fn build_named_deck(game: &mut GameState, owner: PlayerId, deck: &[(&str, usize)
     }
 }
 
-/// Build a custom deck for `owner` from a list of card names (one name per
+/// Build a custom deck for `owner` from a list of card identities (one per
 /// copy), loading each definition from the global CardDatabase.
 /// Unrecognised names are skipped with a log message.
-pub fn build_custom_deck(game: &mut GameState, owner: PlayerId, names: &[String]) {
+pub fn build_custom_deck(game: &mut GameState, owner: PlayerId, identities: &[CardIdentity]) {
     let db = get_card_db();
-    for name in names {
+    for identity in identities {
+        let name = &identity.name;
         match db.get_by_card_name(name) {
             Some(rules) => {
-                let card = card_rules_to_instance(rules, owner);
+                let mut card = card_rules_to_instance(rules, owner);
+                if !identity.set_code.is_empty() {
+                    card.set_code = Some(identity.set_code.clone());
+                }
                 let id = game.create_card(card);
                 game.move_card(id, ZoneType::Library, owner);
             }

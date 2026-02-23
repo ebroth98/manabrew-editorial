@@ -25,7 +25,11 @@ pub fn card_has_property(card: &CardInstance, filter: &str, source_controller: P
 
 /// Match a single property qualifier against a card.
 /// Mirrors individual property checks in Java's `CardProperty.cardHasProperty()`.
-fn matches_single_property(card: &CardInstance, property: &str, source_controller: PlayerId) -> bool {
+fn matches_single_property(
+    card: &CardInstance,
+    property: &str,
+    source_controller: PlayerId,
+) -> bool {
     match property {
         "OppCtrl" => card.controller != source_controller,
         "YouCtrl" => card.controller == source_controller,

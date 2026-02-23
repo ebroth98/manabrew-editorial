@@ -196,7 +196,7 @@ export default function MyDecks() {
 
     enrichedDecksRef.current.add(selected.id);
     const uniqueNames = [...new Set(toFetch)];
-    fetchCardCollection(uniqueNames)
+    fetchCardCollection(uniqueNames.map((n) => ({ name: n })))
       .then((scryfallMap) => {
         const updates = new Map<string, Partial<Card>>();
         for (const [key, sc] of scryfallMap) {

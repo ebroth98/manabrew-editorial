@@ -6,12 +6,13 @@ import { getCardByName, getTokenByName } from "@/api/scryfall";
  * If the card already has an imageUrl stored, skips the fetch.
  * Pass isToken=true to search the token database instead of named cards.
  * Pass color (engine format: "W", "WU", "C") to disambiguate same-named tokens.
+ * Pass setCode to get a specific printing.
  */
-export function useCardImage(name: string, existingUrl?: string, isToken?: boolean, color?: string) {
+export function useCardImage(name: string, existingUrl?: string, isToken?: boolean, color?: string, setCode?: string) {
   return useQuery({
-    queryKey: ["card-image", name, isToken ? "token" : "card", color ?? ""],
+    queryKey: ["card-image", name, isToken ? "token" : "card", color ?? "", setCode ?? ""],
     queryFn: async () => {
-      const card = isToken ? await getTokenByName(name, color) : await getCardByName(name);
+      const card = isToken ? await getTokenByName(name, color) : await getCardByName(name, setCode);
       // Double-faced cards return card_faces instead of top-level image_uris.
       // Find the face matching the current name (works for both front and back face).
       if (card.card_faces) {

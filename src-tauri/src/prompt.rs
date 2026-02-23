@@ -10,6 +10,7 @@ pub enum DisplayEvent {
     CardPlayed {
         card_id: String,
         card_name: String,
+        set_code: String,
         player_id: String,
     },
     #[serde(rename_all = "camelCase")]

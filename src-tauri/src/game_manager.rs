@@ -14,7 +14,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use crate::ai_agent::SimpleAiAgent;
 use crate::card_db::{card_rules_to_instance, get_token_db};
 use crate::game_view_dto::GameViewDto;
-use crate::preset_decks::{build_ai_opponent, build_custom_deck, build_preset_decks, is_preset_id};
+use crate::preset_decks::{
+    build_ai_opponent, build_custom_deck, build_preset_decks, is_preset_id, CardIdentity,
+};
 use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 use crate::tauri_agent::TauriAgent;
 
@@ -41,13 +43,19 @@ impl GameManager {
         self.latest_prompt.lock().ok().and_then(|g| g.clone())
     }
 
-    pub fn start_game(&self, app: AppHandle, deck_list: Vec<String>, starting_life: i32, commander_name: Option<String>) -> Result<String, String> {
+    pub fn start_game(
+        &self,
+        app: AppHandle,
+        deck_list: Vec<CardIdentity>,
+        starting_life: i32,
+        commander_name: Option<String>,
+    ) -> Result<String, String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
 
         // End existing session if any
         if let Some(old) = session_guard.take() {
             drop(old.response_tx); // signal game thread to stop (recv returns Err)
-            // Don't join — let the old thread wind down while the new game starts
+                                   // Don't join — let the old thread wind down while the new game starts
         }
         // Clear any stale prompt from the previous game
         if let Ok(mut lp) = self.latest_prompt.lock() {
@@ -98,9 +106,20 @@ impl GameManager {
 
         // Game thread
         let handle = thread::spawn(move || {
-            eprintln!("[game_thread] Starting game: {} with deck: {:?}", game_id_clone, deck);
+            eprintln!(
+                "[game_thread] Starting game: {} with deck: {:?}",
+                game_id_clone, deck
+            );
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                run_game(game_id_clone.clone(), deck, starting_life, commander_name, prompt_tx, response_rx, notify_tx);
+                run_game(
+                    game_id_clone.clone(),
+                    deck,
+                    starting_life,
+                    commander_name,
+                    prompt_tx,
+                    response_rx,
+                    notify_tx,
+                );
             }));
             match result {
                 Ok(()) => eprintln!("[game_thread] Game {} finished normally", game_id_clone),
@@ -135,10 +154,14 @@ impl GameManager {
                     AgentPromptInner::ChooseAction { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::ChooseAttackers { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::ChooseBlockers { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseTargetPlayer { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseTargetPlayer { game_view, .. } => {
+                        Some(game_view.clone())
+                    }
                     AgentPromptInner::ChooseTargetCard { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::ChooseTargetAny { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseTargetCardFromZone { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseTargetCardFromZone { game_view, .. } => {
+                        Some(game_view.clone())
+                    }
                     AgentPromptInner::Mulligan { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::GameOver { game_view } => Some(game_view.clone()),
                     AgentPromptInner::StateUpdate { game_view } => Some(game_view.clone()),
@@ -146,7 +169,9 @@ impl GameManager {
                     AgentPromptInner::Surveil { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::Dig { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::ChooseDiscard { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseTargetSpell { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseTargetSpell { game_view, .. } => {
+                        Some(game_view.clone())
+                    }
                     AgentPromptInner::ChooseMode { game_view, .. } => Some(game_view.clone()),
                 });
                 let mut view = base_view.unwrap_or_else(|| GameViewDto {
@@ -168,12 +193,19 @@ impl GameManager {
                     game_over: false,
                     winner_id: None,
                 });
-                let opponent_id = view.players.iter().find(|p| !p.is_human).map(|p| p.id.clone());
+                let opponent_id = view
+                    .players
+                    .iter()
+                    .find(|p| !p.is_human)
+                    .map(|p| p.id.clone());
                 view.game_over = true;
                 view.winner_id = opponent_id;
                 view
             };
-            let prompt = AgentPrompt { display_events: vec![], inner: AgentPromptInner::GameOver { game_view } };
+            let prompt = AgentPrompt {
+                display_events: vec![],
+                inner: AgentPromptInner::GameOver { game_view },
+            };
             if let Ok(mut lp) = self.latest_prompt.lock() {
                 *lp = Some(prompt.clone());
             }
@@ -181,7 +213,9 @@ impl GameManager {
             // Unblock the game thread with a no-op
             let session_guard = self.session.lock().map_err(|e| e.to_string())?;
             if let Some(session) = session_guard.as_ref() {
-                let _ = session.response_tx.send(PlayerAction::PlayCard { card_id: None });
+                let _ = session
+                    .response_tx
+                    .send(PlayerAction::PlayCard { card_id: None });
             }
             return Ok(());
         }
@@ -202,7 +236,7 @@ impl GameManager {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
         if let Some(session) = session_guard.take() {
             drop(session.response_tx); // signals game thread to stop
-            // Don't join here — let the thread wind down on its own so end_game returns fast
+                                       // Don't join here — let the thread wind down on its own so end_game returns fast
         }
         // Clear latest prompt so the next game doesn't see stale state
         if let Ok(mut lp) = self.latest_prompt.lock() {
@@ -220,7 +254,7 @@ fn uuid_simple() -> String {
 
 fn run_game(
     game_id: String,
-    deck_list: Vec<String>,
+    deck_list: Vec<CardIdentity>,
     starting_life: i32,
     commander_name: Option<String>,
     prompt_tx: mpsc::Sender<AgentPrompt>,
@@ -234,8 +268,8 @@ fn run_game(
 
     // Build human player deck: if a single preset ID is given, use that;
     // otherwise build a custom deck from the card name list.
-    if deck_list.len() == 1 && is_preset_id(&deck_list[0]) {
-        build_preset_decks(&mut game, &deck_list[0], p0, p1);
+    if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
+        build_preset_decks(&mut game, &deck_list[0].name, p0, p1);
     } else {
         // Custom deck: build human player deck from card names sent by the frontend.
         build_custom_deck(&mut game, p0, &deck_list);
@@ -256,7 +290,13 @@ fn run_game(
         }
     }
 
-    let human = TauriAgent::new(p0, game_id.clone(), prompt_tx.clone(), response_rx, notify_tx);
+    let human = TauriAgent::new(
+        p0,
+        game_id.clone(),
+        prompt_tx.clone(),
+        response_rx,
+        notify_tx,
+    );
     let ai = SimpleAiAgent;
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human), Box::new(ai)];
@@ -278,7 +318,9 @@ fn run_game(
     let final_view = GameViewDto::from_engine(&game, &game_loop.mana_pools, p0, &game_id, &[], &[]);
     let _ = prompt_tx.send(AgentPrompt {
         display_events: vec![],
-        inner: AgentPromptInner::GameOver { game_view: final_view },
+        inner: AgentPromptInner::GameOver {
+            game_view: final_view,
+        },
     });
 
     let _ = winner; // winner is also in the game_view

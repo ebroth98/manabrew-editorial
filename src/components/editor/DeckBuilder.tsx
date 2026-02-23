@@ -1,6 +1,8 @@
 import { useDeckStore } from "@/stores/useDeckStore";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
+import { PrintPickerModal } from "./PrintPickerModal";
+import { Image as ImageIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
   X, Minus, Plus, Download, Upload, Save, FolderOpen, Trash2,
@@ -188,6 +190,7 @@ function CardVisual({
   dragId,
   onAddOne,
   onRemoveOne,
+  onPickPrint,
   onHover,
   onLeave,
 }: {
@@ -195,6 +198,7 @@ function CardVisual({
   dragId: string;
   onAddOne: () => void;
   onRemoveOne: () => void;
+  onPickPrint: () => void;
   onHover: (x: number, y: number) => void;
   onLeave: () => void;
 }) {
@@ -237,6 +241,9 @@ function CardVisual({
         <Button size="sm" variant="ghost" className="h-6 w-4/5 text-xs text-white/80 hover:text-white hover:bg-white/10" onClick={(e) => { e.stopPropagation(); onRemoveOne(); }}>
           <Minus className="h-3 w-3 mr-1" /> Remove
         </Button>
+        <Button size="sm" variant="ghost" className="h-6 w-4/5 text-xs text-white/80 hover:text-white hover:bg-white/10" onClick={(e) => { e.stopPropagation(); onPickPrint(); }}>
+          <ImageIcon className="h-3 w-3 mr-1" /> Print
+        </Button>
       </div>
     </div>
   );
@@ -254,6 +261,7 @@ function CardRow({
   onSetCommander,
   onRemoveCommander,
   onMoveToSide,
+  onPickPrint,
   onHover,
   onLeave,
 }: {
@@ -266,6 +274,7 @@ function CardRow({
   onSetCommander: () => void;
   onRemoveCommander: () => void;
   onMoveToSide: () => void;
+  onPickPrint: () => void;
   onHover: (x: number, y: number) => void;
   onLeave: () => void;
 }) {
@@ -310,6 +319,9 @@ function CardRow({
           <Button size="icon" variant="ghost" className="h-5 w-5" title="Add one" onClick={(e) => { e.stopPropagation(); onAddOne(); }}>
             <Plus className="h-3 w-3" />
           </Button>
+          <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground" title="Change Print" onClick={(e) => { e.stopPropagation(); onPickPrint(); }}>
+            <ImageIcon className="h-3 w-3" />
+          </Button>
           <Button size="icon" variant="ghost" className="h-5 w-5" title="Remove one" onClick={(e) => { e.stopPropagation(); onRemoveOne(); }}>
             <Minus className="h-3 w-3" />
           </Button>
@@ -340,6 +352,7 @@ function DeckSection({
   onSetCommander,
   onRemoveCommander,
   onMoveToSide,
+  onPickPrint,
   onHover,
   onLeave,
 }: {
@@ -355,6 +368,7 @@ function DeckSection({
   onSetCommander: (card: Card) => void;
   onRemoveCommander: () => void;
   onMoveToSide: (name: string) => void;
+  onPickPrint: (name: string) => void;
   onHover: (card: Card, x: number, y: number) => void;
   onLeave: () => void;
 }) {
@@ -389,6 +403,7 @@ function DeckSection({
                 onSetCommander={() => onSetCommander(g.card)}
                 onRemoveCommander={onRemoveCommander}
                 onMoveToSide={() => onMoveToSide(g.card.name)}
+                onPickPrint={() => onPickPrint(g.card.name)}
                 onHover={(x, y) => onHover(g.card, x, y)}
                 onLeave={onLeave}
               />
@@ -403,6 +418,7 @@ function DeckSection({
                 dragId={`deck-${sectionId}-${g.card.name}`}
                 onAddOne={() => onAddOne(g)}
                 onRemoveOne={() => onRemoveOne(g.card.name)}
+                onPickPrint={() => onPickPrint(g.card.name)}
                 onHover={(x, y) => onHover(g.card, x, y)}
                 onLeave={onLeave}
               />
@@ -417,6 +433,7 @@ function DeckSection({
 // ─── Main DeckBuilder component ───────────────────────────────────────────────
 
 export function DeckBuilder() {
+  const [printPickerCard, setPrintPickerCard] = useState<string | null>(null);
   const {
     currentDeck,
     savedDecks,
@@ -470,7 +487,7 @@ export function DeckBuilder() {
     if (toFetch.length === 0) return;
     const uniqueNames = [...new Set(toFetch)];
     uniqueNames.forEach((n) => enrichedNamesRef.current.add(n.toLowerCase()));
-    fetchCardCollection(uniqueNames).then((scryfallMap) => {
+    fetchCardCollection(uniqueNames.map((n) => ({ name: n }))).then((scryfallMap) => {
       const updates = new Map<string, Partial<Card>>();
       for (const [key, sc] of scryfallMap) updates.set(key, scryfallCardToPartial(sc));
       enrichDeckCards(updates);
@@ -584,7 +601,7 @@ export function DeckBuilder() {
       }
       toast.success(`Imported ${imported} cards — fetching data…`);
       try {
-        const scryfallMap = await fetchCardCollection(parsed.map((p) => p.name));
+        const scryfallMap = await fetchCardCollection(parsed.map((p) => ({ name: p.name })));
         const updates = new Map<string, Partial<Card>>();
         for (const [key, sc] of scryfallMap) updates.set(key, scryfallCardToPartial(sc));
         enrichDeckCards(updates);
@@ -608,6 +625,7 @@ export function DeckBuilder() {
     onSetCommander: setCommander,
     onRemoveCommander: removeCommander,
     onMoveToSide: handleMoveToSide,
+    onPickPrint: (name: string) => setPrintPickerCard(name),
     onHover: (card: Card, x: number, y: number) => setHovered({ card, x, y }),
     onLeave: () => setHovered(null),
   };
@@ -852,6 +870,7 @@ export function DeckBuilder() {
                           dragId="deck-commander"
                           onAddOne={() => {}}
                           onRemoveOne={removeCommander}
+                          onPickPrint={() => setPrintPickerCard(currentDeck.commander!.name)}
                           onHover={(x, y) => setHovered({ card: currentDeck.commander!, x, y })}
                           onLeave={() => setHovered(null)}
                         />
@@ -978,6 +997,7 @@ export function DeckBuilder() {
       <DeckStats />
 
       {hovered && <CardPreview card={hovered.card} mouseX={hovered.x} mouseY={hovered.y} />}
+      <PrintPickerModal cardName={printPickerCard} onClose={() => setPrintPickerCard(null)} />
     </div>
   );
 }

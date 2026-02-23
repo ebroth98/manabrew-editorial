@@ -22,7 +22,7 @@ const CARD_H = 336; // 5:7 ratio
  * Supports showing front or back face for double-faced cards.
  */
 export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: CardPreviewProps) {
-  const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color);
+  const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color, card.setCode);
   const imageUrl = card.imageUrl ?? fetchedUrl ?? null;
   
   // Fetch double-faced card data if needed
