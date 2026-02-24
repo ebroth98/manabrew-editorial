@@ -977,3 +977,4 @@
 | Print picker in deck builder (list view) | **Implemented** | Image icon button on each `CardRow`; opens `PrintPickerModal` |
 | Print picker in deck builder (visual/stack) | **Implemented** | Image icon overlay on each `CardVisual`; opens `PrintPickerModal` |
 | Print picker for commander | **Implemented** | Commander card visual mode also exposes print picker |
+| Auto-priority pass | **Implemented** | `Game.tsx` useEffect auto-responds after random 300-800ms delay when `chooseAction` has no playable cards, `chooseAttackers` has no attackers, or `chooseBlockers` has no blockers; toggle in `Settings.tsx` backed by `usePreferencesStore.autoPassEnabled` |

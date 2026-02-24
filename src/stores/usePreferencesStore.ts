@@ -15,6 +15,10 @@ interface PreferencesState {
   setServerPort: (port: number) => void;
   setServerUsername: (username: string) => void;
   setServerPassword: (password: string) => void;
+
+  /** Auto-pass priority when no legal actions are available */
+  autoPassEnabled: boolean;
+  setAutoPassEnabled: (enabled: boolean) => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -31,6 +35,9 @@ export const usePreferencesStore = create<PreferencesState>()(
       setServerPort: (serverPort) => set({ serverPort }),
       setServerUsername: (serverUsername) => set({ serverUsername }),
       setServerPassword: (serverPassword) => set({ serverPassword }),
+
+      autoPassEnabled: true,
+      setAutoPassEnabled: (autoPassEnabled) => set({ autoPassEnabled }),
     }),
     { name: 'xmage-preferences' },
   ),

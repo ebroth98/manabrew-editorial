@@ -898,6 +898,40 @@ export default function Game() {
     return () => window.removeEventListener("keydown", handleKey);
   }, [passPriority]);
 
+  // Auto-pass: respond automatically when no legal actions available
+  const autoPassEnabled = usePreferencesStore((s) => s.autoPassEnabled);
+  const [isAutoPassing, setIsAutoPassing] = useState(false);
+
+  useEffect(() => {
+    setIsAutoPassing(false);
+
+    if (!currentPrompt || isWaitingForResponse) return;
+    if (!autoPassEnabled) return;
+
+    let shouldAutoPass = false;
+
+    if (currentPrompt.type === "chooseAction") {
+      const ids = currentPrompt.playableCardIds ?? [];
+      shouldAutoPass = ids.length === 0;
+    } else if (currentPrompt.type === "chooseAttackers") {
+      const ids = currentPrompt.availableAttackerIds ?? [];
+      shouldAutoPass = ids.length === 0;
+    } else if (currentPrompt.type === "chooseBlockers") {
+      const ids = currentPrompt.availableBlockerIds ?? [];
+      shouldAutoPass = ids.length === 0;
+    }
+
+    if (!shouldAutoPass) return;
+
+    setIsAutoPassing(true);
+    const delay = 300 + Math.floor(Math.random() * 500); // 300-800ms
+    const timer = setTimeout(() => {
+      passPriority();
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [currentPrompt, isWaitingForResponse, autoPassEnabled, passPriority]);
+
   // Reset combat state whenever the prompt type changes
   useEffect(() => {
     setPendingAttackers([]);
@@ -1674,76 +1708,94 @@ export default function Game() {
                   </span>
                 )}
                 {promptType === "chooseAction" && (
-                  <>
-                    <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
-                      Pass (Space)
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="flex items-center gap-1"
-                      onClick={passPriority}
-                      disabled={isWaitingForResponse}
-                      title="Pass priority to end of turn (F6)"
-                    >
-                      <TimerOff className="h-3.5 w-3.5" />
-                      End Turn (F6)
-                    </Button>
-                  </>
+                  isAutoPassing ? (
+                    <span className="text-xs text-muted-foreground italic animate-pulse">
+                      Auto-passing…
+                    </span>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
+                        Pass (Space)
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex items-center gap-1"
+                        onClick={passPriority}
+                        disabled={isWaitingForResponse}
+                        title="Pass priority to end of turn (F6)"
+                      >
+                        <TimerOff className="h-3.5 w-3.5" />
+                        End Turn (F6)
+                      </Button>
+                    </>
+                  )
                 )}
                 {promptType === "chooseAttackers" && (
-                  <>
-                    <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
-                      No Attackers
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      className="flex items-center gap-1"
-                      disabled={isWaitingForResponse}
-                      onClick={() =>
-                        declareAttackers(
-                          currentPrompt?.availableAttackerIds ?? [],
-                        )
-                      }
-                    >
-                      <Sword className="h-3.5 w-3.5" />
-                      Attack All
-                    </Button>
-                    {pendingAttackers.length > 0 && (
+                  isAutoPassing ? (
+                    <span className="text-xs text-muted-foreground italic animate-pulse">
+                      Auto-passing…
+                    </span>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
+                        No Attackers
+                      </Button>
                       <Button
                         size="sm"
-                        className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white"
+                        variant="secondary"
+                        className="flex items-center gap-1"
                         disabled={isWaitingForResponse}
-                        onClick={() => declareAttackers(pendingAttackers)}
+                        onClick={() =>
+                          declareAttackers(
+                            currentPrompt?.availableAttackerIds ?? [],
+                          )
+                        }
                       >
                         <Sword className="h-3.5 w-3.5" />
-                        Attack ({pendingAttackers.length})
+                        Attack All
                       </Button>
-                    )}
-                  </>
+                      {pendingAttackers.length > 0 && (
+                        <Button
+                          size="sm"
+                          className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white"
+                          disabled={isWaitingForResponse}
+                          onClick={() => declareAttackers(pendingAttackers)}
+                        >
+                          <Sword className="h-3.5 w-3.5" />
+                          Attack ({pendingAttackers.length})
+                        </Button>
+                      )}
+                    </>
+                  )
                 )}
                 {promptType === "chooseBlockers" && (
-                  <>
-                    <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
-                      No Blockers
-                    </Button>
-                    {pendingAttacker && (
-                      <span className="text-xs text-muted-foreground italic self-center">
-                        Now click your blocker
-                      </span>
-                    )}
-                    {blockAssignments.length > 0 && (
-                      <Button
-                        size="sm"
-                        className="bg-blue-600 hover:bg-blue-700 text-white"
-                        disabled={isWaitingForResponse}
-                        onClick={() => declareBlockers(blockAssignments)}
-                      >
-                        Confirm Blocks ({blockAssignments.length})
+                  isAutoPassing ? (
+                    <span className="text-xs text-muted-foreground italic animate-pulse">
+                      Auto-passing…
+                    </span>
+                  ) : (
+                    <>
+                      <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
+                        No Blockers
                       </Button>
-                    )}
-                  </>
+                      {pendingAttacker && (
+                        <span className="text-xs text-muted-foreground italic self-center">
+                          Now click your blocker
+                        </span>
+                      )}
+                      {blockAssignments.length > 0 && (
+                        <Button
+                          size="sm"
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                          disabled={isWaitingForResponse}
+                          onClick={() => declareBlockers(blockAssignments)}
+                        >
+                          Confirm Blocks ({blockAssignments.length})
+                        </Button>
+                      )}
+                    </>
+                  )
                 )}
                 {confirmConcede ? (
                   <>
