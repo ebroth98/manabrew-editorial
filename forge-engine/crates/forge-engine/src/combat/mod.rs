@@ -112,6 +112,9 @@ impl CombatState {
             let attacker_has_trample = attacker.has_trample();
             let attacker_has_deathtouch = attacker.has_deathtouch();
             let attacker_has_lifelink = attacker.has_lifelink();
+            let attacker_has_infect = attacker.has_infect();
+            let attacker_has_wither = attacker.has_wither();
+            let attacker_toxic_count = attacker.get_toxic_count();
             let attacker_controller = attacker.controller;
 
             // Determine if this attacker deals damage in this step
@@ -141,6 +144,8 @@ impl CombatState {
                     attacker_power,
                     attacker_has_lifelink,
                     attacker_controller,
+                    attacker_has_infect,
+                    attacker_toxic_count,
                 );
                 events.push(CombatDamageEvent {
                     source: attacker_id,
@@ -172,6 +177,14 @@ impl CombatState {
                         continue;
                     }
 
+                    // Protection damage prevention — stopgap until replacement effect
+                    // framework handles DamageDone prevention (Java uses ReplaceDamage).
+                    // Blocking rules already prevent most cases via can_creature_block(),
+                    // but this covers edge cases like gaining protection after blocks.
+                    if game.card(blocker_id).is_protected_from(game.card(attacker_id)) {
+                        continue;
+                    }
+
                     let blocker_toughness = game.card(blocker_id).toughness();
                     let blocker_damage = game.card(blocker_id).damage;
                     let remaining_toughness = blocker_toughness - blocker_damage;
@@ -191,6 +204,7 @@ impl CombatState {
                             attacker_has_deathtouch,
                             attacker_has_lifelink,
                             attacker_controller,
+                            attacker_has_wither || attacker_has_infect,
                         );
                         events.push(CombatDamageEvent {
                             source: attacker_id,
@@ -210,6 +224,8 @@ impl CombatState {
                     let blocker_has_ds = blocker_card.has_double_strike();
                     let blocker_has_deathtouch = blocker_card.has_deathtouch();
                     let blocker_has_lifelink = blocker_card.has_lifelink();
+                    let blocker_has_infect = blocker_card.has_infect();
+                    let blocker_has_wither = blocker_card.has_wither();
                     let blocker_controller = blocker_card.controller;
 
                     let blocker_deals = if first_strike_only {
@@ -219,6 +235,11 @@ impl CombatState {
                     };
 
                     if blocker_deals {
+                        // Protection damage prevention — see note above.
+                        if game.card(attacker_id).is_protected_from(game.card(blocker_id)) {
+                            continue;
+                        }
+
                         let blocker_power = game.card(blocker_id).power();
                         if blocker_power > 0 {
                             deal_combat_damage_to_card(
@@ -228,6 +249,7 @@ impl CombatState {
                                 blocker_has_deathtouch,
                                 blocker_has_lifelink,
                                 blocker_controller,
+                                blocker_has_wither || blocker_has_infect,
                             );
                             events.push(CombatDamageEvent {
                                 source: blocker_id,
@@ -250,6 +272,8 @@ impl CombatState {
                         remaining_damage,
                         attacker_has_lifelink,
                         attacker_controller,
+                        attacker_has_infect,
+                        attacker_toxic_count,
                     );
                     events.push(CombatDamageEvent {
                         source: attacker_id,
@@ -294,8 +318,48 @@ pub fn get_available_blockers(game: &GameState, player: PlayerId) -> Vec<CardId>
         .collect()
 }
 
+/// Check if a specific blocker can legally block a specific attacker.
+/// Mirrors Java's CombatUtil.canBlock().
+pub fn can_creature_block(game: &GameState, blocker_id: CardId, attacker_id: CardId) -> bool {
+    let attacker = game.card(attacker_id);
+    let blocker = game.card(blocker_id);
+
+    // Flying: only blocked by flying or reach
+    if attacker.has_flying() && !blocker.has_flying() && !blocker.has_reach() {
+        return false;
+    }
+    // Fear: only blocked by artifact or black creatures
+    if attacker.has_fear() && !blocker.type_line.is_artifact() && !blocker.color.has_black() {
+        return false;
+    }
+    // Intimidate: only blocked by artifact or creatures sharing a color
+    if attacker.has_intimidate()
+        && !blocker.type_line.is_artifact()
+        && !blocker.color.shares_color_with(attacker.color)
+    {
+        return false;
+    }
+    // Shadow: shadow only blocked by shadow, non-shadow not blocked by shadow
+    if attacker.has_shadow() != blocker.has_shadow() {
+        return false;
+    }
+    // Horsemanship: only blocked by horsemanship
+    if attacker.has_horsemanship() && !blocker.has_horsemanship() {
+        return false;
+    }
+    // Skulk: can't be blocked by creatures with greater power
+    if attacker.has_skulk() && blocker.power() > attacker.power() {
+        return false;
+    }
+    // Protection: can't be blocked by matching creatures
+    if attacker.is_protected_from(blocker) {
+        return false;
+    }
+    true
+}
+
 /// Filter blockers to only those that can legally block at least one attacker.
-/// A creature without flying or reach cannot block a flier.
+/// Accounts for Flying, Fear, Intimidate, Shadow, Horsemanship, Skulk, Protection.
 pub fn filter_legal_blockers(
     game: &GameState,
     attackers: &[CardId],
@@ -304,38 +368,43 @@ pub fn filter_legal_blockers(
     blockers
         .iter()
         .filter(|&&blocker_id| {
-            let blocker = game.card(blocker_id);
             // A blocker is legal if it can block at least one attacker
-            attackers.iter().any(|&attacker_id| {
-                let attacker = game.card(attacker_id);
-                if attacker.has_flying() {
-                    blocker.has_flying() || blocker.has_reach()
-                } else {
-                    true
-                }
-            })
+            attackers
+                .iter()
+                .any(|&attacker_id| can_creature_block(game, blocker_id, attacker_id))
         })
         .copied()
         .collect()
 }
 
-/// Deal combat damage to a player, handling lifelink.
+/// Deal combat damage to a player, handling lifelink, Infect, and Toxic.
 fn deal_combat_damage_to_player(
     game: &mut GameState,
     target: PlayerId,
     amount: i32,
     lifelink: bool,
     source_controller: PlayerId,
+    source_has_infect: bool,
+    source_toxic_count: Option<i32>,
 ) {
     if amount > 0 {
-        game.deal_damage_to_player(target, amount);
+        if source_has_infect {
+            // Infect: deal damage as poison counters instead of life loss
+            game.player_mut(target).poison_counters += amount;
+        } else {
+            game.deal_damage_to_player(target, amount);
+        }
+        // Toxic: add poison counters in addition to normal damage
+        if let Some(toxic) = source_toxic_count {
+            game.player_mut(target).poison_counters += toxic;
+        }
         if lifelink {
             game.player_mut(source_controller).gain_life(amount);
         }
     }
 }
 
-/// Deal combat damage to a card, handling deathtouch and lifelink.
+/// Deal combat damage to a card, handling deathtouch, lifelink, Infect/Wither.
 fn deal_combat_damage_to_card(
     game: &mut GameState,
     target: CardId,
@@ -343,9 +412,16 @@ fn deal_combat_damage_to_card(
     deathtouch: bool,
     lifelink: bool,
     source_controller: PlayerId,
+    source_has_wither_or_infect: bool,
 ) {
     if amount > 0 {
-        game.deal_damage_to_card(target, amount);
+        if source_has_wither_or_infect {
+            // Wither/Infect: damage to creatures as -1/-1 counters instead
+            game.card_mut(target)
+                .add_counter(crate::card::CounterType::M1M1, amount);
+        } else {
+            game.deal_damage_to_card(target, amount);
+        }
         if deathtouch {
             game.card_mut(target).has_deathtouch_damage = true;
         }

@@ -4,9 +4,7 @@ use super::{parse_param, resolve_defined_player, EffectContext};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    println!("DEBUG: resolving damage_deal effect!");
     let damage = resolve_damage_amount(ctx, sa);
-    println!("DEBUG: calculated damage amount: {}", damage);
 
     // For triggered abilities, resolve Defined$ for target
     let target_player = sa.target_chosen.target_player.or_else(|| {
@@ -17,9 +15,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     });
 
+    // Check source card for Infect/Wither keywords
+    let (source_has_infect, source_has_wither) = if let Some(src_id) = sa.source {
+        let src = ctx.game.card(src_id);
+        (src.has_infect(), src.has_wither())
+    } else {
+        (false, false)
+    };
+
     if let Some(target_player) = target_player {
-        println!("DEBUG: targeting player {:?}", target_player);
-        ctx.game.deal_damage_to_player(target_player, damage);
+        if source_has_infect {
+            // Infect: deal damage to players as poison counters
+            ctx.game.player_mut(target_player).poison_counters += damage;
+        } else {
+            ctx.game.deal_damage_to_player(target_player, damage);
+        }
 
         // Fire DamageDone trigger
         ctx.trigger_handler.run_trigger(
@@ -33,12 +43,24 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             },
             false,
         );
-    } else {
-        println!("DEBUG: target_player is NONE");
     }
     if let Some(target_card) = sa.target_chosen.target_card {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {
-            ctx.game.deal_damage_to_card(target_card, damage);
+            // Protection: prevents all damage from matching sources
+            if let Some(src_id) = sa.source {
+                if ctx.game.card(target_card).is_protected_from(ctx.game.card(src_id)) {
+                    return;
+                }
+            }
+
+            if source_has_infect || source_has_wither {
+                // Infect/Wither: damage to creatures as -1/-1 counters
+                ctx.game
+                    .card_mut(target_card)
+                    .add_counter(crate::card::CounterType::M1M1, damage);
+            } else {
+                ctx.game.deal_damage_to_card(target_card, damage);
+            }
 
             // Fire DamageDone trigger
             ctx.trigger_handler.run_trigger(

@@ -133,8 +133,8 @@
 | `CopyPermanentEffect.java` | Copy a permanent onto battlefield | **Partial** — see `CloneEffect.java` above |
 | `CopySpellAbilityEffect.java` | Copy a spell on the stack | Not implemented |
 | `CounterEffect.java` | Counter a spell or ability | **Implemented** — `counter.rs`: removes targeted stack entry via `MagicStack.remove_by_id`; moves source card to graveyard (or Destination$); `TargetKind::Spell` + `target_stack_entry: Option<u32>` in targeting system; `ChooseTargetSpell` prompt + clickable stack UI |
-| `CountersPutEffect.java` | Put counters on a permanent/player | Not implemented |
-| `CountersRemoveEffect.java` | Remove counters | Not implemented |
+| `CountersPutEffect.java` | Put counters on a permanent/player | **Implemented** — `counters_put_effect.rs`: puts `CounterType$` counters on source card (`Defined$ Self`); fires `CounterAdded` trigger |
+| `CountersRemoveEffect.java` | Remove counters | **Partial** — `counters_remove_effect.rs`: removes specific `CounterType$` counters from `Defined$ Self` or targeted card; `CounterNum$` supports integer and "All"; fires `CounterRemoved` trigger. Deferred: `CounterType$ Any/All` (interactive selection), `Choices$`, `Optional$`, `UpTo$`, player counter removal |
 | `CountersMoveEffect.java` | Move counters between permanents | Not implemented |
 | `CountersMultiplyEffect.java` | Multiply counters | Not implemented |
 | `CountersProliferateEffect.java` | Proliferate | Not implemented |
@@ -176,7 +176,7 @@
 | `PermanentNoncreatureEffect.java` | Resolve non-creature permanent spell | Not implemented |
 | `PhasesEffect.java` | Phase in/out | Not implemented |
 | `PlayEffect.java` | Play card from zone (exile, GY) | Not implemented |
-| `PoisonEffect.java` | Give poison counters | Not implemented |
+| `PoisonEffect.java` | Give poison counters | **Implemented** — `poison_effect.rs`: adds `Num$` poison counters to players; supports `Defined$` (Player/Opponent/You) and `ValidTgts$ Player` targeting; `Defined$ Player` adds to all alive players (Ichor Rats pattern) |
 | `ProtectEffect.java` | Grant protection | Not implemented |
 | `PumpEffect.java` | +N/+N (or set P/T) until end of turn | **Implemented** (`pump_effect.rs`: single-target power/toughness modifier until EOT) |
 | `PumpAllEffect.java` | Pump all matching creatures | **Implemented** — `pump_all_effect.rs`: `ValidCards$` filter, `NumAtt$`/`NumDef$` (signed, supports negative debuffs), `YouCtrl`/`OppCtrl`; duration = EOT (zeroed by `step_cleanup`) |
@@ -429,17 +429,48 @@
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `Keyword.java` | Enum of all MTG keywords (~200+) | **Partial** (string-based keywords in `card.rs`) |
+| `Keyword.java` | Enum of all MTG keywords (~200+) | **Partial** (string-based keywords in `card.rs`; ~20 keywords with runtime logic) |
 | `KeywordInterface.java` | Interface for keyword instances | **Partial** (Vec<String> on CardInstance) |
 | `KeywordInstance.java` | Abstract keyword instance with parameters | Not implemented |
 | `KeywordCollection.java` | Collection of keyword instances | **Partial** (Vec<String>) |
-| `KeywordWithAmount.java` | Keywords with numeric values (Bushido 2) | Not implemented |
-| `KeywordWithCost.java` | Keywords with costs (Equip {3}) | Not implemented |
+| `KeywordWithAmount.java` | Keywords with numeric values (Bushido 2) | **Partial** (Toxic:N parsed via `get_toxic_count()`) |
+| `KeywordWithCost.java` | Keywords with costs (Equip {3}) | **Partial** (Ward:N parsed via `get_ward_cost()`) |
 | `KeywordWithCostAndType.java` | Keywords with cost + type (Cycling {2}) | Not implemented |
-| `KeywordWithType.java` | Keywords with type (Protection from Red) | Not implemented |
+| `KeywordWithType.java` | Keywords with type (Protection from Red) | **Implemented** (`has_protection_from()`, `is_protected_from()`, `get_protections()` in `card/mod.rs`) |
 | `KeywordsChange.java` | Keyword modification tracking | Not implemented |
-| Various Keyword*.java | Specific keyword implementations | Not implemented |
+| Various Keyword*.java | Specific keyword implementations | **Partial** — see keyword status below |
 | `package-info.java` | Package doc | N/A |
+
+### Keyword Runtime Status
+
+| Keyword | Status | Implementation |
+|---------|:------:|----------------|
+| Flying | **Implemented** | `has_flying()` — blocking restriction in `combat/mod.rs` |
+| Reach | **Implemented** | `has_reach()` — can block fliers |
+| First Strike | **Implemented** | `has_first_strike()` — first-strike damage step |
+| Double Strike | **Implemented** | `has_double_strike()` — both damage steps |
+| Trample | **Implemented** | `has_trample()` — excess damage to player |
+| Deathtouch | **Implemented** | `has_deathtouch()` — lethal with 1 damage |
+| Lifelink | **Implemented** | `has_lifelink()` — gain life from damage |
+| Vigilance | **Implemented** | `has_vigilance()` — no tap on attack |
+| Defender | **Implemented** | `has_defender()` — can't attack |
+| Haste | **Implemented** | `has_haste()` — ignores summoning sickness |
+| Flash | **Implemented** | `has_keyword("Flash")` — cast at instant speed |
+| Hexproof | **Implemented** | `has_hexproof()` — can't be targeted by opponents (`target_restrictions.rs`) |
+| Shroud | **Implemented** | `has_shroud()` — can't be targeted by anyone (`target_restrictions.rs`) |
+| Hexproof from X | **Implemented** | `has_hexproof_from(color)` — color-specific hexproof |
+| Menace | **Implemented** | `has_menace()` — must be blocked by 2+ creatures (`game_loop.rs`) |
+| Fear | **Implemented** | `has_fear()` — only blocked by artifact or black (`combat/mod.rs`) |
+| Intimidate | **Implemented** | `has_intimidate()` — only blocked by artifact or shared color |
+| Shadow | **Implemented** | `has_shadow()` — shadow vs non-shadow blocking |
+| Skulk | **Implemented** | `has_skulk()` — can't be blocked by greater power |
+| Horsemanship | **Implemented** | `has_horsemanship()` — only blocked by horsemanship |
+| Indestructible | **Implemented** | `has_indestructible()` — prevents destroy (`destroy_effect.rs`, `destroy_all_effect.rs`) |
+| Infect | **Implemented** | `has_infect()` — damage as poison counters / -1/-1 counters |
+| Wither | **Implemented** | `has_wither()` — damage to creatures as -1/-1 counters |
+| Toxic | **Implemented** | `get_toxic_count()` — adds poison counters on combat damage |
+| Protection from X | **Implemented** | `is_protected_from()` — prevents targeting, blocking, damage, attaching |
+| Ward | **Partial** | `get_ward_cost()` — keyword parsed and recognized; counter-unless-pay not yet wired |
 
 ---
 
@@ -904,7 +935,7 @@
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
 | Core Game | 37 | 3 | 8 | 26 |
 | Ability System | 10 | 0 | 2 | 8 |
-| Ability Effects | 197 | 28 | 13 | 156 |
+| Ability Effects | 197 | 30 | 14 | 153 |
 | Card System | 28 | 4 | 4 | 20 |
 | Perpetual Effects | 8 | 0 | 0 | 8 |
 | Tokens | 1 | 0 | 0 | 1 |
@@ -912,7 +943,7 @@
 | Costs | 60 | 1 | 4 | 55 |
 | Events | 60 | 0 | 3 | 57 |
 | Extra Hands | 1 | 0 | 0 | 1 |
-| Keywords | 20 | 0 | 2 | 18 |
+| Keywords | 20 | 1 | 5 | 14 |
 | Mana | 10 | 1 | 2 | 7 |
 | Mulligan | 7 | 0 | 0 | 7 |
 | Phases | 7 | 1 | 3 | 3 |
@@ -923,9 +954,9 @@
 | Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 26 | 5 | 109 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **72** | **62** | **635** |
+| **TOTAL** | **769** | **75** | **66** | **628** |
 
-> **Coverage: ~17.4% implemented or partially implemented** (134 of 769 features have some Rust counterpart)
+> **Coverage: ~18.3% implemented or partially implemented** (141 of 769 features have some Rust counterpart)
 >
 > The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The trigger system now supports **33 trigger types** (8 original + 25 new) with OptionalDecider$ prompting, delayed trigger infrastructure, and comprehensive ValidCard$/ValidPlayer$ filtering. The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (109 still not implemented), and **costs** (58 files).
 
@@ -937,7 +968,7 @@
 |---------|--------|-------|
 | Set code on `CardInstance` | **Implemented** | `card.set_code: Option<String>` in `forge-engine/src/card/mod.rs` |
 | Set code in `CardDto` | **Implemented** | `set_code: String` in `game_view_dto.rs`; serialized as `setCode` via serde |
-| Set code in preset decks | **Implemented** | All 14 preset decks in `preset_decks.rs` carry a Scryfall set code per card entry (3-tuple format) |
+| Set code in preset decks | **Implemented** | All 16 preset decks in `preset_decks.rs` carry a Scryfall set code per card entry (3-tuple format) |
 | Set code in custom decks | **Implemented** | `CardIdentity.set_code` propagated to engine via `build_custom_deck` |
 | Scryfall set-specific image fetch | **Implemented** | `getCardByName(name, setCode?)` in `scryfall.ts`; falls back to name-only on miss |
 | `useCardImage` set-aware | **Implemented** | Hook passes `setCode` to `getCardByName`; `Card.tsx` passes `card.setCode` |

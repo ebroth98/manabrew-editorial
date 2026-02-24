@@ -219,7 +219,7 @@ fn choose_targets_for(
 
     let player = sa.activating_player;
 
-    if !tr.has_candidates(game, player) {
+    if !tr.has_candidates(game, player, sa.source) {
         return false;
     }
 
@@ -235,7 +235,13 @@ fn choose_targets_for(
         TargetKind::Any => {
             // "any target" includes all alive players (the caster too) and all creatures.
             let valid_players: Vec<PlayerId> = game.alive_players().into_iter().collect();
-            let valid_creatures = target_restrictions::get_all_candidates_creatures(game);
+            let valid_creatures: Vec<CardId> =
+                target_restrictions::get_all_candidates_creatures(game)
+                    .into_iter()
+                    .filter(|&cid| {
+                        target_restrictions::can_be_targeted_by(game, cid, player, sa.source)
+                    })
+                    .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             match agent.choose_target_any(player, &valid_players, &valid_creatures) {
@@ -245,11 +251,17 @@ fn choose_targets_for(
             }
         }
         TargetKind::Creature(ref filter) => {
-            let valid = target_restrictions::get_all_candidates_creature_filtered(
-                game,
-                filter.as_deref(),
-                player,
-            );
+            let valid: Vec<CardId> =
+                target_restrictions::get_all_candidates_creature_filtered(
+                    game,
+                    filter.as_deref(),
+                    player,
+                )
+                .into_iter()
+                .filter(|&cid| {
+                    target_restrictions::can_be_targeted_by(game, cid, player, sa.source)
+                })
+                .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid);

@@ -13,6 +13,7 @@ pub mod control_gain_effect;
 pub mod copy_permanent_effect;
 pub mod counter_effect;
 pub mod counters_put_effect;
+pub mod counters_remove_effect;
 pub mod damage_all_effect;
 pub mod damage_deal_effect;
 pub mod destroy_all_effect;
@@ -28,6 +29,7 @@ pub mod look_at_effect;
 pub mod mana_effect;
 pub mod mill_effect;
 pub mod peek_and_reveal_effect;
+pub mod poison_effect;
 pub mod pump_all_effect;
 pub mod pump_effect;
 pub mod rearrange_top_of_library_effect;
@@ -81,6 +83,8 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
         "GainLife" => life_gain_effect::resolve(ctx, sa),
         "LoseLife" => life_lose_effect::resolve(ctx, sa),
         "PutCounter" => counters_put_effect::resolve(ctx, sa),
+        "RemoveCounter" => counters_remove_effect::resolve(ctx, sa),
+        "Poison" => poison_effect::resolve(ctx, sa),
         "Pump" => pump_effect::resolve(ctx, sa),
         "Destroy" => destroy_effect::resolve(ctx, sa),
         "Draw" => draw_effect::resolve(ctx, sa),
@@ -185,6 +189,10 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "SetState"
     } else if ability.contains("$ Cleanup") {
         "Cleanup"
+    } else if ability.contains("RemoveCounter") {
+        "RemoveCounter"
+    } else if ability.contains("$ Poison") {
+        "Poison"
     } else if ability.contains("$ Counter") {
         "Counter"
     } else if ability.contains("ControlGain") {
@@ -248,14 +256,26 @@ pub fn resolve_defined_player(
     }
 }
 
-/// Parse a counter type string to CounterType enum.
+/// Parse a counter type string to CounterType enum (case-insensitive).
 pub fn parse_counter_type(s: &str) -> CounterType {
-    match s {
+    match s.to_uppercase().as_str() {
         "P1P1" | "+1/+1" => CounterType::P1P1,
         "M1M1" | "-1/-1" => CounterType::M1M1,
-        "Loyalty" => CounterType::Loyalty,
-        "Charge" => CounterType::Charge,
-        _ => CounterType::P1P1,
+        "LOYALTY" => CounterType::Loyalty,
+        "CHARGE" => CounterType::Charge,
+        "QUEST" => CounterType::Quest,
+        "STUDY" => CounterType::Study,
+        "AGE" => CounterType::Age,
+        "FADE" => CounterType::Fade,
+        "TIME" => CounterType::Time,
+        "DEPLETION" => CounterType::Depletion,
+        "STORAGE" => CounterType::Storage,
+        "MINING" => CounterType::Mining,
+        "BRICK" => CounterType::Brick,
+        "LEVEL" => CounterType::Level,
+        "LORE" => CounterType::Lore,
+        "PAGE" => CounterType::Page,
+        _ => CounterType::P1P1, // fallback
     }
 }
 

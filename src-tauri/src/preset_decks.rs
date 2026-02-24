@@ -127,6 +127,18 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Soul Warden + Guttersnipe + combat triggers — exercises expanded trigger types".into(),
             color: "text-teal-400".into(),
         },
+        PresetDeckInfo {
+            id: "keyword_test".into(),
+            label: "Keyword Test".into(),
+            desc: "Hexproof + Menace + Indestructible + Protection + Infect — exercises evasion & protection keywords".into(),
+            color: "text-emerald-400".into(),
+        },
+        PresetDeckInfo {
+            id: "poison_test".into(),
+            label: "Poison Test".into(),
+            desc: "Infect + Poison counters — Glistener Elf, Ichor Rats, Plague Stinger, Blighted Agent".into(),
+            color: "text-lime-400".into(),
+        },
     ]
 }
 
@@ -149,6 +161,8 @@ pub fn is_preset_id(id: &str) -> bool {
             | "mass_effects"
             | "charm_modal"
             | "trigger_test"
+            | "keyword_test"
+            | "poison_test"
     )
 }
 
@@ -213,6 +227,14 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "trigger_test" => {
             build_named_deck(game, p0, TRIGGER_TEST);
             build_named_deck(game, p1, GREEN_STOMPY);
+        }
+        "keyword_test" => {
+            build_named_deck(game, p0, KEYWORD_TEST);
+            build_named_deck(game, p1, WHITE_AGGRO);
+        }
+        "poison_test" => {
+            build_named_deck(game, p0, POISON_TEST);
+            build_named_deck(game, p1, WHITE_AGGRO);
         }
         _ => {
             // red_burn (default)
@@ -483,6 +505,79 @@ const TRIGGER_TEST: &[(&str, usize, &str)] = &[
     ("Raise the Alarm", 4, "m15"),   // Token ETB → ChangesZone triggers
     ("Vampire Nighthawk", 3, "m13"), // Lifelink → LifeGained from combat
     ("White Knight", 3, "m10"),      // First strike blocker
+];
+
+/// Exercises issue #20: keyword abilities — evasion & protection.
+/// All cards are NEW (not used in any other preset deck).
+/// - Plague Stinger: Flying + Infect (poison counters + -1/-1 counters)
+/// - Sickle Ripper: Wither (-1/-1 counters on damage)
+/// - Rancid Rats: Skulk + Deathtouch (can't be blocked by greater power)
+/// - Severed Legion: Fear (only blocked by artifact or black)
+/// - Boggart Brute: Menace (must be blocked by 2+)
+/// - Bladetusk Boar: Intimidate (only blocked by artifact or shared color)
+/// - Thalakos Sentry: Shadow (shadow vs non-shadow blocking)
+/// - Humble Budoka: Shroud (can't be targeted by anyone)
+/// - Wardscale Crocodile: Hexproof (can't be targeted by opponents)
+/// - Zombie Outlander: Protection from green
+/// - Yavimaya Barbarian: Protection from blue
+/// - Darksteel Myr: Indestructible (survives destroy effects)
+const KEYWORD_TEST: &[(&str, usize, &str)] = &[
+    ("Swamp", 7, "akh"),
+    ("Forest", 3, "akh"),
+    ("Mountain", 3, "akh"),
+    ("Island", 3, "akh"),
+    // Infect — damage to players as poison, to creatures as -1/-1 counters
+    ("Plague Stinger", 2, "som"),
+    // Wither — damage to creatures as -1/-1 counters
+    ("Sickle Ripper", 2, "mor"),
+    // Skulk + Deathtouch — can't be blocked by greater power
+    ("Rancid Rats", 2, "soi"),
+    // Fear — only blocked by artifact or black creatures
+    ("Severed Legion", 2, "ons"),
+    // Menace — must be blocked by 2+ creatures
+    ("Boggart Brute", 2, "ori"),
+    // Intimidate — only blocked by artifact or shared color
+    ("Bladetusk Boar", 2, "zen"),
+    // Shadow — only blocked by shadow creatures
+    ("Thalakos Sentry", 2, "tmp"),
+    // Shroud — can't be targeted by anyone
+    ("Humble Budoka", 2, "chk"),
+    // Hexproof — can't be targeted by opponents
+    ("Wardscale Crocodile", 2, "war"),
+    // Protection from green — can't be targeted/blocked/damaged by green
+    ("Zombie Outlander", 2, "con"),
+    // Protection from blue — can't be targeted/blocked/damaged by blue
+    ("Yavimaya Barbarian", 2, "inv"),
+    // Indestructible — survives destroy effects
+    ("Darksteel Myr", 2, "som"),
+];
+
+/// Exercises PoisonEffect + Infect keyword.
+/// - Glistener Elf: 1/1 Infect (combat damage as poison counters)
+/// - Plague Stinger: 1/1 Flying Infect
+/// - Blighted Agent: 1/1 Infect, can't be blocked (unblockable)
+/// - Ichorclaw Myr: 1/1 Infect, +2/+2 when blocked
+/// - Cystbearer: 2/3 Infect
+/// - Rot Wolf: 2/2 Infect, draw trigger
+/// - Necropede: 1/1 Infect, death trigger -1/-1 counter
+/// - Ichor Rats: 2/1 Infect, ETB each player gets a poison counter (DB$ Poison)
+/// - Giant Growth: pump spell to boost infect damage
+const POISON_TEST: &[(&str, usize, &str)] = &[
+    ("Forest", 10, "akh"),
+    ("Swamp", 7, "akh"),
+    // Low-cost infect creatures
+    ("Glistener Elf", 4, "nph"),     // 1G — 1/1 Infect
+    ("Plague Stinger", 3, "som"),    // 1B — 1/1 Flying Infect
+    ("Blighted Agent", 3, "nph"),    // 1U — 1/1 Infect, can't be blocked
+    ("Ichorclaw Myr", 3, "som"),     // 2 — 1/1 Infect, +2/+2 when blocked
+    // Mid-cost infect creatures
+    ("Cystbearer", 3, "som"),        // 2G — 2/3 Infect
+    ("Rot Wolf", 3, "mbs"),          // 2G — 2/2 Infect
+    ("Necropede", 2, "som"),         // 2 — 1/1 Infect
+    // ETB Poison effect (DB$ Poison | Defined$ Player)
+    ("Ichor Rats", 3, "som"),        // 1BG — 2/1 Infect, ETB all players get poison
+    // Pump spells to boost infect damage
+    ("Giant Growth", 4, "m11"),      // G — +3/+3 until EOT
 ];
 
 /// All AI-eligible deck lists, used for random opponent selection.

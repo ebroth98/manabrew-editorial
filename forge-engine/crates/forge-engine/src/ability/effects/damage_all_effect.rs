@@ -41,11 +41,34 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 
+    // Check source card for Infect/Wither keywords
+    let source = sa.source;
+    let (source_has_infect, source_has_wither) = if let Some(src_id) = source {
+        let src = ctx.game.card(src_id);
+        (src.has_infect(), src.has_wither())
+    } else {
+        (false, false)
+    };
+
     // Pass 2 — apply damage to collected permanents
     let source = sa.source;
     for card_id in to_damage {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
-            ctx.game.deal_damage_to_card(card_id, num_dmg);
+            // Protection: prevents all damage from matching sources
+            if let Some(src_id) = source {
+                if ctx.game.card(card_id).is_protected_from(ctx.game.card(src_id)) {
+                    continue;
+                }
+            }
+
+            if source_has_infect || source_has_wither {
+                // Infect/Wither: damage to creatures as -1/-1 counters
+                ctx.game
+                    .card_mut(card_id)
+                    .add_counter(crate::card::CounterType::M1M1, num_dmg);
+            } else {
+                ctx.game.deal_damage_to_card(card_id, num_dmg);
+            }
 
             // Fire DamageDone trigger per card
             ctx.trigger_handler.run_trigger(
@@ -65,7 +88,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Deal damage to each player if ValidPlayers$ is set
     if !valid_players.is_empty() {
         for pid in player_ids {
-            ctx.game.deal_damage_to_player(pid, num_dmg);
+            if source_has_infect {
+                ctx.game.player_mut(pid).poison_counters += num_dmg;
+            } else {
+                ctx.game.deal_damage_to_player(pid, num_dmg);
+            }
 
             // Fire DamageDone trigger per player
             ctx.trigger_handler.run_trigger(

@@ -26,7 +26,7 @@ function isLethalDamage(card: CardType) {
 
 function KeywordChips({ keywords }: { keywords: string[] }) {
   if (!keywords || keywords.length === 0) return null;
-  const visible = keywords.slice(0, 2);
+  const visible = keywords.slice(0, 4);
   const hidden = keywords.length - visible.length;
   return (
     <div className="absolute top-1 left-1 right-1 flex flex-wrap gap-0.5 z-10">
@@ -109,8 +109,8 @@ export function Card({
               </span>
             </div>
           )}
-          {/* Keyword chips — only on battlefield */}
-          {onBattlefield && card.keywords && card.keywords.length > 0 && (
+          {/* Keyword chips — all zones */}
+          {card.keywords && card.keywords.length > 0 && (
             <KeywordChips keywords={card.keywords} />
           )}
           {/* Counter overlay — bottom-left, clear of the P/T box at bottom-right */}

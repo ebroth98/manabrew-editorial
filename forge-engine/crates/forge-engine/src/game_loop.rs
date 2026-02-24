@@ -593,13 +593,8 @@ impl GameLoop {
                     def_agent.choose_blockers(defending, &chosen_attackers, &legal_blockers);
 
                 for (blocker, attacker) in chosen_blockers {
-                    // Validate: if attacker has flying, blocker needs flying or reach
-                    let attacker_card = game.card(attacker);
-                    let blocker_card = game.card(blocker);
-                    if attacker_card.has_flying()
-                        && !blocker_card.has_flying()
-                        && !blocker_card.has_reach()
-                    {
+                    // Validate: use comprehensive evasion check
+                    if !combat::can_creature_block(game, blocker, attacker) {
                         continue; // illegal block
                     }
                     self.combat.declare_blocker(blocker, attacker);
@@ -615,6 +610,17 @@ impl GameLoop {
                         },
                         false,
                     );
+                }
+
+                // Menace: attacker with Menace must be blocked by 2+ creatures or 0
+                for &(attacker_id, _) in &self.combat.attackers {
+                    if game.card(attacker_id).has_menace() {
+                        let num_blockers = self.combat.get_blockers_for(attacker_id).len();
+                        if num_blockers == 1 {
+                            // Remove the single blocker — illegal under Menace
+                            self.combat.blockers.retain(|(_, a)| *a != attacker_id);
+                        }
+                    }
                 }
             }
         }

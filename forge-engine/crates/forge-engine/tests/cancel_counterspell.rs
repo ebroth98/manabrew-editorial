@@ -255,7 +255,7 @@ fn test_cancel_counters_creature_spell() {
             .target_restrictions
             .as_ref()
             .unwrap()
-            .has_candidates(&game, p0),
+            .has_candidates(&game, p0, None),
         "Cancel should have valid targets (the Grizzly Bears spell)"
     );
 
@@ -333,7 +333,7 @@ fn test_cancel_counters_noncreature_spell() {
             .target_restrictions
             .as_ref()
             .unwrap()
-            .has_candidates(&game, p0),
+            .has_candidates(&game, p0, None),
         "Cancel should have valid targets (the Lightning Bolt spell)"
     );
 

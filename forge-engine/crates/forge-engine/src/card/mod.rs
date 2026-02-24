@@ -326,6 +326,116 @@ impl CardInstance {
         self.has_keyword("Defender")
     }
 
+    pub fn has_hexproof(&self) -> bool {
+        self.has_keyword("Hexproof")
+    }
+
+    pub fn has_shroud(&self) -> bool {
+        self.has_keyword("Shroud")
+    }
+
+    pub fn has_menace(&self) -> bool {
+        self.has_keyword("Menace")
+    }
+
+    pub fn has_fear(&self) -> bool {
+        self.has_keyword("Fear")
+    }
+
+    pub fn has_intimidate(&self) -> bool {
+        self.has_keyword("Intimidate")
+    }
+
+    pub fn has_shadow(&self) -> bool {
+        self.has_keyword("Shadow")
+    }
+
+    pub fn has_skulk(&self) -> bool {
+        self.has_keyword("Skulk")
+    }
+
+    pub fn has_horsemanship(&self) -> bool {
+        self.has_keyword("Horsemanship")
+    }
+
+    pub fn has_indestructible(&self) -> bool {
+        self.has_keyword("Indestructible")
+    }
+
+    pub fn has_infect(&self) -> bool {
+        self.has_keyword("Infect")
+    }
+
+    pub fn has_wither(&self) -> bool {
+        self.has_keyword("Wither")
+    }
+
+    /// Check "Hexproof from <color>" variants (e.g. "Hexproof from blue").
+    pub fn has_hexproof_from(&self, color: &str) -> bool {
+        let target = format!("Hexproof from {}", color);
+        self.keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
+            || self.granted_keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
+    }
+
+    /// Get Ward cost (e.g. "Ward:2" → Some("2"), "Ward:{U}" → Some("{U}")).
+    pub fn get_ward_cost(&self) -> Option<String> {
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(cost) = kw.strip_prefix("Ward:") {
+                return Some(cost.to_string());
+            }
+        }
+        None
+    }
+
+    /// Get Toxic count (e.g. "Toxic:1" → Some(1)).
+    pub fn get_toxic_count(&self) -> Option<i32> {
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(n) = kw.strip_prefix("Toxic:") {
+                return n.parse().ok();
+            }
+        }
+        None
+    }
+
+    /// Check "Protection from <quality>" (e.g. "Protection from red").
+    pub fn has_protection_from(&self, quality: &str) -> bool {
+        let target = format!("Protection from {}", quality);
+        self.keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
+            || self.granted_keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
+    }
+
+    /// Get all "Protection from X" values this card has.
+    pub fn get_protections(&self) -> Vec<String> {
+        let mut prots = Vec::new();
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(from) = kw.strip_prefix("Protection from ") {
+                prots.push(from.to_lowercase());
+            }
+        }
+        prots
+    }
+
+    /// Check if this card is protected from a source card.
+    /// Protection from <color> checks source's color.
+    /// Protection from <type> checks source's type (e.g. "artifacts", "creatures").
+    pub fn is_protected_from(&self, source: &CardInstance) -> bool {
+        for prot in self.get_protections() {
+            match prot.as_str() {
+                "white" => if source.color.has_white() { return true; },
+                "blue" => if source.color.has_blue() { return true; },
+                "black" => if source.color.has_black() { return true; },
+                "red" => if source.color.has_red() { return true; },
+                "green" => if source.color.has_green() { return true; },
+                "colorless" => if source.color.is_colorless() { return true; },
+                "artifacts" => if source.type_line.is_artifact() { return true; },
+                "creatures" => if source.type_line.is_creature() { return true; },
+                "enchantments" => if source.type_line.is_enchantment() { return true; },
+                _ => {}
+            }
+        }
+        false
+    }
+
     pub fn can_attack(&self) -> bool {
         self.is_creature()
             && !self.tapped
@@ -521,5 +631,141 @@ mod tests {
         );
         card.zone = ZoneType::Battlefield;
         assert!(card.can_attack()); // haste means no summoning sickness check
+    }
+
+    #[test]
+    fn keyword_helpers() {
+        let card = CardInstance::new(
+            CardId(0),
+            "Test".to_string(),
+            PlayerId(0),
+            CardTypeLine::parse("Creature Bear"),
+            ManaCost::parse("1 G"),
+            ColorSet::GREEN,
+            Some(2),
+            Some(2),
+            vec![
+                "Hexproof".to_string(),
+                "Menace".to_string(),
+                "Indestructible".to_string(),
+            ],
+            vec![],
+        );
+        assert!(card.has_hexproof());
+        assert!(card.has_menace());
+        assert!(card.has_indestructible());
+        assert!(!card.has_shroud());
+        assert!(!card.has_fear());
+        assert!(!card.has_shadow());
+    }
+
+    #[test]
+    fn protection_from_color() {
+        let knight = CardInstance::new(
+            CardId(0),
+            "White Knight".to_string(),
+            PlayerId(0),
+            CardTypeLine::parse("Creature Knight"),
+            ManaCost::parse("W W"),
+            ColorSet::WHITE,
+            Some(2),
+            Some(2),
+            vec!["Protection from black".to_string()],
+            vec![],
+        );
+        let black_source = CardInstance::new(
+            CardId(1),
+            "Doom Blade".to_string(),
+            PlayerId(1),
+            CardTypeLine::parse("Instant"),
+            ManaCost::parse("1 B"),
+            ColorSet::BLACK,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        let green_source = CardInstance::new(
+            CardId(2),
+            "Giant Growth".to_string(),
+            PlayerId(1),
+            CardTypeLine::parse("Instant"),
+            ManaCost::parse("G"),
+            ColorSet::GREEN,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        assert!(knight.is_protected_from(&black_source));
+        assert!(!knight.is_protected_from(&green_source));
+        assert!(knight.has_protection_from("black"));
+        assert!(!knight.has_protection_from("red"));
+    }
+
+    #[test]
+    fn ward_and_toxic_parsing() {
+        let ward_card = CardInstance::new(
+            CardId(0),
+            "Ward Bear".to_string(),
+            PlayerId(0),
+            CardTypeLine::parse("Creature Bear"),
+            ManaCost::parse("1 U"),
+            ColorSet::BLUE,
+            Some(2),
+            Some(2),
+            vec!["Ward:2".to_string()],
+            vec![],
+        );
+        assert_eq!(ward_card.get_ward_cost(), Some("2".to_string()));
+
+        let toxic_card = CardInstance::new(
+            CardId(1),
+            "Toxic Elf".to_string(),
+            PlayerId(0),
+            CardTypeLine::parse("Creature Elf"),
+            ManaCost::parse("G"),
+            ColorSet::GREEN,
+            Some(1),
+            Some(1),
+            vec!["Toxic:1".to_string()],
+            vec![],
+        );
+        assert_eq!(toxic_card.get_toxic_count(), Some(1));
+
+        // No ward/toxic
+        let plain = CardInstance::new(
+            CardId(2),
+            "Bear".to_string(),
+            PlayerId(0),
+            CardTypeLine::parse("Creature Bear"),
+            ManaCost::parse("1 G"),
+            ColorSet::GREEN,
+            Some(2),
+            Some(2),
+            vec![],
+            vec![],
+        );
+        assert_eq!(plain.get_ward_cost(), None);
+        assert_eq!(plain.get_toxic_count(), None);
+    }
+
+    #[test]
+    fn hexproof_from_color() {
+        let card = CardInstance::new(
+            CardId(0),
+            "Test".to_string(),
+            PlayerId(0),
+            CardTypeLine::parse("Creature Bear"),
+            ManaCost::parse("1 G"),
+            ColorSet::GREEN,
+            Some(2),
+            Some(2),
+            vec!["Hexproof from blue".to_string()],
+            vec![],
+        );
+        assert!(card.has_hexproof_from("blue"));
+        assert!(!card.has_hexproof_from("red"));
+        assert!(!card.has_hexproof()); // partial hexproof is not full hexproof
     }
 }

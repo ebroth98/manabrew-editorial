@@ -94,19 +94,31 @@ impl TargetRestrictions {
     }
 
     /// Check if there is at least one valid target candidate.
+    /// Accounts for Hexproof, Shroud, and Protection when `source_card` is provided.
     /// Mirrors Java's `TargetRestrictions.hasCandidates()`.
-    pub fn has_candidates(&self, game: &GameState, player: PlayerId) -> bool {
-        let _ = player; // may be used for future opponent-only filtering
+    pub fn has_candidates(
+        &self,
+        game: &GameState,
+        player: PlayerId,
+        source_card: Option<CardId>,
+    ) -> bool {
         match &self.target_kind {
             TargetKind::None => true,
             // "target player" = any alive player (including the caster themselves).
             TargetKind::Player => !game.alive_players().is_empty(),
             // "any target" = any alive player or any creature on the battlefield.
             TargetKind::Any => {
-                !game.alive_players().is_empty() || !get_all_candidates_creatures(game).is_empty()
+                if !game.alive_players().is_empty() {
+                    return true;
+                }
+                get_all_candidates_creatures(game)
+                    .into_iter()
+                    .any(|cid| can_be_targeted_by(game, cid, player, source_card))
             }
             TargetKind::Creature(ref filter) => {
-                !get_all_candidates_creature_filtered(game, filter.as_deref(), player).is_empty()
+                get_all_candidates_creature_filtered(game, filter.as_deref(), player)
+                    .into_iter()
+                    .any(|cid| can_be_targeted_by(game, cid, player, source_card))
             }
             TargetKind::CardInZone { zone, filter } => {
                 has_valid_target_in_zone(game, player, *zone, filter.as_deref())
@@ -193,10 +205,15 @@ pub fn parse_valid_targets(ability: &str) -> TargetKind {
 
 /// Check if there is at least one valid target for the given ability string.
 /// Convenience wrapper that creates a temporary TargetRestrictions.
-pub fn has_candidates(game: &GameState, player: PlayerId, ability: &str) -> bool {
+pub fn has_candidates(
+    game: &GameState,
+    player: PlayerId,
+    ability: &str,
+    source: Option<CardId>,
+) -> bool {
     let params = crate::trigger::parse_pipe_params(ability);
     match TargetRestrictions::new(&params) {
-        Some(tr) => tr.has_candidates(game, player),
+        Some(tr) => tr.has_candidates(game, player, source),
         None => true, // No targeting = always valid
     }
 }
@@ -210,7 +227,7 @@ pub fn has_candidates_in_chain(
     ability: &str,
     source: Option<CardId>,
 ) -> bool {
-    if !has_candidates(game, player, ability) {
+    if !has_candidates(game, player, ability, source) {
         return false;
     }
 
@@ -224,6 +241,52 @@ pub fn has_candidates_in_chain(
         }
     }
 
+    true
+}
+
+/// Check if a card can be targeted by a spell/ability controlled by `source_controller`.
+/// Mirrors Java's `Card.canBeTargetedBy(SpellAbility)` which delegates to
+/// `StaticAbilityCantTarget` for Hexproof, Shroud, and Protection checks.
+pub fn can_be_targeted_by(
+    game: &GameState,
+    target_id: CardId,
+    source_controller: PlayerId,
+    source_card: Option<CardId>,
+) -> bool {
+    let target = game.card(target_id);
+    // Shroud: can't be targeted by anyone
+    if target.has_shroud() {
+        return false;
+    }
+    // Hexproof: can't be targeted by opponents
+    if target.has_hexproof() && target.controller != source_controller {
+        return false;
+    }
+    if let Some(src_id) = source_card {
+        let src = game.card(src_id);
+        // Check "Hexproof from <color>"
+        if target.controller != source_controller {
+            for color in &["white", "blue", "black", "red", "green"] {
+                if target.has_hexproof_from(color) {
+                    let has_color = match *color {
+                        "white" => src.color.has_white(),
+                        "blue" => src.color.has_blue(),
+                        "black" => src.color.has_black(),
+                        "red" => src.color.has_red(),
+                        "green" => src.color.has_green(),
+                        _ => false,
+                    };
+                    if has_color {
+                        return false;
+                    }
+                }
+            }
+        }
+        // Protection: can't be targeted by matching sources
+        if target.is_protected_from(src) {
+            return false;
+        }
+    }
     true
 }
 
