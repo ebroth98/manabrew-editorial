@@ -184,6 +184,11 @@ impl GameManager {
                     AgentPromptInner::ChooseOptionalTrigger { game_view, .. } => {
                         Some(game_view.clone())
                     }
+                    AgentPromptInner::ChooseKicker { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseBuyback { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseMultikicker { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseReplicate { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseAlternativeCost { game_view, .. } => Some(game_view.clone()),
                 });
                 let mut view = base_view.unwrap_or_else(|| GameViewDto {
                     game_id: String::new(),

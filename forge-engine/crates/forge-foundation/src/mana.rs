@@ -493,6 +493,11 @@ impl ManaCost {
             has_no_cost: false,
         }
     }
+
+    /// Add another mana cost to this one, returning the combined cost.
+    pub fn add(&self, other: &ManaCost) -> ManaCost {
+        Self::combine(self, other)
+    }
 }
 
 impl std::fmt::Debug for ManaCost {

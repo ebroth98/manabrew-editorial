@@ -175,6 +175,7 @@ fn test_counterspell_moves_to_graveyard() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 

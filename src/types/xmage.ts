@@ -32,6 +32,10 @@ export interface Card {
   isDoubleFaced?: boolean;
   /** True if this card is currently showing its back face. */
   isTransformed?: boolean;
+  /** Flashback cost string if the card has flashback (e.g. "1 R"). */
+  flashbackCost?: string;
+  /** Kicker cost string if the card has kicker (e.g. "W"). */
+  kickerCost?: string;
 }
 
 export interface Deck {

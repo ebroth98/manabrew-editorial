@@ -76,6 +76,7 @@ fn push_activated_entry(
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     });
 }
 

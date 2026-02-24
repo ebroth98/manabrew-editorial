@@ -13,6 +13,9 @@ import { LibraryPeekModal, type LibraryPeekMode } from "@/components/game/Librar
 import { SpellStackModal } from "@/components/game/SpellStackModal";
 import { ChooseModeModal } from "@/components/game/ChooseModeModal";
 import { ChooseOptionalTriggerModal } from "@/components/game/ChooseOptionalTriggerModal";
+import { useCardImage } from "@/hooks/useCardImage";
+import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
 import { Button } from "@/components/ui/button";
@@ -34,6 +37,26 @@ import {
   TimerOff,
 } from "lucide-react";
 import { Navigate, useLocation } from "react-router-dom";
+
+/**
+ * Renders a text string that may contain inline mana symbols in braced notation
+ * (e.g. "{2}{R}") by splitting the text into plain segments and ManaSymbols components.
+ */
+function TextWithMana({ text, manaSize = "md" }: { text: string; manaSize?: "sm" | "md" | "lg" }) {
+  // Split on sequences of braced mana symbols: {2}{R}{R} etc.
+  const parts = text.split(/(\{[^}]+\}(?:\{[^}]+\})*)/g);
+  return (
+    <span className="inline-flex items-center gap-0.5 flex-wrap">
+      {parts.map((part, i) =>
+        part.startsWith("{") ? (
+          <ManaSymbols key={i} cost={part} size={manaSize} />
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </span>
+  );
+}
 
 const AVATAR_COLORS = [
   "bg-blue-600 text-white",
@@ -91,22 +114,27 @@ function ManaPool({ pool }: { pool: Record<string, number> }) {
   if (total === 0)
     return <span className="text-xs text-muted-foreground italic">Empty</span>;
   return (
-    <div className="flex gap-0.5 flex-wrap">
-      {MANA_COLORS.map(({ key, bg, text }) =>
-        (pool[key] ?? 0) > 0 ? (
-          <span
-            key={key}
-            className={cn(
-              "inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-bold",
-              bg,
-              text,
+    <div className="flex gap-1.5 flex-wrap items-center">
+      {MANA_COLORS.flatMap(({ key }, i, arr) => {
+        const count = pool[key] ?? 0;
+        if (count === 0) return [];
+        const items = [
+          <span key={key} className="inline-flex items-center gap-0.5">
+            <ManaSymbols cost={key} size="md" />
+            {count > 1 && (
+              <span className="text-xs font-bold text-foreground">{count}</span>
             )}
-            title={`${pool[key]} ${key}`}
-          >
-            {pool[key]}
-          </span>
-        ) : null,
-      )}
+          </span>,
+        ];
+        // Add separator if there are more non-zero colors after this one
+        const hasMore = arr.slice(i + 1).some(({ key: k }) => (pool[k] ?? 0) > 0);
+        if (hasMore) {
+          items.push(
+            <span key={`sep-${key}`} className="text-muted-foreground/40 text-xs select-none">|</span>
+          );
+        }
+        return items;
+      })}
     </div>
   );
 }
@@ -508,26 +536,33 @@ function ZonePeek({
   label,
   icon: Icon = Archive,
   onClick,
+  hasPlayable,
 }: {
   count: number;
   label: string;
   icon?: React.ElementType;
   onClick?: () => void;
+  hasPlayable?: boolean;
 }) {
   return (
     <div
       className="flex flex-col items-center gap-0.5 cursor-pointer group"
       onClick={onClick}
     >
-      <div className="w-10 h-14 rounded border-2 border-dashed border-muted-foreground/40 flex items-center justify-center group-hover:border-primary transition-colors bg-muted/20">
+      <div className={cn(
+        "w-10 h-14 rounded border-2 border-dashed flex items-center justify-center transition-colors bg-muted/20",
+        hasPlayable
+          ? "border-green-400 ring-1 ring-green-400/50 bg-green-900/20"
+          : "border-muted-foreground/40 group-hover:border-primary",
+      )}>
         <div className="text-center">
-          <Icon className="h-3.5 w-3.5 mx-auto text-muted-foreground" />
-          <span className="text-xs font-bold text-muted-foreground">
+          <Icon className={cn("h-3.5 w-3.5 mx-auto", hasPlayable ? "text-green-400" : "text-muted-foreground")} />
+          <span className={cn("text-xs font-bold", hasPlayable ? "text-green-400" : "text-muted-foreground")}>
             {count}
           </span>
         </div>
       </div>
-      <span className="text-[10px] text-muted-foreground">{label}</span>
+      <span className={cn("text-[10px]", hasPlayable ? "text-green-400 font-semibold" : "text-muted-foreground")}>{label}</span>
     </div>
   );
 }
@@ -591,6 +626,11 @@ const PROMPT_LABELS: Record<string, string> = {
   chooseTargetSpell:       "Choose a spell on the stack to counter",
   chooseMode:              "Choose a mode for the spell",
   chooseOptionalTrigger:   "An optional ability would trigger",
+  chooseKicker:            "Pay the kicker cost?",
+  chooseBuyback:           "Pay the buyback cost?",
+  chooseMultikicker:       "Choose multikicker count",
+  chooseReplicate:         "Choose replicate count",
+  chooseAlternativeCost:   "Choose casting option",
   scry:                    "Scry — choose cards to put on the bottom",
   surveil:                 "Surveil — choose cards to send to the graveyard",
   dig:                     "Dig — choose cards to take to your hand",
@@ -628,7 +668,7 @@ interface OpponentHalfProps {
   onHoverCard: (card: XMageCard | null, e?: React.MouseEvent) => void;
   onFlipCard: () => void;
   showBackFace: boolean;
-  onOpenZone: (title: string, cards: XMageCard[]) => void;
+  onOpenZone: (title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) => void;
 }
 
 function OpponentHalf({
@@ -746,6 +786,7 @@ export default function Game() {
     targetSpell,
     modeDecision,
     optionalTriggerDecision,
+    respond,
     concede,
     endGame,
     setupListeners,
@@ -791,9 +832,10 @@ export default function Game() {
   const [viewingZone, setViewingZone] = useState<{
     title: string;
     cards: XMageCard[];
+    onClickCard?: (cardId: string) => void;
   } | null>(null);
-  function openZone(title: string, cards: XMageCard[]) {
-    setViewingZone({ title, cards });
+  function openZone(title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) {
+    setViewingZone({ title, cards, onClickCard });
   }
   function closeZone() {
     setViewingZone(null);
@@ -829,8 +871,32 @@ export default function Game() {
   // Optional trigger modal (OptionalDecider$)
   const [optionalTriggerOpen, setOptionalTriggerOpen] = useState(false);
 
+  // Kicker modal
+  const [kickerModalOpen, setKickerModalOpen] = useState(false);
+  // Buyback modal
+  const [buybackModalOpen, setBuybackModalOpen] = useState(false);
+  // Multikicker modal
+  const [multikickerModalOpen, setMultikickerModalOpen] = useState(false);
+  const [multikickerCount, setMultikickerCount] = useState(0);
+  // Replicate modal
+  const [replicateModalOpen, setReplicateModalOpen] = useState(false);
+  const [replicateCount, setReplicateCount] = useState(0);
+  // Alternative cost modal
+  const [altCostModalOpen, setAltCostModalOpen] = useState(false);
+
   // Concede confirmation
   const [confirmConcede, setConfirmConcede] = useState(false);
+
+  // Card image for cost modals (kicker, buyback, multikicker, replicate, alt cost)
+  const costModalCardName =
+    currentPrompt?.type === "chooseKicker" ||
+    currentPrompt?.type === "chooseBuyback" ||
+    currentPrompt?.type === "chooseMultikicker" ||
+    currentPrompt?.type === "chooseReplicate" ||
+    currentPrompt?.type === "chooseAlternativeCost"
+      ? (currentPrompt?.sourceCardName ?? "")
+      : "";
+  const { data: costModalCardImageUrl } = useCardImage(costModalCardName);
 
   const promptType = currentPrompt?.type;
 
@@ -944,7 +1010,7 @@ export default function Game() {
   useEffect(() => {
     dismissHover();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen, currentPrompt?.type]);
+  }, [viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen, buybackModalOpen, multikickerModalOpen, replicateModalOpen, altCostModalOpen, currentPrompt?.type]);
 
   // Apply deferred gameView + prompt from the ref into the store.
   function applyDeferredState() {
@@ -1182,6 +1248,53 @@ export default function Game() {
       setOptionalTriggerOpen(true);
     } else {
       setOptionalTriggerOpen(false);
+    }
+  }, [promptType]);
+
+  // Auto-open kicker modal
+  useEffect(() => {
+    if (promptType === "chooseKicker") {
+      setKickerModalOpen(true);
+    } else {
+      setKickerModalOpen(false);
+    }
+  }, [promptType]);
+
+  // Auto-open buyback modal
+  useEffect(() => {
+    if (promptType === "chooseBuyback") {
+      setBuybackModalOpen(true);
+    } else {
+      setBuybackModalOpen(false);
+    }
+  }, [promptType]);
+
+  // Auto-open multikicker modal
+  useEffect(() => {
+    if (promptType === "chooseMultikicker") {
+      setMultikickerModalOpen(true);
+      setMultikickerCount(0);
+    } else {
+      setMultikickerModalOpen(false);
+    }
+  }, [promptType]);
+
+  // Auto-open replicate modal
+  useEffect(() => {
+    if (promptType === "chooseReplicate") {
+      setReplicateModalOpen(true);
+      setReplicateCount(0);
+    } else {
+      setReplicateModalOpen(false);
+    }
+  }, [promptType]);
+
+  // Auto-open alternative cost modal
+  useEffect(() => {
+    if (promptType === "chooseAlternativeCost") {
+      setAltCostModalOpen(true);
+    } else {
+      setAltCostModalOpen(false);
     }
   }, [promptType]);
 
@@ -1591,12 +1704,40 @@ export default function Game() {
                 <ZonePeek
                   count={me!.graveyardCount}
                   label="GY"
-                  onClick={() => openZone("Your Graveyard", gameView.graveyard)}
+                  hasPlayable={promptType === "chooseAction" && gameView.graveyard.some((c) => c.isPlayable)}
+                  onClick={() => {
+                    // If any graveyard cards are playable (flashback), allow casting from zone viewer
+                    const hasPlayable = gameView.graveyard.some((c) => c.isPlayable);
+                    openZone(
+                      "Your Graveyard",
+                      gameView.graveyard,
+                      hasPlayable && promptType === "chooseAction"
+                        ? (cardId) => {
+                            closeZone();
+                            castSpell(cardId);
+                          }
+                        : undefined,
+                    );
+                  }}
                 />
                 <ZonePeek
                   count={me!.exileCount}
                   label="Exile"
-                  onClick={() => openZone("Your Exile", gameView.exile)}
+                  hasPlayable={promptType === "chooseAction" && gameView.exile.some((c) => c.isPlayable)}
+                  onClick={() => {
+                    // If any exile cards are playable (madness), allow casting from zone viewer
+                    const hasPlayable = gameView.exile.some((c) => c.isPlayable);
+                    openZone(
+                      "Your Exile",
+                      gameView.exile,
+                      hasPlayable && promptType === "chooseAction"
+                        ? (cardId) => {
+                            closeZone();
+                            castSpell(cardId);
+                          }
+                        : undefined,
+                    );
+                  }}
                 />
                 {(gameView.myCommandZone?.length ?? 0) > 0 && (
                   <ZonePeek
@@ -1675,13 +1816,14 @@ export default function Game() {
             {/* Mulligan */}
             {promptType === "mulligan" && (
               <div className="shrink-0 flex gap-2 justify-center py-1">
-                <Button size="sm" onClick={() => mulliganDecision(true)}>
+                <Button size="sm" onClick={() => mulliganDecision(true)} disabled={isWaitingForResponse}>
                   Keep Hand
                 </Button>
                 <Button
                   size="sm"
                   variant="destructive"
                   onClick={() => mulliganDecision(false)}
+                  disabled={isWaitingForResponse}
                 >
                   Mulligan
                 </Button>
@@ -1853,6 +1995,7 @@ export default function Game() {
           title={viewingZone.title}
           cards={viewingZone.cards}
           onClose={closeZone}
+          onClickCard={viewingZone.onClickCard}
         />
       )}
 
@@ -1915,6 +2058,7 @@ export default function Game() {
           options={currentPrompt.options}
           minChoices={currentPrompt.minChoices ?? 1}
           maxChoices={currentPrompt.maxChoices ?? 1}
+          cardName={currentPrompt.sourceCardName}
           onConfirm={(chosenIndices) => {
             modeDecision(chosenIndices);
             setChooseModeOpen(false);
@@ -1926,12 +2070,190 @@ export default function Game() {
       {optionalTriggerOpen && currentPrompt?.description != null && (
         <ChooseOptionalTriggerModal
           description={currentPrompt.description}
+          cardName={currentPrompt.sourceCardName}
           onConfirm={(accept) => {
             optionalTriggerDecision(accept);
             setOptionalTriggerOpen(false);
           }}
         />
       )}
+
+      {/* ── Kicker modal ──────────────────────────────────── */}
+      {kickerModalOpen && currentPrompt?.kickerCost != null &&
+        createPortal(
+          <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-card border rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
+              <h2 className="font-semibold text-base mb-3">Pay Kicker?</h2>
+              <div className="flex gap-3 mb-4">
+                {costModalCardImageUrl && (
+                  <CardImageThumbnail
+                    imageUrl={costModalCardImageUrl}
+                    cardName={currentPrompt.sourceCardName ?? "Spell"}
+                    className="w-[120px] h-[168px] rounded-lg object-cover shrink-0 shadow-md"
+                  />
+                )}
+                <p className="text-sm text-muted-foreground self-center">
+                  Pay additional kicker cost: <ManaSymbols cost={currentPrompt.kickerCost} size="lg" />
+                </p>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    respond({ type: "kickerDecision", kicked: false });
+                    setKickerModalOpen(false);
+                  }}
+                >
+                  No
+                </Button>
+                <Button
+                  onClick={() => {
+                    respond({ type: "kickerDecision", kicked: true });
+                    setKickerModalOpen(false);
+                  }}
+                >
+                  Pay Kicker
+                </Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ── Buyback modal ──────────────────────────────────── */}
+      {buybackModalOpen && currentPrompt?.buybackCost != null &&
+        createPortal(
+          <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-card border rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
+              <h2 className="font-semibold text-base mb-3">Pay Buyback?</h2>
+              <div className="flex gap-3 mb-4">
+                {costModalCardImageUrl && (
+                  <CardImageThumbnail
+                    imageUrl={costModalCardImageUrl}
+                    cardName={currentPrompt.sourceCardName ?? "Spell"}
+                    className="w-[120px] h-[168px] rounded-lg object-cover shrink-0 shadow-md"
+                  />
+                )}
+                <div className="self-center">
+                  <p className="text-sm text-muted-foreground">
+                    Pay additional buyback cost: <ManaSymbols cost={currentPrompt.buybackCost} size="lg" />
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    If paid, this spell returns to your hand instead of going to the graveyard.
+                  </p>
+                </div>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <Button variant="outline" onClick={() => { respond({ type: "buybackDecision", buybackPaid: false }); setBuybackModalOpen(false); }}>No</Button>
+                <Button onClick={() => { respond({ type: "buybackDecision", buybackPaid: true }); setBuybackModalOpen(false); }}>Pay Buyback</Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ── Multikicker modal ──────────────────────────────── */}
+      {multikickerModalOpen && currentPrompt?.cost != null &&
+        createPortal(
+          <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-card border rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
+              <h2 className="font-semibold text-base mb-3">Multikicker</h2>
+              <div className="flex gap-3 mb-4">
+                {costModalCardImageUrl && (
+                  <CardImageThumbnail
+                    imageUrl={costModalCardImageUrl}
+                    cardName={currentPrompt.sourceCardName ?? "Spell"}
+                    className="w-[120px] h-[168px] rounded-lg object-cover shrink-0 shadow-md"
+                  />
+                )}
+                <div className="self-center flex-1">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Pay <ManaSymbols cost={currentPrompt.cost} size="lg" /> per kick (max {currentPrompt.maxKicks})
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <Button variant="outline" size="sm" disabled={multikickerCount <= 0} onClick={() => setMultikickerCount(c => Math.max(0, c - 1))}>-</Button>
+                    <span className="text-xl font-bold w-8 text-center">{multikickerCount}</span>
+                    <Button variant="outline" size="sm" disabled={multikickerCount >= (currentPrompt.maxKicks ?? 0)} onClick={() => setMultikickerCount(c => Math.min(currentPrompt.maxKicks ?? 0, c + 1))}>+</Button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <Button variant="outline" onClick={() => { respond({ type: "multikickerDecision", kickCount: 0 }); setMultikickerModalOpen(false); }}>Skip</Button>
+                <Button onClick={() => { respond({ type: "multikickerDecision", kickCount: multikickerCount }); setMultikickerModalOpen(false); }}>Confirm ({multikickerCount}x)</Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ── Replicate modal ──────────────────────────────── */}
+      {replicateModalOpen && currentPrompt?.cost != null &&
+        createPortal(
+          <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-card border rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
+              <h2 className="font-semibold text-base mb-3">Replicate</h2>
+              <div className="flex gap-3 mb-4">
+                {costModalCardImageUrl && (
+                  <CardImageThumbnail
+                    imageUrl={costModalCardImageUrl}
+                    cardName={currentPrompt.sourceCardName ?? "Spell"}
+                    className="w-[120px] h-[168px] rounded-lg object-cover shrink-0 shadow-md"
+                  />
+                )}
+                <div className="self-center flex-1">
+                  <p className="text-sm text-muted-foreground mb-3">
+                    Pay <ManaSymbols cost={currentPrompt.cost} size="lg" /> per copy (max {currentPrompt.maxReplicates})
+                  </p>
+                  <div className="flex items-center gap-3">
+                    <Button variant="outline" size="sm" disabled={replicateCount <= 0} onClick={() => setReplicateCount(c => Math.max(0, c - 1))}>-</Button>
+                    <span className="text-xl font-bold w-8 text-center">{replicateCount}</span>
+                    <Button variant="outline" size="sm" disabled={replicateCount >= (currentPrompt.maxReplicates ?? 0)} onClick={() => setReplicateCount(c => Math.min(currentPrompt.maxReplicates ?? 0, c + 1))}>+</Button>
+                  </div>
+                </div>
+              </div>
+              <div className="flex gap-3 justify-end">
+                <Button variant="outline" onClick={() => { respond({ type: "replicateDecision", replicateCount: 0 }); setReplicateModalOpen(false); }}>Skip</Button>
+                <Button onClick={() => { respond({ type: "replicateDecision", replicateCount: replicateCount }); setReplicateModalOpen(false); }}>Confirm ({replicateCount}x)</Button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
+
+      {/* ── Alternative cost modal ──────────────────────── */}
+      {altCostModalOpen && currentPrompt?.options != null &&
+        createPortal(
+          <div className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm">
+            <div className="bg-card border rounded-xl shadow-2xl p-6 max-w-md w-full mx-4 animate-in fade-in zoom-in-95 duration-200">
+              <h2 className="font-semibold text-base mb-3">Choose Casting Option</h2>
+              <div className="flex gap-3 mb-4">
+                {costModalCardImageUrl && (
+                  <CardImageThumbnail
+                    imageUrl={costModalCardImageUrl}
+                    cardName={currentPrompt.sourceCardName ?? "Spell"}
+                    className="w-[120px] h-[168px] rounded-lg object-cover shrink-0 shadow-md"
+                  />
+                )}
+                <div className="flex flex-col gap-2 flex-1">
+                  {(currentPrompt.options as string[]).map((opt: string, idx: number) => (
+                    <Button
+                      key={idx}
+                      variant={idx === 0 ? "outline" : "default"}
+                      className="text-left justify-start h-auto py-2"
+                      onClick={() => {
+                        respond({ type: "alternativeCostDecision", chosenIndex: idx });
+                        setAltCostModalOpen(false);
+                      }}
+                    >
+                      <TextWithMana text={opt} manaSize="sm" />
+                    </Button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       {/* ── Card-play flash overlay ───────────────────────── */}
       {activeFlash?.kind === "card" &&
@@ -1988,7 +2310,7 @@ export default function Game() {
 
       {/* ── Hover card preview ────────────────────────────── */}
       {/* Hide when any modal is open so the preview doesn't bleed through. */}
-      {hoveredCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && !spellStackModalOpen && (
+      {hoveredCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && !spellStackModalOpen && !kickerModalOpen && !buybackModalOpen && !multikickerModalOpen && !replicateModalOpen && !altCostModalOpen && !chooseModeOpen && !optionalTriggerOpen && (
         <CardPreview
           card={hoveredCard}
           mouseX={mousePos.x}

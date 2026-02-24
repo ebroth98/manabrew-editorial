@@ -139,6 +139,18 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Infect + Poison counters — Glistener Elf, Ichor Rats, Plague Stinger, Blighted Agent".into(),
             color: "text-lime-400".into(),
         },
+        PresetDeckInfo {
+            id: "alt_cost_test".into(),
+            label: "Alternative Costs".into(),
+            desc: "Flashback + Kicker + Storm + Cascade — Faithless Looting, Grapeshot, Bloodbraid Elf".into(),
+            color: "text-rose-400".into(),
+        },
+        PresetDeckInfo {
+            id: "extended_cost_test".into(),
+            label: "Extended Costs".into(),
+            desc: "Buyback + Evoke + Madness + Rebound + Dash + Replicate — Whispers of the Muse, Mulldrifter, Fiery Temper".into(),
+            color: "text-fuchsia-400".into(),
+        },
     ]
 }
 
@@ -163,6 +175,8 @@ pub fn is_preset_id(id: &str) -> bool {
             | "trigger_test"
             | "keyword_test"
             | "poison_test"
+            | "alt_cost_test"
+            | "extended_cost_test"
     )
 }
 
@@ -235,6 +249,14 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "poison_test" => {
             build_named_deck(game, p0, POISON_TEST);
             build_named_deck(game, p1, WHITE_AGGRO);
+        }
+        "alt_cost_test" => {
+            build_named_deck(game, p0, ALT_COST_TEST);
+            build_named_deck(game, p1, RED_BURN);
+        }
+        "extended_cost_test" => {
+            build_named_deck(game, p0, EXTENDED_COST_TEST);
+            build_named_deck(game, p1, RED_BURN);
         }
         _ => {
             // red_burn (default)
@@ -578,6 +600,59 @@ const POISON_TEST: &[(&str, usize, &str)] = &[
     ("Ichor Rats", 3, "som"),        // 1BG — 2/1 Infect, ETB all players get poison
     // Pump spells to boost infect damage
     ("Giant Growth", 4, "m11"),      // G — +3/+3 until EOT
+];
+
+const ALT_COST_TEST: &[(&str, usize, &str)] = &[
+    ("Mountain", 10, "akh"),
+    ("Forest", 4, "akh"),
+    ("Swamp", 3, "akh"),
+    // Flashback cards
+    ("Faithless Looting", 4, "dka"),    // R — Draw 2, discard 2; Flashback 2R
+    ("Think Twice", 3, "isd"),          // 1U — Draw 1; Flashback 2U
+    ("Lingering Souls", 3, "dka"),      // 2W — Token 2xSpirit; Flashback 1B
+    // Kicker cards
+    ("Goblin Bushwhacker", 3, "zen"),   // R — 1/1 Haste; Kicker R (+1/+0 & haste to all)
+    // Storm cards
+    ("Grapeshot", 3, "tsp"),            // 1R — Deal 1 damage; Storm
+    // Cascade cards
+    ("Bloodbraid Elf", 3, "arb"),       // 2RG — 3/2 Haste; Cascade
+    // Support spells (cheap for Storm count)
+    ("Lightning Bolt", 4, "m11"),
+    ("Shock", 4, "m21"),
+];
+
+/// Exercises issue #21: extended keyword costs (Batch 2–7).
+/// - Buyback: Whispers of the Muse (draw 1; Buyback 5 — return to hand on resolve)
+/// - Evoke: Mulldrifter (2/2 Flying ETB draw 2; Evoke 2U — sacrifice on ETB)
+/// - Madness: Fiery Temper (deal 3; Madness R — cast when discarded)
+/// - Rebound: Staggershock (deal 2; Rebound — cast again next upkeep)
+/// - Dash: Goblin Heelcutter (3/2; Dash 2R — haste, return to hand EOT)
+/// - Replicate: Gigadrowse (tap permanent; Replicate U — copy per payment)
+/// - Overload: Mizzium Mortars (deal 4 to creature; Overload 2RRRR — all creatures)
+/// - Spectacle: Skewer the Critics (deal 3; Spectacle R — cheap after opponent damage)
+const EXTENDED_COST_TEST: &[(&str, usize, &str)] = &[
+    ("Mountain", 8, "akh"),
+    ("Island", 6, "akh"),
+    ("Swamp", 3, "akh"),
+    // Buyback — pay extra to return spell to hand on resolution
+    ("Whispers of the Muse", 3, "tmp"),     // U — Draw 1; Buyback 5
+    // Evoke — alt cost, creature is sacrificed on ETB
+    ("Mulldrifter", 3, "mma"),              // 4U — 2/2 Flying ETB draw 2; Evoke 2U
+    // Madness — cast for madness cost when discarded
+    ("Fiery Temper", 3, "tor"),             // 1RR — Deal 3 damage; Madness R
+    // Rebound — exile on resolve, cast again next upkeep for free
+    ("Staggershock", 3, "roe"),             // 2R — Deal 2 damage; Rebound
+    // Dash — alt cost: haste, return to hand at end of turn
+    ("Goblin Heelcutter", 3, "frf"),        // 3R — 3/2; Dash 2R
+    // Replicate — copy spell for each time replicate cost is paid
+    ("Gigadrowse", 3, "gpt"),              // U — Tap target permanent; Replicate U
+    // Overload — alt cost: target all instead of one
+    ("Mizzium Mortars", 2, "rtr"),          // 1R — Deal 4 to target creature; Overload 2RRRR
+    // Spectacle — alt cost if opponent lost life this turn
+    ("Skewer the Critics", 3, "rna"),       // 2R — Deal 3 damage; Spectacle R
+    // Support spells — cheap instants for enabling spectacle / discard fodder
+    ("Lightning Bolt", 4, "m11"),
+    ("Shock", 3, "m21"),
 ];
 
 /// All AI-eligible deck lists, used for random opponent selection.

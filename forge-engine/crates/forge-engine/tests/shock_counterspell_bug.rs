@@ -246,6 +246,7 @@ fn test_counterspell_should_stop_damage() {
         spell_ability: shock_sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     let shock_stack_id = game.stack.push(shock_entry);
     println!("Shock placed on stack with ID: {}", shock_stack_id);
@@ -273,6 +274,7 @@ fn test_counterspell_should_stop_damage() {
         spell_ability: counterspell_sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     let counter_id = game.stack.push(counter_entry);
     println!("Counterspell placed on stack with ID: {}", counter_id);

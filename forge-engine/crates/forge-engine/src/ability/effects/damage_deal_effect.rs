@@ -23,6 +23,41 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         (false, false)
     };
 
+    // Overload: deal damage to ALL valid creatures instead of the chosen target.
+    if sa.overloaded {
+        let valid_tgts = sa.params.get("ValidTgts").cloned().unwrap_or_default();
+        let all_bf: Vec<crate::ids::CardId> = ctx.game.player_order.clone().iter()
+            .flat_map(|&pid| ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec())
+            .collect();
+        for cid in all_bf {
+            if ctx.game.card(cid).zone != ZoneType::Battlefield {
+                continue;
+            }
+            if !super::matches_valid_cards(ctx.game.card(cid), &valid_tgts, sa.activating_player) {
+                continue;
+            }
+            if source_has_infect || source_has_wither {
+                ctx.game
+                    .card_mut(cid)
+                    .add_counter(crate::card::CounterType::M1M1, damage);
+            } else {
+                ctx.game.deal_damage_to_card(cid, damage);
+            }
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::DamageDone,
+                crate::event::RunParams {
+                    damage_source: sa.source,
+                    damage_target_card: Some(cid),
+                    damage_amount: Some(damage),
+                    is_combat_damage: Some(false),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+        return;
+    }
+
     if let Some(target_player) = target_player {
         if source_has_infect {
             // Infect: deal damage to players as poison counters
@@ -97,7 +132,7 @@ fn resolve_damage_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
     if let Some(source_id) = sa.source {
         let svar_val = ctx.game.card(source_id).svars.get(var_name).cloned();
         if let Some(expr) = svar_val {
-            return evaluate_svar_expr(ctx, &expr);
+            return evaluate_svar_expr(ctx, sa, &expr);
         }
     }
 
@@ -106,7 +141,11 @@ fn resolve_damage_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
 
 /// Evaluate a simple SVar expression string.
 /// Mirrors Java's `AbilityUtils.calculateAmount` for common SVar patterns.
-fn evaluate_svar_expr(ctx: &EffectContext, expr: &str) -> i32 {
+fn evaluate_svar_expr(ctx: &EffectContext, sa: &SpellAbility, expr: &str) -> i32 {
+    // Count$Kicked.X.Y — delegate to shared evaluator
+    if expr.starts_with("Count$Kicked.") {
+        return super::evaluate_svar(expr, sa);
+    }
     match expr {
         // Power / toughness of the parent SA's chosen target card.
         // Used by Ram Through: SVar:X:ParentTargeted$CardPower

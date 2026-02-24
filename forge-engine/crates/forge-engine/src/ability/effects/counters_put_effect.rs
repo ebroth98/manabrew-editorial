@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_counter_type, parse_param, EffectContext};
+use super::{parse_counter_type, parse_param, resolve_numeric_svar, EffectContext};
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
@@ -11,7 +11,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("CounterType")
         .map(|s| parse_counter_type(s))
         .unwrap_or(CounterType::P1P1);
-    let count = parse_param(&sa.ability_text, "CounterNum$ ").unwrap_or(1);
+    // Support SVar references for CounterNum (e.g. Count$Kicked.4.0 for kicker cards)
+    let count = parse_param(&sa.ability_text, "CounterNum$ ")
+        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
 
     // Default target: the source card
     if let Some(card_id) = sa.source {

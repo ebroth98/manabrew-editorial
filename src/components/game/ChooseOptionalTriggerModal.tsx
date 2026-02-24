@@ -1,17 +1,23 @@
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef, useCallback } from "react";
+import { useCardImage } from "@/hooks/useCardImage";
+import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 
 interface ChooseOptionalTriggerModalProps {
   /** Human-readable description of the triggered ability. */
   description: string;
+  /** Name of the source card (for displaying card image). */
+  cardName?: string;
   onConfirm: (accept: boolean) => void;
 }
 
 export function ChooseOptionalTriggerModal({
   description,
+  cardName,
   onConfirm,
 }: ChooseOptionalTriggerModalProps) {
+  const { data: imageUrl } = useCardImage(cardName ?? "");
   const dialogRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -62,9 +68,16 @@ export function ChooseOptionalTriggerModal({
           </p>
         </div>
 
-        {/* Description */}
-        <div className="px-4 py-4">
-          <p className="text-sm leading-relaxed">{description || "A triggered ability would trigger. Do you want it to?"}</p>
+        {/* Description + card image */}
+        <div className="px-4 py-4 flex gap-3">
+          {imageUrl && (
+            <CardImageThumbnail
+              imageUrl={imageUrl}
+              cardName={cardName ?? "Source card"}
+              className="w-[120px] h-[168px] rounded-lg object-cover shrink-0 shadow-md"
+            />
+          )}
+          <p className="text-sm leading-relaxed self-center">{description || "A triggered ability would trigger. Do you want it to?"}</p>
         </div>
 
         {/* Footer */}

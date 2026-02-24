@@ -11,9 +11,26 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::trigger::parse_pipe_params;
+use forge_foundation::ZoneType;
 
 pub use target_choices::TargetChoices;
 pub use target_restrictions::{TargetKind, TargetRestrictions};
+
+/// Alternative cost used to cast a spell (Flashback, Escape, etc.).
+/// Mirrors Java's `SpellAbility.getAlternativeCost()`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AlternativeCost {
+    Flashback,
+    Spectacle,
+    Evoke,
+    Dash,
+    Blitz,
+    Escape,
+    Overload,
+    Madness,
+    Foretell,
+    Emerge,
+}
 
 // ── SpellAbility (mirrors Java's SpellAbility.java) ──────────────────
 
@@ -56,6 +73,20 @@ pub struct SpellAbility {
     pub trigger_source: Option<CardId>,
     /// Index into card.triggers for intervening-if recheck.
     pub trigger_index: Option<usize>,
+    /// Alternative cost used (Flashback, etc.). `None` for normal casting.
+    pub alt_cost: Option<AlternativeCost>,
+    /// Whether the kicker cost was paid.
+    pub kicked: bool,
+    /// Whether this is a copy (e.g. from Storm). Copies have no physical card.
+    pub is_copy: bool,
+    /// Whether the buyback cost was paid.
+    pub buyback_paid: bool,
+    /// Whether the spell was overloaded (Overload alternative cost).
+    pub overloaded: bool,
+    /// How many times the multikicker cost was paid.
+    pub kick_count: u32,
+    /// How many times the replicate cost was paid.
+    pub replicate_count: u32,
 }
 
 impl SpellAbility {
@@ -150,6 +181,13 @@ impl SpellAbility {
             is_activated: false,
             trigger_source: None,
             trigger_index: None,
+            alt_cost: None,
+            kicked: false,
+            is_copy: false,
+            buyback_paid: false,
+            overloaded: false,
+            kick_count: 0,
+            replicate_count: 0,
         }
     }
 }
@@ -200,6 +238,13 @@ pub fn build_spell_ability(
         is_activated: false,
         trigger_source: None,
         trigger_index: None,
+        alt_cost: None,
+        kicked: false,
+        is_copy: false,
+        buyback_paid: false,
+        overloaded: false,
+        kick_count: 0,
+        replicate_count: 0,
     }
 }
 
@@ -312,6 +357,8 @@ pub struct StackEntry {
     pub is_creature_spell: bool,
     /// Whether this is a non-creature permanent spell.
     pub is_permanent_spell: bool,
+    /// The zone the spell was cast from (for Flashback exile-on-resolve).
+    pub cast_from_zone: Option<ZoneType>,
 }
 
 /// The game stack. Spells and abilities are added to the top and resolve LIFO.

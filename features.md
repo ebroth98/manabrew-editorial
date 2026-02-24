@@ -2,7 +2,7 @@
 
 > **769 Java files** in `forge/forge-game/src/main/java/forge/game/` mapped against **~37 Rust files** in `forge-engine/`.
 >
-> Legend: **Implemented** | **Partial** | Not implemented
+> Legend: **Implemented** | **Partial** | **Stub** | Not implemented
 
 ---
 
@@ -194,7 +194,7 @@
 | `TapAllEffect.java` | Tap all matching | **Implemented** — `tap_all_effect.rs`: `ValidCards$` filter with full `YouCtrl`/`OppCtrl`/color qualifier support |
 | `TokenEffect.java` | Create token(s) | **Implemented** — `Token` handler in `game_loop.rs`: `TokenScript$`, `TokenAmount$`, `TokenOwner$` (You/Opponent). Token templates loaded from `tokenscripts/` via `get_token_db()` and registered in `GameLoop`. Tokens flagged `is_token` and cease to exist when leaving battlefield (CR 110.5g). |
 | `TokenEffectBase.java` | Base class for token creation | **Implemented** — see `TokenEffect.java` above |
-| `UntapEffect.java` | Untap a permanent | **Partial** (`action.rs` untap) |
+| `UntapEffect.java` | Untap a permanent | **Implemented** — `untap_effect.rs`: `Defined$ Self` / `ParentTarget` / explicit target; fires Untaps trigger |
 | `UntapAllEffect.java` | Untap all matching | **Implemented** — `untap_all_effect.rs`: `ValidCards$` filter with full qualifier support |
 | `VoteEffect.java` | Council's dilemma / voting mechanic | Not implemented |
 
@@ -435,7 +435,7 @@
 | `KeywordCollection.java` | Collection of keyword instances | **Partial** (Vec<String>) |
 | `KeywordWithAmount.java` | Keywords with numeric values (Bushido 2) | **Partial** (Toxic:N parsed via `get_toxic_count()`) |
 | `KeywordWithCost.java` | Keywords with costs (Equip {3}) | **Partial** (Ward:N parsed via `get_ward_cost()`) |
-| `KeywordWithCostAndType.java` | Keywords with cost + type (Cycling {2}) | Not implemented |
+| `KeywordWithCostAndType.java` | Keywords with cost + type (Cycling {2}) | **Partial** (Buyback, Spectacle, Evoke, Dash, Blitz, Multikicker, Replicate, Entwine, Escalate, Escape, Overload, Madness, Rebound, Strive, Suspend, Foretell, Emerge — parsed via `get_X_cost()` helpers in `card/mod.rs`) |
 | `KeywordWithType.java` | Keywords with type (Protection from Red) | **Implemented** (`has_protection_from()`, `is_protected_from()`, `get_protections()` in `card/mod.rs`) |
 | `KeywordsChange.java` | Keyword modification tracking | Not implemented |
 | Various Keyword*.java | Specific keyword implementations | **Partial** — see keyword status below |
@@ -471,6 +471,29 @@
 | Toxic | **Implemented** | `get_toxic_count()` — adds poison counters on combat damage |
 | Protection from X | **Implemented** | `is_protected_from()` — prevents targeting, blocking, damage, attaching |
 | Ward | **Partial** | `get_ward_cost()` — keyword parsed and recognized; counter-unless-pay not yet wired |
+| Flashback | **Implemented** | Flashback casting from graveyard in `game_loop.rs`, `card/mod.rs`, `spellability/mod.rs` |
+| Kicker | **Implemented** | Single kicker; `kicked` flag on CardInstance, `+kicked` trigger/effect filter, `Condition$ Kicked` gate, `Count$Kicked` SVar, `KW$` keyword grant in Pump/PumpAll |
+| Storm | **Implemented** | Basic storm copy logic in `game_loop.rs` |
+| Cascade | **Implemented** | Cascade in `game_loop.rs` with player choice (optional cast via `choose_optional_trigger`), UI snapshots during exile/targeting, and proper decline handling |
+| Buyback | **Implemented** | `get_buyback_cost()` in `card/mod.rs`; `buyback_paid` flag on SpellAbility; `choose_buyback` agent method; spell returns to hand on resolution instead of graveyard; TauriAgent `ChooseBuyback` prompt + frontend modal |
+| Spectacle | **Implemented** | `get_spectacle_cost()` in `card/mod.rs`; `Spectacle` AlternativeCost variant; checks `life_lost_this_turn > 0` on opponents; offered as alternative cost choice in `play_card`; included in `get_playable_cards` when affordable |
+| Evoke | **Implemented** | `get_evoke_cost()` in `card/mod.rs`; `Evoke` AlternativeCost variant; creature is sacrificed immediately after ETB when evoked |
+| Dash | **Implemented** | `get_dash_cost()` in `card/mod.rs`; `Dash` AlternativeCost variant; creature gains haste; EOT delayed trigger returns it to hand |
+| Blitz | **Implemented** | `get_blitz_cost()` in `card/mod.rs`; `Blitz` AlternativeCost variant; creature gains haste + "dies → draw a card" trigger; EOT delayed trigger sacrifices it |
+| Multikicker | **Implemented** | `get_multikicker_cost()` in `card/mod.rs`; `kick_count` on SpellAbility; `choose_multikicker` agent method; TauriAgent `ChooseMultikicker` prompt + frontend counter modal |
+| Replicate | **Implemented** | `get_replicate_cost()` in `card/mod.rs`; `replicate_count` on SpellAbility; copies created like Storm; emits `SpellCopied` trigger; TauriAgent `ChooseReplicate` prompt + frontend counter modal |
+| Entwine | **Implemented** | `get_entwine_cost()` in `card/mod.rs`; when entwine is paid (via kicked flag), all modes of a modal spell are chosen automatically in `charm_effect.rs` |
+| Escalate | **Implemented** | `get_escalate_cost()` in `card/mod.rs`; allows choosing more modes than minimum in `charm_effect.rs`; per-mode cost scaling wired and functional |
+| Escape | **Implemented** | `get_escape_cost()` in `card/mod.rs` returns `(mana_cost, exile_count)`; `Escape` AlternativeCost variant; casts from graveyard, exiles N other graveyard cards as additional cost |
+| Overload | **Implemented** | `get_overload_cost()` in `card/mod.rs`; `Overload` AlternativeCost + `overloaded` flag on SpellAbility; per-effect "target→each" dispatch implemented and functional |
+| Madness | **Implemented** | `get_madness_cost()` in `card/mod.rs`; `Madness` AlternativeCost variant; cards with madness are exiled instead of going to graveyard on discard (`discard_effect.rs`); can be cast from exile for madness cost; cleanup step discard bug fixed |
+| Rebound | **Implemented** | `has_rebound()` in `card/mod.rs`; non-permanent spells cast from hand are exiled instead of going to graveyard; delayed trigger at next upkeep casts for free |
+| Prowess | **Implemented** | `has_prowess()` in `card/mod.rs`; auto-trigger generation added — `SpellCast` triggers are generated for cards with the Prowess keyword via the trigger system |
+| Magecraft | **Implemented** | `SpellCopied` TriggerType + TriggerMode added to event/trigger system; auto-trigger generation added — `SpellCast` + `SpellCopied` triggers are generated for cards with the Magecraft keyword |
+| Strive | **Stub** | `get_strive_cost()` in `card/mod.rs` (parser only, no game loop integration) |
+| Suspend | **Stub** | `get_suspend_cost()` in `card/mod.rs` returns `(mana_cost, time_counters)` (parser only, no game loop integration) |
+| Foretell | **Stub** | `get_foretell_cost()` in `card/mod.rs` (parser only, no game loop integration) |
+| Emerge | **Stub** | `get_emerge_cost()` in `card/mod.rs`; `Emerge` AlternativeCost variant defined (parser only, no game loop integration) |
 
 ---
 
@@ -636,7 +659,7 @@
 | `AbilitySub.java` | Sub-ability in ability chain | Not implemented |
 | `AbilityManaPart.java` | Mana ability component | Not implemented |
 | `LandAbility.java` | Land play ability | Not implemented |
-| `OptionalCost.java` | Optional additional costs (Kicker, Buyback) | Not implemented |
+| `OptionalCost.java` | Optional additional costs (Kicker, Buyback) | **Partial** (kicker, buyback, multikicker, replicate implemented; `kicked`/`buyback_paid`/`kick_count`/`replicate_count` flags on SpellAbility; `+kicked` filter, `Condition$ Kicked` gate) |
 | `OptionalCostValue.java` | Optional cost value tracking | Not implemented |
 | `SpellAbilityCondition.java` | Conditions for ability activation | Not implemented |
 | `SpellAbilityPredicates.java` | Spell ability filtering predicates | Not implemented |
@@ -914,10 +937,10 @@
 | `mana_pool.rs` | **Complete** | Full mana payment: hybrid, phyrexian, colorless, generic |
 | `combat.rs` | **Complete** | Attack/block declaration, queries |
 | `action.rs` | **Complete** | move_card, damage, SBAs (lethal, poison, commander), draw, shuffle, tap/untap |
-| `event.rs` | **Complete** | TriggerType enum (33 types: 8 original + 25 new), RunParams (~30 fields) |
+| `event.rs` | **Complete** | TriggerType enum (34 types: 8 original + 26 new incl. SpellCopied), RunParams (~30 fields) |
 | `trigger.rs` | **Complete** | Trigger matching, ValidCard/ValidPlayer filters, parsing |
 | `trigger_handler.rs` | **Complete** | Active/waiting/delayed triggers, dispatch, OptionalDecider$ support, APNAP ordering |
-| `agent.rs` | **Complete** | PlayerAgent trait (15 callbacks incl. choose_optional_trigger), MainPhaseAction, TargetChoice |
+| `agent.rs` | **Complete** | PlayerAgent trait (19 callbacks incl. choose_buyback, choose_multikicker, choose_replicate, choose_alternative_cost), MainPhaseAction, TargetChoice |
 | `game_loop.rs` | **Partial** | Game flow orchestration with APNAP priority handoff, `priority_player` tracking, draw/combat/end priority windows, and illegal-action guardrails; still missing full Java parity for extra turns/phases and advanced phase replacement hooks |
 | `spellability/mod.rs` | **Complete** | SpellAbility module structure |
 | `spellability/targeting.rs` | **Complete** | Targeting system: parse_valid_targets, choose_targets, CardInZone support for graveyard/exile targeting |
@@ -943,22 +966,22 @@
 | Costs | 60 | 1 | 4 | 55 |
 | Events | 60 | 0 | 3 | 57 |
 | Extra Hands | 1 | 0 | 0 | 1 |
-| Keywords | 20 | 1 | 5 | 14 |
+| Keywords | 20 | 4 | 7 | 9 |
 | Mana | 10 | 1 | 2 | 7 |
 | Mulligan | 7 | 0 | 0 | 7 |
 | Phases | 7 | 1 | 3 | 3 |
 | Player | 17 | 1 | 2 | 14 |
 | Player Actions | 10 | 1 | 3 | 6 |
 | Replacement Effects | 46 | 4 | 4 | 38 |
-| Spell Abilities | 25 | 3 | 2 | 20 |
+| Spell Abilities | 25 | 3 | 3 | 19 |
 | Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 26 | 5 | 109 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **75** | **66** | **628** |
+| **TOTAL** | **769** | **78** | **69** | **622** |
 
-> **Coverage: ~18.3% implemented or partially implemented** (141 of 769 features have some Rust counterpart)
+> **Coverage: ~19.1% implemented or partially implemented** (147 of 769 features have some Rust counterpart)
 >
-> The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The trigger system now supports **33 trigger types** (8 original + 25 new) with OptionalDecider$ prompting, delayed trigger infrastructure, and comprehensive ValidCard$/ValidPlayer$ filtering. The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (109 still not implemented), and **costs** (58 files).
+> The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The trigger system now supports **34 trigger types** (8 original + 26 new incl. SpellCopied) with OptionalDecider$ prompting, delayed trigger infrastructure, and comprehensive ValidCard$/ValidPlayer$ filtering. **23 keyword abilities** are now supported (19 fully implemented: Flashback, Kicker, Storm, Cascade, Buyback, Spectacle, Evoke, Dash, Blitz, Multikicker, Replicate, Entwine, Escalate, Escape, Overload, Madness, Rebound, Prowess, Magecraft; 4 stubs with parser only: Strive, Suspend, Foretell, Emerge). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (109 still not implemented), and **costs** (58 files).
 
 ---
 
@@ -968,7 +991,7 @@
 |---------|--------|-------|
 | Set code on `CardInstance` | **Implemented** | `card.set_code: Option<String>` in `forge-engine/src/card/mod.rs` |
 | Set code in `CardDto` | **Implemented** | `set_code: String` in `game_view_dto.rs`; serialized as `setCode` via serde |
-| Set code in preset decks | **Implemented** | All 16 preset decks in `preset_decks.rs` carry a Scryfall set code per card entry (3-tuple format) |
+| Set code in preset decks | **Implemented** | All 19 preset decks in `preset_decks.rs` carry a Scryfall set code per card entry (3-tuple format) |
 | Set code in custom decks | **Implemented** | `CardIdentity.set_code` propagated to engine via `build_custom_deck` |
 | Scryfall set-specific image fetch | **Implemented** | `getCardByName(name, setCode?)` in `scryfall.ts`; falls back to name-only on miss |
 | `useCardImage` set-aware | **Implemented** | Hook passes `setCode` to `getCardByName`; `Card.tsx` passes `card.setCode` |

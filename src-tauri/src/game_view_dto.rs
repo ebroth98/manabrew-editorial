@@ -82,6 +82,12 @@ pub struct CardDto {
     pub is_double_faced: bool,
     /// True if this card is currently showing its back face.
     pub is_transformed: bool,
+    /// Flashback cost string, if the card has flashback (e.g. "1 R").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub flashback_cost: Option<String>,
+    /// Kicker cost string, if the card has kicker (e.g. "W").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kicker_cost: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -202,10 +208,11 @@ pub fn card_to_dto(
         owner_id: player_id_str(card.owner),
         zone_id: zone_label.to_string(),
         tapped: card.tapped,
-        // Merge intrinsic keywords with those granted by continuous effects (layer 6).
+        // Merge intrinsic keywords with those granted by continuous effects (layer 6)
+        // and temporary pump keywords (KW$ parameter, until end of turn).
         keywords: {
             let mut all = card.keywords.clone();
-            for k in &card.granted_keywords {
+            for k in card.granted_keywords.iter().chain(card.pump_keywords.iter()) {
                 if !all.iter().any(|e| e.eq_ignore_ascii_case(k)) {
                     all.push(k.clone());
                 }
@@ -217,6 +224,8 @@ pub fn card_to_dto(
         summoning_sick: card.summoning_sick && !card.has_haste(),
         is_token: card.is_token,
         is_double_faced: card.other_part.is_some(),
+        flashback_cost: card.get_flashback_cost(),
+        kicker_cost: card.get_kicker_cost(),
         is_transformed: card.is_transformed,
     }
 }

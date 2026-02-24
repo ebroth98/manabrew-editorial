@@ -77,6 +77,7 @@ fn push_effect_entry(
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 }
@@ -113,6 +114,7 @@ fn test_bounce_to_hand() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 
@@ -160,6 +162,7 @@ fn test_exile_permanent() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 
@@ -202,6 +205,7 @@ fn test_reanimate() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 
@@ -251,6 +255,7 @@ fn test_raise_dead() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 
@@ -305,6 +310,7 @@ fn test_change_zone_all_board_wipe() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 
@@ -364,6 +370,7 @@ fn test_sacrifice_self() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 
@@ -412,6 +419,7 @@ fn test_sacrifice_all_creatures() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 
@@ -474,6 +482,7 @@ fn test_sacrifice_each_player() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 
@@ -534,6 +543,7 @@ fn test_tuck_to_library_bottom() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 

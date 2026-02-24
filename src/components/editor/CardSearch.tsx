@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useCardSearch } from "@/hooks/useCards";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/game/Card";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { Loader2, Crown, LayoutGrid, List } from "lucide-react";
@@ -236,7 +237,7 @@ function DraggableCardRow({
 
       {/* Mana cost */}
       {card.manaCost && (
-        <span className="text-xs font-mono text-muted-foreground shrink-0">{card.manaCost}</span>
+        <ManaSymbols cost={card.manaCost} size="sm" className="shrink-0" />
       )}
 
       {/* Action buttons (hover) */}

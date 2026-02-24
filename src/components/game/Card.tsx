@@ -3,6 +3,7 @@ import { useCardImage } from "@/hooks/useCardImage";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { CounterDisplay } from "@/components/game/CounterBadge";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 
 interface CardProps {
   card: CardType;
@@ -24,6 +25,28 @@ function isLethalDamage(card: CardType) {
   return !isNaN(toughness) && card.damage >= toughness;
 }
 
+/** Render a keyword chip — if it contains a colon, the part after is a mana cost. */
+function KeywordChip({ kw }: { kw: string }) {
+  const colonIdx = kw.indexOf(":");
+  if (colonIdx === -1) {
+    // Simple keyword like "Flying", "Trample"
+    return (
+      <span className="text-[9px] font-bold uppercase bg-black/60 text-white px-1 py-0.5 rounded leading-none">
+        {kw}
+      </span>
+    );
+  }
+  // Cost keyword like "Buyback:5", "Dash:2 R", "Spectacle:R"
+  const label = kw.slice(0, colonIdx);
+  const cost = kw.slice(colonIdx + 1);
+  return (
+    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase bg-black/60 text-white px-1 py-0.5 rounded leading-none">
+      {label}
+      <ManaSymbols cost={cost} size="sm" />
+    </span>
+  );
+}
+
 function KeywordChips({ keywords }: { keywords: string[] }) {
   if (!keywords || keywords.length === 0) return null;
   const visible = keywords.slice(0, 4);
@@ -31,12 +54,7 @@ function KeywordChips({ keywords }: { keywords: string[] }) {
   return (
     <div className="absolute top-1 left-1 right-1 flex flex-wrap gap-0.5 z-10">
       {visible.map((kw) => (
-        <span
-          key={kw}
-          className="text-[9px] font-bold uppercase bg-black/60 text-white px-1 py-0.5 rounded leading-none"
-        >
-          {kw}
-        </span>
+        <KeywordChip key={kw} kw={kw} />
       ))}
       {hidden > 0 && (
         <span className="text-[9px] font-bold bg-black/60 text-white px-1 py-0.5 rounded leading-none">
@@ -159,7 +177,7 @@ export function Card({
                   {card.isTransformed ? "TRANSFORMED" : "TOKEN"}
                 </span>
               )}
-              <span className="text-xs font-mono">{card.manaCost}</span>
+              <ManaSymbols cost={card.manaCost} size="sm" />
             </div>
           </div>
           <div className="flex-1 flex items-center justify-center px-1">

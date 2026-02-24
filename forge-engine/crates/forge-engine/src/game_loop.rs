@@ -720,8 +720,26 @@ impl GameLoop {
             let chosen = agents[active.index()].choose_discard(active, &hand, to_discard);
             for card_id in chosen.iter().take(to_discard) {
                 if game.card(*card_id).zone == ZoneType::Hand {
-                    game.move_card(*card_id, ZoneType::Graveyard, active);
-                    // Fire Discarded trigger
+                    let has_madness = game.card(*card_id).get_madness_cost().is_some();
+                    if has_madness {
+                        // Madness: exile instead of graveyard (can cast for madness cost)
+                        game.move_card(*card_id, ZoneType::Exile, active);
+                        effects::emit_zone_trigger(
+                            &mut self.trigger_handler,
+                            *card_id,
+                            ZoneType::Hand,
+                            ZoneType::Exile,
+                        );
+                    } else {
+                        game.move_card(*card_id, ZoneType::Graveyard, active);
+                        effects::emit_zone_trigger(
+                            &mut self.trigger_handler,
+                            *card_id,
+                            ZoneType::Hand,
+                            ZoneType::Graveyard,
+                        );
+                    }
+                    // Fire Discarded trigger regardless of destination
                     self.trigger_handler.run_trigger(
                         TriggerType::Discarded,
                         RunParams {
@@ -730,12 +748,6 @@ impl GameLoop {
                             ..Default::default()
                         },
                         false,
-                    );
-                    effects::emit_zone_trigger(
-                        &mut self.trigger_handler,
-                        *card_id,
-                        ZoneType::Hand,
-                        ZoneType::Graveyard,
                     );
                 }
             }
@@ -747,6 +759,7 @@ impl GameLoop {
                 game.cards[i].damage = 0;
                 game.cards[i].power_modifier = 0;
                 game.cards[i].toughness_modifier = 0;
+                game.cards[i].pump_keywords.clear();
                 game.cards[i].has_deathtouch_damage = false;
             }
         }
@@ -796,6 +809,56 @@ impl GameLoop {
             }
         }
 
+        // Check Graveyard for Flashback and Escape cards
+        let graveyard: Vec<CardId> = game.cards_in_zone(ZoneType::Graveyard, player).to_vec();
+        for card_id in graveyard.iter().copied() {
+            let card = game.card(card_id);
+            let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
+            if must_be_instant && !is_instant {
+                continue;
+            }
+
+            // Flashback
+            if let Some(fb_cost_str) = card.get_flashback_cost() {
+                let fb_cost = forge_foundation::ManaCost::parse(&fb_cost_str);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                if available_mana.can_pay(&fb_cost) {
+                    playable.push(card_id);
+                    continue;
+                }
+            }
+
+            // Escape: cast from graveyard with escape cost + exiling other graveyard cards
+            if let Some((escape_mana_str, exile_count)) = card.get_escape_cost() {
+                let escape_mc = forge_foundation::ManaCost::parse(&escape_mana_str);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                let other_gy_count = graveyard.iter().filter(|&&cid| cid != card_id).count() as i32;
+                if available_mana.can_pay(&escape_mc) && other_gy_count >= exile_count {
+                    playable.push(card_id);
+                }
+            }
+        }
+
+        // Check Exile for Madness cards (discarded with madness go to exile)
+        let exile: Vec<CardId> = game.cards_in_zone(ZoneType::Exile, player).to_vec();
+        for card_id in exile {
+            let card = game.card(card_id);
+            if let Some(madness_cost_str) = card.get_madness_cost() {
+                let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
+                if must_be_instant && !is_instant {
+                    continue;
+                }
+                let madness_mc = forge_foundation::ManaCost::parse(&madness_cost_str);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                if available_mana.can_pay(&madness_mc) {
+                    playable.push(card_id);
+                }
+            }
+        }
+
         for &card_id in hand {
             let card = game.card(card_id);
             if card.is_land() {
@@ -808,10 +871,39 @@ impl GameLoop {
                     continue;
                 }
 
-                // Check if we can pay the mana cost
+                // Check if we can pay the mana cost (normal or alternative)
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
-                if available_mana.can_pay(&card.mana_cost) {
+                let can_pay_normal = available_mana.can_pay(&card.mana_cost);
+
+                // Check alternative costs that may be cheaper
+                let can_pay_spectacle = if let Some(spec_cost) = card.get_spectacle_cost() {
+                    let opponent_lost_life = game.player_order.iter()
+                        .filter(|&&pid| pid != player)
+                        .any(|&pid| game.player(pid).life_lost_this_turn > 0);
+                    opponent_lost_life && available_mana.can_pay(&forge_foundation::ManaCost::parse(&spec_cost))
+                } else { false };
+
+                let can_pay_evoke = if let Some(evoke_cost) = card.get_evoke_cost() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&evoke_cost))
+                } else { false };
+
+                let can_pay_dash = if let Some(dash_cost) = card.get_dash_cost() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&dash_cost))
+                } else { false };
+
+                let can_pay_blitz = if let Some(blitz_cost) = card.get_blitz_cost() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&blitz_cost))
+                } else { false };
+
+                let can_pay_overload = if let Some(overload_cost) = card.get_overload_cost() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&overload_cost))
+                } else { false };
+
+                let can_afford = can_pay_normal || can_pay_spectacle || can_pay_evoke
+                    || can_pay_dash || can_pay_blitz || can_pay_overload;
+
+                if can_afford {
                     // Check additional costs from SP$ line (e.g. Sac<1/Creature>).
                     // Mirrors Java's CostPayment.canPayAdditionalCosts().
                     let spell_cost = Self::parse_spell_cost(&card.abilities);
@@ -889,9 +981,426 @@ impl GameLoop {
             );
         } else {
             // Cast spell — tap lands for mana, put on stack, resolve
-            let mana_cost = game.card(card_id).mana_cost.clone();
             let is_creature = game.card(card_id).is_creature();
             let is_permanent = game.card(card_id).is_permanent();
+
+            // ── Alternative cost detection ──────────────────────────────
+            // Detect Flashback: casting from graveyard with flashback cost
+            let is_flashback = game.card(card_id).zone == ZoneType::Graveyard
+                && game.card(card_id).get_flashback_cost().is_some();
+
+            // Detect Spectacle: alternative cost if opponent lost life this turn
+            let is_spectacle = if !is_flashback {
+                if let Some(_spec_cost_str) = game.card(card_id).get_spectacle_cost() {
+                    let opponent_lost_life = game
+                        .player_order
+                        .iter()
+                        .filter(|&&pid| pid != player)
+                        .any(|&pid| game.player(pid).life_lost_this_turn > 0);
+                    if opponent_lost_life {
+                        let spec_cost_str = game.card(card_id).get_spectacle_cost().unwrap();
+                        let spec_mc = forge_foundation::ManaCost::parse(&spec_cost_str);
+                        let available_mana =
+                            mana::calculate_available_mana(self.pool(player), game, player);
+                        if available_mana.can_pay(&spec_mc) {
+                            // Offer choice: spectacle is cheaper, auto-pick it
+                            true
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Detect Evoke: alternative cost for creatures
+            let is_evoke = if !is_flashback && !is_spectacle {
+                if let Some(evoke_cost_str) = game.card(card_id).get_evoke_cost() {
+                    let evoke_mc = forge_foundation::ManaCost::parse(&evoke_cost_str);
+                    let normal_mc = &game.card(card_id).mana_cost;
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    // Offer evoke if: can afford evoke but NOT normal cost, or player chooses it
+                    if available_mana.can_pay(&evoke_mc) && !available_mana.can_pay(normal_mc) {
+                        true // auto-evoke when can't afford normal cost
+                    } else if available_mana.can_pay(&evoke_mc) && available_mana.can_pay(normal_mc) {
+                        // Both affordable — offer choice via alternative cost prompt
+                        let name = game.card(card_id).card_name.clone();
+                        let options = vec![
+                            format!("Normal cost: {}", normal_mc),
+                            format!("Evoke: {} (sacrifice on ETB)", evoke_cost_str),
+                        ];
+                        agents[player.index()].snapshot_state(game, &self.mana_pools);
+                        let choice = agents[player.index()].choose_alternative_cost(player, &options, Some(&name));
+                        choice == 1
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Detect Escape: casting from graveyard with escape cost + exiling graveyard cards
+            let is_escape = if !is_flashback {
+                if game.card(card_id).zone == ZoneType::Graveyard {
+                    if let Some((escape_mana_str, exile_count)) = game.card(card_id).get_escape_cost() {
+                        let escape_mc = forge_foundation::ManaCost::parse(&escape_mana_str);
+                        let available_mana =
+                            mana::calculate_available_mana(self.pool(player), game, player);
+                        // Count other cards in graveyard that can be exiled
+                        let other_gy_count = game
+                            .cards_in_zone(ZoneType::Graveyard, player)
+                            .iter()
+                            .filter(|&&cid| cid != card_id)
+                            .count() as i32;
+                        available_mana.can_pay(&escape_mc) && other_gy_count >= exile_count
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Detect Overload: alternative cost that changes "target" to "each"
+            let is_overload = if !is_flashback && !is_spectacle && !is_evoke && !is_escape {
+                if let Some(overload_cost_str) = game.card(card_id).get_overload_cost() {
+                    let overload_mc = forge_foundation::ManaCost::parse(&overload_cost_str);
+                    let normal_mc = &game.card(card_id).mana_cost;
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    if available_mana.can_pay(&overload_mc) {
+                        if available_mana.can_pay(normal_mc) {
+                            // Both affordable — offer choice
+                            let name = game.card(card_id).card_name.clone();
+                            let options = vec![
+                                format!("Normal cost: {}", normal_mc),
+                                format!("Overload: {} (affects all)", overload_cost_str),
+                            ];
+                            agents[player.index()].snapshot_state(game, &self.mana_pools);
+                            let choice = agents[player.index()].choose_alternative_cost(player, &options, Some(&name));
+                            choice == 1
+                        } else {
+                            true // Can only afford overload cost — auto-select it
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Detect Dash: alternative cost, creature gains haste, returns at EOT
+            let is_dash = if !is_flashback && !is_spectacle && !is_evoke && !is_escape && !is_overload {
+                if let Some(dash_cost_str) = game.card(card_id).get_dash_cost() {
+                    let dash_mc = forge_foundation::ManaCost::parse(&dash_cost_str);
+                    let normal_mc = &game.card(card_id).mana_cost;
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    if available_mana.can_pay(&dash_mc) {
+                        if !available_mana.can_pay(normal_mc) {
+                            true // can only afford dash
+                        } else {
+                            let name = game.card(card_id).card_name.clone();
+                            let options = vec![
+                                format!("Normal cost: {}", normal_mc),
+                                format!("Dash: {} (haste, return at EOT)", dash_cost_str),
+                            ];
+                            agents[player.index()].snapshot_state(game, &self.mana_pools);
+                            let choice = agents[player.index()].choose_alternative_cost(player, &options, Some(&name));
+                            choice == 1
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Detect Blitz: alternative cost, haste + "dies: draw" + sacrifice at EOT
+            let is_blitz = if !is_flashback && !is_spectacle && !is_evoke && !is_escape && !is_overload && !is_dash {
+                if let Some(blitz_cost_str) = game.card(card_id).get_blitz_cost() {
+                    let blitz_mc = forge_foundation::ManaCost::parse(&blitz_cost_str);
+                    let normal_mc = &game.card(card_id).mana_cost;
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    if available_mana.can_pay(&blitz_mc) {
+                        if !available_mana.can_pay(normal_mc) {
+                            true
+                        } else {
+                            let name = game.card(card_id).card_name.clone();
+                            let options = vec![
+                                format!("Normal cost: {}", normal_mc),
+                                format!("Blitz: {} (haste, draw on death, sac at EOT)", blitz_cost_str),
+                            ];
+                            agents[player.index()].snapshot_state(game, &self.mana_pools);
+                            let choice = agents[player.index()].choose_alternative_cost(player, &options, Some(&name));
+                            choice == 1
+                        }
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Detect Madness: casting from exile with madness cost
+            let is_madness = game.card(card_id).zone == ZoneType::Exile
+                && game.card(card_id).get_madness_cost().is_some();
+
+            // Determine the mana cost to use
+            let mana_cost = if is_flashback {
+                let fb_cost_str = game.card(card_id).get_flashback_cost().unwrap();
+                forge_foundation::ManaCost::parse(&fb_cost_str)
+            } else if is_madness {
+                let madness_cost_str = game.card(card_id).get_madness_cost().unwrap();
+                forge_foundation::ManaCost::parse(&madness_cost_str)
+            } else if is_spectacle {
+                let spec_cost_str = game.card(card_id).get_spectacle_cost().unwrap();
+                forge_foundation::ManaCost::parse(&spec_cost_str)
+            } else if is_evoke {
+                let evoke_cost_str = game.card(card_id).get_evoke_cost().unwrap();
+                forge_foundation::ManaCost::parse(&evoke_cost_str)
+            } else if is_escape {
+                let (escape_mana_str, _) = game.card(card_id).get_escape_cost().unwrap();
+                forge_foundation::ManaCost::parse(&escape_mana_str)
+            } else if is_overload {
+                let overload_cost_str = game.card(card_id).get_overload_cost().unwrap();
+                forge_foundation::ManaCost::parse(&overload_cost_str)
+            } else if is_dash {
+                let dash_cost_str = game.card(card_id).get_dash_cost().unwrap();
+                forge_foundation::ManaCost::parse(&dash_cost_str)
+            } else if is_blitz {
+                let blitz_cost_str = game.card(card_id).get_blitz_cost().unwrap();
+                forge_foundation::ManaCost::parse(&blitz_cost_str)
+            } else {
+                game.card(card_id).mana_cost.clone()
+            };
+
+            // ── Additional cost checks (Kicker, Buyback, Multikicker, Replicate) ──
+            // Check Kicker: offer to pay additional kicker cost
+            let kicked = if let Some(kicker_cost_str) = game.card(card_id).get_kicker_cost() {
+                let kicker_mc = forge_foundation::ManaCost::parse(&kicker_cost_str);
+                let combined = mana_cost.add(&kicker_mc);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                if available_mana.can_pay(&combined) {
+                    let name = game.card(card_id).card_name.clone();
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    agents[player.index()].choose_kicker(player, &kicker_cost_str, Some(&name))
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Combine kicker cost with base cost if kicked
+            let mana_cost = if kicked {
+                let kicker_cost_str = game.card(card_id).get_kicker_cost().unwrap();
+                let kicker_mc = forge_foundation::ManaCost::parse(&kicker_cost_str);
+                mana_cost.add(&kicker_mc)
+            } else {
+                mana_cost
+            };
+
+            // Check Buyback: offer to pay additional buyback cost
+            let buyback_paid = if let Some(buyback_cost_str) = game.card(card_id).get_buyback_cost() {
+                let buyback_mc = forge_foundation::ManaCost::parse(&buyback_cost_str);
+                let combined = mana_cost.add(&buyback_mc);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                if available_mana.can_pay(&combined) {
+                    let name = game.card(card_id).card_name.clone();
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    agents[player.index()].choose_buyback(player, &buyback_cost_str, Some(&name))
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Combine buyback cost
+            let mana_cost = if buyback_paid {
+                let buyback_cost_str = game.card(card_id).get_buyback_cost().unwrap();
+                let buyback_mc = forge_foundation::ManaCost::parse(&buyback_cost_str);
+                mana_cost.add(&buyback_mc)
+            } else {
+                mana_cost
+            };
+
+            // Check Multikicker: pay kicker cost any number of times
+            let kick_count = if let Some(mk_cost_str) = game.card(card_id).get_multikicker_cost() {
+                let mk_mc = forge_foundation::ManaCost::parse(&mk_cost_str);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                // Calculate max kicks: how many times we can add mk_mc to mana_cost
+                let mut max_kicks = 0u32;
+                let mut test_cost = mana_cost.clone();
+                loop {
+                    test_cost = test_cost.add(&mk_mc);
+                    if available_mana.can_pay(&test_cost) {
+                        max_kicks += 1;
+                    } else {
+                        break;
+                    }
+                    if max_kicks >= 20 {
+                        break; // Safety cap
+                    }
+                }
+                if max_kicks > 0 {
+                    let name = game.card(card_id).card_name.clone();
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    agents[player.index()].choose_multikicker(player, &mk_cost_str, max_kicks, Some(&name))
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
+            // Combine multikicker cost
+            let mana_cost = if kick_count > 0 {
+                let mk_cost_str = game.card(card_id).get_multikicker_cost().unwrap();
+                let mk_mc = forge_foundation::ManaCost::parse(&mk_cost_str);
+                let mut total = mana_cost;
+                for _ in 0..kick_count {
+                    total = total.add(&mk_mc);
+                }
+                total
+            } else {
+                mana_cost
+            };
+
+            // Check Replicate: copy spell for each time replicate cost is paid
+            let replicate_count = if let Some(rep_cost_str) = game.card(card_id).get_replicate_cost() {
+                let rep_mc = forge_foundation::ManaCost::parse(&rep_cost_str);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                let mut max_reps = 0u32;
+                let mut test_cost = mana_cost.clone();
+                loop {
+                    test_cost = test_cost.add(&rep_mc);
+                    if available_mana.can_pay(&test_cost) {
+                        max_reps += 1;
+                    } else {
+                        break;
+                    }
+                    if max_reps >= 20 {
+                        break;
+                    }
+                }
+                if max_reps > 0 {
+                    let name = game.card(card_id).card_name.clone();
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    agents[player.index()].choose_replicate(player, &rep_cost_str, max_reps, Some(&name))
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
+            // Combine replicate cost
+            let mana_cost = if replicate_count > 0 {
+                let rep_cost_str = game.card(card_id).get_replicate_cost().unwrap();
+                let rep_mc = forge_foundation::ManaCost::parse(&rep_cost_str);
+                let mut total = mana_cost;
+                for _ in 0..replicate_count {
+                    total = total.add(&rep_mc);
+                }
+                total
+            } else {
+                mana_cost
+            };
+
+            // Check Escalate: additional cost per mode beyond the first.
+            // Pre-pay for extra modes at cast time so charm_effect can allow all mode choices.
+            // Count available modes from the card's Charm ability Choices$ param.
+            let mana_cost = if let Some(escalate_cost_str) = game.card(card_id).get_escalate_cost() {
+                let abilities = game.card(card_id).abilities.clone();
+                let ability_text = abilities.first().cloned().unwrap_or_default();
+                let ability_params = crate::trigger::parse_pipe_params(&ability_text);
+                let num_modes = ability_params
+                    .get("Choices")
+                    .map(|c| c.split(',').count())
+                    .unwrap_or(1);
+                if num_modes > 1 {
+                    let esc_mc = forge_foundation::ManaCost::parse(&escalate_cost_str);
+                    // Calculate how many extra modes the player can afford
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    let mut extra_modes = 0u32;
+                    let mut test_cost = mana_cost.clone();
+                    for _ in 1..num_modes {
+                        test_cost = test_cost.add(&esc_mc);
+                        if available_mana.can_pay(&test_cost) {
+                            extra_modes += 1;
+                        } else {
+                            break;
+                        }
+                    }
+                    if extra_modes > 0 {
+                        let mut total = mana_cost.clone();
+                        for _ in 0..extra_modes {
+                            total = total.add(&esc_mc);
+                        }
+                        total
+                    } else {
+                        mana_cost
+                    }
+                } else {
+                    mana_cost
+                }
+            } else {
+                mana_cost
+            };
+
+            // Check Entwine: pay extra to choose all modes of a modal spell
+            let entwine_paid = if let Some(entwine_cost_str) = game.card(card_id).get_entwine_cost() {
+                let entwine_mc = forge_foundation::ManaCost::parse(&entwine_cost_str);
+                let combined = mana_cost.add(&entwine_mc);
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                if available_mana.can_pay(&combined) {
+                    let name = game.card(card_id).card_name.clone();
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    agents[player.index()].choose_kicker(player, &entwine_cost_str, Some(&name))
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            // Combine entwine cost
+            let mana_cost = if entwine_paid {
+                let entwine_cost_str = game.card(card_id).get_entwine_cost().unwrap();
+                let entwine_mc = forge_foundation::ManaCost::parse(&entwine_cost_str);
+                mana_cost.add(&entwine_mc)
+            } else {
+                mana_cost
+            };
 
             // Detect commander cast from Command zone (for commander tax)
             let is_commander_cast =
@@ -931,6 +1440,22 @@ impl GameLoop {
                 self.pay_additional_costs(game, agents, player, card_id, sc);
             }
 
+            // Pay Escape exile cost: exile N other graveyard cards
+            if is_escape {
+                if let Some((_, exile_count)) = game.card(card_id).get_escape_cost() {
+                    let gy_cards: Vec<CardId> = game
+                        .cards_in_zone(ZoneType::Graveyard, player)
+                        .iter()
+                        .filter(|&&cid| cid != card_id)
+                        .copied()
+                        .take(exile_count as usize)
+                        .collect();
+                    for cid in gy_cards {
+                        game.move_card(cid, ZoneType::Exile, player);
+                    }
+                }
+            }
+
             // Increment commander cast count (before moving card to stack)
             if is_commander_cast {
                 game.card_mut(card_id).commander_cast_count += 1;
@@ -954,7 +1479,41 @@ impl GameLoop {
             let ability_text = abilities.first().cloned().unwrap_or_default();
             let mut sa = build_spell_ability(game, card_id, &ability_text, player);
             sa.is_spell = true;
-            sa.setup_targets(game, agents, &self.mana_pools);
+
+            // Set alternative cost on the SpellAbility
+            if is_flashback {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Flashback);
+            } else if is_madness {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Madness);
+            } else if is_spectacle {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Spectacle);
+            } else if is_evoke {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Evoke);
+            } else if is_escape {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Escape);
+            } else if is_overload {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Overload);
+                sa.overloaded = true;
+            } else if is_dash {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Dash);
+            } else if is_blitz {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Blitz);
+            }
+
+            // Set kicked flag on the SpellAbility (also set for entwine — charm_effect checks sa.kicked)
+            if kicked || kick_count > 0 || entwine_paid {
+                sa.kicked = true;
+            }
+
+            // Set additional cost flags
+            sa.buyback_paid = buyback_paid;
+            sa.kick_count = kick_count;
+            sa.replicate_count = replicate_count;
+
+            // Overloaded spells replace "target" with "each" — skip targeting.
+            if !sa.overloaded {
+                sa.setup_targets(game, agents, &self.mana_pools);
+            }
 
             // Fire BecomesTarget trigger if a card was targeted
             if let Some(target_card) = sa.target_chosen.target_card {
@@ -969,18 +1528,123 @@ impl GameLoop {
                 );
             }
 
+            let cast_zone = if is_flashback || is_escape {
+                Some(ZoneType::Graveyard)
+            } else if is_madness {
+                Some(ZoneType::Exile)
+            } else if is_commander_cast {
+                Some(ZoneType::Command)
+            } else {
+                Some(ZoneType::Hand)
+            };
+
             let entry = StackEntry {
                 id: 0,
                 spell_ability: sa,
                 is_creature_spell: is_creature,
                 is_permanent_spell: is_permanent,
+                cast_from_zone: cast_zone,
             };
 
-            game.stack.push(entry);
+            game.stack.push(entry.clone());
             agents[player.index()].notify(&format!("Cast: {}", card_name));
 
             // Move spell to stack zone
             game.move_card(card_id, ZoneType::Stack, player);
+
+            // Storm: create N copies where N = spells_cast_this_turn - 1.
+            // Each copy may choose new targets independently.
+            // Mirrors Java's CopySpellAbilityEffect + MayChooseTarget$ True.
+            if game.card(card_id).has_storm() {
+                let storm_count = game.player(player).spells_cast_this_turn - 1;
+                if storm_count > 0 {
+                    agents[player.index()]
+                        .notify(&format!("Storm count: {} copies", storm_count));
+                    for i in 0..storm_count {
+                        let mut copy = entry.clone();
+                        copy.spell_ability.is_copy = true;
+                        // Each copy gets independent target selection.
+                        // Mirrors Java's copy.setMayChooseNewTargets(true)
+                        // followed by setupNewTargets() for each copy.
+                        if copy.spell_ability.uses_targeting() {
+                            agents[player.index()]
+                                .snapshot_state(game, &self.mana_pools);
+                            agents[player.index()].notify(&format!(
+                                "Choose target for Storm copy {}/{}",
+                                i + 1,
+                                storm_count
+                            ));
+                            copy.spell_ability.setup_targets(
+                                game,
+                                agents,
+                                &self.mana_pools,
+                            );
+                        }
+                        game.stack.push(copy);
+
+                        // Emit SpellCopied trigger for Magecraft
+                        self.trigger_handler.run_trigger(
+                            TriggerType::SpellCopied,
+                            RunParams {
+                                spell_card: Some(card_id),
+                                spell_controller: Some(player),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
+                }
+            }
+
+            // Replicate: create N copies where N = replicate_count
+            if replicate_count > 0 {
+                agents[player.index()]
+                    .notify(&format!("Replicate: {} copies", replicate_count));
+                for i in 0..replicate_count {
+                    let mut copy = entry.clone();
+                    copy.spell_ability.is_copy = true;
+                    if copy.spell_ability.uses_targeting() {
+                        agents[player.index()]
+                            .snapshot_state(game, &self.mana_pools);
+                        agents[player.index()].notify(&format!(
+                            "Choose target for Replicate copy {}/{}",
+                            i + 1,
+                            replicate_count
+                        ));
+                        copy.spell_ability.setup_targets(
+                            game,
+                            agents,
+                            &self.mana_pools,
+                        );
+                    }
+                    game.stack.push(copy);
+
+                    // Emit SpellCopied trigger for Magecraft
+                    self.trigger_handler.run_trigger(
+                        TriggerType::SpellCopied,
+                        RunParams {
+                            spell_card: Some(card_id),
+                            spell_controller: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+            }
+
+            // Cascade: exile from library until finding a cheaper nonland card
+            let cascade_count = game
+                .card(card_id)
+                .keywords
+                .iter()
+                .filter(|k| k.eq_ignore_ascii_case("Cascade"))
+                .count();
+            if cascade_count > 0 {
+                let caster_mv = game.card(card_id).mana_value();
+                for _ in 0..cascade_count {
+                    self.resolve_cascade(game, agents, player, caster_mv);
+                }
+            }
         }
 
         Some((card_id, card_name))
@@ -997,17 +1661,39 @@ impl GameLoop {
 
         let entry = game.stack.pop().unwrap();
 
+        // Storm/copy spells: resolve effect only, no card movement (copies have no physical card)
+        if entry.spell_ability.is_copy {
+            self.resolve_spell_effect(game, agents, &entry);
+            apply_continuous_effects(game);
+            game.check_state_based_actions();
+            self.process_triggers(game, agents);
+            return;
+        }
+
         if entry.spell_ability.is_trigger || entry.spell_ability.is_activated {
             // Triggered/activated ability: resolve the effect
             self.resolve_spell_effect(game, agents, &entry);
         } else if let Some(card_id) = entry.spell_ability.source {
+            let alt_cost = entry.spell_ability.alt_cost;
+            let player = entry.spell_ability.activating_player;
+
             if entry.is_creature_spell || entry.is_permanent_spell {
                 // Permanent spell: move to battlefield
                 let origin = game.card(card_id).zone;
+
+                // Propagate kicked flag to the card so triggers with
+                // ValidCard$ Card.Self+kicked can check it after resolution.
+                if entry.spell_ability.kicked {
+                    game.card_mut(card_id).kicked = true;
+                }
+
+                // Resolve any ETB effects defined on the card
+                self.resolve_spell_effect(game, agents, &entry);
+
                 game.move_card(
                     card_id,
                     ZoneType::Battlefield,
-                    entry.spell_ability.activating_player,
+                    player,
                 );
 
                 // Register triggers for the new permanent
@@ -1020,16 +1706,136 @@ impl GameLoop {
                     origin,
                     ZoneType::Battlefield,
                 );
+
+                // ── Post-ETB effects for alternative costs ──
+
+                // Evoke: sacrifice this creature immediately after ETB
+                if alt_cost == Some(crate::spellability::AlternativeCost::Evoke) {
+                    if game.card(card_id).zone == ZoneType::Battlefield {
+                        let owner = game.card(card_id).owner;
+                        game.move_card(card_id, ZoneType::Graveyard, owner);
+                        self.trigger_handler.unregister_active_triggers(card_id);
+                        // Fire Sacrificed trigger
+                        self.trigger_handler.run_trigger(
+                            TriggerType::Sacrificed,
+                            RunParams {
+                                card: Some(card_id),
+                                player: Some(player),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
+                }
+
+                // Dash: grant haste, register delayed trigger to return to hand at EOT
+                if alt_cost == Some(crate::spellability::AlternativeCost::Dash) {
+                    game.card_mut(card_id).pump_keywords.push("Haste".to_string());
+                    // Register delayed trigger: at end-of-turn, return to hand
+                    self.trigger_handler.register_delayed_trigger(
+                        crate::trigger::handler::DelayedTrigger {
+                            mode: TriggerType::Phase,
+                            trigger_mode: crate::trigger::TriggerMode::Phase {
+                                phase: Some(forge_foundation::PhaseType::EndOfTurn),
+                                valid_player: None,
+                            },
+                            execute_svar: format!(
+                                "DB$ ChangeZone | Origin$ Battlefield | Destination$ Hand | Defined$ CardUID_{}", card_id.0
+                            ),
+                            controller: player,
+                            source_card: card_id,
+                            target_card: Some(card_id),
+                        },
+                    );
+                }
+
+                // Blitz: grant haste + "dies: draw a card" + sacrifice at EOT
+                if alt_cost == Some(crate::spellability::AlternativeCost::Blitz) {
+                    game.card_mut(card_id).pump_keywords.push("Haste".to_string());
+                    // Add "dies → draw a card" trigger
+                    let trig_id = game.card(card_id).triggers.len() as u32;
+                    let dies_trigger = crate::trigger::Trigger {
+                        id: trig_id,
+                        mode: crate::trigger::TriggerMode::ChangesZone {
+                            origin: Some(ZoneType::Battlefield),
+                            destination: Some(ZoneType::Graveyard),
+                            valid_card: Some("Card.Self".to_string()),
+                        },
+                        params: std::collections::BTreeMap::new(),
+                        active_zones: vec![ZoneType::Battlefield],
+                        execute: "BlitzDiesDraw".to_string(),
+                        optional: false,
+                        description: "When this creature dies, draw a card.".to_string(),
+                        intrinsic: false,
+                    };
+                    game.card_mut(card_id).triggers.push(dies_trigger);
+                    game.card_mut(card_id).svars.insert(
+                        "BlitzDiesDraw".to_string(),
+                        "DB$ Draw | NumCards$ 1 | Defined$ You".to_string(),
+                    );
+                    // Re-register triggers for the updated card
+                    self.trigger_handler.unregister_active_triggers(card_id);
+                    self.trigger_handler.register_active_trigger(game, card_id);
+
+                    // Register delayed trigger: sacrifice at EOT
+                    self.trigger_handler.register_delayed_trigger(
+                        crate::trigger::handler::DelayedTrigger {
+                            mode: TriggerType::Phase,
+                            trigger_mode: crate::trigger::TriggerMode::Phase {
+                                phase: Some(forge_foundation::PhaseType::EndOfTurn),
+                                valid_player: None,
+                            },
+                            execute_svar: format!(
+                                "DB$ Sacrifice | Defined$ CardUID_{}", card_id.0
+                            ),
+                            controller: player,
+                            source_card: card_id,
+                            target_card: Some(card_id),
+                        },
+                    );
+                }
             } else {
-                // Non-permanent spell: resolve effect, then move to graveyard
+                // Non-permanent spell: resolve effect, then route to destination zone
                 self.resolve_spell_effect(game, agents, &entry);
                 let owner = game.card(card_id).owner;
-                // Only move to graveyard if it's still in stack zone
+                // Only move if still in stack zone (some effects move the card themselves)
                 if game.card(card_id).zone != ZoneType::Exile
                     && game.card(card_id).zone != ZoneType::Library
                     && game.card(card_id).zone != ZoneType::Hand
                 {
-                    game.move_card(card_id, ZoneType::Graveyard, owner);
+                    // Determine destination based on alternative cost / keywords
+                    let dest = if alt_cost == Some(crate::spellability::AlternativeCost::Flashback)
+                        || alt_cost == Some(crate::spellability::AlternativeCost::Escape)
+                    {
+                        ZoneType::Exile
+                    } else if entry.spell_ability.buyback_paid {
+                        // Buyback: return to hand instead of graveyard
+                        ZoneType::Hand
+                    } else if game.card(card_id).has_rebound()
+                        && entry.cast_from_zone == Some(ZoneType::Hand)
+                    {
+                        // Rebound: exile instead of graveyard (will be cast next upkeep)
+                        // Register delayed trigger for next upkeep
+                        self.trigger_handler.register_delayed_trigger(
+                            crate::trigger::handler::DelayedTrigger {
+                                mode: TriggerType::Phase,
+                                trigger_mode: crate::trigger::TriggerMode::Phase {
+                                    phase: Some(forge_foundation::PhaseType::Upkeep),
+                                    valid_player: Some("You".to_string()),
+                                },
+                                execute_svar: format!(
+                                    "DB$ Play | Defined$ CardUID_{} | WithoutManaCost$ True", card_id.0
+                                ),
+                                controller: player,
+                                source_card: card_id,
+                                target_card: Some(card_id),
+                            },
+                        );
+                        ZoneType::Exile
+                    } else {
+                        ZoneType::Graveyard
+                    };
+                    game.move_card(card_id, dest, owner);
                 }
             }
         }
@@ -1053,9 +1859,30 @@ impl GameLoop {
         // the parent SA's chosen target card so sub-abilities can resolve
         // `Defined$ ParentTarget`. Mirrors Java's resolveApiAbility() + resolveSubAbilities().
         let mut parent_target_card: Option<CardId> = None;
+        let root_kicked = entry.spell_ability.kicked;
         let mut current = Some(&entry.spell_ability);
+        let mut is_first = true;
         while let Some(sa) = current {
-            self.resolve_single_effect(game, agents, sa, parent_target_card);
+            // Refresh agent snapshots between sub-abilities so that prompts
+            // (e.g. "choose discard") reflect state changes from earlier
+            // sub-abilities (e.g. "draw 2" before "discard 2").
+            if !is_first {
+                for agent in agents.iter_mut() {
+                    agent.snapshot_state(game, &self.mana_pools);
+                }
+            }
+            is_first = false;
+
+            // Propagate kicked flag from root SA to sub-abilities for condition checks
+            let mut sa_with_kicked;
+            let sa_ref = if root_kicked && !sa.kicked {
+                sa_with_kicked = sa.clone();
+                sa_with_kicked.kicked = true;
+                &sa_with_kicked
+            } else {
+                sa
+            };
+            self.resolve_single_effect(game, agents, sa_ref, parent_target_card);
             // This SA's target card becomes the parent context for the next sub-ability.
             parent_target_card = sa.target_chosen.target_card;
             current = sa.get_sub_ability();
@@ -1136,8 +1963,10 @@ impl GameLoop {
         for pt in pending {
             if pt.optional {
                 // Prompt the deciding player
+                let source_name = pt.entry.spell_ability.source
+                    .map(|id| game.card(id).card_name.clone());
                 let accepted = agents[pt.decider.index()]
-                    .choose_optional_trigger(pt.decider, &pt.description);
+                    .choose_optional_trigger(pt.decider, &pt.description, source_name.as_deref());
                 if !accepted {
                     continue; // Player declined the optional trigger
                 }
@@ -1420,6 +2249,7 @@ impl GameLoop {
             spell_ability: sa,
             is_creature_spell: false,
             is_permanent_spell: false,
+            cast_from_zone: None,
         };
         game.stack.push(entry);
         agents[player.index()].notify(&format!("Activated ability of {}", card_name));
@@ -1434,6 +2264,115 @@ impl GameLoop {
             },
             false,
         );
+    }
+
+    /// Resolve a Cascade trigger: exile cards from top of library until finding
+    /// a nonland card with mana_value < `caster_mv`, then cast it for free.
+    /// Remaining exiled cards go to the bottom of the library in random order.
+    /// Mirrors Java's `CascadeEffect`.
+    fn resolve_cascade(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        caster_mv: i32,
+    ) {
+        let mut exiled_ids: Vec<CardId> = Vec::new();
+        let mut found_card: Option<CardId> = None;
+
+        // Exile cards one at a time from the top of the library
+        loop {
+            let lib = game.cards_in_zone(ZoneType::Library, player);
+            if lib.is_empty() {
+                break;
+            }
+            let top_id = *lib.last().unwrap(); // last = top of library
+            game.move_card(top_id, ZoneType::Exile, player);
+            let card = game.card(top_id);
+            let is_land = card.is_land();
+            let mv = card.mana_value();
+
+            if !is_land && mv < caster_mv {
+                found_card = Some(top_id);
+                agents[player.index()]
+                    .notify(&format!("Cascade found: {}", card.card_name));
+                break;
+            }
+            exiled_ids.push(top_id);
+        }
+
+        // Snapshot so the player can see the exiled cards
+        agents[player.index()].snapshot_state(game, &self.mana_pools);
+
+        // Optionally cast the found card for free (no mana payment)
+        if let Some(cascade_card_id) = found_card {
+            let card = game.card(cascade_card_id);
+            let card_name = card.card_name.clone();
+
+            // Ask the player whether they want to cast the found card
+            let wants_to_cast = agents[player.index()].choose_optional_trigger(
+                player,
+                &format!("Cascade: Cast {} without paying its mana cost?", card_name),
+                Some(&card_name),
+            );
+
+            if wants_to_cast {
+                let card = game.card(cascade_card_id);
+                let is_creature = card.is_creature();
+                let is_permanent = card.is_permanent();
+                let abilities = card.abilities.clone();
+
+                let ability_text = abilities.first().cloned().unwrap_or_default();
+                let mut sa = build_spell_ability(game, cascade_card_id, &ability_text, player);
+                sa.is_spell = true;
+
+                // Snapshot before targeting so the UI shows current game state
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                sa.setup_targets(game, agents, &self.mana_pools);
+
+                let entry = StackEntry {
+                    id: 0,
+                    spell_ability: sa,
+                    is_creature_spell: is_creature,
+                    is_permanent_spell: is_permanent,
+                    cast_from_zone: Some(ZoneType::Exile),
+                };
+                game.stack.push(entry);
+                agents[player.index()].notify(&format!("Cascade cast: {}", card_name));
+                game.move_card(cascade_card_id, ZoneType::Stack, player);
+
+                // Cascade spell counts as being cast
+                game.player_mut(player).spells_cast_this_turn += 1;
+                self.trigger_handler.run_trigger(
+                    TriggerType::SpellCast,
+                    RunParams {
+                        spell_card: Some(cascade_card_id),
+                        spell_controller: Some(player),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            } else {
+                // Player declined — found card goes to bottom with the rest
+                exiled_ids.push(cascade_card_id);
+            }
+        }
+
+        // Put exiled cards on bottom of library in random order
+        use rand::seq::SliceRandom;
+        let mut rng = rand::thread_rng();
+        exiled_ids.shuffle(&mut rng);
+        for card_id in exiled_ids {
+            // Move from exile to library, but at the bottom
+            let card = &mut game.cards[card_id.index()];
+            let src_zone = card.zone;
+            let src_owner = card.controller;
+            card.zone = ZoneType::Library;
+            if src_zone != ZoneType::None {
+                game.zone_mut(src_zone, src_owner).remove(card_id);
+            }
+            game.zone_mut(ZoneType::Library, player).add_to_bottom(card_id);
+        }
     }
 
     /// Give players priority to take actions (play cards, activate abilities).

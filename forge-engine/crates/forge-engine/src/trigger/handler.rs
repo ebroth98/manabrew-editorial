@@ -30,6 +30,9 @@ pub struct DelayedTrigger {
     pub execute_svar: String,
     pub controller: PlayerId,
     pub source_card: CardId,
+    /// Optional target card for the delayed trigger (e.g. the creature to bounce for Dash
+    /// or sacrifice for Blitz at end of turn).
+    pub target_card: Option<CardId>,
 }
 
 /// A triggered ability ready to be placed on the stack, with optional metadata.
@@ -127,6 +130,7 @@ impl TriggerHandler {
                         spell_ability: sa,
                         is_creature_spell: false,
                         is_permanent_spell: false,
+                        cast_from_zone: None,
                     };
 
                     let pending = PendingTrigger {
@@ -146,7 +150,21 @@ impl TriggerHandler {
                 if trigger_type != event.mode {
                     continue;
                 }
-                // Delayed triggers always match (no performTest filter beyond type).
+                // For Phase triggers, also check the phase and valid_player
+                if let TriggerMode::Phase { phase, valid_player } = &delayed.trigger_mode {
+                    if let Some(expected_phase) = phase {
+                        if event.params.phase != Some(*expected_phase) {
+                            continue;
+                        }
+                    }
+                    if let Some(vp) = valid_player {
+                        if vp == "You" {
+                            if event.params.player != Some(delayed.controller) {
+                                continue;
+                            }
+                        }
+                    }
+                }
                 let mut sa = build_spell_ability(
                     game,
                     delayed.source_card,
@@ -161,6 +179,7 @@ impl TriggerHandler {
                     spell_ability: sa,
                     is_creature_spell: false,
                     is_permanent_spell: false,
+                    cast_from_zone: None,
                 };
                 let pending = PendingTrigger {
                     entry,
@@ -285,6 +304,7 @@ impl TriggerHandler {
             TriggerMode::Destroyed { .. } => TriggerType::Destroyed,
             TriggerMode::Exiled { .. } => TriggerType::Exiled,
             TriggerMode::TokenCreated { .. } => TriggerType::TokenCreated,
+            TriggerMode::SpellCopied { .. } => TriggerType::SpellCopied,
         };
 
         if trigger_type != *mode {

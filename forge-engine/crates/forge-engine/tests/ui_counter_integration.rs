@@ -206,6 +206,7 @@ fn test_counterspell_targeting_flow() {
         spell_ability: bolt_sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     let bolt_entry_id = game.stack.push(bolt_entry);
     assert_eq!(game.stack.len(), 1, "Lightning Bolt should be on stack");
@@ -281,6 +282,7 @@ fn test_priority_passing_during_counter_war() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     let bolt_stack_id = game.stack.push(entry);
 
@@ -323,6 +325,7 @@ fn test_valid_counter_target_filtering() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     let spell_stack_id = game.stack.push(entry);
 

@@ -147,6 +147,7 @@ fn test_target_type_filter() {
         spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     let entry_id = game.stack.push(entry);
 
@@ -165,6 +166,7 @@ fn test_target_type_filter() {
         spell_ability: ability,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     let entry_id2 = game.stack.push(entry2);
     assert_eq!(entry_id2, 1, "Second stack entry should have ID 1");
@@ -195,6 +197,7 @@ fn test_target_type_filter() {
         spell_ability: ability,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game2.stack.push(entry);
 
@@ -222,6 +225,7 @@ fn test_cancel_counters_creature_spell() {
         spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     let creature_spell_id = game.stack.push(entry);
 
@@ -300,6 +304,7 @@ fn test_cancel_counters_noncreature_spell() {
         spell_ability: sa,
         is_creature_spell: false,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     let instant_spell_id = game.stack.push(entry);
 

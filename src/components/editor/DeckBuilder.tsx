@@ -2,6 +2,7 @@ import { useDeckStore } from "@/stores/useDeckStore";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { PrintPickerModal } from "./PrintPickerModal";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Image as ImageIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import {
@@ -299,7 +300,7 @@ function CardRow({
       <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">{group.count}</span>
       <span className="text-sm flex-1 truncate" title={group.card.name}>{group.card.name}</span>
       {group.card.manaCost && (
-        <span className="text-xs text-muted-foreground shrink-0 font-mono">{group.card.manaCost}</span>
+        <ManaSymbols cost={group.card.manaCost} size="sm" className="shrink-0" />
       )}
       {group.card.power && group.card.toughness && (
         <span className="text-xs text-muted-foreground/60 shrink-0 font-mono">
@@ -852,7 +853,7 @@ export function DeckBuilder() {
                       <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
                       <span className="text-sm flex-1 truncate">{currentDeck.commander.name}</span>
                       {currentDeck.commander.manaCost && (
-                        <span className="text-xs text-muted-foreground shrink-0 font-mono">{currentDeck.commander.manaCost}</span>
+                        <ManaSymbols cost={currentDeck.commander.manaCost} size="sm" className="shrink-0" />
                       )}
                       <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
                         onClick={() => removeCommander()}>
@@ -942,7 +943,7 @@ export function DeckBuilder() {
                       >
                         <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">{g.count}</span>
                         <span className="text-sm flex-1 truncate">{g.card.name}</span>
-                        {g.card.manaCost && <span className="text-xs text-muted-foreground shrink-0 font-mono">{g.card.manaCost}</span>}
+                        {g.card.manaCost && <ManaSymbols cost={g.card.manaCost} size="sm" className="shrink-0" />}
                         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
                           <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground" title="Move to main" onClick={() => handleMoveToMain(g.card.name)}>
                             <Upload className="h-3 w-3" />

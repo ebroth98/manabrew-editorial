@@ -87,20 +87,36 @@ pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstanc
 
     // Parse each raw trigger string (T: line) into a Trigger struct.
     // Unknown/unsupported trigger modes return None and are skipped with a warning.
-    let triggers: Vec<_> = face
-        .triggers
-        .iter()
-        .filter_map(|raw| {
-            let result = parse_trigger(raw, &mut next_trigger_id);
-            if result.is_none() {
-                eprintln!(
-                    "[carddb] Unsupported trigger on '{}': {:?} — skipped",
-                    face.name, raw
-                );
+    let mut triggers: Vec<_> = Vec::new();
+    // Track which T: lines used SpellCastOrCopy so we can duplicate as SpellCopied.
+    let mut spell_cast_or_copy_raw: Vec<String> = Vec::new();
+    for raw in &face.triggers {
+        let result = parse_trigger(raw, &mut next_trigger_id);
+        if let Some(trig) = result {
+            triggers.push(trig);
+            // If the raw trigger used SpellCastOrCopy mode, record it for duplication
+            if raw.contains("Mode$ SpellCastOrCopy") {
+                spell_cast_or_copy_raw.push(raw.clone());
             }
-            result
-        })
-        .collect();
+        } else {
+            eprintln!(
+                "[carddb] Unsupported trigger on '{}': {:?} — skipped",
+                face.name, raw
+            );
+        }
+    }
+    // Duplicate SpellCastOrCopy triggers as SpellCopied variants (for Magecraft).
+    for raw in &spell_cast_or_copy_raw {
+        let converted = raw.replace("Mode$ SpellCastOrCopy", "Mode$ SpellCopied");
+        if let Some(trig) = parse_trigger(&converted, &mut next_trigger_id) {
+            triggers.push(trig);
+        }
+    }
+
+    // Auto-generate triggers from keywords that imply triggers.
+    // Mirrors Java's CardFactoryUtil.addTriggerAbility() which auto-creates
+    // trigger objects for keywords like Prowess.
+    auto_generate_keyword_triggers(&face.keywords, &mut triggers, &mut next_trigger_id);
 
     let mut card = CardInstance::new(
         CardId(0),
@@ -118,6 +134,14 @@ pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstanc
     card.triggers = triggers;
     // SVars must be copied so trigger Execute$ references resolve correctly.
     card.svars = face.svars.clone();
+
+    // Inject SVars for auto-generated keyword triggers (e.g. Prowess pump).
+    if face.keywords.iter().any(|k| k == "Prowess") && !card.svars.contains_key("TrigProwess") {
+        card.svars.insert(
+            "TrigProwess".to_string(),
+            "DB$ Pump | Defined$ Self | NumAtt$ 1 | NumDef$ 1".to_string(),
+        );
+    }
 
     // Load static abilities from S: lines (stored separately from A: ability lines
     // in Forge card scripts).  The parser strips the "S:" key and stores only the
@@ -162,4 +186,23 @@ pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstanc
         }
     }
     card
+}
+
+/// Auto-generate triggers from keyword abilities that imply triggered effects.
+/// Mirrors Java's CardFactoryUtil.addTriggerAbility() for K: keyword lines.
+fn auto_generate_keyword_triggers(
+    keywords: &[String],
+    triggers: &mut Vec<forge_engine_core::trigger::Trigger>,
+    next_id: &mut u32,
+) {
+    for kw in keywords {
+        if kw == "Prowess" {
+            // Prowess: "Whenever you cast a noncreature spell, this creature gets +1/+1 until EOT."
+            let raw = "Mode$ SpellCast | ValidCard$ Card.nonCreature | ValidActivatingPlayer$ You | Execute$ TrigProwess | TriggerZones$ Battlefield | TriggerDescription$ Prowess";
+            if let Some(mut trig) = parse_trigger(raw, next_id) {
+                trig.execute = "TrigProwess".to_string();
+                triggers.push(trig);
+            }
+        }
+    }
 }

@@ -149,9 +149,15 @@ impl PlayerAgent for TauriAgent {
             .map(|c| format!("card-{}", c.0))
             .collect();
 
-        // Update the view with playable info
+        // Update the view with playable info (hand, graveyard, command zone)
         let mut view = self.view();
         for card in &mut view.my_hand {
+            card.is_playable = playable_card_ids.contains(&card.id);
+        }
+        for card in &mut view.graveyard {
+            card.is_playable = playable_card_ids.contains(&card.id);
+        }
+        for card in &mut view.my_command_zone {
             card.is_playable = playable_card_ids.contains(&card.id);
         }
 
@@ -272,7 +278,7 @@ impl PlayerAgent for TauriAgent {
         valid: &[CardId],
     ) -> Option<CardId> {
         let valid_card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
-        let mut view = self.view();
+        let view = self.view();
 
         // Build the list of cards in the specified zone
         let zone_cards: Vec<CardDto> = match zone {
@@ -497,6 +503,7 @@ impl PlayerAgent for TauriAgent {
         descriptions: &[String],
         min: usize,
         max: usize,
+        card_name: Option<&str>,
     ) -> Vec<usize> {
         if player != self.human_player {
             // AI: pick first `min` modes
@@ -507,6 +514,7 @@ impl PlayerAgent for TauriAgent {
             options: descriptions.to_vec(),
             min_choices: min,
             max_choices: max,
+            source_card_name: card_name.map(String::from),
         });
         match self.recv_action() {
             PlayerAction::ModeDecision { chosen_indices } => chosen_indices,
@@ -514,17 +522,95 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_optional_trigger(&mut self, player: PlayerId, description: &str) -> bool {
+    fn choose_optional_trigger(&mut self, player: PlayerId, description: &str, card_name: Option<&str>) -> bool {
         if player != self.human_player {
             return true; // AI always accepts optional triggers
         }
         self.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
             game_view: self.view(),
             description: description.to_string(),
+            source_card_name: card_name.map(String::from),
         });
         match self.recv_action() {
             PlayerAction::OptionalTriggerDecision { accept } => accept,
             _ => true,
+        }
+    }
+
+    fn choose_kicker(&mut self, player: PlayerId, kicker_cost: &str, card_name: Option<&str>) -> bool {
+        if player != self.human_player {
+            return false; // AI default: don't kick
+        }
+        self.send_prompt(AgentPromptInner::ChooseKicker {
+            game_view: self.view(),
+            kicker_cost: kicker_cost.to_string(),
+            source_card_name: card_name.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::KickerDecision { kicked } => kicked,
+            _ => false,
+        }
+    }
+
+    fn choose_buyback(&mut self, player: PlayerId, buyback_cost: &str, card_name: Option<&str>) -> bool {
+        if player != self.human_player {
+            return false;
+        }
+        self.send_prompt(AgentPromptInner::ChooseBuyback {
+            game_view: self.view(),
+            buyback_cost: buyback_cost.to_string(),
+            source_card_name: card_name.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::BuybackDecision { buyback_paid } => buyback_paid,
+            _ => false,
+        }
+    }
+
+    fn choose_multikicker(&mut self, player: PlayerId, cost: &str, max_kicks: u32, card_name: Option<&str>) -> u32 {
+        if player != self.human_player {
+            return 0;
+        }
+        self.send_prompt(AgentPromptInner::ChooseMultikicker {
+            game_view: self.view(),
+            cost: cost.to_string(),
+            max_kicks,
+            source_card_name: card_name.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::MultikickerDecision { kick_count } => kick_count.min(max_kicks),
+            _ => 0,
+        }
+    }
+
+    fn choose_replicate(&mut self, player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 {
+        if player != self.human_player {
+            return 0;
+        }
+        self.send_prompt(AgentPromptInner::ChooseReplicate {
+            game_view: self.view(),
+            cost: cost.to_string(),
+            max_replicates,
+            source_card_name: card_name.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::ReplicateDecision { replicate_count } => replicate_count.min(max_replicates),
+            _ => 0,
+        }
+    }
+
+    fn choose_alternative_cost(&mut self, player: PlayerId, options: &[String], card_name: Option<&str>) -> usize {
+        if player != self.human_player {
+            return 0; // AI: always pick normal cost
+        }
+        self.send_prompt(AgentPromptInner::ChooseAlternativeCost {
+            game_view: self.view(),
+            options: options.to_vec(),
+            source_card_name: card_name.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::AlternativeCostDecision { chosen_index } => chosen_index.min(options.len().saturating_sub(1)),
+            _ => 0,
         }
     }
 

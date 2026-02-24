@@ -167,6 +167,9 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         /// Description of the trigger.
         description: String,
+        /// Name of the source card (for displaying card image in modals).
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
     },
     /// Choose N modes for a modal spell (SP$ Charm).
     ChooseMode {
@@ -180,6 +183,57 @@ pub enum AgentPromptInner {
         /// Maximum number of modes that can be chosen.
         #[serde(rename = "maxChoices")]
         max_choices: usize,
+        /// Name of the source card (for displaying card image in modals).
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose whether to pay a kicker cost.
+    ChooseKicker {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// The kicker cost string (e.g. "W", "2 R").
+        #[serde(rename = "kickerCost")]
+        kicker_cost: String,
+        /// Name of the source card (for displaying card image in modals).
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose whether to pay buyback cost.
+    ChooseBuyback {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "buybackCost")]
+        buyback_cost: String,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose how many times to pay multikicker cost.
+    ChooseMultikicker {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        cost: String,
+        #[serde(rename = "maxKicks")]
+        max_kicks: u32,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose how many times to pay replicate cost.
+    ChooseReplicate {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        cost: String,
+        #[serde(rename = "maxReplicates")]
+        max_replicates: u32,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose between normal cost and an alternative cost.
+    ChooseAlternativeCost {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        options: Vec<String>,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
     },
 }
 
@@ -253,6 +307,30 @@ pub enum PlayerAction {
     ModeDecision {
         #[serde(rename = "chosenIndices")]
         chosen_indices: Vec<usize>,
+    },
+    /// Response to ChooseKicker prompt: whether the player pays the kicker.
+    KickerDecision {
+        kicked: bool,
+    },
+    /// Response to ChooseBuyback prompt.
+    BuybackDecision {
+        #[serde(rename = "buybackPaid")]
+        buyback_paid: bool,
+    },
+    /// Response to ChooseMultikicker prompt: how many times.
+    MultikickerDecision {
+        #[serde(rename = "kickCount")]
+        kick_count: u32,
+    },
+    /// Response to ChooseReplicate prompt: how many times.
+    ReplicateDecision {
+        #[serde(rename = "replicateCount")]
+        replicate_count: u32,
+    },
+    /// Response to ChooseAlternativeCost prompt: index of chosen option.
+    AlternativeCostDecision {
+        #[serde(rename = "chosenIndex")]
+        chosen_index: usize,
     },
     Concede,
 }

@@ -73,13 +73,31 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         })
         .collect();
 
+    // Check if Entwine was paid (SA flag) — if so, auto-select all modes
+    let entwine_paid = sa.params.get("Entwine").map(|_| true).unwrap_or(false)
+        || sa.kicked; // Entwine is sometimes represented as kicked
+
+    // Check source card for Entwine/Escalate keywords
+    let has_entwine = ctx.game.card(source_id).get_entwine_cost().is_some();
+    let has_escalate = ctx.game.card(source_id).get_escalate_cost().is_some();
+
+    // If Escalate, allow choosing more modes (up to all)
+    let charm_num = if has_escalate { mode_texts.len() } else { charm_num };
+
     // Ask the activating player to choose mode(s)
-    let chosen_indices = ctx.agents[player.index()].choose_mode(
-        player,
-        &mode_descriptions,
-        min_charm_num,
-        charm_num,
-    );
+    let card_name = ctx.game.card(source_id).card_name.clone();
+    let chosen_indices = if entwine_paid || (has_entwine && sa.kicked) {
+        // Entwine: all modes
+        (0..mode_texts.len()).collect()
+    } else {
+        ctx.agents[player.index()].choose_mode(
+            player,
+            &mode_descriptions,
+            min_charm_num,
+            charm_num,
+            Some(&card_name),
+        )
+    };
 
     // Resolve each chosen mode in declaration order
     for idx in chosen_indices {

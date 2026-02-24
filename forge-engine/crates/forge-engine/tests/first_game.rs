@@ -701,6 +701,7 @@ fn mulldrifter_etb_draws_two_cards() {
         spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
 
@@ -758,6 +759,7 @@ fn soul_warden_gains_life_on_other_creature_etb() {
         spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
@@ -792,6 +794,7 @@ fn soul_warden_does_not_trigger_on_self_etb() {
         spell_ability: sa,
         is_creature_spell: true,
         is_permanent_spell: false,
+        cast_from_zone: None,
     };
     game.stack.push(entry);
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![

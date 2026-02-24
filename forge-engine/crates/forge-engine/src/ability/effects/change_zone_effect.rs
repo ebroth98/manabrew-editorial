@@ -42,6 +42,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             } else {
                 None
             }
+        } else if let Some(uid_str) = defined.strip_prefix("CardUID_") {
+            // Specific card by ID (e.g. delayed trigger for Dash bounce-to-hand)
+            uid_str
+                .parse::<u32>()
+                .ok()
+                .map(crate::ids::CardId)
+                .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
         } else if defined.eq_ignore_ascii_case("Self") {
             // Move the source card itself
             sa.source

@@ -38,7 +38,30 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for card_id in to_discard {
         if ctx.game.card(card_id).zone == ZoneType::Hand {
             let owner = ctx.game.card(card_id).owner;
-            ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
+            let has_madness = ctx.game.card(card_id).get_madness_cost().is_some();
+
+            if has_madness {
+                // Madness: exile the card instead of putting it into graveyard.
+                // The card can then be cast from exile for its madness cost
+                // (handled by get_playable_cards checking exile for madness cards).
+                ctx.game.move_card(card_id, ZoneType::Exile, owner);
+                emit_zone_trigger(
+                    ctx.trigger_handler,
+                    card_id,
+                    ZoneType::Hand,
+                    ZoneType::Exile,
+                );
+            } else {
+                ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
+                emit_zone_trigger(
+                    ctx.trigger_handler,
+                    card_id,
+                    ZoneType::Hand,
+                    ZoneType::Graveyard,
+                );
+            }
+
+            // Fire Discarded trigger regardless of destination
             ctx.trigger_handler.run_trigger(
                 TriggerType::Discarded,
                 RunParams {
@@ -47,12 +70,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     ..Default::default()
                 },
                 false,
-            );
-            emit_zone_trigger(
-                ctx.trigger_handler,
-                card_id,
-                ZoneType::Hand,
-                ZoneType::Graveyard,
             );
         }
     }

@@ -79,7 +79,7 @@ pub trait PlayerAgent {
     fn choose_target_card_from_zone(
         &mut self,
         player: PlayerId,
-        zone: forge_foundation::ZoneType,
+        _zone: forge_foundation::ZoneType,
         valid: &[CardId],
     ) -> Option<CardId> {
         // Default implementation falls back to regular choose_target_card
@@ -169,16 +169,58 @@ pub trait PlayerAgent {
         descriptions: &[String],
         min: usize,
         _max: usize,
+        _card_name: Option<&str>,
     ) -> Vec<usize> {
         (0..min.min(descriptions.len())).collect()
     }
 
     /// Choose whether an optional triggered ability fires.
     /// `description` is the trigger text shown to the player.
+    /// `card_name` is the name of the source card (for UI display).
     /// Returns true to allow the trigger, false to decline.
     /// Default: always allow (non-interactive agents accept all optional triggers).
-    fn choose_optional_trigger(&mut self, _player: PlayerId, _description: &str) -> bool {
+    fn choose_optional_trigger(&mut self, _player: PlayerId, _description: &str, _card_name: Option<&str>) -> bool {
         true
+    }
+
+    /// Choose whether to pay the kicker cost for a spell.
+    /// `kicker_cost` is the mana cost string (e.g. "W", "2 R").
+    /// `card_name` is the name of the spell being cast (for UI display).
+    /// Returns true to kick, false to cast without kicker.
+    /// Default: don't kick (AI default).
+    fn choose_kicker(&mut self, _player: PlayerId, _kicker_cost: &str, _card_name: Option<&str>) -> bool {
+        false
+    }
+
+    /// Choose whether to pay the buyback cost for a spell.
+    /// Returns true to pay buyback, false to cast normally.
+    /// Default: don't pay buyback.
+    fn choose_buyback(&mut self, _player: PlayerId, _buyback_cost: &str, _card_name: Option<&str>) -> bool {
+        false
+    }
+
+    /// Choose how many times to pay the multikicker cost.
+    /// `max_kicks` is the maximum affordable.
+    /// Returns the number of times to kick (0 to max_kicks).
+    /// Default: 0 (don't multikick).
+    fn choose_multikicker(&mut self, _player: PlayerId, _cost: &str, _max_kicks: u32, _card_name: Option<&str>) -> u32 {
+        0
+    }
+
+    /// Choose how many times to pay the replicate cost.
+    /// `max_replicates` is the maximum affordable.
+    /// Returns the number of replicates.
+    /// Default: 0.
+    fn choose_replicate(&mut self, _player: PlayerId, _cost: &str, _max_replicates: u32, _card_name: Option<&str>) -> u32 {
+        0
+    }
+
+    /// Choose an alternative cost for a spell.
+    /// `options` describes available casting options (e.g. "Normal cost: 3BB", "Spectacle: BR").
+    /// Returns the index of the chosen option (0 = normal, 1+ = alternative).
+    /// Default: 0 (normal cost).
+    fn choose_alternative_cost(&mut self, _player: PlayerId, _options: &[String], _card_name: Option<&str>) -> usize {
+        0
     }
 
     /// Choose whether to play a land or cast a spell when both are possible.

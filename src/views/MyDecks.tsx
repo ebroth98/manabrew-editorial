@@ -8,6 +8,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Trash2, Pencil, Plus, Search, Swords, Crown, X } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/game/CardPreview";
@@ -505,9 +506,7 @@ export default function MyDecks() {
                         {selected.deck.commander.name}
                       </span>
                       {selected.deck.commander.manaCost && (
-                        <span className="text-xs text-muted-foreground font-mono shrink-0">
-                          {selected.deck.commander.manaCost}
-                        </span>
+                        <ManaSymbols cost={selected.deck.commander.manaCost} size="sm" className="shrink-0" />
                       )}
                       <Button
                         size="icon"
@@ -549,9 +548,7 @@ export default function MyDecks() {
                             {card.name}
                           </span>
                           {card.manaCost && (
-                            <span className="text-xs text-muted-foreground font-mono shrink-0">
-                              {card.manaCost}
-                            </span>
+                            <ManaSymbols cost={card.manaCost} size="sm" className="shrink-0" />
                           )}
                           {card.power && card.toughness && (
                             <Badge
@@ -613,9 +610,7 @@ export default function MyDecks() {
                               {card.name}
                             </span>
                             {card.manaCost && (
-                              <span className="text-xs text-muted-foreground font-mono shrink-0">
-                                {card.manaCost}
-                              </span>
+                              <ManaSymbols cost={card.manaCost} size="sm" className="shrink-0" />
                             )}
                           </div>
                         ))}

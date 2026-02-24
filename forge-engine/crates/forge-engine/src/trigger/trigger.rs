@@ -170,6 +170,11 @@ pub enum TriggerMode {
     TokenCreated {
         valid_card: Option<String>,
     },
+    /// A spell was copied (Storm, Replicate, etc.) — for Magecraft triggers.
+    SpellCopied {
+        valid_card: Option<String>,
+        valid_activating_player: Option<String>,
+    },
 }
 
 impl TriggerMode {
@@ -811,6 +816,32 @@ impl TriggerMode {
                 }
                 true
             }
+
+            TriggerMode::SpellCopied {
+                valid_card,
+                valid_activating_player,
+            } => {
+                if let Some(filter) = valid_card {
+                    if let Some(spell_card) = run_params.spell_card {
+                        if !matches_valid_card(filter, spell_card, host_card, host_controller, game)
+                        {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                if let Some(filter) = valid_activating_player {
+                    if let Some(caster) = run_params.spell_controller {
+                        if !matches_valid_player(filter, caster, host_controller) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                true
+            }
         }
     }
 }
@@ -878,31 +909,51 @@ fn matches_single_valid_card(
         return false;
     }
 
-    // Check qualifiers
+    // Check qualifiers — handle compound "+" syntax (e.g. "Self+kicked", "YouCtrl+nonBlack")
+    // Mirrors Java's CardProperty.isValidCard() which splits on '+' for sub-conditions.
     for &qualifier in qualifiers {
-        match qualifier {
-            "Self" => {
-                if card_id != host_card {
-                    return false;
+        // Split compound qualifiers on '+' (e.g. "Self+kicked" → ["Self", "kicked"])
+        let sub_parts: Vec<&str> = qualifier.split('+').collect();
+        for sub in &sub_parts {
+            match *sub {
+                "Self" => {
+                    if card_id != host_card {
+                        return false;
+                    }
                 }
-            }
-            "Other" => {
-                if card_id == host_card {
-                    return false;
+                "Other" | "StrictlyOther" => {
+                    if card_id == host_card {
+                        return false;
+                    }
                 }
-            }
-            "YouCtrl" => {
-                if card.controller != host_controller {
-                    return false;
+                "YouCtrl" => {
+                    if card.controller != host_controller {
+                        return false;
+                    }
                 }
-            }
-            "OppCtrl" => {
-                if card.controller == host_controller {
-                    return false;
+                "OppCtrl" => {
+                    if card.controller == host_controller {
+                        return false;
+                    }
                 }
-            }
-            _ => {
-                // Ignore unknown qualifiers for now
+                "kicked" => {
+                    if !card.kicked {
+                        return false;
+                    }
+                }
+                "nonCreature" => {
+                    if card.is_creature() {
+                        return false;
+                    }
+                }
+                "nonLand" => {
+                    if card.is_land() {
+                        return false;
+                    }
+                }
+                _ => {
+                    // Ignore unknown qualifiers for now
+                }
             }
         }
     }
@@ -1157,6 +1208,24 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "TokenCreated" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
             TriggerMode::TokenCreated { valid_card }
+        }
+        // SpellCastOrCopy: used by Magecraft — fires on both cast and copy.
+        // We treat it as SpellCast here; the caller can duplicate it as SpellCopied.
+        "SpellCastOrCopy" => {
+            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_activating_player = params.get("ValidActivatingPlayer").map(|s| s.clone());
+            TriggerMode::SpellCast {
+                valid_card,
+                valid_activating_player,
+            }
+        }
+        "SpellCopied" => {
+            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_activating_player = params.get("ValidActivatingPlayer").map(|s| s.clone());
+            TriggerMode::SpellCopied {
+                valid_card,
+                valid_activating_player,
+            }
         }
         _ => return None,
     };

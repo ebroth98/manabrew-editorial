@@ -3,6 +3,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useCardImage } from "@/hooks/useCardImage";
+import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 
 interface ChooseModeModalProps {
   /** Human-readable descriptions for each available mode (0-indexed). */
@@ -11,6 +13,8 @@ interface ChooseModeModalProps {
   minChoices: number;
   /** Maximum number of modes that can be chosen. */
   maxChoices: number;
+  /** Name of the source card (for displaying card image). */
+  cardName?: string;
   onConfirm: (chosenIndices: number[]) => void;
 }
 
@@ -18,8 +22,10 @@ export function ChooseModeModal({
   options,
   minChoices,
   maxChoices,
+  cardName,
   onConfirm,
 }: ChooseModeModalProps) {
+  const { data: imageUrl } = useCardImage(cardName ?? "");
   const [selected, setSelected] = useState<Set<number>>(new Set());
   
   // If exactly 1 must be picked and max 1 can be picked, auto-confirm on click.
@@ -96,14 +102,24 @@ export function ChooseModeModal({
       >
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b">
-          <div>
-            <h2
-              id="choose-mode-title"
-              className="font-semibold text-base"
-            >
-              Choose Mode
-            </h2>
-            <p className="text-xs text-muted-foreground">{subtitle}</p>
+          <div className="flex items-center gap-3">
+            {imageUrl && (
+              <CardImageThumbnail
+                imageUrl={imageUrl}
+                cardName={cardName ?? "Source card"}
+                className="w-[60px] h-[84px] rounded-md object-cover shrink-0 shadow-md"
+              />
+            )}
+            <div>
+              <h2
+                id="choose-mode-title"
+                className="font-semibold text-base"
+              >
+                Choose Mode
+              </h2>
+              {cardName && <p className="text-xs text-muted-foreground font-medium">{cardName}</p>}
+              <p className="text-xs text-muted-foreground">{subtitle}</p>
+            </div>
           </div>
           {!isAutoConfirm && (
             <Badge variant={canConfirm ? "default" : "secondary"} aria-live="polite">

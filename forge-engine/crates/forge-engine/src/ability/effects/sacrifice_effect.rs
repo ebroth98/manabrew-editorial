@@ -30,7 +30,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     for sacrificing_player in sacrificing_players {
-        let card_to_sacrifice = if sac_valid.eq_ignore_ascii_case("Self") {
+        let card_to_sacrifice = if let Some(uid_str) = defined.strip_prefix("carduid_") {
+            // Specific card by ID (e.g. delayed trigger for Blitz sacrifice-at-EOT)
+            uid_str
+                .parse::<u32>()
+                .ok()
+                .map(crate::ids::CardId)
+                .filter(|&cid| ctx.game.card(cid).zone == ZoneType::Battlefield)
+        } else if sac_valid.eq_ignore_ascii_case("Self") {
             // Sacrifice the source card itself
             sa.source
                 .filter(|&cid| ctx.game.card(cid).zone == ZoneType::Battlefield)

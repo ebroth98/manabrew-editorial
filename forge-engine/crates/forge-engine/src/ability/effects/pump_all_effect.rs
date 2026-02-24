@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, parse_param, EffectContext};
+use super::{matches_valid_cards, parse_param, resolve_numeric_svar, EffectContext};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
@@ -23,10 +23,26 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // parse_param strips leading '+' sign via Rust's i32::from_str which accepts it.
-    let att_bonus = parse_param(&sa.ability_text, "NumAtt$ ").unwrap_or(0);
-    let def_bonus = parse_param(&sa.ability_text, "NumDef$ ").unwrap_or(0);
+    // Fall back to SVar resolution for Count$Kicked etc.
+    let att_bonus = parse_param(&sa.ability_text, "NumAtt$ ")
+        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumAtt", 0));
+    let def_bonus = parse_param(&sa.ability_text, "NumDef$ ")
+        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "NumDef", 0));
 
-    if att_bonus == 0 && def_bonus == 0 {
+    // Parse KW$ parameter for keyword grants (e.g. "KW$ Haste" or "KW$ Flying & Trample")
+    let keywords: Vec<String> = sa
+        .params
+        .get("KW")
+        .map(|kw_str| {
+            kw_str
+                .split('&')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        })
+        .unwrap_or_default();
+
+    if att_bonus == 0 && def_bonus == 0 && keywords.is_empty() {
         return;
     }
 
@@ -54,6 +70,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
             ctx.game.card_mut(card_id).power_modifier += att_bonus;
             ctx.game.card_mut(card_id).toughness_modifier += def_bonus;
+            for kw in &keywords {
+                ctx.game.card_mut(card_id).pump_keywords.push(kw.clone());
+            }
         }
     }
 }

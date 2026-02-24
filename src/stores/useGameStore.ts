@@ -50,6 +50,18 @@ interface AgentPrompt {
   maxChoices?: number;
   /** chooseOptionalTrigger: trigger description text */
   description?: string;
+  /** chooseKicker: the kicker cost string */
+  kickerCost?: string;
+  /** Source card name for displaying card image in modals */
+  sourceCardName?: string;
+  /** chooseBuyback: the buyback cost string */
+  buybackCost?: string;
+  /** chooseMultikicker / chooseReplicate: the cost per iteration */
+  cost?: string;
+  /** chooseMultikicker: max number of kicks */
+  maxKicks?: number;
+  /** chooseReplicate: max number of replicates */
+  maxReplicates?: number;
 }
 
 interface GameConfig {

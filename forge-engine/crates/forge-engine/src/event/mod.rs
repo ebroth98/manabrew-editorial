@@ -69,6 +69,8 @@ pub enum TriggerType {
     Exiled,
     /// A token was created.
     TokenCreated,
+    /// A spell was copied (Storm, Replicate, etc.) — for Magecraft triggers.
+    SpellCopied,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.

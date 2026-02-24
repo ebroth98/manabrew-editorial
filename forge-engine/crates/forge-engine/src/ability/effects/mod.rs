@@ -29,6 +29,7 @@ pub mod look_at_effect;
 pub mod mana_effect;
 pub mod mill_effect;
 pub mod peek_and_reveal_effect;
+pub mod play_effect;
 pub mod poison_effect;
 pub mod pump_all_effect;
 pub mod pump_effect;
@@ -43,6 +44,7 @@ pub mod surveil_effect;
 pub mod tap_all_effect;
 pub mod token_effect;
 pub mod untap_all_effect;
+pub mod untap_effect;
 
 use std::collections::HashMap;
 
@@ -70,9 +72,51 @@ pub struct EffectContext<'a> {
     pub parent_target_card: Option<CardId>,
 }
 
+/// Check if a conditional gate on this SA is satisfied.
+/// Handles `Condition$ Kicked` (simple gate) and `ConditionCheckSVar$ Kicked` (SVar-based gate).
+/// Mirrors Java's `SpellAbility.checkConditions()`.
+fn check_condition(sa: &SpellAbility) -> bool {
+    // Check Condition$ Kicked (most common pattern: simple kicked gate)
+    if let Some(cond) = sa.params.get("Condition") {
+        if cond == "Kicked" {
+            return sa.kicked;
+        }
+    }
+    // Check ConditionCheckSVar$ Kicked (SVar-based kicked gate)
+    if let Some(cond) = sa.params.get("ConditionCheckSVar") {
+        if cond == "Kicked" || cond == "X:Kicked" {
+            return sa.kicked;
+        }
+    }
+    true
+}
+
 /// Resolve a single SpellAbility node's effect by dispatching on its API type.
 /// Mirrors Java's `AbilityUtils.resolveApiAbility(sa)`.
 pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
+    // Check condition gate (e.g. Kicked) — skip this effect if condition not met
+    if !check_condition(sa) {
+        return;
+    }
+
+    // Handle Repeat$ — repeat the effect N times (for Multikicker/Replicate-like scaling).
+    // Mirrors Java's AbilityUtils.handleRepeatParam().
+    let repeat_count = if let Some(repeat_val) = sa.params.get("Repeat") {
+        match repeat_val.as_str() {
+            "KickerNum" => sa.kick_count as i32,
+            _ => 1,
+        }
+    } else {
+        1
+    };
+
+    for _ in 0..repeat_count {
+        resolve_effect_once(ctx, sa);
+    }
+}
+
+/// Inner dispatch for a single execution of an effect.
+fn resolve_effect_once(ctx: &mut EffectContext, sa: &SpellAbility) {
     let api_type = sa.api.as_deref().unwrap_or_else(|| {
         // Fallback: detect from ability text (for backwards compat)
         detect_api_type_from_text(&sa.ability_text)
@@ -124,6 +168,9 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
         "PumpAll" => pump_all_effect::resolve(ctx, sa),
         "TapAll" => tap_all_effect::resolve(ctx, sa),
         "UntapAll" => untap_all_effect::resolve(ctx, sa),
+        "Untap" => untap_effect::resolve(ctx, sa),
+        // Cast from exile / without mana cost (Rebound, etc.)
+        "Play" => play_effect::resolve(ctx, sa),
         _ => {} // Unimplemented effect — silently skip
     }
 }
@@ -214,6 +261,8 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "TapAll"
     } else if ability.contains("UntapAll") {
         "UntapAll"
+    } else if ability.contains("$ Untap") {
+        "Untap"
     } else {
         ""
     }
@@ -239,14 +288,76 @@ pub fn parse_num_dmg(ability: &str) -> i32 {
     parse_param(ability, "NumDmg$ ").unwrap_or(0)
 }
 
+/// Resolve a numeric parameter that may be either a literal integer or an SVar
+/// reference (like `X`). Handles `Count$Kicked.A.B` SVars: returns `A` if kicked,
+/// `B` otherwise.
+/// Mirrors Java's `AbilityUtils.calculateAmount(sa, paramName, sa)`.
+pub fn resolve_numeric_svar(
+    game: &GameState,
+    sa: &SpellAbility,
+    param_name: &str,
+    default: i32,
+) -> i32 {
+    let val_str = match sa.params.get(param_name) {
+        Some(v) if !v.is_empty() => v.clone(),
+        _ => return default,
+    };
+
+    // Try direct integer parse first
+    if let Ok(n) = val_str.trim().parse::<i32>() {
+        return n;
+    }
+    // Try with leading + sign (e.g. "+3")
+    if let Some(stripped) = val_str.trim().strip_prefix('+') {
+        if let Ok(n) = stripped.parse::<i32>() {
+            return n;
+        }
+    }
+
+    // It's an SVar reference — look it up on the source card
+    if let Some(source_id) = sa.source {
+        if let Some(svar_expr) = game.card(source_id).svars.get(val_str.trim()) {
+            return evaluate_svar(svar_expr, sa);
+        }
+    }
+
+    default
+}
+
+/// Evaluate a simple SVar expression.
+/// Supports `Count$Kicked.A.B` (returns A if kicked, B otherwise)
+/// and `Count$KickedCount` (returns the multikicker count).
+pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
+    // Count$KickedCount — return the multikicker count (for Multikicker effects)
+    if expr == "Count$KickedCount" {
+        return sa.kick_count as i32;
+    }
+    // Count$Kicked.X.Y — if kicked return X, else return Y
+    if let Some(rest) = expr.strip_prefix("Count$Kicked.") {
+        let parts: Vec<&str> = rest.splitn(2, '.').collect();
+        if parts.len() == 2 {
+            let kicked_val = parts[0].parse::<i32>().unwrap_or(0);
+            let normal_val = parts[1].parse::<i32>().unwrap_or(0);
+            return if sa.kicked { kicked_val } else { normal_val };
+        }
+    }
+    // Fallback: try parsing as integer
+    expr.parse::<i32>().unwrap_or(0)
+}
+
 /// Resolve a Defined$ parameter to a player ID.
 /// Mirrors Java's AbilityUtils.getDefinedPlayers().
+///
+/// Handles both bare names ("Opponent") and prefixed forms ("Player.Opponent")
+/// used by cards like Guttersnipe: `Defined$ Player.Opponent`.
 pub fn resolve_defined_player(
     defined: &str,
     controller: PlayerId,
     game: &GameState,
 ) -> Option<PlayerId> {
-    match defined {
+    // Strip "Player." prefix if present (e.g. "Player.Opponent" → "Opponent")
+    let key = defined.strip_prefix("Player.").unwrap_or(defined);
+    match key {
         "You" => Some(controller),
         "Opponent" | "OpponentCtrl" => {
             let opp = game.opponent_of(controller);
@@ -355,9 +466,13 @@ pub fn matches_valid_cards(
     }
 
     // ── Qualifier checks (dot-separated after the type) ─────────────────────
+    // Handle compound "+" syntax (e.g. "YouCtrl+nonBlack", "Self+kicked")
     for &qualifier in &parts[1..] {
-        if !matches_valid_cards_qualifier(card, qualifier, activating_player) {
-            return false;
+        let sub_parts: Vec<&str> = qualifier.split('+').collect();
+        for sub in &sub_parts {
+            if !matches_valid_cards_qualifier(card, sub, activating_player) {
+                return false;
+            }
         }
     }
     true
@@ -372,6 +487,7 @@ fn matches_valid_cards_qualifier(
         "YouCtrl" => card.controller == activating_player,
         "OppCtrl" => card.controller != activating_player,
         "Basic" => card.type_line.is_basic(),
+        "kicked" => card.kicked,
         "withFlying" => {
             card.keywords.iter().any(|k| k.eq_ignore_ascii_case("Flying"))
                 || card

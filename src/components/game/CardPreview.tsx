@@ -3,6 +3,7 @@ import { useCardImage } from "@/hooks/useCardImage";
 import { Loader2 } from "lucide-react";
 import type { Card } from "@/types/xmage";
 import { CounterDisplay } from "@/components/game/CounterBadge";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { useQuery } from "@tanstack/react-query";
 import { getCardByName } from "@/api/scryfall";
 
@@ -110,7 +111,7 @@ export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: Card
               <div className="flex justify-between items-start">
                 <span className="font-bold text-sm leading-tight">{currentCardName}</span>
                 {!hasDoubleFace && (
-                  <span className="text-xs font-mono text-muted-foreground">{card.manaCost}</span>
+                  <ManaSymbols cost={card.manaCost} size="md" />
                 )}
               </div>
               {!hasDoubleFace && (
