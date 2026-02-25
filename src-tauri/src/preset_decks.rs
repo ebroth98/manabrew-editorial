@@ -615,18 +615,18 @@ const POISON_TEST: &[(&str, usize, &str)] = &[
     ("Forest", 10, "akh"),
     ("Swamp", 7, "akh"),
     // Low-cost infect creatures
-    ("Glistener Elf", 4, "nph"),     // 1G — 1/1 Infect
-    ("Plague Stinger", 3, "som"),    // 1B — 1/1 Flying Infect
-    ("Blighted Agent", 3, "nph"),    // 1U — 1/1 Infect, can't be blocked
-    ("Ichorclaw Myr", 3, "som"),     // 2 — 1/1 Infect, +2/+2 when blocked
+    ("Glistener Elf", 4, "nph"),  // 1G — 1/1 Infect
+    ("Plague Stinger", 3, "som"), // 1B — 1/1 Flying Infect
+    ("Blighted Agent", 3, "nph"), // 1U — 1/1 Infect, can't be blocked
+    ("Ichorclaw Myr", 3, "som"),  // 2 — 1/1 Infect, +2/+2 when blocked
     // Mid-cost infect creatures
-    ("Cystbearer", 3, "som"),        // 2G — 2/3 Infect
-    ("Rot Wolf", 3, "mbs"),          // 2G — 2/2 Infect
-    ("Necropede", 2, "som"),         // 2 — 1/1 Infect
+    ("Cystbearer", 3, "som"), // 2G — 2/3 Infect
+    ("Rot Wolf", 3, "mbs"),   // 2G — 2/2 Infect
+    ("Necropede", 2, "som"),  // 2 — 1/1 Infect
     // ETB Poison effect (DB$ Poison | Defined$ Player)
-    ("Ichor Rats", 3, "som"),        // 1BG — 2/1 Infect, ETB all players get poison
+    ("Ichor Rats", 3, "som"), // 1BG — 2/1 Infect, ETB all players get poison
     // Pump spells to boost infect damage
-    ("Giant Growth", 4, "m11"),      // G — +3/+3 until EOT
+    ("Giant Growth", 4, "m11"), // G — +3/+3 until EOT
 ];
 
 /// Exercises issue #22: player & game-state effects.
@@ -641,17 +641,17 @@ const GAME_EFFECTS: &[(&str, usize, &str)] = &[
     ("Island", 6, "akh"),
     ("Plains", 4, "akh"),
     // Fog effects — prevent all combat damage
-    ("Fog", 4, "m12"),         // Magic 2012 — G instant, SP$ Fog
-    ("Holy Day", 3, "m13"),    // Magic 2013 — W instant, SP$ Fog
+    ("Fog", 4, "m12"),      // Magic 2012 — G instant, SP$ Fog
+    ("Holy Day", 3, "m13"), // Magic 2013 — W instant, SP$ Fog
     // Extra turn
-    ("Time Warp", 3, "m10"),   // Magic 2010 — 3UU sorcery, SP$ AddTurn
+    ("Time Warp", 3, "m10"), // Magic 2010 — 3UU sorcery, SP$ AddTurn
     // Tap target permanent
     ("Icy Manipulator", 3, "m14"), // Magic 2014 — 4 artifact, tap target
     // Creatures for combat testing
-    ("Giant Spider", 3, "m14"),    // 2/4 Reach
-    ("Serra Angel", 3, "m21"),     // 4/4 Flying Vigilance
-    ("Grizzly Bears", 4, "m12"),   // 2/2
-    ("Giant Growth", 4, "m11"),    // +3/+3 pump
+    ("Giant Spider", 3, "m14"),  // 2/4 Reach
+    ("Serra Angel", 3, "m21"),   // 4/4 Flying Vigilance
+    ("Grizzly Bears", 4, "m12"), // 2/2
+    ("Giant Growth", 4, "m11"),  // +3/+3 pump
 ];
 
 /// Exercises issue #22 (expanded): player & game-state effects.
@@ -705,30 +705,30 @@ const KEYWORD_COST_TEST: &[(&str, usize, &str)] = &[
     ("Plains", 4, "akh"),
     ("Swamp", 2, "akh"),
     // Buyback — pay extra to return spell to hand
-    ("Sprout Swarm", 2, "fut"),        // 1G, Buyback:3
+    ("Sprout Swarm", 2, "fut"), // 1G, Buyback:3
     // Dash — alt cost, creature gains haste + bounces at end of turn
-    ("Zurgo Bellstriker", 2, "dtk"),   // R, Dash:R
+    ("Zurgo Bellstriker", 2, "dtk"), // R, Dash:R
     // Multikicker — pay N times for scaling effect
-    ("Joraga Warcaller", 2, "wwk"),    // G, Multikicker:1 G
+    ("Joraga Warcaller", 2, "wwk"), // G, Multikicker:1 G
     // Replicate — pay N times, create N copies on stack
-    ("Train of Thought", 2, "gpt"),    // 1U, Replicate:1 U
+    ("Train of Thought", 2, "gpt"), // 1U, Replicate:1 U
     // Overload — alt cost, hits all valid targets
-    ("Winds of Abandon", 2, "mh1"),    // 1W, Overload:4 W W
+    ("Winds of Abandon", 2, "mh1"), // 1W, Overload:4 W W
     // Spectacle — alt cost when opponent lost life
-    ("Skewer the Critics", 2, "rna"),  // 2R, Spectacle:R
+    ("Skewer the Critics", 2, "rna"), // 2R, Spectacle:R
     // Evoke — alt cost, sacrifice on ETB
-    ("Wispmare", 2, "lrw"),           // 2W, Evoke:W
+    ("Wispmare", 2, "lrw"), // 2W, Evoke:W
     // Rebound — exile on resolve, cast free next upkeep
-    ("Taigam's Strike", 2, "dtk"),    // 3U
+    ("Taigam's Strike", 2, "dtk"), // 3U
     // Escape — cast from graveyard, exile N other cards
-    ("Sweet Oblivion", 2, "thb"),     // 1U, Escape:1 U
+    ("Sweet Oblivion", 2, "thb"), // 1U, Escape:1 U
     // Entwine — pay extra to choose all modes
-    ("Second Sight", 2, "ons"),       // 2U, Entwine:1
+    ("Second Sight", 2, "ons"), // 2U, Entwine:1
     // Escalate — extra cost per mode beyond first
-    ("Borrowed Grace", 2, "emn"),     // 2W
+    ("Borrowed Grace", 2, "emn"), // 2W
     // Creatures for sacrifice/combat
-    ("Grizzly Bears", 2, "m12"),      // 2/2 for Emerge sacrifice
-    ("Savannah Lions", 2, "m10"),     // 2/1 for combat
+    ("Grizzly Bears", 2, "m12"),  // 2/2 for Emerge sacrifice
+    ("Savannah Lions", 2, "m10"), // 2/1 for combat
 ];
 
 const ALT_COST_TEST: &[(&str, usize, &str)] = &[
@@ -736,15 +736,15 @@ const ALT_COST_TEST: &[(&str, usize, &str)] = &[
     ("Forest", 4, "akh"),
     ("Swamp", 3, "akh"),
     // Flashback cards
-    ("Faithless Looting", 4, "dka"),    // R — Draw 2, discard 2; Flashback 2R
-    ("Think Twice", 3, "isd"),          // 1U — Draw 1; Flashback 2U
-    ("Lingering Souls", 3, "dka"),      // 2W — Token 2xSpirit; Flashback 1B
+    ("Faithless Looting", 4, "dka"), // R — Draw 2, discard 2; Flashback 2R
+    ("Think Twice", 3, "isd"),       // 1U — Draw 1; Flashback 2U
+    ("Lingering Souls", 3, "dka"),   // 2W — Token 2xSpirit; Flashback 1B
     // Kicker cards
-    ("Goblin Bushwhacker", 3, "zen"),   // R — 1/1 Haste; Kicker R (+1/+0 & haste to all)
+    ("Goblin Bushwhacker", 3, "zen"), // R — 1/1 Haste; Kicker R (+1/+0 & haste to all)
     // Storm cards
-    ("Grapeshot", 3, "tsp"),            // 1R — Deal 1 damage; Storm
+    ("Grapeshot", 3, "tsp"), // 1R — Deal 1 damage; Storm
     // Cascade cards
-    ("Bloodbraid Elf", 3, "arb"),       // 2RG — 3/2 Haste; Cascade
+    ("Bloodbraid Elf", 3, "arb"), // 2RG — 3/2 Haste; Cascade
     // Support spells (cheap for Storm count)
     ("Lightning Bolt", 4, "m11"),
     ("Shock", 4, "m21"),
@@ -764,21 +764,21 @@ const EXTENDED_COST_TEST: &[(&str, usize, &str)] = &[
     ("Island", 6, "akh"),
     ("Swamp", 3, "akh"),
     // Buyback — pay extra to return spell to hand on resolution
-    ("Whispers of the Muse", 3, "tmp"),     // U — Draw 1; Buyback 5
+    ("Whispers of the Muse", 3, "tmp"), // U — Draw 1; Buyback 5
     // Evoke — alt cost, creature is sacrificed on ETB
-    ("Mulldrifter", 3, "mma"),              // 4U — 2/2 Flying ETB draw 2; Evoke 2U
+    ("Mulldrifter", 3, "mma"), // 4U — 2/2 Flying ETB draw 2; Evoke 2U
     // Madness — cast for madness cost when discarded
-    ("Fiery Temper", 3, "tor"),             // 1RR — Deal 3 damage; Madness R
+    ("Fiery Temper", 3, "tor"), // 1RR — Deal 3 damage; Madness R
     // Rebound — exile on resolve, cast again next upkeep for free
-    ("Staggershock", 3, "roe"),             // 2R — Deal 2 damage; Rebound
+    ("Staggershock", 3, "roe"), // 2R — Deal 2 damage; Rebound
     // Dash — alt cost: haste, return to hand at end of turn
-    ("Goblin Heelcutter", 3, "frf"),        // 3R — 3/2; Dash 2R
+    ("Goblin Heelcutter", 3, "frf"), // 3R — 3/2; Dash 2R
     // Replicate — copy spell for each time replicate cost is paid
-    ("Gigadrowse", 3, "gpt"),              // U — Tap target permanent; Replicate U
+    ("Gigadrowse", 3, "gpt"), // U — Tap target permanent; Replicate U
     // Overload — alt cost: target all instead of one
-    ("Mizzium Mortars", 2, "rtr"),          // 1R — Deal 4 to target creature; Overload 2RRRR
+    ("Mizzium Mortars", 2, "rtr"), // 1R — Deal 4 to target creature; Overload 2RRRR
     // Spectacle — alt cost if opponent lost life this turn
-    ("Skewer the Critics", 3, "rna"),       // 2R — Deal 3 damage; Spectacle R
+    ("Skewer the Critics", 3, "rna"), // 2R — Deal 3 damage; Spectacle R
     // Support spells — cheap instants for enabling spectacle / discard fodder
     ("Lightning Bolt", 4, "m11"),
     ("Shock", 3, "m21"),
@@ -814,7 +814,7 @@ fn random_ai_deck() -> &'static [(&'static str, usize, &'static str)] {
 ///
 /// Used when the human plays a custom deck so the AI still gets a deck.
 pub fn build_ai_opponent(game: &mut GameState, owner: PlayerId) {
-    build_named_deck(game, owner, RED_BURN);
+    build_named_deck(game, owner, random_ai_deck());
 }
 
 /// Build a preset deck from a (name, count, set_code) list, loading each card
