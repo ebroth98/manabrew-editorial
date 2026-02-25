@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use forge_engine_core::card::CounterType;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
@@ -14,6 +13,8 @@ pub struct GameViewDto {
     pub game_id: String,
     pub turn: u32,
     pub step: String,
+    /// Declared blockers for the current combat: blocker -> attacker.
+    pub combat_assignments: Vec<CombatAssignmentDto>,
     pub active_player_id: String,
     pub priority_player_id: String,
     pub players: Vec<PlayerDto>,
@@ -34,6 +35,13 @@ pub struct GameViewDto {
     pub monarch_id: Option<String>,
     /// The player who holds the initiative (issue #22).
     pub initiative_holder_id: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CombatAssignmentDto {
+    pub blocker_id: String,
+    pub attacker_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,6 +379,15 @@ impl GameViewDto {
             game_id: game_id.to_string(),
             turn: game.turn.turn_number,
             step: phase_to_step(game.turn.phase).to_string(),
+            combat_assignments: game
+                .turn
+                .combat_block_assignments
+                .iter()
+                .map(|(blocker, attacker)| CombatAssignmentDto {
+                    blocker_id: card_id_str(*blocker),
+                    attacker_id: card_id_str(*attacker),
+                })
+                .collect(),
             active_player_id: player_id_str(game.active_player()),
             priority_player_id: player_id_str(game.turn.priority_player),
             players,

@@ -600,6 +600,7 @@ impl GameLoop {
         let active = game.active_player();
         let defending = game.opponent_of(active);
         self.combat.clear();
+        game.turn.combat_block_assignments.clear();
         self.combat.attacking_player = Some(active);
         self.combat.defending_player = Some(defending);
 
@@ -706,11 +707,15 @@ impl GameLoop {
                         }
                     }
                 }
+
+                // Publish finalized blocker assignments for UI snapshots in this combat.
+                game.turn.combat_block_assignments = self.combat.blockers.clone();
             }
         }
         self.step_with_priority(game, agents, false);
         if game.game_over {
             self.combat.clear();
+            game.turn.combat_block_assignments.clear();
             return;
         }
 
@@ -757,11 +762,13 @@ impl GameLoop {
             if game.game_over {
                 self.set_phase(game, agents, PhaseType::CombatEnd);
                 self.combat.clear();
+                game.turn.combat_block_assignments.clear();
                 return;
             }
             self.step_with_priority(game, agents, false);
             if game.game_over {
                 self.combat.clear();
+                game.turn.combat_block_assignments.clear();
                 return;
             }
         }
@@ -780,6 +787,7 @@ impl GameLoop {
         self.step_with_priority(game, agents, false);
         if game.game_over {
             self.combat.clear();
+            game.turn.combat_block_assignments.clear();
             return;
         }
 
@@ -788,6 +796,7 @@ impl GameLoop {
         self.emit_phase_trigger(game, PhaseType::CombatEnd);
         self.step_with_priority(game, agents, false);
         self.combat.clear();
+        game.turn.combat_block_assignments.clear();
     }
 
     pub fn step_cleanup(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {

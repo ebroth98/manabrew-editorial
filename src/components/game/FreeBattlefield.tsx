@@ -5,13 +5,13 @@ import { CardOverlayButton } from "@/components/game/CardOverlayButton";
 import type { Card as XMageCard } from "@/types/xmage";
 import { Move, MousePointer2 } from "lucide-react";
 
-const CARD_W = 70;
-const CARD_H = 98;
+// Slightly larger logical footprint than visual card size to avoid overlap when tapped/rotated.
+const CARD_W = 72;
+const CARD_H = 100;
 const GAP = 8;
 
 interface FreeBattlefieldProps {
   cards: XMageCard[];
-  label: string;
   className?: string;
   onClickCard?: (card: XMageCard) => void;
   onClickAnyCard?: (card: XMageCard) => void;
@@ -26,6 +26,10 @@ interface FreeBattlefieldProps {
   onUntapLand?: (card: XMageCard) => void;
   /** Reserve this many px at the bottom for the hand overlay (clamps drag + auto-layout) */
   bottomReserved?: number;
+  /** Reserve this many px on the left for overlays (clamps drag + auto-layout) */
+  leftReserved?: number;
+  /** Reserve this many px on the right for overlays (clamps drag + auto-layout) */
+  rightReserved?: number;
   /** When true, renders a green dashed drop-target overlay */
   isDropActive?: boolean;
 }
@@ -40,7 +44,6 @@ interface Marquee {
 
 export function FreeBattlefield({
   cards,
-  label,
   className,
   onClickCard,
   onClickAnyCard,
@@ -54,6 +57,8 @@ export function FreeBattlefield({
   untappableLandIds,
   onUntapLand,
   bottomReserved = 0,
+  leftReserved = 0,
+  rightReserved = 0,
   isDropActive = false,
 }: FreeBattlefieldProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -88,7 +93,11 @@ export function FreeBattlefield({
     if (!containerRef.current) return;
     const containerW = containerRef.current.clientWidth;
     const containerH = containerRef.current.clientHeight;
-    const cols = Math.max(1, Math.floor((containerW + GAP) / (CARD_W + GAP)));
+    const xMin = Math.max(0, leftReserved);
+    const xMaxByRight = Math.max(xMin, containerW - CARD_W - Math.max(0, rightReserved));
+    const usableW = Math.max(CARD_W, xMaxByRight - xMin + CARD_W);
+    const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
+    const xMax = xMaxByRight;
     // Don't auto-place new cards into the reserved zone at the bottom
     const yMax = containerH > 0 ? Math.max(0, containerH - CARD_H - bottomReserved) : Infinity;
 
@@ -104,7 +113,7 @@ export function FreeBattlefield({
         if (!next[card.id]) {
           const slot = alreadyPositioned + newIdx;
           next[card.id] = {
-            x: (slot % cols) * (CARD_W + GAP) + GAP,
+            x: Math.min(xMax, xMin + (slot % cols) * (CARD_W + GAP) + GAP),
             y: Math.min(Math.floor(slot / cols) * (CARD_H + GAP) + GAP, yMax),
           };
           newIdx++;
@@ -118,7 +127,7 @@ export function FreeBattlefield({
       const next = new Set([...prev].filter((id) => cardIds.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [cards]);
+  }, [cards, bottomReserved, leftReserved, rightReserved]);
 
   // Card mousedown: shift+click toggles selection; otherwise start drag
   const handleMouseDown = useCallback((e: React.MouseEvent, cardId: string) => {
@@ -170,6 +179,11 @@ export function FreeBattlefield({
 
       const el = containerRef.current;
       if (!el) return;
+      const xMin = Math.max(0, leftReserved);
+      const xMax = Math.max(
+        xMin,
+        el.clientWidth - CARD_W - Math.max(0, rightReserved),
+      );
 
       setPositions((prev) => {
         const next = { ...prev };
@@ -177,7 +191,7 @@ export function FreeBattlefield({
           const start = dragRef.current!.startPositions[id];
           if (!start) continue;
           next[id] = {
-            x: Math.max(0, Math.min(el.clientWidth - CARD_W, start.x + dx)),
+            x: Math.max(xMin, Math.min(xMax, start.x + dx)),
             y: Math.max(0, Math.min(el.clientHeight - CARD_H, start.y + dy)),
           };
         }
@@ -194,7 +208,7 @@ export function FreeBattlefield({
 
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
-  }, []);
+  }, [leftReserved, rightReserved]);
 
   // Container background mousedown: marquee in select mode, clear selection otherwise
   const handleContainerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -286,44 +300,6 @@ export function FreeBattlefield({
 
   return (
     <div className={cn("flex flex-col gap-1 min-h-0 flex-1", className)}>
-      {/* Label row with mode toggle */}
-      <div className="flex items-center justify-between px-1">
-        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-          {label}
-          {selectedCardIds.size > 0 && (
-            <span className="ml-2 text-purple-400 normal-case font-normal tracking-normal">
-              ({selectedCardIds.size} selected)
-            </span>
-          )}
-        </span>
-        <div className="flex gap-0.5">
-          <button
-            title="Move mode"
-            onClick={() => setSelectMode(false)}
-            className={cn(
-              "p-0.5 rounded transition-colors",
-              !selectMode
-                ? "text-foreground bg-muted"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <Move size={12} />
-          </button>
-          <button
-            title="Select mode — drag to rubber-band select cards"
-            onClick={() => setSelectMode(true)}
-            className={cn(
-              "p-0.5 rounded transition-colors",
-              selectMode
-                ? "text-foreground bg-muted"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <MousePointer2 size={12} />
-          </button>
-        </div>
-      </div>
-
       {/* Battlefield canvas */}
       <div
         ref={containerRef}
@@ -334,6 +310,43 @@ export function FreeBattlefield({
         style={{ minHeight: `${minH}px` }}
         onMouseDown={handleContainerMouseDown}
       >
+        {/* Top-right tool controls */}
+        <div className="absolute top-1 right-1 z-40 flex items-center gap-1">
+          {selectedCardIds.size > 0 && (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-card/90 border text-purple-500">
+              {selectedCardIds.size} selected
+            </span>
+          )}
+          <div className="flex gap-0.5 rounded bg-card/90 border p-0.5 shadow-sm">
+            <button
+              title="Move mode"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => setSelectMode(false)}
+              className={cn(
+                "p-0.5 rounded transition-colors",
+                !selectMode
+                  ? "text-foreground bg-muted"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <Move size={12} />
+            </button>
+            <button
+              title="Select mode — drag to rubber-band select cards"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => setSelectMode(true)}
+              className={cn(
+                "p-0.5 rounded transition-colors",
+                selectMode
+                  ? "text-foreground bg-muted"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <MousePointer2 size={12} />
+            </button>
+          </div>
+        </div>
+
         {cards.length === 0 && (
           <span className="absolute inset-0 flex items-center justify-center text-xs text-muted-foreground italic">
             No permanents

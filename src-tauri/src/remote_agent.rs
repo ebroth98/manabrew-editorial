@@ -78,6 +78,7 @@ impl RemotePlayerAgent {
             game_id: self.game_id.clone(),
             turn: 0,
             step: "main1".into(),
+            combat_assignments: vec![],
             active_player_id: String::new(),
             priority_player_id: String::new(),
             players: vec![],

@@ -1,6 +1,5 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
 import { AppShell } from "@/components/layout/AppShell";
-import Login from "@/views/Login";
 import Lobby from "@/views/Lobby";
 import DeckEditor from "@/views/DeckEditor";
 import MyDecks from "@/views/MyDecks";
@@ -10,10 +9,6 @@ import Draft from "@/views/Draft";
 import Settings from "@/views/Settings";
 
 export const router = createBrowserRouter([
-  {
-    path: "/login",
-    element: <Login />,
-  },
   {
     path: "/",
     element: <AppShell />,

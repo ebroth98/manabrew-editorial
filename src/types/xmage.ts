@@ -84,6 +84,7 @@ export interface GameView {
   gameId: string; // UUID
   turn: number;
   step: string; // Phase/Step name
+  combatAssignments?: CombatAssignment[];
   activePlayerId: string; // UUID
   priorityPlayerId: string; // UUID
   players: Player[];
@@ -104,6 +105,11 @@ export interface GameView {
   monarchId?: string | null;
   /** The player who holds the initiative. */
   initiativeHolderId?: string | null;
+}
+
+export interface CombatAssignment {
+  blockerId: string;
+  attackerId: string;
 }
 
 export interface StackObject {

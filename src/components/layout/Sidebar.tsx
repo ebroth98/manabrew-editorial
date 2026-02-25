@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import {
   Home,
@@ -6,29 +6,13 @@ import {
   Layers,
   BookMarked,
   Settings,
-  LogOut,
   Swords,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuthStore } from "@/stores/useAuthStore";
-import { useConnectionStore } from "@/stores/useConnectionStore";
-import { wsClient } from "@/api/websocket";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export function Sidebar({ className }: SidebarProps) {
-  const navigate = useNavigate();
-  const { logout } = useAuthStore();
-  const { setStatus, setServerAddress } = useConnectionStore();
-
-  function handleDisconnect() {
-    wsClient.disconnect();
-    setStatus("DISCONNECTED");
-    setServerAddress("");
-    logout();
-    navigate("/login");
-  }
-
   return (
     <div
       className={cn(
@@ -117,16 +101,6 @@ export function Sidebar({ className }: SidebarProps) {
             </NavLink>
           </div>
         </div>
-      </div>
-      <div className="px-3 py-4 border-t">
-        <Button
-          variant="ghost"
-          className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-100"
-          onClick={handleDisconnect}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Disconnect
-        </Button>
       </div>
     </div>
   );

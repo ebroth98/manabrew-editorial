@@ -194,6 +194,7 @@ impl GameManager {
                     game_id: String::new(),
                     turn: 0,
                     step: "main1".into(),
+                    combat_assignments: vec![],
                     active_player_id: String::new(),
                     priority_player_id: String::new(),
                     players: vec![],

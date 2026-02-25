@@ -1,9 +1,10 @@
 import { useState } from "react";
-import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import { useServerStore } from "@/stores/useServerStore";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
+import { useTheme } from "next-themes";
 
 const FLASH_MIN = 200;
 const FLASH_MAX = 2000;
@@ -13,6 +14,22 @@ export default function Settings() {
   const prefs = usePreferencesStore();
   const { flashDurationMs, setFlashDurationMs } = prefs;
   const server = useServerStore();
+  const { theme, setTheme } = useTheme();
+
+  const zoneOrder = prefs.zonePanelOrder;
+
+  function setZoneSlot(index: number, value: ZonePanelItem) {
+    const next = [...zoneOrder] as ZonePanelItem[];
+    const existingIndex = next.indexOf(value);
+    if (existingIndex !== -1 && existingIndex !== index) {
+      const prevValue = next[index]!;
+      next[index] = value;
+      next[existingIndex] = prevValue;
+    } else {
+      next[index] = value;
+    }
+    prefs.setZonePanelOrder(next);
+  }
 
   const [host, setHost] = useState(prefs.serverHost);
   const [port, setPort] = useState(String(prefs.serverPort));
@@ -104,6 +121,85 @@ export default function Settings() {
               Uses a random delay to prevent information leaking in multiplayer.
             </p>
           </div>
+        </div>
+
+        <div className="space-y-2 pt-2">
+          <Label>Battlefield Zone Column Side</Label>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={prefs.zonePanelSide === "left" ? "default" : "outline"}
+              size="sm"
+              onClick={() => prefs.setZonePanelSide("left")}
+            >
+              Left
+            </Button>
+            <Button
+              variant={prefs.zonePanelSide === "right" ? "default" : "outline"}
+              size="sm"
+              onClick={() => prefs.setZonePanelSide("right")}
+            >
+              Right
+            </Button>
+          </div>
+        </div>
+
+        <div className="space-y-2">
+          <Label>Battlefield Zone Column Order</Label>
+          <div className="grid grid-cols-3 gap-2">
+            {(["Top", "Middle", "Bottom"] as const).map((slot, index) => (
+              <div key={slot} className="space-y-1">
+                <Label htmlFor={`zone-order-${index}`} className="text-xs text-muted-foreground">
+                  {slot}
+                </Label>
+                <select
+                  id={`zone-order-${index}`}
+                  value={zoneOrder[index]}
+                  onChange={(e) => setZoneSlot(index, e.target.value as ZonePanelItem)}
+                  className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                >
+                  <option value="library">Library</option>
+                  <option value="graveyard">Graveyard</option>
+                  <option value="exile">Exile</option>
+                </select>
+              </div>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Controls placement of Library / Graveyard / Exile in the in-field zone column.
+          </p>
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <h2 className="text-lg font-semibold">Appearance</h2>
+        <div className="space-y-2">
+          <Label>Theme</Label>
+          <div className="flex items-center gap-2">
+            <Button
+              variant={theme === "light" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setTheme("light")}
+            >
+              Light
+            </Button>
+            <Button
+              variant={theme === "dark" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setTheme("dark")}
+            >
+              Dark
+            </Button>
+            <Button
+              variant={theme === "system" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setTheme("system")}
+            >
+              System
+            </Button>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Controls app theme preference.
+          </p>
         </div>
       </section>
 

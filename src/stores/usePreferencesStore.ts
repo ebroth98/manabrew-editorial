@@ -1,6 +1,9 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+export type ZonePanelSide = 'left' | 'right';
+export type ZonePanelItem = 'library' | 'graveyard' | 'exile';
+
 interface PreferencesState {
   /** Duration of card-play and turn-start flash animations in ms */
   flashDurationMs: number;
@@ -19,6 +22,12 @@ interface PreferencesState {
   /** Auto-pass priority when no legal actions are available */
   autoPassEnabled: boolean;
   setAutoPassEnabled: (enabled: boolean) => void;
+
+  /** Battlefield zone column placement + order */
+  zonePanelSide: ZonePanelSide;
+  zonePanelOrder: ZonePanelItem[];
+  setZonePanelSide: (side: ZonePanelSide) => void;
+  setZonePanelOrder: (order: ZonePanelItem[]) => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -38,6 +47,11 @@ export const usePreferencesStore = create<PreferencesState>()(
 
       autoPassEnabled: true,
       setAutoPassEnabled: (autoPassEnabled) => set({ autoPassEnabled }),
+
+      zonePanelSide: 'left',
+      zonePanelOrder: ['library', 'graveyard', 'exile'],
+      setZonePanelSide: (zonePanelSide) => set({ zonePanelSide }),
+      setZonePanelOrder: (zonePanelOrder) => set({ zonePanelOrder }),
     }),
     { name: 'xmage-preferences' },
   ),

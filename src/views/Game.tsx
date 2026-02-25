@@ -14,6 +14,8 @@ import { SpellStackModal } from "@/components/game/SpellStackModal";
 import { ChooseModeModal } from "@/components/game/ChooseModeModal";
 import { ChooseOptionalTriggerModal } from "@/components/game/ChooseOptionalTriggerModal";
 import { KickerModal, BuybackModal, MultikickerModal, ReplicateModal, AlternativeCostModal } from "@/components/game/CostModal";
+import { RightActionPanel } from "@/components/game/RightActionPanel";
+import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
@@ -28,13 +30,9 @@ import {
 } from "@/components/ui/resizable";
 import { cn } from "@/lib/utils";
 import {
-  BookOpen,
   Heart,
   Layers,
-  Archive,
   Sword,
-  Skull,
-  TimerOff,
 } from "lucide-react";
 import { Navigate, useLocation } from "react-router-dom";
 
@@ -65,20 +63,22 @@ function getInitials(name: string): string {
 
 // Phase bar definitions — must match phase_to_step() in src-tauri/src/game_view_dto.rs
 const PHASES = [
-  { id: "untap",               label: "Untap",        short: "UNT" },
-  { id: "upkeep",              label: "Upkeep",       short: "UP"  },
-  { id: "draw",                label: "Draw",         short: "DR"  },
-  { id: "main1",               label: "Main 1",       short: "M1"  },
-  { id: "begin_combat",        label: "Begin Combat", short: "BC"  },
-  { id: "declare_attackers",   label: "Attackers",    short: "ATK" },
-  { id: "declare_blockers",    label: "Blockers",     short: "BLK" },
-  { id: "first_strike_damage", label: "1st Strike",   short: "1ST" },
-  { id: "combat_damage",       label: "Damage",       short: "DMG" },
-  { id: "end_combat",          label: "End Combat",   short: "EC"  },
-  { id: "main2",               label: "Main 2",       short: "M2"  },
-  { id: "end",                 label: "End",          short: "END" },
-  { id: "cleanup",             label: "Cleanup",      short: "CL"  },
+  { id: "untap", label: "Untap", short: "UNT" },
+  { id: "upkeep", label: "Upkeep", short: "UP" },
+  { id: "draw", label: "Draw", short: "DR" },
+  { id: "main1", label: "Main 1", short: "M1" },
+  { id: "begin_combat", label: "Begin Combat", short: "BC" },
+  { id: "declare_attackers", label: "Attackers", short: "ATK" },
+  { id: "declare_blockers", label: "Blockers", short: "BLK" },
+  { id: "first_strike_damage", label: "1st Strike", short: "1ST" },
+  { id: "combat_damage", label: "Damage", short: "DMG" },
+  { id: "end_combat", label: "End Combat", short: "EC" },
+  { id: "main2", label: "Main 2", short: "M2" },
+  { id: "end", label: "End", short: "END" },
+  { id: "cleanup", label: "Cleanup", short: "CL" },
 ];
+
+const ZONE_COLUMN_RESERVED_PX = 68;
 
 const MANA_COLORS = [
   { key: "W", bg: "bg-yellow-50 border-yellow-200", text: "text-yellow-800" },
@@ -127,6 +127,8 @@ function PlayerPanel({
   isTargetable,
   onTarget,
   isFlashing,
+  onOpenCommandZone,
+  commandZoneCount = 0,
 }: {
   player: Player;
   isOpponent: boolean;
@@ -136,6 +138,8 @@ function PlayerPanel({
   isTargetable?: boolean;
   onTarget?: () => void;
   isFlashing?: boolean;
+  onOpenCommandZone?: () => void;
+  commandZoneCount?: number;
 }) {
   const totalCmdDmg = Object.values(player.commanderDamage ?? {}).reduce(
     (a, b) => a + b,
@@ -146,33 +150,36 @@ function PlayerPanel({
     <div
       data-player-id={player.id}
       className={cn(
-        "flex items-center gap-3 px-3 py-2 border rounded-lg bg-card text-sm transition-colors",
+        "flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-card text-sm transition-colors",
+        isPriorityPlayer &&
+          !isTargetable &&
+          "bg-purple-50/50 dark:bg-purple-950/15 shadow-[inset_0_0_0_2px_rgba(168,85,247,0.95)]",
         isActiveTurn &&
           !isTargetable &&
+          !isPriorityPlayer &&
           (isOpponent
-            ? "ring-2 ring-orange-400 border-orange-400"
-            : "ring-2 ring-green-500 border-green-500"),
+            ? "bg-orange-50/40 dark:bg-orange-950/10 shadow-[inset_0_0_0_2px_rgba(251,146,60,0.95)]"
+            : "bg-green-50/40 dark:bg-green-950/10 shadow-[inset_0_0_0_2px_rgba(34,197,94,0.95)]"),
         isTargetable &&
-          "ring-2 ring-red-400 border-red-400 cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30",
+          "cursor-pointer hover:bg-red-50 dark:hover:bg-red-950/30 shadow-[inset_0_0_0_2px_rgba(248,113,113,0.95)]",
         isFlashing && "animate-player-turn-flash",
       )}
       onClick={isTargetable ? onTarget : undefined}
       title={isTargetable ? `Target ${player.name}` : undefined}
     >
-      <Avatar
-        className={cn(
-          "h-8 w-8 shrink-0",
-          isTargetable && "ring-2 ring-red-400",
-        )}
-      >
+      <Avatar className="h-8 w-8 shrink-0">
         <AvatarFallback
           className={cn("text-xs font-bold", getAvatarColor(player.name))}
         >
           {getInitials(player.name)}
         </AvatarFallback>
       </Avatar>
+      <div className="flex items-center gap-1 shrink-0">
+        <Heart className="h-3.5 w-3.5 text-red-500" />
+        <span className="font-bold">{player.life}</span>
+      </div>
       <div className="font-semibold truncate min-w-0">{player.name}</div>
-      {isActiveTurn && (
+      {isOpponent && isActiveTurn && (
         <span
           className={cn(
             "text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0",
@@ -184,15 +191,11 @@ function PlayerPanel({
           {isOpponent ? "THEIR TURN" : "YOUR TURN"}
         </span>
       )}
-      {isPriorityPlayer && (
+      {isOpponent && isPriorityPlayer && (
         <span className="text-[10px] font-bold px-1.5 py-0.5 rounded shrink-0 bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 animate-pulse">
           PRIORITY
         </span>
       )}
-      <div className="flex items-center gap-1 shrink-0">
-        <Heart className="h-3.5 w-3.5 text-red-500" />
-        <span className="font-bold">{player.life}</span>
-      </div>
       {isTargetable && (
         <Badge
           variant="destructive"
@@ -215,10 +218,22 @@ function PlayerPanel({
           ⚔{totalCmdDmg} CMD
         </Badge>
       )}
-      <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-        <BookOpen className="h-3 w-3" />
-        <span>{player.libraryCount}</span>
-      </div>
+      {commandZoneCount > 0 && (
+        <button
+          className={cn(
+            "inline-flex items-center gap-1 px-1.5 py-0.5 rounded border text-xs shrink-0",
+            onOpenCommandZone
+              ? "border-border text-muted-foreground hover:text-foreground hover:bg-muted/40"
+              : "border-border text-muted-foreground/80",
+          )}
+          onClick={onOpenCommandZone}
+          disabled={!onOpenCommandZone}
+          title="Command Zone"
+        >
+          <Sword className="h-3 w-3" />
+          <span>{commandZoneCount}</span>
+        </button>
+      )}
       <div className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
         <Layers className="h-3 w-3" />
         <span>{player.handCount}</span>
@@ -250,6 +265,8 @@ function BattlefieldZone({
   onTapLand,
   untappableLandIds,
   onUntapLand,
+  leftReserved = 0,
+  rightReserved = 0,
 }: {
   cards: XMageCard[];
   label: string;
@@ -276,20 +293,29 @@ function BattlefieldZone({
   /** Tapped lands whose mana is still in the pool (can be untapped) */
   untappableLandIds?: string[];
   onUntapLand?: (card: XMageCard) => void;
+  /** Reserve horizontal space inside the battlefield canvas for overlays. */
+  leftReserved?: number;
+  rightReserved?: number;
 }) {
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
-  
+
   return (
     <div className={cn("flex flex-col gap-1 min-h-0", className)}>
-      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">
-        {label}
-      </span>
+      {label && (
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">
+          {label}
+        </span>
+      )}
       <div
         className={cn(
           "flex flex-wrap gap-2 p-2 border rounded-lg flex-1 content-start",
           zoneBg ?? "bg-muted/20",
         )}
-        style={{ minHeight: `${minHeight}px` }}
+        style={{
+          minHeight: `${minHeight}px`,
+          paddingLeft: `${8 + leftReserved}px`,
+          paddingRight: `${8 + rightReserved}px`,
+        }}
       >
         {cards.length === 0 ? (
           <span className="text-xs text-muted-foreground italic self-center mx-auto">
@@ -308,7 +334,7 @@ function BattlefieldZone({
               <div
                 key={card.id}
                 data-card-id={card.id}
-                className="relative group shrink-0"
+                className="relative group shrink-0 p-px"
                 onMouseEnter={(e) => {
                   setHoveredCardId(card.id);
                   onHoverCard?.(card, e);
@@ -385,52 +411,6 @@ function BattlefieldZone({
   );
 }
 
-function PhaseBar({
-  currentStep,
-  activePlayerId,
-  myPlayerId,
-  turn,
-}: {
-  currentStep: string;
-  activePlayerId: string;
-  myPlayerId: string;
-  turn: number;
-}) {
-  const isMyTurn = activePlayerId === myPlayerId;
-  return (
-    <div className="flex items-center gap-1 overflow-x-auto py-1 px-2 bg-muted/30 border rounded-lg shrink-0">
-      <span
-        className="text-xs font-bold shrink-0 text-muted-foreground tabular-nums mr-1"
-        title="Turn number"
-      >
-        T{turn}
-      </span>
-      <span
-        className={cn(
-          "text-xs font-semibold shrink-0 mr-1",
-          isMyTurn ? "text-green-600" : "text-orange-500",
-        )}
-      >
-        {isMyTurn ? "Your Turn" : "Opp Turn"}
-      </span>
-      {PHASES.map((phase) => (
-        <div
-          key={phase.id}
-          className={cn(
-            "text-xs px-1.5 py-0.5 rounded shrink-0 border transition-colors",
-            currentStep === phase.id
-              ? "bg-primary text-primary-foreground border-primary font-semibold"
-              : "bg-background border-border text-muted-foreground",
-          )}
-          title={phase.label}
-        >
-          {phase.short}
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function HandDisplay({
   cards,
   onHoverCard,
@@ -445,7 +425,7 @@ function HandDisplay({
   showBackFace?: boolean;
 }) {
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
-  
+
   return (
     <div className="flex flex-col gap-1 shrink-0">
       <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide px-1">
@@ -498,124 +478,6 @@ function HandDisplay({
   );
 }
 
-function ZonePeek({
-  count,
-  label,
-  icon: Icon = Archive,
-  onClick,
-  hasPlayable,
-}: {
-  count: number;
-  label: string;
-  icon?: React.ElementType;
-  onClick?: () => void;
-  hasPlayable?: boolean;
-}) {
-  return (
-    <div
-      className="flex flex-col items-center gap-0.5 cursor-pointer group"
-      onClick={onClick}
-    >
-      <div className={cn(
-        "w-10 h-14 rounded border-2 border-dashed flex items-center justify-center transition-colors bg-muted/20",
-        hasPlayable
-          ? "border-green-400 ring-1 ring-green-400/50 bg-green-900/20"
-          : "border-muted-foreground/40 group-hover:border-primary",
-      )}>
-        <div className="text-center">
-          <Icon className={cn("h-3.5 w-3.5 mx-auto", hasPlayable ? "text-green-400" : "text-muted-foreground")} />
-          <span className={cn("text-xs font-bold", hasPlayable ? "text-green-400" : "text-muted-foreground")}>
-            {count}
-          </span>
-        </div>
-      </div>
-      <span className={cn("text-[10px]", hasPlayable ? "text-green-400 font-semibold" : "text-muted-foreground")}>{label}</span>
-    </div>
-  );
-}
-
-/** Face-down card stack representing the library / deck. */
-function LibraryPile({
-  count,
-  label = "Library",
-  onClick,
-}: {
-  count: number;
-  label?: string;
-  onClick?: () => void;
-}) {
-  return (
-    <div
-      className="flex flex-col items-center gap-0.5 shrink-0 cursor-pointer group"
-      onClick={onClick}
-      title={`${count} cards in library`}
-    >
-      <div className="relative" style={{ width: 46, height: 64 }}>
-        {/* Depth layers (shadow cards behind) */}
-        {count > 3 && (
-          <div className="absolute inset-0 rounded-[3px] border border-yellow-900/60 bg-blue-950 translate-x-[3px] translate-y-[3px]" />
-        )}
-        {count > 1 && (
-          <div className="absolute inset-0 rounded-[3px] border border-yellow-800/70 bg-blue-950 translate-x-[1.5px] translate-y-[1.5px]" />
-        )}
-        {/* Top card — MTG card-back style */}
-        <div
-          className={cn(
-            "absolute inset-0 rounded-[3px] border-2 border-yellow-700/80 bg-blue-950",
-            "flex items-center justify-center transition-colors shadow",
-            "group-hover:border-primary group-hover:bg-blue-900",
-            count === 0 && "opacity-30 border-dashed",
-          )}
-        >
-          <div className="absolute inset-[3px] rounded-[2px] border border-yellow-800/40" />
-          <span className="text-yellow-100/90 text-sm font-bold relative">
-            {count}
-          </span>
-        </div>
-      </div>
-      <span className="text-[10px] text-muted-foreground group-hover:text-foreground transition-colors">
-        {label}
-      </span>
-    </div>
-  );
-}
-
-// Prompt type → human-readable instruction. Matches AgentPromptInner variants in prompt.rs.
-const PROMPT_LABELS: Record<string, string> = {
-  mulligan:                "Keep this hand?",
-  chooseAction:            "Your turn — play a card or pass priority (Space / F6)",
-  chooseAttackers:         "Declare attackers — click creatures to toggle, then confirm",
-  chooseBlockers:          "Declare blockers — click an attacker, then click your blocker",
-  chooseTargetPlayer:      "Choose a target player",
-  chooseTargetCard:        "Choose a target creature",
-  chooseTargetAny:         "Choose a target (player or permanent)",
-  chooseTargetCardFromZone:"Choose a target card from the zone",
-  chooseTargetSpell:       "Choose a spell on the stack to counter",
-  chooseMode:              "Choose a mode for the spell",
-  chooseOptionalTrigger:   "An optional ability would trigger",
-  chooseKicker:            "Pay the kicker cost?",
-  chooseBuyback:           "Pay the buyback cost?",
-  chooseMultikicker:       "Choose multikicker count",
-  chooseReplicate:         "Choose replicate count",
-  chooseAlternativeCost:   "Choose casting option",
-  scry:                    "Scry — choose cards to put on the bottom",
-  surveil:                 "Surveil — choose cards to send to the graveyard",
-  dig:                     "Dig — choose cards to take to your hand",
-  chooseDiscard:           "Discard — choose cards to discard",
-  gameOver:                "Game Over",
-};
-
-function PromptBanner({ promptType }: { promptType: string }) {
-  const label = PROMPT_LABELS[promptType] ?? promptType;
-  return (
-    <div className="shrink-0 border rounded-lg p-2 bg-blue-50 dark:bg-blue-950/20 text-center">
-      <p className="text-sm font-semibold text-blue-700 dark:text-blue-400">
-        {label}
-      </p>
-    </div>
-  );
-}
-
 interface OpponentHalfProps {
   player: Player;
   permanents: XMageCard[];
@@ -636,6 +498,8 @@ interface OpponentHalfProps {
   onFlipCard: () => void;
   showBackFace: boolean;
   onOpenZone: (title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) => void;
+  zonePanelSide: "left" | "right";
+  zonePanelOrder: ("library" | "graveyard" | "exile")[];
 }
 
 function OpponentHalf({
@@ -658,6 +522,8 @@ function OpponentHalf({
   onFlipCard,
   showBackFace,
   onOpenZone,
+  zonePanelSide,
+  zonePanelOrder,
 }: OpponentHalfProps) {
   return (
     <div className="flex flex-col gap-1 h-full overflow-hidden">
@@ -669,40 +535,40 @@ function OpponentHalf({
         isTargetable={isTargetable}
         onTarget={onTarget}
         isFlashing={isFlashing}
+        onOpenCommandZone={
+          (commandZone?.length ?? 0) > 0
+            ? () => onOpenZone(`${player.name}'s Command Zone`, commandZone!)
+            : undefined
+        }
+        commandZoneCount={commandZone?.length ?? 0}
       />
       <div className="flex gap-2 flex-1 min-h-0 overflow-hidden">
-        <div className="flex flex-col gap-1 shrink-0">
-          <LibraryPile count={player.libraryCount} />
-          <ZonePeek
-            count={player.graveyardCount}
-            label="GY"
-            onClick={() => onOpenZone(`${player.name}'s Graveyard`, graveyard)}
-          />
-          <ZonePeek
-            count={player.exileCount}
-            label="Exile"
-            onClick={() => onOpenZone(`${player.name}'s Exile`, exile)}
-          />
-          {(commandZone?.length ?? 0) > 0 && (
-            <ZonePeek
-              count={commandZone!.length}
-              label="CMD"
-              onClick={() =>
-                onOpenZone(`${player.name}'s Command Zone`, commandZone!)
-              }
-              icon={Sword}
+        <div className="relative flex flex-col gap-1 flex-1 min-w-0 overflow-hidden">
+          <div
+            className={cn(
+              "absolute bottom-1 z-20",
+              zonePanelSide === "left" ? "left-1" : "right-1",
+            )}
+          >
+            <ZoneActionColumn
+              libraryCount={player.libraryCount}
+              graveyardCount={graveyard.length}
+              exileCount={exile.length}
+              order={zonePanelOrder}
+              onOpenGraveyard={() => onOpenZone(`${player.name}'s Graveyard`, graveyard)}
+              onOpenExile={() => onOpenZone(`${player.name}'s Exile`, exile)}
             />
-          )}
-        </div>
-        <div className="flex flex-col gap-1 flex-1 min-w-0 overflow-hidden">
+          </div>
           <BattlefieldZone
             cards={permanents}
-            label={`${player.name}'s Battlefield`}
+            label=""
             emptyLabel="No permanents"
             onFlipCard={onFlipCard}
             showBackFace={showBackFace}
             className="flex-1"
             minHeight={60}
+            leftReserved={zonePanelSide === "left" ? ZONE_COLUMN_RESERVED_PX : 0}
+            rightReserved={zonePanelSide === "right" ? ZONE_COLUMN_RESERVED_PX : 0}
             onClickCard={
               promptType === "chooseTargetCard" ||
               promptType === "chooseTargetAny"
@@ -724,6 +590,27 @@ function OpponentHalf({
           />
         </div>
       </div>
+    </div>
+  );
+}
+
+function MidPhaseStrip({ currentStep }: { currentStep: string }) {
+  return (
+    <div className="pointer-events-none flex items-center justify-center gap-1 px-2 py-0.5 overflow-x-auto max-w-full">
+      {PHASES.map((phase) => (
+        <span
+          key={phase.id}
+          className={cn(
+            "text-[10px] px-1.5 py-0.5 rounded border leading-none shrink-0",
+            currentStep === phase.id
+              ? "bg-primary text-primary-foreground border-primary font-semibold"
+              : "bg-background/90 border-border text-muted-foreground",
+          )}
+          title={phase.label}
+        >
+          {phase.short}
+        </span>
+      ))}
     </div>
   );
 }
@@ -760,6 +647,8 @@ export default function Game() {
     deferredQueue,
   } = useGameStore();
   const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
+  const zonePanelSide = usePreferencesStore((s) => s.zonePanelSide);
+  const zonePanelOrder = usePreferencesStore((s) => s.zonePanelOrder);
   const location = useLocation();
   const devExtraOpponents = ((location.state as { devExtraOpponents?: number } | null)?.devExtraOpponents ?? 0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -832,8 +721,8 @@ export default function Game() {
   // Spell stack modal (view stack / choose counter target)
   const [spellStackModalOpen, setSpellStackModalOpen] = useState(false);
 
-  // Concede confirmation
-  const [confirmConcede, setConfirmConcede] = useState(false);
+  // Right-side prompt/action panel collapse state
+  const [isActionPanelCollapsed, setIsActionPanelCollapsed] = useState(false);
 
   const promptType = currentPrompt?.type;
 
@@ -1084,12 +973,18 @@ export default function Game() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [currentPrompt?.attackerIds?.join(",")],
   );
+  const combatAssignments = useMemo(
+    () => gameView?.combatAssignments ?? [],
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gameView?.combatAssignments?.map((a) => `${a.blockerId}:${a.attackerId}`).join(",")],
+  );
 
   const arrows = useGameArrows({
     containerRef,
     promptType,
     attackerIds,
     blockAssignments,
+    combatAssignments,
     pendingAttackers,
     myPlayerId: me?.id ?? "",
     opponentPlayerId: opponent?.id ?? "",
@@ -1143,7 +1038,7 @@ export default function Game() {
       const zone = currentPrompt.zone;
       const validCardIds = currentPrompt.validCardIds || [];
       const zoneCards = currentPrompt.zoneCards || [];
-      
+
       if (zone && zoneCards.length > 0) {
         const zoneNames: Record<string, string> = {
           Graveyard: "Graveyard",
@@ -1152,7 +1047,7 @@ export default function Game() {
         };
         const zoneName = zoneNames[zone] || zone;
         const title = `Choose from ${zoneName}`;
-        
+
         openZoneTargetSelector(title, zoneCards, validCardIds);
       }
     } else {
@@ -1206,6 +1101,9 @@ export default function Game() {
       op.id,
       gameView.battlefield.filter((c) => c.controllerId === op.id),
     ]),
+  );
+  const battlefieldCardNameById = new Map(
+    gameView.battlefield.map((card) => [card.id, card.name] as const),
   );
 
   // Game over overlay
@@ -1312,13 +1210,13 @@ export default function Game() {
     const handleMouseUp = () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
-      
+
       if (!moved) {
         castSpell(card.id);
       } else if (isOverBattlefieldRef.current) {
         castSpell(card.id);
       }
-      
+
       setDraggingHandCard(null);
       setIsOverBattlefield(false);
       isOverBattlefieldRef.current = false;
@@ -1341,521 +1239,239 @@ export default function Game() {
     >
       <ArrowOverlay arrows={arrows} />
 
-      {/* ── Stack ─────────────────────────────────────────── */}
-      {gameView.stack.length > 0 && (() => {
-        // Visual stacked-card pile — newest card on top (last in array = top of LIFO stack)
-        // Card size: w-[52px] h-[73px] ≈ 5:7 MTG aspect ratio; offset between layers = 4px
-        const OFFSET = 4;
-        const MAX_LAYERS = Math.min(gameView.stack.length, 4);
-        const pileW = 52 + (MAX_LAYERS - 1) * OFFSET + 4; // +4 for visual breathing room
-        const pileH = 73 + (MAX_LAYERS - 1) * OFFSET + 4;
-        const isTargeting = promptType === "chooseTargetSpell";
-
-        return (
-          <div
-            className={cn(
-              "shrink-0 border rounded-lg p-2 flex items-center gap-3",
-              isTargeting
-                ? "bg-blue-50 dark:bg-blue-950/20 border-blue-300"
-                : "bg-yellow-50 dark:bg-yellow-950/20",
-            )}
-          >
-            {/* Visual card pile — click to open modal */}
-            <div
-              className="relative shrink-0 cursor-pointer"
-              style={{ width: pileW, height: pileH }}
-              onClick={() => setSpellStackModalOpen(true)}
-              title="View stack"
-            >
-              {gameView.stack.slice(0, MAX_LAYERS).map((obj, i) => {
-                // i=0 = oldest (bottom), i=MAX_LAYERS-1 = newest (top of stack)
-                const layerFromTop = (MAX_LAYERS - 1) - i;
-                const offset = layerFromTop * OFFSET;
-                const cardStub = {
-                  id: obj.sourceId,
-                  name: obj.name,
-                  setCode: "",
-                  cardNumber: "",
-                  color: "",
-                  manaCost: "",
-                  types: [] as string[],
-                  subtypes: [] as string[],
-                  supertypes: [] as string[],
-                  text: obj.text,
-                  isPlayable: false,
-                  isSelected: false,
-                  isChoosable: false,
-                  controllerId: "",
-                  ownerId: "",
-                  zoneId: "",
-                };
-                return (
-                  <div
-                    key={obj.id}
-                    className="absolute"
-                    style={{ top: offset, left: offset, zIndex: i + 1 }}
-                  >
-                    <Card
-                      card={cardStub}
-                      className={cn(
-                        "w-[52px] h-[73px]",
-                        isTargeting && layerFromTop === 0 && "ring-2 ring-blue-400",
-                      )}
-                    />
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Stack info + spell names */}
-            <div className="flex flex-col gap-0.5 flex-1 min-w-0">
-              <p className={cn(
-                "text-xs font-semibold",
-                isTargeting ? "text-blue-700 dark:text-blue-400" : "text-yellow-700 dark:text-yellow-400",
-              )}>
-                Stack ({gameView.stack.length})
-              </p>
-              {/* Show spells top-to-bottom (newest first) */}
-              {[...gameView.stack].reverse().map((obj, idx) => (
-                <span key={obj.id} className="text-xs text-muted-foreground truncate">
-                  {idx === 0 && <span className="font-semibold text-foreground">[TOP] </span>}
-                  {obj.name}
-                </span>
-              ))}
-              {isTargeting && (
-                <Button
-                  size="sm"
-                  className="mt-1 h-6 text-xs"
-                  onClick={() => setSpellStackModalOpen(true)}
-                >
-                  Choose Counter Target
-                </Button>
-              )}
-              {!isTargeting && (
-                <button
-                  className="text-[10px] text-muted-foreground hover:text-foreground underline text-left mt-0.5"
-                  onClick={() => setSpellStackModalOpen(true)}
-                >
-                  View stack
-                </button>
-              )}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* ── Combat report ─────────────────────────────────── */}
-      {promptType === "chooseBlockers" &&
-        currentPrompt?.attackerIds &&
-        currentPrompt.attackerIds.length > 0 && (
-          <div className="shrink-0 border rounded-lg p-2 bg-red-50 dark:bg-red-950/20">
-            <p className="text-xs font-semibold text-red-700 dark:text-red-400 mb-1">
-              Combat
-            </p>
-            <div className="flex flex-col gap-0.5">
-              {currentPrompt.attackerIds.map((aid) => {
-                const attacker = gameView.battlefield.find((c) => c.id === aid);
-                const blockers = blockAssignments.filter(
-                  (a) => a.attackerId === aid,
-                );
-                const blockerNames = blockers.map((b) => {
-                  const bc = gameView.battlefield.find(
-                    (c) => c.id === b.blockerId,
-                  );
-                  return bc?.name ?? b.blockerId;
-                });
-                return (
-                  <div key={aid} className="text-xs flex gap-1 items-center">
-                    <span className="font-semibold">
-                      {attacker?.name ?? aid}
-                    </span>
-                    <span className="text-muted-foreground">→</span>
-                    <span
-                      className={
-                        blockerNames.length === 0
-                          ? "text-red-500 italic"
-                          : "text-muted-foreground"
-                      }
-                    >
-                      {blockerNames.length === 0
-                        ? "unblocked"
-                        : blockerNames.join(", ")}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-      {/* ── Prompt + Phase bar (centre divider) ───────────── */}
-      {promptType && promptType !== "gameOver" && (
-        <PromptBanner promptType={promptType} />
-      )}
-      <PhaseBar
-        currentStep={gameView.step}
-        activePlayerId={gameView.activePlayerId}
-        myPlayerId={me!.id}
-        turn={gameView.turn}
-      />
-
-      {/* ── Resizable split: opponent (left) / me (right) ─── */}
-      <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
-        {/* ──── Opponent half ──────────────────────────────── */}
-        <ResizablePanel defaultSize={45} minSize={20}>
-          {displayOpponents.length <= 1 ? (
-            <OpponentHalf
-              player={displayOpponents[0]!}
-              permanents={opponentPermanentsByPlayer.get(displayOpponents[0]!.id) ?? []}
-              graveyard={gameView.opponentGraveyard ?? []}
-              exile={gameView.opponentExile ?? []}
-              commandZone={gameView.opponentCommandZone ?? undefined}
-              isTargetable={playerIsTargetable(displayOpponents[0]!.id)}
-              onTarget={() => handleTargetPlayer(displayOpponents[0]!.id)}
-              isFlashing={turnFlashPlayerId === displayOpponents[0]?.id}
-              activePlayerId={gameView.activePlayerId}
-              priorityPlayerId={gameView.priorityPlayerId}
-              promptType={promptType}
-              pendingAttacker={pendingAttacker}
-              attackerIds={currentPrompt?.attackerIds}
-              onClickCard={handleBattlefieldClick}
-              onClickAnyCard={handleAttackerClick}
-              onHoverCard={handleHoverCard}
-              onFlipCard={handleFlipCard}
-              showBackFace={showBackFace}
-              onOpenZone={openZone}
-            />
-          ) : (
-            <ResizablePanelGroup orientation="horizontal">
-              {displayOpponents.map((op, i) => (
-                <Fragment key={op.id}>
-                  {i > 0 && <ResizableHandle />}
-                  <ResizablePanel>
-                    <OpponentHalf
-                      player={op}
-                      permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
-                      graveyard={i === 0 ? (gameView.opponentGraveyard ?? []) : []}
-                      exile={i === 0 ? (gameView.opponentExile ?? []) : []}
-                      commandZone={i === 0 ? (gameView.opponentCommandZone ?? undefined) : undefined}
-                      isTargetable={playerIsTargetable(op.id)}
-                      onTarget={() => handleTargetPlayer(op.id)}
-                      isFlashing={turnFlashPlayerId === op.id}
-                      activePlayerId={gameView.activePlayerId}
-                      priorityPlayerId={gameView.priorityPlayerId}
-                      promptType={promptType}
-                      pendingAttacker={pendingAttacker}
-                      attackerIds={currentPrompt?.attackerIds}
-                      onClickCard={handleBattlefieldClick}
-                      onClickAnyCard={handleAttackerClick}
-                      onHoverCard={handleHoverCard}
-                      onFlipCard={handleFlipCard}
-                      showBackFace={showBackFace}
-                      onOpenZone={openZone}
-                    />
-                  </ResizablePanel>
-                </Fragment>
-              ))}
-            </ResizablePanelGroup>
-          )}
-        </ResizablePanel>
-
-        <ResizableHandle withHandle />
-
-        {/* ──── My half ────────────────────────────────────── */}
-        <ResizablePanel defaultSize={60} minSize={35}>
-          <div className="flex flex-col gap-1 h-full overflow-hidden pt-1">
-            {/* Zones column + battlefields */}
-            <div className="flex gap-2 flex-1 min-h-0 overflow-hidden">
-              {/* Left: library + zone peeks */}
-              <div className="flex flex-col gap-1 shrink-0">
-                <LibraryPile count={me!.libraryCount} />
-                <ZonePeek
-                  count={me!.graveyardCount}
-                  label="GY"
-                  hasPlayable={promptType === "chooseAction" && gameView.graveyard.some((c) => c.isPlayable)}
-                  onClick={() => {
-                    // If any graveyard cards are playable (flashback), allow casting from zone viewer
-                    const hasPlayable = gameView.graveyard.some((c) => c.isPlayable);
-                    openZone(
-                      "Your Graveyard",
-                      gameView.graveyard,
-                      hasPlayable && promptType === "chooseAction"
-                        ? (cardId) => {
-                            closeZone();
-                            castSpell(cardId);
-                          }
-                        : undefined,
-                    );
-                  }}
-                />
-                <ZonePeek
-                  count={me!.exileCount}
-                  label="Exile"
-                  hasPlayable={promptType === "chooseAction" && gameView.exile.some((c) => c.isPlayable)}
-                  onClick={() => {
-                    // If any exile cards are playable (madness), allow casting from zone viewer
-                    const hasPlayable = gameView.exile.some((c) => c.isPlayable);
-                    openZone(
-                      "Your Exile",
-                      gameView.exile,
-                      hasPlayable && promptType === "chooseAction"
-                        ? (cardId) => {
-                            closeZone();
-                            castSpell(cardId);
-                          }
-                        : undefined,
-                    );
-                  }}
-                />
-                {(gameView.myCommandZone?.length ?? 0) > 0 && (
-                  <ZonePeek
-                    count={gameView.myCommandZone!.length}
-                    label="CMD"
-                    onClick={() =>
-                      openZone("Your Command Zone", gameView.myCommandZone!)
-                    }
-                    icon={Sword}
-                  />
-                )}
-              </div>
-              {/* Right: relative wrapper — battlefield fills it, hand overlays at bottom */}
-              <div
-                ref={battlefieldContainerRef}
-                className="relative flex flex-col flex-1 min-w-0 overflow-hidden"
-              >
-                <FreeBattlefield
-                  cards={myPermanents}
-                  label="Your Battlefield"
-                  className="flex-1"
-                  onClickCard={
-                    promptType === "chooseAttackers" ||
-                    promptType === "chooseBlockers" ||
-                    promptType === "chooseTargetCard" ||
-                    promptType === "chooseTargetAny"
-                      ? handleBattlefieldClick
-                      : undefined
-                  }
+      <div className="flex gap-1 min-h-0 flex-1 overflow-hidden">
+        <div className="flex flex-col gap-1 min-h-0 flex-1 overflow-hidden">
+          {/* ── Resizable split: opponent (top) / me (bottom) ─── */}
+          <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
+            <ResizablePanel defaultSize={45} minSize={20}>
+              {displayOpponents.length <= 1 ? (
+                <OpponentHalf
+                  player={displayOpponents[0]!}
+                  permanents={opponentPermanentsByPlayer.get(displayOpponents[0]!.id) ?? []}
+                  graveyard={gameView.opponentGraveyard ?? []}
+                  exile={gameView.opponentExile ?? []}
+                  commandZone={gameView.opponentCommandZone ?? undefined}
+                  isTargetable={playerIsTargetable(displayOpponents[0]!.id)}
+                  onTarget={() => handleTargetPlayer(displayOpponents[0]!.id)}
+                  isFlashing={turnFlashPlayerId === displayOpponents[0]?.id}
+                  activePlayerId={gameView.activePlayerId}
+                  priorityPlayerId={gameView.priorityPlayerId}
+                  promptType={promptType}
+                  pendingAttacker={pendingAttacker}
+                  attackerIds={currentPrompt?.attackerIds}
+                  onClickCard={handleBattlefieldClick}
+                  onClickAnyCard={handleAttackerClick}
                   onHoverCard={handleHoverCard}
                   onFlipCard={handleFlipCard}
                   showBackFace={showBackFace}
-                  pendingCardIds={
-                    promptType === "chooseAttackers"
-                      ? pendingAttackers
-                      : promptType === "chooseBlockers"
-                        ? blockAssignments.map((a) => a.blockerId)
-                        : undefined
-                  }
-                  tappableLandIds={
-                    promptType === "chooseAction"
-                      ? (currentPrompt?.tappableLandIds ?? [])
-                      : undefined
-                  }
-                  onTapLand={
-                    promptType === "chooseAction"
-                      ? (card) => tapLand(card.id)
-                      : undefined
-                  }
-                  untappableLandIds={
-                    promptType === "chooseAction"
-                      ? (currentPrompt?.untappableLandIds ?? [])
-                      : undefined
-                  }
-                  onUntapLand={
-                    promptType === "chooseAction"
-                      ? (card) => untapLand(card.id)
-                      : undefined
-                  }
-                  bottomReserved={130}
-                  isDropActive={isOverBattlefield}
+                  onOpenZone={openZone}
+                  zonePanelSide={zonePanelSide}
+                  zonePanelOrder={zonePanelOrder}
                 />
-                {/* Hand — centered overlay at the bottom of the battlefield */}
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
-                  <HandDisplay
-                    cards={gameView.myHand}
-                    onHoverCard={handleHoverCard}
-                    onFlipCard={handleFlipCard}
-                    showBackFace={showBackFace}
-                    onStartDrag={startHandCardDrag}
-                  />
+              ) : (
+                <ResizablePanelGroup orientation="horizontal">
+                  {displayOpponents.map((op, i) => (
+                    <Fragment key={op.id}>
+                      {i > 0 && <ResizableHandle />}
+                      <ResizablePanel>
+                        <OpponentHalf
+                          player={op}
+                          permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
+                          graveyard={i === 0 ? (gameView.opponentGraveyard ?? []) : []}
+                          exile={i === 0 ? (gameView.opponentExile ?? []) : []}
+                          commandZone={i === 0 ? (gameView.opponentCommandZone ?? undefined) : undefined}
+                          isTargetable={playerIsTargetable(op.id)}
+                          onTarget={() => handleTargetPlayer(op.id)}
+                          isFlashing={turnFlashPlayerId === op.id}
+                          activePlayerId={gameView.activePlayerId}
+                          priorityPlayerId={gameView.priorityPlayerId}
+                          promptType={promptType}
+                          pendingAttacker={pendingAttacker}
+                          attackerIds={currentPrompt?.attackerIds}
+                          onClickCard={handleBattlefieldClick}
+                          onClickAnyCard={handleAttackerClick}
+                          onHoverCard={handleHoverCard}
+                          onFlipCard={handleFlipCard}
+                          showBackFace={showBackFace}
+                          onOpenZone={openZone}
+                          zonePanelSide={zonePanelSide}
+                          zonePanelOrder={zonePanelOrder}
+                        />
+                      </ResizablePanel>
+                    </Fragment>
+                  ))}
+                </ResizablePanelGroup>
+              )}
+            </ResizablePanel>
+
+            <ResizableHandle
+              withHandle={false}
+              gripOnly
+              className="h-8 w-full my-0 flex items-center justify-center overflow-visible"
+            >
+              <MidPhaseStrip currentStep={gameView.step} />
+            </ResizableHandle>
+
+            <ResizablePanel defaultSize={60} minSize={35}>
+              <div className="flex flex-col gap-1 h-full overflow-hidden">
+                <div className="flex gap-2 flex-1 min-h-0 overflow-hidden">
+                  <div
+                    ref={battlefieldContainerRef}
+                    className="relative flex flex-col flex-1 min-w-0 overflow-hidden"
+                  >
+                    <div
+                      className={cn(
+                        "absolute bottom-1 z-20",
+                        zonePanelSide === "left" ? "left-1" : "right-1",
+                      )}
+                    >
+                      <ZoneActionColumn
+                        libraryCount={me!.libraryCount}
+                        graveyardCount={gameView.graveyard.length}
+                        exileCount={gameView.exile.length}
+                        order={zonePanelOrder}
+                        onOpenGraveyard={() => {
+                          const hasPlayable = gameView.graveyard.some((c) => c.isPlayable);
+                          openZone(
+                            "Your Graveyard",
+                            gameView.graveyard,
+                            hasPlayable && promptType === "chooseAction"
+                              ? (cardId) => {
+                                  closeZone();
+                                  castSpell(cardId);
+                                }
+                              : undefined,
+                          );
+                        }}
+                        onOpenExile={() => {
+                          const hasPlayable = gameView.exile.some((c) => c.isPlayable);
+                          openZone(
+                            "Your Exile",
+                            gameView.exile,
+                            hasPlayable && promptType === "chooseAction"
+                              ? (cardId) => {
+                                  closeZone();
+                                  castSpell(cardId);
+                                }
+                              : undefined,
+                          );
+                        }}
+                        hasPlayableInGraveyard={promptType === "chooseAction" && gameView.graveyard.some((c) => c.isPlayable)}
+                        hasPlayableInExile={promptType === "chooseAction" && gameView.exile.some((c) => c.isPlayable)}
+                      />
+                    </div>
+                    <FreeBattlefield
+                      cards={myPermanents}
+                      className="flex-1"
+                      onClickCard={
+                        promptType === "chooseAttackers" ||
+                        promptType === "chooseBlockers" ||
+                        promptType === "chooseTargetCard" ||
+                        promptType === "chooseTargetAny"
+                          ? handleBattlefieldClick
+                          : undefined
+                      }
+                      onHoverCard={handleHoverCard}
+                      onFlipCard={handleFlipCard}
+                      showBackFace={showBackFace}
+                      pendingCardIds={
+                        promptType === "chooseAttackers"
+                          ? pendingAttackers
+                          : promptType === "chooseBlockers"
+                            ? blockAssignments.map((a) => a.blockerId)
+                            : undefined
+                      }
+                      tappableLandIds={
+                        promptType === "chooseAction"
+                          ? (currentPrompt?.tappableLandIds ?? [])
+                          : undefined
+                      }
+                      onTapLand={
+                        promptType === "chooseAction"
+                          ? (card) => tapLand(card.id)
+                          : undefined
+                      }
+                      untappableLandIds={
+                        promptType === "chooseAction"
+                          ? (currentPrompt?.untappableLandIds ?? [])
+                          : undefined
+                      }
+                      onUntapLand={
+                        promptType === "chooseAction"
+                          ? (card) => untapLand(card.id)
+                          : undefined
+                      }
+                      bottomReserved={130}
+                      leftReserved={zonePanelSide === "left" ? ZONE_COLUMN_RESERVED_PX : 0}
+                      rightReserved={zonePanelSide === "right" ? ZONE_COLUMN_RESERVED_PX : 0}
+                      isDropActive={isOverBattlefield}
+                    />
+                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
+                      <HandDisplay
+                        cards={gameView.myHand}
+                        onHoverCard={handleHoverCard}
+                        onFlipCard={handleFlipCard}
+                        showBackFace={showBackFace}
+                        onStartDrag={startHandCardDrag}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <div className="flex-1 min-w-0">
+              <PlayerPanel
+                player={me!}
+                isOpponent={false}
+                isActiveTurn={gameView.activePlayerId === me!.id}
+                isPriorityPlayer={gameView.priorityPlayerId === me!.id}
+                isTargetable={playerIsTargetable(me!.id)}
+                onTarget={() => handleTargetPlayer(me!.id)}
+                isFlashing={turnFlashPlayerId === me!.id}
+                onOpenCommandZone={() => {
+                  if ((gameView.myCommandZone?.length ?? 0) > 0) {
+                    openZone("Your Command Zone", gameView.myCommandZone!);
+                  }
+                }}
+                commandZoneCount={gameView.myCommandZone?.length ?? 0}
+              />
             </div>
-
-            {/* Mulligan */}
-            {promptType === "mulligan" && (
-              <div className="shrink-0 flex gap-2 justify-center py-1">
-                <Button size="sm" onClick={() => mulliganDecision(true)} disabled={isWaitingForResponse}>
-                  Keep Hand
-                </Button>
-                <Button
-                  size="sm"
-                  variant="destructive"
-                  onClick={() => mulliganDecision(false)}
-                  disabled={isWaitingForResponse}
-                >
-                  Mulligan
-                </Button>
-              </div>
-            )}
-
-            {/* My player panel + actions */}
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <div className="flex-1 min-w-0">
-                <PlayerPanel
-                  player={me!}
-                  isOpponent={false}
-                  isActiveTurn={gameView.activePlayerId === me!.id}
-                  isPriorityPlayer={gameView.priorityPlayerId === me!.id}
-                  isTargetable={playerIsTargetable(me!.id)}
-                  onTarget={() => handleTargetPlayer(me!.id)}
-                  isFlashing={turnFlashPlayerId === me!.id}
-                />
-              </div>
-              <div className="flex gap-1 shrink-0 items-center flex-wrap">
-                {isWaitingForResponse && (
-                  <span className="text-xs text-muted-foreground italic self-center animate-pulse">
-                    Waiting…
-                  </span>
-                )}
-                {promptType === "chooseAction" && (
-                  isAutoPassing ? (
-                    <span className="text-xs text-muted-foreground italic animate-pulse">
-                      Auto-passing…
-                    </span>
-                  ) : (
-                    <>
-                      <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
-                        Pass (Space)
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex items-center gap-1"
-                        onClick={passPriority}
-                        disabled={isWaitingForResponse}
-                        title="Pass priority to end of turn (F6)"
-                      >
-                        <TimerOff className="h-3.5 w-3.5" />
-                        End Turn (F6)
-                      </Button>
-                    </>
-                  )
-                )}
-                {promptType === "chooseAttackers" && (
-                  isAutoPassing ? (
-                    <span className="text-xs text-muted-foreground italic animate-pulse">
-                      Auto-passing…
-                    </span>
-                  ) : (
-                    <>
-                      <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
-                        No Attackers
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        className="flex items-center gap-1"
-                        disabled={isWaitingForResponse}
-                        onClick={() =>
-                          declareAttackers(
-                            currentPrompt?.availableAttackerIds ?? [],
-                          )
-                        }
-                      >
-                        <Sword className="h-3.5 w-3.5" />
-                        Attack All
-                      </Button>
-                      {pendingAttackers.length > 0 && (
-                        <Button
-                          size="sm"
-                          className="flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white"
-                          disabled={isWaitingForResponse}
-                          onClick={() => declareAttackers(pendingAttackers)}
-                        >
-                          <Sword className="h-3.5 w-3.5" />
-                          Attack ({pendingAttackers.length})
-                        </Button>
-                      )}
-                    </>
-                  )
-                )}
-                {promptType === "chooseBlockers" && (
-                  isAutoPassing ? (
-                    <span className="text-xs text-muted-foreground italic animate-pulse">
-                      Auto-passing…
-                    </span>
-                  ) : (
-                    <>
-                      <Button size="sm" variant="outline" onClick={passPriority} disabled={isWaitingForResponse}>
-                        No Blockers
-                      </Button>
-                      {pendingAttacker && (
-                        <span className="text-xs text-muted-foreground italic self-center">
-                          Now click your blocker
-                        </span>
-                      )}
-                      {blockAssignments.length > 0 && (
-                        <Button
-                          size="sm"
-                          className="bg-blue-600 hover:bg-blue-700 text-white"
-                          disabled={isWaitingForResponse}
-                          onClick={() => declareBlockers(blockAssignments)}
-                        >
-                          Confirm Blocks ({blockAssignments.length})
-                        </Button>
-                      )}
-                    </>
-                  )
-                )}
-                {confirmConcede ? (
-                  <>
-                    <span className="text-xs text-muted-foreground italic self-center">
-                      Concede?
-                    </span>
-                    <Button
-                      size="sm"
-                      variant="destructive"
-                      onClick={() => {
-                        concede();
-                        setConfirmConcede(false);
-                      }}
-                    >
-                      Yes, Concede
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => setConfirmConcede(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </>
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="flex items-center gap-1 text-muted-foreground hover:text-destructive"
-                    onClick={() => setConfirmConcede(true)}
-                    title="Concede the game"
-                  >
-                    <Skull className="h-3.5 w-3.5" />
-                    Concede
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            {/* Game log — last 10 entries, scrollable */}
-            {gameLog.length > 0 && (
-              <div className="shrink-0 max-h-20 overflow-y-auto text-xs text-muted-foreground border-t pt-1 px-1 flex flex-col-reverse">
-                {gameLog.slice(-10).reverse().map((msg, i) => (
-                  <div key={i} className="py-px">{msg}</div>
-                ))}
-              </div>
-            )}
           </div>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+
+        </div>
+
+        <RightActionPanel
+          collapsed={isActionPanelCollapsed}
+          onToggleCollapse={() => setIsActionPanelCollapsed((prev) => !prev)}
+          promptType={promptType}
+          isWaitingForResponse={isWaitingForResponse}
+          isAutoPassing={isAutoPassing}
+          availableAttackerIds={currentPrompt?.availableAttackerIds ?? []}
+          pendingAttackers={pendingAttackers}
+          onPassPriority={passPriority}
+          onDeclareAttackers={declareAttackers}
+          pendingAttacker={pendingAttacker}
+          attackerIds={currentPrompt?.attackerIds ?? []}
+          blockAssignments={blockAssignments}
+          onDeclareBlockers={declareBlockers}
+          onMulliganDecision={mulliganDecision}
+          stack={gameView.stack}
+          onOpenStack={() => setSpellStackModalOpen(true)}
+          onConcede={concede}
+          resolveCardName={(cardId) => battlefieldCardNameById.get(cardId) ?? cardId}
+          isMyPriority={gameView.priorityPlayerId === me!.id}
+          turn={gameView.turn}
+          activePlayerName={
+            gameView.players.find((p) => p.id === gameView.activePlayerId)?.name ??
+            "Unknown"
+          }
+          isMyTurn={gameView.activePlayerId === me!.id}
+          gameLog={gameLog}
+        />
+      </div>
 
       {/* ── Zone viewer modal ─────────────────────────────── */}
       {viewingZone && (
