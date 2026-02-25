@@ -145,7 +145,7 @@ pub fn get_sacrifice_targets(game: &GameState, player: PlayerId, type_filter: &s
     game.cards_in_zone(ZoneType::Battlefield, player)
         .to_vec()
         .into_iter()
-        .filter(|&cid| matches_change_type(game.card(cid), type_filter))
+        .filter(|&cid| matches_change_type(game.card(cid), type_filter, &[]))
         .collect()
 }
 

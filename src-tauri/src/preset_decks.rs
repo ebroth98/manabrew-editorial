@@ -163,6 +163,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Buyback + Evoke + Madness + Rebound + Dash + Replicate — Whispers of the Muse, Mulldrifter, Fiery Temper".into(),
             color: "text-fuchsia-400".into(),
         },
+        PresetDeckInfo {
+            id: "critical_effects".into(),
+            label: "Critical Effects".into(),
+            desc: "Animate + AnimateAll + Clone + ChooseColor + Balance — Chimeric Idol, Natural Affinity, Clone, Voice of All".into(),
+            color: "text-indigo-400".into(),
+        },
     ]
 }
 
@@ -192,6 +198,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "keyword_cost"
             | "alt_cost_test"
             | "extended_cost_test"
+            | "critical_effects"
     )
 }
 
@@ -284,6 +291,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "extended_cost_test" => {
             build_named_deck(game, p0, EXTENDED_COST_TEST);
             build_named_deck(game, p1, RED_BURN);
+        }
+        "critical_effects" => {
+            build_named_deck(game, p0, CRITICAL_EFFECTS);
+            build_named_deck(game, p1, GREEN_STOMPY);
         }
         _ => {
             // red_burn (default)
@@ -782,6 +793,44 @@ const EXTENDED_COST_TEST: &[(&str, usize, &str)] = &[
     // Support spells — cheap instants for enabling spectacle / discard fodder
     ("Lightning Bolt", 4, "m11"),
     ("Shock", 3, "m21"),
+];
+
+/// Exercises issue #52: critical effects.
+/// - Animate: Chimeric Idol (3 — artifact → 3/3 creature), Elemental Uprising (1G — land → 4/4)
+/// - Animate: Zhalfirin Shapecraft (1U — set P/T 4/3 + draw), Majestic Metamorphosis (2U — 4/4 Angel + draw)
+/// - AnimateAll: Natural Affinity (2G — all lands become 2/2 creatures)
+/// - Clone: Clone (3U — copy any creature), Phantasmal Image (1U — cheap clone)
+/// - ChooseColor: Voice of All (2WW — 2/2 flying, protection from chosen), Pentarch Ward (2W — aura, protection + draw)
+/// - ChooseColor: Wash Out (3U — bounce all permanents of chosen color)
+/// - Balance: Balance (1W — equalize lands, hands, and creatures)
+/// - RepeatEach: Winds of Change (R — each player shuffles hand into library + redraws)
+const CRITICAL_EFFECTS: &[(&str, usize, &str)] = &[
+    ("Island", 7, "akh"),
+    ("Plains", 5, "akh"),
+    ("Forest", 3, "akh"),
+    ("Mountain", 1, "akh"),
+    // Animate — artifact/land becoming creatures
+    ("Chimeric Idol", 2, "pcy"),      // 3 — artifact, tap lands → 3/3 Turtle creature
+    ("Elemental Uprising", 2, "ogw"), // 1G — land → 4/4 Elemental with haste
+    // Animate — P/T modification + cantrip
+    ("Zhalfirin Shapecraft", 2, "stx"),    // 1U — target creature base 4/3, draw
+    ("Majestic Metamorphosis", 2, "stx"),  // 2U — target → 4/4 Angel Flying, draw
+    // AnimateAll — board-wide animate
+    ("Natural Affinity", 2, "9ed"),  // 2G — all lands become 2/2 creatures until EOT
+    // Clone — copy creatures
+    ("Clone", 2, "m14"),             // 3U — enter as copy of any creature
+    ("Phantasmal Image", 2, "m12"),  // 1U — cheap clone (Illusion, fragile)
+    // ChooseColor — protection from chosen color
+    ("Voice of All", 2, "ddg"),      // 2WW — 2/2 Flying, protection from chosen color
+    ("Pentarch Ward", 2, "inv"),     // 2W — Aura, draw a card, protection from chosen
+    // ChooseColor — bounce by color
+    ("Wash Out", 2, "inv"),          // 3U — return all permanents of chosen color
+    // Balance — equalize resources
+    ("Balance", 2, "ema"),           // 1W — equalize lands, hands, creatures
+    // RepeatEach — each player shuffles hand + redraws
+    ("Winds of Change", 2, "5ed"),   // R — each player shuffle hand, draw that many
+    // Creatures for cloning/animating targets
+    ("Serra Angel", 2, "m21"),       // 4/4 Flying Vigilance — good clone target
 ];
 
 /// All AI-eligible deck lists, used for random opponent selection.

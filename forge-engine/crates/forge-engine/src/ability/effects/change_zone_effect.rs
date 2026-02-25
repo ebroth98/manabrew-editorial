@@ -63,7 +63,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             let zone_cards = ctx.game.cards_in_zone(origin_zone, search_player).to_vec();
             zone_cards
                 .into_iter()
-                .find(|&cid| matches_change_type(ctx.game.card(cid), &change_type))
+                .find(|&cid| matches_change_type(ctx.game.card(cid), &change_type, &[]))
         } else {
             None
         };

@@ -17,7 +17,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for &pid in &player_ids {
         let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
         for cid in zone_cards {
-            if matches_change_type(ctx.game.card(cid), &valid_cards_filter) {
+            if matches_change_type(ctx.game.card(cid), &valid_cards_filter, &[]) {
                 to_sacrifice.push(cid);
             }
         }

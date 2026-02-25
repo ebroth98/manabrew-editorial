@@ -235,6 +235,30 @@ pub enum AgentPromptInner {
         #[serde(rename = "sourceCardName")]
         source_card_name: Option<String>,
     },
+    /// Choose a color (for ChooseColorEffect).
+    ChooseColor {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "validColors")]
+        valid_colors: Vec<String>,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose card(s) for an effect (ChooseCardEffect, CloneEffect).
+    ChooseCardsForEffect {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "validCardIds")]
+        valid_card_ids: Vec<String>,
+        #[serde(rename = "zoneCards")]
+        zone_cards: Vec<CardDto>,
+        #[serde(rename = "minChoices")]
+        min_choices: usize,
+        #[serde(rename = "maxChoices")]
+        max_choices: usize,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
 }
 
 /// Sent from frontend to game thread: the human player's response.
@@ -331,6 +355,15 @@ pub enum PlayerAction {
     AlternativeCostDecision {
         #[serde(rename = "chosenIndex")]
         chosen_index: usize,
+    },
+    /// Response to ChooseColor prompt: the chosen color name.
+    ColorDecision {
+        color: Option<String>,
+    },
+    /// Response to ChooseCardsForEffect prompt: IDs of chosen cards.
+    ChooseCardsDecision {
+        #[serde(rename = "chosenCardIds")]
+        chosen_card_ids: Vec<String>,
     },
     Concede,
 }

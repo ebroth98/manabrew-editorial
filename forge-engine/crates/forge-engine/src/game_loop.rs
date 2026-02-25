@@ -861,16 +861,28 @@ impl GameLoop {
             }
         }
 
-        // Remove damage and reset until-end-of-turn effects on all creatures
+        // Remove damage and reset until-end-of-turn effects on all battlefield permanents
         for i in 0..game.cards.len() {
-            if game.cards[i].zone == ZoneType::Battlefield && game.cards[i].is_creature() {
-                game.cards[i].damage = 0;
-                game.cards[i].power_modifier = 0;
-                game.cards[i].toughness_modifier = 0;
-                game.cards[i].pump_keywords.clear();
-                game.cards[i].has_deathtouch_damage = false;
-                // Reset regeneration shields at end of turn (issue #22).
-                game.cards[i].regeneration_shields = 0;
+            if game.cards[i].zone == ZoneType::Battlefield {
+                // Restore animate state before checking creature status (issue #52).
+                // Must happen first: if the card was animated into a creature but its base
+                // form is not a creature, we still need to reset its type/P/T.
+                if let Some(state) = game.cards[i].animate_state.take() {
+                    game.cards[i].type_line = state.original_type_line;
+                    game.cards[i].base_power = state.original_base_power;
+                    game.cards[i].base_toughness = state.original_base_toughness;
+                    game.cards[i].color = state.original_color;
+                }
+
+                if game.cards[i].is_creature() {
+                    game.cards[i].damage = 0;
+                    game.cards[i].power_modifier = 0;
+                    game.cards[i].toughness_modifier = 0;
+                    game.cards[i].pump_keywords.clear();
+                    game.cards[i].has_deathtouch_damage = false;
+                    // Reset regeneration shields at end of turn (issue #22).
+                    game.cards[i].regeneration_shields = 0;
+                }
             }
         }
     }
@@ -2017,6 +2029,95 @@ impl GameLoop {
 
                 // Resolve any ETB effects defined on the card
                 self.resolve_spell_effect(game, agents, &entry);
+
+                // Process ETBReplacement keywords (e.g., Clone entering as copy).
+                // Mirrors Java's CardFactoryUtil.createETBReplacement — the keyword
+                // format is ETBReplacement:Layer:SVarName[:Optional[:ValidCard[:Zone]]].
+                {
+                    let keywords = game.card(card_id).keywords.clone();
+                    for kw in &keywords {
+                        if !kw.starts_with("ETBReplacement") {
+                            continue;
+                        }
+                        let parts: Vec<&str> = kw.split(':').collect();
+                        // Need at least ETBReplacement:Layer:SVarName
+                        if parts.len() < 3 {
+                            continue;
+                        }
+                        let svar_name = parts[2];
+                        let is_optional = parts
+                            .get(3)
+                            .map(|s| s.contains("Optional"))
+                            .unwrap_or(false);
+
+                        // Look up the SVar on the card
+                        let svar_text =
+                            match game.card(card_id).svars.get(svar_name).cloned() {
+                                Some(text) => text,
+                                None => continue,
+                            };
+
+                        // For Optional replacements, ask the player
+                        if is_optional {
+                            let card_name = game.card(card_id).card_name.clone();
+                            // Extract SpellDescription from the SVar for a better prompt
+                            let desc = {
+                                let params = parse_pipe_params(&svar_text);
+                                params
+                                    .get("SpellDescription")
+                                    .map(|d| d.replace("CARDNAME", &card_name))
+                                    .unwrap_or_else(|| {
+                                        format!(
+                                            "Use {} replacement ability?",
+                                            card_name
+                                        )
+                                    })
+                            };
+                            agents[player.index()]
+                                .snapshot_state(game, &self.mana_pools);
+                            let accept = agents[player.index()]
+                                .choose_optional_trigger(
+                                    player,
+                                    &desc,
+                                    Some(&card_name),
+                                );
+                            if !accept {
+                                continue;
+                            }
+                        }
+
+                        // Build the replacement ability from the SVar
+                        let mut etb_sa =
+                            build_spell_ability(game, card_id, &svar_text, player);
+
+                        // Set up targeting if the ability uses it
+                        if etb_sa.uses_targeting() {
+                            agents[player.index()]
+                                .snapshot_state(game, &self.mana_pools);
+                            if !etb_sa.setup_targets(
+                                game,
+                                agents,
+                                &self.mana_pools,
+                            ) {
+                                continue; // Targeting failed
+                            }
+                        }
+
+                        // Resolve the effect chain (walk sub-abilities)
+                        let mut parent_target_card: Option<CardId> = None;
+                        let mut current_sa = Some(&etb_sa);
+                        while let Some(sa) = current_sa {
+                            self.resolve_single_effect(
+                                game,
+                                agents,
+                                sa,
+                                parent_target_card,
+                            );
+                            parent_target_card = sa.target_chosen.target_card;
+                            current_sa = sa.get_sub_ability();
+                        }
+                    }
+                }
 
                 game.move_card(
                     card_id,

@@ -84,7 +84,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         top_n
             .iter()
             .copied()
-            .filter(|&id| matches_change_type(ctx.game.card(id), &change_valid))
+            .filter(|&id| matches_change_type(ctx.game.card(id), &change_valid, &[]))
             .collect()
     };
 

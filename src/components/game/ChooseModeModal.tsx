@@ -1,10 +1,26 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/game/Modal";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
+
+function TextWithMana({ text }: { text: string }) {
+  const parts = text.split(/(\{[^}]+\}(?:\{[^}]+\})*)/g);
+  return (
+    <span className="inline-flex items-center gap-0.5 flex-wrap">
+      {parts.map((part, i) =>
+        part.startsWith("{") ? (
+          <ManaSymbols key={i} cost={part} size="sm" />
+        ) : (
+          <span key={i}>{part}</span>
+        ),
+      )}
+    </span>
+  );
+}
 
 interface ChooseModeModalProps {
   /** Human-readable descriptions for each available mode (0-indexed). */
@@ -164,7 +180,7 @@ export function ChooseModeModal({
                       )}
                     </span>
                   )}
-                  <span className="leading-tight">{desc}</span>
+                  <span className="leading-tight"><TextWithMana text={desc} /></span>
                 </span>
               </button>
             );

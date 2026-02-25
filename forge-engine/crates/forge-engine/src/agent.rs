@@ -223,6 +223,26 @@ pub trait PlayerAgent {
         0
     }
 
+    /// Choose a color (for ChooseColorEffect).
+    /// `valid_colors` lists the legal color choices (e.g. ["White","Blue","Black","Red","Green"]).
+    /// Default: pick the first valid color.
+    fn choose_color(&mut self, _player: PlayerId, valid_colors: &[String]) -> Option<String> {
+        valid_colors.first().cloned()
+    }
+
+    /// Choose cards for an effect (ChooseCardEffect, CloneEffect, etc.).
+    /// `valid` lists eligible card IDs, `min`/`max` are the selection bounds.
+    /// Default: pick up to `max` from the front of `valid`.
+    fn choose_cards_for_effect(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        _min: usize,
+        max: usize,
+    ) -> Vec<CardId> {
+        valid.iter().copied().take(max).collect()
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;

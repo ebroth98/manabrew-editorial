@@ -471,6 +471,59 @@ impl PlayerAgent for RemotePlayerAgent {
         }
     }
 
+    fn choose_color(&mut self, _player: PlayerId, valid_colors: &[String]) -> Option<String> {
+        self.send_prompt(AgentPromptInner::ChooseColor {
+            game_view: self.view(),
+            valid_colors: valid_colors.to_vec(),
+            source_card_name: None,
+        });
+        match self.recv_action() {
+            PlayerAction::ColorDecision { color } => color,
+            _ => valid_colors.first().cloned(),
+        }
+    }
+
+    fn choose_cards_for_effect(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        min: usize,
+        max: usize,
+    ) -> Vec<CardId> {
+        let valid_card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+        let view = self.view();
+
+        let all_cards: Vec<&CardDto> = view
+            .battlefield
+            .iter()
+            .chain(view.my_hand.iter())
+            .chain(view.graveyard.iter())
+            .chain(view.exile.iter())
+            .chain(view.opponent_graveyard.iter())
+            .chain(view.opponent_exile.iter())
+            .collect();
+        let zone_cards: Vec<CardDto> = valid_card_ids
+            .iter()
+            .filter_map(|id| all_cards.iter().find(|c| c.id == *id).map(|c| (*c).clone()))
+            .collect();
+
+        self.send_prompt(AgentPromptInner::ChooseCardsForEffect {
+            game_view: view,
+            valid_card_ids,
+            zone_cards,
+            min_choices: min,
+            max_choices: max,
+            source_card_name: None,
+        });
+        match self.recv_action() {
+            PlayerAction::ChooseCardsDecision { chosen_card_ids } => chosen_card_ids
+                .iter()
+                .filter_map(|id| Self::parse_card_id(id))
+                .collect(),
+            _ => valid.iter().copied().take(max).collect(),
+        }
+    }
+
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
         None
     }

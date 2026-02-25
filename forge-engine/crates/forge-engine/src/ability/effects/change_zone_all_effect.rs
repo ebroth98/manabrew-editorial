@@ -15,9 +15,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Destination")
         .map(|s| s.as_str())
         .unwrap_or("Graveyard");
+    // Forge uses ChangeType$ as the primary filter for ChangeZoneAll; fall back to ValidCards$.
     let valid_cards_filter = sa
         .params
-        .get("ValidCards")
+        .get("ChangeType")
+        .or_else(|| sa.params.get("ValidCards"))
         .cloned()
         .unwrap_or_else(|| "Card".to_string());
     let tapped = sa
@@ -25,6 +27,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Tapped")
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
+
+    // Resolve source card's chosen_colors for ChosenColor qualifier support.
+    let source_chosen_colors: Vec<String> = sa
+        .source
+        .map(|src| ctx.game.card(src).chosen_colors.clone())
+        .unwrap_or_default();
 
     if let (Some(dest_zone), Some(origin_zone)) = (
         parse_zone_type(destination_str),
@@ -36,7 +44,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for &pid in &player_ids {
             let zone_cards = ctx.game.cards_in_zone(origin_zone, pid).to_vec();
             for cid in zone_cards {
-                if matches_change_type(ctx.game.card(cid), &valid_cards_filter) {
+                if matches_change_type(ctx.game.card(cid), &valid_cards_filter, &source_chosen_colors) {
                     let dest_owner = if dest_zone == ZoneType::Battlefield {
                         sa.activating_player
                     } else {

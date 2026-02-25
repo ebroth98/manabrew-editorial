@@ -62,6 +62,8 @@ interface AgentPrompt {
   maxKicks?: number;
   /** chooseReplicate: max number of replicates */
   maxReplicates?: number;
+  /** chooseColor: valid color choices */
+  validColors?: string[];
 }
 
 interface GameConfig {
@@ -119,6 +121,8 @@ interface GameState {
   targetSpell: (spellId: string | null) => void;
   modeDecision: (chosenIndices: number[]) => void;
   optionalTriggerDecision: (accept: boolean) => void;
+  colorDecision: (color: string | null) => void;
+  chooseCardsDecision: (chosenCardIds: string[]) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
@@ -325,6 +329,14 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   optionalTriggerDecision: (accept) => {
     get().respond({ type: 'optionalTriggerDecision', accept });
+  },
+
+  colorDecision: (color) => {
+    get().respond({ type: 'colorDecision', color });
+  },
+
+  chooseCardsDecision: (chosenCardIds) => {
+    get().respond({ type: 'chooseCardsDecision', chosenCardIds });
   },
 
   concede: () => {

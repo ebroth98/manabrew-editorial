@@ -109,12 +109,12 @@
 | `AddPhaseEffect.java` | Add extra phase to turn | **Implemented** — `add_phase_effect.rs`: `ExtraPhase$ Combat`, `Amount$`; increments `game.extra_combat_phases`; game loop inserts extra combat cycles |
 | `AddTurnEffect.java` | Add extra turn | **Implemented** — `add_turn_effect.rs`: `Defined$` player, `NumTurns$` (default 1), `SkipUntap$`; pushes `ExtraTurn` struct onto queue; `AdvanceTurn` pops and applies skip_untap flag |
 | `AmassEffect.java` | Amass N (create/grow army token) | Not implemented |
-| `AnimateEffect.java` | Animate a permanent (change type/P&T) | Not implemented |
-| `AnimateAllEffect.java` | Animate all matching permanents | Not implemented |
-| `AnimateEffectBase.java` | Base class for animate effects | Not implemented |
+| `AnimateEffect.java` | Animate a permanent (change type/P&T) | **Implemented** — `animate_effect.rs`: `Defined$`/target card; `Power`, `Toughness`, `Types`, `Keywords`, `Colors`, `OverwriteTypes` params; saves `AnimateState` on card; restores at cleanup (step_cleanup). Covers Mutavault, manlands, vehicles |
+| `AnimateAllEffect.java` | Animate all matching permanents | **Implemented** — `animate_all_effect.rs`: `ValidCards$` filter; `Power`, `Toughness`, `Types`, `Keywords` (`&`-separated), `Colors`, `OverwriteColors`, `RemoveCreatureTypes`, `RemoveAllAbilities` params; saves `AnimateState`; restores at cleanup. Covers Natural Affinity, Sylvan Awakening, Start Your Engines, Mass Diminish |
+| `AnimateEffectBase.java` | Base class for animate effects | **Implemented** — logic merged into `animate_effect.rs` |
 | `AscendEffect.java` | Check/grant City's Blessing | Not implemented |
 | `AttachEffect.java` | Attach aura/equipment to permanent | **Implemented** — `attach.rs`: attaches source Equipment/Aura to target creature on battlefield; handles detach from previous host; `CardInstance.attached_to`/`attachments` fields added; `GameState.attach_to`/`detach`/`remove_from_stack` in `action.rs` |
-| `BalanceEffect.java` | Balance-type equalization effect | Not implemented |
+| `BalanceEffect.java` | Balance-type equalization effect | **Implemented** — `balance_effect.rs`: `Valid$` filter, `Zone$` (Battlefield/Hand); counts per player, finds minimum; excess cards sacrificed (Battlefield) or discarded (Hand) via agent choice |
 | `BecomeMonarchEffect.java` | Become the Monarch | **Implemented** — `become_monarch_effect.rs`: `Defined$` player; sets `game.monarch`; fires `BecomeMonarch` trigger; monarch draws card at end of turn |
 | `BidLifeEffect.java` | Bid life (auction mechanic) | Not implemented |
 | `BlockEffect.java` | Force/modify blocking | Not implemented |
@@ -122,14 +122,15 @@
 | `ChangeZoneEffect.java` | Move card(s) to another zone | **Implemented** (`game_loop.rs` ChangeZone handler: targeted/defined/self, LibraryPosition, Shuffle, Tapped, ChangesZone trigger) |
 | `ChangeZoneAllEffect.java` | Move all matching cards to a zone | **Implemented** (`game_loop.rs` ChangeZoneAll handler: ValidCards filter, multi-player, triggers) |
 | `CharmEffect.java` | Modal "choose N" charm abilities | **Implemented** — `charm_effect.rs`: `SP$ Charm`, `Choices$ SVar1,...`, `CharmNum$`, `MinCharmNum$`; resolution-time targeting via `TargetKind` dispatch; agent `choose_mode`; TauriAgent `ChooseMode` prompt + `ModeDecision` response; `ChooseModeModal` frontend |
-| `ChooseCardEffect.java` | Choose a card from a set | Not implemented |
+| `ChooseCardEffect.java` | Choose a card from a set | **Implemented** — `choose_card_effect.rs`: `Amount$`, `ChoiceZone$`, `Choices$` filter, `RememberChosen$`; stores chosen on source card's `chosen_cards`; agent `choose_cards_for_effect()` + TauriAgent `ChooseCardsForEffect` prompt + `ChooseCardsModal` frontend |
 | `ChooseCardNameEffect.java` | Name a card | Not implemented |
-| `ChooseColorEffect.java` | Choose a color | Not implemented |
+| `ChooseColorEffect.java` | Choose a color | **Implemented** — `choose_color_effect.rs`: `Defined$` player(s), `Choices$` valid colors (default all 5); stores on source card's `chosen_colors`; agent `choose_color()` + TauriAgent `ChooseColor` prompt + `ChooseColorModal` frontend |
 | `ChooseTypeEffect.java` | Choose a type | Not implemented |
 | `ChoosePlayerEffect.java` | Choose a player | Not implemented |
-| `CloneEffect.java` | Copy/clone a permanent | **Partial** — `CopyPermanent` handler in `game_loop.rs`: copies targeted battlefield permanent, supports `PumpKeywords$`; copies are flagged `is_token` and cease to exist off battlefield. `AtEOT$` cleanup not yet implemented. |
+| `CloneEffect.java` | Copy/clone a permanent | **Implemented** — `clone_effect.rs`: copies characteristics (name, types, P/T, keywords, abilities, triggers, svars, statics, replacements) from source to target; `Choices$` + `ChoiceZone$` for player selection; `Defined$` / target resolution; `PumpKeywords$`; re-registers triggers. Distinct from `CopyPermanentEffect` (which creates a token copy) |
 | `ConniveEffect.java` | Connive N (draw + discard) | Not implemented |
 | `ControlGainEffect.java` | Gain control of permanent | **Implemented** — `control_gain.rs`: changes controller of target battlefield permanent via `GameState.change_controller`; moves card between per-player zone lists |
+| `ControlGainVariantEffect.java` | Complex control redistribution | **Implemented** — `control_gain_variant_effect.rs`: `ChangeController$` mode (`CardOwner` for Homeward Path, `Random` for Scrambleverse); `AllValid$` filter for affected permanents |
 | `CopyPermanentEffect.java` | Copy a permanent onto battlefield | **Partial** — see `CloneEffect.java` above |
 | `CopySpellAbilityEffect.java` | Copy a spell on the stack | Not implemented |
 | `CounterEffect.java` | Counter a spell or ability | **Implemented** — `counter.rs`: removes targeted stack entry via `MagicStack.remove_by_id`; moves source card to graveyard (or Destination$); `TargetKind::Spell` + `target_stack_entry: Option<u32>` in targeting system; `ChooseTargetSpell` prompt + clickable stack UI |
@@ -198,11 +199,11 @@
 | `UntapAllEffect.java` | Untap all matching | **Implemented** — `untap_all_effect.rs`: `ValidCards$` filter with full qualifier support |
 | `VoteEffect.java` | Council's dilemma / voting mechanic | Not implemented |
 
-> **Note**: 204 effect files total. 60 have full implementation, ~12 partial. Additional implemented effects not listed individually: `RevealHandEffect.java` → `reveal_hand.rs`, `LookAtEffect.java` → `look_at.rs`, `RearrangeTopOfLibraryEffect` → `rearrange_top_of_library.rs`, `PeekAndRevealEffect.java` → `peek_and_reveal_effect.rs`, `CleanupEffect.java` → `cleanup_effect.rs`, `ReverseTurnOrderEffect.java` → `reverse_turn_order_effect.rs` (reverses player_order), `EndCombatPhaseEffect.java` → `end_combat_phase_effect.rs` (sets end_combat_requested flag), `PowerExchangeEffect.java` → `power_exchange_effect.rs` (swaps power between two creatures), `TakeInitiativeEffect.java` → `take_initiative_effect.rs` (sets initiative_holder), `SkipTurnEffect.java` → `skip_turn_effect.rs` (increments player skip_turns counter), `PlayEffect.java` → `play_effect.rs` (casts from exile/graveyard).
+> **Note**: 204 effect files total. 67 have full implementation, ~12 partial. Additional implemented effects not listed individually: `RevealHandEffect.java` → `reveal_hand.rs`, `LookAtEffect.java` → `look_at.rs`, `RearrangeTopOfLibraryEffect` → `rearrange_top_of_library.rs`, `PeekAndRevealEffect.java` → `peek_and_reveal_effect.rs`, `CleanupEffect.java` → `cleanup_effect.rs`, `ReverseTurnOrderEffect.java` → `reverse_turn_order_effect.rs` (reverses player_order), `EndCombatPhaseEffect.java` → `end_combat_phase_effect.rs` (sets end_combat_requested flag), `PowerExchangeEffect.java` → `power_exchange_effect.rs` (swaps power between two creatures), `TakeInitiativeEffect.java` → `take_initiative_effect.rs` (sets initiative_holder), `SkipTurnEffect.java` → `skip_turn_effect.rs` (increments player skip_turns counter), `PlayEffect.java` → `play_effect.rs` (casts from exile/graveyard), `RepeatEachEffect.java` → `repeat_each_effect.rs` (loops sub-ability over cards/players).
 >
-> **Deferred effects** (require major subsystems): `Venture` (dungeon system), `RingTemptsYou` (ring system), `ControlPlayer` (controller redirection), `Animate` (timestamp PT system).
+> **Deferred effects** (require major subsystems): `Venture` (dungeon system), `RingTemptsYou` (ring system), `ControlPlayer` (controller redirection).
 >
-> The remaining ~132 effects are **not implemented**. See [Section 23](#23-priority-analysis--whats-missing) for priority breakdown.
+> The remaining ~131 effects are **not implemented**. See [Section 23](#23-priority-analysis--whats-missing) for priority breakdown.
 
 ---
 
@@ -215,7 +216,7 @@
 | `Card.java` | Core card class — full state, abilities, types, counters, damage | **Implemented** (`card.rs` CardInstance) |
 | `CardState.java` | Single state of card (front/back) with mutable properties | **Partial** — dual-face support: `CardOtherPart` stores back face; `transform()` swaps all face characteristics, `is_transformed` flag; `CardSplitType::is_dual_faced()` used during card loading |
 | `CardFactory.java` | Factory: creates Card instances from templates | **Partial** (create_card in `game.rs`) |
-| `CardFactoryUtil.java` | Card creation utilities | Not implemented |
+| `CardFactoryUtil.java` | Card creation utilities | **Partial** (ETBReplacement keyword processing in `game_loop.rs` `resolve_stack()`) |
 | `CardCollection.java` | Mutable card collection | **Implemented** (Vec<CardId> in zones) |
 | `CardCollectionView.java` | Immutable card collection view | Not implemented (no view layer) |
 | `CardCopyService.java` | Card copying: tokens, clones, cross-game | Not implemented |
@@ -498,6 +499,7 @@
 | Suspend | **Implemented** | `get_suspend_cost()` — exile with time counters; upkeep removal; free cast (`game_loop.rs`) |
 | Foretell | **Implemented** | `get_foretell_cost()` — pay {2} to exile face-down; cast later for foretell cost (`game_loop.rs`) |
 | Emerge | **Implemented** | `get_emerge_cost()` — alt cost; sacrifice creature to reduce cost (`game_loop.rs`) |
+| ETBReplacement | **Implemented** | `K:ETBReplacement:Layer:SVarName:Optional` keyword processing in `game_loop.rs` `resolve_stack()`; intercepts permanent spells before `move_card()` to battlefield; parses keyword, looks up SVar, builds SpellAbility via `build_spell_ability()`, asks player for Optional replacements via `choose_optional_trigger()`, runs targeting + effect chain. Enables Clone, Phantasmal Image, and ~375 other cards with ETBReplacement keywords |
 
 ---
 
@@ -985,7 +987,7 @@
 
 > **Coverage: ~24.6% implemented or partially implemented** (189 of 769 features have some Rust counterpart).
 >
-> The Rust engine has **91 implementation files** (123 total incl. tests/tools) across 5 crates. **60 effect handlers**, **34 trigger types**, **46 keyword abilities**, **7 static ability modes**, **8 replacement event types**, and **4 cost types** are functional. The architecture is solid — game loop, phase system, combat, mana pool, stack, triggers, replacement effects, static ability layer system all work.
+> The Rust engine has **91 implementation files** (123 total incl. tests/tools) across 5 crates. **60 effect handlers**, **34 trigger types**, **47 keyword abilities**, **7 static ability modes**, **8 replacement event types**, and **4 cost types** are functional. The architecture is solid — game loop, phase system, combat, mana pool, stack, triggers, replacement effects, static ability layer system all work.
 >
 > **Major gaps by priority** (see [Section 23](#23-priority-analysis--whats-missing) for breakdown, [Section 24](#24-suggested-github-issues) for pre-formatted issues):
 > - **Effects**: 132 not implemented (7 critical, 25 high, 65 medium, 48 low)
@@ -1009,14 +1011,14 @@
 |--------|------:|
 | Total Java files (forge-game) | 769 |
 | Total Java files (forge-core) | 146 |
-| Total Rust files (forge-engine) | 123 |
-| Effect handlers implemented | 60 of 204 (29%) |
+| Total Rust files (forge-engine) | 130 |
+| Effect handlers implemented | 68 of 204 (33%) |
 | Trigger types implemented | 34 of ~140 (24%) |
 | Keywords implemented | 46 of ~200+ (23%) |
 | Static ability modes | 7 of 61 (11%) |
 | Replacement event types | 8 of 46 (17%) |
 | Cost types | 4 of 51 (8%) |
-| **Estimated overall coverage** | **~25%** |
+| **Estimated overall coverage** | **~27%** |
 
 ### 23.2 Subsystem Coverage Overview
 
@@ -1046,19 +1048,19 @@
 
 ### 23.3 Effects — Missing by Priority
 
-**Currently Implemented (60):** DealDamage, GainLife, LoseLife, PutCounter, RemoveCounter, Poison, Pump, Destroy, Draw, ChangeZoneAll, ChangeZone, SacrificeAll, Sacrifice, CopyPermanent, Token, Mana, Mill, Scry, Surveil, Dig, DigMultiple, RearrangeTopOfLibrary, Reveal, RevealHand, LookAt, Charm, PeekAndReveal, SetState, Cleanup, Counter, ControlGain, Fight, Discard, Attach, DestroyAll, DamageAll, PumpAll, TapAll, UntapAll, Tap, Untap, LifeSet, LifeExchange, GameWin, GameLoss, GameDraw, AddTurn, Fog, ReverseTurnOrder, EndCombatPhase, EndTurn, PowerExchange, BecomeMonarch, TakeInitiative, SkipTurn, SkipPhase, AddPhase, Phases, Regenerate, Play
+**Currently Implemented (67):** DealDamage, GainLife, LoseLife, PutCounter, RemoveCounter, Poison, Pump, Destroy, Draw, ChangeZoneAll, ChangeZone, SacrificeAll, Sacrifice, CopyPermanent, Token, Mana, Mill, Scry, Surveil, Dig, DigMultiple, RearrangeTopOfLibrary, Reveal, RevealHand, LookAt, Charm, PeekAndReveal, SetState, Cleanup, Counter, ControlGain, Fight, Discard, Attach, DestroyAll, DamageAll, PumpAll, TapAll, UntapAll, Tap, Untap, LifeSet, LifeExchange, GameWin, GameLoss, GameDraw, AddTurn, Fog, ReverseTurnOrder, EndCombatPhase, EndTurn, PowerExchange, BecomeMonarch, TakeInitiative, SkipTurn, SkipPhase, AddPhase, Phases, Regenerate, Play, **Animate**, **Balance**, **ChooseCard**, **ChooseColor**, **Clone**, **ControlGainVariant**, **RepeatEach**
 
-#### Critical (7 effects — block basic gameplay)
+#### Critical (7 effects — ~~block basic gameplay~~ ALL IMPLEMENTED)
 
-| Effect | Java File | Why Critical |
-|--------|-----------|-------------|
-| **Animate** | `AnimateEffect.java` + `AnimateEffectBase.java` + `AnimateAllEffect.java` | Turns non-creatures into creatures (Manlands, vehicles). Very common |
-| **ControlGainVariant** | `ControlGainVariantEffect.java` | "Gain control until end of turn" (Act of Treason, Threaten) |
-| **Balance** | `BalanceEffect.java` | Balance/Restore Balance — forces equal board state |
-| **Choose Card** | `ChooseCardEffect.java` | Choose a card from multiple options (many effects need this) |
-| **Choose Color** | `ChooseColorEffect.java` | Choose a color (Protection from chosen color, etc.) |
-| **Clone** | `CloneEffect.java` | Clone/copy creature effects (distinct from CopyPermanent) |
-| **RepeatEach** | `RepeatEachEffect.java` | "For each creature/player" loops. Required by many board-wide effects |
+| Effect | Java File | Status |
+|--------|-----------|--------|
+| **Animate** | `AnimateEffect.java` + `AnimateEffectBase.java` | **Implemented** — `animate_effect.rs` |
+| **ControlGainVariant** | `ControlGainVariantEffect.java` | **Implemented** — `control_gain_variant_effect.rs` |
+| **Balance** | `BalanceEffect.java` | **Implemented** — `balance_effect.rs` |
+| **Choose Card** | `ChooseCardEffect.java` | **Implemented** — `choose_card_effect.rs` |
+| **Choose Color** | `ChooseColorEffect.java` | **Implemented** — `choose_color_effect.rs` |
+| **Clone** | `CloneEffect.java` | **Implemented** — `clone_effect.rs` |
+| **RepeatEach** | `RepeatEachEffect.java` | **Implemented** — `repeat_each_effect.rs` |
 
 #### High Priority (25 effects — common mechanics)
 

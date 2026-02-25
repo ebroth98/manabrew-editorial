@@ -28,6 +28,15 @@ pub struct CardOtherPart {
     pub svars: BTreeMap<String, String>,
 }
 
+/// Saved pre-animate state for AnimateEffect, restored at cleanup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnimateState {
+    pub original_type_line: CardTypeLine,
+    pub original_base_power: Option<i32>,
+    pub original_base_toughness: Option<i32>,
+    pub original_color: ColorSet,
+}
+
 /// A card instance in a game. This is the mutable game-state representation,
 /// as opposed to CardRules which is the immutable definition.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -162,6 +171,14 @@ pub struct CardInstance {
     /// Mirrors Java `Card.isKicked()`. Stored on the card so triggers
     /// with `ValidCard$ Card.Self+kicked` can check it after resolution.
     pub kicked: bool,
+
+    /// Colors chosen by ChooseColorEffect (stored for later reference by other effects).
+    pub chosen_colors: Vec<String>,
+    /// Cards chosen by ChooseCardEffect (stored for later reference by other effects).
+    pub chosen_cards: Vec<CardId>,
+
+    /// Saved state for AnimateEffect — restored during step_cleanup.
+    pub animate_state: Option<AnimateState>,
 }
 
 impl CardInstance {
@@ -248,6 +265,9 @@ impl CardInstance {
             phased_out: false,
             regeneration_shields: 0,
             kicked: false,
+            chosen_colors: Vec::new(),
+            chosen_cards: Vec::new(),
+            animate_state: None,
         }
     }
 

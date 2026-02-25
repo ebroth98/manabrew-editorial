@@ -48,7 +48,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .cards_in_zone(ZoneType::Battlefield, sacrificing_player)
                 .to_vec()
                 .into_iter()
-                .filter(|&cid| matches_change_type(ctx.game.card(cid), &sac_valid))
+                .filter(|&cid| matches_change_type(ctx.game.card(cid), &sac_valid, &[]))
                 .collect();
 
             if valid.is_empty() {

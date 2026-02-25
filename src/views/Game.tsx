@@ -14,6 +14,8 @@ import { SpellStackModal } from "@/components/game/SpellStackModal";
 import { ChooseModeModal } from "@/components/game/ChooseModeModal";
 import { ChooseOptionalTriggerModal } from "@/components/game/ChooseOptionalTriggerModal";
 import { KickerModal, BuybackModal, MultikickerModal, ReplicateModal, AlternativeCostModal } from "@/components/game/CostModal";
+import { ChooseColorModal } from "@/components/game/ChooseColorModal";
+import { ChooseCardsModal } from "@/components/game/ChooseCardsModal";
 import { RightActionPanel } from "@/components/game/RightActionPanel";
 import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
@@ -640,6 +642,8 @@ export default function Game() {
     targetSpell,
     modeDecision,
     optionalTriggerDecision,
+    colorDecision,
+    chooseCardsDecision,
     respond,
     concede,
     endGame,
@@ -1596,6 +1600,26 @@ export default function Game() {
           options={currentPrompt.options as string[]}
           sourceCardName={currentPrompt.sourceCardName}
           onDecide={(chosenIndex) => respond({ type: "alternativeCostDecision", chosenIndex })}
+        />
+      )}
+
+      {/* ── Choose Color modal (ChooseColorEffect) ──── */}
+      {promptType === "chooseColor" && currentPrompt?.validColors != null && (
+        <ChooseColorModal
+          validColors={currentPrompt.validColors}
+          sourceCardName={currentPrompt.sourceCardName}
+          onConfirm={(color) => colorDecision(color)}
+        />
+      )}
+
+      {/* ── Choose Cards modal (ChooseCardEffect / CloneEffect) ──── */}
+      {promptType === "chooseCardsForEffect" && currentPrompt?.zoneCards != null && (
+        <ChooseCardsModal
+          cards={currentPrompt.zoneCards}
+          minChoices={currentPrompt.minChoices ?? 1}
+          maxChoices={currentPrompt.maxChoices ?? 1}
+          sourceCardName={currentPrompt.sourceCardName}
+          onConfirm={(chosenCardIds) => chooseCardsDecision(chosenCardIds)}
         />
       )}
 

@@ -189,6 +189,8 @@ impl GameManager {
                     AgentPromptInner::ChooseMultikicker { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::ChooseReplicate { game_view, .. } => Some(game_view.clone()),
                     AgentPromptInner::ChooseAlternativeCost { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseColor { game_view, .. } => Some(game_view.clone()),
+                    AgentPromptInner::ChooseCardsForEffect { game_view, .. } => Some(game_view.clone()),
                 });
                 let mut view = base_view.unwrap_or_else(|| GameViewDto {
                     game_id: String::new(),

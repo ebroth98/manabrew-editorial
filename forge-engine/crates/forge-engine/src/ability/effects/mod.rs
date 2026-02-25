@@ -6,13 +6,20 @@
 
 pub mod add_phase_effect;
 pub mod add_turn_effect;
+pub mod animate_all_effect;
+pub mod animate_effect;
 pub mod attach_effect;
+pub mod balance_effect;
 pub mod become_monarch_effect;
 pub mod charm_effect;
+pub mod choose_card_effect;
+pub mod choose_color_effect;
 pub mod cleanup_effect;
+pub mod clone_effect;
 pub mod change_zone_all_effect;
 pub mod change_zone_effect;
 pub mod control_gain_effect;
+pub mod control_gain_variant_effect;
 pub mod copy_permanent_effect;
 pub mod counter_effect;
 pub mod counters_put_effect;
@@ -43,6 +50,7 @@ pub mod phases_effect;
 pub mod peek_and_reveal_effect;
 pub mod play_effect;
 pub mod poison_effect;
+pub mod repeat_each_effect;
 pub mod power_exchange_effect;
 pub mod pump_all_effect;
 pub mod pump_effect;
@@ -211,6 +219,15 @@ fn resolve_effect_once(ctx: &mut EffectContext, sa: &SpellAbility) {
         "Regenerate" => regenerate_effect::resolve(ctx, sa),
         // Cast from exile / without mana cost (Rebound, etc.) (issue #21)
         "Play" => play_effect::resolve(ctx, sa),
+        // Critical effects (issue #52)
+        "Animate" => animate_effect::resolve(ctx, sa),
+        "AnimateAll" => animate_all_effect::resolve(ctx, sa),
+        "Balance" => balance_effect::resolve(ctx, sa),
+        "ChooseCard" => choose_card_effect::resolve(ctx, sa),
+        "ChooseColor" => choose_color_effect::resolve(ctx, sa),
+        "Clone" => clone_effect::resolve(ctx, sa),
+        "ControlGainVariant" => control_gain_variant_effect::resolve(ctx, sa),
+        "RepeatEach" => repeat_each_effect::resolve(ctx, sa),
         _ => {} // Unimplemented effect — silently skip
     }
 }
@@ -343,6 +360,23 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "Phases"
     } else if ability.contains("$ Regenerate") {
         "Regenerate"
+    // Critical effects (issue #52) — AnimateAll before Animate
+    } else if ability.contains("AnimateAll") {
+        "AnimateAll"
+    } else if ability.contains("$ Animate") {
+        "Animate"
+    } else if ability.contains("$ Balance") {
+        "Balance"
+    } else if ability.contains("ChooseCard") {
+        "ChooseCard"
+    } else if ability.contains("ChooseColor") {
+        "ChooseColor"
+    } else if ability.contains("$ Clone") {
+        "Clone"
+    } else if ability.contains("ControlGainVariant") {
+        "ControlGainVariant"
+    } else if ability.contains("RepeatEach") {
+        "RepeatEach"
     } else {
         ""
     }
@@ -613,7 +647,15 @@ fn matches_valid_cards_qualifier(
 }
 
 /// Check if a card matches a ChangeType$ / ValidCards$ filter string.
-pub fn matches_change_type(card: &CardInstance, change_type: &str) -> bool {
+///
+/// `source_chosen_colors` should be the `chosen_colors` from the source card
+/// of the spell/ability (for `ChosenColor` qualifier support). Pass `&[]` when
+/// no source card context is available.
+pub fn matches_change_type(
+    card: &CardInstance,
+    change_type: &str,
+    source_chosen_colors: &[String],
+) -> bool {
     if change_type.is_empty() {
         return true;
     }
@@ -636,6 +678,18 @@ pub fn matches_change_type(card: &CardInstance, change_type: &str) -> bool {
         match qualifier {
             "Basic" => {
                 if !card.type_line.is_basic() {
+                    return false;
+                }
+            }
+            "ChosenColor" => {
+                if source_chosen_colors.is_empty() {
+                    return false;
+                }
+                let mut chosen_set = ColorSet::COLORLESS;
+                for name in source_chosen_colors {
+                    chosen_set = chosen_set.union(ColorSet::from_names(name));
+                }
+                if !card.color.shares_color_with(chosen_set) {
                     return false;
                 }
             }
