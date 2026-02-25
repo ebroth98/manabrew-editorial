@@ -36,7 +36,7 @@ export function TablesList({
   onStartGame,
 }: TablesListProps) {
   const getPlayerDeckName = (player: RoomInfo["players"][number]) =>
-    player.selected_deck_name ?? player.selectedDeckName;
+    player.selected_deck_name;
 
   const inRoom = currentRoom != null;
   const myPlayer = currentRoom?.players.find((p) => p.username === username);

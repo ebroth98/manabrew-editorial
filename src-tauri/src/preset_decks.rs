@@ -169,6 +169,36 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "Animate + AnimateAll + Clone + ChooseColor + Balance — Chimeric Idol, Natural Affinity, Clone, Voice of All".into(),
             color: "text-indigo-400".into(),
         },
+        PresetDeckInfo {
+            id: "high_priority_effects".into(),
+            label: "High Priority Effects".into(),
+            desc: "Proliferate + Explore + Goad + Detain + Protect + FlipCoin + RollDice (issue #53)".into(),
+            color: "text-cyan-500".into(),
+        },
+        PresetDeckInfo {
+            id: "pain_lands".into(),
+            label: "Pain Lands".into(),
+            desc: "Yavimaya Coast — multi-ability mana (Combo G/U + colorless) with SubAbility$ damage".into(),
+            color: "text-lime-500".into(),
+        },
+        PresetDeckInfo {
+            id: "etb_tapped_lands".into(),
+            label: "ETB Tapped Lands".into(),
+            desc: "Temple of Mystery + Tranquil Cove + Command Tower + Path of Ancestry — enters tapped, Combo mana".into(),
+            color: "text-stone-400".into(),
+        },
+        PresetDeckInfo {
+            id: "dual_lands".into(),
+            label: "Dual Lands".into(),
+            desc: "Breeding Pool + Hallowed Fountain — shock lands with intrinsic dual mana abilities (Forest Island, Plains Island)".into(),
+            color: "text-teal-500".into(),
+        },
+        PresetDeckInfo {
+            id: "comprehensive_test".into(),
+            label: "Comprehensive Test".into(),
+            desc: "All mechanics: 46 keywords, 85 effects, 34 triggers, alt costs, dual/pain/ETB lands, tokens, counters, charms, clone, explore, proliferate, goad, detain, storm, cascade".into(),
+            color: "text-yellow-400".into(),
+        },
     ]
 }
 
@@ -199,6 +229,11 @@ pub fn is_preset_id(id: &str) -> bool {
             | "alt_cost_test"
             | "extended_cost_test"
             | "critical_effects"
+            | "high_priority_effects"
+            | "pain_lands"
+            | "etb_tapped_lands"
+            | "dual_lands"
+            | "comprehensive_test"
     )
 }
 
@@ -296,6 +331,26 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
             build_named_deck(game, p0, CRITICAL_EFFECTS);
             build_named_deck(game, p1, GREEN_STOMPY);
         }
+        "high_priority_effects" => {
+            build_named_deck(game, p0, HIGH_PRIORITY_EFFECTS);
+            build_named_deck(game, p1, GREEN_STOMPY);
+        }
+        "pain_lands" => {
+            build_named_deck(game, p0, PAIN_LANDS);
+            build_named_deck(game, p1, RED_BURN);
+        }
+        "etb_tapped_lands" => {
+            build_named_deck(game, p0, ETB_TAPPED_LANDS);
+            build_named_deck(game, p1, RED_BURN);
+        }
+        "dual_lands" => {
+            build_named_deck(game, p0, DUAL_LANDS);
+            build_named_deck(game, p1, RED_BURN);
+        }
+        "comprehensive_test" => {
+            build_named_deck(game, p0, COMPREHENSIVE_TEST);
+            build_named_deck(game, p1, GREEN_STOMPY);
+        }
         _ => {
             // red_burn (default)
             build_named_deck(game, p0, RED_BURN);
@@ -330,6 +385,11 @@ pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner
         "alt_cost_test" => build_named_deck(game, owner, ALT_COST_TEST),
         "extended_cost_test" => build_named_deck(game, owner, EXTENDED_COST_TEST),
         "critical_effects" => build_named_deck(game, owner, CRITICAL_EFFECTS),
+        "high_priority_effects" => build_named_deck(game, owner, HIGH_PRIORITY_EFFECTS),
+        "pain_lands" => build_named_deck(game, owner, PAIN_LANDS),
+        "etb_tapped_lands" => build_named_deck(game, owner, ETB_TAPPED_LANDS),
+        "dual_lands" => build_named_deck(game, owner, DUAL_LANDS),
+        "comprehensive_test" => build_named_deck(game, owner, COMPREHENSIVE_TEST),
         _ => build_named_deck(game, owner, RED_BURN),
     }
 }
@@ -861,6 +921,163 @@ const CRITICAL_EFFECTS: &[(&str, usize, &str)] = &[
     ("Winds of Change", 2, "5ed"),   // R — each player shuffle hand, draw that many
     // Creatures for cloning/animating targets
     ("Serra Angel", 2, "m21"),       // 4/4 Flying Vigilance — good clone target
+];
+
+/// Exercises issue #53 high-priority effects: Proliferate, Explore, Goad,
+/// Detain, Protection, FlipCoin, Shuffle, ChooseType, ChooseNumber, etc.
+const HIGH_PRIORITY_EFFECTS: &[(&str, usize, &str)] = &[
+    ("Island", 5, "akh"),
+    ("Forest", 5, "akh"),
+    ("Plains", 4, "akh"),
+    ("Swamp", 2, "akh"),
+    // Proliferate — add counters of each type
+    ("Thrummingbird", 2, "c16"),       // 1U — 1/1 Flying, proliferate on damage
+    ("Steady Progress", 2, "mbs"),     // 2U — proliferate + draw
+    // Explore — reveal top, land→hand, nonland→+1/+1 counter
+    ("Merfolk Branchwalker", 2, "xln"),// 1G — explore on ETB
+    ("Jadelight Ranger", 2, "rix"),    // 1GG — explore twice on ETB
+    // Goad — force attack
+    ("Disrupt Decorum", 1, "c17"),     // 3R — goad all opponent creatures
+    // Detain — can't attack/block
+    ("Lyev Skyknight", 2, "rtr"),      // 1WU — 3/1 flying, detain on ETB
+    // Protection
+    ("Gods Willing", 2, "ths"),        // W — protection from chosen color, scry 1
+    ("Brave the Elements", 2, "m14"),  // W — all your white creatures protection from chosen
+    // Shuffle — shuffle library
+    ("Ponder", 3, "m12"),             // U — look at top 3, may shuffle, draw
+    // Creatures for counter/combat testing
+    ("Llanowar Elves", 3, "m19"),     // G — 1/1 mana dork
+    ("Serra Angel", 2, "m21"),        // 3WW — 4/4 Flying Vigilance
+];
+
+/// ETB tapped lands + Combo ColorIdentity mana sources test deck.
+/// Tests: ReplaceWith$ ETBTapped replacement effects, Combo ColorIdentity mana production.
+const ETB_TAPPED_LANDS: &[(&str, usize, &str)] = &[
+    ("Forest", 6, "akh"),
+    ("Island", 6, "akh"),
+    // ETB tapped dual lands (ReplaceWith$ ETBTapped)
+    ("Temple of Mystery", 4, "m20"),    // UG scry land — enters tapped, scry 1
+    ("Tranquil Cove", 4, "m21"),        // WU gain land — enters tapped, gain 1 life
+    // Combo ColorIdentity mana (command tower, arcane signet, path of ancestry)
+    ("Command Tower", 2, "c21"),        // {T}: Combo ColorIdentity
+    ("Arcane Signet", 2, "c21"),        // {T}: Combo ColorIdentity (artifact)
+    ("Path of Ancestry", 2, "c21"),     // ETB tapped + {T}: Combo ColorIdentity
+    // Creatures to cast with the mana
+    ("Llanowar Elves", 4, "m19"),       // G — 1/1 mana dork
+    ("Colossal Dreadmaw", 4, "rix"),    // 4GG — 6/6 Trample
+    ("Air Elemental", 4, "m20"),        // 3UU — 4/4 Flying
+    ("Mulldrifter", 2, "c15"),          // 4U — 2/2 Flying, draw 2
+];
+
+const PAIN_LANDS: &[(&str, usize, &str)] = &[
+    ("Forest", 6, "akh"),
+    ("Island", 6, "akh"),
+    // Pain lands — multi-ability mana (Combo)
+    ("Yavimaya Coast", 4, "ori"),       // {T}: {C} or {G}/{U} + 1 dmg
+    ("Llanowar Elves", 4, "m19"),       // G — 1/1 mana dork
+    ("Colossal Dreadmaw", 4, "rix"),    // 4GG — 6/6 Trample
+    ("Air Elemental", 4, "m20"),        // 3UU — 4/4 Flying
+    ("Arcanis the Omnipotent", 2, "10e"), // 3UUU — 3/4 {T}: draw 3
+    ("Mulldrifter", 4, "c15"),          // 4U — 2/2 Flying, draw 2
+];
+
+/// Exercises intrinsic mana ability generation for basic land subtypes.
+/// Shock lands (Breeding Pool = Forest Island, Hallowed Fountain = Plains Island)
+/// have NO A: line — mana abilities are auto-generated from subtypes.
+/// Tests that dual lands produce both colors via the multi-ability picker.
+const DUAL_LANDS: &[(&str, usize, &str)] = &[
+    ("Forest", 4, "akh"),
+    ("Island", 4, "akh"),
+    ("Plains", 4, "akh"),
+    // Shock lands — dual subtypes, intrinsic mana abilities from card_db.rs
+    ("Breeding Pool", 4, "rna"),        // Forest Island — {T}: {G} or {U}
+    ("Hallowed Fountain", 4, "rna"),    // Plains Island — {T}: {W} or {U}
+    // Multicolor creatures to test the mana
+    ("Coiling Oracle", 4, "dis"),       // GU — 1/1, reveal top, land→BF else hand
+    ("Deputy of Detention", 2, "rna"),  // 1WU — 1/3, exile nonland
+    ("Mulldrifter", 4, "c15"),          // 4U — 2/2 Flying, draw 2
+    ("Colossal Dreadmaw", 4, "rix"),    // 4GG — 6/6 Trample
+];
+
+/// Comprehensive test deck exercising ALL major implemented mechanics:
+/// 46 keywords, 85+ effects, 34 triggers, alt costs, mana systems, combat, etc.
+/// 5-color mana base with shock/pain/ETB-tapped/command lands.
+const COMPREHENSIVE_TEST: &[(&str, usize, &str)] = &[
+    // ── Lands (18) — dual, shock, pain, ETB-tapped, Combo ColorIdentity ──
+    ("Forest", 3, "akh"),
+    ("Island", 3, "akh"),
+    ("Plains", 2, "akh"),
+    ("Mountain", 2, "akh"),
+    ("Swamp", 2, "akh"),
+    ("Breeding Pool", 1, "rna"),          // shock land — pay 2 life or ETB tapped
+    ("Hallowed Fountain", 1, "rna"),      // shock land — Plains Island
+    ("Temple of Mystery", 1, "m20"),      // ETB tapped + scry 1
+    ("Command Tower", 1, "c21"),          // Combo ColorIdentity — all 5 colors
+    ("Yavimaya Coast", 1, "ori"),         // pain land — multi-ability mana
+    ("Path of Ancestry", 1, "c21"),       // ETB tapped + Combo ColorIdentity
+
+    // ── Keyword creatures (11) — flying, vigilance, deathtouch, lifelink, ──
+    // ── menace, infect, first strike, protection, indestructible, reach ──
+    ("Vampire Nighthawk", 1, "m13"),      // flying, deathtouch, lifelink
+    ("Serra Angel", 1, "m21"),            // flying, vigilance
+    ("Darksteel Myr", 1, "som"),          // indestructible
+    ("Boggart Brute", 1, "ori"),          // menace
+    ("Glistener Elf", 1, "nph"),          // infect (poison counters)
+    ("White Knight", 1, "m10"),           // first strike, protection from black
+    ("Giant Spider", 1, "m14"),           // reach
+    ("Llanowar Elves", 2, "m19"),         // mana dork — TapsForMana trigger
+    ("Soul Warden", 1, "m11"),            // LifeGained trigger on creature ETB
+    ("Guttersnipe", 1, "rtr"),            // SpellCast trigger (instant/sorcery → 2 dmg)
+
+    // ── ETB / explore / proliferate creatures (4) ────────────────────────
+    ("Merfolk Branchwalker", 1, "xln"),   // explore on ETB
+    ("Jadelight Ranger", 1, "rix"),       // explore x2 on ETB
+    ("Mulldrifter", 1, "c15"),            // evoke alt cost — ETB draw 2
+    ("Thrummingbird", 1, "c16"),          // proliferate on combat damage
+
+    // ── Detain / goad / protection (3) — issue #53 effects ──────────────
+    ("Lyev Skyknight", 1, "rtr"),         // detain on ETB (1WU flying)
+    ("Gods Willing", 1, "ths"),           // protection from chosen color + scry 1
+    ("Brave the Elements", 1, "m14"),     // protection all white creatures
+
+    // ── Damage / removal (4) ────────────────────────────────────────────
+    ("Lightning Bolt", 2, "m11"),         // 3 damage to any target
+    ("Wrath of God", 1, "m14"),           // destroy all creatures
+    ("Doom Blade", 1, "m14"),             // targeted destroy nonblack
+    ("Prey Upon", 1, "isd"),              // fight effect
+
+    // ── Card advantage — scry, mill, draw (4) ───────────────────────────
+    ("Ponder", 1, "m12"),                 // look at top 3, may shuffle, draw
+    ("Preordain", 1, "m11"),              // scry 2, draw 1
+    ("Thought Scour", 1, "dka"),          // mill 2, draw 1
+    ("Steady Progress", 1, "mbs"),        // proliferate + draw 1
+
+    // ── Modal / clone / choice (3) ──────────────────────────────────────
+    ("Izzet Charm", 1, "rtr"),            // charm — 3 modes (draw/counter/damage)
+    ("Clone", 1, "m14"),                  // clone effect — copy creature
+    ("Control Magic", 1, "mma"),          // gain control of creature (aura)
+
+    // ── Combat tricks / bounce / fog (3) ────────────────────────────────
+    ("Giant Growth", 1, "m11"),           // +3/+3 pump
+    ("Fog", 1, "m12"),                    // prevent all combat damage
+    ("Unsummon", 1, "m14"),              // bounce creature to hand
+
+    // ── Tokens (3) ─────────────────────────────────────────────────────
+    ("Raise the Alarm", 1, "m15"),        // 2 Soldier tokens (instant)
+    ("Dragon Fodder", 1, "ktk"),          // 2 Goblin tokens
+    ("Lingering Souls", 1, "dka"),        // 2 Spirit tokens + flashback
+
+    // ── Alt costs — flashback, kicker, dash, spectacle, storm, cascade (6)
+    ("Faithless Looting", 1, "dka"),      // draw 2 discard 2 + flashback
+    ("Goblin Bushwhacker", 1, "zen"),     // kicker — haste to all creatures
+    ("Zurgo Bellstriker", 1, "dtk"),      // dash (haste + EOT return)
+    ("Skewer the Critics", 1, "rna"),     // spectacle (R if opponent lost life)
+    ("Grapeshot", 1, "tsp"),              // storm — copy per spell cast
+    ("Bloodbraid Elf", 1, "arb"),         // cascade — free cast <CMC
+
+    // ── Static anthems (2) ─────────────────────────────────────────────
+    ("Glorious Anthem", 1, "m14"),        // +1/+1 to all your creatures
+    ("Honor of the Pure", 1, "m11"),      // +1/+1 to white creatures
 ];
 
 /// All AI-eligible deck lists, used for random opponent selection.

@@ -2,11 +2,14 @@ package forge.harness;
 
 import com.google.common.collect.Lists;
 import forge.LobbyPlayer;
+import forge.ai.AiCostDecision;
 import forge.ai.AiPlayDecision;
 import forge.ai.ComputerUtil;
 import forge.ai.ComputerUtilCombat;
 import forge.ai.ComputerUtilCost;
 import forge.ai.PlayerControllerAi;
+import forge.game.cost.Cost;
+import forge.game.cost.CostPayment;
 import forge.card.ColorSet;
 import forge.card.MagicColor.Color;
 import forge.game.*;
@@ -18,6 +21,8 @@ import forge.game.spellability.*;
 import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
 import forge.util.collect.FCollectionView;
+
+import org.apache.commons.lang3.tuple.ImmutablePair;
 
 import java.util.*;
 
@@ -94,10 +99,12 @@ public class DeterministicController extends PlayerControllerAi {
             if (!c.isLand()) {
                 for (SpellAbility sa : c.getBasicSpells()) {
                     sa.setActivatingPlayer(player);
-                    // canPlaySa sets up targets as a side effect
+                    // canPlaySa sets up targets as a side effect.
+                    // Only skip TargetingFailed (truly no valid targets for a targeted spell).
+                    // CantPlaySa is the AI's *strategic* refusal (e.g. Clone with no creatures),
+                    // not a mechanical impossibility — we still cast it to match Rust's behaviour.
                     AiPlayDecision decision = getAi().canPlaySa(sa);
-                    if (decision == AiPlayDecision.CantPlaySa
-                            || decision == AiPlayDecision.TargetingFailed) {
+                    if (decision == AiPlayDecision.TargetingFailed) {
                         continue;
                     }
                     if (!ComputerUtilCost.canPayCost(sa, player, false)) {
@@ -263,11 +270,30 @@ public class DeterministicController extends PlayerControllerAi {
         return new CardCollection(hand.subList(0, Math.min(numDiscard, hand.size())));
     }
 
+    // ── Scry / Library Manipulation ──────────────────────────────────
+
+    @Override
+    public ImmutablePair<CardCollection, CardCollection> arrangeForScry(CardCollection topN) {
+        // Keep all on top — matches Rust's DeterministicAgent.choose_scry
+        return ImmutablePair.of(topN, new CardCollection());
+    }
+
+    @Override
+    public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone,
+            SpellAbility source) {
+        // Keep original order — matches Rust's choose_reorder_library
+        return cards;
+    }
+
     // ── Confirmations ─────────────────────────────────────────────────
 
     @Override
     public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
             List<String> options, Card cardToShow, Map<String, Object> params) {
+        // Decline optional shuffles — matches Rust's choose_may_shuffle returning false
+        if (message != null && message.toLowerCase().contains("shuffle")) {
+            return false;
+        }
         return true;
     }
 
@@ -294,7 +320,8 @@ public class DeterministicController extends PlayerControllerAi {
 
     @Override
     public Player chooseStartingPlayer(boolean isFirstGame) {
-        return player;
+        // Always pick Player1 (index 0) — matches Rust which hardcodes player_order[0]
+        return getGame().getPlayers().get(0);
     }
 
     // ── Reveal (headless no-ops) ──────────────────────────────────────
@@ -314,6 +341,21 @@ public class DeterministicController extends PlayerControllerAi {
     @Override
     public void notifyOfValue(SpellAbility saSource, GameObject relatedTarget, String value) {
         // headless — no-op
+    }
+
+    // ── Unless Costs (shock lands etc.) ───────────────────────────────
+
+    @Override
+    public boolean payCostToPreventEffect(Cost cost, SpellAbility sa, boolean alreadyPaid,
+            FCollectionView<Player> allPayers) {
+        // Always pay costs to prevent effects (e.g. pay 2 life for Breeding Pool to enter untapped).
+        // Matches Rust's choose_optional_trigger which always returns true.
+        // The default AI strategically refuses these costs; we override to agree deterministically.
+        if (!ComputerUtilCost.canPayCost(cost, sa, player, true)) {
+            return false;
+        }
+        final CostPayment pay = new CostPayment(cost, sa);
+        return pay.payComputerCosts(new AiCostDecision(player, sa, true));
     }
 
     // ── Utility ───────────────────────────────────────────────────────

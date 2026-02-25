@@ -180,14 +180,19 @@ impl CardTypeLine {
             (s, None)
         };
 
-        // Parse supertypes and core types
+        // Parse supertypes, core types, and subtypes.
+        // In MTG type lines WITHOUT a dash (e.g. "Land Forest Island"),
+        // words that are not supertypes or core types are subtypes.
+        // This handles shock lands, tribal lands, etc.
         for word in before_dash.split_whitespace() {
             if let Some(st) = Supertype::from_name(word) {
                 result.supertypes.insert(st);
             } else if let Some(ct) = CoreType::from_name(word) {
                 result.core_types.insert(ct);
+            } else if after_dash.is_none() {
+                // No dash in the type line — unrecognized words are subtypes
+                result.subtypes.push(word.to_string());
             }
-            // Unknown words before dash are ignored
         }
 
         // Parse subtypes

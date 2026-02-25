@@ -3,7 +3,7 @@ import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { invoke } from "@tauri-apps/api/core";
-import type { Card as XMageCard, Player } from "@/types/xmage";
+import type { Card as XMageCard, Player, ActivatableAbilityInfo } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
 import { FreeBattlefield } from "@/components/game/FreeBattlefield";
 import { CardPreview } from "@/components/game/CardPreview";
@@ -16,6 +16,10 @@ import { ChooseOptionalTriggerModal } from "@/components/game/ChooseOptionalTrig
 import { KickerModal, BuybackModal, MultikickerModal, ReplicateModal, AlternativeCostModal } from "@/components/game/CostModal";
 import { ChooseColorModal } from "@/components/game/ChooseColorModal";
 import { ChooseCardsModal } from "@/components/game/ChooseCardsModal";
+import { ChooseTypeModal } from "@/components/game/ChooseTypeModal";
+import { ChooseNumberModal } from "@/components/game/ChooseNumberModal";
+import { ChooseCardNameModal } from "@/components/game/ChooseCardNameModal";
+import { AbilityPickerModal } from "@/components/game/AbilityPickerModal";
 import { RightActionPanel } from "@/components/game/RightActionPanel";
 import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
@@ -635,6 +639,7 @@ export default function Game() {
     mulliganDecision,
     tapLand,
     untapLand,
+    activateAbility,
     scryDecision,
     surveilDecision,
     digDecision,
@@ -644,6 +649,9 @@ export default function Game() {
     optionalTriggerDecision,
     colorDecision,
     chooseCardsDecision,
+    typeDecision,
+    numberDecision,
+    cardNameDecision,
     respond,
     concede,
     endGame,
@@ -661,6 +669,13 @@ export default function Game() {
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [showBackFace, setShowBackFace] = useState(false);
+
+  // Ability picker state (for multi-ability lands like Yavimaya Coast)
+  const [abilityPickerState, setAbilityPickerState] = useState<{
+    cardId: string;
+    cardName: string;
+    abilities: ActivatableAbilityInfo[];
+  } | null>(null);
 
   // Hand drag-to-play state
   const [draggingHandCard, setDraggingHandCard] = useState<XMageCard | null>(null);
@@ -1392,7 +1407,24 @@ export default function Game() {
                       }
                       onTapLand={
                         promptType === "chooseAction"
-                          ? (card) => tapLand(card.id)
+                          ? (card) => {
+                              const abilities = (currentPrompt?.activatableAbilityIds ?? [])
+                                .filter((a) => a.cardId === card.id);
+                              if (abilities.length > 1) {
+                                // Multi-ability: show picker
+                                setAbilityPickerState({
+                                  cardId: card.id,
+                                  cardName: card.name,
+                                  abilities,
+                                });
+                              } else if (abilities.length === 1) {
+                                // Single activatable ability: activate directly
+                                activateAbility(card.id, abilities[0].abilityIndex);
+                              } else {
+                                // Basic land: fall back to tapLand
+                                tapLand(card.id);
+                              }
+                            }
                           : undefined
                       }
                       untappableLandIds={
@@ -1540,6 +1572,19 @@ export default function Game() {
         />
       )}
 
+      {/* ── Ability picker modal (multi-ability lands) ──── */}
+      {abilityPickerState && (
+        <AbilityPickerModal
+          cardName={abilityPickerState.cardName}
+          abilities={abilityPickerState.abilities}
+          onSelect={(ability) => {
+            activateAbility(abilityPickerState.cardId, ability.abilityIndex);
+            setAbilityPickerState(null);
+          }}
+          onCancel={() => setAbilityPickerState(null)}
+        />
+      )}
+
       {/* ── Choose mode modal (SP$ Charm) ────────────────── */}
       {promptType === "chooseMode" && currentPrompt?.options && (
         <ChooseModeModal
@@ -1620,6 +1665,35 @@ export default function Game() {
           maxChoices={currentPrompt.maxChoices ?? 1}
           sourceCardName={currentPrompt.sourceCardName}
           onConfirm={(chosenCardIds) => chooseCardsDecision(chosenCardIds)}
+        />
+      )}
+
+      {/* ── Choose Type modal (ChooseType effect) ──── */}
+      {promptType === "chooseType" && currentPrompt?.validTypes != null && (
+        <ChooseTypeModal
+          typeCategory={currentPrompt.typeCategory ?? "Creature"}
+          validTypes={currentPrompt.validTypes}
+          cardName={currentPrompt.sourceCardName}
+          onConfirm={(chosenType) => typeDecision(chosenType)}
+        />
+      )}
+
+      {/* ── Choose Number modal (ChooseNumber effect) ──── */}
+      {promptType === "chooseNumber" && currentPrompt?.min != null && currentPrompt?.max != null && (
+        <ChooseNumberModal
+          min={currentPrompt.min}
+          max={currentPrompt.max}
+          cardName={currentPrompt.sourceCardName}
+          onConfirm={(chosenNumber) => numberDecision(chosenNumber)}
+        />
+      )}
+
+      {/* ── Choose Card Name modal (NameCard effect) ──── */}
+      {promptType === "chooseCardName" && currentPrompt?.validNames != null && (
+        <ChooseCardNameModal
+          validNames={currentPrompt.validNames}
+          cardName={currentPrompt.sourceCardName}
+          onConfirm={(chosenName) => cardNameDecision(chosenName)}
         />
       )}
 

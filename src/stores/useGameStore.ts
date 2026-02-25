@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { GameView, Card } from '@/types/xmage';
+import type { GameView, Card, ActivatableAbilityInfo } from '@/types/xmage';
 import { getFormat } from '@/lib/formats';
 
 interface DisplayEvent {
@@ -64,6 +64,18 @@ interface AgentPrompt {
   maxReplicates?: number;
   /** chooseColor: valid color choices */
   validColors?: string[];
+  /** chooseType: category of type to choose */
+  typeCategory?: string;
+  /** chooseType: valid type choices */
+  validTypes?: string[];
+  /** chooseNumber: minimum value */
+  min?: number;
+  /** chooseNumber: maximum value */
+  max?: number;
+  /** chooseCardName: valid card name choices */
+  validNames?: string[];
+  /** chooseAction: activated abilities on battlefield permanents */
+  activatableAbilityIds?: ActivatableAbilityInfo[];
 }
 
 interface GameConfig {
@@ -119,6 +131,7 @@ interface GameState {
   mulliganDecision: (keep: boolean) => void;
   tapLand: (cardId: string) => void;
   untapLand: (cardId: string) => void;
+  activateAbility: (cardId: string, abilityIndex: number) => void;
   scryDecision: (bottomCardIds: string[]) => void;
   surveilDecision: (graveyardCardIds: string[]) => void;
   digDecision: (chosenCardIds: string[]) => void;
@@ -128,6 +141,9 @@ interface GameState {
   optionalTriggerDecision: (accept: boolean) => void;
   colorDecision: (color: string | null) => void;
   chooseCardsDecision: (chosenCardIds: string[]) => void;
+  typeDecision: (chosenType: string | null) => void;
+  numberDecision: (chosenNumber: number | null) => void;
+  cardNameDecision: (chosenName: string | null) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
@@ -309,6 +325,10 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().respond({ type: 'untapLand', cardId });
   },
 
+  activateAbility: (cardId, abilityIndex) => {
+    get().respond({ type: 'activateAbility', cardId, abilityIndex });
+  },
+
   scryDecision: (bottomCardIds) => {
     get().respond({ type: 'scryDecision', bottomCardIds });
   },
@@ -343,6 +363,18 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   chooseCardsDecision: (chosenCardIds) => {
     get().respond({ type: 'chooseCardsDecision', chosenCardIds });
+  },
+
+  typeDecision: (chosenType) => {
+    get().respond({ type: 'typeDecision', chosenType });
+  },
+
+  numberDecision: (chosenNumber) => {
+    get().respond({ type: 'numberDecision', chosenNumber });
+  },
+
+  cardNameDecision: (chosenName) => {
+    get().respond({ type: 'cardNameDecision', chosenName });
   },
 
   concede: () => {

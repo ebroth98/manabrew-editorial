@@ -207,8 +207,8 @@ export const useServerStore = create<ServerState>()((set, get) => ({
       );
 
       unlisteners.push(
-        await listen<ServerErrorPayload>('server:error', () => {
-          // Errors handled by individual callers or shown in UI
+        await listen<ServerErrorPayload>('server:error', (e) => {
+          console.error('[server] error:', e.payload.code, e.payload.message);
         }),
       );
 

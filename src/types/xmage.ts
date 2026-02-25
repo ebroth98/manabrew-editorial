@@ -119,6 +119,13 @@ export interface StackObject {
   text: string;
 }
 
+export interface ActivatableAbilityInfo {
+  cardId: string;
+  abilityIndex: number;
+  description: string;
+  isManaAbility: boolean;
+}
+
 export interface ClientCallback {
   id: string; // UUID
   method: string; // e.g., "askYesNo", "chooseMode"

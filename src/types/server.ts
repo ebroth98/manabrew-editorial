@@ -20,7 +20,6 @@ export interface RoomPlayerInfo {
   ready: boolean;
   connected: boolean;
   selected_deck_name?: string;
-  selectedDeckName?: string;
 }
 
 export interface PlayerDeckInfo {

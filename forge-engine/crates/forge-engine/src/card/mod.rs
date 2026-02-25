@@ -179,6 +179,27 @@ pub struct CardInstance {
 
     /// Saved state for AnimateEffect — restored during step_cleanup.
     pub animate_state: Option<AnimateState>,
+
+    // ── Issue #53: High-priority effect fields ──────────────────────────
+
+    /// Type chosen by ChooseType effect (e.g. "Goblin", "Artifact").
+    pub chosen_type: Option<String>,
+    /// Card names chosen by NameCard effect.
+    pub named_cards: Vec<String>,
+    /// Number chosen by ChooseNumber effect.
+    pub chosen_number: Option<i32>,
+    /// Player chosen by ChoosePlayer effect.
+    pub chosen_player: Option<PlayerId>,
+    /// True if detained — can't attack, block, or activate abilities. Clears at controller's next turn.
+    pub detained: bool,
+    /// Player who goaded this creature. Goaded creature must attack but can't attack goader.
+    pub goaded_by: Option<PlayerId>,
+    /// Damage prevention shields (decremented when damage would be dealt). Resets at EOT.
+    pub damage_prevention: i32,
+    /// True if this creature must block if able.
+    pub must_block: bool,
+    /// Spell cards encoded/ciphered onto this creature.
+    pub encoded_cards: Vec<CardId>,
 }
 
 impl CardInstance {
@@ -268,6 +289,15 @@ impl CardInstance {
             chosen_colors: Vec::new(),
             chosen_cards: Vec::new(),
             animate_state: None,
+            chosen_type: None,
+            named_cards: Vec::new(),
+            chosen_number: None,
+            chosen_player: None,
+            detained: false,
+            goaded_by: None,
+            damage_prevention: 0,
+            must_block: false,
+            encoded_cards: Vec::new(),
         }
     }
 
@@ -630,6 +660,7 @@ impl CardInstance {
             && !self.tapped
             && !self.has_defender()
             && !self.cant_attack_static
+            && !self.detained
             && (self.has_haste() || !self.summoning_sick)
             && self.zone == ZoneType::Battlefield
     }
@@ -638,6 +669,7 @@ impl CardInstance {
         self.is_creature()
             && !self.tapped
             && !self.cant_block_static
+            && !self.detained
             && self.zone == ZoneType::Battlefield
     }
 

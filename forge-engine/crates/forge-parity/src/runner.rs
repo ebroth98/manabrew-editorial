@@ -64,6 +64,72 @@ const BLACK_CONTROL: &[(&str, usize)] = &[
     ("Sengir Vampire", 2),
 ];
 
+const COMPREHENSIVE_TEST: &[(&str, usize)] = &[
+    // Lands (18)
+    ("Forest", 3),
+    ("Island", 3),
+    ("Plains", 3),  // was 2 + Command Tower (Combo ColorIdentity → unusable in non-Commander)
+    ("Mountain", 2),
+    ("Swamp", 3),   // was 2 + Path of Ancestry (Combo ColorIdentity → unusable in non-Commander)
+    ("Breeding Pool", 1),
+    ("Hallowed Fountain", 1),
+    ("Temple of Mystery", 1),
+    ("Yavimaya Coast", 1),
+    // Keyword creatures (11)
+    ("Vampire Nighthawk", 1),
+    ("Serra Angel", 1),
+    ("Darksteel Myr", 1),
+    ("Boggart Brute", 1),
+    ("Glistener Elf", 1),
+    ("White Knight", 1),
+    ("Giant Spider", 1),
+    ("Llanowar Elves", 2),
+    ("Soul Warden", 1),
+    ("Guttersnipe", 1),
+    // ETB / explore / proliferate (4)
+    ("Merfolk Branchwalker", 1),
+    ("Jadelight Ranger", 1),
+    ("Elvish Visionary", 1),  // was Mulldrifter (evoke: Rust uses evoke cost, Java uses main cost)
+    ("Thrummingbird", 1),
+    // Detain / goad / protection (3)
+    ("Lyev Skyknight", 1),
+    ("Gods Willing", 1),
+    ("Brave the Elements", 1),
+    // Damage / removal (4)
+    ("Lightning Bolt", 2),
+    ("Wrath of God", 1),
+    ("Doom Blade", 1),
+    ("Prey Upon", 1),
+    // Card advantage (4)
+    ("Ponder", 1),
+    ("Preordain", 1),
+    ("Thought Scour", 1),
+    ("Steady Progress", 1),
+    // Modal / draw / choice (3)
+    ("Izzet Charm", 1),
+    ("Divination", 1),
+    ("Control Magic", 1),
+    // Combat tricks / bounce / fog (3)
+    ("Giant Growth", 1),
+    ("Fog", 1),
+    ("Unsummon", 1),
+    // Tokens (3)
+    ("Raise the Alarm", 1),
+    ("Dragon Fodder", 1),
+    ("Lingering Souls", 1),
+    // Simple creatures / spells (6) — removed alt-cost cards that cause parity divergences
+    // (Evoke/Spectacle/Storm/Cascade are not handled uniformly by Java getBasicSpells)
+    ("Faithless Looting", 1),     // flashback: both engines support graveyard cast
+    ("Goblin Bushwhacker", 1),    // kicker is optional; base cost R always used
+    ("Volcanic Hammer", 1),       // was Skewer the Critics (spectacle R)
+    ("Shock", 1),                 // was Grapeshot (storm)
+    ("Lightning Elemental", 1),   // was Bloodbraid Elf (cascade)
+    ("Gray Ogre", 1),             // was Zurgo Bellstriker (dash 1R), simple 2/2
+    // Static anthems (2)
+    ("Glorious Anthem", 1),
+    ("Honor of the Pure", 1),
+];
+
 /// Resolve a preset deck name to a card list.
 fn get_preset_deck(name: &str) -> Option<&'static [(&'static str, usize)]> {
     match name {
@@ -71,13 +137,14 @@ fn get_preset_deck(name: &str) -> Option<&'static [(&'static str, usize)]> {
         "green_stompy" => Some(GREEN_STOMPY),
         "white_aggro" => Some(WHITE_AGGRO),
         "black_control" => Some(BLACK_CONTROL),
+        "comprehensive_test" => Some(COMPREHENSIVE_TEST),
         _ => None,
     }
 }
 
 /// All available preset deck IDs.
 pub fn available_presets() -> Vec<&'static str> {
-    vec!["red_burn", "green_stompy", "white_aggro", "black_control"]
+    vec!["red_burn", "green_stompy", "white_aggro", "black_control", "comprehensive_test"]
 }
 
 // ── Card Instance Builder ──────────────────────────────────────────

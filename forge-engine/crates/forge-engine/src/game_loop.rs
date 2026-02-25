@@ -11,7 +11,7 @@ use crate::cost::{self, can_pay, parse_cost, CostPart};
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::mana::{self, basic_land_mana_atom, mana_atom_from_produced, ManaPool};
+use crate::mana::{self, basic_land_mana_atom, capitalize_color, color_name_to_mana_atom, mana_atom_from_produced, parse_combo_colors, ManaPool};
 use crate::spellability::target_restrictions;
 use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
 use crate::staticability::layer::apply_continuous_effects;
@@ -861,6 +861,9 @@ impl GameLoop {
             }
         }
 
+        // Empty mana pool at end of turn (cleanup step), per Magic rules.
+        self.pool_mut(active).empty();
+
         // Remove damage and reset until-end-of-turn effects on all battlefield permanents
         for i in 0..game.cards.len() {
             if game.cards[i].zone == ZoneType::Battlefield {
@@ -1187,8 +1190,45 @@ impl GameLoop {
         let card_name = card.card_name.clone();
 
         if card.is_land() {
+            // Check for shock-land-style "pay life or enter tapped" before entering
+            let etb_life_cost =
+                crate::staticability::layer::get_etb_unless_life_cost(game.card(card_id));
+
             // Play land — goes directly to battlefield
             game.move_card(card_id, ZoneType::Battlefield, player);
+
+            // Prompt for shock land life payment (after ETB so the card is on battlefield)
+            if let Some(life_cost) = etb_life_cost {
+                let desc = format!(
+                    "Pay {} life so {} enters untapped?",
+                    life_cost, card_name
+                );
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                let pay = agents[player.index()].choose_optional_trigger(
+                    player,
+                    &desc,
+                    Some(&card_name),
+                );
+                if pay {
+                    // Player pays life — untap the card (it wasn't tapped by apply_etb_tapped
+                    // since we removed the third pass, but ensure untapped state)
+                    game.card_mut(card_id).tapped = false;
+                    game.player_mut(player).lose_life(life_cost);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::LifeLost,
+                        RunParams {
+                            player: Some(player),
+                            life_amount: Some(life_cost),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                } else {
+                    // Player declines — enter tapped
+                    game.card_mut(card_id).tapped = true;
+                }
+            }
+
             game.player_mut(player).lands_played_this_turn += 1;
             agents[player.index()].notify(&format!("Played land: {}", card_name));
 
@@ -2119,11 +2159,46 @@ impl GameLoop {
                     }
                 }
 
+                // Check for shock-land-style "pay life or enter tapped" before entering
+                let etb_life_cost = crate::staticability::layer::get_etb_unless_life_cost(
+                    game.card(card_id),
+                );
+
                 game.move_card(
                     card_id,
                     ZoneType::Battlefield,
                     player,
                 );
+
+                // Prompt for shock land life payment
+                if let Some(life_cost) = etb_life_cost {
+                    let cname = game.card(card_id).card_name.clone();
+                    let desc = format!(
+                        "Pay {} life so {} enters untapped?",
+                        life_cost, cname
+                    );
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    let pay = agents[player.index()].choose_optional_trigger(
+                        player,
+                        &desc,
+                        Some(&cname),
+                    );
+                    if pay {
+                        game.card_mut(card_id).tapped = false;
+                        game.player_mut(player).lose_life(life_cost);
+                        self.trigger_handler.run_trigger(
+                            TriggerType::LifeLost,
+                            RunParams {
+                                player: Some(player),
+                                life_amount: Some(life_cost),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    } else {
+                        game.card_mut(card_id).tapped = true;
+                    }
+                }
 
                 // Register triggers for the new permanent
                 self.trigger_handler.register_active_trigger(game, card_id);
@@ -2702,8 +2777,64 @@ impl GameLoop {
 
         // Produce mana
         if let Some(produced) = ab.params.get("Produced") {
-            if let Some(atom) = mana_atom_from_produced(produced) {
+            if produced == "Combo ColorIdentity" {
+                // Commander mana: look up the commander's color identity.
+                let command_cards = game.cards_in_zone(ZoneType::Command, player).to_vec();
+                let colors: Vec<String> = command_cards
+                    .iter()
+                    .find_map(|&cid| {
+                        let c = game.card(cid);
+                        if c.is_commander {
+                            let cols: Vec<String> = c
+                                .color
+                                .iter()
+                                .map(|col| capitalize_color(col.long_name()))
+                                .collect();
+                            if cols.is_empty() {
+                                None
+                            } else {
+                                Some(cols)
+                            }
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or_else(|| {
+                        // Fallback for non-commander games: all 5 colors
+                        vec![
+                            "White".to_string(),
+                            "Blue".to_string(),
+                            "Black".to_string(),
+                            "Red".to_string(),
+                            "Green".to_string(),
+                        ]
+                    });
+
+                if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
+                    if let Some(atom) = color_name_to_mana_atom(&chosen) {
+                        self.pool_mut(player).add(atom, 1);
+                    }
+                }
+            } else if produced.starts_with("Combo") {
+                // Combo mana: player chooses one color from the combo
+                let colors = parse_combo_colors(produced);
+                if !colors.is_empty() {
+                    if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
+                        if let Some(atom) = color_name_to_mana_atom(&chosen) {
+                            self.pool_mut(player).add(atom, 1);
+                        }
+                    }
+                }
+            } else if let Some(atom) = mana_atom_from_produced(produced) {
                 self.pool_mut(player).add(atom, 1);
+            }
+        }
+
+        // Resolve SubAbility chain (e.g. DealDamage on pain lands)
+        if let Some(sub_svar_name) = ab.params.get("SubAbility") {
+            if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name).cloned() {
+                let sub_sa = SpellAbility::new_simple(Some(card_id), player, &sub_text);
+                self.resolve_single_effect(game, agents, &sub_sa, None);
             }
         }
 
@@ -2944,7 +3075,11 @@ impl GameLoop {
                     if !c.is_land() || !c.tapped {
                         return false;
                     }
-                    if let Some(atom) = basic_land_mana_atom(c) {
+                    // A tapped land is untappable if the pool has ANY atom it could produce
+                    let atoms = mana::land_mana_atoms(c);
+                    if !atoms.is_empty() {
+                        atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
+                    } else if let Some(atom) = basic_land_mana_atom(c) {
                         pool_snapshot.has_atom(atom, 1)
                     } else {
                         false
@@ -2992,8 +3127,17 @@ impl GameLoop {
                             agent.snapshot_state(game, &self.mana_pools);
                             agent.notify_card_played(priority_player, played_id, &played_name, &set_code);
                         }
+                        passed_count = 0;
+                    } else {
+                        // Payment failed — treat as a pass to avoid infinite retry loop
+                        agents[priority_player.index()]
+                            .notify("Card play failed (insufficient mana)");
+                        passed_count += 1;
+                        priority_player = game.next_player(priority_player);
+                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                            game.turn.priority_player = priority_player;
+                        });
                     }
-                    passed_count = 0;
                 }
                 MainPhaseAction::ActivateMana(land_id) => {
                     if !tappable_lands.contains(&land_id) {
@@ -3006,40 +3150,64 @@ impl GameLoop {
                         });
                         continue;
                     }
-                    self.with_shared_state_mutation(game, agents, |this, game, _agents| {
-                        let atom_opt = {
-                            let c = game.card(land_id);
-                            if c.is_land() && !c.tapped {
-                                basic_land_mana_atom(c)
-                            } else {
-                                None
+                    // Use the card's actual mana abilities when available;
+                    // fall back to basic_land_mana_atom only for lands with no abilities.
+                    let mana_ab = {
+                        let c = game.card(land_id);
+                        c.activated_abilities
+                            .iter()
+                            .find(|ab| ab.is_mana_ability)
+                            .cloned()
+                    };
+                    if let Some(ab) = mana_ab {
+                        self.with_shared_state_mutation(
+                            game,
+                            agents,
+                            |this, game, agents| {
+                                this.resolve_mana_ability(
+                                    game,
+                                    agents,
+                                    priority_player,
+                                    land_id,
+                                    &ab,
+                                );
+                            },
+                        );
+                    } else {
+                        // Legacy fallback for lands with no parsed mana abilities
+                        self.with_shared_state_mutation(game, agents, |this, game, _agents| {
+                            let atom_opt = {
+                                let c = game.card(land_id);
+                                if c.is_land() && !c.tapped {
+                                    basic_land_mana_atom(c)
+                                } else {
+                                    None
+                                }
+                            };
+                            if let Some(atom) = atom_opt {
+                                game.tap(land_id);
+                                this.pool_mut(priority_player).add(atom, 1);
+                                this.trigger_handler.run_trigger(
+                                    TriggerType::Taps,
+                                    RunParams {
+                                        card: Some(land_id),
+                                        player: Some(priority_player),
+                                        ..Default::default()
+                                    },
+                                    false,
+                                );
+                                this.trigger_handler.run_trigger(
+                                    TriggerType::TapsForMana,
+                                    RunParams {
+                                        card: Some(land_id),
+                                        player: Some(priority_player),
+                                        ..Default::default()
+                                    },
+                                    false,
+                                );
                             }
-                        };
-                        if let Some(atom) = atom_opt {
-                            game.tap(land_id);
-                            this.pool_mut(priority_player).add(atom, 1);
-                            // Fire Taps trigger
-                            this.trigger_handler.run_trigger(
-                                TriggerType::Taps,
-                                RunParams {
-                                    card: Some(land_id),
-                                    player: Some(priority_player),
-                                    ..Default::default()
-                                },
-                                false,
-                            );
-                            // Fire TapsForMana trigger
-                            this.trigger_handler.run_trigger(
-                                TriggerType::TapsForMana,
-                                RunParams {
-                                    card: Some(land_id),
-                                    player: Some(priority_player),
-                                    ..Default::default()
-                                },
-                                false,
-                            );
-                        }
-                    });
+                        });
+                    }
                     passed_count = 0;
                 }
                 MainPhaseAction::UntapMana(land_id) => {
@@ -3055,17 +3223,30 @@ impl GameLoop {
                         continue;
                     }
                     self.with_shared_state_mutation(game, agents, |this, game, _agents| {
-                        let atom_opt = {
+                        let atoms = {
                             let c = game.card(land_id);
                             if c.is_land() && c.tapped {
-                                basic_land_mana_atom(c)
+                                let a = mana::land_mana_atoms(c);
+                                if a.is_empty() {
+                                    // Fallback for lands without mana abilities
+                                    basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
+                                } else {
+                                    a
+                                }
                             } else {
-                                None
+                                vec![]
                             }
                         };
-                        if let Some(atom) = atom_opt {
+                        if !atoms.is_empty() {
                             game.untap(land_id);
-                            this.pool_mut(priority_player).remove(atom, 1);
+                            // Remove the first atom we find in the pool
+                            let pool = this.pool_mut(priority_player);
+                            for &atom in &atoms {
+                                if pool.has_atom(atom, 1) {
+                                    pool.remove(atom, 1);
+                                    break;
+                                }
+                            }
                             // Fire Untaps trigger
                             this.trigger_handler.run_trigger(
                                 TriggerType::Untaps,

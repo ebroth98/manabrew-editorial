@@ -14,6 +14,10 @@ pub mod become_monarch_effect;
 pub mod charm_effect;
 pub mod choose_card_effect;
 pub mod choose_color_effect;
+pub mod choose_number_effect;
+pub mod choose_player_effect;
+pub mod choose_source_effect;
+pub mod choose_type_effect;
 pub mod cleanup_effect;
 pub mod clone_effect;
 pub mod change_zone_all_effect;
@@ -21,22 +25,31 @@ pub mod change_zone_effect;
 pub mod control_gain_effect;
 pub mod control_gain_variant_effect;
 pub mod copy_permanent_effect;
+pub mod copy_spell_ability_effect;
 pub mod counter_effect;
+pub mod counters_put_all_effect;
 pub mod counters_put_effect;
 pub mod counters_remove_effect;
 pub mod damage_all_effect;
 pub mod damage_deal_effect;
 pub mod destroy_all_effect;
 pub mod destroy_effect;
+pub mod detain_effect;
 pub mod dig_effect;
 pub mod dig_multiple_effect;
+pub mod dig_until_effect;
 pub mod discard_effect;
 pub mod draw_effect;
+pub mod each_damage_effect;
+pub mod encode_effect;
 pub mod end_combat_phase_effect;
+pub mod explore_effect;
 pub mod end_turn_effect;
 pub mod fight_effect;
+pub mod flip_a_coin_effect;
 pub mod fog_effect;
 pub mod game_draw_effect;
+pub mod goad_effect;
 pub mod game_loss_effect;
 pub mod game_win_effect;
 pub mod life_exchange_effect;
@@ -46,11 +59,20 @@ pub mod life_set_effect;
 pub mod look_at_effect;
 pub mod mana_effect;
 pub mod mill_effect;
+pub mod move_counter_effect;
+pub mod must_block_effect;
+pub mod name_card_effect;
 pub mod phases_effect;
 pub mod peek_and_reveal_effect;
 pub mod play_effect;
 pub mod poison_effect;
+pub mod prevent_damage_effect;
+pub mod proliferate_effect;
+pub mod protection_all_effect;
+pub mod protection_effect;
+pub mod remove_from_combat_effect;
 pub mod repeat_each_effect;
+pub mod roll_dice_effect;
 pub mod power_exchange_effect;
 pub mod pump_all_effect;
 pub mod pump_effect;
@@ -63,6 +85,7 @@ pub mod sacrifice_all_effect;
 pub mod sacrifice_effect;
 pub mod scry_effect;
 pub mod set_state_effect;
+pub mod shuffle_effect;
 pub mod skip_phase_effect;
 pub mod skip_turn_effect;
 pub mod surveil_effect;
@@ -70,6 +93,7 @@ pub mod take_initiative_effect;
 pub mod tap_all_effect;
 pub mod tap_effect;
 pub mod token_effect;
+pub mod two_piles_effect;
 pub mod untap_all_effect;
 pub mod untap_effect;
 
@@ -228,6 +252,35 @@ fn resolve_effect_once(ctx: &mut EffectContext, sa: &SpellAbility) {
         "Clone" => clone_effect::resolve(ctx, sa),
         "ControlGainVariant" => control_gain_variant_effect::resolve(ctx, sa),
         "RepeatEach" => repeat_each_effect::resolve(ctx, sa),
+        // High-priority effects (issue #53, Batch 1)
+        "Shuffle" => shuffle_effect::resolve(ctx, sa),
+        "PutCounterAll" => counters_put_all_effect::resolve(ctx, sa),
+        "EachDamage" => each_damage_effect::resolve(ctx, sa),
+        "RemoveFromCombat" => remove_from_combat_effect::resolve(ctx, sa),
+        "Detain" => detain_effect::resolve(ctx, sa),
+        "Goad" => goad_effect::resolve(ctx, sa),
+        "ChoosePlayer" => choose_player_effect::resolve(ctx, sa),
+        "ChooseSource" => choose_source_effect::resolve(ctx, sa),
+        // High-priority effects (issue #53, Batch 2)
+        "ChooseType" => choose_type_effect::resolve(ctx, sa),
+        "NameCard" => name_card_effect::resolve(ctx, sa),
+        "ChooseNumber" => choose_number_effect::resolve(ctx, sa),
+        // High-priority effects (issue #53, Batch 3)
+        "DigUntil" => dig_until_effect::resolve(ctx, sa),
+        "FlipACoin" => flip_a_coin_effect::resolve(ctx, sa),
+        "Explore" => explore_effect::resolve(ctx, sa),
+        "RollDice" => roll_dice_effect::resolve(ctx, sa),
+        // High-priority effects (issue #53, Batch 4)
+        "Protection" => protection_effect::resolve(ctx, sa),
+        "ProtectionAll" => protection_all_effect::resolve(ctx, sa),
+        "PreventDamage" => prevent_damage_effect::resolve(ctx, sa),
+        "Proliferate" => proliferate_effect::resolve(ctx, sa),
+        "MoveCounter" => move_counter_effect::resolve(ctx, sa),
+        "MustBlock" => must_block_effect::resolve(ctx, sa),
+        // High-priority effects (issue #53, Batch 5)
+        "CopySpellAbility" => copy_spell_ability_effect::resolve(ctx, sa),
+        "TwoPiles" => two_piles_effect::resolve(ctx, sa),
+        "Encode" => encode_effect::resolve(ctx, sa),
         _ => {} // Unimplemented effect — silently skip
     }
 }
@@ -377,6 +430,57 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "ControlGainVariant"
     } else if ability.contains("RepeatEach") {
         "RepeatEach"
+    // High-priority effects (issue #53) — PutCounterAll before PutCounter, EachDamage before DealDamage
+    } else if ability.contains("PutCounterAll") {
+        "PutCounterAll"
+    } else if ability.contains("EachDamage") {
+        "EachDamage"
+    } else if ability.contains("$ Shuffle") {
+        "Shuffle"
+    } else if ability.contains("RemoveFromCombat") {
+        "RemoveFromCombat"
+    } else if ability.contains("$ Detain") {
+        "Detain"
+    } else if ability.contains("$ Goad") {
+        "Goad"
+    } else if ability.contains("ChoosePlayer") {
+        "ChoosePlayer"
+    } else if ability.contains("ChooseSource") {
+        "ChooseSource"
+    } else if ability.contains("ChooseType") {
+        "ChooseType"
+    } else if ability.contains("NameCard") {
+        "NameCard"
+    } else if ability.contains("ChooseNumber") {
+        "ChooseNumber"
+    } else if ability.contains("DigUntil") {
+        "DigUntil"
+    } else if ability.contains("FlipACoin") {
+        "FlipACoin"
+    } else if ability.contains("$ Explore") {
+        "Explore"
+    } else if ability.contains("RollDice") {
+        "RollDice"
+    // High-priority effects (issue #53, Batch 4) — ProtectionAll before Protection
+    } else if ability.contains("ProtectionAll") {
+        "ProtectionAll"
+    } else if ability.contains("$ Protection") {
+        "Protection"
+    } else if ability.contains("PreventDamage") {
+        "PreventDamage"
+    } else if ability.contains("$ Proliferate") {
+        "Proliferate"
+    } else if ability.contains("MoveCounter") {
+        "MoveCounter"
+    } else if ability.contains("MustBlock") {
+        "MustBlock"
+    // High-priority effects (issue #53, Batch 5)
+    } else if ability.contains("CopySpellAbility") {
+        "CopySpellAbility"
+    } else if ability.contains("TwoPiles") {
+        "TwoPiles"
+    } else if ability.contains("$ Encode") {
+        "Encode"
     } else {
         ""
     }

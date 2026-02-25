@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use std::sync::OnceLock;
 
 use forge_carddb::{CardDatabase, CardRules};
+use forge_engine_core::ability::activated::parse_activated_ability;
 use forge_engine_core::card::{CardInstance, CardOtherPart};
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::replacement::parse_replacement_effect;
@@ -130,6 +131,43 @@ pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstanc
         face.keywords.clone(),
         face.abilities.clone(),
     );
+
+    // Auto-generate intrinsic mana abilities for basic land subtypes.
+    // Mirrors Java's CardFactoryUtil.addIntrinsicAbilities(): lands with
+    // basic subtypes (Plains, Island, Swamp, Mountain, Forest) implicitly
+    // have "{T}: Add {color}" even without an explicit A: line.
+    // This handles basic lands (Forest), shock lands (Breeding Pool = Forest Island),
+    // and any other land with basic subtypes.
+    const SUBTYPE_MANA: &[(&str, &str, &str)] = &[
+        ("Plains", "W", "Add {W}."),
+        ("Island", "U", "Add {U}."),
+        ("Swamp", "B", "Add {B}."),
+        ("Mountain", "R", "Add {R}."),
+        ("Forest", "G", "Add {G}."),
+    ];
+    for &(subtype, letter, desc) in SUBTYPE_MANA {
+        if card.type_line.has_subtype(subtype) {
+            // Check if an existing mana ability already produces this color
+            let already_produces = card.activated_abilities.iter().any(|ab| {
+                ab.is_mana_ability
+                    && ab
+                        .params
+                        .get("Produced")
+                        .map_or(false, |p| p == letter)
+            });
+            if !already_produces {
+                let raw = format!(
+                    "AB$ Mana | Cost$ T | Produced$ {} | SpellDescription$ {}",
+                    letter, desc
+                );
+                let idx = card.abilities.len();
+                card.abilities.push(raw.clone());
+                if let Some(ab) = parse_activated_ability(&raw, idx) {
+                    card.activated_abilities.push(ab);
+                }
+            }
+        }
+    }
 
     card.triggers = triggers;
     // SVars must be copied so trigger Execute$ references resolve correctly.

@@ -49,12 +49,15 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         #[serde(rename = "playableCardIds")]
         playable_card_ids: Vec<String>,
-        /// Untapped lands on the battlefield that the player can manually tap for mana.
+        /// Untapped lands (and creatures/artifacts with mana abilities) that the player can tap.
         #[serde(rename = "tappableLandIds")]
         tappable_land_ids: Vec<String>,
         /// Tapped lands whose mana is still in the pool (can be untapped to undo).
         #[serde(rename = "untappableLandIds")]
         untappable_land_ids: Vec<String>,
+        /// Activated abilities on battlefield permanents.
+        #[serde(rename = "activatableAbilityIds")]
+        activatable_ability_ids: Vec<ActivatableAbilityInfo>,
     },
     ChooseAttackers {
         #[serde(rename = "gameView")]
@@ -244,6 +247,38 @@ pub enum AgentPromptInner {
         #[serde(rename = "sourceCardName")]
         source_card_name: Option<String>,
     },
+    /// Choose a creature/card type (for ChooseType effect).
+    ChooseType {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// Category: "Creature", "Card", "Land", etc.
+        #[serde(rename = "typeCategory")]
+        type_category: String,
+        /// Valid type choices.
+        #[serde(rename = "validTypes")]
+        valid_types: Vec<String>,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose a number (for ChooseNumber effect).
+    ChooseNumber {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        min: i32,
+        max: i32,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose a card name (for NameCard effect).
+    ChooseCardName {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// Valid card name choices (for ChooseFromList mode).
+        #[serde(rename = "validNames")]
+        valid_names: Vec<String>,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
     /// Choose card(s) for an effect (ChooseCardEffect, CloneEffect).
     ChooseCardsForEffect {
         #[serde(rename = "gameView")]
@@ -259,6 +294,16 @@ pub enum AgentPromptInner {
         #[serde(rename = "sourceCardName")]
         source_card_name: Option<String>,
     },
+}
+
+/// Info about an activatable ability on a battlefield permanent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ActivatableAbilityInfo {
+    pub card_id: String,
+    pub ability_index: usize,
+    pub description: String,
+    pub is_mana_ability: bool,
 }
 
 /// Sent from frontend to game thread: the human player's response.
@@ -297,6 +342,12 @@ pub enum PlayerAction {
     UntapLand {
         #[serde(rename = "cardId")]
         card_id: String,
+    },
+    ActivateAbility {
+        #[serde(rename = "cardId")]
+        card_id: String,
+        #[serde(rename = "abilityIndex")]
+        ability_index: usize,
     },
     /// Response to Scry prompt: IDs of cards the player wants on the bottom.
     ScryDecision {
@@ -359,6 +410,21 @@ pub enum PlayerAction {
     /// Response to ChooseColor prompt: the chosen color name.
     ColorDecision {
         color: Option<String>,
+    },
+    /// Response to ChooseType prompt: the chosen type name.
+    TypeDecision {
+        #[serde(rename = "chosenType")]
+        chosen_type: Option<String>,
+    },
+    /// Response to ChooseNumber prompt: the chosen number.
+    NumberDecision {
+        #[serde(rename = "chosenNumber")]
+        chosen_number: Option<i32>,
+    },
+    /// Response to ChooseCardName prompt: the chosen card name.
+    CardNameDecision {
+        #[serde(rename = "chosenName")]
+        chosen_name: Option<String>,
     },
     /// Response to ChooseCardsForEffect prompt: IDs of chosen cards.
     ChooseCardsDecision {

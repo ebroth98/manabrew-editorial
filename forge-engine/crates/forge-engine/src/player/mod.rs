@@ -45,6 +45,9 @@ pub struct PlayerState {
     pub skip_next_draw: bool,
     pub skip_next_combat: bool,
     pub skip_next_untap: bool,
+
+    // Damage prevention shields (issue #53, PreventDamage effect). Resets at EOT.
+    pub damage_prevention: i32,
 }
 
 impl PlayerState {
@@ -70,6 +73,7 @@ impl PlayerState {
             skip_next_draw: false,
             skip_next_combat: false,
             skip_next_untap: false,
+            damage_prevention: 0,
         }
     }
 

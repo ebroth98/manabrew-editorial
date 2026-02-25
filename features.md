@@ -123,27 +123,27 @@
 | `ChangeZoneAllEffect.java` | Move all matching cards to a zone | **Implemented** (`game_loop.rs` ChangeZoneAll handler: ValidCards filter, multi-player, triggers) |
 | `CharmEffect.java` | Modal "choose N" charm abilities | **Implemented** — `charm_effect.rs`: `SP$ Charm`, `Choices$ SVar1,...`, `CharmNum$`, `MinCharmNum$`; resolution-time targeting via `TargetKind` dispatch; agent `choose_mode`; TauriAgent `ChooseMode` prompt + `ModeDecision` response; `ChooseModeModal` frontend |
 | `ChooseCardEffect.java` | Choose a card from a set | **Implemented** — `choose_card_effect.rs`: `Amount$`, `ChoiceZone$`, `Choices$` filter, `RememberChosen$`; stores chosen on source card's `chosen_cards`; agent `choose_cards_for_effect()` + TauriAgent `ChooseCardsForEffect` prompt + `ChooseCardsModal` frontend |
-| `ChooseCardNameEffect.java` | Name a card | Not implemented |
+| `ChooseCardNameEffect.java` | Name a card | **Implemented** — `name_card_effect.rs`: `ChooseFromList$`/`ChooseFromDefinedCards$` modes + open naming; stores in `card.named_cards`; agent `choose_card_name`; TauriAgent `ChooseCardName` prompt + `CardNameDecision` response; `ChooseCardNameModal` frontend |
 | `ChooseColorEffect.java` | Choose a color | **Implemented** — `choose_color_effect.rs`: `Defined$` player(s), `Choices$` valid colors (default all 5); stores on source card's `chosen_colors`; agent `choose_color()` + TauriAgent `ChooseColor` prompt + `ChooseColorModal` frontend |
-| `ChooseTypeEffect.java` | Choose a type | Not implemented |
-| `ChoosePlayerEffect.java` | Choose a player | Not implemented |
+| `ChooseTypeEffect.java` | Choose a type | **Implemented** — `choose_type_effect.rs`: `Type$` category (Creature/Card/Land), builds type list; stores in `card.chosen_type`; agent `choose_type`; TauriAgent `ChooseType` prompt + `TypeDecision` response; `ChooseTypeModal` frontend |
+| `ChoosePlayerEffect.java` | Choose a player | **Implemented** — `choose_player_effect.rs`: reuses `choose_target_player` agent method; stores in `card.chosen_player` |
 | `CloneEffect.java` | Copy/clone a permanent | **Implemented** — `clone_effect.rs`: copies characteristics (name, types, P/T, keywords, abilities, triggers, svars, statics, replacements) from source to target; `Choices$` + `ChoiceZone$` for player selection; `Defined$` / target resolution; `PumpKeywords$`; re-registers triggers. Distinct from `CopyPermanentEffect` (which creates a token copy) |
 | `ConniveEffect.java` | Connive N (draw + discard) | Not implemented |
 | `ControlGainEffect.java` | Gain control of permanent | **Implemented** — `control_gain.rs`: changes controller of target battlefield permanent via `GameState.change_controller`; moves card between per-player zone lists |
 | `ControlGainVariantEffect.java` | Complex control redistribution | **Implemented** — `control_gain_variant_effect.rs`: `ChangeController$` mode (`CardOwner` for Homeward Path, `Random` for Scrambleverse); `AllValid$` filter for affected permanents |
 | `CopyPermanentEffect.java` | Copy a permanent onto battlefield | **Partial** — see `CloneEffect.java` above |
-| `CopySpellAbilityEffect.java` | Copy a spell on the stack | Not implemented |
+| `CopySpellAbilityEffect.java` | Copy a spell on the stack | **Implemented** — `copy_spell_ability_effect.rs`: clones topmost stack entry with same targets; pushes copy onto stack |
 | `CounterEffect.java` | Counter a spell or ability | **Implemented** — `counter.rs`: removes targeted stack entry via `MagicStack.remove_by_id`; moves source card to graveyard (or Destination$); `TargetKind::Spell` + `target_stack_entry: Option<u32>` in targeting system; `ChooseTargetSpell` prompt + clickable stack UI |
 | `CountersPutEffect.java` | Put counters on a permanent/player | **Implemented** — `counters_put_effect.rs`: puts `CounterType$` counters on source card (`Defined$ Self`); fires `CounterAdded` trigger |
 | `CountersRemoveEffect.java` | Remove counters | **Partial** — `counters_remove_effect.rs`: removes specific `CounterType$` counters from `Defined$ Self` or targeted card; `CounterNum$` supports integer and "All"; fires `CounterRemoved` trigger. Deferred: `CounterType$ Any/All` (interactive selection), `Choices$`, `Optional$`, `UpTo$`, player counter removal |
-| `CountersMoveEffect.java` | Move counters between permanents | Not implemented |
+| `CountersMoveEffect.java` | Move counters between permanents | **Implemented** — `move_counter_effect.rs`: `CounterType$`, `CounterNum$`, `Source$`/`Defined$`; moves counters between permanents; fires CounterAdded/CounterRemoved triggers |
 | `CountersMultiplyEffect.java` | Multiply counters | Not implemented |
-| `CountersProliferateEffect.java` | Proliferate | Not implemented |
+| `CountersProliferateEffect.java` | Proliferate | **Implemented** — `proliferate_effect.rs`: collects permanents with counters, player chooses which to proliferate via `choose_cards_for_effect`, adds one counter of each existing type |
 | `DamageAllEffect.java` | Deal damage to all matching | **Implemented** — `damage_all_effect.rs`: `ValidCards$` + `ValidPlayers$` filters, fixed `NumDmg$`; deals to matching creatures and optionally all players |
 | `DamageBaseEffect.java` | Base class for damage effects | **Partial** |
 | `DamageDealEffect.java` | Deal damage to target | **Implemented** (`damage_deal_effect.rs`) |
-| `DamageEachEffect.java` | Deal damage to each matching | Not implemented |
-| `DamagePreventEffect.java` | Prevent damage | Not implemented |
+| `DamageEachEffect.java` | Deal damage to each matching | **Implemented** — `each_damage_effect.rs`: each matching creature/player deals damage; `ValidCards$`, `NumDmg$`, `DefinedDamagers$` |
+| `DamagePreventEffect.java` | Prevent damage | **Implemented** — `prevent_damage_effect.rs`: `Amount$` shields on target creature or player; `Defined$` (Self/Targeted/You/Opponent); decremented when damage dealt |
 | `DamageResolveEffect.java` | Resolve queued damage | Not implemented |
 | `DayTimeEffect.java` | Change day/night | Not implemented |
 | `DelayedTriggerEffect.java` | Create delayed trigger | Not implemented |
@@ -155,14 +155,14 @@
 | `DrawEffect.java` | Draw cards | **Partial** (`action.rs` draw_cards) |
 | `EffectEffect.java` | Create emblem/effect on battlefield | Not implemented |
 | `EndTurnEffect.java` | End the turn | **Implemented** — `end_turn_effect.rs`: clears stack, sets `game.end_turn_requested`; game loop skips remaining phases to cleanup |
-| `ExploreEffect.java` | Explore mechanic | Not implemented |
+| `ExploreEffect.java` | Explore mechanic | **Implemented** — `explore_effect.rs`: reveal top card, land→hand, nonland→+1/+1 counter + optional graveyard; reuses `choose_optional_trigger` |
 | `FightEffect.java` | Fight between creatures | **Implemented** — `fight.rs`: source creature and target creature deal damage to each other equal to power simultaneously; fires `Fight` trigger; `TriggerType::Fight` + `RunParams.card2` added to event system |
-| `FlipCoinEffect.java` | Flip a coin | Not implemented |
+| `FlipCoinEffect.java` | Flip a coin | **Implemented** — `flip_a_coin_effect.rs`: random bool, `NoCall` flag for Heads/TailsSubAbility or WinSubAbility/LoseSubAbility; resolves sub-ability chains |
 | `FogEffect.java` | Prevent all combat damage | **Implemented** — `fog_effect.rs`: sets `prevent_all_combat_damage` flag on `GameState`; combat `resolve_damage_step()` returns empty when flag is set; flag reset at end of turn cleanup |
 | `GameDrawEffect.java` | Force game draw | **Implemented** — `game_draw_effect.rs`: sets all players `has_lost = true`, `game_over = true`, `winner = None` |
 | `GameLossEffect.java` | Force player to lose | **Implemented** — `game_loss_effect.rs`: `Defined$` player, sets `has_lost = true`; checks remaining alive players for game over |
 | `GameWinEffect.java` | Force player to win | **Implemented** — `game_win_effect.rs`: `Defined$` player, sets `has_won = true` on winner, `has_lost = true` on all others, `game_over = true` |
-| `GoadEffect.java` | Goad a creature | Not implemented |
+| `GoadEffect.java` | Goad a creature | **Implemented** — `goad_effect.rs`: sets `goaded_by = Some(controller)` on target; goaded creature must attack but can't attack goader |
 | `LifeGainEffect.java` | Gain life | **Partial** (`player.rs` gain_life) |
 | `LifeLoseEffect.java` | Lose life | **Partial** (`player.rs` lose_life) |
 | `LifeSetEffect.java` | Set life total | **Implemented** — `life_set_effect.rs`: `Defined$` player (supports `Each`/`All` multi-player), `LifeAmount$`; uses `PlayerState.set_life()` which computes diff; fires LifeGained or LifeLost trigger based on difference |
@@ -178,17 +178,17 @@
 | `PhasesEffect.java` | Phase in/out | **Implemented** — `phases_effect.rs`: `PhaseInOrOut$ In/Out`; toggles `card.phased_out`; phased-out permanents treated as invisible; phase-in during untap step; fires PhasedOut/PhasedIn triggers |
 | `PlayEffect.java` | Play card from zone (exile, GY) | **Implemented** — `play_effect.rs`: casts from exile/graveyard (Flashback, Cascade, etc.) |
 | `PoisonEffect.java` | Give poison counters | **Implemented** — `poison_effect.rs`: adds/removes `Num$` poison counters (supports negative values, floors at 0); `Defined$` (Player/Opponent/You) and `ValidTgts$ Player` targeting; `Defined$ Player` applies to all alive players |
-| `ProtectEffect.java` | Grant protection | Not implemented |
+| `ProtectEffect.java` | Grant protection | **Implemented** — `protection_effect.rs`: `Gains$` protection keyword, `Choices$` for color choice; adds to `pump_keywords` |
 | `PumpEffect.java` | +N/+N (or set P/T) until end of turn | **Implemented** (`pump_effect.rs`: single-target power/toughness modifier until EOT) |
 | `PumpAllEffect.java` | Pump all matching creatures | **Implemented** — `pump_all_effect.rs`: `ValidCards$` filter, `NumAtt$`/`NumDef$` (signed, supports negative debuffs), `YouCtrl`/`OppCtrl`; duration = EOT (zeroed by `step_cleanup`) |
 | `RegenerateEffect.java` | Regenerate a permanent | **Implemented** — `regenerate_effect.rs`: adds regeneration shields to target creature; shields consumed instead of destroy (tap + remove damage); shields reset at end of turn |
 | `RevealEffect.java` | Reveal cards | **Partial** — `reveal.rs`: reveals N cards from target hand, notifies all agents; no full interactive UI reveal |
-| `RollDiceEffect.java` | Roll dice | Not implemented |
+| `RollDiceEffect.java` | Roll dice | **Implemented** — `roll_dice_effect.rs`: random 1-N (default d20), `ResultSubAbilities$` threshold matching, resolves sub-ability chains |
 | `SacrificeEffect.java` | Force sacrifice | **Implemented** (`game_loop.rs` Sacrifice handler: SacValid$Self or matching permanents, agent choose_sacrifice for human choice, ChangesZone trigger) |
 | `SacrificeAllEffect.java` | Force sacrifice of all matching | **Implemented** (`game_loop.rs` SacrificeAll handler: ValidCards filter, multi-player, ChangesZone trigger) |
 | `ScryEffect.java` | Scry N | **Implemented** — `scry.rs`: `ScryNum$`, `Defined$` player, agent `choose_scry`; TauriAgent `Scry` prompt + `ScryDecision` response; PassAgent keeps all on top |
 | `SetStateEffect.java` | Transform / flip / turn face-up/down | **Implemented** — `set_state_effect.rs`: `Mode$ Transform/Flip/TurnFaceUp/TurnFaceDown`; Transform with optional condition gate; Flip toggles `card.flipped`; TurnFaceUp/Down toggles `card.face_down` |
-| `ShuffleEffect.java` | Shuffle library | **Partial** (`action.rs` shuffle_library) |
+| `ShuffleEffect.java` | Shuffle library | **Implemented** — `shuffle_effect.rs`: `Defined$` player (default You), `Optional` flag; calls `game.shuffle_library()` |
 | `SkipPhaseEffect.java` | Skip a phase | **Implemented** — `skip_phase_effect.rs`: `Phase$ Draw/Combat/Untap`, `Defined$` player; sets per-player skip flags; game loop checks before each phase |
 | `SurveilEffect.java` | Surveil N | **Implemented** — `surveil.rs`: `Amount$`, `Defined$` player, agent `choose_surveil`; TauriAgent `Surveil` prompt + `SurveilDecision` response; emits ChangesZone trigger for graveyard cards |
 | `TapEffect.java` | Tap a permanent | **Implemented** — `tap_effect.rs`: taps targeted or `Defined$ Self` battlefield permanent; `ETB$` (silent tap), `RememberTapped$`/`AlwaysRemember$` (store in remembered_cards); fires `Taps` trigger |
@@ -510,7 +510,7 @@
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `Mana.java` | Individual mana object with color, source, restrictions | **Partial** (`mana_pool.rs` tracks by color) |
-| `ManaPool.java` | Player's mana pool with payment logic | **Implemented** (`mana_pool.rs`) |
+| `ManaPool.java` | Player's mana pool with payment logic | **Implemented** (`mana/mod.rs` — pool-aware auto-tap, dual land support; intrinsic mana ability generation for basic subtypes in `card_db.rs`; `land_mana_atoms()` helper for ability-driven mana production) |
 | `ManaCostBeingPaid.java` | Tracks partial mana cost payment | **Partial** (try_pay handles full payment) |
 | `ManaConversionMatrix.java` | Mana color conversion rules | Not implemented |
 | `ManaAtom.java` | Mana atom bitmask constants | **Implemented** (ManaAtom in `foundation/mana.rs`) |
@@ -584,7 +584,7 @@
 |-----------|---------|:-------------------:|
 | `PlayerAction.java` | Abstract base action | **Partial** (MainPhaseAction enum in `agent.rs`) |
 | `CastSpellAction.java` | Cast spell action | **Partial** (Play(CardId) variant) |
-| `ActivateAbilityAction.java` | Activate ability action | **Partial** (ActivateMana variant) |
+| `ActivateAbilityAction.java` | Activate ability action | **Partial** (ActivateMana + ActivateAbility variants) |
 | `PassPriorityAction.java` | Pass priority action | **Implemented** (Pass variant) |
 | `PayCostAction.java` | Pay cost action | Not implemented |
 | `PayManaFromPoolAction.java` | Pay mana from pool | Not implemented |
@@ -660,11 +660,11 @@
 | `SpellAbilityStackInstance.java` | Spell on the stack with full context | **Implemented** (`stack.rs` StackEntry) |
 | `SpellPermanent.java` | Permanent spell (creature/non-creature) | Not implemented |
 | `Spell.java` | Non-permanent spell base | Not implemented |
-| `AbilityActivated.java` | Activated ability | Not implemented |
+| `AbilityActivated.java` | Activated ability | **Implemented** (`ability/activated.rs` parses `AB$` lines; `game_loop.rs` activate_ability resolves mana/non-mana; UI wired via `ActivatableAbilityInfo` in prompt.rs + tauri_agent.rs) |
 | `AbilityStatic.java` | Static ability wrapper | Not implemented |
 | `AbilitySub.java` | Sub-ability in ability chain | Not implemented |
-| `AbilityManaPart.java` | Mana ability component | Not implemented |
-| `LandAbility.java` | Land play ability | Not implemented |
+| `AbilityManaPart.java` | Mana ability component | **Implemented** (`ability/activated.rs` is_mana_ability flag; `game_loop.rs` resolve_mana_ability produces mana from `Produced$` param including `Combo` colors and `Combo ColorIdentity` (commander color identity lookup) via `choose_color`, resolves `SubAbility$` chains for pain lands; creature mana abilities wired to UI via tappable list; multi-ability picker modal for lands with multiple mana abilities; intrinsic mana abilities auto-generated for basic land subtypes — supports shock/dual lands) |
+| `LandAbility.java` | Land play ability | **Partial** (intrinsic mana abilities auto-generated for basic land subtypes in `card_db.rs`; `land_mana_atoms()` in `mana/mod.rs`) |
 | `OptionalCost.java` | Optional additional costs (Kicker, Buyback) | **Implemented** (`AlternativeCost` enum + kicker/buyback/multikicker/replicate/entwine in `spellability/mod.rs`, `game_loop.rs`; `kicked`/`buyback_paid`/`kick_count`/`replicate_count` flags on SpellAbility; `+kicked` filter, `Condition$ Kicked` gate) |
 | `OptionalCostValue.java` | Optional cost value tracking | Not implemented |
 | `SpellAbilityCondition.java` | Conditions for ability activation | Not implemented |
@@ -690,7 +690,7 @@
 | `StaticAbility.java` | Core static ability class with layer system | **Partial** (`static_ability.rs`: `StaticAbility` struct + parser, `StaticMode` enum (6 modes), `CardFilter` for `Affected$`/`ValidCards$`; missing: 74+ modes, dependency graph, timestamp tracking) |
 | `StaticAbilityLayer.java` | Enum: copy, control, text, type, color, abilities, P/T, rules | **Partial** (`static_ability.rs`: `Layer` enum — Control(2), Type(4), Color(5), Ability(6), SetPT(7b), ModifyPT(7c); missing: copy/text/7a/rules layers) |
 | `StaticAbilityMode.java` | Enum: 80+ static ability modes | **Partial** (`static_ability.rs` `StaticMode`: Continuous, CantAttack, CantBlock, ETBTapped, CantBeCast, ReduceCost, IncreaseCost; 73+ modes not yet handled) |
-| `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: Control (2, `GainControl$` incl. aura `Card.EnchantedBy`), Ability/keyword-grant (6), SetPT (7b), ModifyPT (7c) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped; missing: type/color layers, dependency resolution) |
+| `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: Control (2, `GainControl$` incl. aura `Card.EnchantedBy`), Ability/keyword-grant (6), SetPT (7b), ModifyPT (7c) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped via static abilities, `R:Event$ Moved | ReplaceWith$ ETBTapped` replacement effects, AND `ReplaceWith$ DBTap` shock land pattern with `UnlessCost$ PayLife<N>` player prompt; missing: type/color layers, dependency resolution) |
 | `StaticAbilityCantAttack.java` | Prevents attacking | **Implemented** (`layer.rs`: `Mode$ CantAttack` sets `cant_attack_static` flag; `card.rs` `can_attack()` respects it) |
 | `StaticAbilityCantBlock.java` | Prevents blocking | **Implemented** (`layer.rs`: `Mode$ CantBlock` sets `cant_block_static` flag; `card.rs` `can_block()` respects it) |
 | `StaticAbilityCantBeSacrificed.java` | Prevents sacrifice | Not implemented |
@@ -824,7 +824,7 @@
 | `TriggerBecomesTarget.java` | Becomes target | **Implemented** (fires in game_loop play_card + activate_ability_on_stack) |
 | `TriggerBecomesTargetOnce.java` | Targeted once | Not implemented |
 | `TriggerEvolved.java` | Creature evolves | Not implemented |
-| `TriggerExplores.java` | Creature explores | **Partial** (TriggerType + TriggerMode defined, explore mechanic not yet implemented) |
+| `TriggerExplores.java` | Creature explores | **Implemented** (TriggerType + TriggerMode defined, `explore_effect.rs` mechanic implemented) |
 | `TriggerMutates.java` | Creature mutates | Not implemented |
 | `TriggerAdapt.java` | Creature adapts | Not implemented |
 | `TriggerBecomeMonstrous.java` | Becomes monstrous | Not implemented |
@@ -984,8 +984,8 @@
 | Category | Java Files | Fully Implemented | Partially Implemented | Not Implemented |
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
 | Core Game | 37 | 3 | 9 | 25 |
-| Ability System | 10 | 0 | 3 | 7 |
-| Ability Effects | 204 | 60 | 12 | 132 |
+| Ability System | 10 | 2 | 2 | 6 |
+| Ability Effects | 204 | 85 | 9 | 110 |
 | Card System | 28 | 4 | 4 | 20 |
 | Perpetual Effects | 9 | 0 | 0 | 9 |
 | Tokens | 1 | 1 | 0 | 0 |
@@ -1004,14 +1004,18 @@
 | Static Abilities | 61 | 2 | 4 | 55 |
 | Triggers | 139 | 26 | 5 | 108 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **120** | **70** | **579** |
+| **TOTAL** | **769** | **145** | **66** | **558** |
 
-> **Coverage: ~24.7% implemented or partially implemented** (190 of 769 features have some Rust counterpart).
+> **Coverage: ~27.4% implemented or partially implemented** (211 of 769 features have some Rust counterpart).
 >
-> The Rust engine has **91 implementation files** (123 total incl. tests/tools) across 5 crates. **60 effect handlers**, **34 trigger types**, **47 keyword abilities**, **7 static ability modes**, **8 replacement event types**, and **4 cost types** are functional. The architecture is solid — game loop, phase system, combat, mana pool, stack, triggers, replacement effects, static ability layer system all work.
+> The Rust engine has **~115 implementation files** (150+ total incl. tests/tools) across 6 crates. **85 effect handlers**, **34 trigger types**, **47 keyword abilities**, **7 static ability modes**, **8 replacement event types**, and **4 cost types** are functional. The architecture is solid — game loop, phase system, combat, mana pool, stack, triggers, replacement effects, static ability layer system all work.
+>
+> **Issue #53 complete**: All 25 high-priority effects implemented, unlocking ~2,200 additional cards. New Choose* UI modals (ChooseType, ChooseNumber, ChooseCardName) added to frontend.
+>
+> **Mana system**: Intrinsic mana ability generation for basic land subtypes; pool-aware auto-tap with dual land routing; multi-ability picker modal; Combo / Combo ColorIdentity support; shock land pay-life-or-ETB-tapped prompts; pain land SubAbility$ damage; accurate `calculate_available_mana` with source-count cap (prevents dual lands being double-counted).
 >
 > **Major gaps by priority** (see [Section 23](#23-priority-analysis--whats-missing) for breakdown, [Section 24](#24-suggested-github-issues) for pre-formatted issues):
-> - **Effects**: 132 not implemented (7 critical, 25 high, 65 medium, 48 low)
+> - **Effects**: 110 not implemented (0 critical, 0 high, 65 medium, 48 low)
 > - **Triggers**: 108 not implemented (15 critical, 20 high, 40+ medium)
 > - **Static Abilities**: 55 modes not implemented (11 critical, 15 high)
 > - **Costs**: 46 types not implemented (8 critical, 12 high)
@@ -1083,35 +1087,35 @@
 | **Clone** | `CloneEffect.java` | **Implemented** — `clone_effect.rs` |
 | **RepeatEach** | `RepeatEachEffect.java` | **Implemented** — `repeat_each_effect.rs` |
 
-#### High Priority (25 effects — common mechanics)
+#### High Priority (25 effects — common mechanics) ✅ ALL IMPLEMENTED (issue #53)
 
-| Effect | Java File | Description |
-|--------|-----------|-------------|
-| ChooseCardName | `ChooseCardNameEffect.java` | Name a card (Pithing Needle, Meddling Mage) |
-| ChooseNumber | `ChooseNumberEffect.java` | Choose a number (Engineered Explosives) |
-| ChoosePlayer | `ChoosePlayerEffect.java` | Choose a player target |
-| ChooseType | `ChooseTypeEffect.java` | Choose creature type/card type |
-| ChooseSource | `ChooseSourceEffect.java` | Choose damage source |
-| CopySpellAbility | `CopySpellAbilityEffect.java` | Copy a spell on the stack (Fork, Twincast) |
-| CountersPutAll | `CountersPutAllEffect.java` | Put counters on all matching permanents |
-| CountersMove | `CountersMoveEffect.java` | Move counters between permanents |
-| CountersProliferate | `CountersProliferateEffect.java` | Proliferate mechanic |
-| DamagePrevent | `DamagePreventEffect.java` | Prevent N damage to target |
-| DamageEach | `DamageEachEffect.java` | Deal damage to each player/creature |
-| Detain | `DetainEffect.java` | Detain a permanent |
-| DigUntil | `DigUntilEffect.java` | Dig until you find a card matching criteria |
-| Encode | `EncodeEffect.java` | Cipher mechanic |
-| Explore | `ExploreEffect.java` | Explore (reveal top, +1/+1 or draw) |
-| FlipCoin | `FlipCoinEffect.java` | Coin flip effects |
-| Goad | `GoadEffect.java` | Goad a creature (must attack, can't attack you) |
-| MustBlock | `MustBlockEffect.java` | Force a creature to block |
-| Protect | `ProtectEffect.java` | Grant protection from X |
-| ProtectAll | `ProtectAllEffect.java` | Grant protection to all matching |
-| RemoveFromCombat | `RemoveFromCombatEffect.java` | Remove creature from combat |
-| RollDice | `RollDiceEffect.java` | Roll dice effects (D&D sets) |
-| Shuffle | `ShuffleEffect.java` | Shuffle library |
-| TokenEffectBase | `TokenEffectBase.java` | Token creation base (shared logic) |
-| TwoPiles | `TwoPilesEffect.java` | Fact or Fiction pile division |
+| Effect | Java File | Status |
+|--------|-----------|--------|
+| ChooseCardName | `ChooseCardNameEffect.java` | **Implemented** — `name_card_effect.rs` |
+| ChooseNumber | `ChooseNumberEffect.java` | **Implemented** — `choose_number_effect.rs` |
+| ChoosePlayer | `ChoosePlayerEffect.java` | **Implemented** — `choose_player_effect.rs` |
+| ChooseType | `ChooseTypeEffect.java` | **Implemented** — `choose_type_effect.rs` |
+| ChooseSource | `ChooseSourceEffect.java` | **Implemented** — `choose_source_effect.rs` |
+| CopySpellAbility | `CopySpellAbilityEffect.java` | **Implemented** — `copy_spell_ability_effect.rs` |
+| CountersPutAll | `CountersPutAllEffect.java` | **Implemented** — `counters_put_all_effect.rs` |
+| CountersMove | `CountersMoveEffect.java` | **Implemented** — `move_counter_effect.rs` |
+| CountersProliferate | `CountersProliferateEffect.java` | **Implemented** — `proliferate_effect.rs` |
+| DamagePrevent | `DamagePreventEffect.java` | **Implemented** — `prevent_damage_effect.rs` |
+| DamageEach | `DamageEachEffect.java` | **Implemented** — `each_damage_effect.rs` |
+| Detain | `DetainEffect.java` | **Implemented** — `detain_effect.rs` |
+| DigUntil | `DigUntilEffect.java` | **Implemented** — `dig_until_effect.rs` |
+| Encode | `EncodeEffect.java` | **Implemented** — `encode_effect.rs` |
+| Explore | `ExploreEffect.java` | **Implemented** — `explore_effect.rs` |
+| FlipCoin | `FlipCoinEffect.java` | **Implemented** — `flip_a_coin_effect.rs` |
+| Goad | `GoadEffect.java` | **Implemented** — `goad_effect.rs` |
+| MustBlock | `MustBlockEffect.java` | **Implemented** — `must_block_effect.rs` |
+| Protect | `ProtectEffect.java` | **Implemented** — `protection_effect.rs` |
+| ProtectAll | `ProtectAllEffect.java` | **Implemented** — `protection_all_effect.rs` |
+| RemoveFromCombat | `RemoveFromCombatEffect.java` | **Implemented** — `remove_from_combat_effect.rs` |
+| RollDice | `RollDiceEffect.java` | **Implemented** — `roll_dice_effect.rs` |
+| Shuffle | `ShuffleEffect.java` | **Implemented** — `shuffle_effect.rs` |
+| TokenEffectBase | `TokenEffectBase.java` | **Implemented** — `token_effect.rs` (enhanced with inline TokenPower$/TokenToughness$/TokenTypes$/TokenKeywords$ params) |
+| TwoPiles | `TwoPilesEffect.java` | **Implemented** — `two_piles_effect.rs` |
 
 #### Medium Priority (65 effects)
 
@@ -1291,7 +1295,7 @@ CostAddMana, CostAdjustment, CostBehold, CostBeholdExile, CostBlight, CostChoose
 
 ### 23.10 Mana System — Gaps
 
-**Implemented:** Mana pool (WUBRGC counters), basic cost payment (colors, generic, hybrid), auto-tap lands, commander tax support.
+**Implemented:** Mana pool (WUBRGC counters), basic cost payment (colors, generic, hybrid), pool-aware auto-tap lands (respects manually tapped mana, with fallback to `basic_land_mana_atom` for CLI/test cards), commander tax support, dual land / non-basic land mana ability routing (ActivateAbility path), `calculate_available_mana` checks land activated abilities, multi-ability land picker (UI modal for choosing between abilities on pain lands like Yavimaya Coast), `Produced$ Combo` mana (player chooses color via `choose_color`), per-ability `SpellDescription$` caching in agent `snapshot_state`, mana ability SubAbility$ chain resolution (e.g. pain land self-damage), intrinsic mana ability generation for basic land subtypes (`card_db.rs` — auto-generates `AB$ Mana | Cost$ T | Produced$ X` for Plains/Island/Swamp/Mountain/Forest subtypes; handles shock lands like Breeding Pool producing both G and U), `land_mana_atoms()` helper for ability-driven mana calculations in auto-tap and untap logic, shock land ETB with `ReplaceWith$ DBTap` + `UnlessCost$ PayLife<N>` — player prompted "Pay N life so X enters untapped?" via `choose_optional_trigger`; AI always pays; human gets `ChooseOptionalTriggerModal` with Yes/No; applies to all 10 shock lands (Breeding Pool, Hallowed Fountain, etc.).
 
 | Missing Feature | Java File(s) | Priority |
 |----------------|-------------|----------|

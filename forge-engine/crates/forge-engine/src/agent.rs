@@ -243,6 +243,34 @@ pub trait PlayerAgent {
         valid.iter().copied().take(max).collect()
     }
 
+    /// Choose a creature/card type (for ChooseType effect).
+    /// `type_category` is "Creature", "Card", "Land", etc.
+    /// `valid_types` lists the legal type choices.
+    /// Default: pick the first valid type.
+    fn choose_type(&mut self, _player: PlayerId, _type_category: &str, valid_types: &[String]) -> Option<String> {
+        valid_types.first().cloned()
+    }
+
+    /// Choose a card name (for NameCard effect).
+    /// `valid_names` lists the legal card name choices (for ChooseFromList mode).
+    /// Default: pick the first valid name.
+    fn choose_card_name(&mut self, _player: PlayerId, valid_names: &[String]) -> Option<String> {
+        valid_names.first().cloned()
+    }
+
+    /// Choose a number (for ChooseNumber effect).
+    /// Default: pick the minimum.
+    fn choose_number(&mut self, _player: PlayerId, min: i32, _max: i32) -> Option<i32> {
+        Some(min)
+    }
+
+    /// Choose heads or tails for a coin flip.
+    /// Returns true for heads, false for tails.
+    /// Default: always call heads.
+    fn flip_coin_call(&mut self, _player: PlayerId) -> bool {
+        true
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;

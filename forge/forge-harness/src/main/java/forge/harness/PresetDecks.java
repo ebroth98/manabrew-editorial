@@ -56,6 +56,71 @@ public final class PresetDecks {
             {"Hypnotic Specter", "3"},
             {"Sengir Vampire", "2"},
         });
+
+        PRESETS.put("comprehensive_test", new String[][] {
+            // Lands (18)
+            {"Forest", "3"},
+            {"Island", "3"},
+            {"Plains", "3"},  // was 2 + Command Tower (Combo ColorIdentity → unusable in non-Commander)
+            {"Mountain", "2"},
+            {"Swamp", "3"},   // was 2 + Path of Ancestry (Combo ColorIdentity → unusable in non-Commander)
+            {"Breeding Pool", "1"},
+            {"Hallowed Fountain", "1"},
+            {"Temple of Mystery", "1"},
+            {"Yavimaya Coast", "1"},
+            // Keyword creatures (11)
+            {"Vampire Nighthawk", "1"},
+            {"Serra Angel", "1"},
+            {"Darksteel Myr", "1"},
+            {"Boggart Brute", "1"},
+            {"Glistener Elf", "1"},
+            {"White Knight", "1"},
+            {"Giant Spider", "1"},
+            {"Llanowar Elves", "2"},
+            {"Soul Warden", "1"},
+            {"Guttersnipe", "1"},
+            // ETB / explore / proliferate (4)
+            {"Merfolk Branchwalker", "1"},
+            {"Jadelight Ranger", "1"},
+            {"Elvish Visionary", "1"},  // was Mulldrifter (evoke: Rust uses evoke cost, Java uses main cost)
+            {"Thrummingbird", "1"},
+            // Detain / goad / protection (3)
+            {"Lyev Skyknight", "1"},
+            {"Gods Willing", "1"},
+            {"Brave the Elements", "1"},
+            // Damage / removal (4)
+            {"Lightning Bolt", "2"},
+            {"Wrath of God", "1"},
+            {"Doom Blade", "1"},
+            {"Prey Upon", "1"},
+            // Card advantage (4)
+            {"Ponder", "1"},
+            {"Preordain", "1"},
+            {"Thought Scour", "1"},
+            {"Steady Progress", "1"},
+            // Modal / draw / choice (3)
+            {"Izzet Charm", "1"},
+            {"Divination", "1"},
+            {"Control Magic", "1"},
+            // Combat tricks / bounce / fog (3)
+            {"Giant Growth", "1"},
+            {"Fog", "1"},
+            {"Unsummon", "1"},
+            // Tokens (3)
+            {"Raise the Alarm", "1"},
+            {"Dragon Fodder", "1"},
+            {"Lingering Souls", "1"},
+            // Simple creatures / spells (6) — removed alt-cost cards that cause parity divergences
+            {"Faithless Looting", "1"},
+            {"Goblin Bushwhacker", "1"},
+            {"Volcanic Hammer", "1"},
+            {"Shock", "1"},
+            {"Lightning Elemental", "1"},
+            {"Gray Ogre", "1"},
+            // Static anthems (2)
+            {"Glorious Anthem", "1"},
+            {"Honor of the Pure", "1"},
+        });
     }
 
     /**

@@ -168,6 +168,75 @@ forge-engine/
 │           └── main.rs                 # Interactive terminal game client
 ```
 
+## Parity Engine
+
+The `forge-parity` crate is a differential testing framework that validates the Rust engine produces identical game behavior to the Java Forge reference implementation.
+
+### Prerequisites
+
+- Rust 1.70+ (`rustup.rs`)
+- Java 11+ and Maven (for the Java harness)
+
+### 1. Build the Java harness
+
+```bash
+cd forge/forge-harness
+mvn package -q
+```
+
+This produces `forge/forge-harness/target/forge-harness-jar-with-dependencies.jar`.
+
+### 2. Run in Rust-only mode (snapshot dump)
+
+Runs the Rust engine with a deterministic agent and outputs per-phase snapshots. Useful for debugging and golden file testing.
+
+```bash
+cargo run -p forge-parity -- \
+  --deck1 red_burn --deck2 green_stompy \
+  --seed 42 --max-turns 10 \
+  --format json
+```
+
+### 3. Run in full parity mode (Rust vs Java comparison)
+
+Runs both engines side-by-side with the same seed and decks, then compares snapshots field-by-field and reports divergences.
+
+```bash
+cargo run -p forge-parity -- \
+  --deck1 red_burn --deck2 green_stompy \
+  --seed 42 --max-turns 10 \
+  --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar \
+  --format text
+```
+
+### Available preset decks
+
+`red_burn`, `green_stompy`, `white_aggro`, `black_control`
+
+### CLI flags
+
+| Flag | Description |
+|---|---|
+| `--deck1 <name>` | Preset deck for player 1 |
+| `--deck2 <name>` | Preset deck for player 2 |
+| `--seed <N>` | Deterministic RNG seed |
+| `--max-turns <N>` | Stop after N turns |
+| `--java-jar <path>` | Path to Java harness JAR (enables full parity mode) |
+| `--format json\|text` | Output format |
+| `--output <file>` | Write to file instead of stdout |
+
+### How it works
+
+Both engines use a **DeterministicAgent** that makes reproducible decisions:
+- Always keeps opening hand (no mulligan)
+- Plays first playable card (alphabetically by name), then passes
+- Attacks with all eligible creatures (sorted by name)
+- Never blocks
+- Targets opponent for player targets; first alphabetical card for card targets
+- Discards first N cards alphabetically
+
+Snapshots are captured at each phase transition and compared by card name (not internal IDs) with alphabetic sorting for deterministic ordering.
+
 ## Relationship to Forge
 
 This project reuses [Forge's card script format](https://github.com/Card-Forge/forge) as the source of truth for card definitions. The ~32,000 `.txt` files in Forge's `res/cardsfolder/` directory define every card's abilities, types, costs, and rules text. The Rust engine parses these scripts identically and aims to produce the same game behavior as Forge's Java `forge-game` module.

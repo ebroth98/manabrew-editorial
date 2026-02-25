@@ -9,7 +9,8 @@ use forge_foundation::{PhaseType, ZoneType};
 
 use crate::game_view_dto::{card_to_dto, CardDto, GameViewDto};
 use crate::prompt::{
-    AgentPrompt, AgentPromptInner, BlockAssignment, DisplayEvent, PlayerAction, TargetAnyChoice,
+    ActivatableAbilityInfo, AgentPrompt, AgentPromptInner, BlockAssignment, DisplayEvent,
+    PlayerAction, TargetAnyChoice,
 };
 
 const RESPONSE_TIMEOUT: Duration = Duration::from_secs(120);
@@ -34,6 +35,8 @@ pub struct RemotePlayerAgent {
     latest_view: Option<GameViewDto>,
     pending_display_events: Vec<DisplayEvent>,
     peeked_library_cards: Vec<CardDto>,
+    /// Cached per-ability descriptions and is_mana_ability flags, populated in snapshot_state.
+    ability_descriptions: std::collections::HashMap<(u32, usize), (String, bool)>,
 }
 
 impl RemotePlayerAgent {
@@ -53,6 +56,7 @@ impl RemotePlayerAgent {
             latest_view: None,
             pending_display_events: Vec::new(),
             peeked_library_cards: Vec::new(),
+            ability_descriptions: std::collections::HashMap::new(),
         }
     }
 
@@ -121,6 +125,22 @@ impl PlayerAgent for RemotePlayerAgent {
             &[],
             &[],
         ));
+
+        // Cache per-ability descriptions from battlefield cards
+        self.ability_descriptions.clear();
+        let battlefield = game.cards_in_zone(forge_foundation::ZoneType::Battlefield, self.player_id);
+        for &card_id in battlefield {
+            let card = game.card(card_id);
+            for ab in &card.activated_abilities {
+                let desc = ab.params.get("SpellDescription")
+                    .cloned()
+                    .unwrap_or_else(|| ab.ability_text.clone());
+                self.ability_descriptions.insert(
+                    (card_id.0, ab.ability_index),
+                    (desc, ab.is_mana_ability),
+                );
+            }
+        }
     }
 
     fn mulligan_decision(&mut self, _player: PlayerId, hand: &[CardId]) -> bool {
@@ -141,11 +161,11 @@ impl PlayerAgent for RemotePlayerAgent {
         playable: &[CardId],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
-        _activatable: &[(CardId, usize)],
+        activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
         let playable_card_ids: Vec<String> =
             playable.iter().map(|c| format!("card-{}", c.0)).collect();
-        let tappable_land_ids: Vec<String> = tappable_lands
+        let mut tappable_land_ids: Vec<String> = tappable_lands
             .iter()
             .map(|c| format!("card-{}", c.0))
             .collect();
@@ -154,7 +174,36 @@ impl PlayerAgent for RemotePlayerAgent {
             .map(|c| format!("card-{}", c.0))
             .collect();
 
-        let mut view = self.view();
+        // Build activatable ability info and merge mana-ability cards into tappable list
+        let view_ref = self.view();
+        let mut activatable_ability_ids = Vec::new();
+        for &(card_id, ability_idx) in activatable {
+            let id_str = format!("card-{}", card_id.0);
+            let (description, is_mana) = self
+                .ability_descriptions
+                .get(&(card_id.0, ability_idx))
+                .cloned()
+                .unwrap_or_else(|| {
+                    let text = view_ref
+                        .battlefield
+                        .iter()
+                        .find(|c| c.id == id_str)
+                        .map(|c| c.text.clone())
+                        .unwrap_or_default();
+                    (text, false)
+                });
+            activatable_ability_ids.push(ActivatableAbilityInfo {
+                card_id: id_str.clone(),
+                ability_index: ability_idx,
+                description,
+                is_mana_ability: is_mana,
+            });
+            if !tappable_land_ids.contains(&id_str) {
+                tappable_land_ids.push(id_str);
+            }
+        }
+
+        let mut view = view_ref;
         for card in &mut view.my_hand {
             card.is_playable = playable_card_ids.contains(&card.id);
         }
@@ -164,14 +213,34 @@ impl PlayerAgent for RemotePlayerAgent {
             playable_card_ids,
             tappable_land_ids,
             untappable_land_ids,
+            activatable_ability_ids,
         });
         match self.recv_action() {
             PlayerAction::PlayCard { card_id } => card_id
                 .and_then(|id| Self::parse_card_id(&id))
                 .map(MainPhaseAction::Play)
                 .unwrap_or(MainPhaseAction::Pass),
-            PlayerAction::TapLand { card_id } => Self::parse_card_id(&card_id)
-                .map(MainPhaseAction::ActivateMana)
+            PlayerAction::TapLand { card_id } => {
+                let parsed = Self::parse_card_id(&card_id);
+                match parsed {
+                    Some(cid) => {
+                        // Prefer ActivateAbility if card has an activatable ability
+                        // (handles dual lands, non-basic lands with AB$ Mana, and non-land mana sources)
+                        if let Some(&(id, idx)) = activatable.iter().find(|(id, _)| *id == cid) {
+                            MainPhaseAction::ActivateAbility(id, idx)
+                        } else {
+                            // Basic land without AB$ Mana — use ActivateMana
+                            MainPhaseAction::ActivateMana(cid)
+                        }
+                    }
+                    None => MainPhaseAction::Pass,
+                }
+            }
+            PlayerAction::ActivateAbility {
+                card_id,
+                ability_index,
+            } => Self::parse_card_id(&card_id)
+                .map(|cid| MainPhaseAction::ActivateAbility(cid, ability_index))
                 .unwrap_or(MainPhaseAction::Pass),
             PlayerAction::UntapLand { card_id } => Self::parse_card_id(&card_id)
                 .map(MainPhaseAction::UntapMana)
@@ -521,6 +590,44 @@ impl PlayerAgent for RemotePlayerAgent {
                 .filter_map(|id| Self::parse_card_id(id))
                 .collect(),
             _ => valid.iter().copied().take(max).collect(),
+        }
+    }
+
+    fn choose_type(&mut self, _player: PlayerId, type_category: &str, valid_types: &[String]) -> Option<String> {
+        self.send_prompt(AgentPromptInner::ChooseType {
+            game_view: self.view(),
+            type_category: type_category.to_string(),
+            valid_types: valid_types.to_vec(),
+            source_card_name: None,
+        });
+        match self.recv_action() {
+            PlayerAction::TypeDecision { chosen_type } => chosen_type,
+            _ => valid_types.first().cloned(),
+        }
+    }
+
+    fn choose_card_name(&mut self, _player: PlayerId, valid_names: &[String]) -> Option<String> {
+        self.send_prompt(AgentPromptInner::ChooseCardName {
+            game_view: self.view(),
+            valid_names: valid_names.to_vec(),
+            source_card_name: None,
+        });
+        match self.recv_action() {
+            PlayerAction::CardNameDecision { chosen_name } => chosen_name,
+            _ => valid_names.first().cloned(),
+        }
+    }
+
+    fn choose_number(&mut self, _player: PlayerId, min: i32, max: i32) -> Option<i32> {
+        self.send_prompt(AgentPromptInner::ChooseNumber {
+            game_view: self.view(),
+            min,
+            max,
+            source_card_name: None,
+        });
+        match self.recv_action() {
+            PlayerAction::NumberDecision { chosen_number } => chosen_number,
+            _ => Some(min),
         }
     }
 
