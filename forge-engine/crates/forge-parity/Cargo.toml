@@ -1,0 +1,17 @@
+[package]
+name = "forge-parity"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "forge-parity"
+path = "src/main.rs"
+
+[dependencies]
+forge-foundation = { path = "../forge-foundation" }
+forge-engine-core = { path = "../forge-engine" }
+forge-carddb = { path = "../forge-carddb" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = "0.8"
+clap = { version = "4", features = ["derive"] }

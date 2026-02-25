@@ -87,7 +87,7 @@
 |-----------|---------|:-------------------:|
 | `AbilityFactory.java` | Parses card script text into SpellAbility objects | **Partial** (parser.rs parses abilities/triggers/SVars) |
 | `AbilityKey.java` | Enum of all ability parameter keys used in run/replacement params | **Partial** (RunParams in `event.rs`) |
-| `AbilityUtils.java` | Utility: resolve defined cards/players, calculate amounts | Not implemented |
+| `AbilityUtils.java` | Utility: resolve defined cards/players, calculate amounts | **Partial** (`resolve_defined_player` in `effects/mod.rs`: handles `You`, `Player.You`, `Opponent`, `Player.Opponent`, `OpponentCtrl`; used by trigger-driven effects like Guttersnipe) |
 | `ApiType.java` | Enum of all ability API types (~200 types: DealDamage, Destroy, Draw…) | Not implemented |
 | `AbilityApiBased.java` | Base class for API-based abilities | Not implemented |
 | `SpellAbilityEffect.java` | Abstract base for all spell ability effects | Not implemented |
@@ -951,6 +951,27 @@
 | `spellability/mod.rs` | **Complete** | SpellAbility module structure |
 | `spellability/targeting.rs` | **Complete** | Targeting system: parse_valid_targets, choose_targets, CardInZone support for graveyard/exile targeting |
 
+### Crate: `forge-parity` (cross-engine differential testing)
+| File | Status | Features |
+|------|--------|----------|
+| `main.rs` | **Implemented** | CLI entry point: Rust-only mode and full parity mode (`--java-jar`) |
+| `runner.rs` | **Implemented** | Rust game runner with deterministic agents, snapshot collection |
+| `deterministic_agent.rs` | **Implemented** | Fully reproducible PlayerAgent: alphabetical choices, always keep, all-attack, no-block |
+| `snapshot.rs` | **Implemented** | Extract normalized StateSnapshot from GameState (sorted, name-based) |
+| `protocol.rs` | **Implemented** | Shared JSON types: StateSnapshot, DecisionPoint, Decision, GameTrace, ParityReport |
+| `comparator.rs` | **Implemented** | Snapshot diff engine: field-by-field comparison, Divergence reporting |
+| `report.rs` | **Implemented** | Report generation: JSON and human-readable text formats |
+| `java_bridge.rs` | **Implemented** | Subprocess bridge: launches Java harness JAR, reads JSONL snapshots |
+
+### Java Module: `forge-harness` (Java side of parity testing)
+| File | Status | Features |
+|------|--------|----------|
+| `Main.java` | **Implemented** | Headless CLI: loads decks, runs game, emits JSONL snapshots |
+| `DeterministicController.java` | **Implemented** | Deterministic PlayerController matching Rust DeterministicAgent logic |
+| `DeterministicLobbyPlayer.java` | **Implemented** | LobbyPlayer factory that creates DeterministicController instances |
+| `SnapshotExtractor.java` | **Implemented** | Extracts JSON snapshots from Java Game state matching Rust format |
+| `PresetDecks.java` | **Implemented** | Builds preset decks (red_burn, green_stompy, white_aggro, black_control) |
+
 ### Crate: `forge-cli`
 | File | Status | Features |
 |------|--------|----------|
@@ -963,7 +984,7 @@
 | Category | Java Files | Fully Implemented | Partially Implemented | Not Implemented |
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
 | Core Game | 37 | 3 | 9 | 25 |
-| Ability System | 10 | 0 | 2 | 8 |
+| Ability System | 10 | 0 | 3 | 7 |
 | Ability Effects | 204 | 60 | 12 | 132 |
 | Card System | 28 | 4 | 4 | 20 |
 | Perpetual Effects | 9 | 0 | 0 | 9 |
@@ -983,9 +1004,9 @@
 | Static Abilities | 61 | 2 | 4 | 55 |
 | Triggers | 139 | 26 | 5 | 108 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **120** | **69** | **580** |
+| **TOTAL** | **769** | **120** | **70** | **579** |
 
-> **Coverage: ~24.6% implemented or partially implemented** (189 of 769 features have some Rust counterpart).
+> **Coverage: ~24.7% implemented or partially implemented** (190 of 769 features have some Rust counterpart).
 >
 > The Rust engine has **91 implementation files** (123 total incl. tests/tools) across 5 crates. **60 effect handlers**, **34 trigger types**, **47 keyword abilities**, **7 static ability modes**, **8 replacement event types**, and **4 cost types** are functional. The architecture is solid — game loop, phase system, combat, mana pool, stack, triggers, replacement effects, static ability layer system all work.
 >

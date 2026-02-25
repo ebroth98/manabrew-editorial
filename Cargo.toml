@@ -7,6 +7,7 @@ members = [
     "forge-engine/crates/forge-engine",
     "forge-engine/crates/forge-cli",
     "forge-engine/crates/forge-server",
+    "forge-engine/crates/forge-parity",
 ]
 
 [workspace.dependencies]
