@@ -1,6 +1,6 @@
 # Forge Game Engine — Feature Mapping
 
-> **769 Java files** in `forge/forge-game/src/main/java/forge/game/` mapped against **~37 Rust files** in `forge-engine/`.
+> **769 Java files** in `forge/forge-game/src/main/java/forge/game/` mapped against **~91 Rust implementation files** (123 total including tests/tools) in `forge-engine/`.
 >
 > Legend: **Implemented** | **Partial** | **Stub** | Not implemented
 
@@ -30,7 +30,7 @@
 20. [Triggers (`game/trigger/`)](#20-triggers-gametrigger)
 21. [Zones (`game/zone/`)](#21-zones-gamezone)
 22. [forge-engine Rust Implementation Summary](#22-forge-engine-rust-implementation-summary)
-
+23. [Priority Analysis — What's Missing](#23-priority-analysis--whats-missing)
 ---
 
 ## 1. Core Game (`game/`)
@@ -100,7 +100,7 @@
 
 ## 3. Ability Effects (`game/ability/effects/`)
 
-197 files — Individual effect implementations. Each file is a `SpellAbilityEffect` subclass.
+204 files — Individual effect implementations. Each file is a `SpellAbilityEffect` subclass.
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
@@ -175,7 +175,7 @@
 | `PermanentCreatureEffect.java` | Resolve creature permanent spell | Not implemented |
 | `PermanentNoncreatureEffect.java` | Resolve non-creature permanent spell | Not implemented |
 | `PhasesEffect.java` | Phase in/out | **Implemented** — `phases_effect.rs`: `PhaseInOrOut$ In/Out`; toggles `card.phased_out`; phased-out permanents treated as invisible; phase-in during untap step; fires PhasedOut/PhasedIn triggers |
-| `PlayEffect.java` | Play card from zone (exile, GY) | Not implemented |
+| `PlayEffect.java` | Play card from zone (exile, GY) | **Implemented** — `play_effect.rs`: casts from exile/graveyard (Flashback, Cascade, etc.) |
 | `PoisonEffect.java` | Give poison counters | **Implemented** — `poison_effect.rs`: adds/removes `Num$` poison counters (supports negative values, floors at 0); `Defined$` (Player/Opponent/You) and `ValidTgts$ Player` targeting; `Defined$ Player` applies to all alive players |
 | `ProtectEffect.java` | Grant protection | Not implemented |
 | `PumpEffect.java` | +N/+N (or set P/T) until end of turn | **Implemented** (`pump_effect.rs`: single-target power/toughness modifier until EOT) |
@@ -198,11 +198,11 @@
 | `UntapAllEffect.java` | Untap all matching | **Implemented** — `untap_all_effect.rs`: `ValidCards$` filter with full qualifier support |
 | `VoteEffect.java` | Council's dilemma / voting mechanic | Not implemented |
 
-> **Note**: 197 effect files total. ~62 have full or partial implementation. Additional implemented effects not listed individually: `RevealHandEffect.java` → `reveal_hand.rs`, `LookAtEffect.java` → `look_at.rs`, `RearrangeTopOfLibraryEffect` → `rearrange_top_of_library.rs`, `PeekAndRevealEffect.java` → `peek_and_reveal_effect.rs`, `CleanupEffect.java` → `cleanup_effect.rs`, `ReverseTurnOrderEffect.java` → `reverse_turn_order_effect.rs` (reverses player_order), `EndCombatPhaseEffect.java` → `end_combat_phase_effect.rs` (sets end_combat_requested flag), `PowerExchangeEffect.java` → `power_exchange_effect.rs` (swaps power between two creatures), `TakeInitiativeEffect.java` → `take_initiative_effect.rs` (sets initiative_holder), `SkipTurnEffect.java` → `skip_turn_effect.rs` (increments player skip_turns counter).
+> **Note**: 204 effect files total. 60 have full implementation, ~12 partial. Additional implemented effects not listed individually: `RevealHandEffect.java` → `reveal_hand.rs`, `LookAtEffect.java` → `look_at.rs`, `RearrangeTopOfLibraryEffect` → `rearrange_top_of_library.rs`, `PeekAndRevealEffect.java` → `peek_and_reveal_effect.rs`, `CleanupEffect.java` → `cleanup_effect.rs`, `ReverseTurnOrderEffect.java` → `reverse_turn_order_effect.rs` (reverses player_order), `EndCombatPhaseEffect.java` → `end_combat_phase_effect.rs` (sets end_combat_requested flag), `PowerExchangeEffect.java` → `power_exchange_effect.rs` (swaps power between two creatures), `TakeInitiativeEffect.java` → `take_initiative_effect.rs` (sets initiative_holder), `SkipTurnEffect.java` → `skip_turn_effect.rs` (increments player skip_turns counter), `PlayEffect.java` → `play_effect.rs` (casts from exile/graveyard).
 >
-> **Deferred effects** (require major subsystems): `Venture` (dungeon system), `RingTemptsYou` (ring system), `ControlPlayer` (controller redirection), `Animate` (timestamp PT system), `Play` (zone casting).
+> **Deferred effects** (require major subsystems): `Venture` (dungeon system), `RingTemptsYou` (ring system), `ControlPlayer` (controller redirection), `Animate` (timestamp PT system).
 >
-> The remaining ~100+ effects are **not implemented**.
+> The remaining ~132 effects are **not implemented**. See [Section 23](#23-priority-analysis--whats-missing) for priority breakdown.
 
 ---
 
@@ -433,7 +433,7 @@
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `Keyword.java` | Enum of all MTG keywords (~200+) | **Partial** (string-based keywords in `card.rs`; ~20 keywords with runtime logic) |
+| `Keyword.java` | Enum of all MTG keywords (~200+) | **Partial** (string-based keywords in `card.rs`; 46 keywords with runtime logic — see Keyword Runtime Status below) |
 | `KeywordInterface.java` | Interface for keyword instances | **Partial** (Vec<String> on CardInstance) |
 | `KeywordInstance.java` | Abstract keyword instance with parameters | Not implemented |
 | `KeywordCollection.java` | Collection of keyword instances | **Partial** (Vec<String>) |
@@ -748,7 +748,7 @@
 |-----------|---------|:-------------------:|
 | `TriggerHandler.java` | Central trigger management & dispatch | **Implemented** (`trigger_handler.rs`) |
 | `Trigger.java` | Abstract base trigger class | **Implemented** (`trigger.rs` Trigger struct) |
-| `TriggerType.java` | Enum of all trigger types | **Implemented** (33 types in `event.rs`: 8 original + 25 new) |
+| `TriggerType.java` | Enum of all trigger types | **Implemented** (34 types in `event.rs`: 8 original + 26 new incl. SpellCopied) |
 | `WrappedAbility.java` | Ability wrapper for trigger execution | Not implemented |
 | `TriggerWaiting.java` | Waiting trigger queue | **Implemented** (waiting_triggers in handler) |
 | **Zone Change Triggers** | | |
@@ -962,30 +962,336 @@
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
 | Core Game | 37 | 3 | 9 | 25 |
 | Ability System | 10 | 0 | 2 | 8 |
-| Ability Effects | 197 | 50 | 12 | 135 |
+| Ability Effects | 204 | 60 | 12 | 132 |
 | Card System | 28 | 4 | 4 | 20 |
-| Perpetual Effects | 8 | 0 | 0 | 8 |
-| Tokens | 1 | 0 | 0 | 1 |
+| Perpetual Effects | 9 | 0 | 0 | 9 |
+| Tokens | 1 | 1 | 0 | 0 |
 | Combat | 10 | 1 | 1 | 8 |
-| Costs | 60 | 1 | 4 | 55 |
-| Events | 60 | 0 | 3 | 57 |
+| Costs | 51 | 2 | 3 | 46 |
+| Events | 62 | 0 | 4 | 58 |
 | Extra Hands | 1 | 0 | 0 | 1 |
-| Keywords | 20 | 4 | 8 | 8 |
-| Mana | 10 | 1 | 2 | 7 |
+| Keywords | 32 | 4 | 8 | 20 |
+| Mana | 6 | 2 | 2 | 2 |
 | Mulligan | 7 | 0 | 0 | 7 |
 | Phases | 7 | 1 | 3 | 3 |
-| Player | 17 | 1 | 2 | 14 |
+| Player | 17 | 2 | 2 | 13 |
 | Player Actions | 10 | 1 | 3 | 6 |
 | Replacement Effects | 46 | 4 | 4 | 38 |
-| Spell Abilities | 25 | 4 | 2 | 19 |
-| Static Abilities | 60 | 2 | 4 | 54 |
-| Triggers | 140 | 26 | 5 | 109 |
+| Spell Abilities | 23 | 4 | 2 | 17 |
+| Static Abilities | 61 | 2 | 4 | 55 |
+| Triggers | 139 | 26 | 5 | 108 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **97** | **66** | **606** |
+| **TOTAL** | **769** | **120** | **69** | **580** |
 
-> **Coverage: ~21.2% implemented or partially implemented** (163 of 769 features have some Rust counterpart)
+> **Coverage: ~24.6% implemented or partially implemented** (189 of 769 features have some Rust counterpart).
 >
-> The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The trigger system now supports **34 trigger types** (8 original + 26 new incl. SpellCopied) with OptionalDecider$ prompting, delayed trigger infrastructure, and comprehensive ValidCard$/ValidPlayer$ filtering. **23 keyword abilities** are now supported (22 fully implemented: Flashback, Kicker, Storm, Cascade, Buyback, Spectacle, Evoke, Dash, Blitz, Multikicker, Replicate, Entwine, Escalate, Escape, Overload, Madness, Rebound, Prowess, Magecraft, Suspend, Foretell, Emerge; 1 partial: Strive). Player and game-state effects are implemented including Tap, Untap, LifeSet, LifeExchange, GameWin, GameLoss, GameDraw, AddTurn, Fog, AddPhase, SkipPhase, EndTurn, and more. The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (109 still not implemented), and **costs** (58 files).
+> The Rust engine has **91 implementation files** (123 total incl. tests/tools) across 5 crates. **60 effect handlers**, **34 trigger types**, **46 keyword abilities**, **7 static ability modes**, **8 replacement event types**, and **4 cost types** are functional. The architecture is solid — game loop, phase system, combat, mana pool, stack, triggers, replacement effects, static ability layer system all work.
+>
+> **Major gaps by priority** (see [Section 23](#23-priority-analysis--whats-missing) for breakdown, [Section 24](#24-suggested-github-issues) for pre-formatted issues):
+> - **Effects**: 132 not implemented (7 critical, 25 high, 65 medium, 48 low)
+> - **Triggers**: 108 not implemented (15 critical, 20 high, 40+ medium)
+> - **Static Abilities**: 55 modes not implemented (11 critical, 15 high)
+> - **Costs**: 46 types not implemented (8 critical, 12 high)
+> - **Replacement Effects**: 38 types not implemented (8 critical, 12 high)
+> - **Mana**: X costs, phyrexian life payment, conversion matrix
+> - **Combat**: Attack requirements/restrictions, damage assignment order
+> - **Infrastructure**: Game logging, snapshots, format configuration
+
+---
+
+## 23. Priority Analysis — What's Missing
+
+> This section organizes all unimplemented features by priority tier (Critical → High → Medium → Low) for actionable GitHub issue creation. The per-file status tables in Sections 1–21 above remain the authoritative reference.
+
+### 23.1 Executive Summary
+
+| Metric | Count |
+|--------|------:|
+| Total Java files (forge-game) | 769 |
+| Total Java files (forge-core) | 146 |
+| Total Rust files (forge-engine) | 123 |
+| Effect handlers implemented | 60 of 204 (29%) |
+| Trigger types implemented | 34 of ~140 (24%) |
+| Keywords implemented | 46 of ~200+ (23%) |
+| Static ability modes | 7 of 61 (11%) |
+| Replacement event types | 8 of 46 (17%) |
+| Cost types | 4 of 51 (8%) |
+| **Estimated overall coverage** | **~25%** |
+
+### 23.2 Subsystem Coverage Overview
+
+| # | Subsystem | Java | Rust | Coverage | Key Gaps |
+|---|-----------|:----:|:----:|:--------:|----------|
+| 1 | Core Game | 37 | 6 | ~30% | Logging, snapshots, rules config, formats |
+| 2 | Ability System | 10 | 2 | ~20% | Factory partial, API type dispatch partial |
+| 3 | **Ability Effects** | 204 | 60 | **29%** | 144 effects missing (7 critical, 25 high) |
+| 4 | Card System | 38 | 2 | ~25% | Factory, views, damage history, clone states |
+| 5 | Perpetual | 9 | 0 | 0% | Arena-specific (low priority) |
+| 6 | Tokens | 1 | — | ~80% | Token creation works via TokenEffect |
+| 7 | **Combat** | 10 | 1 | ~40% | Attack requirements/restrictions, banding |
+| 8 | **Costs** | 51 | 1 | ~8% | 47 cost types missing (8 critical) |
+| 9 | Events | 62 | 1 | ~10% | 60+ event types, visitor pattern |
+| 10 | Extra Hands | 1 | 0 | 0% | Niche (Conspiracy format) |
+| 11 | **Keywords** | 32 | — | ~70% | Infrastructure classes, ~150+ niche keywords |
+| 12 | Mana | 6 | 1 | ~50% | X costs, phyrexian life, conversion, refunds |
+| 13 | Mulligan | 7 | 1 | ~40% | Paris, Vancouver variants |
+| 14 | Phases | 7 | 1 | ~40% | Extra phase/turn objects, untap handler |
+| 15 | Player | 17 | 1 | ~25% | Controller, properties, predicates |
+| 16 | Player Actions | 10 | — | — | Handled in Tauri layer (prompt.rs) |
+| 17 | **Replacement** | 46 | 3 | ~17% | 38 types missing (8 critical) |
+| 18 | Spell Abilities | 23 | 3 | ~25% | Conditions, restrictions, views |
+| 19 | **Static Abilities** | 61 | 3 | ~11% | 54 modes missing (11 critical) |
+| 20 | **Triggers** | 139 | 3 | ~24% | 105+ types missing (15 critical) |
+| 21 | Zones | 8 | 1 | ~35% | MagicStack in game_loop, CostPaymentStack |
+
+### 23.3 Effects — Missing by Priority
+
+**Currently Implemented (60):** DealDamage, GainLife, LoseLife, PutCounter, RemoveCounter, Poison, Pump, Destroy, Draw, ChangeZoneAll, ChangeZone, SacrificeAll, Sacrifice, CopyPermanent, Token, Mana, Mill, Scry, Surveil, Dig, DigMultiple, RearrangeTopOfLibrary, Reveal, RevealHand, LookAt, Charm, PeekAndReveal, SetState, Cleanup, Counter, ControlGain, Fight, Discard, Attach, DestroyAll, DamageAll, PumpAll, TapAll, UntapAll, Tap, Untap, LifeSet, LifeExchange, GameWin, GameLoss, GameDraw, AddTurn, Fog, ReverseTurnOrder, EndCombatPhase, EndTurn, PowerExchange, BecomeMonarch, TakeInitiative, SkipTurn, SkipPhase, AddPhase, Phases, Regenerate, Play
+
+#### Critical (7 effects — block basic gameplay)
+
+| Effect | Java File | Why Critical |
+|--------|-----------|-------------|
+| **Animate** | `AnimateEffect.java` + `AnimateEffectBase.java` + `AnimateAllEffect.java` | Turns non-creatures into creatures (Manlands, vehicles). Very common |
+| **ControlGainVariant** | `ControlGainVariantEffect.java` | "Gain control until end of turn" (Act of Treason, Threaten) |
+| **Balance** | `BalanceEffect.java` | Balance/Restore Balance — forces equal board state |
+| **Choose Card** | `ChooseCardEffect.java` | Choose a card from multiple options (many effects need this) |
+| **Choose Color** | `ChooseColorEffect.java` | Choose a color (Protection from chosen color, etc.) |
+| **Clone** | `CloneEffect.java` | Clone/copy creature effects (distinct from CopyPermanent) |
+| **RepeatEach** | `RepeatEachEffect.java` | "For each creature/player" loops. Required by many board-wide effects |
+
+#### High Priority (25 effects — common mechanics)
+
+| Effect | Java File | Description |
+|--------|-----------|-------------|
+| ChooseCardName | `ChooseCardNameEffect.java` | Name a card (Pithing Needle, Meddling Mage) |
+| ChooseNumber | `ChooseNumberEffect.java` | Choose a number (Engineered Explosives) |
+| ChoosePlayer | `ChoosePlayerEffect.java` | Choose a player target |
+| ChooseType | `ChooseTypeEffect.java` | Choose creature type/card type |
+| ChooseSource | `ChooseSourceEffect.java` | Choose damage source |
+| CopySpellAbility | `CopySpellAbilityEffect.java` | Copy a spell on the stack (Fork, Twincast) |
+| CountersPutAll | `CountersPutAllEffect.java` | Put counters on all matching permanents |
+| CountersMove | `CountersMoveEffect.java` | Move counters between permanents |
+| CountersProliferate | `CountersProliferateEffect.java` | Proliferate mechanic |
+| DamagePrevent | `DamagePreventEffect.java` | Prevent N damage to target |
+| DamageEach | `DamageEachEffect.java` | Deal damage to each player/creature |
+| Detain | `DetainEffect.java` | Detain a permanent |
+| DigUntil | `DigUntilEffect.java` | Dig until you find a card matching criteria |
+| Encode | `EncodeEffect.java` | Cipher mechanic |
+| Explore | `ExploreEffect.java` | Explore (reveal top, +1/+1 or draw) |
+| FlipCoin | `FlipCoinEffect.java` | Coin flip effects |
+| Goad | `GoadEffect.java` | Goad a creature (must attack, can't attack you) |
+| MustBlock | `MustBlockEffect.java` | Force a creature to block |
+| Protect | `ProtectEffect.java` | Grant protection from X |
+| ProtectAll | `ProtectAllEffect.java` | Grant protection to all matching |
+| RemoveFromCombat | `RemoveFromCombatEffect.java` | Remove creature from combat |
+| RollDice | `RollDiceEffect.java` | Roll dice effects (D&D sets) |
+| Shuffle | `ShuffleEffect.java` | Shuffle library |
+| TokenEffectBase | `TokenEffectBase.java` | Token creation base (shared logic) |
+| TwoPiles | `TwoPilesEffect.java` | Fact or Fiction pile division |
+
+#### Medium Priority (65 effects)
+
+<details>
+<summary>Click to expand full list</summary>
+
+ActivateAbility, Amass, AssignGroup, BidLife, Block, Bond, Branch, Camouflage, ChangeCombatants, ChangeSpeed, ChangeTargets, ChangeText, ChangeX, ChangeZoneResolve, Clash, ClassLevelUp, Cloak, Connive, ControlExchange, ControlExchangeVariant, ControlPlayer, ControlSpell, CountersMultiply, CountersNote, CountersPutOrRemove, CountersRemoveAll, DamageBase, DamageResolve, DayTime, Debuff, DelayedTrigger, DetachedCard, Discover, DrainMana, EffectEffect, Endure, Haunt, ImmediateTrigger, Incubate, Intensify, Investigate, Learn, LifeExchangeVariant, ManifestBase, Manifest, ManaReflected, Meld, MultiplePiles, Mutate, PermanentCreature, Permanent, PermanentNoncreature, PlayLandVariant, RegenerationEffect, RemoveFromGame, RemoveFromMatch, ReorderZone, RepeatEffect, ReplaceCounter, ReplaceDamage, ReplaceMana, ReplaceSplitDamage, ReplaceToken, StoreSVar
+
+</details>
+
+#### Low Priority (48 effects — niche/format-specific)
+
+<details>
+<summary>Click to expand full list</summary>
+
+Abandon, AdvanceCrank, Airbend, AlterAttribute, Ascend, AssembleContraption, BecomesBlocked, BlankLine, Blight, ChaosEnsues, ChooseDirection, ChooseEvenOdd, ChooseGeneric, ChooseSector, ClaimThePrize, DraftEffect, Earthbend, FlipOntoBattlefield, Heist, InternalRadiation, LosePerpetual, MakeCard, ManifestDread, OpenAttraction, OwnershipGain, Planeswalk, Radiation, ReplaceEffect, RestartGame, RingTemptsYou, RollPlanarDice, RunChaos, Seek, SetInMotion, SubgameEffect, SwitchBlock, TapOrUntap, TapOrUntapAll, TextBoxExchange, TimeTravel, Unattach, UnlockDoor, Venture, VillainousChoice, Vote, ZoneExchange
+
+</details>
+
+### 23.4 Triggers — Missing by Priority
+
+**Currently Implemented (34):** ChangesZone, Phase, SpellCast, Attacks, Blocks, AttackerBlocked, AttackerUnblocked, DamageDone, DamageDealtOnce, Countered, LifeGained, LifeLost, CounterAdded, CounterRemoved, Drawn, Discarded, Milled, Exiled, Sacrificed, Destroyed, LandPlayed, Taps, Untaps, TapsForMana, BecomesTarget, BecomeMonarch, Fight, Attached, Unattached, Transformed, TokenCreated, SpellCopied, Explored, TakeInitiative
+
+#### Critical (15 triggers)
+
+| Trigger | Java File | Why Critical |
+|---------|-----------|-------------|
+| AttackersDeclared | `TriggerAttackersDeclared.java` | Fires when attack is declared (many cards) |
+| BlockersDeclared | `TriggerBlockersDeclared.java` | Fires when blocks are declared |
+| ChangesZoneAll | `TriggerChangesZoneAll.java` | Batch zone change events |
+| ChangesController | `TriggerChangesController.java` | Control change triggers |
+| TurnBegin | `TriggerTurnBegin.java` | "At the beginning of your turn" |
+| DamageDoneOnce | `TriggerDamageDoneOnce.java` | "Whenever ~ deals damage" (once per batch) |
+| SpellCastAll | `TriggerSpellCastAll.java` | Any spell cast by any player |
+| LifeLostAll | `TriggerLifeLostAll.java` | Any player loses life |
+| CounterAddedOnce | `TriggerCounterAddedOnce.java` | Counter added (batch) |
+| DiscardedAll | `TriggerDiscardedAll.java` | Any player discards |
+| SacrificedOnce | `TriggerSacrificedOnce.java` | Sacrifice event (batch) |
+| Cycled | `TriggerCycled.java` | Cycling trigger |
+| PhaseIn / PhaseOut | `TriggerPhaseIn/Out.java` | Phasing triggers |
+| Always | `TriggerAlways.java` | Upkeep/continuous triggers |
+| Immediate | `TriggerImmediate.java` | Immediate trigger resolution |
+
+#### High Priority (20 triggers)
+
+Surveil, Scry, Foretell, SearchedLibrary, Shuffled, ManaAdded, TokenCreatedOnce, TapAll, UntapAll, BecomesTargetOnce, AttackerBlockedByCreature, AttackerBlockedOnce, AttackerUnblockedOnce, SpellCastOnce, SpellCastOfType, DamageAll, DamagePreventedOnce, ExcessDamage, LifeGainedAll, CounterRemovedOnce
+
+#### Medium Priority (40+ triggers)
+
+Evolved, Mutates, Adapt, BecomeMonstrous, BecomeRenowned, BecomesCrewed, BecomesSaddled, FlippedCoin, FightOnce, Exerted, Exploited, Investigated, ForetellDone, Forage, Proliferate, CollectEvidence, CommitCrime, Discover, DayTimeChanges, ManaExpend, ClassLevelGained, CompletedDungeon, EnteredRoom, Vote, Championed, Clashed, Devoured, Enlisted, Mentored, Trains, CaseSolved, ClaimPrize, GiveGift, RingTemptsYou, Specializes, UnlockDoor, FullyUnlock, ManifestDread, Elementalbend, CrankContraption, PlanarDice, Abandoned, AbilityResolves, AbilityTriggered
+
+#### Low Priority (20+ triggers)
+
+NewGame, LosesGame, PayLife, ExcessDamageAll, DamageDoneOnceByController, CounterPlayerAddedAll, CounterTypeAddedAll, MilledAll, MilledOnce, BecomesPlotted, CrewedSaddled, BecomesSuspected, Waiting, WrappedAbility
+
+### 23.5 Keywords — Missing
+
+**Implemented (46):** Flying, Reach, First Strike, Double Strike, Trample, Deathtouch, Lifelink, Vigilance, Defender, Haste, Flash, Hexproof, Shroud, Hexproof from X, Menace, Fear, Intimidate, Shadow, Skulk, Horsemanship, Indestructible, Infect, Wither, Toxic, Protection, Flashback, Kicker, Storm, Cascade, Buyback, Spectacle, Evoke, Dash, Blitz, Multikicker, Replicate, Entwine, Escalate, Escape, Overload, Madness, Rebound, Suspend, Foretell, Emerge, Prowess
+
+#### High Priority Missing
+
+| Keyword | Description |
+|---------|-------------|
+| Equip | Equipment attachment cost |
+| Cycling | Discard to draw |
+| Morph / Megamorph | Face-down casting |
+| Convoke | Tap creatures to help pay |
+| Delve | Exile graveyard to help pay |
+| Affinity | Cost reduction by permanent count |
+| Annihilator | Force sacrifice on attack |
+| Undying | Return with +1/+1 counter |
+| Persist | Return with -1/-1 counter |
+| Bestow | Cast as aura or creature |
+| Embalm / Eternalize | Create token copy from graveyard |
+| Fabricate | +1/+1 counters or tokens |
+| Adapt | +1/+1 counters if none |
+| Crew | Tap creatures to crew vehicle |
+| Ward | Counter unless pay (partially parsed) |
+| Afterlife | Create spirit tokens on death |
+| Exploit | Sacrifice creature for ETB |
+
+#### Medium Priority Missing
+
+Ninjutsu, Champion, Devour, Hideaway, Companion, Mutate, Boast, Forage, Landwalk, Banding, Rampage, Flanking, Phasing, Cumulative Upkeep, Echo, Fading, Vanishing, Modular, Sunburst, Dredge, Haunt, Bloodthirst, Graft, Forecast, Retrace, Exalted, Unearth, Living Weapon, Soulbond, Unleash, Extort, Tribute, Outlast, Renown, Myriad, Improvise, Ascend, Riot
+
+### 23.6 Static Abilities — Missing
+
+**Implemented (7 modes):** Continuous (layer system), CantAttack, CantBlock, ETBTapped, CantBeCast, ReduceCost, IncreaseCost
+
+#### Critical Missing (11 modes)
+
+| Mode | Java File | Description |
+|------|-----------|-------------|
+| CantTarget | `StaticAbilityCantTarget.java` | "Can't be the target of spells" |
+| CantAttach | `StaticAbilityCantAttach.java` | "Can't be enchanted/equipped" |
+| MustAttack | `StaticAbilityMustAttack.java` | Forced attack requirement |
+| MustBlock | `StaticAbilityMustBlock.java` | Forced blocking requirement |
+| Panharmonicon | `StaticAbilityPanharmonicon.java` | Double ETB triggers |
+| CantGainLosePayLife | `StaticAbilityCantGainLosePayLife.java` | Platinum Emperion, etc. |
+| CantDraw | `StaticAbilityCantDraw.java` | "Players can't draw cards" |
+| CantSacrifice | `StaticAbilityCantSacrifice.java` | Sigarda, Host of Herons |
+| CantRegenerate | `StaticAbilityCantRegenerate.java` | "Can't be regenerated" |
+| DisableTriggers | `StaticAbilityDisableTriggers.java` | Torpor Orb, Hushbringer |
+| CantPutCounter | `StaticAbilityCantPutCounter.java` | Solemnity |
+
+#### High Priority Missing (15 modes)
+
+CastWithFlash, BlockRestrict, AttackRestrict, IgnoreHexproofShroud, IgnoreLegendRule, MustTarget, AssignCombatDamageAsUnblocked, AssignNoCombatDamage, CombatDamageToughness, NoCleanupDamage, InfectDamage, WitherDamage, ColorlessDamageSource, CountersRemain, MaxCounter
+
+#### Medium Priority Missing (28 modes)
+
+Devotion, Exhaust, FlipCoinMod, GainLifeRadiation, IgnoreLandwalk, ManaConvert, NumLoyaltyAct, SurveilNum, TapPowerValue, TurnPhaseReversed, UnspentMana, UntapOtherPlayer, Adapt, ActivateAbilityAsIfHaste, CantBeCopied, CantBecomeMonarch, CantBeSuspected, CantChangeDayTime, CantCrew, CantDiscard, CantExile, CantPhase, CantPreventDamage, CantTransform, CantVenture, PlotZone, View (UI only)
+
+### 23.7 Replacement Effects — Missing
+
+**Implemented (8 event types):** DamageDone, Draw, DrawCards, Destroy, Moved, GainLife, AddCounter, GameLoss
+
+#### Critical Missing (8 types)
+
+| Type | Java File | Description |
+|------|-----------|-------------|
+| ReplaceGainLife | `ReplaceGainLife.java` | Modify/prevent life gain (Erebos, Tibalt) |
+| ReplaceToken | `ReplaceToken.java` | Modify token creation (Doubling Season, Anointed Procession) |
+| ReplaceDamage (full) | `ReplaceDamage.java` | Full damage replacement (redirect, modify, prevent with shield) |
+| ReplaceGameLoss | `ReplaceGameLoss.java` | "You can't lose the game" (Platinum Angel) |
+| ReplaceGameWin | `ReplaceGameWin.java` | "Players can't win the game" (Angel's Grace) |
+| ReplaceTap | `ReplaceTap.java` | Replace tap events |
+| ReplaceCounter | `ReplaceCounter.java` | Replace counterspell events |
+| ReplaceAddCounter (full) | `ReplaceAddCounter.java` | Modify counter addition (Doubling Season, Hardened Scales) |
+
+#### High Priority Missing (12 types)
+
+ReplaceDealtDamage, ReplaceLifeReduced, ReplacePayLife, ReplaceMill, ReplaceRemoveCounter, ReplaceCopySpell, ReplaceCascade, ReplaceDeclareBlocker, ReplaceProduceMana, ReplaceScry, ReplaceTransform, ReplaceTurnFaceUp
+
+#### Low Priority Missing (18 types)
+
+ReplaceAttached, ReplaceBeginPhase, ReplaceBeginTurn, ReplaceExplore, ReplaceLearn, ReplaceLoseMana, ReplacePlanarDiceResult, ReplacePlaneswalk, ReplaceProliferate, ReplaceRollDice, ReplaceRollPlanarDice, ReplaceSetInMotion, ReplaceUntap, ReplaceAssembleContraption, ReplaceAssignDealDamage, ReplaceBehold, ReplaceBeholdExile, ReplaceDrawCards (full)
+
+### 23.8 Cost System — Missing
+
+**Implemented (4 types):** Mana (CostPartMana), Tap (CostTap), PayLife (partial), Sacrifice (CostSacrifice)
+
+#### Critical Missing (8 types)
+
+| Cost | Java File | Description |
+|------|-----------|-------------|
+| CostDiscard | `CostDiscard.java` | Discard as cost (very common) |
+| CostExile | `CostExile.java` | Exile cards as cost (Force of Will, Delve) |
+| CostPayLife | `CostPayLife.java` | Full life payment (Phyrexian mana, shocklands) |
+| CostPutCounter | `CostPutCounter.java` | Put counters as cost (Planeswalker loyalty) |
+| CostRemoveCounter | `CostRemoveCounter.java` | Remove counters as cost (Planeswalker minus) |
+| CostReturn | `CostReturn.java` | Return permanent to hand as cost (Ninjutsu) |
+| CostTapType | `CostTapType.java` | Tap other permanents as cost (Convoke, Crew) |
+| CostPayEnergy | `CostPayEnergy.java` | Pay energy counters |
+
+#### High Priority Missing (12 types)
+
+CostDamage, CostDraw, CostExert, CostGainControl, CostGainLife, CostMill, CostRemoveAnyCounter, CostReveal, CostUntap, CostUntapType, CostUnattach, CostExiledMoveToGrave
+
+#### Medium/Low Priority Missing (27 types)
+
+CostAddMana, CostAdjustment, CostBehold, CostBeholdExile, CostBlight, CostChooseColor, CostChooseCreatureType, CostCollectEvidence, CostDecisionMakerBase, CostEnlist, CostExileFromStack, CostFlipCoin, CostForage, CostPartWithList, CostPartWithTrigger, CostPayShards, CostPromiseGift, CostPutCardToLib, CostRevealChosen, CostRollDice, CostWaterbend, ICostVisitor, IndividualCostPaymentInstance, PaymentDecision
+
+### 23.9 Combat System — Gaps
+
+**Implemented:** Basic attack/block declaration, full damage resolution (first/double strike, trample, deathtouch, lifelink, infect, toxic, wither), Fog, blocking legality (flying/reach, fear, intimidate, shadow, horsemanship, skulk, menace, protection), commander damage tracking.
+
+| Missing Feature | Java File(s) | Priority |
+|----------------|-------------|----------|
+| "Must attack" requirements | `AttackRequirement.java`, `AttackConstraints.java` | High |
+| "Can't attack" restrictions | `AttackRestriction.java`, `AttackRestrictionType.java`, `GlobalAttackRestrictions.java` | High |
+| Damage assignment order | Part of `Combat.java` | Medium |
+| Multi-defender (multiplayer) | Part of `Combat.java` | Medium |
+| Last-known-information | `CombatLki.java` | Medium |
+| Ninjutsu block replacement | — | Medium |
+| Banding | `AttackingBand.java` | Low |
+
+### 23.10 Mana System — Gaps
+
+**Implemented:** Mana pool (WUBRGC counters), basic cost payment (colors, generic, hybrid), auto-tap lands, commander tax support.
+
+| Missing Feature | Java File(s) | Priority |
+|----------------|-------------|----------|
+| X mana costs | Part of `ManaCostBeingPaid.java` | Critical |
+| Phyrexian mana (life payment) | Part of `Mana.java` | High |
+| Mana conversion matrix | `ManaConversionMatrix.java` | High |
+| Cost reduction/increase (static) | Part of static abilities | High |
+| Active cost payment tracking | `ManaCostBeingPaid.java` | Medium |
+| Mana refund on interruption | `ManaRefundService.java` | Medium |
+| Mana restrictions ("spend only on…") | Part of `Mana.java` | Medium |
+| Snow mana | Part of `ManaAtom.java` | Low |
+
+### 23.11 Infrastructure Gaps
+
+| System | Status | Java Files | Notes |
+|--------|--------|-----------|-------|
+| Game Logging | 0% | `GameLog.java`, `GameLogEntry.java`, `GameLogEntryType.java`, `GameLogFormatter.java` | Needed for debugging, replay, UI log |
+| Game Snapshots | 0% | `GameSnapshot.java` | State save/restore (Karn Liberated, subgames) |
+| Format/Rules Config | 0% | `GameRules.java`, `GameFormat.java`, `GameType.java` | Format enforcement, banned lists |
+| Match Management | 0% | `Match.java` | Best-of-3, sideboarding |
+| Event Visitor System | 0% | `IGameEventVisitor.java` + 60+ event classes | TriggerType enum works but less extensible |
+| Card Property Evaluation | Partial | `CardProperty.java`, `CardPredicates.java`, `CardLists.java` | String matching in trigger.rs; needs full evaluation |
+| SpellAbility Conditions | 0% | `SpellAbilityCondition.java`, `SpellAbilityRestriction.java` | ConditionDefined/ConditionPresent partial in effects only |
 
 ---
 
