@@ -16,7 +16,8 @@ use crate::ai_agent::SimpleAiAgent;
 use crate::card_db::{card_rules_to_instance, get_token_db};
 use crate::game_view_dto::GameViewDto;
 use crate::preset_decks::{
-    build_ai_opponent, build_custom_deck, build_preset_decks, is_preset_id, CardIdentity,
+    build_ai_opponent, build_custom_deck, build_preset_deck_for_player, build_preset_decks,
+    is_preset_id, CardIdentity,
 };
 use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 use crate::remote_agent::RemotePlayerAgent;
@@ -271,6 +272,7 @@ impl GameManager {
         &self,
         app: AppHandle,
         player_names: Vec<String>,
+        deck_lists: Vec<Vec<CardIdentity>>,
         host_player_index: usize,
         starting_life: i32,
     ) -> Result<String, String> {
@@ -280,6 +282,12 @@ impl GameManager {
         }
         if host_player_index >= num_players {
             return Err("Invalid host player index".into());
+        }
+        if deck_lists.len() != num_players {
+            return Err("Deck list count must match player count".into());
+        }
+        if deck_lists.iter().any(|deck| deck.is_empty()) {
+            return Err("All players must have a selected deck".into());
         }
 
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
@@ -374,6 +382,7 @@ impl GameManager {
 
         // Game thread
         let player_name_strs = player_names.clone();
+        let selected_deck_lists = deck_lists.clone();
         let handle = thread::spawn(move || {
             eprintln!(
                 "[game_thread] Starting multiplayer game: {} with {} players",
@@ -383,6 +392,7 @@ impl GameManager {
                 run_multiplayer_game(
                     game_id_clone.clone(),
                     player_name_strs,
+                    selected_deck_lists,
                     host_player_index,
                     starting_life,
                     game_host_prompt_tx,
@@ -554,6 +564,7 @@ fn run_game(
 fn run_multiplayer_game(
     game_id: String,
     player_names: Vec<String>,
+    deck_lists: Vec<Vec<CardIdentity>>,
     host_player_index: usize,
     starting_life: i32,
     host_prompt_tx: mpsc::Sender<AgentPrompt>,
@@ -594,11 +605,14 @@ fn run_multiplayer_game(
         }
     }
 
-    // For now, all players get the red burn preset deck.
-    // Deck selection for multiplayer will be added later.
     for i in 0..num_players {
         let pid = PlayerId(i as u32);
-        build_ai_opponent(&mut game, pid);
+        let deck_list = &deck_lists[i];
+        if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
+            build_preset_deck_for_player(&mut game, &deck_list[0].name, pid);
+        } else {
+            build_custom_deck(&mut game, pid, deck_list);
+        }
     }
 
     let mut game_loop = GameLoop::new(num_players);

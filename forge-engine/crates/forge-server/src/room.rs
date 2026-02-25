@@ -1,4 +1,4 @@
-use crate::protocol::{GameFormat, RoomInfo, RoomPlayerInfo, RoomStatus};
+use crate::protocol::{CardIdentity, GameFormat, PlayerDeckInfo, RoomInfo, RoomPlayerInfo, RoomStatus};
 
 #[derive(Debug, Clone)]
 pub struct RoomSlot {
@@ -6,6 +6,9 @@ pub struct RoomSlot {
     pub username: String,
     pub ready: bool,
     pub connected: bool,
+    pub selected_deck_name: Option<String>,
+    pub selected_deck_list: Vec<CardIdentity>,
+    pub selected_commander_name: Option<String>,
 }
 
 #[derive(Debug)]
@@ -41,6 +44,9 @@ impl Room {
                 username: host_username,
                 ready: false,
                 connected: true,
+                selected_deck_name: None,
+                selected_deck_list: vec![],
+                selected_commander_name: None,
             }],
         }
     }
@@ -68,6 +74,9 @@ impl Room {
             username,
             ready: false,
             connected: true,
+            selected_deck_name: None,
+            selected_deck_list: vec![],
+            selected_commander_name: None,
         });
         Ok(())
     }
@@ -104,6 +113,47 @@ impl Room {
         } else {
             Err("Player not in room".into())
         }
+    }
+
+    pub fn set_deck_selection(
+        &mut self,
+        player_id: &str,
+        deck_name: String,
+        deck_list: Vec<CardIdentity>,
+        commander_name: Option<String>,
+    ) -> Result<(), String> {
+        if let Some(slot) = self.players.iter_mut().find(|p| p.player_id == player_id) {
+            slot.selected_deck_name = Some(deck_name);
+            slot.selected_deck_list = deck_list;
+            slot.selected_commander_name = commander_name;
+            slot.ready = false;
+            Ok(())
+        } else {
+            Err("Player not in room".into())
+        }
+    }
+
+    pub fn has_selected_deck(&self, player_id: &str) -> bool {
+        self.players
+            .iter()
+            .find(|p| p.player_id == player_id)
+            .map(|p| !p.selected_deck_list.is_empty() && p.selected_deck_name.is_some())
+            .unwrap_or(false)
+    }
+
+    pub fn player_decks(&self) -> Vec<PlayerDeckInfo> {
+        self.players
+            .iter()
+            .map(|p| PlayerDeckInfo {
+                username: p.username.clone(),
+                deck_name: p
+                    .selected_deck_name
+                    .clone()
+                    .unwrap_or_else(|| "Unknown Deck".to_string()),
+                deck_list: p.selected_deck_list.clone(),
+                commander_name: p.selected_commander_name.clone(),
+            })
+            .collect()
     }
 
     pub fn is_host(&self, player_id: &str) -> bool {
@@ -146,6 +196,7 @@ impl Room {
                     username: p.username.clone(),
                     ready: p.ready,
                     connected: p.connected,
+                    selected_deck_name: p.selected_deck_name.clone(),
                 })
                 .collect(),
             max_players: self.max_players,

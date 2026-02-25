@@ -1,5 +1,6 @@
 use tauri::{AppHandle, State};
 
+use crate::preset_decks::CardIdentity;
 use crate::server_client::ServerClient;
 
 #[tauri::command]
@@ -71,6 +72,22 @@ pub async fn server_set_ready(client: State<'_, ServerClient>, ready: bool) -> R
     let msg = serde_json::json!({
         "type": "SetReady",
         "ready": ready,
+    });
+    client.send(&msg.to_string())
+}
+
+#[tauri::command]
+pub async fn server_set_deck_selection(
+    client: State<'_, ServerClient>,
+    deck_name: String,
+    deck_list: Vec<CardIdentity>,
+    commander_name: Option<String>,
+) -> Result<(), String> {
+    let msg = serde_json::json!({
+        "type": "SetDeckSelection",
+        "deck_name": deck_name,
+        "deck_list": deck_list,
+        "commander_name": commander_name,
     });
     client.send(&msg.to_string())
 }

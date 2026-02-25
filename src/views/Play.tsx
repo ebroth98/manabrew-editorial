@@ -5,10 +5,13 @@ import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { Button } from "@/components/ui/button";
 import { Swords } from "lucide-react";
 import Game from "./Game";
+import type { PlayerDeckInfo } from "@/types/server";
 
 interface MultiplayerLocationState {
   multiplayer: true;
   playerOrder: string[];
+  playerDecks: PlayerDeckInfo[];
+  startingLife: number;
   isHost: boolean;
   myPlayerSlot: string;
 }
@@ -26,12 +29,16 @@ export default function Play() {
     if (!mpState?.multiplayer || multiplayerStarted.current) return;
     multiplayerStarted.current = true;
 
-    const { playerOrder, isHost, myPlayerSlot } = mpState;
+    const { playerOrder, playerDecks, isHost, startingLife, myPlayerSlot } = mpState;
 
     if (isHost) {
       // Host: start the engine with all player names
       const hostIndex = parseInt(myPlayerSlot.replace('player-', ''), 10);
-      startMultiplayerGame(playerOrder, hostIndex, 20);
+      const deckListsByPlayer = playerOrder.map((playerName) => {
+        const selected = (playerDecks ?? []).find((entry) => entry.username === playerName);
+        return selected?.deck_list ?? [];
+      });
+      startMultiplayerGame(playerOrder, deckListsByPlayer, hostIndex, startingLife);
     } else {
       // Non-host: set multiplayer state and wait for remote prompts
       setMultiplayerState(true, false, myPlayerSlot);

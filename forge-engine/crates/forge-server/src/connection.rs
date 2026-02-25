@@ -548,10 +548,52 @@ fn handle_client_message(
             }
         }
 
+        ClientMessage::SetDeckSelection {
+            deck_name,
+            deck_list,
+            commander_name,
+        } => {
+            info!(
+                "[lobby] '{}' selected deck '{}' ({} cards)",
+                username,
+                deck_name,
+                deck_list.len()
+            );
+            match lobby::set_deck_selection_sync(
+                state,
+                player_id,
+                deck_name,
+                deck_list,
+                commander_name,
+            ) {
+                Ok(room_id) => {
+                    if let Some(room) = state.rooms.get(&room_id) {
+                        broadcast_to_room(
+                            state,
+                            &room_id,
+                            &ServerMessage::RoomUpdate {
+                                room: room.to_room_info(),
+                            },
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!("[lobby] '{}' set deck failed: {}", username, e);
+                    send_msg(
+                        sender,
+                        &ServerMessage::Error {
+                            code: e.code().into(),
+                            message: e.to_string(),
+                        },
+                    );
+                }
+            }
+        }
+
         ClientMessage::StartGame => {
             info!("[game] '{}' starting game", username);
             match lobby::start_game_sync(state, player_id) {
-                Ok((room_id, player_order)) => {
+                Ok((room_id, player_order, player_decks, starting_life)) => {
                     info!(
                         "[game] game started in room {} | order: {:?}",
                         &room_id[..8],
@@ -563,6 +605,8 @@ fn handle_client_message(
                         &ServerMessage::GameStarted {
                             room_id: room_id.clone(),
                             player_order,
+                            player_decks,
+                            starting_life,
                         },
                     );
                 }
@@ -813,6 +857,7 @@ fn client_msg_type(msg: &ClientMessage) -> &'static str {
         ClientMessage::JoinRoom { .. } => "JoinRoom",
         ClientMessage::LeaveRoom => "LeaveRoom",
         ClientMessage::SetReady { .. } => "SetReady",
+        ClientMessage::SetDeckSelection { .. } => "SetDeckSelection",
         ClientMessage::StartGame => "StartGame",
         ClientMessage::BroadcastState { .. } => "BroadcastState",
         ClientMessage::TurnChange { .. } => "TurnChange",

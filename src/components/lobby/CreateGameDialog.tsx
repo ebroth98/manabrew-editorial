@@ -25,21 +25,36 @@ interface PresetDeckInfo {
 interface CreateGameDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Visual mode: full game creation (Play) or deck-only selection (Lobby). */
+  mode?: "play" | "lobby";
+  /** Optional fixed format id (e.g. "constructed" | "commander"). */
+  forcedFormatId?: string;
   /** Pre-select a saved deck by ID (e.g. when launched from MyDecks) */
   preSelectedDeckId?: string;
   /** Called with the deck card names, format ID, optional commander name, and player count when Create is confirmed */
-  onStart: (deckList: { name: string, setCode: string }[], formatId: string, commanderName?: string, playerCount?: number) => void;
+  onStart: (
+    deckList: { name: string, setCode: string }[],
+    formatId: string,
+    commanderName?: string,
+    playerCount?: number,
+    deckName?: string
+  ) => void;
 }
 
 export function CreateGameDialog({
   open,
   onOpenChange,
+  mode = "play",
+  forcedFormatId,
   preSelectedDeckId,
   onStart,
 }: CreateGameDialogProps) {
   const { savedDecks, currentDeck } = useDeckStore();
+  const isLobbyMode = mode === "lobby";
 
-  const [selectedFormat, setSelectedFormat] = useState<GameFormat>(GAME_FORMATS[0]);
+  const initialFormat =
+    GAME_FORMATS.find((f) => f.id === forcedFormatId) ?? GAME_FORMATS[0];
+  const [selectedFormat, setSelectedFormat] = useState<GameFormat>(initialFormat);
   const [selectedDeck, setSelectedDeck] = useState<string>(preSelectedDeckId ?? "current");
   const [selectedCommander, setSelectedCommander] = useState<string>(
     currentDeck.commander?.name ?? ""
@@ -52,6 +67,12 @@ export function CreateGameDialog({
       .then(setPresetDecks)
       .catch((e) => console.error("[CreateGameDialog] Failed to load preset decks:", e));
   }, []);
+
+  useEffect(() => {
+    if (!forcedFormatId) return;
+    const forced = GAME_FORMATS.find((f) => f.id === forcedFormatId);
+    if (forced) setSelectedFormat(forced);
+  }, [forcedFormatId]);
 
   // User-built decks
   const userDecks = [
@@ -124,7 +145,7 @@ export function CreateGameDialog({
       )
     : [];
 
-  const needsCommander = selectedFormat.deckRules.requiresCommander;
+  const needsCommander = !isLobbyMode && selectedFormat.deckRules.requiresCommander;
   const commanderValid = !needsCommander || selectedCommander !== "";
   const isReady = !!selectedDeckEntry && selectedDeckValidation.legal && commanderValid;
 
@@ -142,7 +163,15 @@ export function CreateGameDialog({
       return;
     }
     onOpenChange(false);
-    onStart(selectedDeckList, selectedFormat.id, needsCommander ? selectedCommander : undefined, playerCount);
+    onStart(
+      selectedDeckList,
+      selectedFormat.id,
+      selectedFormat.deckRules.requiresCommander
+        ? (needsCommander ? selectedCommander : selectedDeckEntry.commanderName)
+        : undefined,
+      playerCount,
+      selectedDeckEntry.name,
+    );
   }
 
   return (
@@ -151,9 +180,13 @@ export function CreateGameDialog({
 
         {/* ── Header ── */}
         <div className="px-6 py-4 border-b">
-          <DialogTitle className="text-lg font-semibold">New Game</DialogTitle>
+          <DialogTitle className="text-lg font-semibold">
+            {isLobbyMode ? "Choose Deck" : "New Game"}
+          </DialogTitle>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Pick a deck and battle a random AI opponent
+            {isLobbyMode
+              ? "Select the deck you will play in this lobby."
+              : "Pick a deck and battle a random AI opponent"}
           </p>
         </div>
 
@@ -161,7 +194,8 @@ export function CreateGameDialog({
         <div className="flex overflow-hidden" style={{ maxHeight: "65vh" }}>
 
           {/* Left panel — Format & options */}
-          <div className="w-48 border-r flex-shrink-0 p-4 space-y-5 overflow-y-auto bg-muted/20">
+          {!isLobbyMode && (
+            <div className="w-48 border-r flex-shrink-0 p-4 space-y-5 overflow-y-auto bg-muted/20">
 
             {/* Format */}
             <div>
@@ -220,8 +254,8 @@ export function CreateGameDialog({
               </div>
             </div>
 
-            {/* Commander picker — only for Commander format */}
-            {needsCommander && (
+              {/* Commander picker — only for Commander format */}
+              {needsCommander && (
               <div>
                 <SectionLabel>Commander</SectionLabel>
                 <div className="mt-2 space-y-1.5">
@@ -255,8 +289,8 @@ export function CreateGameDialog({
               </div>
             )}
 
-            {/* DEV: player count */}
-            <div>
+              {/* DEV: player count */}
+              <div>
               <SectionLabel>
                 Opponents
                 <span className="ml-1 text-[9px] font-mono text-orange-500 bg-orange-50 dark:bg-orange-950/30 px-1 rounded">
@@ -280,8 +314,9 @@ export function CreateGameDialog({
                   </button>
                 ))}
               </div>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Right panel — Deck picker */}
           <div className="flex-1 overflow-y-auto">
@@ -405,7 +440,7 @@ export function CreateGameDialog({
         <div className="px-6 py-3 border-t flex items-center justify-between gap-4 bg-muted/10">
           {/* Selected deck summary */}
           <div className="flex items-center gap-2 text-sm min-w-0">
-            {selectedDeckEntry ? (
+            {!isLobbyMode && selectedDeckEntry ? (
               <>
                 <span className="text-muted-foreground shrink-0">Playing</span>
                 <span className="font-medium truncate">{selectedDeckEntry.name}</span>
@@ -415,6 +450,10 @@ export function CreateGameDialog({
                   Random AI
                 </span>
               </>
+            ) : selectedDeckEntry ? (
+              <span className="text-sm text-muted-foreground truncate">
+                Selected: <span className="font-medium text-foreground">{selectedDeckEntry.name}</span>
+              </span>
             ) : (
               <span className="text-muted-foreground italic text-xs">No deck selected</span>
             )}
@@ -424,8 +463,8 @@ export function CreateGameDialog({
               Cancel
             </Button>
             <Button size="sm" onClick={handleCreate} disabled={!isReady} className="gap-1.5">
-              <Swords className="h-3.5 w-3.5" />
-              Play
+              {!isLobbyMode && <Swords className="h-3.5 w-3.5" />}
+              {isLobbyMode ? "Select Deck" : "Play"}
             </Button>
           </div>
         </div>

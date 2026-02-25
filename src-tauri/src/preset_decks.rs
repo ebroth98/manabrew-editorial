@@ -304,6 +304,36 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
     }
 }
 
+/// Build a single-player deck for `owner` from a preset id.
+/// Falls back to the red burn preset if `preset_id` is unknown.
+pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner: PlayerId) {
+    match preset_id {
+        "green_stompy" => build_named_deck(game, owner, GREEN_STOMPY),
+        "white_aggro" => build_named_deck(game, owner, WHITE_AGGRO),
+        "white_static" => build_named_deck(game, owner, WHITE_STATIC),
+        "zone_change" => build_named_deck(game, owner, ZONE_CHANGE),
+        "token_swarm" => build_named_deck(game, owner, TOKEN_SWARM),
+        "sac_cost" => build_named_deck(game, owner, SAC_COST),
+        "black_control" => build_named_deck(game, owner, BLACK_CONTROL),
+        "library_manipulation" => build_named_deck(game, owner, LIBRARY_MANIPULATION),
+        "blue_control" => build_named_deck(game, owner, BLUE_CONTROL),
+        "green_fight" => build_named_deck(game, owner, GREEN_FIGHT),
+        "showcase" => build_named_deck(game, owner, SHOWCASE),
+        "mass_effects" => build_named_deck(game, owner, MASS_EFFECTS),
+        "charm_modal" => build_named_deck(game, owner, CHARM_MODAL),
+        "trigger_test" => build_named_deck(game, owner, TRIGGER_TEST),
+        "keyword_test" => build_named_deck(game, owner, KEYWORD_TEST),
+        "poison_test" => build_named_deck(game, owner, POISON_TEST),
+        "game_effects" => build_named_deck(game, owner, GAME_EFFECTS),
+        "player_game_state" => build_named_deck(game, owner, PLAYER_GAME_STATE),
+        "keyword_cost" => build_named_deck(game, owner, KEYWORD_COST_TEST),
+        "alt_cost_test" => build_named_deck(game, owner, ALT_COST_TEST),
+        "extended_cost_test" => build_named_deck(game, owner, EXTENDED_COST_TEST),
+        "critical_effects" => build_named_deck(game, owner, CRITICAL_EFFECTS),
+        _ => build_named_deck(game, owner, RED_BURN),
+    }
+}
+
 // ── Preset deck lists ──────────────────────────────────────────────
 //
 // Each entry is (card_name, count, set_code). The set_code is the Scryfall

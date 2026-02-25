@@ -102,7 +102,12 @@ interface GameState {
   setGameConfig: (config: GameConfig) => void;
   // Actions
   startGame: (deckList: { name: string, setCode: string }[], formatId?: string, commanderName?: string) => Promise<void>;
-  startMultiplayerGame: (playerNames: string[], hostPlayerIndex: number, startingLife: number) => Promise<void>;
+  startMultiplayerGame: (
+    playerNames: string[],
+    deckLists: { name: string, setCode: string }[][],
+    hostPlayerIndex: number,
+    startingLife: number
+  ) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
   castSpell: (cardId: string) => void;
   passPriority: () => void;
@@ -204,11 +209,12 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  startMultiplayerGame: async (playerNames, hostPlayerIndex, startingLife) => {
+  startMultiplayerGame: async (playerNames, deckLists, hostPlayerIndex, startingLife) => {
     try {
       set({ debugInfo: 'Starting multiplayer game...' });
       const result = await invoke('start_multiplayer_game', {
         playerNames,
+        deckLists,
         hostPlayerIndex,
         startingLife,
       });

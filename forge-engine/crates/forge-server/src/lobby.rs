@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use crate::error::ServerError;
-use crate::protocol::{GameFormat, RoomInfo, RoomStatus};
+use crate::protocol::{CardIdentity, GameFormat, PlayerDeckInfo, RoomInfo, RoomStatus};
 use crate::room::Room;
 use crate::state::ServerState;
 
@@ -155,7 +155,43 @@ pub fn set_ready_sync(
             return Err(ServerError::GameAlreadyStarted);
         }
 
+        if ready && !room.has_selected_deck(player_id) {
+            return Err(ServerError::DeckNotSelected);
+        }
+
         room.set_ready(player_id, ready)
+            .map_err(|_| ServerError::NotInRoom)?;
+    }
+
+    Ok(room_id)
+}
+
+pub fn set_deck_selection_sync(
+    state: &Arc<ServerState>,
+    player_id: &str,
+    deck_name: String,
+    deck_list: Vec<CardIdentity>,
+    commander_name: Option<String>,
+) -> Result<String, ServerError> {
+    let room_id = {
+        state
+            .players
+            .get(player_id)
+            .and_then(|p| p.room_id.clone())
+            .ok_or(ServerError::NotInRoom)?
+    };
+
+    {
+        let mut room = state
+            .rooms
+            .get_mut(&room_id)
+            .ok_or_else(|| ServerError::RoomNotFound(room_id.clone()))?;
+
+        if room.status != RoomStatus::Lobby {
+            return Err(ServerError::GameAlreadyStarted);
+        }
+
+        room.set_deck_selection(player_id, deck_name, deck_list, commander_name)
             .map_err(|_| ServerError::NotInRoom)?;
     }
 
@@ -165,7 +201,7 @@ pub fn set_ready_sync(
 pub fn start_game_sync(
     state: &Arc<ServerState>,
     player_id: &str,
-) -> Result<(String, Vec<String>), ServerError> {
+) -> Result<(String, Vec<String>, Vec<PlayerDeckInfo>, i32), ServerError> {
     let room_id = {
         state
             .players
@@ -174,7 +210,7 @@ pub fn start_game_sync(
             .ok_or(ServerError::NotInRoom)?
     };
 
-    let player_order = {
+    let (player_order, player_decks, starting_life) = {
         let mut room = state
             .rooms
             .get_mut(&room_id)
@@ -192,9 +228,17 @@ pub fn start_game_sync(
             return Err(ServerError::PlayersNotReady);
         }
 
+        if room.players.iter().any(|p| p.selected_deck_name.is_none() || p.selected_deck_list.is_empty()) {
+            return Err(ServerError::DeckNotSelected);
+        }
+
         room.status = RoomStatus::InGame;
-        room.player_usernames()
+        let starting_life = match room.format {
+            GameFormat::Commander => 40,
+            GameFormat::Standard => 20,
+        };
+        (room.player_usernames(), room.player_decks(), starting_life)
     };
 
-    Ok((room_id, player_order))
+    Ok((room_id, player_order, player_decks, starting_life))
 }

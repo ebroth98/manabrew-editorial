@@ -44,8 +44,15 @@ pub async fn start_multiplayer_game(
     app: AppHandle,
     gm: State<'_, GameManager>,
     player_names: Vec<String>,
+    deck_lists: Vec<Vec<crate::preset_decks::CardIdentity>>,
     host_player_index: usize,
     starting_life: i32,
 ) -> Result<String, String> {
-    gm.start_multiplayer_game(app, player_names, host_player_index, starting_life)
+    gm.start_multiplayer_game(
+        app,
+        player_names,
+        deck_lists,
+        host_player_index,
+        starting_life,
+    )
 }

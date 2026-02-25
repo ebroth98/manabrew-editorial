@@ -236,9 +236,16 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
         ServerMessage::GameStarted {
             room_id,
             player_order,
+            player_decks,
+            starting_life,
         } => (
             "server:game_started",
-            serde_json::json!({ "room_id": room_id, "player_order": player_order }),
+            serde_json::json!({
+                "room_id": room_id,
+                "player_order": player_order,
+                "player_decks": player_decks,
+                "starting_life": starting_life,
+            }),
         ),
         ServerMessage::StateUpdate { from_player, state } => (
             "server:state_update",
