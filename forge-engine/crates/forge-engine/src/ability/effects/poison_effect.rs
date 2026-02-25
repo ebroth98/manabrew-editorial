@@ -17,12 +17,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
+    // Support negative amounts (remove poison counters, floor at 0)
+    let apply_poison = |counters: &mut i32, amt: i32| {
+        *counters = (*counters + amt).max(0);
+    };
+
     let controller = sa.activating_player;
 
     // If targeting was used (ValidTgts$ Player), use the chosen target.
     if let Some(target_player) = sa.target_chosen.target_player {
         if ctx.game.player(target_player).is_alive() {
-            ctx.game.player_mut(target_player).poison_counters += amount;
+            apply_poison(&mut ctx.game.player_mut(target_player).poison_counters, amount);
         }
         return;
     }
@@ -39,7 +44,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if defined == "Player" {
         let alive: Vec<_> = ctx.game.alive_players().into_iter().collect();
         for pid in alive {
-            ctx.game.player_mut(pid).poison_counters += amount;
+            apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
         }
         return;
     }
@@ -47,7 +52,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Single player: You, Opponent, TriggeredTarget, etc.
     if let Some(pid) = resolve_defined_player(defined, controller, ctx.game) {
         if ctx.game.player(pid).is_alive() {
-            ctx.game.player_mut(pid).poison_counters += amount;
+            apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
         }
     }
 }

@@ -1,0 +1,130 @@
+use super::{resolve_defined_player, EffectContext};
+use crate::event::{RunParams, TriggerType};
+use crate::spellability::SpellAbility;
+
+/// Resolve `SP$ LifeExchange` — exchange life totals between two players.
+///
+/// Mirrors Java `LifeExchangeEffect.java`.
+///
+/// # Card script examples
+/// ```text
+/// A:SP$ LifeExchange | ValidTgts$ Player
+/// A:SP$ LifeExchange | Defined$ Opponent
+/// ```
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let controller = sa.activating_player;
+
+    // Determine the other player: targeted or Defined$
+    let other = if let Some(target_player) = sa.target_chosen.target_player {
+        target_player
+    } else {
+        let defined = sa
+            .params
+            .get("Defined")
+            .map(|s| s.as_str())
+            .unwrap_or("Opponent");
+        resolve_defined_player(defined, controller, ctx.game)
+            .unwrap_or_else(|| ctx.game.opponent_of(controller))
+    };
+
+    if !ctx.game.player(controller).is_alive() || !ctx.game.player(other).is_alive() {
+        return;
+    }
+
+    let life_a = ctx.game.player(controller).life;
+    let life_b = ctx.game.player(other).life;
+
+    // Set each player's life to the other's previous total
+    let diff_a = ctx.game.player_mut(controller).set_life(life_b);
+    let diff_b = ctx.game.player_mut(other).set_life(life_a);
+
+    // Fire triggers for controller
+    if diff_a > 0 {
+        ctx.trigger_handler.run_trigger(
+            TriggerType::LifeGained,
+            RunParams {
+                player: Some(controller),
+                life_amount: Some(diff_a),
+                ..Default::default()
+            },
+            false,
+        );
+    } else if diff_a < 0 {
+        ctx.trigger_handler.run_trigger(
+            TriggerType::LifeLost,
+            RunParams {
+                player: Some(controller),
+                life_amount: Some(diff_a.abs()),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+
+    // Fire triggers for the other player
+    if diff_b > 0 {
+        ctx.trigger_handler.run_trigger(
+            TriggerType::LifeGained,
+            RunParams {
+                player: Some(other),
+                life_amount: Some(diff_b),
+                ..Default::default()
+            },
+            false,
+        );
+    } else if diff_b < 0 {
+        ctx.trigger_handler.run_trigger(
+            TriggerType::LifeLost,
+            RunParams {
+                player: Some(other),
+                life_amount: Some(diff_b.abs()),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::ability::effects::EffectContext;
+    use crate::agent::PassAgent;
+    use crate::game::GameState;
+    use crate::ids::PlayerId;
+    use crate::mana::ManaPool;
+    use crate::spellability::SpellAbility;
+    use crate::trigger::handler::TriggerHandler;
+
+    #[test]
+    fn life_exchange_swaps_totals() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+
+        // Set different life totals
+        game.player_mut(p0).life = 5;
+        game.player_mut(p1).life = 30;
+
+        let sa = SpellAbility::new_simple(None, p0, "SP$ LifeExchange | Defined$ Opponent");
+
+        let mut th = TriggerHandler::new();
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut mp = vec![ManaPool::default(), ManaPool::default()];
+        let templates = HashMap::new();
+        let mut ctx = EffectContext {
+            game: &mut game,
+            agents: &mut agents,
+            trigger_handler: &mut th,
+            token_templates: &templates,
+            mana_pools: &mut mp,
+            parent_target_card: None,
+        };
+        super::resolve(&mut ctx, &sa);
+
+        assert_eq!(ctx.game.player(p0).life, 30);
+        assert_eq!(ctx.game.player(p1).life, 5);
+    }
+}

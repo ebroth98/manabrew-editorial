@@ -5,55 +5,58 @@ use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
-/// Resolve `SP$ Untap` — untap target permanent(s).
+/// Resolve `SP$ Tap` — tap target permanent(s).
 ///
-/// Mirrors Java `UntapEffect.java`.
+/// Mirrors Java `TapEffect.java`.
 ///
 /// # Card script examples
 /// ```text
-/// A:SP$ Untap | ValidTgts$ Creature | TgtPrompt$ Select target creature to untap
-/// A:SP$ Untap | Defined$ Self
-/// A:SP$ Untap | Defined$ Self | ETB$ True
-/// DB$ Untap | Defined$ ParentTarget
+/// A:SP$ Tap | ValidTgts$ Creature | TgtPrompt$ Select target creature to tap
+/// A:SP$ Tap | Defined$ Self
+/// A:SP$ Tap | Defined$ Self | ETB$ True
+/// A:SP$ Tap | ValidTgts$ Creature | RememberTapped$ True
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let etb = sa.params.get("ETB").is_some();
+    let remember_tapped = sa.params.get("RememberTapped").is_some();
+    let always_remember = sa.params.get("AlwaysRemember").is_some();
 
-    let target_card = resolve_untap_target(ctx, sa);
+    // Targeted: use the chosen target card.
+    if let Some(target_card) = sa.target_chosen.target_card {
+        if ctx.game.card(target_card).zone == ZoneType::Battlefield {
+            tap_card(ctx, target_card, controller, etb, remember_tapped, always_remember, sa.source);
+        }
+        return;
+    }
 
-    if let Some(card_id) = target_card {
-        if ctx.game.card(card_id).zone == ZoneType::Battlefield {
-            untap_card(ctx, card_id, controller, etb);
+    // Defined$ Self — tap the source card.
+    if let Some(source) = sa.source {
+        if ctx.game.card(source).zone == ZoneType::Battlefield {
+            tap_card(ctx, source, controller, etb, remember_tapped, always_remember, sa.source);
         }
     }
 }
 
-/// Resolve the target card for untap: explicit target, Defined$ Self, or Defined$ ParentTarget.
-fn resolve_untap_target(ctx: &EffectContext, sa: &SpellAbility) -> Option<CardId> {
-    sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get("Defined").map(|s| s.as_str()) {
-            Some("Self") => sa.source,
-            Some("ParentTarget") => ctx.parent_target_card,
-            _ => None,
-        }
-    })
-}
-
-fn untap_card(
+fn tap_card(
     ctx: &mut EffectContext,
     card_id: CardId,
     controller: crate::ids::PlayerId,
     etb: bool,
+    remember_tapped: bool,
+    always_remember: bool,
+    source: Option<CardId>,
 ) {
+    let was_untapped = !ctx.game.card(card_id).tapped;
+
     if etb {
-        // ETB: directly set untapped without firing trigger
-        ctx.game.card_mut(card_id).tapped = false;
+        // ETB: directly set tapped without firing trigger
+        ctx.game.card_mut(card_id).tapped = true;
     } else {
-        let untapped = ctx.game.untap(card_id);
-        if untapped {
+        let tapped = ctx.game.tap(card_id);
+        if tapped {
             ctx.trigger_handler.run_trigger(
-                TriggerType::Untaps,
+                TriggerType::Taps,
                 RunParams {
                     card: Some(card_id),
                     player: Some(controller),
@@ -61,6 +64,13 @@ fn untap_card(
                 },
                 false,
             );
+        }
+    }
+
+    // RememberTapped / AlwaysRemember
+    if (remember_tapped && was_untapped) || always_remember {
+        if let Some(src) = source {
+            ctx.game.card_mut(src).remembered_cards.push(card_id);
         }
     }
 }
@@ -96,15 +106,14 @@ mod tests {
     }
 
     #[test]
-    fn untap_effect_untaps_target() {
+    fn tap_effect_taps_target() {
         let mut game = GameState::new(&["Alice", "Bob"], 20);
         let p0 = PlayerId(0);
         let c1 = make_creature(&mut game, p0);
         game.move_card(c1, ZoneType::Battlefield, p0);
-        game.tap(c1);
-        assert!(game.card(c1).tapped);
+        assert!(!game.card(c1).tapped);
 
-        let mut sa = SpellAbility::new_simple(None, p0, "SP$ Untap | ValidTgts$ Creature");
+        let mut sa = SpellAbility::new_simple(None, p0, "SP$ Tap | ValidTgts$ Creature");
         sa.target_chosen.target_card = Some(c1);
 
         let mut th = TriggerHandler::new();
@@ -122,6 +131,6 @@ mod tests {
         };
         super::resolve(&mut ctx, &sa);
 
-        assert!(!ctx.game.card(c1).tapped);
+        assert!(ctx.game.card(c1).tapped);
     }
 }

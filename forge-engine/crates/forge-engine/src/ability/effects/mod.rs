@@ -4,7 +4,10 @@
 //! `ability/effects/` package (204 files). Effects are dispatched by
 //! API type string extracted from the ability text.
 
+pub mod add_phase_effect;
+pub mod add_turn_effect;
 pub mod attach_effect;
+pub mod become_monarch_effect;
 pub mod charm_effect;
 pub mod cleanup_effect;
 pub mod change_zone_all_effect;
@@ -22,26 +25,42 @@ pub mod dig_effect;
 pub mod dig_multiple_effect;
 pub mod discard_effect;
 pub mod draw_effect;
+pub mod end_combat_phase_effect;
+pub mod end_turn_effect;
 pub mod fight_effect;
+pub mod fog_effect;
+pub mod game_draw_effect;
+pub mod game_loss_effect;
+pub mod game_win_effect;
+pub mod life_exchange_effect;
 pub mod life_gain_effect;
 pub mod life_lose_effect;
+pub mod life_set_effect;
 pub mod look_at_effect;
 pub mod mana_effect;
 pub mod mill_effect;
+pub mod phases_effect;
 pub mod peek_and_reveal_effect;
 pub mod play_effect;
 pub mod poison_effect;
+pub mod power_exchange_effect;
 pub mod pump_all_effect;
 pub mod pump_effect;
 pub mod rearrange_top_of_library_effect;
+pub mod regenerate_effect;
 pub mod reveal_effect;
 pub mod reveal_hand_effect;
+pub mod reverse_turn_order_effect;
 pub mod sacrifice_all_effect;
 pub mod sacrifice_effect;
 pub mod scry_effect;
 pub mod set_state_effect;
+pub mod skip_phase_effect;
+pub mod skip_turn_effect;
 pub mod surveil_effect;
+pub mod take_initiative_effect;
 pub mod tap_all_effect;
+pub mod tap_effect;
 pub mod token_effect;
 pub mod untap_all_effect;
 pub mod untap_effect;
@@ -168,8 +187,29 @@ fn resolve_effect_once(ctx: &mut EffectContext, sa: &SpellAbility) {
         "PumpAll" => pump_all_effect::resolve(ctx, sa),
         "TapAll" => tap_all_effect::resolve(ctx, sa),
         "UntapAll" => untap_all_effect::resolve(ctx, sa),
+        // Player & game-state effects (issue #22)
+        "Tap" => tap_effect::resolve(ctx, sa),
         "Untap" => untap_effect::resolve(ctx, sa),
-        // Cast from exile / without mana cost (Rebound, etc.)
+        "LifeSet" => life_set_effect::resolve(ctx, sa),
+        "LifeExchange" => life_exchange_effect::resolve(ctx, sa),
+        "GameWin" => game_win_effect::resolve(ctx, sa),
+        "GameLoss" => game_loss_effect::resolve(ctx, sa),
+        "GameDraw" => game_draw_effect::resolve(ctx, sa),
+        "AddTurn" => add_turn_effect::resolve(ctx, sa),
+        "Fog" => fog_effect::resolve(ctx, sa),
+        // New player & game-state effects (issue #22, expanded)
+        "ReverseTurnOrder" => reverse_turn_order_effect::resolve(ctx, sa),
+        "EndCombatPhase" => end_combat_phase_effect::resolve(ctx, sa),
+        "EndTurn" => end_turn_effect::resolve(ctx, sa),
+        "PowerExchange" => power_exchange_effect::resolve(ctx, sa),
+        "BecomeMonarch" => become_monarch_effect::resolve(ctx, sa),
+        "TakeInitiative" => take_initiative_effect::resolve(ctx, sa),
+        "SkipTurn" => skip_turn_effect::resolve(ctx, sa),
+        "SkipPhase" => skip_phase_effect::resolve(ctx, sa),
+        "AddPhase" => add_phase_effect::resolve(ctx, sa),
+        "Phases" => phases_effect::resolve(ctx, sa),
+        "Regenerate" => regenerate_effect::resolve(ctx, sa),
+        // Cast from exile / without mana cost (Rebound, etc.) (issue #21)
         "Play" => play_effect::resolve(ctx, sa),
         _ => {} // Unimplemented effect — silently skip
     }
@@ -261,8 +301,48 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "TapAll"
     } else if ability.contains("UntapAll") {
         "UntapAll"
+    // Player & game-state effects (issue #22) — check longer names first
+    } else if ability.contains("LifeExchange") {
+        "LifeExchange"
+    } else if ability.contains("LifeSet") {
+        "LifeSet"
+    } else if ability.contains("GameWin") {
+        "GameWin"
+    } else if ability.contains("GameLoss") {
+        "GameLoss"
+    } else if ability.contains("GameDraw") {
+        "GameDraw"
+    } else if ability.contains("AddTurn") {
+        "AddTurn"
+    } else if ability.contains("$ Fog") {
+        "Fog"
+    } else if ability.contains("$ Tap") {
+        "Tap"
     } else if ability.contains("$ Untap") {
         "Untap"
+    // New player & game-state effects (issue #22, expanded)
+    } else if ability.contains("ReverseTurnOrder") {
+        "ReverseTurnOrder"
+    } else if ability.contains("EndCombatPhase") {
+        "EndCombatPhase"
+    } else if ability.contains("EndTurn") {
+        "EndTurn"
+    } else if ability.contains("PowerExchange") {
+        "PowerExchange"
+    } else if ability.contains("BecomeMonarch") {
+        "BecomeMonarch"
+    } else if ability.contains("TakeInitiative") {
+        "TakeInitiative"
+    } else if ability.contains("SkipTurn") {
+        "SkipTurn"
+    } else if ability.contains("SkipPhase") {
+        "SkipPhase"
+    } else if ability.contains("AddPhase") {
+        "AddPhase"
+    } else if ability.contains("$ Phases") {
+        "Phases"
+    } else if ability.contains("$ Regenerate") {
+        "Regenerate"
     } else {
         ""
     }
@@ -364,6 +444,29 @@ pub fn resolve_defined_player(
             Some(opp)
         }
         _ => None,
+    }
+}
+
+/// Resolve a Defined$ parameter to a list of player IDs.
+/// Supports "You", "Opponent", "Each"/"All"/"Player" (all alive players).
+/// Mirrors Java's AbilityUtils.getDefinedPlayers() for multi-player resolution.
+pub fn resolve_defined_players(
+    defined: &str,
+    controller: PlayerId,
+    game: &GameState,
+) -> Vec<PlayerId> {
+    match defined {
+        "You" => vec![controller],
+        "Opponent" | "OpponentCtrl" => vec![game.opponent_of(controller)],
+        "Each" | "All" | "Player" => game.alive_players(),
+        _ => {
+            // Fall back to single-player resolution
+            if let Some(pid) = resolve_defined_player(defined, controller, game) {
+                vec![pid]
+            } else {
+                vec![controller]
+            }
+        }
     }
 }
 

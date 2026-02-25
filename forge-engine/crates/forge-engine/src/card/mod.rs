@@ -151,6 +151,13 @@ pub struct CardInstance {
     /// Optional set code (e.g., "M21") for specific printings.
     pub set_code: Option<String>,
 
+    // Phase-out state (issue #22, Phases effect).
+    pub phased_out: bool,
+
+    // Regeneration shields (issue #22, Regenerate effect).
+    // Decremented instead of destroying; resets at end of turn.
+    pub regeneration_shields: i32,
+
     /// Whether this permanent was kicked when cast.
     /// Mirrors Java `Card.isKicked()`. Stored on the card so triggers
     /// with `ValidCard$ Card.Self+kicked` can check it after resolution.
@@ -238,6 +245,8 @@ impl CardInstance {
             is_transformed: false,
             other_part: None,
             set_code: None,
+            phased_out: false,
+            regeneration_shields: 0,
             kicked: false,
         }
     }
@@ -384,6 +393,127 @@ impl CardInstance {
         self.has_keyword("Wither")
     }
 
+    pub fn has_prowess(&self) -> bool {
+        self.has_keyword("Prowess")
+    }
+
+    // ── Keyword cost helpers (pattern: "Keyword:cost_string") ────────
+
+    /// Get buyback cost (e.g. "Buyback:2" → Some("2")).
+    pub fn get_buyback_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Buyback")
+    }
+
+    /// Get spectacle cost (e.g. "Spectacle:B R" → Some("B R")).
+    pub fn get_spectacle_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Spectacle")
+    }
+
+    /// Get evoke cost (e.g. "Evoke:2 B" → Some("2 B")).
+    pub fn get_evoke_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Evoke")
+    }
+
+    /// Get dash cost (e.g. "Dash:1 R" → Some("1 R")).
+    pub fn get_dash_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Dash")
+    }
+
+    /// Get blitz cost (e.g. "Blitz:1 R" → Some("1 R")).
+    pub fn get_blitz_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Blitz")
+    }
+
+    /// Get multikicker cost (e.g. "Multikicker:1 G" → Some("1 G")).
+    pub fn get_multikicker_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Multikicker")
+    }
+
+    /// Get replicate cost (e.g. "Replicate:U" → Some("U")).
+    pub fn get_replicate_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Replicate")
+    }
+
+    /// Get entwine cost (e.g. "Entwine:2" → Some("2")).
+    pub fn get_entwine_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Entwine")
+    }
+
+    /// Get escalate cost (e.g. "Escalate:1" → Some("1")).
+    pub fn get_escalate_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Escalate")
+    }
+
+    /// Get escape cost and exile count (e.g. "Escape:1 B B:4" → Some(("1 B B", 4))).
+    pub fn get_escape_cost(&self) -> Option<(String, i32)> {
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(rest) = kw.strip_prefix("Escape:") {
+                // Format: "mana_cost:exile_count"
+                if let Some(colon_pos) = rest.rfind(':') {
+                    let mana = rest[..colon_pos].trim().to_string();
+                    let exile = rest[colon_pos + 1..].trim().parse().unwrap_or(0);
+                    return Some((mana, exile));
+                }
+            }
+        }
+        None
+    }
+
+    /// Get overload cost (e.g. "Overload:3 R" → Some("3 R")).
+    pub fn get_overload_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Overload")
+    }
+
+    /// Get madness cost (e.g. "Madness:1 R" → Some("1 R")).
+    pub fn get_madness_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Madness")
+    }
+
+    /// Get strive cost (e.g. "Strive:1 W" → Some("1 W")).
+    pub fn get_strive_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Strive")
+    }
+
+    /// Check if card has Rebound keyword.
+    pub fn has_rebound(&self) -> bool {
+        self.has_keyword("Rebound")
+    }
+
+    /// Get suspend cost and time counters (e.g. "Suspend:1 U:3" → Some(("1 U", 3))).
+    pub fn get_suspend_cost(&self) -> Option<(String, i32)> {
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(rest) = kw.strip_prefix("Suspend:") {
+                if let Some(colon_pos) = rest.rfind(':') {
+                    let mana = rest[..colon_pos].trim().to_string();
+                    let counters = rest[colon_pos + 1..].trim().parse().unwrap_or(0);
+                    return Some((mana, counters));
+                }
+            }
+        }
+        None
+    }
+
+    /// Get foretell cost (e.g. "Foretell:W W" → Some("W W")).
+    pub fn get_foretell_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Foretell")
+    }
+
+    /// Get emerge cost (e.g. "Emerge:5 U U" → Some("5 U U")).
+    pub fn get_emerge_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Emerge")
+    }
+
+    /// Generic keyword cost parser — looks for "Keyword:cost" in keywords vec.
+    fn get_keyword_cost(&self, keyword: &str) -> Option<String> {
+        let prefix = format!("{}:", keyword);
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(cost) = kw.strip_prefix(&prefix) {
+                return Some(cost.to_string());
+            }
+        }
+        None
+    }
+
     /// Check "Hexproof from <color>" variants (e.g. "Hexproof from blue").
     pub fn has_hexproof_from(&self, color: &str) -> bool {
         let target = format!("Hexproof from {}", color);
@@ -413,22 +543,12 @@ impl CardInstance {
 
     /// Get Flashback cost (e.g. "Flashback:2 R" → Some("2 R")).
     pub fn get_flashback_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Flashback:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
+        self.get_keyword_cost("Flashback")
     }
 
     /// Get Kicker cost (e.g. "Kicker:W" → Some("W")).
     pub fn get_kicker_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Kicker:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
+        self.get_keyword_cost("Kicker")
     }
 
     /// Whether this card has the Storm keyword.
@@ -439,186 +559,6 @@ impl CardInstance {
     /// Whether this card has the Cascade keyword.
     pub fn has_cascade(&self) -> bool {
         self.has_keyword("Cascade")
-    }
-
-    /// Whether this card has the Prowess keyword.
-    pub fn has_prowess(&self) -> bool {
-        self.has_keyword("Prowess")
-    }
-
-    /// Whether this card has the Rebound keyword.
-    pub fn has_rebound(&self) -> bool {
-        self.has_keyword("Rebound")
-    }
-
-    /// Get Buyback cost (e.g. "Buyback:2" → Some("2")).
-    pub fn get_buyback_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Buyback:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Spectacle cost (e.g. "Spectacle:B R" → Some("B R")).
-    pub fn get_spectacle_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Spectacle:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Evoke cost (e.g. "Evoke:2 B" → Some("2 B")).
-    pub fn get_evoke_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Evoke:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Dash cost (e.g. "Dash:1 R" → Some("1 R")).
-    pub fn get_dash_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Dash:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Blitz cost (e.g. "Blitz:1 R" → Some("1 R")).
-    pub fn get_blitz_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Blitz:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Multikicker cost (e.g. "Multikicker:1 G" → Some("1 G")).
-    pub fn get_multikicker_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Multikicker:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Replicate cost (e.g. "Replicate:U" → Some("U")).
-    pub fn get_replicate_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Replicate:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Entwine cost (e.g. "Entwine:2" → Some("2")).
-    pub fn get_entwine_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Entwine:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Escalate cost (e.g. "Escalate:1" → Some("1")).
-    pub fn get_escalate_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Escalate:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Escape cost and exile count (e.g. "Escape:1 B B:4" → Some(("1 B B", 4))).
-    pub fn get_escape_cost(&self) -> Option<(String, i32)> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(rest) = kw.strip_prefix("Escape:") {
-                // Format: "mana_cost:exile_count" e.g. "1 B B:4"
-                if let Some(last_colon) = rest.rfind(':') {
-                    let mana = rest[..last_colon].to_string();
-                    let exile = rest[last_colon + 1..].parse::<i32>().unwrap_or(0);
-                    return Some((mana, exile));
-                }
-            }
-        }
-        None
-    }
-
-    /// Get Overload cost (e.g. "Overload:3 U U" → Some("3 U U")).
-    pub fn get_overload_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Overload:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Madness cost (e.g. "Madness:1 R" → Some("1 R")).
-    pub fn get_madness_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Madness:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Strive cost (e.g. "Strive:1 W" → Some("1 W")).
-    pub fn get_strive_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Strive:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Suspend cost and time counters (e.g. "Suspend:2:1 U" → Some(("1 U", 2))).
-    pub fn get_suspend_cost(&self) -> Option<(String, i32)> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(rest) = kw.strip_prefix("Suspend:") {
-                // Format: "time_counters:mana_cost" e.g. "2:1 U"
-                if let Some(colon) = rest.find(':') {
-                    let counters = rest[..colon].parse::<i32>().unwrap_or(0);
-                    let mana = rest[colon + 1..].to_string();
-                    return Some((mana, counters));
-                }
-            }
-        }
-        None
-    }
-
-    /// Get Foretell cost (e.g. "Foretell:1 W" → Some("1 W")).
-    pub fn get_foretell_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Foretell:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Emerge cost (e.g. "Emerge:5 U U" → Some("5 U U")).
-    pub fn get_emerge_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Emerge:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
     }
 
     /// Converted mana cost (mana value).

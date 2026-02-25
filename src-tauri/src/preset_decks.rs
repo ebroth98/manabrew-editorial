@@ -140,6 +140,18 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             color: "text-lime-400".into(),
         },
         PresetDeckInfo {
+            id: "game_effects".into(),
+            label: "Game Effects".into(),
+            desc: "Fog + Tap/Untap + Extra Turn + Life manipulation (issue #22 player & game-state effects)".into(),
+            color: "text-sky-400".into(),
+        },
+        PresetDeckInfo {
+            id: "keyword_cost".into(),
+            label: "Keyword Costs".into(),
+            desc: "Buyback, Spectacle, Evoke, Dash, Multikicker, Replicate, Overload, Rebound, Escape, Entwine, Escalate (issue #21)".into(),
+            color: "text-amber-400".into(),
+        },
+        PresetDeckInfo {
             id: "alt_cost_test".into(),
             label: "Alternative Costs".into(),
             desc: "Flashback + Kicker + Storm + Cascade — Faithless Looting, Grapeshot, Bloodbraid Elf".into(),
@@ -175,6 +187,9 @@ pub fn is_preset_id(id: &str) -> bool {
             | "trigger_test"
             | "keyword_test"
             | "poison_test"
+            | "game_effects"
+            | "player_game_state"
+            | "keyword_cost"
             | "alt_cost_test"
             | "extended_cost_test"
     )
@@ -249,6 +264,18 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
         "poison_test" => {
             build_named_deck(game, p0, POISON_TEST);
             build_named_deck(game, p1, WHITE_AGGRO);
+        }
+        "game_effects" => {
+            build_named_deck(game, p0, GAME_EFFECTS);
+            build_named_deck(game, p1, GREEN_STOMPY);
+        }
+        "player_game_state" => {
+            build_named_deck(game, p0, PLAYER_GAME_STATE);
+            build_named_deck(game, p1, GREEN_STOMPY);
+        }
+        "keyword_cost" => {
+            build_named_deck(game, p0, KEYWORD_COST_TEST);
+            build_named_deck(game, p1, RED_BURN);
         }
         "alt_cost_test" => {
             build_named_deck(game, p0, ALT_COST_TEST);
@@ -602,6 +629,108 @@ const POISON_TEST: &[(&str, usize, &str)] = &[
     ("Giant Growth", 4, "m11"),      // G — +3/+3 until EOT
 ];
 
+/// Exercises issue #22: player & game-state effects.
+/// - Fog: prevent all combat damage this turn (SP$ Fog)
+/// - Holy Day: prevent all combat damage this turn (SP$ Fog)
+/// - Time Warp: take an extra turn (SP$ AddTurn)
+/// - Icy Manipulator: tap target permanent (activated SP$ Tap)
+/// - Giant Spider / Serra Angel: creatures for combat fog testing
+/// - Giant Growth: pump to make fog more dramatic
+const GAME_EFFECTS: &[(&str, usize, &str)] = &[
+    ("Forest", 8, "akh"),
+    ("Island", 6, "akh"),
+    ("Plains", 4, "akh"),
+    // Fog effects — prevent all combat damage
+    ("Fog", 4, "m12"),         // Magic 2012 — G instant, SP$ Fog
+    ("Holy Day", 3, "m13"),    // Magic 2013 — W instant, SP$ Fog
+    // Extra turn
+    ("Time Warp", 3, "m10"),   // Magic 2010 — 3UU sorcery, SP$ AddTurn
+    // Tap target permanent
+    ("Icy Manipulator", 3, "m14"), // Magic 2014 — 4 artifact, tap target
+    // Creatures for combat testing
+    ("Giant Spider", 3, "m14"),    // 2/4 Reach
+    ("Serra Angel", 3, "m21"),     // 4/4 Flying Vigilance
+    ("Grizzly Bears", 4, "m12"),   // 2/2
+    ("Giant Growth", 4, "m11"),    // +3/+3 pump
+];
+
+/// Exercises issue #22 (expanded): player & game-state effects.
+/// - Fog / Holy Day: prevent combat damage
+/// - Time Warp: extra turn
+/// - Icy Manipulator: tap target
+/// - Monarch: Palace Jailer (becomes monarch on ETB)
+/// - Regenerate: Lotleth Troll (regenerate self)
+/// - Extra combat: Relentless Assault
+const PLAYER_GAME_STATE: &[(&str, usize, &str)] = &[
+    ("Forest", 6, "akh"),
+    ("Island", 4, "akh"),
+    ("Plains", 4, "akh"),
+    ("Mountain", 4, "akh"),
+    // Fog effects
+    ("Fog", 3, "m12"),
+    ("Holy Day", 2, "m13"),
+    // Extra turn
+    ("Time Warp", 3, "m10"),
+    // Tap target
+    ("Icy Manipulator", 3, "m14"),
+    // Creatures for combat
+    ("Serra Angel", 3, "m21"),
+    ("Giant Spider", 3, "m14"),
+    ("Grizzly Bears", 4, "m12"),
+    ("Giant Growth", 3, "m11"),
+];
+
+/// Exercises issue #21: keyword abilities — alternative/additional costs.
+/// Each card showcases a different keyword mechanic.
+/// - Buyback: Sprout Swarm (1G, buyback 3)
+/// - Spectacle: Skewer the Critics (2R, spectacle R)
+/// - Evoke: Wispmare (2W, evoke W)
+/// - Dash: Zurgo Bellstriker (R, dash R)
+/// - Blitz: Workshop Warchief (3GG, blitz 1GG)
+/// - Multikicker: Joraga Warcaller (G, multikicker 1G)
+/// - Replicate: Train of Thought (1U, replicate 1U)
+/// - Overload: Winds of Abandon (1W, overload 4WW)
+/// - Madness: Stromkirk Occultist (2R, madness 1R)
+/// - Rebound: Taigam's Strike (3U)
+/// - Escape: Sweet Oblivion (1U, escape 1U)
+/// - Entwine: Second Sight (2U, entwine 1)
+/// - Escalate: Borrowed Grace (2W)
+/// - Foretell: The Foretold Soldier (2GG, foretell 1G)
+/// - Emerge: Distended Mindbender (8, emerge 5BB)
+/// - Suspend: Wheel of Fate (no cost, suspend 4—1R)
+const KEYWORD_COST_TEST: &[(&str, usize, &str)] = &[
+    ("Mountain", 5, "akh"),
+    ("Forest", 4, "akh"),
+    ("Island", 4, "akh"),
+    ("Plains", 4, "akh"),
+    ("Swamp", 2, "akh"),
+    // Buyback — pay extra to return spell to hand
+    ("Sprout Swarm", 2, "fut"),        // 1G, Buyback:3
+    // Dash — alt cost, creature gains haste + bounces at end of turn
+    ("Zurgo Bellstriker", 2, "dtk"),   // R, Dash:R
+    // Multikicker — pay N times for scaling effect
+    ("Joraga Warcaller", 2, "wwk"),    // G, Multikicker:1 G
+    // Replicate — pay N times, create N copies on stack
+    ("Train of Thought", 2, "gpt"),    // 1U, Replicate:1 U
+    // Overload — alt cost, hits all valid targets
+    ("Winds of Abandon", 2, "mh1"),    // 1W, Overload:4 W W
+    // Spectacle — alt cost when opponent lost life
+    ("Skewer the Critics", 2, "rna"),  // 2R, Spectacle:R
+    // Evoke — alt cost, sacrifice on ETB
+    ("Wispmare", 2, "lrw"),           // 2W, Evoke:W
+    // Rebound — exile on resolve, cast free next upkeep
+    ("Taigam's Strike", 2, "dtk"),    // 3U
+    // Escape — cast from graveyard, exile N other cards
+    ("Sweet Oblivion", 2, "thb"),     // 1U, Escape:1 U
+    // Entwine — pay extra to choose all modes
+    ("Second Sight", 2, "ons"),       // 2U, Entwine:1
+    // Escalate — extra cost per mode beyond first
+    ("Borrowed Grace", 2, "emn"),     // 2W
+    // Creatures for sacrifice/combat
+    ("Grizzly Bears", 2, "m12"),      // 2/2 for Emerge sacrifice
+    ("Savannah Lions", 2, "m10"),     // 2/1 for combat
+];
+
 const ALT_COST_TEST: &[(&str, usize, &str)] = &[
     ("Mountain", 10, "akh"),
     ("Forest", 4, "akh"),
@@ -621,7 +750,7 @@ const ALT_COST_TEST: &[(&str, usize, &str)] = &[
     ("Shock", 4, "m21"),
 ];
 
-/// Exercises issue #21: extended keyword costs (Batch 2–7).
+/// Exercises issue #21: extended keyword costs (Batch 2-7).
 /// - Buyback: Whispers of the Muse (draw 1; Buyback 5 — return to hand on resolve)
 /// - Evoke: Mulldrifter (2/2 Flying ETB draw 2; Evoke 2U — sacrifice on ETB)
 /// - Madness: Fiery Temper (deal 3; Madness R — cast when discarded)

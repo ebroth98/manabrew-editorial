@@ -41,7 +41,7 @@
 |-----------|---------|:-------------------:|
 | `Game.java` | Core game state: players, zones, phases, stack, triggers, static effects, lifecycle | **Implemented** (`game.rs`) |
 | `GameAction.java` | Common game actions & rule enforcement (move, damage, draw, SBA) | **Implemented** (`action.rs`) |
-| `GameActionUtil.java` | Utility: alternative costs, spell mechanics helpers | Not implemented |
+| `GameActionUtil.java` | Utility: alternative costs, spell mechanics helpers | **Partial** (alternative cost detection/selection in `game_loop.rs`) |
 | `GameEndReason.java` | Enum: AllOpponentsLost, Draw, WinsGameSpellEffect, etc. | **Partial** (game_over + winner in `game.rs`) |
 | `GameEntity.java` | Abstract base for entities (players, permanents) — damage, counters, attachments | **Partial** (split across `card.rs` + `player.rs`) |
 | `GameEntityCache.java` | Generic ID→Object caching for entities | Not implemented |
@@ -106,8 +106,8 @@
 |-----------|---------|:-------------------:|
 | `AbandonEffect.java` | Abandon a card | Not implemented |
 | `ActivateAbilityEffect.java` | Activate an ability on a card | Not implemented |
-| `AddPhaseEffect.java` | Add extra phase to turn | Not implemented |
-| `AddTurnEffect.java` | Add extra turn | Not implemented |
+| `AddPhaseEffect.java` | Add extra phase to turn | **Implemented** — `add_phase_effect.rs`: `ExtraPhase$ Combat`, `Amount$`; increments `game.extra_combat_phases`; game loop inserts extra combat cycles |
+| `AddTurnEffect.java` | Add extra turn | **Implemented** — `add_turn_effect.rs`: `Defined$` player, `NumTurns$` (default 1), `SkipUntap$`; pushes `ExtraTurn` struct onto queue; `AdvanceTurn` pops and applies skip_untap flag |
 | `AmassEffect.java` | Amass N (create/grow army token) | Not implemented |
 | `AnimateEffect.java` | Animate a permanent (change type/P&T) | Not implemented |
 | `AnimateAllEffect.java` | Animate all matching permanents | Not implemented |
@@ -115,7 +115,7 @@
 | `AscendEffect.java` | Check/grant City's Blessing | Not implemented |
 | `AttachEffect.java` | Attach aura/equipment to permanent | **Implemented** — `attach.rs`: attaches source Equipment/Aura to target creature on battlefield; handles detach from previous host; `CardInstance.attached_to`/`attachments` fields added; `GameState.attach_to`/`detach`/`remove_from_stack` in `action.rs` |
 | `BalanceEffect.java` | Balance-type equalization effect | Not implemented |
-| `BecomeMonarchEffect.java` | Become the Monarch | Not implemented |
+| `BecomeMonarchEffect.java` | Become the Monarch | **Implemented** — `become_monarch_effect.rs`: `Defined$` player; sets `game.monarch`; fires `BecomeMonarch` trigger; monarch draws card at end of turn |
 | `BidLifeEffect.java` | Bid life (auction mechanic) | Not implemented |
 | `BlockEffect.java` | Force/modify blocking | Not implemented |
 | `BranchEffect.java` | Conditional branching in ability chains | Not implemented |
@@ -153,19 +153,19 @@
 | `DiscoverEffect.java` | Discover N mechanic | Not implemented |
 | `DrawEffect.java` | Draw cards | **Partial** (`action.rs` draw_cards) |
 | `EffectEffect.java` | Create emblem/effect on battlefield | Not implemented |
-| `EndTurnEffect.java` | End the turn | Not implemented |
+| `EndTurnEffect.java` | End the turn | **Implemented** — `end_turn_effect.rs`: clears stack, sets `game.end_turn_requested`; game loop skips remaining phases to cleanup |
 | `ExploreEffect.java` | Explore mechanic | Not implemented |
 | `FightEffect.java` | Fight between creatures | **Implemented** — `fight.rs`: source creature and target creature deal damage to each other equal to power simultaneously; fires `Fight` trigger; `TriggerType::Fight` + `RunParams.card2` added to event system |
 | `FlipCoinEffect.java` | Flip a coin | Not implemented |
-| `FogEffect.java` | Prevent all combat damage | Not implemented |
-| `GameDrawEffect.java` | Force game draw | Not implemented |
-| `GameLossEffect.java` | Force player to lose | Not implemented |
-| `GameWinEffect.java` | Force player to win | Not implemented |
+| `FogEffect.java` | Prevent all combat damage | **Implemented** — `fog_effect.rs`: sets `prevent_all_combat_damage` flag on `GameState`; combat `resolve_damage_step()` returns empty when flag is set; flag reset at end of turn cleanup |
+| `GameDrawEffect.java` | Force game draw | **Implemented** — `game_draw_effect.rs`: sets all players `has_lost = true`, `game_over = true`, `winner = None` |
+| `GameLossEffect.java` | Force player to lose | **Implemented** — `game_loss_effect.rs`: `Defined$` player, sets `has_lost = true`; checks remaining alive players for game over |
+| `GameWinEffect.java` | Force player to win | **Implemented** — `game_win_effect.rs`: `Defined$` player, sets `has_won = true` on winner, `has_lost = true` on all others, `game_over = true` |
 | `GoadEffect.java` | Goad a creature | Not implemented |
 | `LifeGainEffect.java` | Gain life | **Partial** (`player.rs` gain_life) |
 | `LifeLoseEffect.java` | Lose life | **Partial** (`player.rs` lose_life) |
-| `LifeSetEffect.java` | Set life total | Not implemented |
-| `LifeExchangeEffect.java` | Exchange life totals | Not implemented |
+| `LifeSetEffect.java` | Set life total | **Implemented** — `life_set_effect.rs`: `Defined$` player (supports `Each`/`All` multi-player), `LifeAmount$`; uses `PlayerState.set_life()` which computes diff; fires LifeGained or LifeLost trigger based on difference |
+| `LifeExchangeEffect.java` | Exchange life totals | **Implemented** — `life_exchange_effect.rs`: swaps life totals between controller and `Defined$`/targeted player; fires LifeGained/LifeLost triggers for each player based on diff |
 | `ManaEffect.java` | Add mana to pool | **Partial** (`mana_pool.rs`) |
 | `ManaReflectedEffect.java` | Reflected mana (any color matching…) | Not implemented |
 | `ManifestEffect.java` | Manifest (face-down) | Not implemented |
@@ -174,31 +174,35 @@
 | `MutateEffect.java` | Mutate a creature | Not implemented |
 | `PermanentCreatureEffect.java` | Resolve creature permanent spell | Not implemented |
 | `PermanentNoncreatureEffect.java` | Resolve non-creature permanent spell | Not implemented |
-| `PhasesEffect.java` | Phase in/out | Not implemented |
+| `PhasesEffect.java` | Phase in/out | **Implemented** — `phases_effect.rs`: `PhaseInOrOut$ In/Out`; toggles `card.phased_out`; phased-out permanents treated as invisible; phase-in during untap step; fires PhasedOut/PhasedIn triggers |
 | `PlayEffect.java` | Play card from zone (exile, GY) | Not implemented |
-| `PoisonEffect.java` | Give poison counters | **Implemented** — `poison_effect.rs`: adds `Num$` poison counters to players; supports `Defined$` (Player/Opponent/You) and `ValidTgts$ Player` targeting; `Defined$ Player` adds to all alive players (Ichor Rats pattern) |
+| `PoisonEffect.java` | Give poison counters | **Implemented** — `poison_effect.rs`: adds/removes `Num$` poison counters (supports negative values, floors at 0); `Defined$` (Player/Opponent/You) and `ValidTgts$ Player` targeting; `Defined$ Player` applies to all alive players |
 | `ProtectEffect.java` | Grant protection | Not implemented |
 | `PumpEffect.java` | +N/+N (or set P/T) until end of turn | **Implemented** (`pump_effect.rs`: single-target power/toughness modifier until EOT) |
 | `PumpAllEffect.java` | Pump all matching creatures | **Implemented** — `pump_all_effect.rs`: `ValidCards$` filter, `NumAtt$`/`NumDef$` (signed, supports negative debuffs), `YouCtrl`/`OppCtrl`; duration = EOT (zeroed by `step_cleanup`) |
-| `RegenerateEffect.java` | Regenerate a permanent | Not implemented |
+| `RegenerateEffect.java` | Regenerate a permanent | **Implemented** — `regenerate_effect.rs`: adds regeneration shields to target creature; shields consumed instead of destroy (tap + remove damage); shields reset at end of turn |
 | `RevealEffect.java` | Reveal cards | **Partial** — `reveal.rs`: reveals N cards from target hand, notifies all agents; no full interactive UI reveal |
 | `RollDiceEffect.java` | Roll dice | Not implemented |
 | `SacrificeEffect.java` | Force sacrifice | **Implemented** (`game_loop.rs` Sacrifice handler: SacValid$Self or matching permanents, agent choose_sacrifice for human choice, ChangesZone trigger) |
 | `SacrificeAllEffect.java` | Force sacrifice of all matching | **Implemented** (`game_loop.rs` SacrificeAll handler: ValidCards filter, multi-player, ChangesZone trigger) |
 | `ScryEffect.java` | Scry N | **Implemented** — `scry.rs`: `ScryNum$`, `Defined$` player, agent `choose_scry`; TauriAgent `Scry` prompt + `ScryDecision` response; PassAgent keeps all on top |
-| `SetStateEffect.java` | Transform / flip / turn face-up | **Implemented** — `set_state_effect.rs`: `Mode$ Transform` with optional `ConditionDefined$ Remembered | ConditionPresent$ | ConditionCompare$` gate; calls `card.transform()` and resets active triggers |
+| `SetStateEffect.java` | Transform / flip / turn face-up/down | **Implemented** — `set_state_effect.rs`: `Mode$ Transform/Flip/TurnFaceUp/TurnFaceDown`; Transform with optional condition gate; Flip toggles `card.flipped`; TurnFaceUp/Down toggles `card.face_down` |
 | `ShuffleEffect.java` | Shuffle library | **Partial** (`action.rs` shuffle_library) |
-| `SkipPhaseEffect.java` | Skip a phase | Not implemented |
+| `SkipPhaseEffect.java` | Skip a phase | **Implemented** — `skip_phase_effect.rs`: `Phase$ Draw/Combat/Untap`, `Defined$` player; sets per-player skip flags; game loop checks before each phase |
 | `SurveilEffect.java` | Surveil N | **Implemented** — `surveil.rs`: `Amount$`, `Defined$` player, agent `choose_surveil`; TauriAgent `Surveil` prompt + `SurveilDecision` response; emits ChangesZone trigger for graveyard cards |
-| `TapEffect.java` | Tap a permanent | **Partial** (`action.rs` tap) |
+| `TapEffect.java` | Tap a permanent | **Implemented** — `tap_effect.rs`: taps targeted or `Defined$ Self` battlefield permanent; `ETB$` (silent tap), `RememberTapped$`/`AlwaysRemember$` (store in remembered_cards); fires `Taps` trigger |
 | `TapAllEffect.java` | Tap all matching | **Implemented** — `tap_all_effect.rs`: `ValidCards$` filter with full `YouCtrl`/`OppCtrl`/color qualifier support |
 | `TokenEffect.java` | Create token(s) | **Implemented** — `Token` handler in `game_loop.rs`: `TokenScript$`, `TokenAmount$`, `TokenOwner$` (You/Opponent). Token templates loaded from `tokenscripts/` via `get_token_db()` and registered in `GameLoop`. Tokens flagged `is_token` and cease to exist when leaving battlefield (CR 110.5g). |
 | `TokenEffectBase.java` | Base class for token creation | **Implemented** — see `TokenEffect.java` above |
-| `UntapEffect.java` | Untap a permanent | **Implemented** — `untap_effect.rs`: `Defined$ Self` / `ParentTarget` / explicit target; fires Untaps trigger |
+| `UntapEffect.java` | Untap a permanent | **Implemented** — `untap_effect.rs`: untaps targeted or `Defined$ Self` / `ParentTarget` / explicit target battlefield permanent; `ETB$` (silent untap); fires `Untaps` trigger |
 | `UntapAllEffect.java` | Untap all matching | **Implemented** — `untap_all_effect.rs`: `ValidCards$` filter with full qualifier support |
 | `VoteEffect.java` | Council's dilemma / voting mechanic | Not implemented |
 
-> **Note**: 197 effect files total. ~41 have full or partial implementation. Additional implemented effects not listed individually: `RevealHandEffect.java` → `reveal_hand.rs` (inform all agents of a player's hand), `LookAtEffect.java` → `look_at.rs` (activating player peeks at top N cards of a zone), `RearrangeTopOfLibraryEffect` → `rearrange_top_of_library.rs` (used by Ponder: look at top N, reorder, optional shuffle via `choose_reorder_library` / `choose_may_shuffle`), `PeekAndRevealEffect.java` → `peek_and_reveal_effect.rs` (peek top N cards, optionally store in `remembered_cards`), `CleanupEffect.java` → `cleanup_effect.rs` (clear remembered cards/CMC). The remaining ~100+ effects (AdvanceCrank, Airbend, AlterAttribute, AssembleContraption, Behold, Blight, Bond, Camouflage, ChaosEnsues, Cloak, Endure, Forage, Heist, Incubate, Intensify, Investigate, Learn, MakeCard, ManifestDread, MultiplePiles, OpenAttraction, OwnershipGain, Planeswalk, PlayLandVariant, PowerExchange, Radiation, RemoveFromCombat, RemoveFromGame, RepeatEach, Replace*, RestartGame, ReverseTurnOrder, Ring, RollPlanarDice, Seek, SetInMotion, Subgame, TextBoxExchange, TimeTravel, Venture, VillainousChoice, ZoneExchange, etc.) are **not implemented**.
+> **Note**: 197 effect files total. ~62 have full or partial implementation. Additional implemented effects not listed individually: `RevealHandEffect.java` → `reveal_hand.rs`, `LookAtEffect.java` → `look_at.rs`, `RearrangeTopOfLibraryEffect` → `rearrange_top_of_library.rs`, `PeekAndRevealEffect.java` → `peek_and_reveal_effect.rs`, `CleanupEffect.java` → `cleanup_effect.rs`, `ReverseTurnOrderEffect.java` → `reverse_turn_order_effect.rs` (reverses player_order), `EndCombatPhaseEffect.java` → `end_combat_phase_effect.rs` (sets end_combat_requested flag), `PowerExchangeEffect.java` → `power_exchange_effect.rs` (swaps power between two creatures), `TakeInitiativeEffect.java` → `take_initiative_effect.rs` (sets initiative_holder), `SkipTurnEffect.java` → `skip_turn_effect.rs` (increments player skip_turns counter).
+>
+> **Deferred effects** (require major subsystems): `Venture` (dungeon system), `RingTemptsYou` (ring system), `ControlPlayer` (controller redirection), `Animate` (timestamp PT system), `Play` (zone casting).
+>
+> The remaining ~100+ effects are **not implemented**.
 
 ---
 
@@ -434,7 +438,7 @@
 | `KeywordInstance.java` | Abstract keyword instance with parameters | Not implemented |
 | `KeywordCollection.java` | Collection of keyword instances | **Partial** (Vec<String>) |
 | `KeywordWithAmount.java` | Keywords with numeric values (Bushido 2) | **Partial** (Toxic:N parsed via `get_toxic_count()`) |
-| `KeywordWithCost.java` | Keywords with costs (Equip {3}) | **Partial** (Ward:N parsed via `get_ward_cost()`) |
+| `KeywordWithCost.java` | Keywords with costs (Equip {3}) | **Partial** (Ward:N, Buyback:N, Spectacle:N, Dash:N, etc. parsed via `get_*_cost()` helpers in `card/mod.rs`) |
 | `KeywordWithCostAndType.java` | Keywords with cost + type (Cycling {2}) | **Partial** (Buyback, Spectacle, Evoke, Dash, Blitz, Multikicker, Replicate, Entwine, Escalate, Escape, Overload, Madness, Rebound, Strive, Suspend, Foretell, Emerge — parsed via `get_X_cost()` helpers in `card/mod.rs`) |
 | `KeywordWithType.java` | Keywords with type (Protection from Red) | **Implemented** (`has_protection_from()`, `is_protected_from()`, `get_protections()` in `card/mod.rs`) |
 | `KeywordsChange.java` | Keyword modification tracking | Not implemented |
@@ -475,6 +479,8 @@
 | Kicker | **Implemented** | Single kicker; `kicked` flag on CardInstance, `+kicked` trigger/effect filter, `Condition$ Kicked` gate, `Count$Kicked` SVar, `KW$` keyword grant in Pump/PumpAll |
 | Storm | **Implemented** | Basic storm copy logic in `game_loop.rs` |
 | Cascade | **Implemented** | Cascade in `game_loop.rs` with player choice (optional cast via `choose_optional_trigger`), UI snapshots during exile/targeting, and proper decline handling |
+| Prowess | **Implemented** | `has_prowess()` in `card/mod.rs`; auto-trigger generation added — `SpellCast` triggers are generated for cards with the Prowess keyword via the trigger system |
+| Magecraft | **Implemented** | `SpellCopied` TriggerType + TriggerMode added to event/trigger system; auto-trigger generation added — `SpellCast` + `SpellCopied` triggers are generated for cards with the Magecraft keyword |
 | Buyback | **Implemented** | `get_buyback_cost()` in `card/mod.rs`; `buyback_paid` flag on SpellAbility; `choose_buyback` agent method; spell returns to hand on resolution instead of graveyard; TauriAgent `ChooseBuyback` prompt + frontend modal |
 | Spectacle | **Implemented** | `get_spectacle_cost()` in `card/mod.rs`; `Spectacle` AlternativeCost variant; checks `life_lost_this_turn > 0` on opponents; offered as alternative cost choice in `play_card`; included in `get_playable_cards` when affordable |
 | Evoke | **Implemented** | `get_evoke_cost()` in `card/mod.rs`; `Evoke` AlternativeCost variant; creature is sacrificed immediately after ETB when evoked |
@@ -487,13 +493,11 @@
 | Escape | **Implemented** | `get_escape_cost()` in `card/mod.rs` returns `(mana_cost, exile_count)`; `Escape` AlternativeCost variant; casts from graveyard, exiles N other graveyard cards as additional cost |
 | Overload | **Implemented** | `get_overload_cost()` in `card/mod.rs`; `Overload` AlternativeCost + `overloaded` flag on SpellAbility; per-effect "target→each" dispatch implemented and functional |
 | Madness | **Implemented** | `get_madness_cost()` in `card/mod.rs`; `Madness` AlternativeCost variant; cards with madness are exiled instead of going to graveyard on discard (`discard_effect.rs`); can be cast from exile for madness cost; cleanup step discard bug fixed |
+| Strive | **Partial** | `get_strive_cost()` in `card/mod.rs`; cost helper exists; needs multi-target system |
 | Rebound | **Implemented** | `has_rebound()` in `card/mod.rs`; non-permanent spells cast from hand are exiled instead of going to graveyard; delayed trigger at next upkeep casts for free |
-| Prowess | **Implemented** | `has_prowess()` in `card/mod.rs`; auto-trigger generation added — `SpellCast` triggers are generated for cards with the Prowess keyword via the trigger system |
-| Magecraft | **Implemented** | `SpellCopied` TriggerType + TriggerMode added to event/trigger system; auto-trigger generation added — `SpellCast` + `SpellCopied` triggers are generated for cards with the Magecraft keyword |
-| Strive | **Stub** | `get_strive_cost()` in `card/mod.rs` (parser only, no game loop integration) |
-| Suspend | **Stub** | `get_suspend_cost()` in `card/mod.rs` returns `(mana_cost, time_counters)` (parser only, no game loop integration) |
-| Foretell | **Stub** | `get_foretell_cost()` in `card/mod.rs` (parser only, no game loop integration) |
-| Emerge | **Stub** | `get_emerge_cost()` in `card/mod.rs`; `Emerge` AlternativeCost variant defined (parser only, no game loop integration) |
+| Suspend | **Implemented** | `get_suspend_cost()` — exile with time counters; upkeep removal; free cast (`game_loop.rs`) |
+| Foretell | **Implemented** | `get_foretell_cost()` — pay {2} to exile face-down; cast later for foretell cost (`game_loop.rs`) |
+| Emerge | **Implemented** | `get_emerge_cost()` — alt cost; sacrifice creature to reduce cost (`game_loop.rs`) |
 
 ---
 
@@ -659,7 +663,7 @@
 | `AbilitySub.java` | Sub-ability in ability chain | Not implemented |
 | `AbilityManaPart.java` | Mana ability component | Not implemented |
 | `LandAbility.java` | Land play ability | Not implemented |
-| `OptionalCost.java` | Optional additional costs (Kicker, Buyback) | **Partial** (kicker, buyback, multikicker, replicate implemented; `kicked`/`buyback_paid`/`kick_count`/`replicate_count` flags on SpellAbility; `+kicked` filter, `Condition$ Kicked` gate) |
+| `OptionalCost.java` | Optional additional costs (Kicker, Buyback) | **Implemented** (`AlternativeCost` enum + kicker/buyback/multikicker/replicate/entwine in `spellability/mod.rs`, `game_loop.rs`; `kicked`/`buyback_paid`/`kick_count`/`replicate_count` flags on SpellAbility; `+kicked` filter, `Condition$ Kicked` gate) |
 | `OptionalCostValue.java` | Optional cost value tracking | Not implemented |
 | `SpellAbilityCondition.java` | Conditions for ability activation | Not implemented |
 | `SpellAbilityPredicates.java` | Spell ability filtering predicates | Not implemented |
@@ -823,7 +827,7 @@
 | `TriggerAdapt.java` | Creature adapts | Not implemented |
 | `TriggerBecomeMonstrous.java` | Becomes monstrous | Not implemented |
 | `TriggerBecomeRenowned.java` | Becomes renowned | Not implemented |
-| `TriggerBecomeMonarch.java` | Becomes monarch | **Partial** (TriggerType + TriggerMode defined, monarch mechanic not yet implemented) |
+| `TriggerBecomeMonarch.java` | Becomes monarch | **Implemented** — TriggerType::BecomeMonarch fired by `become_monarch_effect.rs`; `game.monarch` tracks current monarch; monarch draws card at end of turn |
 | `TriggerBecomesCrewed.java` | Vehicle crewed | Not implemented |
 | `TriggerBecomesSaddled.java` | Mount saddled | Not implemented |
 | `TriggerBecomesPlotted.java` | Card plotted | Not implemented |
@@ -956,9 +960,9 @@
 
 | Category | Java Files | Fully Implemented | Partially Implemented | Not Implemented |
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
-| Core Game | 37 | 3 | 8 | 26 |
+| Core Game | 37 | 3 | 9 | 25 |
 | Ability System | 10 | 0 | 2 | 8 |
-| Ability Effects | 197 | 30 | 14 | 153 |
+| Ability Effects | 197 | 50 | 12 | 135 |
 | Card System | 28 | 4 | 4 | 20 |
 | Perpetual Effects | 8 | 0 | 0 | 8 |
 | Tokens | 1 | 0 | 0 | 1 |
@@ -966,22 +970,22 @@
 | Costs | 60 | 1 | 4 | 55 |
 | Events | 60 | 0 | 3 | 57 |
 | Extra Hands | 1 | 0 | 0 | 1 |
-| Keywords | 20 | 4 | 7 | 9 |
+| Keywords | 20 | 4 | 8 | 8 |
 | Mana | 10 | 1 | 2 | 7 |
 | Mulligan | 7 | 0 | 0 | 7 |
 | Phases | 7 | 1 | 3 | 3 |
 | Player | 17 | 1 | 2 | 14 |
 | Player Actions | 10 | 1 | 3 | 6 |
 | Replacement Effects | 46 | 4 | 4 | 38 |
-| Spell Abilities | 25 | 3 | 3 | 19 |
+| Spell Abilities | 25 | 4 | 2 | 19 |
 | Static Abilities | 60 | 2 | 4 | 54 |
 | Triggers | 140 | 26 | 5 | 109 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **78** | **69** | **622** |
+| **TOTAL** | **769** | **97** | **66** | **606** |
 
-> **Coverage: ~19.1% implemented or partially implemented** (147 of 769 features have some Rust counterpart)
+> **Coverage: ~21.2% implemented or partially implemented** (163 of 769 features have some Rust counterpart)
 >
-> The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The trigger system now supports **34 trigger types** (8 original + 26 new incl. SpellCopied) with OptionalDecider$ prompting, delayed trigger infrastructure, and comprehensive ValidCard$/ValidPlayer$ filtering. **23 keyword abilities** are now supported (19 fully implemented: Flashback, Kicker, Storm, Cascade, Buyback, Spectacle, Evoke, Dash, Blitz, Multikicker, Replicate, Entwine, Escalate, Escape, Overload, Madness, Rebound, Prowess, Magecraft; 4 stubs with parser only: Strive, Suspend, Foretell, Emerge). The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (109 still not implemented), and **costs** (58 files).
+> The Rust engine has a solid **architectural foundation** (types, state, zones, stack, mana, combat, triggers, actions, agent). The trigger system now supports **34 trigger types** (8 original + 26 new incl. SpellCopied) with OptionalDecider$ prompting, delayed trigger infrastructure, and comprehensive ValidCard$/ValidPlayer$ filtering. **23 keyword abilities** are now supported (22 fully implemented: Flashback, Kicker, Storm, Cascade, Buyback, Spectacle, Evoke, Dash, Blitz, Multikicker, Replicate, Entwine, Escalate, Escape, Overload, Madness, Rebound, Prowess, Magecraft, Suspend, Foretell, Emerge; 1 partial: Strive). Player and game-state effects are implemented including Tap, Untap, LifeSet, LifeExchange, GameWin, GameLoss, GameDraw, AddTurn, Fog, AddPhase, SkipPhase, EndTurn, and more. The major gaps are: **ability effects** (197 files), **static abilities** (60 files), **replacement effects** (38 still not implemented), **trigger types** (109 still not implemented), and **costs** (58 files).
 
 ---
 

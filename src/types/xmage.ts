@@ -32,6 +32,8 @@ export interface Card {
   isDoubleFaced?: boolean;
   /** True if this card is currently showing its back face. */
   isTransformed?: boolean;
+  /** True if this card is phased out (treated as not on battlefield). */
+  phasedOut?: boolean;
   /** Flashback cost string if the card has flashback (e.g. "1 R"). */
   flashbackCost?: string;
   /** Kicker cost string if the card has kicker (e.g. "W"). */
@@ -98,6 +100,10 @@ export interface GameView {
   opponentCommandZone?: Card[];
   gameOver?: boolean;
   winnerId?: string | null;
+  /** The player who is the current monarch. */
+  monarchId?: string | null;
+  /** The player who holds the initiative. */
+  initiativeHolderId?: string | null;
 }
 
 export interface StackObject {

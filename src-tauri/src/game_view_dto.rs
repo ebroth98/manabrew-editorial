@@ -30,6 +30,10 @@ pub struct GameViewDto {
     pub opponent_command_zone: Vec<CardDto>,
     pub game_over: bool,
     pub winner_id: Option<String>,
+    /// The player who is the current monarch (issue #22).
+    pub monarch_id: Option<String>,
+    /// The player who holds the initiative (issue #22).
+    pub initiative_holder_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,6 +86,8 @@ pub struct CardDto {
     pub is_double_faced: bool,
     /// True if this card is currently showing its back face.
     pub is_transformed: bool,
+    /// True if this card is phased out (issue #22).
+    pub phased_out: bool,
     /// Flashback cost string, if the card has flashback (e.g. "1 R").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flashback_cost: Option<String>,
@@ -227,6 +233,7 @@ pub fn card_to_dto(
         flashback_cost: card.get_flashback_cost(),
         kicker_cost: card.get_kicker_cost(),
         is_transformed: card.is_transformed,
+        phased_out: card.phased_out,
     }
 }
 
@@ -378,6 +385,8 @@ impl GameViewDto {
             opponent_command_zone,
             game_over: game.game_over,
             winner_id: game.winner.map(player_id_str),
+            monarch_id: game.monarch.map(player_id_str),
+            initiative_holder_id: game.initiative_holder.map(player_id_str),
         }
     }
 }

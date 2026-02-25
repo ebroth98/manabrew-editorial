@@ -1,6 +1,7 @@
 import React, { useRef, useState, useLayoutEffect, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
+import { CardOverlayButton } from "@/components/game/CardOverlayButton";
 import type { Card as XMageCard } from "@/types/xmage";
 import { Move, MousePointer2 } from "lucide-react";
 
@@ -386,44 +387,30 @@ export function FreeBattlefield({
 
               {/* Tap-for-mana overlay */}
               {isTappable && onTapLand && (
-                <button
-                  className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 bg-yellow-400/20 border-2 border-yellow-400 transition-opacity flex items-end justify-center pb-1"
-                  onMouseDown={(e) => e.stopPropagation()}
+                <CardOverlayButton
+                  variant="tap"
+                  label="TAP"
                   onClick={() => onTapLand(card)}
                   title={`Tap ${card.name} for mana`}
-                >
-                  <span className="text-[9px] font-bold text-yellow-800 bg-yellow-200/90 px-1 rounded leading-none">
-                    TAP
-                  </span>
-                </button>
+                  stopMouseDown
+                />
               )}
 
               {/* Untap overlay */}
               {isUntappable && onUntapLand && (
-                <button
-                  className="absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 bg-cyan-400/20 border-2 border-cyan-400 transition-opacity flex items-end justify-center pb-1"
-                  onMouseDown={(e) => e.stopPropagation()}
+                <CardOverlayButton
+                  variant="untap"
+                  label="UNTAP"
                   onClick={() => onUntapLand(card)}
                   title={`Untap ${card.name} (undo mana)`}
-                >
-                  <span className="text-[9px] font-bold text-cyan-900 bg-cyan-200/90 px-1 rounded leading-none">
-                    UNTAP
-                  </span>
-                </button>
+                  stopMouseDown
+                />
               )}
 
               {/* Choosable / attacker overlay */}
               {!isTappable && isChoosableClick && (
-                <button
-                  className={cn(
-                    "absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 border-2 transition-opacity",
-                    isPending
-                      ? "bg-orange-500/20 border-orange-400"
-                      : isAttacking
-                        ? "bg-red-500/20 border-red-500"
-                        : "bg-blue-500/20 border-blue-400",
-                  )}
-                  onMouseDown={(e) => e.stopPropagation()}
+                <CardOverlayButton
+                  variant={isPending ? "pending" : isAttacking ? "attacking" : "choosable"}
                   onClick={() => {
                     if (card.isChoosable && onClickCard) onClickCard(card);
                     else if (isAttacking && onClickAnyCard) onClickAnyCard(card);
@@ -435,6 +422,7 @@ export function FreeBattlefield({
                         ? `Block ${card.name}`
                         : `Select ${card.name}`
                   }
+                  stopMouseDown
                 />
               )}
             </div>

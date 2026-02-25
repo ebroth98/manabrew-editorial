@@ -87,6 +87,8 @@ impl TauriAgent {
                 opponent_command_zone: vec![],
                 game_over: false,
                 winner_id: None,
+                monarch_id: None,
+                initiative_holder_id: None,
             }
         })
     }

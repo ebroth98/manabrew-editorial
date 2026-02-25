@@ -1,8 +1,8 @@
-import { createPortal } from "react-dom";
 import { Card } from "@/components/game/Card";
 import { CardPreview } from "@/components/game/CardPreview";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/game/Modal";
 import type { Card as CardType } from "@/types/xmage";
 import { cn } from "@/lib/utils";
 import { useState, useEffect } from "react";
@@ -127,16 +127,10 @@ export function LibraryPeekModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected, canConfirm]);
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-    >
-      <div
-        className="bg-card border rounded-xl shadow-2xl flex flex-col max-w-4xl w-full max-h-[85vh] mx-4 animate-in fade-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b">
+  return (
+    <Modal maxWidth="max-w-4xl" maxHeight="max-h-[85vh]">
+      <Modal.Header>
+        <div className="flex items-center justify-between">
           <div>
             <h2 className="font-semibold text-base">{config.title}</h2>
             <p className="text-xs text-muted-foreground">{config.subtitle}</p>
@@ -147,95 +141,86 @@ export function LibraryPeekModal({
             </Badge>
           )}
         </div>
+      </Modal.Header>
 
-        {/* Instructions */}
-        <div className="px-4 py-2 bg-blue-50 dark:bg-blue-950/20 border-b">
-          <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 text-center">
-            {config.instructions}
-          </p>
-        </div>
+      <Modal.Instructions>{config.instructions}</Modal.Instructions>
 
-        {/* Card grid */}
-        <div className="overflow-y-auto p-4 flex-1">
-          {cards.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic text-center py-8">
-              No cards to choose from
-            </p>
-          ) : (
-            <div className="flex flex-wrap gap-4 content-start justify-center">
-              {cards.map((card) => {
-                const isSelected = selected.has(card.id);
-                return (
-                  <div
-                    key={card.id}
-                    className="shrink-0 cursor-pointer group flex flex-col items-center gap-1"
-                    onMouseEnter={(e) => {
-                      setHoveredCard(card);
-                      setMousePos({ x: e.clientX, y: e.clientY });
-                    }}
-                    onMouseLeave={() => setHoveredCard(null)}
-                    onClick={() => toggleCard(card.id)}
+      <Modal.Body>
+        {cards.length === 0 ? (
+          <Modal.EmptyState message="No cards to choose from" />
+        ) : (
+          <div className="flex flex-wrap gap-4 content-start justify-center">
+            {cards.map((card) => {
+              const isSelected = selected.has(card.id);
+              return (
+                <div
+                  key={card.id}
+                  className="shrink-0 cursor-pointer group flex flex-col items-center gap-1"
+                  onMouseEnter={(e) => {
+                    setHoveredCard(card);
+                    setMousePos({ x: e.clientX, y: e.clientY });
+                  }}
+                  onMouseLeave={() => setHoveredCard(null)}
+                  onClick={() => toggleCard(card.id)}
+                >
+                  <Card
+                    card={card}
+                    className={cn(
+                      "w-[100px] h-[140px] transition-transform group-hover:scale-105",
+                      isSelected && `ring-2 ${config.selectedRing}`,
+                    )}
+                  />
+                  <Badge
+                    variant={isSelected ? "default" : "outline"}
+                    className="text-[10px] h-4 px-1"
                   >
-                    <Card
-                      card={card}
-                      className={cn(
-                        "w-[100px] h-[140px] transition-transform group-hover:scale-105",
-                        isSelected && `ring-2 ${config.selectedRing}`,
-                      )}
-                    />
-                    <Badge
-                      variant={isSelected ? "default" : "outline"}
-                      className="text-[10px] h-4 px-1"
-                    >
-                      {isSelected
-                        ? config.selectedLabel
-                        : config.unselectedLabel}
-                    </Badge>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+                    {isSelected
+                      ? config.selectedLabel
+                      : config.unselectedLabel}
+                  </Badge>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Modal.Body>
 
-        {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-3 border-t gap-3">
-          <div className="text-xs text-muted-foreground">
-            {cards.length} card{cards.length !== 1 ? "s" : ""}
-            {mode === "dig" && optional && " · Taking 0 is allowed"}
-          </div>
-          <div className="flex gap-2">
-            {/* Select All / Clear helpers for scry and surveil */}
-            {mode !== "dig" && mode !== "discard" && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() =>
-                  setSelected(new Set(cards.map((c) => c.id)))
-                }
-              >
-                All to {config.selectedLabel}
-              </Button>
-            )}
-            {mode !== "dig" && mode !== "discard" && selected.size > 0 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setSelected(new Set())}
-              >
-                Clear
-              </Button>
-            )}
-            <Button
-              size="sm"
-              disabled={!canConfirm}
-              onClick={handleConfirm}
-            >
-              {config.confirmLabel(selected.size, cards.length, required)}
-            </Button>
-          </div>
+      <Modal.Footer className="justify-between gap-3">
+        <div className="text-xs text-muted-foreground">
+          {cards.length} card{cards.length !== 1 ? "s" : ""}
+          {mode === "dig" && optional && " · Taking 0 is allowed"}
         </div>
-      </div>
+        <div className="flex gap-2">
+          {/* Select All / Clear helpers for scry and surveil */}
+          {mode !== "dig" && mode !== "discard" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() =>
+                setSelected(new Set(cards.map((c) => c.id)))
+              }
+            >
+              All to {config.selectedLabel}
+            </Button>
+          )}
+          {mode !== "dig" && mode !== "discard" && selected.size > 0 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSelected(new Set())}
+            >
+              Clear
+            </Button>
+          )}
+          <Button
+            size="sm"
+            disabled={!canConfirm}
+            onClick={handleConfirm}
+          >
+            {config.confirmLabel(selected.size, cards.length, required)}
+          </Button>
+        </div>
+      </Modal.Footer>
 
       {hoveredCard && (
         <CardPreview
@@ -244,7 +229,6 @@ export function LibraryPeekModal({
           mouseY={mousePos.y}
         />
       )}
-    </div>,
-    document.body,
+    </Modal>
   );
 }

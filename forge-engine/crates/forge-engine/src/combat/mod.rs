@@ -98,6 +98,11 @@ impl CombatState {
     /// If false, only non-first-strike and double-strike creatures deal damage.
     /// Returns a Vec of CombatDamageEvents so the caller can fire triggers.
     pub fn resolve_damage_step(&self, game: &mut GameState, first_strike_only: bool) -> Vec<CombatDamageEvent> {
+        // Fog effect: skip all combat damage this turn (issue #22).
+        if game.prevent_all_combat_damage {
+            return Vec::new();
+        }
+
         let mut events = Vec::new();
 
         for (attacker_id, defending_player) in self.attackers.clone() {

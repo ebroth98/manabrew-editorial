@@ -37,6 +37,14 @@ pub struct PlayerState {
 
     // Commander damage received: card_id.0 → total damage dealt by that commander
     pub commander_damage_received: HashMap<u32, i32>,
+
+    // Skip turns counter (issue #22, SkipTurn effect).
+    pub skip_turns: i32,
+
+    // Phase skip flags (issue #22, SkipPhase effect).
+    pub skip_next_draw: bool,
+    pub skip_next_combat: bool,
+    pub skip_next_untap: bool,
 }
 
 impl PlayerState {
@@ -58,6 +66,10 @@ impl PlayerState {
             has_won: false,
             has_conceded: false,
             commander_damage_received: HashMap::new(),
+            skip_turns: 0,
+            skip_next_draw: false,
+            skip_next_combat: false,
+            skip_next_untap: false,
         }
     }
 
@@ -69,6 +81,19 @@ impl PlayerState {
     pub fn lose_life(&mut self, amount: i32) {
         self.life -= amount;
         self.life_lost_this_turn += amount;
+    }
+
+    /// Set life total to an absolute value. Returns the difference (positive = gained, negative = lost).
+    /// Mirrors Java's `Player.setLife()` used by LifeSetEffect.
+    pub fn set_life(&mut self, amount: i32) -> i32 {
+        let diff = amount - self.life;
+        self.life = amount;
+        if diff > 0 {
+            self.life_gained_this_turn += diff;
+        } else if diff < 0 {
+            self.life_lost_this_turn += diff.abs();
+        }
+        diff
     }
 
     pub fn deal_damage(&mut self, amount: i32) {

@@ -1,0 +1,137 @@
+import { createPortal } from "react-dom";
+import { useEffect } from "react";
+import { X } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+interface ModalProps {
+  children: React.ReactNode;
+  /** Called when the user clicks the backdrop or presses Escape. If omitted, backdrop click and Escape are disabled. */
+  onClose?: () => void;
+  /** Max width class for the modal panel (default: "max-w-2xl") */
+  maxWidth?: string;
+  /** Max height class for the modal panel (default: "max-h-[80vh]") */
+  maxHeight?: string;
+  /** Additional className for the modal panel */
+  className?: string;
+}
+
+/**
+ * Reusable modal wrapper. Renders a portal into document.body with:
+ * - Dark backdrop with blur
+ * - Centered panel with animation
+ * - Escape key to close
+ * - Click-outside to close
+ *
+ * Use the compound sub-components (Modal.Header, Modal.Body, etc.) for consistent layout.
+ */
+export function Modal({ children, onClose, maxWidth = "max-w-2xl", maxHeight = "max-h-[80vh]", className }: ModalProps) {
+  useEffect(() => {
+    if (!onClose) return;
+    function handleKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose!();
+    }
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className={cn(
+          "bg-card border rounded-xl shadow-2xl flex flex-col w-full mx-4 animate-in fade-in zoom-in-95 duration-200",
+          maxWidth,
+          maxHeight,
+          className,
+        )}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+interface ModalHeaderProps {
+  children: React.ReactNode;
+  onClose?: () => void;
+  /** Additional className */
+  className?: string;
+}
+
+function ModalHeader({ children, onClose, className }: ModalHeaderProps) {
+  return (
+    <div className={cn("flex items-center justify-between px-4 py-3 border-b", className)}>
+      <div className="flex-1 min-w-0">{children}</div>
+      {onClose && (
+        <button
+          className="rounded-md p-1 hover:bg-muted transition-colors shrink-0 ml-2"
+          onClick={onClose}
+          title="Close (Esc)"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+interface ModalInstructionsProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+function ModalInstructions({ children, className }: ModalInstructionsProps) {
+  return (
+    <div className={cn("px-4 py-2 bg-blue-50 dark:bg-blue-950/20 border-b", className)}>
+      <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 text-center">
+        {children}
+      </p>
+    </div>
+  );
+}
+
+interface ModalBodyProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+function ModalBody({ children, className }: ModalBodyProps) {
+  return (
+    <div className={cn("overflow-y-auto p-4 flex-1", className)}>
+      {children}
+    </div>
+  );
+}
+
+interface ModalFooterProps {
+  children: React.ReactNode;
+  className?: string;
+}
+
+function ModalFooter({ children, className }: ModalFooterProps) {
+  return (
+    <div className={cn("flex items-center justify-end px-4 py-3 border-t", className)}>
+      {children}
+    </div>
+  );
+}
+
+interface ModalEmptyStateProps {
+  message?: string;
+}
+
+function ModalEmptyState({ message = "No cards" }: ModalEmptyStateProps) {
+  return (
+    <p className="text-sm text-muted-foreground italic text-center py-8">{message}</p>
+  );
+}
+
+Modal.Header = ModalHeader;
+Modal.Instructions = ModalInstructions;
+Modal.Body = ModalBody;
+Modal.Footer = ModalFooter;
+Modal.EmptyState = ModalEmptyState;

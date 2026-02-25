@@ -14,15 +14,18 @@ const SIZE_CLASSES = {
 
 export type ManaSymbolSize = keyof typeof SIZE_CLASSES;
 
+// Valid mana symbols: single letters, numbers, X, hybrid (W/U, 2/W), phyrexian (W/P), snow (S), tap (T), etc.
+const VALID_SYMBOL = /^(?:\d+|[WUBRGCSXYTQEP]|[WUBRG2]\/[WUBRGP]|H[WUBRG])$/i;
+
 /** Parse a mana cost string into individual symbol tokens. */
 export function parseManaSymbols(cost: string): string[] {
-  if (!cost) return [];
+  if (!cost || cost === "no cost") return [];
   if (cost.includes("{")) {
     const matches = cost.match(/\{[^}]+\}/g);
     if (!matches) return [];
-    return matches.map((m) => m.slice(1, -1));
+    return matches.map((m) => m.slice(1, -1).trim()).filter((s) => s.length > 0 && VALID_SYMBOL.test(s));
   }
-  return cost.split(/\s+/).filter(Boolean);
+  return cost.split(/\s+/).filter((s) => s.length > 0 && VALID_SYMBOL.test(s));
 }
 
 function symbolUrl(symbol: string): string {

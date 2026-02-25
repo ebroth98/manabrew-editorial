@@ -117,6 +117,15 @@ impl GameLoop {
         _rng: &mut impl rand::Rng,
     ) {
         let active = game.active_player();
+
+        // SkipTurn (issue #22): if the active player has skip_turns > 0, skip entirely.
+        if game.player(active).skip_turns > 0 {
+            game.player_mut(active).skip_turns -= 1;
+            // Still advance turn state so the next player gets their turn
+            game.turn.next_player_turn(&game.player_order.clone());
+            return;
+        }
+
         game.new_turn_for_player(active);
 
         // Snapshot + notify all agents of the turn change (display-only, before any actions)
@@ -143,18 +152,32 @@ impl GameLoop {
     ) {
         let mut state = TurnMachineState::Untap;
         while !game.game_over && state != TurnMachineState::Done {
+            // EndTurn (issue #22): if end_turn_requested, skip directly to cleanup.
+            if game.end_turn_requested && state != TurnMachineState::Cleanup && state != TurnMachineState::Done {
+                game.end_turn_requested = false;
+                self.combat.clear();
+                state = TurnMachineState::Cleanup;
+                continue;
+            }
             state = match state {
                 TurnMachineState::Untap => {
-                    self.apply_turn_event(
-                        game,
-                        agents,
-                        TurnEvent::EnterPhase {
-                            phase: PhaseType::Untap,
-                            emit_phase_trigger: false,
-                        },
-                    );
-                    self.apply_turn_event(game, agents, TurnEvent::UntapStep);
-                    TurnMachineState::Upkeep
+                    // SkipPhase: skip untap if flag set
+                    let active = game.active_player();
+                    if game.player(active).skip_next_untap {
+                        game.player_mut(active).skip_next_untap = false;
+                        TurnMachineState::Upkeep
+                    } else {
+                        self.apply_turn_event(
+                            game,
+                            agents,
+                            TurnEvent::EnterPhase {
+                                phase: PhaseType::Untap,
+                                emit_phase_trigger: false,
+                            },
+                        );
+                        self.apply_turn_event(game, agents, TurnEvent::UntapStep);
+                        TurnMachineState::Upkeep
+                    }
                 }
                 TurnMachineState::Upkeep => {
                     self.apply_turn_event(
@@ -175,23 +198,30 @@ impl GameLoop {
                     TurnMachineState::Draw
                 }
                 TurnMachineState::Draw => {
-                    self.apply_turn_event(
-                        game,
-                        agents,
-                        TurnEvent::EnterPhase {
-                            phase: PhaseType::Draw,
-                            emit_phase_trigger: true,
-                        },
-                    );
-                    self.apply_turn_event(game, agents, TurnEvent::DrawStep);
-                    self.apply_turn_event(
-                        game,
-                        agents,
-                        TurnEvent::PriorityWindow {
-                            is_main_phase: false,
-                        },
-                    );
-                    TurnMachineState::Main1
+                    // SkipPhase: skip draw if flag set
+                    let active = game.active_player();
+                    if game.player(active).skip_next_draw {
+                        game.player_mut(active).skip_next_draw = false;
+                        TurnMachineState::Main1
+                    } else {
+                        self.apply_turn_event(
+                            game,
+                            agents,
+                            TurnEvent::EnterPhase {
+                                phase: PhaseType::Draw,
+                                emit_phase_trigger: true,
+                            },
+                        );
+                        self.apply_turn_event(game, agents, TurnEvent::DrawStep);
+                        self.apply_turn_event(
+                            game,
+                            agents,
+                            TurnEvent::PriorityWindow {
+                                is_main_phase: false,
+                            },
+                        );
+                        TurnMachineState::Main1
+                    }
                 }
                 TurnMachineState::Main1 => {
                     self.apply_turn_event(
@@ -212,8 +242,21 @@ impl GameLoop {
                     TurnMachineState::Combat
                 }
                 TurnMachineState::Combat => {
-                    self.apply_turn_event(game, agents, TurnEvent::CombatStep);
-                    TurnMachineState::Main2
+                    // SkipPhase: skip combat if flag set
+                    let active = game.active_player();
+                    if game.player(active).skip_next_combat {
+                        game.player_mut(active).skip_next_combat = false;
+                        TurnMachineState::Main2
+                    } else {
+                        self.apply_turn_event(game, agents, TurnEvent::CombatStep);
+                        // Extra combat phases (issue #22, AddPhase effect)
+                        if game.extra_combat_phases > 0 {
+                            game.extra_combat_phases -= 1;
+                            TurnMachineState::Combat // loop back for another combat
+                        } else {
+                            TurnMachineState::Main2
+                        }
+                    }
                 }
                 TurnMachineState::Main2 => {
                     self.apply_turn_event(
@@ -287,6 +330,11 @@ impl GameLoop {
                 if emit_phase_trigger {
                     self.emit_phase_trigger(game, phase);
                 }
+                // Suspend: at the beginning of each upkeep, remove a time counter
+                // from each suspended card in exile. If last counter removed, cast for free.
+                if phase == PhaseType::Upkeep {
+                    self.process_suspend_upkeep(game, agents);
+                }
             }
             TurnEvent::PriorityWindow { is_main_phase } => {
                 self.step_with_priority(game, agents, is_main_phase);
@@ -311,7 +359,23 @@ impl GameLoop {
             }
             TurnEvent::AdvanceTurn => {
                 self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
-                    game.turn.next_player_turn(&game.player_order.clone());
+                    // Extra turns (issue #22): if the queue is non-empty, the
+                    // front player gets the next turn instead of the normal
+                    // rotation.  Mirrors Java's PhaseHandler.handleNextTurn().
+                    if let Some(extra_turn) = game.extra_turns.pop_front() {
+                        game.turn.active_player = extra_turn.player;
+                        game.turn.priority_player = extra_turn.player;
+                        game.turn.turn_number += 1;
+                        game.turn.combat_attackers_declared = false;
+                        game.turn.combat_blockers_declared = false;
+                        game.turn.drawn_for_turn = false;
+                        // SkipUntap on extra turn (issue #22, AddTurn parity fix)
+                        if extra_turn.skip_untap {
+                            game.player_mut(extra_turn.player).skip_next_untap = true;
+                        }
+                    } else {
+                        game.turn.next_player_turn(&game.player_order.clone());
+                    }
                 });
             }
         }
@@ -319,6 +383,17 @@ impl GameLoop {
 
     pub fn step_untap(&mut self, game: &mut GameState) {
         let active = game.active_player();
+
+        // Phase-in (issue #22): phase in all phased-out permanents controlled by active player.
+        for i in 0..game.cards.len() {
+            if game.cards[i].phased_out
+                && game.cards[i].controller == active
+                && game.cards[i].zone == ZoneType::Battlefield
+            {
+                game.cards[i].phased_out = false;
+            }
+        }
+
         game.untap_all(active);
         self.pool_mut(active).empty();
     }
@@ -365,6 +440,8 @@ impl GameLoop {
         hasher.write_u32(game.turn.priority_player.0);
         hasher.write_u8(game.game_over as u8);
         hasher.write_u32(game.winner.map(|p| p.0).unwrap_or(u32::MAX));
+        hasher.write_u8(game.prevent_all_combat_damage as u8);
+        hasher.write_usize(game.extra_turns.len());
 
         for p in &game.players {
             hasher.write_u32(p.id.0);
@@ -531,6 +608,13 @@ impl GameLoop {
         self.emit_phase_trigger(game, PhaseType::CombatBegin);
         self.step_with_priority(game, agents, false);
         if game.game_over {
+            self.combat.clear();
+            return;
+        }
+
+        // EndCombatPhase (issue #22): if requested, exit combat early
+        if game.end_combat_requested {
+            game.end_combat_requested = false;
             self.combat.clear();
             return;
         }
@@ -753,6 +837,21 @@ impl GameLoop {
             }
         }
 
+        // Reset fog flag (issue #22: Fog effect lasts until end of turn).
+        game.prevent_all_combat_damage = false;
+
+        // Reset end-of-turn flags (issue #22).
+        game.end_turn_requested = false;
+        game.end_combat_requested = false;
+        game.extra_combat_phases = 0;
+
+        // Monarch draw (issue #22): at end of turn, the monarch draws a card.
+        if let Some(monarch_id) = game.monarch {
+            if game.player(monarch_id).is_alive() && monarch_id == active {
+                game.draw_card(monarch_id);
+            }
+        }
+
         // Remove damage and reset until-end-of-turn effects on all creatures
         for i in 0..game.cards.len() {
             if game.cards[i].zone == ZoneType::Battlefield && game.cards[i].is_creature() {
@@ -761,6 +860,8 @@ impl GameLoop {
                 game.cards[i].toughness_modifier = 0;
                 game.cards[i].pump_keywords.clear();
                 game.cards[i].has_deathtouch_damage = false;
+                // Reset regeneration shields at end of turn (issue #22).
+                game.cards[i].regeneration_shields = 0;
             }
         }
     }
@@ -874,75 +975,176 @@ impl GameLoop {
                 // Check if we can pay the mana cost (normal or alternative)
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
-                let can_pay_normal = available_mana.can_pay(&card.mana_cost);
 
-                // Check alternative costs that may be cheaper
-                let can_pay_spectacle = if let Some(spec_cost) = card.get_spectacle_cost() {
-                    let opponent_lost_life = game.player_order.iter()
-                        .filter(|&&pid| pid != player)
-                        .any(|&pid| game.player(pid).life_lost_this_turn > 0);
-                    opponent_lost_life && available_mana.can_pay(&forge_foundation::ManaCost::parse(&spec_cost))
-                } else { false };
+                // Check normal cost OR any alternative costs
+                let normal_ok = available_mana.can_pay(&card.mana_cost);
 
-                let can_pay_evoke = if let Some(evoke_cost) = card.get_evoke_cost() {
-                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&evoke_cost))
-                } else { false };
+                // Spectacle: alt cost if opponent lost life this turn
+                let spectacle_ok = if let Some(spec_cost_str) = card.get_spectacle_cost() {
+                    let opp = game.opponent_of(player);
+                    game.player(opp).life_lost_this_turn > 0
+                        && available_mana.can_pay(&forge_foundation::ManaCost::parse(&spec_cost_str))
+                } else {
+                    false
+                };
 
-                let can_pay_dash = if let Some(dash_cost) = card.get_dash_cost() {
-                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&dash_cost))
-                } else { false };
+                // Evoke: alt cost for creatures
+                let evoke_ok = if let Some(evoke_cost_str) = card.get_evoke_cost() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&evoke_cost_str))
+                } else {
+                    false
+                };
 
-                let can_pay_blitz = if let Some(blitz_cost) = card.get_blitz_cost() {
-                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&blitz_cost))
-                } else { false };
+                // Dash: alt cost
+                let dash_ok = if let Some(dash_cost_str) = card.get_dash_cost() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&dash_cost_str))
+                } else {
+                    false
+                };
 
-                let can_pay_overload = if let Some(overload_cost) = card.get_overload_cost() {
-                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&overload_cost))
-                } else { false };
+                // Blitz: alt cost
+                let blitz_ok = if let Some(blitz_cost_str) = card.get_blitz_cost() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&blitz_cost_str))
+                } else {
+                    false
+                };
 
-                let can_afford = can_pay_normal || can_pay_spectacle || can_pay_evoke
-                    || can_pay_dash || can_pay_blitz || can_pay_overload;
+                // Overload: alt cost
+                let overload_ok = if let Some(ovl_cost_str) = card.get_overload_cost() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&ovl_cost_str))
+                } else {
+                    false
+                };
 
-                if can_afford {
-                    // Check additional costs from SP$ line (e.g. Sac<1/Creature>).
-                    // Mirrors Java's CostPayment.canPayAdditionalCosts().
-                    let spell_cost = Self::parse_spell_cost(&card.abilities);
-                    let additional_costs_ok = if let Some(ref sc) = spell_cost {
-                        sc.parts.iter().all(|part| match part {
-                            CostPart::Sacrifice {
-                                type_filter,
-                                amount,
-                            } => {
-                                if type_filter == "CARDNAME" {
-                                    true // source-sacrifice checked separately
-                                } else {
-                                    let targets =
-                                        cost::get_sacrifice_targets(game, player, type_filter);
-                                    (targets.len() as i32) >= *amount
-                                }
-                            }
-                            CostPart::PayLife(life) => game.player(player).life >= *life,
-                            _ => true, // Mana already checked, Tap N/A for spells
-                        })
-                    } else {
-                        true
-                    };
+                // Suspend: special action, pay suspend cost to exile with time counters
+                let suspend_ok = if let Some((suspend_cost_str, _counters)) = card.get_suspend_cost() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&suspend_cost_str))
+                } else {
+                    false
+                };
 
-                    if additional_costs_ok {
-                        // For targeted spells, check that at least one valid target
-                        // exists across the entire SubAbility chain.
-                        // Mirrors Java's setupTargets() walking the chain.
-                        let all_valid = card.abilities.iter().all(|ab| {
-                            target_restrictions::has_candidates_in_chain(
-                                game,
-                                player,
-                                ab,
-                                Some(card_id),
-                            )
-                        });
-                        if all_valid {
-                            playable.push(card_id);
+                // Foretell: pay {2} to exile face-down from hand
+                let foretell_exile_ok = if card.get_foretell_cost().is_some() {
+                    available_mana.can_pay(&forge_foundation::ManaCost::generic(2))
+                } else {
+                    false
+                };
+
+                // Emerge: alt cost minus sacrificed creature's mana value
+                let emerge_ok = if let Some(emerge_cost_str) = card.get_emerge_cost() {
+                    // Simplified: check if emerge base cost is affordable
+                    // (actual cost reduction from sac'd creature computed at cast time)
+                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&emerge_cost_str))
+                        || {
+                            // Even if base emerge cost isn't payable, if we have creatures to sac
+                            // the reduction might make it payable — approximate check
+                            !game.cards_in_zone(ZoneType::Battlefield, player)
+                                .iter()
+                                .filter(|&&cid| game.card(cid).is_creature())
+                                .collect::<Vec<_>>()
+                                .is_empty()
                         }
+                } else {
+                    false
+                };
+
+                if !normal_ok && !spectacle_ok && !evoke_ok && !dash_ok && !blitz_ok
+                    && !overload_ok && !suspend_ok && !foretell_exile_ok && !emerge_ok
+                {
+                    continue;
+                }
+
+                // Check additional costs from SP$ line (e.g. Sac<1/Creature>).
+                let spell_cost = Self::parse_spell_cost(&card.abilities);
+                let additional_costs_ok = if let Some(ref sc) = spell_cost {
+                    sc.parts.iter().all(|part| match part {
+                        CostPart::Sacrifice {
+                            type_filter,
+                            amount,
+                        } => {
+                            if type_filter == "CARDNAME" {
+                                true
+                            } else {
+                                let targets =
+                                    cost::get_sacrifice_targets(game, player, type_filter);
+                                (targets.len() as i32) >= *amount
+                            }
+                        }
+                        CostPart::PayLife(life) => game.player(player).life >= *life,
+                        _ => true,
+                    })
+                } else {
+                    true
+                };
+
+                if additional_costs_ok {
+                    let all_valid = card.abilities.iter().all(|ab| {
+                        target_restrictions::has_candidates_in_chain(
+                            game,
+                            player,
+                            ab,
+                            Some(card_id),
+                        )
+                    });
+                    if all_valid {
+                        playable.push(card_id);
+                    }
+                }
+            }
+        }
+
+        // Check graveyard for Escape cards
+        let graveyard: Vec<CardId> = game.cards_in_zone(ZoneType::Graveyard, player).to_vec();
+        for card_id in graveyard {
+            let card = game.card(card_id);
+            if let Some((escape_mana, exile_count)) = card.get_escape_cost() {
+                let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
+                if must_be_instant && !is_instant {
+                    continue;
+                }
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                if available_mana.can_pay(&forge_foundation::ManaCost::parse(&escape_mana)) {
+                    let other_gy_count = game
+                        .cards_in_zone(ZoneType::Graveyard, player)
+                        .iter()
+                        .filter(|&&cid| cid != card_id)
+                        .count() as i32;
+                    if other_gy_count >= exile_count {
+                        playable.push(card_id);
+                    }
+                }
+            }
+        }
+
+        // Check exile for Foretold cards (face-down in exile with foretell cost)
+        // and Madness cards (exiled via discard with MadnessExiled marker)
+        let exile: Vec<CardId> = game.cards_in_zone(ZoneType::Exile, player).to_vec();
+        for card_id in exile {
+            let card = game.card(card_id);
+            if card.face_down {
+                if let Some(foretell_cost_str) = card.get_foretell_cost() {
+                    let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
+                    if must_be_instant && !is_instant {
+                        continue;
+                    }
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    if available_mana.can_pay(&forge_foundation::ManaCost::parse(&foretell_cost_str)) {
+                        playable.push(card_id);
+                    }
+                }
+            } else if card.has_keyword("MadnessExiled") {
+                // Madness: exiled card that can be cast for madness cost
+                if let Some(madness_cost_str) = card.get_madness_cost() {
+                    let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
+                    if must_be_instant && !is_instant {
+                        continue;
+                    }
+                    let available_mana =
+                        mana::calculate_available_mana(self.pool(player), game, player);
+                    if available_mana.can_pay(&forge_foundation::ManaCost::parse(&madness_cost_str)) {
+                        playable.push(card_id);
                     }
                 }
             }
@@ -951,8 +1153,8 @@ impl GameLoop {
         playable
     }
 
-    /// Play a card from hand. Returns the (card_id, card_name) if the card was
-    /// successfully played, so the caller can emit the notification after resolution.
+    /// Play a card from hand (or graveyard for Escape). Returns the (card_id, card_name)
+    /// if the card was successfully played, so the caller can emit the notification.
     fn play_card(
         &mut self,
         game: &mut GameState,
@@ -985,12 +1187,19 @@ impl GameLoop {
             let is_permanent = game.card(card_id).is_permanent();
 
             // ── Alternative cost detection ──────────────────────────────
+
+            // Detect Foretell: casting from exile (face-down) with foretell cost
+            let is_foretell = game.card(card_id).zone == ZoneType::Exile
+                && game.card(card_id).face_down
+                && game.card(card_id).get_foretell_cost().is_some();
+
             // Detect Flashback: casting from graveyard with flashback cost
-            let is_flashback = game.card(card_id).zone == ZoneType::Graveyard
+            let is_flashback = !is_foretell
+                && game.card(card_id).zone == ZoneType::Graveyard
                 && game.card(card_id).get_flashback_cost().is_some();
 
             // Detect Spectacle: alternative cost if opponent lost life this turn
-            let is_spectacle = if !is_flashback {
+            let is_spectacle = if !is_flashback && !is_foretell {
                 if let Some(_spec_cost_str) = game.card(card_id).get_spectacle_cost() {
                     let opponent_lost_life = game
                         .player_order
@@ -1019,7 +1228,7 @@ impl GameLoop {
             };
 
             // Detect Evoke: alternative cost for creatures
-            let is_evoke = if !is_flashback && !is_spectacle {
+            let is_evoke = if !is_flashback && !is_spectacle && !is_foretell {
                 if let Some(evoke_cost_str) = game.card(card_id).get_evoke_cost() {
                     let evoke_mc = forge_foundation::ManaCost::parse(&evoke_cost_str);
                     let normal_mc = &game.card(card_id).mana_cost;
@@ -1049,7 +1258,7 @@ impl GameLoop {
             };
 
             // Detect Escape: casting from graveyard with escape cost + exiling graveyard cards
-            let is_escape = if !is_flashback {
+            let is_escape = if !is_flashback && !is_foretell {
                 if game.card(card_id).zone == ZoneType::Graveyard {
                     if let Some((escape_mana_str, exile_count)) = game.card(card_id).get_escape_cost() {
                         let escape_mc = forge_foundation::ManaCost::parse(&escape_mana_str);
@@ -1073,7 +1282,7 @@ impl GameLoop {
             };
 
             // Detect Overload: alternative cost that changes "target" to "each"
-            let is_overload = if !is_flashback && !is_spectacle && !is_evoke && !is_escape {
+            let is_overload = if !is_flashback && !is_spectacle && !is_evoke && !is_escape && !is_foretell {
                 if let Some(overload_cost_str) = game.card(card_id).get_overload_cost() {
                     let overload_mc = forge_foundation::ManaCost::parse(&overload_cost_str);
                     let normal_mc = &game.card(card_id).mana_cost;
@@ -1104,7 +1313,7 @@ impl GameLoop {
             };
 
             // Detect Dash: alternative cost, creature gains haste, returns at EOT
-            let is_dash = if !is_flashback && !is_spectacle && !is_evoke && !is_escape && !is_overload {
+            let is_dash = if !is_flashback && !is_spectacle && !is_evoke && !is_escape && !is_overload && !is_foretell {
                 if let Some(dash_cost_str) = game.card(card_id).get_dash_cost() {
                     let dash_mc = forge_foundation::ManaCost::parse(&dash_cost_str);
                     let normal_mc = &game.card(card_id).mana_cost;
@@ -1134,7 +1343,7 @@ impl GameLoop {
             };
 
             // Detect Blitz: alternative cost, haste + "dies: draw" + sacrifice at EOT
-            let is_blitz = if !is_flashback && !is_spectacle && !is_evoke && !is_escape && !is_overload && !is_dash {
+            let is_blitz = if !is_flashback && !is_spectacle && !is_evoke && !is_escape && !is_overload && !is_dash && !is_foretell {
                 if let Some(blitz_cost_str) = game.card(card_id).get_blitz_cost() {
                     let blitz_mc = forge_foundation::ManaCost::parse(&blitz_cost_str);
                     let normal_mc = &game.card(card_id).mana_cost;
@@ -1164,15 +1373,84 @@ impl GameLoop {
             };
 
             // Detect Madness: casting from exile with madness cost
-            let is_madness = game.card(card_id).zone == ZoneType::Exile
+            let is_madness = !is_foretell
+                && game.card(card_id).zone == ZoneType::Exile
                 && game.card(card_id).get_madness_cost().is_some();
 
+            // Detect Emerge: alternative cost (sacrifice creature to reduce cost)
+            let is_emerge = if !is_flashback && !is_foretell && !is_spectacle && !is_evoke && !is_escape
+                && !is_overload && !is_dash && !is_blitz && !is_madness
+            {
+                game.card(card_id).get_emerge_cost().is_some()
+            } else {
+                false
+            };
+
+            // ── Foretell exile: special action, not a cast ────────────
+            // If foretell card is in hand (not being cast from exile), offer to exile face-down for {2}.
+            if !is_foretell && game.card(card_id).get_foretell_cost().is_some()
+                && game.card(card_id).zone == ZoneType::Hand
+            {
+                let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+                let foretell_exile_cost = forge_foundation::ManaCost::generic(2);
+                if available_mana.can_pay(&foretell_exile_cost) {
+                    let name = game.card(card_id).card_name.clone();
+                    let options = vec![
+                        "Cast normally".to_string(),
+                        "Foretell (exile face-down for {2})".to_string(),
+                    ];
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    let choice = agents[player.index()].choose_alternative_cost(player, &options, Some(&name));
+                    if choice == 1 {
+                        // Pay {2}
+                        mana::auto_tap_lands(game, self.pool_mut(player), player, &foretell_exile_cost);
+                        self.pool_mut(player).try_pay(&foretell_exile_cost);
+                        // Exile face-down
+                        game.card_mut(card_id).face_down = true;
+                        game.move_card(card_id, ZoneType::Exile, player);
+                        agents[player.index()].notify(&format!("Foretold: {}", card_name));
+                        return Some((card_id, card_name));
+                    }
+                }
+            }
+
+            // ── Suspend: special action, exile with time counters ────────
+            if let Some((suspend_cost, counters)) = game.card(card_id).get_suspend_cost() {
+                if game.card(card_id).zone == ZoneType::Hand {
+                    let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+                    let suspend_mc = forge_foundation::ManaCost::parse(&suspend_cost);
+                    if available_mana.can_pay(&suspend_mc) {
+                        let name = game.card(card_id).card_name.clone();
+                        let options = vec![
+                            "Cast normally".to_string(),
+                            format!("Suspend ({}, {} time counters)", suspend_cost, counters),
+                        ];
+                        agents[player.index()].snapshot_state(game, &self.mana_pools);
+                        let choice = agents[player.index()].choose_alternative_cost(player, &options, Some(&name));
+                        if choice == 1 {
+                            mana::auto_tap_lands(game, self.pool_mut(player), player, &suspend_mc);
+                            self.pool_mut(player).try_pay(&suspend_mc);
+                            game.move_card(card_id, ZoneType::Exile, player);
+                            game.card_mut(card_id).add_counter(crate::card::CounterType::Time, counters);
+                            agents[player.index()].notify(&format!("Suspended: {} with {} time counters", card_name, counters));
+                            return Some((card_id, card_name));
+                        }
+                    }
+                }
+            }
+
             // Determine the mana cost to use
-            let mana_cost = if is_flashback {
+            let mana_cost = if is_foretell {
+                let foretell_cost_str = game.card(card_id).get_foretell_cost().unwrap();
+                game.card_mut(card_id).face_down = false; // reveal it
+                forge_foundation::ManaCost::parse(&foretell_cost_str)
+            } else if is_flashback {
                 let fb_cost_str = game.card(card_id).get_flashback_cost().unwrap();
                 forge_foundation::ManaCost::parse(&fb_cost_str)
             } else if is_madness {
                 let madness_cost_str = game.card(card_id).get_madness_cost().unwrap();
+                // Remove the MadnessExiled marker
+                game.card_mut(card_id).granted_keywords.retain(|k| k != "MadnessExiled");
                 forge_foundation::ManaCost::parse(&madness_cost_str)
             } else if is_spectacle {
                 let spec_cost_str = game.card(card_id).get_spectacle_cost().unwrap();
@@ -1192,8 +1470,51 @@ impl GameLoop {
             } else if is_blitz {
                 let blitz_cost_str = game.card(card_id).get_blitz_cost().unwrap();
                 forge_foundation::ManaCost::parse(&blitz_cost_str)
+            } else if is_emerge {
+                let emerge_cost_str = game.card(card_id).get_emerge_cost().unwrap();
+                forge_foundation::ManaCost::parse(&emerge_cost_str)
             } else {
                 game.card(card_id).mana_cost.clone()
+            };
+
+            // ── Emerge: sacrifice a creature to reduce cost ──────────
+            let mana_cost = if is_emerge {
+                let mut cost = mana_cost;
+                let creatures: Vec<CardId> = game
+                    .cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .filter(|&&cid| cid != card_id && game.card(cid).is_creature())
+                    .copied()
+                    .collect();
+                if !creatures.is_empty() {
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    if let Some(sac_id) = agents[player.index()].choose_sacrifice(player, &creatures) {
+                        // Reduce emerge cost by the sacrificed creature's mana value
+                        let sac_cmc = game.card(sac_id).mana_cost.cmc();
+                        cost = cost.reduce_generic(sac_cmc);
+                        // Sacrifice the creature
+                        let sac_owner = game.card(sac_id).owner;
+                        self.trigger_handler.run_trigger(
+                            TriggerType::Sacrificed,
+                            RunParams {
+                                card: Some(sac_id),
+                                player: Some(player),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                        game.move_card(sac_id, ZoneType::Graveyard, sac_owner);
+                        crate::ability::effects::emit_zone_trigger(
+                            &mut self.trigger_handler,
+                            sac_id,
+                            ZoneType::Battlefield,
+                            ZoneType::Graveyard,
+                        );
+                    }
+                }
+                cost
+            } else {
+                mana_cost
             };
 
             // ── Additional cost checks (Kicker, Buyback, Multikicker, Replicate) ──
@@ -1335,8 +1656,6 @@ impl GameLoop {
             };
 
             // Check Escalate: additional cost per mode beyond the first.
-            // Pre-pay for extra modes at cast time so charm_effect can allow all mode choices.
-            // Count available modes from the card's Charm ability Choices$ param.
             let mana_cost = if let Some(escalate_cost_str) = game.card(card_id).get_escalate_cost() {
                 let abilities = game.card(card_id).abilities.clone();
                 let ability_text = abilities.first().cloned().unwrap_or_default();
@@ -1347,7 +1666,6 @@ impl GameLoop {
                     .unwrap_or(1);
                 if num_modes > 1 {
                     let esc_mc = forge_foundation::ManaCost::parse(&escalate_cost_str);
-                    // Calculate how many extra modes the player can afford
                     let available_mana =
                         mana::calculate_available_mana(self.pool(player), game, player);
                     let mut extra_modes = 0u32;
@@ -1411,7 +1729,7 @@ impl GameLoop {
                 0
             };
 
-            // Auto-tap lands to pay the cost
+            // Auto-tap lands to pay the effective cost
             mana::auto_tap_lands(game, self.pool_mut(player), player, &mana_cost);
 
             // Auto-tap extra lands for commander tax
@@ -1419,7 +1737,6 @@ impl GameLoop {
                 mana::auto_tap_lands_generic(game, self.pool_mut(player), player, commander_tax);
             }
 
-            // Check if we have an ability line that defines what this spell does
             let abilities = game.card(card_id).abilities.clone();
 
             // Pay the mana cost from pool
@@ -1428,13 +1745,12 @@ impl GameLoop {
                 return None;
             }
 
-            // Pay commander tax (extra generic mana)
+            // Pay commander tax
             if commander_tax > 0 && !self.pool_mut(player).try_pay_extra_generic(commander_tax) {
                 return None;
             }
 
             // Pay additional costs from SP$ line (e.g. sacrifice a creature).
-            // Mirrors Java's CostPayment.payCost() iterating CostParts.
             let spell_cost = Self::parse_spell_cost(&abilities);
             if let Some(ref sc) = spell_cost {
                 self.pay_additional_costs(game, agents, player, card_id, sc);
@@ -1475,13 +1791,14 @@ impl GameLoop {
             );
 
             // Build SpellAbility chain and choose targets.
-            // Mirrors Java's AbilityFactory.getAbility() + setupTargets().
             let ability_text = abilities.first().cloned().unwrap_or_default();
             let mut sa = build_spell_ability(game, card_id, &ability_text, player);
             sa.is_spell = true;
 
             // Set alternative cost on the SpellAbility
-            if is_flashback {
+            if is_foretell {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Foretell);
+            } else if is_flashback {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Flashback);
             } else if is_madness {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Madness);
@@ -1498,9 +1815,11 @@ impl GameLoop {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Dash);
             } else if is_blitz {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Blitz);
+            } else if is_emerge {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Emerge);
             }
 
-            // Set kicked flag on the SpellAbility (also set for entwine — charm_effect checks sa.kicked)
+            // Set kicked flag on the SpellAbility (also set for entwine -- charm_effect checks sa.kicked)
             if kicked || kick_count > 0 || entwine_paid {
                 sa.kicked = true;
             }
@@ -1510,7 +1829,7 @@ impl GameLoop {
             sa.kick_count = kick_count;
             sa.replicate_count = replicate_count;
 
-            // Overloaded spells replace "target" with "each" — skip targeting.
+            // Overloaded spells replace "target" with "each" -- skip targeting.
             if !sa.overloaded {
                 sa.setup_targets(game, agents, &self.mana_pools);
             }
@@ -1528,7 +1847,9 @@ impl GameLoop {
                 );
             }
 
-            let cast_zone = if is_flashback || is_escape {
+            let cast_zone = if is_foretell {
+                Some(ZoneType::Exile)
+            } else if is_flashback || is_escape {
                 Some(ZoneType::Graveyard)
             } else if is_madness {
                 Some(ZoneType::Exile)
@@ -1553,8 +1874,6 @@ impl GameLoop {
             game.move_card(card_id, ZoneType::Stack, player);
 
             // Storm: create N copies where N = spells_cast_this_turn - 1.
-            // Each copy may choose new targets independently.
-            // Mirrors Java's CopySpellAbilityEffect + MayChooseTarget$ True.
             if game.card(card_id).has_storm() {
                 let storm_count = game.player(player).spells_cast_this_turn - 1;
                 if storm_count > 0 {
@@ -1563,9 +1882,6 @@ impl GameLoop {
                     for i in 0..storm_count {
                         let mut copy = entry.clone();
                         copy.spell_ability.is_copy = true;
-                        // Each copy gets independent target selection.
-                        // Mirrors Java's copy.setMayChooseNewTargets(true)
-                        // followed by setupNewTargets() for each copy.
                         if copy.spell_ability.uses_targeting() {
                             agents[player.index()]
                                 .snapshot_state(game, &self.mana_pools);
@@ -1673,6 +1989,9 @@ impl GameLoop {
         if entry.spell_ability.is_trigger || entry.spell_ability.is_activated {
             // Triggered/activated ability: resolve the effect
             self.resolve_spell_effect(game, agents, &entry);
+        } else if entry.spell_ability.is_copy {
+            // Copy of a spell (from Replicate/Storm): resolve effect only, no card movement
+            self.resolve_spell_effect(game, agents, &entry);
         } else if let Some(card_id) = entry.spell_ability.source {
             let alt_cost = entry.spell_ability.alt_cost;
             let player = entry.spell_ability.activating_player;
@@ -1707,7 +2026,7 @@ impl GameLoop {
                     ZoneType::Battlefield,
                 );
 
-                // ── Post-ETB effects for alternative costs ──
+                // -- Post-ETB effects for alternative costs --
 
                 // Evoke: sacrifice this creature immediately after ETB
                 if alt_cost == Some(crate::spellability::AlternativeCost::Evoke) {
@@ -1731,7 +2050,6 @@ impl GameLoop {
                 // Dash: grant haste, register delayed trigger to return to hand at EOT
                 if alt_cost == Some(crate::spellability::AlternativeCost::Dash) {
                     game.card_mut(card_id).pump_keywords.push("Haste".to_string());
-                    // Register delayed trigger: at end-of-turn, return to hand
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::Phase,
@@ -1752,7 +2070,6 @@ impl GameLoop {
                 // Blitz: grant haste + "dies: draw a card" + sacrifice at EOT
                 if alt_cost == Some(crate::spellability::AlternativeCost::Blitz) {
                     game.card_mut(card_id).pump_keywords.push("Haste".to_string());
-                    // Add "dies → draw a card" trigger
                     let trig_id = game.card(card_id).triggers.len() as u32;
                     let dies_trigger = crate::trigger::Trigger {
                         id: trig_id,
@@ -1773,11 +2090,9 @@ impl GameLoop {
                         "BlitzDiesDraw".to_string(),
                         "DB$ Draw | NumCards$ 1 | Defined$ You".to_string(),
                     );
-                    // Re-register triggers for the updated card
                     self.trigger_handler.unregister_active_triggers(card_id);
                     self.trigger_handler.register_active_trigger(game, card_id);
 
-                    // Register delayed trigger: sacrifice at EOT
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::Phase,
@@ -1815,7 +2130,6 @@ impl GameLoop {
                         && entry.cast_from_zone == Some(ZoneType::Hand)
                     {
                         // Rebound: exile instead of graveyard (will be cast next upkeep)
-                        // Register delayed trigger for next upkeep
                         self.trigger_handler.register_delayed_trigger(
                             crate::trigger::handler::DelayedTrigger {
                                 mode: TriggerType::Phase,
@@ -1844,8 +2158,7 @@ impl GameLoop {
         apply_continuous_effects(game);
         game.check_state_based_actions();
 
-        // Process triggers that may have fired during resolution (puts them on stack
-        // so the outer step_with_priority loop can give priority before resolving them)
+        // Process triggers that may have fired during resolution
         self.process_triggers(game, agents);
     }
 
@@ -1950,6 +2263,92 @@ impl GameLoop {
                         },
                         false,
                     );
+                }
+            }
+        }
+    }
+
+    /// Suspend upkeep processing: for each suspended card in exile owned by the
+    /// active player, remove a time counter. If the last counter was removed,
+    /// cast the card for free (and grant haste if creature).
+    /// Mirrors Java's GameAction.handleSuspendTriggers().
+    fn process_suspend_upkeep(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) {
+        let active = game.active_player();
+        let exile: Vec<CardId> = game.cards_in_zone(ZoneType::Exile, active).to_vec();
+        for card_id in exile {
+            let card = game.card(card_id);
+            // Check if the card has suspend keyword and time counters
+            if card.get_suspend_cost().is_none() {
+                continue;
+            }
+            let time_counters = *card.counters.get(&crate::card::CounterType::Time).unwrap_or(&0);
+            if time_counters <= 0 {
+                continue;
+            }
+            // Remove one time counter
+            game.card_mut(card_id).remove_counter(crate::card::CounterType::Time, 1);
+
+            // Emit CounterRemoved trigger
+            self.trigger_handler.run_trigger(
+                TriggerType::CounterRemoved,
+                RunParams {
+                    card: Some(card_id),
+                    player: Some(active),
+                    ..Default::default()
+                },
+                false,
+            );
+
+            let remaining = *game.card(card_id).counters.get(&crate::card::CounterType::Time).unwrap_or(&0);
+            if remaining <= 0 {
+                // Last counter removed — cast for free
+                let card_name = game.card(card_id).card_name.clone();
+                let is_creature = game.card(card_id).is_creature();
+                let is_permanent = game.card(card_id).is_permanent();
+                let abilities = game.card(card_id).abilities.clone();
+
+                // Move from exile to stack
+                game.player_mut(active).spells_cast_this_turn += 1;
+
+                // Emit SpellCast trigger
+                self.trigger_handler.run_trigger(
+                    TriggerType::SpellCast,
+                    RunParams {
+                        spell_card: Some(card_id),
+                        spell_controller: Some(active),
+                        ..Default::default()
+                    },
+                    false,
+                );
+
+                // Build SpellAbility
+                let ability_text = abilities.first().cloned().unwrap_or_default();
+                let mut sa = build_spell_ability(game, card_id, &ability_text, active);
+                sa.is_spell = true;
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Suspend);
+                sa.setup_targets(game, agents, &self.mana_pools);
+
+                let entry = StackEntry {
+                    id: 0,
+                    spell_ability: sa,
+                    is_creature_spell: is_creature,
+                    is_permanent_spell: is_permanent,
+                    cast_from_zone: Some(ZoneType::Exile),
+                };
+
+                game.stack.push(entry);
+                game.move_card(card_id, ZoneType::Stack, active);
+                agents[active.index()].notify(&format!("Suspend: casting {} for free!", card_name));
+
+                // Grant haste if creature (suspend creatures get haste)
+                if is_creature {
+                    if !game.card(card_id).has_haste() {
+                        game.card_mut(card_id).granted_keywords.push("Haste".to_string());
+                    }
                 }
             }
         }

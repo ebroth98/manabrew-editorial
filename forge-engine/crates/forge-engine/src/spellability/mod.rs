@@ -16,8 +16,9 @@ use forge_foundation::ZoneType;
 pub use target_choices::TargetChoices;
 pub use target_restrictions::{TargetKind, TargetRestrictions};
 
-/// Alternative cost used to cast a spell (Flashback, Escape, etc.).
-/// Mirrors Java's `SpellAbility.getAlternativeCost()`.
+/// Alternative casting costs — mirrors Java's `OptionalCost` / `AlternativeCost`.
+/// Tracks how a spell was cast so resolution can apply the correct behaviour
+/// (e.g. Evoke → sacrifice on ETB, Dash → haste + bounce, Flashback → exile on resolve).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AlternativeCost {
     Flashback,
@@ -30,6 +31,7 @@ pub enum AlternativeCost {
     Madness,
     Foretell,
     Emerge,
+    Suspend,
 }
 
 // ── SpellAbility (mirrors Java's SpellAbility.java) ──────────────────
@@ -73,19 +75,19 @@ pub struct SpellAbility {
     pub trigger_source: Option<CardId>,
     /// Index into card.triggers for intervening-if recheck.
     pub trigger_index: Option<usize>,
-    /// Alternative cost used (Flashback, etc.). `None` for normal casting.
+    /// Alternative cost used to cast this spell (Flashback, Spectacle, Evoke, Dash, etc.).
     pub alt_cost: Option<AlternativeCost>,
     /// Whether the kicker cost was paid.
     pub kicked: bool,
-    /// Whether this is a copy (e.g. from Storm). Copies have no physical card.
-    pub is_copy: bool,
-    /// Whether the buyback cost was paid.
+    /// Whether buyback was paid (spell returns to hand on resolve).
     pub buyback_paid: bool,
-    /// Whether the spell was overloaded (Overload alternative cost).
+    /// Whether this spell is overloaded (targets all valid instead of one).
     pub overloaded: bool,
-    /// How many times the multikicker cost was paid.
+    /// Whether this spell is a copy (created by Storm, Replicate, etc.).
+    pub is_copy: bool,
+    /// Number of times the kicker/multikicker cost was paid.
     pub kick_count: u32,
-    /// How many times the replicate cost was paid.
+    /// Number of times the replicate cost was paid.
     pub replicate_count: u32,
 }
 
@@ -183,9 +185,9 @@ impl SpellAbility {
             trigger_index: None,
             alt_cost: None,
             kicked: false,
-            is_copy: false,
             buyback_paid: false,
             overloaded: false,
+            is_copy: false,
             kick_count: 0,
             replicate_count: 0,
         }
@@ -240,9 +242,9 @@ pub fn build_spell_ability(
         trigger_index: None,
         alt_cost: None,
         kicked: false,
-        is_copy: false,
         buyback_paid: false,
         overloaded: false,
+        is_copy: false,
         kick_count: 0,
         replicate_count: 0,
     }

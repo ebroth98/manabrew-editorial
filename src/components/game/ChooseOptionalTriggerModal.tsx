@@ -1,5 +1,5 @@
-import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/game/Modal";
 import { useEffect, useRef, useCallback } from "react";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
@@ -42,18 +42,15 @@ export function ChooseOptionalTriggerModal({
     return () => window.removeEventListener("keydown", handleKey);
   }, [handleAccept, handleDecline]);
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="optional-trigger-title"
-    >
+  return (
+    <Modal maxWidth="max-w-md" maxHeight="">
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className="bg-card border rounded-xl shadow-2xl flex flex-col w-full max-w-md mx-4 outline-none animate-in fade-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
+        className="outline-none"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="optional-trigger-title"
       >
         {/* Header */}
         <div className="px-4 py-3 border-b">
@@ -99,7 +96,6 @@ export function ChooseOptionalTriggerModal({
           </Button>
         </div>
       </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }

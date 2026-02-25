@@ -51,6 +51,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     ZoneType::Hand,
                     ZoneType::Exile,
                 );
+                // Mark the card so get_playable_cards can detect it as castable via madness.
+                // We use face_down = false to keep it revealed (madness is exile face-up).
+                // The actual casting from exile with madness cost is handled by
+                // get_playable_cards (checks exile for madness) and play_card (detects madness).
+                ctx.game.card_mut(card_id).granted_keywords.push("MadnessExiled".to_string());
             } else {
                 ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
                 emit_zone_trigger(

@@ -484,6 +484,21 @@ impl ManaCost {
         self.shards.iter().filter(|s| **s == which).count()
     }
 
+    /// Add another mana cost to this one, returning the combined cost.
+    pub fn add(&self, other: &ManaCost) -> ManaCost {
+        Self::combine(self, other)
+    }
+
+    /// Reduce the generic portion of this cost by `amount` (floor at 0).
+    /// Used for Emerge (cost reduced by sacrificed creature's mana value).
+    pub fn reduce_generic(&self, amount: i32) -> ManaCost {
+        ManaCost {
+            shards: self.shards.clone(),
+            generic_cost: (self.generic_cost - amount).max(0),
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
     pub fn combine(a: &ManaCost, b: &ManaCost) -> ManaCost {
         let mut shards = a.shards.clone();
         shards.extend_from_slice(&b.shards);
@@ -494,10 +509,6 @@ impl ManaCost {
         }
     }
 
-    /// Add another mana cost to this one, returning the combined cost.
-    pub fn add(&self, other: &ManaCost) -> ManaCost {
-        Self::combine(self, other)
-    }
 }
 
 impl std::fmt::Debug for ManaCost {
