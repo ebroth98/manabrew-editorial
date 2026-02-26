@@ -14,6 +14,7 @@ interface UseBattlefieldLayoutOptions {
   bottomReserved: number;
   leftReserved: number;
   rightReserved: number;
+  landCardIds?: string[];
 }
 
 export function useBattlefieldLayout({
@@ -21,6 +22,7 @@ export function useBattlefieldLayout({
   bottomReserved,
   leftReserved,
   rightReserved,
+  landCardIds,
 }: UseBattlefieldLayoutOptions) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
@@ -47,7 +49,9 @@ export function useBattlefieldLayout({
     moved: boolean;
   } | null>(null);
 
-  // Auto-position new cards in a left-to-right grid; remove departed cards
+  // Auto-position new cards in a left-to-right grid; remove departed cards.
+  // When landCardIds is provided, lands are placed in a dedicated bottom row and
+  // non-lands fill the rows above.
   useLayoutEffect(() => {
     if (!containerRef.current) return;
     const containerW = containerRef.current.clientWidth;
@@ -57,7 +61,18 @@ export function useBattlefieldLayout({
     const usableW = Math.max(CARD_W, xMaxByRight - xMin + CARD_W);
     const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
     const xMax = xMaxByRight;
-    const yMax = containerH > 0 ? Math.max(0, containerH - CARD_H - bottomReserved) : Infinity;
+
+    const landSet = landCardIds ? new Set(landCardIds) : null;
+    const hasLands = landSet !== null && landSet.size > 0;
+    const landRowY =
+      containerH > 0 ? Math.max(0, containerH - CARD_H - Math.max(0, bottomReserved) - GAP) : 0;
+    const yMax =
+      containerH > 0
+        ? Math.max(
+            0,
+            containerH - CARD_H - Math.max(0, bottomReserved) - (hasLands ? CARD_H + 2 * GAP : 0),
+          )
+        : Infinity;
 
     const cardIdSet = new Set(cardIds);
 
@@ -66,16 +81,33 @@ export function useBattlefieldLayout({
       for (const id of Object.keys(next)) {
         if (!cardIdSet.has(id)) delete next[id];
       }
-      const alreadyPositioned = Object.keys(next).length;
-      let newIdx = 0;
+
+      const alreadyPositionedNonLands = Object.keys(next).filter(
+        (id) => !landSet || !landSet.has(id),
+      ).length;
+      const alreadyPositionedLands = Object.keys(next).filter(
+        (id) => landSet?.has(id),
+      ).length;
+      let newNonLandIdx = 0;
+      let newLandIdx = 0;
+
       for (const id of cardIds) {
         if (!next[id]) {
-          const slot = alreadyPositioned + newIdx;
-          next[id] = {
-            x: Math.min(xMax, xMin + (slot % cols) * (CARD_W + GAP) + GAP),
-            y: Math.min(Math.floor(slot / cols) * (CARD_H + GAP) + GAP, yMax),
-          };
-          newIdx++;
+          if (landSet?.has(id)) {
+            const slot = alreadyPositionedLands + newLandIdx;
+            next[id] = {
+              x: Math.min(xMax, xMin + (slot % cols) * (CARD_W + GAP) + GAP),
+              y: landRowY,
+            };
+            newLandIdx++;
+          } else {
+            const slot = alreadyPositionedNonLands + newNonLandIdx;
+            next[id] = {
+              x: Math.min(xMax, xMin + (slot % cols) * (CARD_W + GAP) + GAP),
+              y: Math.min(Math.floor(slot / cols) * (CARD_H + GAP) + GAP, yMax),
+            };
+            newNonLandIdx++;
+          }
         }
       }
       return next;
@@ -85,7 +117,7 @@ export function useBattlefieldLayout({
       const next = new Set([...prev].filter((id) => cardIdSet.has(id)));
       return next.size === prev.size ? prev : next;
     });
-  }, [cardIds, bottomReserved, leftReserved, rightReserved]);
+  }, [cardIds, bottomReserved, leftReserved, rightReserved, landCardIds]);
 
   // Card mousedown: shift+click toggles selection; otherwise start drag
   const handleCardMouseDown = useCallback((e: React.MouseEvent, cardId: string) => {

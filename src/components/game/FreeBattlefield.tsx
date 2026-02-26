@@ -48,6 +48,10 @@ export function FreeBattlefield({
   isDropActive = false,
 }: FreeBattlefieldProps) {
   const cardIds = useMemo(() => cards.map((c) => c.id), [cards]);
+  const landCardIds = useMemo(
+    () => cards.filter((c) => c.types.includes("Land")).map((c) => c.id),
+    [cards],
+  );
 
   const {
     containerRef,
@@ -59,7 +63,7 @@ export function FreeBattlefield({
     marqueeRect,
     handleCardMouseDown,
     handleContainerMouseDown,
-  } = useBattlefieldLayout({ cardIds, bottomReserved, leftReserved, rightReserved });
+  } = useBattlefieldLayout({ cardIds, bottomReserved, leftReserved, rightReserved, landCardIds });
 
   // Minimum container height to show all positioned cards
   const minH = Math.max(

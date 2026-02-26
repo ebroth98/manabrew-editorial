@@ -66,6 +66,7 @@ export function OpponentHalf({
             cards={permanents}
             label=""
             emptyLabel="No permanents"
+            landsAtTop
             onFlipCard={onFlipCard}
             showBackFace={showBackFace}
             className="flex-1"

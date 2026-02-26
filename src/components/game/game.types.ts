@@ -77,6 +77,7 @@ export interface BattlefieldZoneProps {
   onUntapLand?: (card: XMageCard) => void;
   leftReserved?: number;
   rightReserved?: number;
+  landsAtTop?: boolean;
 }
 
 export interface HandDisplayProps {
