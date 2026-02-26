@@ -188,6 +188,43 @@ pub struct ParityReport {
     pub passed: bool,
 }
 
+// ── Matrix Mode Types ──────────────────────────────────────────────
+
+/// Status of a single matchup in matrix mode.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum MatchupStatus {
+    Pass,
+    Fail,
+    Error,
+}
+
+/// Result of a single deck-pair + seed matchup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatchupResult {
+    pub deck1: String,
+    pub deck2: String,
+    pub seed: u64,
+    pub status: MatchupStatus,
+    pub snapshots_compared: usize,
+    pub divergence_count: usize,
+    pub first_divergence: Option<Divergence>,
+    pub error_message: Option<String>,
+}
+
+/// Aggregate report for all matchups in matrix mode.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MatrixReport {
+    pub total_matchups: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub errors: usize,
+    pub seeds: Vec<u64>,
+    pub decks: Vec<String>,
+    pub max_turns: u32,
+    pub results: Vec<MatchupResult>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

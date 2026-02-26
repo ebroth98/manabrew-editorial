@@ -130,6 +130,123 @@ const COMPREHENSIVE_TEST: &[(&str, usize)] = &[
     ("Honor of the Pure", 1),
 ];
 
+// Exercises ChangeZone (bounce/reanimate), Sacrifice effects.
+const ZONE_CHANGE: &[(&str, usize)] = &[
+    ("Swamp", 12),
+    ("Island", 4),
+    ("Unsummon", 4),
+    ("Boomerang", 2),
+    ("Raise Dead", 13),
+    ("Diabolic Edict", 3),
+    ("Innocent Blood", 3),
+    ("Typhoid Rats", 4),
+    ("Vampire Nighthawk", 3),
+    ("Doom Blade", 2),
+];
+
+// Exercises token creation (SP$ Token).
+const TOKEN_SWARM: &[(&str, usize)] = &[
+    ("Plains", 8),
+    ("Mountain", 8),
+    ("Raise the Alarm", 4),
+    ("Krenko's Command", 4),
+    ("Dragon Fodder", 4),
+    ("Savannah Lions", 4),
+    ("Lightning Bolt", 4),
+    ("Shock", 4),
+];
+
+// Exercises Counter, Discard, and ControlGain effects.
+const BLUE_CONTROL: &[(&str, usize)] = &[
+    ("Island", 17),
+    ("Counterspell", 4),
+    ("Cancel", 4),
+    ("Mind Rot", 4),
+    ("Control Magic", 3),
+    ("Mulldrifter", 3),
+    ("Divination", 4),
+    ("Wall of Ice", 4),
+    ("Sea Serpent", 4),
+];
+
+// Exercises Scry, Surveil, Mill, Dig, RearrangeTopOfLibrary.
+const LIBRARY_MANIPULATION: &[(&str, usize)] = &[
+    ("Island", 16),
+    ("Swamp", 4),
+    ("Preordain", 4),
+    ("Ponder", 4),
+    ("Thought Scour", 4),
+    ("Ransack the Lab", 4),
+    ("Taigam's Scheming", 2),
+    ("Notion Rain", 2),
+    ("Divination", 4),
+    ("Mulldrifter", 4),
+    ("Typhoid Rats", 4),
+    ("Doom Blade", 4),
+    ("Vampire Nighthawk", 4),
+];
+
+// Exercises Fight effects (Prey Upon, Ram Through).
+const GREEN_FIGHT: &[(&str, usize)] = &[
+    ("Forest", 17),
+    ("Prey Upon", 4),
+    ("Ram Through", 4),
+    ("Garruk's Companion", 4),
+    ("Centaur Courser", 4),
+    ("Giant Spider", 3),
+    ("Craw Wurm", 3),
+    ("Giant Growth", 4),
+    ("Grizzly Bears", 4),
+];
+
+// Exercises DestroyAll, DamageAll, PumpAll mass effects.
+const MASS_EFFECTS: &[(&str, usize)] = &[
+    ("Plains", 18),
+    ("Wrath of God", 4),
+    ("Pyroclasm", 4),
+    ("Righteous Charge", 4),
+    ("Rising Miasma", 4),
+    ("Savannah Lions", 4),
+    ("White Knight", 4),
+    ("Serra Angel", 4),
+    ("Darksteel Myr", 4),
+];
+
+// Exercises expanded trigger types (ETB, SpellCast, DamageDone, LifeGained).
+const TRIGGER_TEST: &[(&str, usize)] = &[
+    ("Plains", 10),
+    ("Mountain", 7),
+    ("Soul Warden", 7),
+    ("Guttersnipe", 7),
+    ("Savannah Lions", 4),
+    ("Serra Angel", 3),
+    ("Lightning Bolt", 4),
+    ("Shock", 4),
+    ("Raise the Alarm", 4),
+    ("Vampire Nighthawk", 3),
+    ("White Knight", 3),
+];
+
+// Exercises evasion & protection keywords (Hexproof, Menace, Infect, etc.).
+const KEYWORD_TEST: &[(&str, usize)] = &[
+    ("Swamp", 7),
+    ("Forest", 3),
+    ("Mountain", 3),
+    ("Island", 3),
+    ("Plague Stinger", 2),
+    ("Sickle Ripper", 2),
+    ("Rancid Rats", 2),
+    ("Severed Legion", 2),
+    ("Boggart Brute", 2),
+    ("Bladetusk Boar", 2),
+    ("Thalakos Sentry", 2),
+    ("Humble Budoka", 2),
+    ("Wardscale Crocodile", 2),
+    ("Zombie Outlander", 2),
+    ("Yavimaya Barbarian", 2),
+    ("Darksteel Myr", 2),
+];
+
 /// Resolve a preset deck name to a card list.
 fn get_preset_deck(name: &str) -> Option<&'static [(&'static str, usize)]> {
     match name {
@@ -138,13 +255,35 @@ fn get_preset_deck(name: &str) -> Option<&'static [(&'static str, usize)]> {
         "white_aggro" => Some(WHITE_AGGRO),
         "black_control" => Some(BLACK_CONTROL),
         "comprehensive_test" => Some(COMPREHENSIVE_TEST),
+        "zone_change" => Some(ZONE_CHANGE),
+        "token_swarm" => Some(TOKEN_SWARM),
+        "blue_control" => Some(BLUE_CONTROL),
+        "library_manipulation" => Some(LIBRARY_MANIPULATION),
+        "green_fight" => Some(GREEN_FIGHT),
+        "mass_effects" => Some(MASS_EFFECTS),
+        "trigger_test" => Some(TRIGGER_TEST),
+        "keyword_test" => Some(KEYWORD_TEST),
         _ => None,
     }
 }
 
 /// All available preset deck IDs.
 pub fn available_presets() -> Vec<&'static str> {
-    vec!["red_burn", "green_stompy", "white_aggro", "black_control", "comprehensive_test"]
+    vec![
+        "red_burn",
+        "green_stompy",
+        "white_aggro",
+        "black_control",
+        "comprehensive_test",
+        "zone_change",
+        "token_swarm",
+        "blue_control",
+        "library_manipulation",
+        "green_fight",
+        "mass_effects",
+        "trigger_test",
+        "keyword_test",
+    ]
 }
 
 // ── Card Instance Builder ──────────────────────────────────────────
@@ -470,13 +609,15 @@ pub struct RunConfig {
     pub verbose: bool,
 }
 
-/// Run the Rust engine with deterministic agents and collect per-phase snapshots.
-pub fn run_rust_only(config: &RunConfig) -> Result<GameTrace, String> {
-    // Load card database
-    let cards_dir = config
-        .cards_dir
-        .as_deref()
-        .unwrap_or("forge/forge-gui/res/cardsfolder");
+/// Pre-loaded card database and token templates, reusable across multiple matchups.
+pub struct LoadedData {
+    pub db: CardDatabase,
+    pub token_templates: Vec<(String, CardInstance)>,
+}
+
+/// Load the card database and token templates once.
+pub fn load_data(cards_dir: Option<&str>) -> Result<LoadedData, String> {
+    let cards_dir = cards_dir.unwrap_or("forge/forge-gui/res/cardsfolder");
     let cards_path = std::path::Path::new(cards_dir);
 
     if !cards_path.exists() {
@@ -493,6 +634,29 @@ pub fn run_rust_only(config: &RunConfig) -> Result<GameTrace, String> {
         result.loaded, result.failed
     );
 
+    let mut token_templates = Vec::new();
+    let token_dir_path = cards_path
+        .parent()
+        .map(|p| p.join("tokenscripts"))
+        .unwrap_or_default();
+    if token_dir_path.exists() {
+        eprintln!("[parity] Loading token scripts from {:?} ...", token_dir_path);
+        let (token_db, token_result) = CardDatabase::load_from_directory(&token_dir_path);
+        eprintln!(
+            "[parity] Loaded {} token scripts",
+            token_result.loaded
+        );
+        for (script_name, rules) in token_db.iter() {
+            let template = card_rules_to_instance(rules, PlayerId(0));
+            token_templates.push((script_name.clone(), template));
+        }
+    }
+
+    Ok(LoadedData { db, token_templates })
+}
+
+/// Run a game using pre-loaded data (avoids reloading the DB for each matchup).
+pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace, String> {
     // Resolve deck lists
     let deck1_list = get_preset_deck(&config.deck1).ok_or_else(|| {
         format!(
@@ -514,27 +678,14 @@ pub fn run_rust_only(config: &RunConfig) -> Result<GameTrace, String> {
     let p1 = PlayerId(1);
     let mut game = GameState::new(&["Player1", "Player2"], 20);
 
-    build_deck(&mut game, &db, p0, deck1_list);
-    build_deck(&mut game, &db, p1, deck2_list);
+    build_deck(&mut game, &data.db, p0, deck1_list);
+    build_deck(&mut game, &data.db, p1, deck2_list);
 
     let mut game_loop = GameLoop::new(2);
 
-    // Load token templates
-    let token_dir_path = cards_path
-        .parent()
-        .map(|p| p.join("tokenscripts"))
-        .unwrap_or_default();
-    if token_dir_path.exists() {
-        eprintln!("[parity] Loading token scripts from {:?} ...", token_dir_path);
-        let (token_db, token_result) = CardDatabase::load_from_directory(&token_dir_path);
-        eprintln!(
-            "[parity] Loaded {} token scripts",
-            token_result.loaded
-        );
-        for (script_name, rules) in token_db.iter() {
-            let template = card_rules_to_instance(rules, PlayerId(0));
-            game_loop.register_token(script_name.clone(), template);
-        }
+    // Register token templates
+    for (script_name, template) in &data.token_templates {
+        game_loop.register_token(script_name.clone(), template.clone());
     }
 
     // Shared storage for turn-start snapshots captured by CapturingAgent
@@ -587,11 +738,6 @@ pub fn run_rust_only(config: &RunConfig) -> Result<GameTrace, String> {
     }
 
     // Collect turn-start snapshots from the shared storage.
-    // No initial pre-game snapshot — Java only emits on GameEventTurnPhase(UNTAP),
-    // so Rust[0] = T1 start should align with Java[0] = T1 start.
-    // No final snapshot — the final game-over state is captured at different
-    // timing between Rust (Cleanup phase) and Java (Untap phase after turn limit),
-    // so it can't be meaningfully compared.
     let turn_snapshots = shared_snapshots.lock().unwrap();
     let snapshots: Vec<StateSnapshot> = turn_snapshots.clone();
     drop(turn_snapshots);
@@ -603,4 +749,11 @@ pub fn run_rust_only(config: &RunConfig) -> Result<GameTrace, String> {
         max_turns: config.max_turns,
         snapshots,
     })
+}
+
+/// Run the Rust engine with deterministic agents and collect per-phase snapshots.
+/// Convenience wrapper that loads data fresh each call.
+pub fn run_rust_only(config: &RunConfig) -> Result<GameTrace, String> {
+    let data = load_data(config.cards_dir.as_deref())?;
+    run_with_data(config, &data)
 }

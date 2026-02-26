@@ -1,6 +1,6 @@
 //! Report generation: JSON and human-readable text summaries of parity results.
 
-use crate::protocol::{Divergence, GameTrace, ParityReport};
+use crate::protocol::{Divergence, GameTrace, MatchupStatus, MatrixReport, ParityReport};
 
 /// Build a parity report from a Rust trace and a set of divergences.
 pub fn build_report(
@@ -54,6 +54,104 @@ pub fn format_text(report: &ParityReport) -> String {
                 div.rust_value,
                 div.java_value,
             ));
+        }
+    }
+
+    out
+}
+
+/// Format a matrix report as a JSON string.
+pub fn format_matrix_json(report: &MatrixReport) -> String {
+    serde_json::to_string_pretty(report).unwrap_or_else(|e| format!("{{\"error\": \"{}\"}}", e))
+}
+
+/// Format a matrix report as human-readable text.
+pub fn format_matrix_text(report: &MatrixReport) -> String {
+    let mut out = String::new();
+
+    out.push_str("=== Forge Parity Matrix Report ===\n\n");
+    out.push_str(&format!(
+        "Seeds:      {}\n",
+        report
+            .seeds
+            .iter()
+            .map(|s| s.to_string())
+            .collect::<Vec<_>>()
+            .join(", ")
+    ));
+    out.push_str(&format!("Decks:      {}\n", report.decks.join(", ")));
+    out.push_str(&format!("Max turns:  {}\n\n", report.max_turns));
+
+    out.push_str(&format!(
+        "Results: {} matchups | {} PASS | {} FAIL | {} ERROR\n\n",
+        report.total_matchups, report.passed, report.failed, report.errors
+    ));
+
+    // Column header
+    out.push_str(&format!(
+        "  {:<20} {:<20} {:<6} {:<7} {}\n",
+        "Deck1", "Deck2", "Seed", "Status", "Divergences"
+    ));
+    out.push_str(&format!("  {}\n", "-".repeat(75)));
+
+    for r in &report.results {
+        let status_str = match r.status {
+            MatchupStatus::Pass => "PASS",
+            MatchupStatus::Fail => "FAIL",
+            MatchupStatus::Error => "ERROR",
+        };
+        out.push_str(&format!(
+            "  {:<20} {:<20} {:<6} {:<7} {}\n",
+            r.deck1, r.deck2, r.seed, status_str, r.divergence_count
+        ));
+    }
+
+    // Print failure details
+    let failures: Vec<_> = report
+        .results
+        .iter()
+        .filter(|r| r.status != MatchupStatus::Pass)
+        .collect();
+    if !failures.is_empty() {
+        out.push_str(&format!("\nFailures:\n"));
+        for (i, r) in failures.iter().enumerate() {
+            match &r.error_message {
+                Some(msg) => {
+                    out.push_str(&format!(
+                        "  {}. {} vs {} | seed={}\n     Error: {}\n\n",
+                        i + 1,
+                        r.deck1,
+                        r.deck2,
+                        r.seed,
+                        msg
+                    ));
+                }
+                None => {
+                    if let Some(ref div) = r.first_divergence {
+                        out.push_str(&format!(
+                            "  {}. {} vs {} | seed={}\n     [T{} {}] {}: Rust={} Java={}\n\n",
+                            i + 1,
+                            r.deck1,
+                            r.deck2,
+                            r.seed,
+                            div.turn,
+                            div.phase,
+                            div.field,
+                            div.rust_value,
+                            div.java_value,
+                        ));
+                    } else {
+                        out.push_str(&format!(
+                            "  {}. {} vs {} | seed={}\n     {} divergence(s)\n\n",
+                            i + 1,
+                            r.deck1,
+                            r.deck2,
+                            r.seed,
+                            r.divergence_count,
+                        ));
+                    }
+                }
+            }
         }
     }
 
