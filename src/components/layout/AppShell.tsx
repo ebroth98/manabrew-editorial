@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
@@ -7,6 +7,7 @@ import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDragToggle } from "@/hooks/useDragToggle";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -54,12 +55,37 @@ export function AppShell() {
     }
   }
 
+  const expandSidebar = useCallback(() => {
+    const panel = sidebarRef.current;
+    if (panel?.isCollapsed()) {
+      panel.expand();
+      setSidebarCollapsed(false);
+    }
+  }, [sidebarRef]);
+
+  const collapseSidebar = useCallback(() => {
+    const panel = sidebarRef.current;
+    if (panel && !panel.isCollapsed()) {
+      panel.collapse();
+      setSidebarCollapsed(true);
+    }
+  }, [sidebarRef]);
+
+  const onDragMouseDown = useDragToggle(
+    expandSidebar,
+    collapseSidebar,
+    "right",
+  );
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <ResizablePanelGroup orientation="horizontal" className="relative flex-1 min-h-0">
+      <ResizablePanelGroup
+        orientation="horizontal"
+        className="relative flex-1 min-h-0"
+      >
         <ResizablePanel
           panelRef={sidebarRef}
-          defaultSize={100}
+          defaultSize={260}
           minSize={14}
           maxSize={300}
           collapsible
@@ -75,11 +101,12 @@ export function AppShell() {
               size="icon"
               variant="ghost"
               className={cn(
-                "h-20 w-3 rounded-r-md rounded-l-none border border-l-0 border-border bg-card/90 px-0",
-                "translate-x-[-9px] group-hover:translate-x-0 transition-transform duration-150",
+                "h-24 w-4 rounded-r-md rounded-l-none border border-l-0 border-border bg-card/90 px-0",
+                "translate-x-[-9px] group-hover:translate-x-0 group-hover:w-6 group-hover:h-28 transition-all duration-150",
                 "hover:bg-card",
               )}
               onClick={toggleSidebar}
+              onMouseDown={onDragMouseDown}
               title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
               {sidebarCollapsed ? (

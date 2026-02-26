@@ -2,8 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/game/Modal";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
+import { MODAL_CARD_THUMBNAIL, MODAL_INPUT, MODAL_LIST_BUTTON } from "./game.styles";
 
 interface ChooseCardNameModalProps {
   validNames: string[];
@@ -37,16 +39,10 @@ export function ChooseCardNameModal({
     }
   }, [textInput, onConfirm]);
 
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Enter" && !hasList) {
-        e.preventDefault();
-        handleTextConfirm();
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [hasList, handleTextConfirm]);
+  useModalKeyboard(
+    { onEnter: !hasList ? handleTextConfirm : undefined },
+    [hasList, handleTextConfirm],
+  );
 
   return (
     <Modal maxWidth="max-w-md" maxHeight="" className="outline-none">
@@ -57,7 +53,7 @@ export function ChooseCardNameModal({
               <CardImageThumbnail
                 imageUrl={imageUrl}
                 cardName={cardName ?? "Source card"}
-                className="w-[60px] h-[84px] rounded-md object-cover shrink-0 shadow-md"
+                className={MODAL_CARD_THUMBNAIL}
               />
             )}
             <div>
@@ -83,7 +79,7 @@ export function ChooseCardNameModal({
                   placeholder="Filter names..."
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-md border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                  className={MODAL_INPUT}
                 />
               </div>
             )}
@@ -92,11 +88,7 @@ export function ChooseCardNameModal({
                 <button
                   key={name}
                   onClick={() => onConfirm(name)}
-                  className={cn(
-                    "w-full text-left px-3 py-2 rounded-md border text-sm font-medium transition-all",
-                    "hover:border-primary/50 hover:bg-muted/50",
-                    "border-border bg-background",
-                  )}
+                  className={MODAL_LIST_BUTTON}
                 >
                   {name}
                 </button>
@@ -114,7 +106,7 @@ export function ChooseCardNameModal({
               placeholder="Card name..."
               value={textInput}
               onChange={(e) => setTextInput(e.target.value)}
-              className="flex-1 px-3 py-2 rounded-md border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className={cn(MODAL_INPUT, "flex-1")}
             />
             <Button size="sm" onClick={handleTextConfirm} disabled={!textInput.trim()}>
               Confirm

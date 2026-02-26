@@ -5,6 +5,8 @@ import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
 import type { Card as CardType } from "@/types/xmage";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
+import { MODAL_FOOTER_BETWEEN } from "./game.styles";
 
 interface ChooseCardsModalProps {
   cards: CardType[];
@@ -59,16 +61,10 @@ export function ChooseCardsModal({
     });
   }
 
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Enter" && canConfirm && !isAutoConfirm) {
-        e.preventDefault();
-        handleConfirm();
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [canConfirm, isAutoConfirm, handleConfirm]);
+  useModalKeyboard(
+    { onEnter: canConfirm && !isAutoConfirm ? handleConfirm : undefined },
+    [canConfirm, isAutoConfirm, handleConfirm],
+  );
 
   const subtitle =
     minChoices === maxChoices
@@ -128,7 +124,7 @@ export function ChooseCardsModal({
         </div>
 
         {!isAutoConfirm && (
-          <div className="flex justify-between items-center px-4 py-3 border-t bg-muted/10 rounded-b-xl gap-2">
+          <div className={MODAL_FOOTER_BETWEEN}>
             <span className="text-xs text-muted-foreground text-left leading-tight max-w-[200px]">
               {minChoices === 0 ? "Choosing is optional." : `You must select at least ${minChoices}.`}
             </span>

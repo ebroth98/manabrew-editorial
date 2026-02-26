@@ -15,7 +15,7 @@ interface DisplayEvent {
   turnNumber?: number;
 }
 
-interface AgentPrompt {
+export interface AgentPrompt {
   type: string;
   gameView: GameView;
   displayEvents?: DisplayEvent[];

@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+
 /**
  * Renders mana cost strings as inline Scryfall SVG symbols.
  *
@@ -45,7 +47,7 @@ export function ManaSymbols({ cost, size = "md", className }: ManaSymbolsProps) 
   const sizeClass = SIZE_CLASSES[size];
 
   return (
-    <span className={`inline-flex items-center gap-0.5 ${className ?? ""}`}>
+    <span className={cn("inline-flex items-center gap-0.5", className)}>
       {symbols.map((sym, i) => (
         <img
           key={`${sym}-${i}`}

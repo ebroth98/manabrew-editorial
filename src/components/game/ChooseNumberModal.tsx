@@ -2,8 +2,10 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/game/Modal";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
+import { MODAL_CARD_THUMBNAIL, MODAL_INPUT } from "./game.styles";
 
 interface ChooseNumberModalProps {
   min: number;
@@ -37,16 +39,10 @@ export function ChooseNumberModal({
     }
   }, [inputValue, min, max, onConfirm]);
 
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Enter" && !useButtons) {
-        e.preventDefault();
-        handleInputConfirm();
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [useButtons, handleInputConfirm]);
+  useModalKeyboard(
+    { onEnter: !useButtons ? handleInputConfirm : undefined },
+    [useButtons, handleInputConfirm],
+  );
 
   const numbers = useButtons
     ? Array.from({ length: range }, (_, i) => min + i)
@@ -61,7 +57,7 @@ export function ChooseNumberModal({
               <CardImageThumbnail
                 imageUrl={imageUrl}
                 cardName={cardName ?? "Source card"}
-                className="w-[60px] h-[84px] rounded-md object-cover shrink-0 shadow-md"
+                className={MODAL_CARD_THUMBNAIL}
               />
             )}
             <div>
@@ -105,7 +101,7 @@ export function ChooseNumberModal({
               max={max}
               value={inputValue}
               onChange={(e) => setInputValue(e.target.value)}
-              className="flex-1 px-3 py-2 rounded-md border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className={cn(MODAL_INPUT, "flex-1")}
             />
             <Button size="sm" onClick={handleInputConfirm}>
               Confirm

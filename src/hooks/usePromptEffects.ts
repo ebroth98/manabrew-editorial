@@ -1,0 +1,143 @@
+import { useEffect, useState } from "react";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import type { AgentPrompt } from "@/stores/useGameStore";
+import type { LibraryPeekMode } from "@/components/game/LibraryPeekModal";
+import type { Card } from "@/types/xmage";
+
+interface UsePromptEffectsOptions {
+  currentPrompt: AgentPrompt | null;
+  isWaitingForResponse: boolean;
+  passPriority: () => void;
+  myHand: Card[];
+}
+
+interface LibraryPeekState {
+  mode: LibraryPeekMode;
+  cards: Card[];
+  numToTake?: number;
+  optional?: boolean;
+}
+
+interface ZoneTargetState {
+  title: string;
+  cards: Card[];
+  validCardIds: string[];
+}
+
+export function usePromptEffects({
+  currentPrompt,
+  isWaitingForResponse,
+  passPriority,
+  myHand,
+}: UsePromptEffectsOptions) {
+  const promptType = currentPrompt?.type;
+  const autoPassEnabled = usePreferencesStore((s) => s.autoPassEnabled);
+  const [isAutoPassing, setIsAutoPassing] = useState(false);
+
+  // Library peek modal state
+  const [libraryPeekModal, setLibraryPeekModal] = useState<LibraryPeekState | null>(null);
+
+  // Zone target selector state
+  const [zoneTargetSelector, setZoneTargetSelector] = useState<ZoneTargetState | null>(null);
+
+  // Spell stack modal
+  const [spellStackModalOpen, setSpellStackModalOpen] = useState(false);
+
+  // Auto-pass when no legal actions
+  useEffect(() => {
+    setIsAutoPassing(false);
+
+    if (!currentPrompt || isWaitingForResponse) return;
+    if (!autoPassEnabled) return;
+
+    let shouldAutoPass = false;
+
+    if (currentPrompt.type === "chooseAction") {
+      shouldAutoPass = (currentPrompt.playableCardIds ?? []).length === 0;
+    } else if (currentPrompt.type === "chooseAttackers") {
+      shouldAutoPass = (currentPrompt.availableAttackerIds ?? []).length === 0;
+    } else if (currentPrompt.type === "chooseBlockers") {
+      shouldAutoPass = (currentPrompt.availableBlockerIds ?? []).length === 0;
+    }
+
+    if (!shouldAutoPass) return;
+
+    setIsAutoPassing(true);
+    const delay = 300 + Math.floor(Math.random() * 500);
+    const timer = setTimeout(() => {
+      passPriority();
+    }, delay);
+
+    return () => clearTimeout(timer);
+  }, [currentPrompt, isWaitingForResponse, autoPassEnabled, passPriority]);
+
+  // Open library-peek modal for Scry / Surveil / Dig / Discard prompts
+  useEffect(() => {
+    if (
+      (promptType === "scry" || promptType === "surveil" || promptType === "dig") &&
+      currentPrompt?.cards &&
+      currentPrompt.cards.length > 0
+    ) {
+      setLibraryPeekModal({
+        mode: promptType as LibraryPeekMode,
+        cards: currentPrompt.cards as Card[],
+        numToTake: promptType === "dig" ? currentPrompt.numToTake : undefined,
+        optional: promptType === "dig" ? currentPrompt.optional : undefined,
+      });
+    } else if (promptType === "chooseDiscard" && currentPrompt) {
+      const handCards = (currentPrompt.handCardIds ?? [])
+        .map((id) => myHand.find((c) => c.id === id))
+        .filter((c): c is Card => c !== undefined);
+      if (handCards.length > 0) {
+        setLibraryPeekModal({
+          mode: "discard",
+          cards: handCards,
+          numToTake: currentPrompt.numToDiscard,
+        });
+      }
+    } else if (
+      promptType !== "scry" &&
+      promptType !== "surveil" &&
+      promptType !== "dig" &&
+      promptType !== "chooseDiscard"
+    ) {
+      setLibraryPeekModal(null);
+    }
+  }, [promptType, currentPrompt, myHand]);
+
+  // Handle zone-based targeting prompts
+  useEffect(() => {
+    if (promptType === "chooseTargetCardFromZone" && currentPrompt) {
+      const zone = currentPrompt.zone;
+      const validCardIds = currentPrompt.validCardIds || [];
+      const zoneCards = currentPrompt.zoneCards || [];
+
+      if (zone && zoneCards.length > 0) {
+        const zoneNames: Record<string, string> = {
+          Graveyard: "Graveyard",
+          Exile: "Exile",
+          Hand: "Hand",
+        };
+        const title = `Choose from ${zoneNames[zone] || zone}`;
+        setZoneTargetSelector({ title, cards: zoneCards, validCardIds });
+      }
+    } else {
+      setZoneTargetSelector(null);
+    }
+  }, [promptType, currentPrompt]);
+
+  // Auto-open spell-stack modal for counter-targeting prompts
+  useEffect(() => {
+    setSpellStackModalOpen(promptType === "chooseTargetSpell");
+  }, [promptType]);
+
+  return {
+    isAutoPassing,
+    libraryPeekModal,
+    setLibraryPeekModal,
+    zoneTargetSelector,
+    setZoneTargetSelector,
+    spellStackModalOpen,
+    setSpellStackModalOpen,
+  };
+}

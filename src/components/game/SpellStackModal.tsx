@@ -3,9 +3,11 @@ import { CardPreview } from "@/components/game/CardPreview";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/game/Modal";
-import type { Card as CardType, StackObject } from "@/types/xmage";
+import type { StackObject } from "@/types/xmage";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { stackObjectToCardStub } from "./game.utils";
+import { useHoverPreview } from "@/hooks/useHoverPreview";
+import { MODAL_CARD_SIZE } from "./game.styles";
 
 interface SpellStackModalProps {
   stack: StackObject[];
@@ -15,30 +17,8 @@ interface SpellStackModalProps {
   onCancel: () => void;
 }
 
-function stackObjectToCardStub(obj: StackObject): CardType {
-  return {
-    id: obj.sourceId,
-    name: obj.name,
-    setCode: "",
-    cardNumber: "",
-    color: "",
-    manaCost: "",
-    types: [],
-    subtypes: [],
-    supertypes: [],
-    text: obj.text,
-    isPlayable: false,
-    isSelected: false,
-    isChoosable: false,
-    controllerId: "",
-    ownerId: "",
-    zoneId: "",
-  };
-}
-
 export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: SpellStackModalProps) {
-  const [hoveredCard, setHoveredCard] = useState<CardType | null>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
 
   const isTargeting = validSpellIds.length > 0;
 
@@ -88,17 +68,15 @@ export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: Sp
                     isValid ? "cursor-pointer" : "cursor-default",
                     !isValid && isTargeting && "opacity-50",
                   )}
-                  onMouseEnter={(e) => {
-                    setHoveredCard(cardStub);
-                    setMousePos({ x: e.clientX, y: e.clientY });
-                  }}
-                  onMouseLeave={() => setHoveredCard(null)}
+                  onMouseEnter={(e) => onMouseEnter(cardStub, e)}
+                  onMouseLeave={onMouseLeave}
                   onClick={isValid ? () => onTarget(obj.id) : undefined}
                 >
                   <Card
                     card={cardStub}
                     className={cn(
-                      "w-[100px] h-[140px] transition-transform",
+                      MODAL_CARD_SIZE,
+                      "transition-transform",
                       isValid && "ring-2 ring-blue-400 group-hover:scale-105 group-hover:-translate-y-2",
                     )}
                   />

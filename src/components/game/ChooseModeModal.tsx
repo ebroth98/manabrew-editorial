@@ -1,26 +1,13 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/game/Modal";
-import { ManaSymbols } from "@/components/game/ManaSymbols";
+import { TextWithMana } from "@/components/game/TextWithMana";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
-
-function TextWithMana({ text }: { text: string }) {
-  const parts = text.split(/(\{[^}]+\}(?:\{[^}]+\})*)/g);
-  return (
-    <span className="inline-flex items-center gap-0.5 flex-wrap">
-      {parts.map((part, i) =>
-        part.startsWith("{") ? (
-          <ManaSymbols key={i} cost={part} size="sm" />
-        ) : (
-          <span key={i}>{part}</span>
-        ),
-      )}
-    </span>
-  );
-}
+import { MODAL_CARD_THUMBNAIL, MODAL_FOOTER_BETWEEN } from "./game.styles";
 
 interface ChooseModeModalProps {
   /** Human-readable descriptions for each available mode (0-indexed). */
@@ -86,17 +73,10 @@ export function ChooseModeModal({
     });
   }
 
-  // Keyboard: Enter confirms; Escape is intentionally blocked.
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Enter" && canConfirm && !isAutoConfirm) {
-        e.preventDefault();
-        handleConfirm();
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [canConfirm, isAutoConfirm, handleConfirm]);
+  useModalKeyboard(
+    { onEnter: canConfirm && !isAutoConfirm ? handleConfirm : undefined },
+    [canConfirm, isAutoConfirm, handleConfirm],
+  );
 
   const subtitle =
     minChoices === maxChoices
@@ -113,7 +93,7 @@ export function ChooseModeModal({
                 <CardImageThumbnail
                   imageUrl={imageUrl}
                   cardName={cardName ?? "Source card"}
-                  className="w-[60px] h-[84px] rounded-md object-cover shrink-0 shadow-md"
+                  className={MODAL_CARD_THUMBNAIL}
                 />
               )}
               <div>
@@ -189,7 +169,7 @@ export function ChooseModeModal({
 
         {/* Footer — only shown when we don't auto-confirm */}
         {!isAutoConfirm && (
-          <div className="flex justify-between items-center px-4 py-3 border-t bg-muted/10 rounded-b-xl gap-2">
+          <div className={MODAL_FOOTER_BETWEEN}>
             <span className="text-xs text-muted-foreground text-left leading-tight max-w-[200px]">
               {minChoices === 0 ? "Choosing a mode is optional." : `You must select at least ${minChoices}.`}
             </span>

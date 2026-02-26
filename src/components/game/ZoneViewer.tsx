@@ -1,9 +1,11 @@
-import { useState } from "react";
 import type { Card as CardType } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
 import { CardPreview } from "@/components/game/CardPreview";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Modal } from "@/components/game/Modal";
+import { cn } from "@/lib/utils";
+import { useHoverPreview } from "@/hooks/useHoverPreview";
+import { HAND_CARD } from "./game.styles";
 
 interface ZoneViewerProps {
   title: string;
@@ -13,13 +15,7 @@ interface ZoneViewerProps {
 }
 
 export function ZoneViewer({ title, cards, onClose, onClickCard }: ZoneViewerProps) {
-  const [hoveredCard, setHoveredCard] = useState<CardType | null>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
-
-  function handleMouseEnter(card: CardType, e: React.MouseEvent) {
-    setHoveredCard(card);
-    setMousePos({ x: e.clientX, y: e.clientY });
-  }
+  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
 
   return (
     <Modal onClose={onClose}>
@@ -36,12 +32,12 @@ export function ZoneViewer({ title, cards, onClose, onClickCard }: ZoneViewerPro
               <div
                 key={card.id}
                 className="shrink-0 relative"
-                onMouseEnter={(e) => handleMouseEnter(card, e)}
-                onMouseLeave={() => setHoveredCard(null)}
+                onMouseEnter={(e) => onMouseEnter(card, e)}
+                onMouseLeave={onMouseLeave}
               >
                 <Card
                   card={card}
-                  className={`w-[80px] h-[112px] ${card.isPlayable && onClickCard ? "ring-2 ring-green-400" : ""}`}
+                  className={cn(HAND_CARD, card.isPlayable && onClickCard && "ring-2 ring-green-400")}
                 />
                 {card.isPlayable && onClickCard && (
                   <button

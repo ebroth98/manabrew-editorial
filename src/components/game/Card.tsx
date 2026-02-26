@@ -4,6 +4,8 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
+import { KeywordChips } from "@/components/game/CardKeywords";
+import { isCreature, isLethalDamage } from "./game.utils";
 
 interface CardProps {
   card: CardType;
@@ -13,56 +15,6 @@ interface CardProps {
   isHovered?: boolean;
   onFlip?: () => void;
   showBackFace?: boolean;
-}
-
-function isCreature(card: CardType) {
-  return card.types?.some((t) => t.toLowerCase() === "creature");
-}
-
-function isLethalDamage(card: CardType) {
-  if (!card.damage || !card.toughness) return false;
-  const toughness = parseInt(card.toughness, 10);
-  return !isNaN(toughness) && card.damage >= toughness;
-}
-
-/** Render a keyword chip — if it contains a colon, the part after is a mana cost. */
-function KeywordChip({ kw }: { kw: string }) {
-  const colonIdx = kw.indexOf(":");
-  if (colonIdx === -1) {
-    // Simple keyword like "Flying", "Trample"
-    return (
-      <span className="text-[9px] font-bold uppercase bg-black/60 text-white px-1 py-0.5 rounded leading-none">
-        {kw}
-      </span>
-    );
-  }
-  // Cost keyword like "Buyback:5", "Dash:2 R", "Spectacle:R"
-  const label = kw.slice(0, colonIdx);
-  const cost = kw.slice(colonIdx + 1);
-  return (
-    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase bg-black/60 text-white px-1 py-0.5 rounded leading-none">
-      {label}
-      <ManaSymbols cost={cost} size="sm" />
-    </span>
-  );
-}
-
-function KeywordChips({ keywords }: { keywords: string[] }) {
-  if (!keywords || keywords.length === 0) return null;
-  const visible = keywords.slice(0, 4);
-  const hidden = keywords.length - visible.length;
-  return (
-    <div className="absolute top-1 left-1 right-1 flex flex-wrap gap-0.5 z-10">
-      {visible.map((kw) => (
-        <KeywordChip key={kw} kw={kw} />
-      ))}
-      {hidden > 0 && (
-        <span className="text-[9px] font-bold bg-black/60 text-white px-1 py-0.5 rounded leading-none">
-          +{hidden}
-        </span>
-      )}
-    </div>
-  );
 }
 
 export function Card({

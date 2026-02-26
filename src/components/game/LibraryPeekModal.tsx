@@ -5,7 +5,10 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/game/Modal";
 import type { Card as CardType } from "@/types/xmage";
 import { cn } from "@/lib/utils";
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useHoverPreview } from "@/hooks/useHoverPreview";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
+import { MODAL_CARD_SIZE } from "./game.styles";
 
 export type LibraryPeekMode = "scry" | "surveil" | "dig" | "discard";
 
@@ -88,8 +91,7 @@ export function LibraryPeekModal({
   onConfirm,
 }: LibraryPeekModalProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [hoveredCard, setHoveredCard] = useState<CardType | null>(null);
-  const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
+  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
 
   const config = MODE_CONFIG[mode];
   const required = mode === "discard" ? (numToTake ?? 1) : undefined;
@@ -118,14 +120,10 @@ export function LibraryPeekModal({
     onConfirm([...selected]);
   }
 
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Enter" && canConfirm) handleConfirm();
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selected, canConfirm]);
+  useModalKeyboard(
+    { onEnter: canConfirm ? handleConfirm : undefined },
+    [selected, canConfirm],
+  );
 
   return (
     <Modal maxWidth="max-w-4xl" maxHeight="max-h-[85vh]">
@@ -156,18 +154,17 @@ export function LibraryPeekModal({
                 <div
                   key={card.id}
                   className="shrink-0 cursor-pointer group flex flex-col items-center gap-1"
-                  onMouseEnter={(e) => {
-                    setHoveredCard(card);
-                    setMousePos({ x: e.clientX, y: e.clientY });
-                  }}
-                  onMouseLeave={() => setHoveredCard(null)}
+                  onMouseEnter={(e) => onMouseEnter(card, e)}
+                  onMouseLeave={onMouseLeave}
                   onClick={() => toggleCard(card.id)}
                 >
                   <Card
                     card={card}
                     className={cn(
-                      "w-[100px] h-[140px] transition-transform group-hover:scale-105",
-                      isSelected && `ring-2 ${config.selectedRing}`,
+                      MODAL_CARD_SIZE,
+                      "transition-transform group-hover:scale-105",
+                      isSelected && "ring-2",
+                      isSelected && config.selectedRing,
                     )}
                   />
                   <Badge

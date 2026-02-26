@@ -1,8 +1,8 @@
 import { Modal } from "@/components/game/Modal";
-import { cn } from "@/lib/utils";
 import { useState, useEffect, useRef } from "react";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
+import { MODAL_CARD_THUMBNAIL, MODAL_INPUT, MODAL_PILL_BUTTON } from "./game.styles";
 
 interface ChooseTypeModalProps {
   typeCategory: string;
@@ -38,7 +38,7 @@ export function ChooseTypeModal({
               <CardImageThumbnail
                 imageUrl={imageUrl}
                 cardName={cardName ?? "Source card"}
-                className="w-[60px] h-[84px] rounded-md object-cover shrink-0 shadow-md"
+                className={MODAL_CARD_THUMBNAIL}
               />
             )}
             <div>
@@ -61,7 +61,7 @@ export function ChooseTypeModal({
               placeholder="Filter types..."
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
-              className="w-full px-3 py-1.5 rounded-md border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className={MODAL_INPUT}
             />
           </div>
         )}
@@ -71,11 +71,7 @@ export function ChooseTypeModal({
             <button
               key={typeName}
               onClick={() => onConfirm(typeName)}
-              className={cn(
-                "px-3 py-1.5 rounded-md border text-sm font-medium transition-all",
-                "hover:border-primary/50 hover:bg-muted/50",
-                "border-border bg-background",
-              )}
+              className={MODAL_PILL_BUTTON}
             >
               {typeName}
             </button>

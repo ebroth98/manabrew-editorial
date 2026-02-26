@@ -1,8 +1,10 @@
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/game/Modal";
 import { useEffect, useRef, useCallback } from "react";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
+import { MODAL_CARD_IMAGE } from "./game.styles";
 
 interface ChooseOptionalTriggerModalProps {
   /** Human-readable description of the triggered ability. */
@@ -27,20 +29,10 @@ export function ChooseOptionalTriggerModal({
   const handleAccept = useCallback(() => onConfirm(true), [onConfirm]);
   const handleDecline = useCallback(() => onConfirm(false), [onConfirm]);
 
-  // Keyboard: Enter accepts, Escape declines.
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleAccept();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        handleDecline();
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [handleAccept, handleDecline]);
+  useModalKeyboard(
+    { onEnter: handleAccept, onEscape: handleDecline },
+    [handleAccept, handleDecline],
+  );
 
   return (
     <Modal maxWidth="max-w-md" maxHeight="">
@@ -52,33 +44,27 @@ export function ChooseOptionalTriggerModal({
         aria-modal="true"
         aria-labelledby="optional-trigger-title"
       >
-        {/* Header */}
-        <div className="px-4 py-3 border-b">
-          <h2
-            id="optional-trigger-title"
-            className="font-semibold text-base"
-          >
+        <Modal.Header>
+          <h2 id="optional-trigger-title" className="font-semibold text-base">
             Optional Trigger
           </h2>
           <p className="text-xs text-muted-foreground">
             Do you want this ability to trigger?
           </p>
-        </div>
+        </Modal.Header>
 
-        {/* Description + card image */}
         <div className="px-4 py-4 flex gap-3">
           {imageUrl && (
             <CardImageThumbnail
               imageUrl={imageUrl}
               cardName={cardName ?? "Source card"}
-              className="w-[120px] h-[168px] rounded-lg object-cover shrink-0 shadow-md"
+              className={MODAL_CARD_IMAGE}
             />
           )}
           <p className="text-sm leading-relaxed self-center">{description || "A triggered ability would trigger. Do you want it to?"}</p>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2 px-4 py-3 border-t bg-muted/10 rounded-b-xl">
+        <Modal.Footer>
           <Button
             variant="outline"
             size="sm"
@@ -94,7 +80,7 @@ export function ChooseOptionalTriggerModal({
           >
             Accept
           </Button>
-        </div>
+        </Modal.Footer>
       </div>
     </Modal>
   );

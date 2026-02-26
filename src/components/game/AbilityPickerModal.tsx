@@ -1,24 +1,10 @@
 import { Modal } from "@/components/game/Modal";
-import { ManaSymbols } from "@/components/game/ManaSymbols";
+import { TextWithMana } from "@/components/game/TextWithMana";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { cn } from "@/lib/utils";
 import type { ActivatableAbilityInfo } from "@/types/xmage";
-
-function TextWithMana({ text }: { text: string }) {
-  const parts = text.split(/(\{[^}]+\}(?:\{[^}]+\})*)/g);
-  return (
-    <span className="inline-flex items-center gap-0.5 flex-wrap">
-      {parts.map((part, i) =>
-        part.startsWith("{") ? (
-          <ManaSymbols key={i} cost={part} size="sm" />
-        ) : (
-          <span key={i}>{part}</span>
-        ),
-      )}
-    </span>
-  );
-}
+import { MODAL_CARD_THUMBNAIL } from "./game.styles";
 
 interface AbilityPickerModalProps {
   cardName: string;
@@ -43,7 +29,7 @@ export function AbilityPickerModal({
             <CardImageThumbnail
               imageUrl={imageUrl}
               cardName={cardName}
-              className="w-[60px] h-[84px] rounded-md object-cover shrink-0 shadow-md"
+              className={MODAL_CARD_THUMBNAIL}
             />
           )}
           <div>
@@ -64,8 +50,7 @@ export function AbilityPickerModal({
             onClick={() => onSelect(ability)}
             className={cn(
               "w-full text-left px-4 py-3 rounded-lg border text-sm font-medium transition-all",
-              "hover:border-primary/50 hover:bg-muted/50",
-              "border-border bg-background",
+              "hover:border-primary/50 hover:bg-muted/50 border-border bg-background",
             )}
           >
             <TextWithMana text={ability.description} />
