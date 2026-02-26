@@ -20,6 +20,9 @@ type WsSender = futures_util::stream::SplitSink<
 type WsReceiver =
     futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>>;
 
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
+const READ_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
+
 /// Background task: drains channel and writes to the WebSocket sink.
 async fn write_loop(mut rx: mpsc::UnboundedReceiver<Message>, mut sink: WsSender) {
     while let Some(msg) = rx.recv().await {
@@ -128,7 +131,7 @@ pub async fn handle_connection(
     let (sink, mut receiver) = ws_stream.split();
     let (tx, rx) = mpsc::unbounded_channel();
 
-    tokio::spawn(write_loop(rx, sink));
+    let write_task = tokio::spawn(write_loop(rx, sink));
 
     let (player_id, username, reconnected, generation) =
         match authenticate(&mut receiver, &tx, &state).await {
@@ -155,11 +158,35 @@ pub async fn handle_connection(
         );
     }
 
-    while let Some(frame) = receiver.next().await {
-        let frame = match frame {
-            Ok(f) => f,
-            Err(e) => {
+    let heartbeat_tx = tx.clone();
+    let heartbeat_task = tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(HEARTBEAT_INTERVAL);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            if heartbeat_tx.send(Message::Ping(Vec::new().into())).is_err() {
+                break;
+            }
+        }
+    });
+
+    loop {
+        let frame = match tokio::time::timeout(READ_IDLE_TIMEOUT, receiver.next()).await {
+            Ok(Some(Ok(f))) => f,
+            Ok(Some(Err(e))) => {
                 warn!("[recv] read error from '{}': {}", username, e);
+                break;
+            }
+            Ok(None) => {
+                info!("[recv] '{}' stream closed", username);
+                break;
+            }
+            Err(_) => {
+                warn!(
+                    "[recv] idle timeout from '{}' (no frames for {}s)",
+                    username,
+                    READ_IDLE_TIMEOUT.as_secs()
+                );
                 break;
             }
         };
@@ -189,9 +216,16 @@ pub async fn handle_connection(
                 debug!("[recv] '{}' ping", username);
                 let _ = tx.send(Message::Pong(data));
             }
+            Message::Pong(_) => {
+                debug!("[recv] '{}' pong", username);
+            }
             _ => {}
         }
     }
+
+    heartbeat_task.abort();
+    drop(tx);
+    let _ = write_task.await;
 
     info!("[disconnect] '{}' (id={})", username, &player_id[..8]);
     mark_disconnected(&state, &player_id, generation);

@@ -1,16 +1,19 @@
 import { useState } from "react";
 import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import { useServerStore } from "@/stores/useServerStore";
+import { useGameStore } from "@/stores/useGameStore";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useTheme } from "next-themes";
+import { Navigate } from "react-router-dom";
 
 const FLASH_MIN = 200;
 const FLASH_MAX = 2000;
 const FLASH_STEP = 100;
 
 export default function Settings() {
+  const isGameActive = useGameStore((s) => s.isGameActive);
   const prefs = usePreferencesStore();
   const { flashDurationMs, setFlashDurationMs } = prefs;
   const server = useServerStore();
@@ -54,6 +57,10 @@ export default function Settings() {
     if (username) {
       await server.connect(host, Number(port), username, password);
     }
+  }
+
+  if (isGameActive) {
+    return <Navigate to="/play" replace />;
   }
 
   return (

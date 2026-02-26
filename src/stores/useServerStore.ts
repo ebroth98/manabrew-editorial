@@ -209,6 +209,16 @@ export const useServerStore = create<ServerState>()((set, get) => ({
       unlisteners.push(
         await listen<ServerErrorPayload>('server:error', (e) => {
           console.error('[server] error:', e.payload.code, e.payload.message);
+          if (e.payload.code === 'not_in_room') {
+            set({
+              currentRoom: null,
+              gameStarted: false,
+              playerOrder: [],
+              playerDecks: [],
+              startingLife: 20,
+            });
+            void get().listRooms();
+          }
         }),
       );
 

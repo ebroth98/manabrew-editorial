@@ -442,6 +442,23 @@ export const useGameStore = create<GameState>((set, get) => ({
         }
       });
       unlisteners.push(unlisten3);
+
+      const unlisten4 = await listen<{ reason: string; message: string }>('game:forced_end', (event) => {
+        const message = event.payload?.message ?? 'Forced game exit';
+        set({
+          isGameActive: false,
+          gameView: null,
+          currentPrompt: null,
+          deferredQueue: [],
+          isFlashing: false,
+          isWaitingForResponse: false,
+          isMultiplayer: false,
+          isHost: false,
+          myPlayerSlot: null,
+          debugInfo: `Game ended: ${message}`,
+        });
+      });
+      unlisteners.push(unlisten4);
     } catch (e) {
       console.error('[store] Failed to setup listeners:', e);
     }

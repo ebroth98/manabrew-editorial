@@ -182,6 +182,23 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
         }
     }
 
+    if let ServerMessage::Error { code, message } = msg {
+        if code == "not_in_room" {
+            if let Some(gm) = app.try_state::<crate::game_manager::GameManager>() {
+                if let Err(e) = gm.end_game() {
+                    eprintln!("[server] failed to end game after not_in_room: {}", e);
+                }
+            }
+            let _ = app.emit(
+                "game:forced_end",
+                serde_json::json!({
+                    "reason": "not_in_room",
+                    "message": message,
+                }),
+            );
+        }
+    }
+
     let (event, payload) = match msg {
         ServerMessage::AuthResult {
             success,

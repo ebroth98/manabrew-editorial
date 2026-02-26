@@ -1,5 +1,6 @@
 import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useGameStore } from "@/stores/useGameStore";
 import {
   Home,
   Gamepad2,
@@ -13,6 +14,8 @@ import { Button } from "@/components/ui/button";
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export function Sidebar({ className }: SidebarProps) {
+  const isGameActive = useGameStore((s) => s.isGameActive);
+
   return (
     <div
       className={cn(
@@ -88,17 +91,29 @@ export function Sidebar({ className }: SidebarProps) {
             Settings
           </h2>
           <div className="space-y-1">
-            <NavLink to="/settings">
-              {({ isActive }) => (
-                <Button
-                  variant={isActive ? "secondary" : "ghost"}
-                  className="w-full justify-start"
-                >
-                  <Settings className="mr-2 h-4 w-4" />
-                  Preferences
-                </Button>
-              )}
-            </NavLink>
+            {isGameActive ? (
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                disabled
+                title="Preferences are unavailable during an active game"
+              >
+                <Settings className="mr-2 h-4 w-4" />
+                Preferences
+              </Button>
+            ) : (
+              <NavLink to="/settings">
+                {({ isActive }) => (
+                  <Button
+                    variant={isActive ? "secondary" : "ghost"}
+                    className="w-full justify-start"
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Preferences
+                  </Button>
+                )}
+              </NavLink>
+            )}
           </div>
         </div>
       </div>
