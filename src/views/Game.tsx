@@ -1128,16 +1128,17 @@ export default function Game() {
   // Game over overlay
   if (gameView.gameOver || promptType === "gameOver") {
     const winnerId = gameView.winnerId;
+    const isDraw = winnerId == null;
     const didWin = winnerId === me!.id;
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
         <h2
           className={cn(
             "text-3xl font-bold",
-            didWin ? "text-green-600" : "text-red-600",
+            isDraw ? "text-amber-600" : didWin ? "text-green-600" : "text-red-600",
           )}
         >
-          {didWin ? "You Win!" : "You Lose!"}
+          {isDraw ? "Draw!" : didWin ? "You Win!" : "You Lose!"}
         </h2>
         <p className="text-muted-foreground">
           Final life: You {me!.life} — {opponents.map((op) => `${op.name} ${op.life}`).join(" · ")}

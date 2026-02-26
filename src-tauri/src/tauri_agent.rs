@@ -1,4 +1,5 @@
 use std::sync::mpsc;
+use std::time::Duration;
 
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::game::GameState;
@@ -7,24 +8,22 @@ use forge_engine_core::mana::ManaPool;
 use forge_foundation::{PhaseType, ZoneType};
 
 use crate::game_view_dto::{card_to_dto, CardDto, GameViewDto};
+use crate::ids_codec::{
+    card_id_str, parse_card_id, parse_player_id, parse_stack_id, player_id_str, stack_id_str,
+};
 use crate::prompt::{
     ActivatableAbilityInfo, AgentPrompt, AgentPromptInner, BlockAssignment, DisplayEvent,
     PlayerAction, TargetAnyChoice,
 };
 
-/// Parse "stack-42" → 42u32 (stack entry ID).
-/// Matches the DTO format used in `game_view_dto.rs` (`format!("stack-{}", entry.id)`).
-fn parse_spell_id(s: &str) -> Option<u32> {
-    s.strip_prefix("stack-").and_then(|n| n.parse::<u32>().ok())
-}
-
 /// A PlayerAgent that sends prompts to the frontend and blocks waiting for a response.
 pub struct TauriAgent {
-    pub human_player: PlayerId,
+    pub player_id: PlayerId,
     pub game_id: String,
-    pub prompt_tx: mpsc::Sender<AgentPrompt>,
+    prompt_sink: PromptSink,
     pub response_rx: mpsc::Receiver<PlayerAction>,
-    pub notify_tx: mpsc::Sender<String>,
+    pub notify_tx: Option<mpsc::Sender<String>>,
+    response_timeout: Option<Duration>,
     latest_view: Option<GameViewDto>,
     /// Display events accumulated between prompts — drained and attached to each outgoing prompt.
     pending_display_events: Vec<DisplayEvent>,
@@ -35,20 +34,74 @@ pub struct TauriAgent {
     ability_descriptions: std::collections::HashMap<(u32, usize), (String, bool)>,
 }
 
+enum PromptSink {
+    Local(mpsc::Sender<AgentPrompt>),
+    Relay {
+        player_index: usize,
+        tx: mpsc::Sender<(usize, AgentPrompt)>,
+    },
+    Ai(mpsc::Sender<AgentPrompt>),
+}
+
 impl TauriAgent {
-    pub fn new(
-        human_player: PlayerId,
+    pub fn new_local(
+        player_id: PlayerId,
         game_id: String,
         prompt_tx: mpsc::Sender<AgentPrompt>,
         response_rx: mpsc::Receiver<PlayerAction>,
         notify_tx: mpsc::Sender<String>,
     ) -> Self {
         Self {
-            human_player,
+            player_id,
             game_id,
-            prompt_tx,
+            prompt_sink: PromptSink::Local(prompt_tx),
             response_rx,
-            notify_tx,
+            notify_tx: Some(notify_tx),
+            response_timeout: None,
+            latest_view: None,
+            pending_display_events: Vec::new(),
+            peeked_library_cards: Vec::new(),
+            ability_descriptions: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn new_relay(
+        player_id: PlayerId,
+        player_index: usize,
+        game_id: String,
+        prompt_tx: mpsc::Sender<(usize, AgentPrompt)>,
+        response_rx: mpsc::Receiver<PlayerAction>,
+    ) -> Self {
+        Self {
+            player_id,
+            game_id,
+            prompt_sink: PromptSink::Relay {
+                player_index,
+                tx: prompt_tx,
+            },
+            response_rx,
+            notify_tx: None,
+            response_timeout: Some(Duration::from_secs(120)),
+            latest_view: None,
+            pending_display_events: Vec::new(),
+            peeked_library_cards: Vec::new(),
+            ability_descriptions: std::collections::HashMap::new(),
+        }
+    }
+
+    pub fn new_ai(
+        player_id: PlayerId,
+        game_id: String,
+        prompt_tx: mpsc::Sender<AgentPrompt>,
+        response_rx: mpsc::Receiver<PlayerAction>,
+    ) -> Self {
+        Self {
+            player_id,
+            game_id,
+            prompt_sink: PromptSink::Ai(prompt_tx),
+            response_rx,
+            notify_tx: None,
+            response_timeout: Some(Duration::from_secs(5)),
             latest_view: None,
             pending_display_events: Vec::new(),
             peeked_library_cards: Vec::new(),
@@ -59,59 +112,77 @@ impl TauriAgent {
     /// Send a prompt to the frontend, bundling any accumulated display events.
     fn send_prompt(&mut self, inner: AgentPromptInner) {
         let display_events = std::mem::take(&mut self.pending_display_events);
-        let _ = self.prompt_tx.send(AgentPrompt {
+        let prompt = AgentPrompt {
             display_events,
             inner,
-        });
+        };
+        match &self.prompt_sink {
+            PromptSink::Local(tx) => {
+                let _ = tx.send(prompt);
+            }
+            PromptSink::Relay { player_index, tx } => {
+                let _ = tx.send((*player_index, prompt));
+            }
+            PromptSink::Ai(tx) => {
+                let _ = tx.send(prompt);
+            }
+        }
     }
 
     fn recv_action(&self) -> PlayerAction {
-        self.response_rx
-            .recv()
-            .unwrap_or(PlayerAction::PlayCard { card_id: None })
+        if let Some(timeout) = self.response_timeout {
+            self.response_rx
+                .recv_timeout(timeout)
+                .unwrap_or(PlayerAction::PlayCard { card_id: None })
+        } else {
+            self.response_rx
+                .recv()
+                .unwrap_or(PlayerAction::PlayCard { card_id: None })
+        }
     }
 
     fn view(&self) -> GameViewDto {
         self.latest_view.clone().unwrap_or_else(|| {
             // Fallback: empty view
-            GameViewDto {
-                game_id: self.game_id.clone(),
-                turn: 0,
-                step: "main1".into(),
-                combat_assignments: vec![],
-                active_player_id: String::new(),
-                priority_player_id: String::new(),
-                players: vec![],
-                my_hand: vec![],
-                battlefield: vec![],
-                stack: vec![],
-                exile: vec![],
-                graveyard: vec![],
-                opponent_graveyard: vec![],
-                opponent_exile: vec![],
-                my_command_zone: vec![],
-                opponent_command_zone: vec![],
-                game_over: false,
-                winner_id: None,
-                monarch_id: None,
-                initiative_holder_id: None,
-            }
+            GameViewDto::empty(self.game_id.clone())
         })
     }
 
-    /// Parse "card-42" → CardId(42)
-    fn parse_card_id(s: &str) -> Option<CardId> {
-        s.strip_prefix("card-")
-            .and_then(|n| n.parse::<u32>().ok())
-            .map(CardId)
+    fn card_ids(cards: &[CardId]) -> Vec<String> {
+        cards.iter().map(|&c| card_id_str(c)).collect()
     }
 
-    /// Parse "player-0" → PlayerId(0)
-    fn parse_player_id(s: &str) -> Option<PlayerId> {
-        s.strip_prefix("player-")
-            .and_then(|n| n.parse::<u32>().ok())
-            .map(PlayerId)
+    fn player_ids(players: &[PlayerId]) -> Vec<String> {
+        players.iter().map(|&p| player_id_str(p)).collect()
     }
+
+    fn mark_battlefield_choosable(view: &mut GameViewDto, valid_card_ids: &[String]) {
+        for card in &mut view.battlefield {
+            card.is_choosable = valid_card_ids.contains(&card.id);
+        }
+    }
+
+    fn recv_card_choice_or_first(&self, valid: &[CardId]) -> Option<CardId> {
+        match self.recv_action() {
+            PlayerAction::TargetCard { card_id } => card_id.and_then(|id| parse_card_id(&id)),
+            _ => valid.first().copied(),
+        }
+    }
+
+    fn recv_player_choice_or_first(&self, valid: &[PlayerId]) -> Option<PlayerId> {
+        match self.recv_action() {
+            PlayerAction::TargetPlayer { player_id } => player_id.and_then(|id| parse_player_id(&id)),
+            _ => valid.first().copied(),
+        }
+    }
+
+    fn recv_spell_choice_or_first(&self, valid: &[u32]) -> Option<u32> {
+        match self.recv_action() {
+            PlayerAction::TargetSpell { spell_id } => spell_id.and_then(|id| parse_stack_id(&id)),
+            _ => valid.first().copied(),
+        }
+    }
+
 }
 
 impl PlayerAgent for TauriAgent {
@@ -119,7 +190,7 @@ impl PlayerAgent for TauriAgent {
         self.latest_view = Some(GameViewDto::from_engine(
             game,
             mana_pools,
-            self.human_player,
+            self.player_id,
             &self.game_id,
             &[], // playable/choosable filled at prompt time
             &[],
@@ -127,7 +198,7 @@ impl PlayerAgent for TauriAgent {
 
         // Cache per-ability descriptions from battlefield cards
         self.ability_descriptions.clear();
-        let battlefield = game.cards_in_zone(forge_foundation::ZoneType::Battlefield, self.human_player);
+        let battlefield = game.cards_in_zone(forge_foundation::ZoneType::Battlefield, self.player_id);
         for &card_id in battlefield {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
@@ -143,7 +214,7 @@ impl PlayerAgent for TauriAgent {
     }
 
     fn mulligan_decision(&mut self, _player: PlayerId, hand: &[CardId]) -> bool {
-        let hand_card_ids: Vec<String> = hand.iter().map(|c| format!("card-{}", c.0)).collect();
+        let hand_card_ids = Self::card_ids(hand);
         self.send_prompt(AgentPromptInner::Mulligan {
             game_view: self.view(),
             hand_card_ids,
@@ -162,22 +233,21 @@ impl PlayerAgent for TauriAgent {
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
-        let playable_card_ids: Vec<String> =
-            playable.iter().map(|c| format!("card-{}", c.0)).collect();
+        let playable_card_ids = Self::card_ids(playable);
         let mut tappable_land_ids: Vec<String> = tappable_lands
             .iter()
-            .map(|c| format!("card-{}", c.0))
+            .map(|&c| card_id_str(c))
             .collect();
         let untappable_land_ids: Vec<String> = untappable_lands
             .iter()
-            .map(|c| format!("card-{}", c.0))
+            .map(|&c| card_id_str(c))
             .collect();
 
         // Build activatable ability info and merge mana-ability cards into tappable list
         let view_ref = self.view();
         let mut activatable_ability_ids = Vec::new();
         for &(card_id, ability_idx) in activatable {
-            let id_str = format!("card-{}", card_id.0);
+            let id_str = card_id_str(card_id);
             let (description, is_mana) = self
                 .ability_descriptions
                 .get(&(card_id.0, ability_idx))
@@ -225,11 +295,11 @@ impl PlayerAgent for TauriAgent {
         });
         match self.recv_action() {
             PlayerAction::PlayCard { card_id } => card_id
-                .and_then(|id| Self::parse_card_id(&id))
+                .and_then(|id| parse_card_id(&id))
                 .map(MainPhaseAction::Play)
                 .unwrap_or(MainPhaseAction::Pass),
             PlayerAction::TapLand { card_id } => {
-                let parsed = Self::parse_card_id(&card_id);
+                let parsed = parse_card_id(&card_id);
                 match parsed {
                     Some(cid) => {
                         // Prefer ActivateAbility if card has an activatable ability
@@ -247,10 +317,10 @@ impl PlayerAgent for TauriAgent {
             PlayerAction::ActivateAbility {
                 card_id,
                 ability_index,
-            } => Self::parse_card_id(&card_id)
+            } => parse_card_id(&card_id)
                 .map(|cid| MainPhaseAction::ActivateAbility(cid, ability_index))
                 .unwrap_or(MainPhaseAction::Pass),
-            PlayerAction::UntapLand { card_id } => Self::parse_card_id(&card_id)
+            PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)
                 .map(MainPhaseAction::UntapMana)
                 .unwrap_or(MainPhaseAction::Pass),
             _ => MainPhaseAction::Pass,
@@ -258,12 +328,9 @@ impl PlayerAgent for TauriAgent {
     }
 
     fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId]) -> Vec<CardId> {
-        let available_attacker_ids: Vec<String> =
-            available.iter().map(|c| format!("card-{}", c.0)).collect();
+        let available_attacker_ids = Self::card_ids(available);
         let mut view = self.view();
-        for card in &mut view.battlefield {
-            card.is_choosable = available_attacker_ids.contains(&card.id);
-        }
+        Self::mark_battlefield_choosable(&mut view, &available_attacker_ids);
         self.send_prompt(AgentPromptInner::ChooseAttackers {
             game_view: view,
             available_attacker_ids,
@@ -271,7 +338,7 @@ impl PlayerAgent for TauriAgent {
         match self.recv_action() {
             PlayerAction::DeclareAttackers { attacker_ids } => attacker_ids
                 .iter()
-                .filter_map(|id| Self::parse_card_id(id))
+                .filter_map(|id| parse_card_id(id))
                 .collect(),
             _ => Vec::new(),
         }
@@ -283,15 +350,10 @@ impl PlayerAgent for TauriAgent {
         attackers: &[CardId],
         available_blockers: &[CardId],
     ) -> Vec<(CardId, CardId)> {
-        let attacker_ids: Vec<String> = attackers.iter().map(|c| format!("card-{}", c.0)).collect();
-        let available_blocker_ids: Vec<String> = available_blockers
-            .iter()
-            .map(|c| format!("card-{}", c.0))
-            .collect();
+        let attacker_ids = Self::card_ids(attackers);
+        let available_blocker_ids = Self::card_ids(available_blockers);
         let mut view = self.view();
-        for card in &mut view.battlefield {
-            card.is_choosable = available_blocker_ids.contains(&card.id);
-        }
+        Self::mark_battlefield_choosable(&mut view, &available_blocker_ids);
         self.send_prompt(AgentPromptInner::ChooseBlockers {
             game_view: view,
             attacker_ids,
@@ -305,8 +367,8 @@ impl PlayerAgent for TauriAgent {
                          blocker_id,
                          attacker_id,
                      }| {
-                        let b = Self::parse_card_id(blocker_id)?;
-                        let a = Self::parse_card_id(attacker_id)?;
+                        let b = parse_card_id(blocker_id)?;
+                        let a = parse_card_id(attacker_id)?;
                         Some((b, a))
                     },
                 )
@@ -316,34 +378,23 @@ impl PlayerAgent for TauriAgent {
     }
 
     fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
-        let valid_player_ids: Vec<String> =
-            valid.iter().map(|p| format!("player-{}", p.0)).collect();
+        let valid_player_ids = Self::player_ids(valid);
         self.send_prompt(AgentPromptInner::ChooseTargetPlayer {
             game_view: self.view(),
             valid_player_ids,
         });
-        match self.recv_action() {
-            PlayerAction::TargetPlayer { player_id } => {
-                player_id.and_then(|id| Self::parse_player_id(&id))
-            }
-            _ => valid.first().copied(),
-        }
+        self.recv_player_choice_or_first(valid)
     }
 
     fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
-        let valid_card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+        let valid_card_ids = Self::card_ids(valid);
         let mut view = self.view();
-        for card in &mut view.battlefield {
-            card.is_choosable = valid_card_ids.contains(&card.id);
-        }
+        Self::mark_battlefield_choosable(&mut view, &valid_card_ids);
         self.send_prompt(AgentPromptInner::ChooseTargetCard {
             game_view: view,
             valid_card_ids,
         });
-        match self.recv_action() {
-            PlayerAction::TargetCard { card_id } => card_id.and_then(|id| Self::parse_card_id(&id)),
-            _ => valid.first().copied(),
-        }
+        self.recv_card_choice_or_first(valid)
     }
 
     fn choose_target_card_from_zone(
@@ -352,7 +403,7 @@ impl PlayerAgent for TauriAgent {
         zone: ZoneType,
         valid: &[CardId],
     ) -> Option<CardId> {
-        let valid_card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+        let valid_card_ids = Self::card_ids(valid);
         let view = self.view();
 
         // Build the list of cards in the specified zone
@@ -384,10 +435,7 @@ impl PlayerAgent for TauriAgent {
             zone: format!("{:?}", zone),
             zone_cards,
         });
-        match self.recv_action() {
-            PlayerAction::TargetCard { card_id } => card_id.and_then(|id| Self::parse_card_id(&id)),
-            _ => valid.first().copied(),
-        }
+        self.recv_card_choice_or_first(valid)
     }
 
     fn choose_target_any(
@@ -396,18 +444,10 @@ impl PlayerAgent for TauriAgent {
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
     ) -> TargetChoice {
-        let valid_player_ids: Vec<String> = valid_players
-            .iter()
-            .map(|p| format!("player-{}", p.0))
-            .collect();
-        let valid_card_ids: Vec<String> = valid_cards
-            .iter()
-            .map(|c| format!("card-{}", c.0))
-            .collect();
+        let valid_player_ids = Self::player_ids(valid_players);
+        let valid_card_ids = Self::card_ids(valid_cards);
         let mut view = self.view();
-        for card in &mut view.battlefield {
-            card.is_choosable = valid_card_ids.contains(&card.id);
-        }
+        Self::mark_battlefield_choosable(&mut view, &valid_card_ids);
         self.send_prompt(AgentPromptInner::ChooseTargetAny {
             game_view: view,
             valid_player_ids,
@@ -415,10 +455,10 @@ impl PlayerAgent for TauriAgent {
         });
         match self.recv_action() {
             PlayerAction::TargetAny { target } => match target {
-                TargetAnyChoice::Player { player_id } => Self::parse_player_id(&player_id)
+                TargetAnyChoice::Player { player_id } => parse_player_id(&player_id)
                     .map(TargetChoice::Player)
                     .unwrap_or(TargetChoice::None),
-                TargetAnyChoice::Card { card_id } => Self::parse_card_id(&card_id)
+                TargetAnyChoice::Card { card_id } => parse_card_id(&card_id)
                     .map(TargetChoice::Card)
                     .unwrap_or(TargetChoice::None),
                 TargetAnyChoice::None => TargetChoice::None,
@@ -435,40 +475,26 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_sacrifice(&mut self, player: PlayerId, valid: &[CardId]) -> Option<CardId> {
-        // Non-human players: just pick the first valid card (AI behavior)
-        if player != self.human_player {
-            return valid.first().copied();
-        }
-        // Human player: reuse the ChooseTargetCard prompt so the frontend can pick
-        let valid_card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        let valid_card_ids = Self::card_ids(valid);
         let mut view = self.view();
-        for card in &mut view.battlefield {
-            card.is_choosable = valid_card_ids.contains(&card.id);
-        }
+        Self::mark_battlefield_choosable(&mut view, &valid_card_ids);
         self.send_prompt(AgentPromptInner::ChooseTargetCard {
             game_view: view,
             valid_card_ids,
         });
-        match self.recv_action() {
-            PlayerAction::TargetCard { card_id } => card_id.and_then(|id| Self::parse_card_id(&id)),
-            _ => valid.first().copied(),
-        }
+        self.recv_card_choice_or_first(valid)
     }
 
     fn on_library_peek(&mut self, game: &forge_engine_core::game::GameState, cards: &[CardId]) {
-        // Only build DTOs for the human player — AI peeks are silent.
         self.peeked_library_cards = cards
             .iter()
             .map(|&id| card_to_dto(game, id, &[], &[], "library"))
             .collect();
     }
 
-    fn choose_scry(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
-        if player != self.human_player {
-            return vec![]; // AI: keep all on top
-        }
-        let card_ids: Vec<String> = cards.iter().map(|c| format!("card-{}", c.0)).collect();
+    fn choose_scry(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
+        let card_ids = Self::card_ids(cards);
         let peeked = std::mem::take(&mut self.peeked_library_cards);
         self.send_prompt(AgentPromptInner::Scry {
             game_view: self.view(),
@@ -478,17 +504,14 @@ impl PlayerAgent for TauriAgent {
         match self.recv_action() {
             PlayerAction::ScryDecision { bottom_card_ids } => bottom_card_ids
                 .iter()
-                .filter_map(|id| Self::parse_card_id(id))
+                .filter_map(|id| parse_card_id(id))
                 .collect(),
             _ => vec![],
         }
     }
 
-    fn choose_surveil(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
-        if player != self.human_player {
-            return vec![]; // AI: keep all on top
-        }
-        let card_ids: Vec<String> = cards.iter().map(|c| format!("card-{}", c.0)).collect();
+    fn choose_surveil(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
+        let card_ids = Self::card_ids(cards);
         let peeked = std::mem::take(&mut self.peeked_library_cards);
         self.send_prompt(AgentPromptInner::Surveil {
             game_view: self.view(),
@@ -498,7 +521,7 @@ impl PlayerAgent for TauriAgent {
         match self.recv_action() {
             PlayerAction::SurveilDecision { graveyard_card_ids } => graveyard_card_ids
                 .iter()
-                .filter_map(|id| Self::parse_card_id(id))
+                .filter_map(|id| parse_card_id(id))
                 .collect(),
             _ => vec![],
         }
@@ -506,16 +529,12 @@ impl PlayerAgent for TauriAgent {
 
     fn choose_dig(
         &mut self,
-        player: PlayerId,
+        _player: PlayerId,
         valid: &[CardId],
         max: usize,
         optional: bool,
     ) -> Vec<CardId> {
-        if player != self.human_player {
-            // AI: take first `max` cards
-            return valid.iter().copied().take(max).collect();
-        }
-        let card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+        let card_ids = Self::card_ids(valid);
         let peeked = std::mem::take(&mut self.peeked_library_cards);
         // Filter peeked to only valid cards (ChangeValid$ may have narrowed the list).
         let valid_peeked: Vec<CardDto> = peeked
@@ -532,17 +551,14 @@ impl PlayerAgent for TauriAgent {
         match self.recv_action() {
             PlayerAction::DigDecision { chosen_card_ids } => chosen_card_ids
                 .iter()
-                .filter_map(|id| Self::parse_card_id(id))
+                .filter_map(|id| parse_card_id(id))
                 .collect(),
             _ => valid.iter().copied().take(max).collect(),
         }
     }
 
-    fn choose_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
-        if player != self.human_player {
-            return hand.iter().copied().take(num).collect();
-        }
-        let hand_card_ids: Vec<String> = hand.iter().map(|c| format!("card-{}", c.0)).collect();
+    fn choose_discard(&mut self, _player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
+        let hand_card_ids = Self::card_ids(hand);
         self.send_prompt(AgentPromptInner::ChooseDiscard {
             game_view: self.view(),
             hand_card_ids,
@@ -551,39 +567,29 @@ impl PlayerAgent for TauriAgent {
         match self.recv_action() {
             PlayerAction::DiscardDecision { discarded_card_ids } => discarded_card_ids
                 .iter()
-                .filter_map(|id| Self::parse_card_id(id))
+                .filter_map(|id| parse_card_id(id))
                 .collect(),
             _ => hand.iter().copied().take(num).collect(),
         }
     }
 
-    fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> {
-        if player != self.human_player {
-            return valid.first().copied();
-        }
-        let valid_spell_ids: Vec<String> = valid.iter().map(|id| format!("stack-{}", id)).collect();
+    fn choose_target_spell(&mut self, _player: PlayerId, valid: &[u32]) -> Option<u32> {
+        let valid_spell_ids: Vec<String> = valid.iter().map(|&id| stack_id_str(id)).collect();
         self.send_prompt(AgentPromptInner::ChooseTargetSpell {
             game_view: self.view(),
             valid_spell_ids,
         });
-        match self.recv_action() {
-            PlayerAction::TargetSpell { spell_id } => spell_id.and_then(|id| parse_spell_id(&id)),
-            _ => valid.first().copied(),
-        }
+        self.recv_spell_choice_or_first(valid)
     }
 
     fn choose_mode(
         &mut self,
-        player: PlayerId,
+        _player: PlayerId,
         descriptions: &[String],
         min: usize,
         max: usize,
         card_name: Option<&str>,
     ) -> Vec<usize> {
-        if player != self.human_player {
-            // AI: pick first `min` modes
-            return (0..min.min(descriptions.len())).collect();
-        }
         self.send_prompt(AgentPromptInner::ChooseMode {
             game_view: self.view(),
             options: descriptions.to_vec(),
@@ -597,10 +603,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_optional_trigger(&mut self, player: PlayerId, description: &str, card_name: Option<&str>) -> bool {
-        if player != self.human_player {
-            return true; // AI always accepts optional triggers
-        }
+    fn choose_optional_trigger(&mut self, _player: PlayerId, description: &str, card_name: Option<&str>) -> bool {
         self.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
             game_view: self.view(),
             description: description.to_string(),
@@ -612,10 +615,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_kicker(&mut self, player: PlayerId, kicker_cost: &str, card_name: Option<&str>) -> bool {
-        if player != self.human_player {
-            return false; // AI default: don't kick
-        }
+    fn choose_kicker(&mut self, _player: PlayerId, kicker_cost: &str, card_name: Option<&str>) -> bool {
         self.send_prompt(AgentPromptInner::ChooseKicker {
             game_view: self.view(),
             kicker_cost: kicker_cost.to_string(),
@@ -627,10 +627,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_buyback(&mut self, player: PlayerId, buyback_cost: &str, card_name: Option<&str>) -> bool {
-        if player != self.human_player {
-            return false;
-        }
+    fn choose_buyback(&mut self, _player: PlayerId, buyback_cost: &str, card_name: Option<&str>) -> bool {
         self.send_prompt(AgentPromptInner::ChooseBuyback {
             game_view: self.view(),
             buyback_cost: buyback_cost.to_string(),
@@ -642,10 +639,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_multikicker(&mut self, player: PlayerId, cost: &str, max_kicks: u32, card_name: Option<&str>) -> u32 {
-        if player != self.human_player {
-            return 0;
-        }
+    fn choose_multikicker(&mut self, _player: PlayerId, cost: &str, max_kicks: u32, card_name: Option<&str>) -> u32 {
         self.send_prompt(AgentPromptInner::ChooseMultikicker {
             game_view: self.view(),
             cost: cost.to_string(),
@@ -658,10 +652,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_replicate(&mut self, player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 {
-        if player != self.human_player {
-            return 0;
-        }
+    fn choose_replicate(&mut self, _player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 {
         self.send_prompt(AgentPromptInner::ChooseReplicate {
             game_view: self.view(),
             cost: cost.to_string(),
@@ -674,10 +665,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_alternative_cost(&mut self, player: PlayerId, options: &[String], card_name: Option<&str>) -> usize {
-        if player != self.human_player {
-            return 0; // AI: always pick normal cost
-        }
+    fn choose_alternative_cost(&mut self, _player: PlayerId, options: &[String], card_name: Option<&str>) -> usize {
         self.send_prompt(AgentPromptInner::ChooseAlternativeCost {
             game_view: self.view(),
             options: options.to_vec(),
@@ -689,10 +677,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> {
-        if player != self.human_player {
-            return valid_colors.first().cloned();
-        }
+    fn choose_color(&mut self, _player: PlayerId, valid_colors: &[String]) -> Option<String> {
         self.send_prompt(AgentPromptInner::ChooseColor {
             game_view: self.view(),
             valid_colors: valid_colors.to_vec(),
@@ -706,15 +691,12 @@ impl PlayerAgent for TauriAgent {
 
     fn choose_cards_for_effect(
         &mut self,
-        player: PlayerId,
+        _player: PlayerId,
         valid: &[CardId],
         min: usize,
         max: usize,
     ) -> Vec<CardId> {
-        if player != self.human_player {
-            return valid.iter().copied().take(max).collect();
-        }
-        let valid_card_ids: Vec<String> = valid.iter().map(|c| format!("card-{}", c.0)).collect();
+        let valid_card_ids = Self::card_ids(valid);
         let view = self.view();
 
         // Build zone_cards from the snapshot view's zones (find matching DTOs)
@@ -743,16 +725,13 @@ impl PlayerAgent for TauriAgent {
         match self.recv_action() {
             PlayerAction::ChooseCardsDecision { chosen_card_ids } => chosen_card_ids
                 .iter()
-                .filter_map(|id| Self::parse_card_id(id))
+                .filter_map(|id| parse_card_id(id))
                 .collect(),
             _ => valid.iter().copied().take(max).collect(),
         }
     }
 
-    fn choose_type(&mut self, player: PlayerId, type_category: &str, valid_types: &[String]) -> Option<String> {
-        if player != self.human_player {
-            return valid_types.first().cloned();
-        }
+    fn choose_type(&mut self, _player: PlayerId, type_category: &str, valid_types: &[String]) -> Option<String> {
         self.send_prompt(AgentPromptInner::ChooseType {
             game_view: self.view(),
             type_category: type_category.to_string(),
@@ -765,10 +744,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_card_name(&mut self, player: PlayerId, valid_names: &[String]) -> Option<String> {
-        if player != self.human_player {
-            return valid_names.first().cloned();
-        }
+    fn choose_card_name(&mut self, _player: PlayerId, valid_names: &[String]) -> Option<String> {
         self.send_prompt(AgentPromptInner::ChooseCardName {
             game_view: self.view(),
             valid_names: valid_names.to_vec(),
@@ -780,10 +756,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> {
-        if player != self.human_player {
-            return Some(min);
-        }
+    fn choose_number(&mut self, _player: PlayerId, min: i32, max: i32) -> Option<i32> {
         self.send_prompt(AgentPromptInner::ChooseNumber {
             game_view: self.view(),
             min,
@@ -801,15 +774,17 @@ impl PlayerAgent for TauriAgent {
     }
 
     fn notify(&mut self, message: &str) {
-        let _ = self.notify_tx.send(message.to_string());
+        if let Some(tx) = &self.notify_tx {
+            let _ = tx.send(message.to_string());
+        }
     }
 
     fn notify_card_played(&mut self, player: PlayerId, card_id: CardId, card_name: &str, set_code: &str) {
         self.pending_display_events.push(DisplayEvent::CardPlayed {
-            card_id: format!("card-{}", card_id.0),
+            card_id: card_id_str(card_id),
             card_name: card_name.to_string(),
             set_code: set_code.to_string(),
-            player_id: format!("player-{}", player.0),
+            player_id: player_id_str(player),
         });
         // Flush immediately so the frontend receives one event per card play.
         self.send_prompt(AgentPromptInner::StateUpdate {
@@ -818,7 +793,7 @@ impl PlayerAgent for TauriAgent {
     }
 
     fn notify_turn_changed(&mut self, active_player: PlayerId, turn_number: u32) {
-        let player_id = format!("player-{}", active_player.0);
+        let player_id = player_id_str(active_player);
         let active_player_name = self
             .latest_view
             .as_ref()

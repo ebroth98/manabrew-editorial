@@ -11,8 +11,8 @@ interface MultiplayerLocationState {
   multiplayer: true;
   playerOrder: string[];
   playerDecks: PlayerDeckInfo[];
-  startingLife: number;
   isHost: boolean;
+  startingLife: number;
   myPlayerSlot: string;
 }
 
@@ -30,21 +30,14 @@ export default function Play() {
     multiplayerStarted.current = true;
 
     const { playerOrder, playerDecks, isHost, startingLife, myPlayerSlot } = mpState;
-
-    if (isHost) {
-      // Host: start the engine with all player names
-      const hostIndex = parseInt(myPlayerSlot.replace('player-', ''), 10);
-      const deckListsByPlayer = playerOrder.map((playerName) => {
-        const selected = (playerDecks ?? []).find((entry) => entry.username === playerName);
-        return selected?.deck_list ?? [];
-      });
-      startMultiplayerGame(playerOrder, deckListsByPlayer, hostIndex, startingLife);
-    } else {
-      // Non-host: set multiplayer state and wait for remote prompts
-      setMultiplayerState(true, false, myPlayerSlot);
-      // Mark game as active so the Game component renders
-      useGameStore.setState({ isGameActive: true });
-    }
+    const engineIndex = parseInt(myPlayerSlot.replace('player-', ''), 10);
+    if (Number.isNaN(engineIndex) || engineIndex < 0) return;
+    const deckListsByPlayer = playerOrder.map((playerName) => {
+      const selected = (playerDecks ?? []).find((entry) => entry.username === playerName);
+      return selected?.deck_list ?? [];
+    });
+    setMultiplayerState(true, isHost, myPlayerSlot);
+    startMultiplayerGame(playerOrder, deckListsByPlayer, engineIndex, isHost, startingLife);
   }, [mpState]);
 
   if (isGameActive) {
@@ -58,7 +51,7 @@ export default function Play() {
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold">Starting multiplayer game...</h1>
           <p className="text-muted-foreground">
-            {mpState.isHost ? "Setting up the game engine..." : "Waiting for host to start..."}
+            Waiting for game synchronization...
           </p>
         </div>
       </div>

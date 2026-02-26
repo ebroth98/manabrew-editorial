@@ -117,7 +117,8 @@ interface GameState {
   startMultiplayerGame: (
     playerNames: string[],
     deckLists: { name: string, setCode: string }[][],
-    hostPlayerIndex: number,
+    enginePlayerIndex: number,
+    localIsHost: boolean,
     startingLife: number
   ) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
@@ -225,27 +226,28 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  startMultiplayerGame: async (playerNames, deckLists, hostPlayerIndex, startingLife) => {
+  startMultiplayerGame: async (playerNames, deckLists, enginePlayerIndex, localIsHost, startingLife) => {
     try {
       set({ debugInfo: 'Starting multiplayer game...' });
-      const result = await invoke('start_multiplayer_game', {
+      await invoke('start_multiplayer_game', {
         playerNames,
         deckLists,
-        hostPlayerIndex,
+        enginePlayerIndex,
+        localIsHost,
         startingLife,
       });
       set({
         isGameActive: true,
         isMultiplayer: true,
-        isHost: true,
-        myPlayerSlot: `player-${hostPlayerIndex}`,
+        isHost: localIsHost,
+        myPlayerSlot: `player-${enginePlayerIndex}`,
         gameLog: [],
         gameView: null,
         currentPrompt: null,
         deferredQueue: [],
         isFlashing: false,
         isWaitingForResponse: false,
-        debugInfo: `Multiplayer game started: ${result}`,
+        debugInfo: 'Multiplayer game started.',
       });
     } catch (e) {
       set({ debugInfo: `Multiplayer start failed: ${e}` });
@@ -256,14 +258,8 @@ export const useGameStore = create<GameState>((set, get) => ({
   respond: async (action) => {
     try {
       set({ isWaitingForResponse: true, debugInfo: `Responding: ${action.type}` });
-      const { isMultiplayer, isHost, myPlayerSlot } = get();
-      if (isMultiplayer && !isHost) {
-        // Remote player: send response via server relay
-        await invoke('server_respond', { playerSlot: myPlayerSlot, action });
-      } else {
-        // Host or single-player: send directly to engine
-        await invoke('respond', { action });
-      }
+      const { myPlayerSlot } = get();
+      await invoke('respond', { action, playerSlot: myPlayerSlot });
     } catch (e) {
       set({ isWaitingForResponse: false, debugInfo: `Respond error: ${e}` });
       console.error('Failed to respond:', e);
@@ -421,9 +417,29 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (forPlayer === myPlayerSlot) {
           // This prompt is for us — render it fully.
           applyPrompt(prompt, 'Remote', set, get);
+        } else {
+          // Keep shared turn/priority in sync even when the prompt is for another player.
+          // Do not apply full foreign-perspective view (would leak/flip local actionability).
+          const current = get().gameView;
+          if (current && prompt?.gameView) {
+            const iHavePriority = prompt.gameView.priorityPlayerId === myPlayerSlot;
+            set({
+              gameView: {
+                ...current,
+                turn: prompt.gameView.turn,
+                step: prompt.gameView.step,
+                activePlayerId: prompt.gameView.activePlayerId,
+                priorityPlayerId: prompt.gameView.priorityPlayerId,
+                gameOver: prompt.gameView.gameOver,
+                winnerId: prompt.gameView.winnerId,
+              },
+              // Never keep a stale actionable prompt when priority is not ours.
+              currentPrompt: iHavePriority ? get().currentPrompt : null,
+              isWaitingForResponse: iHavePriority ? get().isWaitingForResponse : false,
+              debugInfo: `Remote sync: ${prompt.type}`,
+            });
+          }
         }
-        // Prompts for other players are intentionally ignored. Applying a different
-        // player's perspective can desync local actionability/state interpretation.
       });
       unlisteners.push(unlisten3);
     } catch (e) {

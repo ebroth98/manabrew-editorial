@@ -296,6 +296,40 @@ pub enum AgentPromptInner {
     },
 }
 
+impl AgentPromptInner {
+    pub fn game_view(&self) -> &GameViewDto {
+        match self {
+            AgentPromptInner::Mulligan { game_view, .. }
+            | AgentPromptInner::ChooseAction { game_view, .. }
+            | AgentPromptInner::ChooseAttackers { game_view, .. }
+            | AgentPromptInner::ChooseBlockers { game_view, .. }
+            | AgentPromptInner::ChooseTargetPlayer { game_view, .. }
+            | AgentPromptInner::ChooseTargetCard { game_view, .. }
+            | AgentPromptInner::ChooseTargetAny { game_view, .. }
+            | AgentPromptInner::ChooseTargetCardFromZone { game_view, .. }
+            | AgentPromptInner::GameOver { game_view }
+            | AgentPromptInner::StateUpdate { game_view }
+            | AgentPromptInner::Scry { game_view, .. }
+            | AgentPromptInner::Surveil { game_view, .. }
+            | AgentPromptInner::Dig { game_view, .. }
+            | AgentPromptInner::ChooseDiscard { game_view, .. }
+            | AgentPromptInner::ChooseTargetSpell { game_view, .. }
+            | AgentPromptInner::ChooseMode { game_view, .. }
+            | AgentPromptInner::ChooseOptionalTrigger { game_view, .. }
+            | AgentPromptInner::ChooseKicker { game_view, .. }
+            | AgentPromptInner::ChooseBuyback { game_view, .. }
+            | AgentPromptInner::ChooseMultikicker { game_view, .. }
+            | AgentPromptInner::ChooseReplicate { game_view, .. }
+            | AgentPromptInner::ChooseAlternativeCost { game_view, .. }
+            | AgentPromptInner::ChooseColor { game_view, .. }
+            | AgentPromptInner::ChooseType { game_view, .. }
+            | AgentPromptInner::ChooseNumber { game_view, .. }
+            | AgentPromptInner::ChooseCardName { game_view, .. }
+            | AgentPromptInner::ChooseCardsForEffect { game_view, .. } => game_view,
+        }
+    }
+}
+
 /// Info about an activatable ability on a battlefield permanent.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -6,6 +6,8 @@ use forge_engine_core::mana::ManaPool;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
+use crate::ids_codec::{card_id_str, player_id_str};
+
 /// Frontend-compatible game state snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -35,6 +37,33 @@ pub struct GameViewDto {
     pub monarch_id: Option<String>,
     /// The player who holds the initiative (issue #22).
     pub initiative_holder_id: Option<String>,
+}
+
+impl GameViewDto {
+    pub fn empty(game_id: String) -> Self {
+        Self {
+            game_id,
+            turn: 0,
+            step: "main1".into(),
+            combat_assignments: vec![],
+            active_player_id: String::new(),
+            priority_player_id: String::new(),
+            players: vec![],
+            my_hand: vec![],
+            battlefield: vec![],
+            stack: vec![],
+            exile: vec![],
+            graveyard: vec![],
+            opponent_graveyard: vec![],
+            opponent_exile: vec![],
+            my_command_zone: vec![],
+            opponent_command_zone: vec![],
+            game_over: false,
+            winner_id: None,
+            monarch_id: None,
+            initiative_holder_id: None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -111,14 +140,6 @@ pub struct StackObjectDto {
     pub source_id: String,
     pub name: String,
     pub text: String,
-}
-
-fn player_id_str(pid: PlayerId) -> String {
-    format!("player-{}", pid.0)
-}
-
-fn card_id_str(cid: CardId) -> String {
-    format!("card-{}", cid.0)
 }
 
 fn mana_pool_to_map(pool: &ManaPool) -> HashMap<String, i32> {

@@ -557,7 +557,7 @@
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `Player.java` | Core player: life, zones, mana, counters, game actions | **Implemented** (`player.rs` PlayerState) |
-| `PlayerController.java` | Abstract: UI/AI decision-making interface | **Implemented** (`agent.rs` PlayerAgent trait) |
+| `PlayerController.java` | Abstract: UI/AI decision-making interface | **Implemented** (`agent.rs` PlayerAgent trait; multiplayer human transport unified into single `TauriAgent` implementation for local + relayed seats in `src-tauri/src/tauri_agent.rs`) |
 | `PlayerView.java` | Trackable player view for UI | Not implemented |
 | `PlayerCollection.java` | Player list with filtering | Not implemented |
 | `PlayerPredicates.java` | Player filtering predicates | Not implemented |

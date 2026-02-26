@@ -171,13 +171,11 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
     {
         if let Some(kind) = state.get("kind").and_then(|v| v.as_str()) {
             if kind == "response" {
-                // Route to game manager (host only) — don't emit to frontend
                 let gm: tauri::State<'_, crate::game_manager::GameManager> =
                     app.state::<crate::game_manager::GameManager>();
                 gm.route_remote_response(state);
                 return;
             } else if kind == "prompt" {
-                // Emit as a specialized event for non-host game rendering
                 let _ = app.emit("game:remote_prompt", state);
                 return;
             }

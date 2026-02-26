@@ -37,6 +37,10 @@ export default function Lobby() {
     if (gameStarted && playerOrder.length > 0) {
       const isHost = currentRoom?.host === username;
       const myIndex = playerOrder.indexOf(username ?? '');
+      if (myIndex < 0) {
+        toast.error("Could not determine your player slot for this game.");
+        return;
+      }
       // Reset gameStarted so returning to lobby doesn't re-trigger navigation
       useServerStore.setState({ gameStarted: false });
       navigate('/play', {
