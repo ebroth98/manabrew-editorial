@@ -117,9 +117,11 @@ export default function Game() {
   // Right-side prompt/action panel collapse state
   const [isActionPanelCollapsed, setIsActionPanelCollapsed] = useState(false);
 
-  // Prompt-driven effects: auto-pass, library peek, zone target, spell stack
+  // Prompt-driven effects: auto-pass, passUntilEot, library peek, zone target, spell stack
   const {
     isAutoPassing,
+    isPassingUntilEot,
+    activatePassUntilEot,
     libraryPeekModal,
     setLibraryPeekModal,
     zoneTargetSelector,
@@ -131,7 +133,12 @@ export default function Game() {
     isWaitingForResponse,
     passPriority,
     myHand: gameView?.myHand ?? [],
+    turn: gameView?.turn ?? 0,
+    stackLength: gameView?.stack?.length ?? 0,
   });
+
+  const activatePassUntilEotRef = useRef(activatePassUntilEot);
+  activatePassUntilEotRef.current = activatePassUntilEot;
 
   // Card hover preview with delayed show / auto-dismiss
   const {
@@ -173,9 +180,12 @@ export default function Game() {
         e.target instanceof HTMLTextAreaElement
       )
         return;
-      if (e.code === "Space" || e.code === "F6") {
+      if (e.code === "Space") {
         e.preventDefault();
         passPriority();
+      } else if (e.code === "F6") {
+        e.preventDefault();
+        activatePassUntilEotRef.current();
       }
     }
     window.addEventListener("keydown", handleKey);
@@ -502,9 +512,11 @@ export default function Game() {
           promptType={promptType}
           isWaitingForResponse={isWaitingForResponse}
           isAutoPassing={isAutoPassing}
+          isPassingUntilEot={isPassingUntilEot}
           availableAttackerIds={currentPrompt?.availableAttackerIds ?? []}
           pendingAttackers={pendingAttackers}
           onPassPriority={passPriority}
+          onPassUntilEot={activatePassUntilEot}
           onDeclareAttackers={declareAttackers}
           pendingAttacker={pendingAttacker}
           attackerIds={currentPrompt?.attackerIds ?? []}

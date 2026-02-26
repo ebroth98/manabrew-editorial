@@ -93,9 +93,11 @@ export interface RightActionPanelProps {
   promptType?: PromptActionType;
   isWaitingForResponse: boolean;
   isAutoPassing: boolean;
+  isPassingUntilEot: boolean;
   availableAttackerIds: string[];
   pendingAttackers: string[];
   onPassPriority: () => void;
+  onPassUntilEot: () => void;
   onDeclareAttackers: (attackerIds: string[]) => void;
   pendingAttacker: string | null;
   attackerIds: string[];

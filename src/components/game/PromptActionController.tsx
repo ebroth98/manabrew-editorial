@@ -7,9 +7,12 @@ interface PromptActionControllerProps {
   promptType?: PromptActionType;
   isWaitingForResponse: boolean;
   isAutoPassing: boolean;
+  isPassingUntilEot: boolean;
+  isMyTurn: boolean;
   availableAttackerIds: string[];
   pendingAttackers: string[];
   onPassPriority: () => void;
+  onPassUntilEot: () => void;
   onDeclareAttackers: (attackerIds: string[]) => void;
   pendingAttacker: string | null;
   blockAssignments: CombatAssignment[];
@@ -22,9 +25,12 @@ export function PromptActionController({
   promptType,
   isWaitingForResponse,
   isAutoPassing,
+  isPassingUntilEot,
+  isMyTurn,
   availableAttackerIds,
   pendingAttackers,
   onPassPriority,
+  onPassUntilEot,
   onDeclareAttackers,
   pendingAttacker,
   blockAssignments,
@@ -32,6 +38,21 @@ export function PromptActionController({
   onMulliganDecision,
   onOpenStack,
 }: PromptActionControllerProps) {
+  if (isPassingUntilEot) {
+    const label = isMyTurn ? "End Turn (F6)" : "Pass Until Your Turn (F6)";
+    return (
+      <div className={PROMPT_BUTTON_COLUMN}>
+        <p className="text-xs italic text-muted-foreground animate-pulse">
+          {isMyTurn ? "Ending turn..." : "Passing until your turn..."}
+        </p>
+        <Button size="sm" variant="outline" className="flex items-center gap-1" disabled>
+          <TimerOff className="h-3.5 w-3.5" />
+          {label}
+        </Button>
+      </div>
+    );
+  }
+
   if (isAutoPassing) {
     return <p className="text-xs italic text-muted-foreground animate-pulse">Auto-passing...</p>;
   }
@@ -47,12 +68,12 @@ export function PromptActionController({
             size="sm"
             variant="outline"
             className="flex items-center gap-1"
-            onClick={onPassPriority}
+            onClick={onPassUntilEot}
             disabled={isWaitingForResponse}
             title="Pass priority to end of turn (F6)"
           >
             <TimerOff className="h-3.5 w-3.5" />
-            End Turn (F6)
+            {isMyTurn ? "End Turn (F6)" : "Pass Until Your Turn (F6)"}
           </Button>
         </div>
       );

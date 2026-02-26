@@ -9,6 +9,8 @@ interface UsePromptEffectsOptions {
   isWaitingForResponse: boolean;
   passPriority: () => void;
   myHand: Card[];
+  turn: number;
+  stackLength: number;
 }
 
 interface LibraryPeekState {
@@ -29,10 +31,19 @@ export function usePromptEffects({
   isWaitingForResponse,
   passPriority,
   myHand,
+  turn,
+  stackLength,
 }: UsePromptEffectsOptions) {
   const promptType = currentPrompt?.type;
   const autoPassEnabled = usePreferencesStore((s) => s.autoPassEnabled);
   const [isAutoPassing, setIsAutoPassing] = useState(false);
+  const [passUntilEotTurn, setPassUntilEotTurn] = useState<number | null>(null);
+
+  function activatePassUntilEot() {
+    if (passUntilEotTurn !== null) return;
+    setPassUntilEotTurn(turn);
+    passPriority();
+  }
 
   // Library peek modal state
   const [libraryPeekModal, setLibraryPeekModal] = useState<LibraryPeekState | null>(null);
@@ -43,11 +54,26 @@ export function usePromptEffects({
   // Spell stack modal
   const [spellStackModalOpen, setSpellStackModalOpen] = useState(false);
 
-  // Auto-pass when no legal actions
+  // Auto-pass: passUntilEot takes precedence, then normal auto-pass
   useEffect(() => {
     setIsAutoPassing(false);
-
     if (!currentPrompt || isWaitingForResponse) return;
+
+    if (passUntilEotTurn !== null) {
+      if (turn > passUntilEotTurn) {
+        setPassUntilEotTurn(null);
+      } else if (currentPrompt.type === "chooseAction" && stackLength > 0) {
+        setPassUntilEotTurn(null);
+      } else if (currentPrompt.type === "chooseAction" || currentPrompt.type === "chooseAttackers") {
+        setIsAutoPassing(true);
+        const timer = setTimeout(() => passPriority(), 0);
+        return () => clearTimeout(timer);
+      } else {
+        setPassUntilEotTurn(null);
+      }
+      return;
+    }
+
     if (!autoPassEnabled) return;
 
     let shouldAutoPass = false;
@@ -69,7 +95,8 @@ export function usePromptEffects({
     }, delay);
 
     return () => clearTimeout(timer);
-  }, [currentPrompt, isWaitingForResponse, autoPassEnabled, passPriority]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPrompt, isWaitingForResponse, autoPassEnabled, passPriority, passUntilEotTurn, turn, stackLength]);
 
   // Open library-peek modal for Scry / Surveil / Dig / Discard prompts
   useEffect(() => {
@@ -133,6 +160,8 @@ export function usePromptEffects({
 
   return {
     isAutoPassing,
+    isPassingUntilEot: passUntilEotTurn !== null,
+    activatePassUntilEot,
     libraryPeekModal,
     setLibraryPeekModal,
     zoneTargetSelector,

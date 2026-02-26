@@ -26,6 +26,8 @@ export function RightActionPanel({
   availableAttackerIds,
   pendingAttackers,
   onPassPriority,
+  onPassUntilEot,
+  isPassingUntilEot,
   onDeclareAttackers,
   pendingAttacker,
   attackerIds,
@@ -51,7 +53,8 @@ export function RightActionPanel({
     Boolean(promptType) &&
     promptType !== "gameOver" &&
     !isWaitingForResponse &&
-    !isAutoPassing;
+    !isAutoPassing &&
+    !isPassingUntilEot;
 
   const edgeButtonClass = cn(
     "h-24 w-4 rounded-l-md rounded-r-none border border-r-0 border-border bg-card/90 px-0",
@@ -170,9 +173,12 @@ export function RightActionPanel({
                 promptType={promptType}
                 isWaitingForResponse={isWaitingForResponse}
                 isAutoPassing={isAutoPassing}
+                isPassingUntilEot={isPassingUntilEot}
+                isMyTurn={isMyTurn}
                 availableAttackerIds={availableAttackerIds}
                 pendingAttackers={pendingAttackers}
                 onPassPriority={onPassPriority}
+                onPassUntilEot={onPassUntilEot}
                 onDeclareAttackers={onDeclareAttackers}
                 pendingAttacker={pendingAttacker}
                 blockAssignments={blockAssignments}
