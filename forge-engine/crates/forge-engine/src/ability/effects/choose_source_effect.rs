@@ -16,7 +16,9 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let choices_filter = sa.params.get("Choices")
+    let choices_filter = sa
+        .params
+        .get("Choices")
         .cloned()
         .unwrap_or_else(|| "Permanent".to_string());
 
@@ -32,10 +34,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 
-    if valid.is_empty() { return; }
+    if valid.is_empty() {
+        return;
+    }
 
-    let chosen = ctx.agents[controller.index()]
-        .choose_cards_for_effect(controller, &valid, 1, 1);
+    let chosen = ctx.agents[controller.index()].choose_cards_for_effect(controller, &valid, 1, 1);
 
     if let Some(&chosen_id) = chosen.first() {
         if let Some(source_id) = sa.source {

@@ -23,7 +23,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     let valid_cards_filter = sa.params.get("ValidCards").cloned().unwrap_or_default();
-    let valid_players = sa.params.get("ValidPlayers").map(|s| s.as_str()).unwrap_or("").to_string();
+    let valid_players = sa
+        .params
+        .get("ValidPlayers")
+        .map(|s| s.as_str())
+        .unwrap_or("")
+        .to_string();
     let activating_player = sa.activating_player;
 
     let player_ids = ctx.game.player_order.clone();
@@ -56,7 +61,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
             // Protection: prevents all damage from matching sources
             if let Some(src_id) = source {
-                if ctx.game.card(card_id).is_protected_from(ctx.game.card(src_id)) {
+                if ctx
+                    .game
+                    .card(card_id)
+                    .is_protected_from(ctx.game.card(src_id))
+                {
                     continue;
                 }
             }

@@ -49,11 +49,8 @@ mod tests {
         let p0 = PlayerId(0);
         assert_eq!(game.extra_combat_phases, 0);
 
-        let sa = SpellAbility::new_simple(
-            None,
-            p0,
-            "SP$ AddPhase | ExtraPhase$ Combat | Amount$ 1",
-        );
+        let sa =
+            SpellAbility::new_simple(None, p0, "SP$ AddPhase | ExtraPhase$ Combat | Amount$ 1");
 
         let mut th = TriggerHandler::new();
         let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =

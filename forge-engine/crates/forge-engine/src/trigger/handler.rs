@@ -115,12 +115,8 @@ impl TriggerHandler {
                         .unwrap_or_default();
 
                     // Use build_spell_ability so SubAbility$ chains are resolved.
-                    let mut sa = build_spell_ability(
-                        game,
-                        active.card_id,
-                        &svar_text,
-                        host_controller,
-                    );
+                    let mut sa =
+                        build_spell_ability(game, active.card_id, &svar_text, host_controller);
                     sa.is_trigger = true;
                     sa.trigger_source = Some(active.card_id);
                     sa.trigger_index = Some(active.trigger_index);
@@ -151,7 +147,11 @@ impl TriggerHandler {
                     continue;
                 }
                 // For Phase triggers, also check the phase and valid_player
-                if let TriggerMode::Phase { phase, valid_player } = &delayed.trigger_mode {
+                if let TriggerMode::Phase {
+                    phase,
+                    valid_player,
+                } = &delayed.trigger_mode
+                {
                     if let Some(expected_phase) = phase {
                         if event.params.phase != Some(*expected_phase) {
                             continue;

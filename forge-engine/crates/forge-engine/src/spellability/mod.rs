@@ -298,17 +298,14 @@ fn choose_targets_for(
             }
         }
         TargetKind::Creature(ref filter) => {
-            let valid: Vec<CardId> =
-                target_restrictions::get_all_candidates_creature_filtered(
-                    game,
-                    filter.as_deref(),
-                    player,
-                )
-                .into_iter()
-                .filter(|&cid| {
-                    target_restrictions::can_be_targeted_by(game, cid, player, sa.source)
-                })
-                .collect();
+            let valid: Vec<CardId> = target_restrictions::get_all_candidates_creature_filtered(
+                game,
+                filter.as_deref(),
+                player,
+            )
+            .into_iter()
+            .filter(|&cid| target_restrictions::can_be_targeted_by(game, cid, player, sa.source))
+            .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid);

@@ -51,7 +51,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue;
         }
         // Snapshot existing counter types
-        let counter_types: Vec<CounterType> = ctx.game.card(cid)
+        let counter_types: Vec<CounterType> = ctx
+            .game
+            .card(cid)
             .counters
             .iter()
             .filter(|(_, &count)| count > 0)

@@ -15,7 +15,9 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let sides = sa.params.get("Sides")
+    let sides = sa
+        .params
+        .get("Sides")
         .and_then(|s| s.parse::<i32>().ok())
         .unwrap_or(20);
 
@@ -65,6 +67,8 @@ fn resolve_sub_chain(ctx: &mut EffectContext, initial: SpellAbility) {
     while let Some(cur_sa) = cur_opt {
         super::resolve_effect(ctx, &cur_sa);
         cur_opt = cur_sa.sub_ability.map(|b| *b);
-        if ctx.game.game_over { break; }
+        if ctx.game.game_over {
+            break;
+        }
     }
 }

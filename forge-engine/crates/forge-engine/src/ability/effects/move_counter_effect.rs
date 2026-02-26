@@ -18,11 +18,15 @@ use crate::spellability::SpellAbility;
 /// A:SP$ MoveCounter | CounterType$ CHARGE | CounterNum$ 2
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let counter_type = sa.params.get("CounterType")
+    let counter_type = sa
+        .params
+        .get("CounterType")
         .map(|s| parse_counter_type(s))
         .unwrap_or(crate::card::CounterType::P1P1);
     let count = resolve_numeric_svar(ctx.game, sa, "CounterNum", 1);
-    if count <= 0 { return; }
+    if count <= 0 {
+        return;
+    }
 
     // Determine source of counters
     let from_id = match sa.params.get("Source").map(|s| s.as_str()) {
@@ -49,12 +53,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         _ => return,
     };
 
-    if from == to { return; }
+    if from == to {
+        return;
+    }
 
     // Calculate how many we can actually move
     let available = ctx.game.card(from).counter_count(counter_type);
     let actual = count.min(available);
-    if actual <= 0 { return; }
+    if actual <= 0 {
+        return;
+    }
 
     // Remove from source
     ctx.game.card_mut(from).remove_counter(counter_type, actual);

@@ -38,7 +38,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let lib = ctx.game.cards_in_zone(ZoneType::Library, controller);
     if lib.is_empty() {
         // Explorer still gets the +1/+1 counter per rules
-        ctx.game.card_mut(explorer_id).add_counter(CounterType::P1P1, 1);
+        ctx.game
+            .card_mut(explorer_id)
+            .add_counter(CounterType::P1P1, 1);
         ctx.trigger_handler.run_trigger(
             TriggerType::CounterAdded,
             RunParams {
@@ -64,10 +66,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Land → put into hand
         let owner = ctx.game.card(top_card).owner;
         ctx.game.move_card(top_card, ZoneType::Hand, owner);
-        emit_zone_trigger(ctx.trigger_handler, top_card, ZoneType::Library, ZoneType::Hand);
+        emit_zone_trigger(
+            ctx.trigger_handler,
+            top_card,
+            ZoneType::Library,
+            ZoneType::Hand,
+        );
     } else {
         // Nonland → put +1/+1 counter on explorer
-        ctx.game.card_mut(explorer_id).add_counter(CounterType::P1P1, 1);
+        ctx.game
+            .card_mut(explorer_id)
+            .add_counter(CounterType::P1P1, 1);
         ctx.trigger_handler.run_trigger(
             TriggerType::CounterAdded,
             RunParams {
@@ -82,17 +91,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Player may put revealed card into graveyard (otherwise it stays on top)
         let card_name = ctx.game.card(top_card).card_name.clone();
         let source_name = ctx.game.card(explorer_id).card_name.clone();
-        let put_in_gy = ctx.agents[controller.index()]
-            .choose_optional_trigger(
-                controller,
-                &format!("Put {} into your graveyard?", card_name),
-                Some(&source_name),
-            );
+        let put_in_gy = ctx.agents[controller.index()].choose_optional_trigger(
+            controller,
+            &format!("Put {} into your graveyard?", card_name),
+            Some(&source_name),
+        );
 
         if put_in_gy {
             let owner = ctx.game.card(top_card).owner;
             ctx.game.move_card(top_card, ZoneType::Graveyard, owner);
-            emit_zone_trigger(ctx.trigger_handler, top_card, ZoneType::Library, ZoneType::Graveyard);
+            emit_zone_trigger(
+                ctx.trigger_handler,
+                top_card,
+                ZoneType::Library,
+                ZoneType::Graveyard,
+            );
         }
     }
 }

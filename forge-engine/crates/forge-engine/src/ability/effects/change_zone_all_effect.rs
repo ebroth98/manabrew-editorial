@@ -44,7 +44,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for &pid in &player_ids {
             let zone_cards = ctx.game.cards_in_zone(origin_zone, pid).to_vec();
             for cid in zone_cards {
-                if matches_change_type(ctx.game.card(cid), &valid_cards_filter, &source_chosen_colors) {
+                if matches_change_type(
+                    ctx.game.card(cid),
+                    &valid_cards_filter,
+                    &source_chosen_colors,
+                ) {
                     let dest_owner = if dest_zone == ZoneType::Battlefield {
                         sa.activating_player
                     } else {

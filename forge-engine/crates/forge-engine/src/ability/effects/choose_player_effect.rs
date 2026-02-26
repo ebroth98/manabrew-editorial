@@ -14,8 +14,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let valid_players = ctx.game.alive_players();
 
-    let chosen = ctx.agents[controller.index()]
-        .choose_target_player(controller, &valid_players);
+    let chosen = ctx.agents[controller.index()].choose_target_player(controller, &valid_players);
 
     if let Some(chosen_pid) = chosen {
         if let Some(source_id) = sa.source {

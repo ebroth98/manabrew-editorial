@@ -21,7 +21,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let max = parse_param(&sa.ability_text, "Max$ ")
         .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "Max", 10));
 
-    let is_random = sa.params.get("Random")
+    let is_random = sa
+        .params
+        .get("Random")
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
 

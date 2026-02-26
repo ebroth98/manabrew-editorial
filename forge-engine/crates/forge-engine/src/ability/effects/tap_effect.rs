@@ -25,7 +25,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Targeted: use the chosen target card.
     if let Some(target_card) = sa.target_chosen.target_card {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {
-            tap_card(ctx, target_card, controller, etb, remember_tapped, always_remember, sa.source);
+            tap_card(
+                ctx,
+                target_card,
+                controller,
+                etb,
+                remember_tapped,
+                always_remember,
+                sa.source,
+            );
         }
         return;
     }
@@ -33,7 +41,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Defined$ Self — tap the source card.
     if let Some(source) = sa.source {
         if ctx.game.card(source).zone == ZoneType::Battlefield {
-            tap_card(ctx, source, controller, etb, remember_tapped, always_remember, sa.source);
+            tap_card(
+                ctx,
+                source,
+                controller,
+                etb,
+                remember_tapped,
+                always_remember,
+                sa.source,
+            );
         }
     }
 }

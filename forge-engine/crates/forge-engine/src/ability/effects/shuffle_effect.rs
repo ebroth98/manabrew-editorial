@@ -12,7 +12,11 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Shuffle | Defined$ Each
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let defined = sa.params.get("Defined").map(|s| s.as_str()).unwrap_or("You");
+    let defined = sa
+        .params
+        .get("Defined")
+        .map(|s| s.as_str())
+        .unwrap_or("You");
     let players = resolve_defined_players(defined, sa.activating_player, ctx.game);
 
     let mut rng = rand::thread_rng();

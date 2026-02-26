@@ -61,11 +61,8 @@ mod tests {
         let p0 = PlayerId(0);
         let p1 = PlayerId(1);
 
-        let sa = SpellAbility::new_simple(
-            None,
-            p0,
-            "SP$ SkipPhase | Defined$ Opponent | Phase$ Draw",
-        );
+        let sa =
+            SpellAbility::new_simple(None, p0, "SP$ SkipPhase | Defined$ Opponent | Phase$ Draw");
 
         let mut th = TriggerHandler::new();
         let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
@@ -91,11 +88,7 @@ mod tests {
         let mut game = GameState::new(&["Alice", "Bob"], 20);
         let p0 = PlayerId(0);
 
-        let sa = SpellAbility::new_simple(
-            None,
-            p0,
-            "SP$ SkipPhase | Defined$ You | Phase$ Combat",
-        );
+        let sa = SpellAbility::new_simple(None, p0, "SP$ SkipPhase | Defined$ You | Phase$ Combat");
 
         let mut th = TriggerHandler::new();
         let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =

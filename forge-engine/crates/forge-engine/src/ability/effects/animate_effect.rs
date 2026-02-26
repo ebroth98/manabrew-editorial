@@ -55,8 +55,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Apply type changes
         if let Some(ref types) = types_str {
             if overwrite_types {
-                ctx.game.cards[card_id.index()].type_line =
-                    forge_foundation::CardTypeLine::new();
+                ctx.game.cards[card_id.index()].type_line = forge_foundation::CardTypeLine::new();
             }
             for t in types.split(',') {
                 let t = t.trim();

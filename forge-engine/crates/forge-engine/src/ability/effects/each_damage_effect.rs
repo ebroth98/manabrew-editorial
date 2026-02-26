@@ -16,14 +16,19 @@ use crate::spellability::SpellAbility;
 /// A:SP$ EachDamage | ValidCards$ Creature.YouCtrl | NumDmg$ X
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let valid_filter = sa.params.get("ValidCards")
+    let valid_filter = sa
+        .params
+        .get("ValidCards")
         .cloned()
         .unwrap_or_else(|| "Creature".to_string());
-    let fixed_dmg = parse_param(&sa.ability_text, "NumDmg$ ")
-        .or_else(|| {
-            let v = resolve_numeric_svar(ctx.game, sa, "NumDmg", -1);
-            if v == -1 { None } else { Some(v) }
-        });
+    let fixed_dmg = parse_param(&sa.ability_text, "NumDmg$ ").or_else(|| {
+        let v = resolve_numeric_svar(ctx.game, sa, "NumDmg", -1);
+        if v == -1 {
+            None
+        } else {
+            Some(v)
+        }
+    });
 
     let player_ids = ctx.game.player_order.clone();
     let mut damagers: Vec<CardId> = Vec::new();
@@ -38,13 +43,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Determine damage target: opponent by default
-    let target_player = sa.target_chosen.target_player
+    let target_player = sa
+        .target_chosen
+        .target_player
         .unwrap_or_else(|| ctx.game.opponent_of(sa.activating_player));
 
     for card_id in damagers {
-        if ctx.game.card(card_id).zone != ZoneType::Battlefield { continue; }
+        if ctx.game.card(card_id).zone != ZoneType::Battlefield {
+            continue;
+        }
         let dmg = fixed_dmg.unwrap_or_else(|| ctx.game.card(card_id).power().max(0));
-        if dmg <= 0 { continue; }
+        if dmg <= 0 {
+            continue;
+        }
 
         // Deal damage to the target player
         ctx.game.deal_damage_to_player(target_player, dmg);

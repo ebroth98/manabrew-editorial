@@ -15,7 +15,9 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let no_call = sa.params.get("NoCall")
+    let no_call = sa
+        .params
+        .get("NoCall")
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
 
@@ -33,7 +35,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if no_call {
         // No-call mode: resolve HeadsSub$ or TailsSub$ directly
-        let sub_key = if is_heads { "HeadsSubAbility" } else { "TailsSubAbility" };
+        let sub_key = if is_heads {
+            "HeadsSubAbility"
+        } else {
+            "TailsSubAbility"
+        };
         if let Some(sub_svar) = sa.params.get(sub_key) {
             if let Some(sub_text) = ctx.game.card(source_id).svars.get(sub_svar).cloned() {
                 let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, controller);
@@ -45,7 +51,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let called_heads = ctx.agents[controller.index()].flip_coin_call(controller);
         let won = called_heads == is_heads;
 
-        let sub_key = if won { "WinSubAbility" } else { "LoseSubAbility" };
+        let sub_key = if won {
+            "WinSubAbility"
+        } else {
+            "LoseSubAbility"
+        };
         if let Some(sub_svar) = sa.params.get(sub_key) {
             if let Some(sub_text) = ctx.game.card(source_id).svars.get(sub_svar).cloned() {
                 let sub_sa = build_spell_ability(ctx.game, source_id, &sub_text, controller);
@@ -60,6 +70,8 @@ fn resolve_sub_chain(ctx: &mut EffectContext, initial: SpellAbility) {
     while let Some(cur_sa) = cur_opt {
         super::resolve_effect(ctx, &cur_sa);
         cur_opt = cur_sa.sub_ability.map(|b| *b);
-        if ctx.game.game_over { break; }
+        if ctx.game.game_over {
+            break;
+        }
     }
 }

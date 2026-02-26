@@ -21,32 +21,52 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let amount = parse_param(&sa.ability_text, "Amount$ ")
-        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "Amount", 1)) as usize;
+        .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "Amount", 1))
+        as usize;
 
-    let valid_filter = sa.params.get("Valid").cloned().unwrap_or_else(|| "Card".to_string());
+    let valid_filter = sa
+        .params
+        .get("Valid")
+        .cloned()
+        .unwrap_or_else(|| "Card".to_string());
 
-    let found_dest = sa.params.get("FoundDestination")
+    let found_dest = sa
+        .params
+        .get("FoundDestination")
         .and_then(|s| parse_zone_type(s))
         .unwrap_or(ZoneType::Hand);
-    let revealed_dest = sa.params.get("RevealedDestination")
+    let revealed_dest = sa
+        .params
+        .get("RevealedDestination")
         .and_then(|s| parse_zone_type(s))
         .unwrap_or(ZoneType::Library);
 
-    let target_player = sa.target_chosen.target_player
+    let target_player = sa
+        .target_chosen
+        .target_player
         .or_else(|| {
-            sa.params.get("Defined")
+            sa.params
+                .get("Defined")
                 .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         })
         .unwrap_or(sa.activating_player);
 
-    let lib_len = ctx.game.cards_in_zone(ZoneType::Library, target_player).len();
-    if lib_len == 0 { return; }
+    let lib_len = ctx
+        .game
+        .cards_in_zone(ZoneType::Library, target_player)
+        .len();
+    if lib_len == 0 {
+        return;
+    }
 
     let mut found = Vec::new();
     let mut rest = Vec::new();
 
     // Walk from top of library down
-    let lib_cards: Vec<_> = ctx.game.cards_in_zone(ZoneType::Library, target_player).to_vec();
+    let lib_cards: Vec<_> = ctx
+        .game
+        .cards_in_zone(ZoneType::Library, target_player)
+        .to_vec();
     // Library is stored bottom→top, so iterate from end (top) backwards
     for &cid in lib_cards.iter().rev() {
         if found.len() >= amount {
@@ -69,7 +89,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Move found cards to destination
     for &id in &found {
         let owner = ctx.game.card(id).owner;
-        let dest_owner = if found_dest == ZoneType::Battlefield { sa.activating_player } else { owner };
+        let dest_owner = if found_dest == ZoneType::Battlefield {
+            sa.activating_player
+        } else {
+            owner
+        };
         ctx.game.move_card(id, found_dest, dest_owner);
         emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, found_dest);
     }
@@ -79,7 +103,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let owner = ctx.game.card(id).owner;
         if revealed_dest == ZoneType::Library {
             // Put on bottom
-            ctx.game.zone_mut(ZoneType::Library, owner).cards.insert(0, id);
+            ctx.game
+                .zone_mut(ZoneType::Library, owner)
+                .cards
+                .insert(0, id);
             ctx.game.cards[id.index()].zone = ZoneType::Library;
         } else {
             ctx.game.move_card(id, revealed_dest, owner);

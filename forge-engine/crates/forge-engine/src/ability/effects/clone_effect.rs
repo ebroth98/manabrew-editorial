@@ -33,14 +33,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         match defined.as_str() {
             "Self" => source_id,
             "ParentTarget" => ctx.parent_target_card.unwrap_or(source_id),
-            "Remembered" => {
-                ctx.game
-                    .card(source_id)
-                    .remembered_cards
-                    .first()
-                    .copied()
-                    .unwrap_or(source_id)
-            }
+            "Remembered" => ctx
+                .game
+                .card(source_id)
+                .remembered_cards
+                .first()
+                .copied()
+                .unwrap_or(source_id),
             _ => source_id,
         }
     } else {
@@ -70,9 +69,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .abilities
         .iter()
         .enumerate()
-        .filter_map(|(i, raw)| {
-            crate::ability::activated::parse_activated_ability(raw, i)
-        })
+        .filter_map(|(i, raw)| crate::ability::activated::parse_activated_ability(raw, i))
         .collect();
 
     // Step 4: Apply PumpKeywords$ (extra keywords on the copy)

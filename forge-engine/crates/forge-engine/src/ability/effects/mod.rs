@@ -11,6 +11,8 @@ pub mod animate_effect;
 pub mod attach_effect;
 pub mod balance_effect;
 pub mod become_monarch_effect;
+pub mod change_zone_all_effect;
+pub mod change_zone_effect;
 pub mod charm_effect;
 pub mod choose_card_effect;
 pub mod choose_color_effect;
@@ -20,8 +22,6 @@ pub mod choose_source_effect;
 pub mod choose_type_effect;
 pub mod cleanup_effect;
 pub mod clone_effect;
-pub mod change_zone_all_effect;
-pub mod change_zone_effect;
 pub mod control_gain_effect;
 pub mod control_gain_variant_effect;
 pub mod copy_permanent_effect;
@@ -43,15 +43,15 @@ pub mod draw_effect;
 pub mod each_damage_effect;
 pub mod encode_effect;
 pub mod end_combat_phase_effect;
-pub mod explore_effect;
 pub mod end_turn_effect;
+pub mod explore_effect;
 pub mod fight_effect;
 pub mod flip_a_coin_effect;
 pub mod fog_effect;
 pub mod game_draw_effect;
-pub mod goad_effect;
 pub mod game_loss_effect;
 pub mod game_win_effect;
+pub mod goad_effect;
 pub mod life_exchange_effect;
 pub mod life_gain_effect;
 pub mod life_lose_effect;
@@ -62,25 +62,25 @@ pub mod mill_effect;
 pub mod move_counter_effect;
 pub mod must_block_effect;
 pub mod name_card_effect;
-pub mod phases_effect;
 pub mod peek_and_reveal_effect;
+pub mod phases_effect;
 pub mod play_effect;
 pub mod poison_effect;
+pub mod power_exchange_effect;
 pub mod prevent_damage_effect;
 pub mod proliferate_effect;
 pub mod protection_all_effect;
 pub mod protection_effect;
-pub mod remove_from_combat_effect;
-pub mod repeat_each_effect;
-pub mod roll_dice_effect;
-pub mod power_exchange_effect;
 pub mod pump_all_effect;
 pub mod pump_effect;
 pub mod rearrange_top_of_library_effect;
 pub mod regenerate_effect;
+pub mod remove_from_combat_effect;
+pub mod repeat_each_effect;
 pub mod reveal_effect;
 pub mod reveal_hand_effect;
 pub mod reverse_turn_order_effect;
+pub mod roll_dice_effect;
 pub mod sacrifice_all_effect;
 pub mod sacrifice_effect;
 pub mod scry_effect;
@@ -658,11 +658,7 @@ pub use crate::mana::mana_atom_from_produced;
 /// resolve `YouCtrl` / `OppCtrl` qualifiers.
 ///
 /// Mirrors Java's `CardLists.getValidCards()` + `CardProperty.cardHasProperty()`.
-pub fn matches_valid_cards(
-    card: &CardInstance,
-    filter: &str,
-    activating_player: PlayerId,
-) -> bool {
+pub fn matches_valid_cards(card: &CardInstance, filter: &str, activating_player: PlayerId) -> bool {
     if filter.is_empty() || filter == "Card" {
         return true;
     }
@@ -730,7 +726,9 @@ fn matches_valid_cards_qualifier(
         "Basic" => card.type_line.is_basic(),
         "kicked" => card.kicked,
         "withFlying" => {
-            card.keywords.iter().any(|k| k.eq_ignore_ascii_case("Flying"))
+            card.keywords
+                .iter()
+                .any(|k| k.eq_ignore_ascii_case("Flying"))
                 || card
                     .granted_keywords
                     .iter()

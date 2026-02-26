@@ -179,7 +179,12 @@ pub trait PlayerAgent {
     /// `card_name` is the name of the source card (for UI display).
     /// Returns true to allow the trigger, false to decline.
     /// Default: always allow (non-interactive agents accept all optional triggers).
-    fn choose_optional_trigger(&mut self, _player: PlayerId, _description: &str, _card_name: Option<&str>) -> bool {
+    fn choose_optional_trigger(
+        &mut self,
+        _player: PlayerId,
+        _description: &str,
+        _card_name: Option<&str>,
+    ) -> bool {
         true
     }
 
@@ -188,14 +193,24 @@ pub trait PlayerAgent {
     /// `card_name` is the name of the spell being cast (for UI display).
     /// Returns true to kick, false to cast without kicker.
     /// Default: don't kick (AI default).
-    fn choose_kicker(&mut self, _player: PlayerId, _kicker_cost: &str, _card_name: Option<&str>) -> bool {
+    fn choose_kicker(
+        &mut self,
+        _player: PlayerId,
+        _kicker_cost: &str,
+        _card_name: Option<&str>,
+    ) -> bool {
         false
     }
 
     /// Choose whether to pay the buyback cost for a spell.
     /// Returns true to pay buyback, false to cast normally.
     /// Default: don't pay buyback.
-    fn choose_buyback(&mut self, _player: PlayerId, _buyback_cost: &str, _card_name: Option<&str>) -> bool {
+    fn choose_buyback(
+        &mut self,
+        _player: PlayerId,
+        _buyback_cost: &str,
+        _card_name: Option<&str>,
+    ) -> bool {
         false
     }
 
@@ -203,7 +218,13 @@ pub trait PlayerAgent {
     /// `max_kicks` is the maximum affordable.
     /// Returns the number of times to kick (0 to max_kicks).
     /// Default: 0 (don't multikick).
-    fn choose_multikicker(&mut self, _player: PlayerId, _cost: &str, _max_kicks: u32, _card_name: Option<&str>) -> u32 {
+    fn choose_multikicker(
+        &mut self,
+        _player: PlayerId,
+        _cost: &str,
+        _max_kicks: u32,
+        _card_name: Option<&str>,
+    ) -> u32 {
         0
     }
 
@@ -211,7 +232,13 @@ pub trait PlayerAgent {
     /// `max_replicates` is the maximum affordable.
     /// Returns the number of replicates.
     /// Default: 0.
-    fn choose_replicate(&mut self, _player: PlayerId, _cost: &str, _max_replicates: u32, _card_name: Option<&str>) -> u32 {
+    fn choose_replicate(
+        &mut self,
+        _player: PlayerId,
+        _cost: &str,
+        _max_replicates: u32,
+        _card_name: Option<&str>,
+    ) -> u32 {
         0
     }
 
@@ -219,7 +246,12 @@ pub trait PlayerAgent {
     /// `options` describes available casting options (e.g. "Normal cost: 3BB", "Spectacle: BR").
     /// Returns the index of the chosen option (0 = normal, 1+ = alternative).
     /// Default: 0 (normal cost).
-    fn choose_alternative_cost(&mut self, _player: PlayerId, _options: &[String], _card_name: Option<&str>) -> usize {
+    fn choose_alternative_cost(
+        &mut self,
+        _player: PlayerId,
+        _options: &[String],
+        _card_name: Option<&str>,
+    ) -> usize {
         0
     }
 
@@ -247,7 +279,12 @@ pub trait PlayerAgent {
     /// `type_category` is "Creature", "Card", "Land", etc.
     /// `valid_types` lists the legal type choices.
     /// Default: pick the first valid type.
-    fn choose_type(&mut self, _player: PlayerId, _type_category: &str, valid_types: &[String]) -> Option<String> {
+    fn choose_type(
+        &mut self,
+        _player: PlayerId,
+        _type_category: &str,
+        valid_types: &[String],
+    ) -> Option<String> {
         valid_types.first().cloned()
     }
 
@@ -280,7 +317,14 @@ pub trait PlayerAgent {
 
     /// Display-only notification: a card was played (land or spell).
     /// Called on all agents so every player's UI can show the animation.
-    fn notify_card_played(&mut self, _player: PlayerId, _card_id: CardId, _card_name: &str, _set_code: &str) {}
+    fn notify_card_played(
+        &mut self,
+        _player: PlayerId,
+        _card_id: CardId,
+        _card_name: &str,
+        _set_code: &str,
+    ) {
+    }
 
     /// Display-only notification: a new turn is starting for the given player.
     /// Called on all agents before any turn actions so the UI can show the turn flash first.

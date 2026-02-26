@@ -77,7 +77,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Remove counters.
-    ctx.game.card_mut(card_id).remove_counter(counter_type, actual);
+    ctx.game
+        .card_mut(card_id)
+        .remove_counter(counter_type, actual);
 
     // Fire CounterRemoved trigger.
     ctx.trigger_handler.run_trigger(

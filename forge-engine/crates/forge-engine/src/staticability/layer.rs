@@ -328,11 +328,7 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
             c.replacement_effects.iter().filter_map(move |re| {
                 if re.event == ReplacementType::Moved
                     && re.params.get("ReplaceWith").map(|s| s.as_str()) == Some("ETBTapped")
-                    && re
-                        .params
-                        .get("Destination")
-                        .map(|s| s.as_str())
-                        == Some("Battlefield")
+                    && re.params.get("Destination").map(|s| s.as_str()) == Some("Battlefield")
                     && re.active_in_zone(ZoneType::Battlefield)
                 {
                     let filter = re
@@ -362,7 +358,6 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
             return;
         }
     }
-
 }
 
 /// Check if a card has a shock-land-style "enters tapped unless you pay life" effect.

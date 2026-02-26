@@ -97,7 +97,11 @@ impl CombatState {
     /// If `first_strike_only` is true, only first-strike and double-strike creatures deal damage.
     /// If false, only non-first-strike and double-strike creatures deal damage.
     /// Returns a Vec of CombatDamageEvents so the caller can fire triggers.
-    pub fn resolve_damage_step(&self, game: &mut GameState, first_strike_only: bool) -> Vec<CombatDamageEvent> {
+    pub fn resolve_damage_step(
+        &self,
+        game: &mut GameState,
+        first_strike_only: bool,
+    ) -> Vec<CombatDamageEvent> {
         // Fog effect: skip all combat damage this turn (issue #22).
         if game.prevent_all_combat_damage {
             return Vec::new();
@@ -158,8 +162,16 @@ impl CombatState {
                     target_card: None,
                     amount: attacker_power,
                     is_combat: true,
-                    lifelink_player: if attacker_has_lifelink { Some(attacker_controller) } else { None },
-                    lifelink_amount: if attacker_has_lifelink { attacker_power } else { 0 },
+                    lifelink_player: if attacker_has_lifelink {
+                        Some(attacker_controller)
+                    } else {
+                        None
+                    },
+                    lifelink_amount: if attacker_has_lifelink {
+                        attacker_power
+                    } else {
+                        0
+                    },
                 });
                 // Track commander damage
                 if game.card(attacker_id).is_commander {
@@ -186,7 +198,10 @@ impl CombatState {
                     // framework handles DamageDone prevention (Java uses ReplaceDamage).
                     // Blocking rules already prevent most cases via can_creature_block(),
                     // but this covers edge cases like gaining protection after blocks.
-                    if game.card(blocker_id).is_protected_from(game.card(attacker_id)) {
+                    if game
+                        .card(blocker_id)
+                        .is_protected_from(game.card(attacker_id))
+                    {
                         continue;
                     }
 
@@ -217,8 +232,16 @@ impl CombatState {
                             target_card: Some(blocker_id),
                             amount: damage_to_blocker,
                             is_combat: true,
-                            lifelink_player: if attacker_has_lifelink { Some(attacker_controller) } else { None },
-                            lifelink_amount: if attacker_has_lifelink { damage_to_blocker } else { 0 },
+                            lifelink_player: if attacker_has_lifelink {
+                                Some(attacker_controller)
+                            } else {
+                                None
+                            },
+                            lifelink_amount: if attacker_has_lifelink {
+                                damage_to_blocker
+                            } else {
+                                0
+                            },
                         });
                         remaining_damage -= damage_to_blocker;
                     }
@@ -241,7 +264,10 @@ impl CombatState {
 
                     if blocker_deals {
                         // Protection damage prevention — see note above.
-                        if game.card(attacker_id).is_protected_from(game.card(blocker_id)) {
+                        if game
+                            .card(attacker_id)
+                            .is_protected_from(game.card(blocker_id))
+                        {
                             continue;
                         }
 
@@ -262,8 +288,16 @@ impl CombatState {
                                 target_card: Some(attacker_id),
                                 amount: blocker_power,
                                 is_combat: true,
-                                lifelink_player: if blocker_has_lifelink { Some(blocker_controller) } else { None },
-                                lifelink_amount: if blocker_has_lifelink { blocker_power } else { 0 },
+                                lifelink_player: if blocker_has_lifelink {
+                                    Some(blocker_controller)
+                                } else {
+                                    None
+                                },
+                                lifelink_amount: if blocker_has_lifelink {
+                                    blocker_power
+                                } else {
+                                    0
+                                },
                             });
                         }
                     }
@@ -286,8 +320,16 @@ impl CombatState {
                         target_card: None,
                         amount: remaining_damage,
                         is_combat: true,
-                        lifelink_player: if attacker_has_lifelink { Some(attacker_controller) } else { None },
-                        lifelink_amount: if attacker_has_lifelink { remaining_damage } else { 0 },
+                        lifelink_player: if attacker_has_lifelink {
+                            Some(attacker_controller)
+                        } else {
+                            None
+                        },
+                        lifelink_amount: if attacker_has_lifelink {
+                            remaining_damage
+                        } else {
+                            0
+                        },
                     });
                     // Track commander damage from trample
                     if game.card(attacker_id).is_commander {

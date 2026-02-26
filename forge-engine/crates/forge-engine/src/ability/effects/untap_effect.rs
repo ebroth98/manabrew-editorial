@@ -31,13 +31,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
 /// Resolve the target card for untap: explicit target, Defined$ Self, or Defined$ ParentTarget.
 fn resolve_untap_target(ctx: &EffectContext, sa: &SpellAbility) -> Option<CardId> {
-    sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get("Defined").map(|s| s.as_str()) {
+    sa.target_chosen
+        .target_card
+        .or_else(|| match sa.params.get("Defined").map(|s| s.as_str()) {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => None,
-        }
-    })
+        })
 }
 
 fn untap_card(

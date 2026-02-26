@@ -17,7 +17,9 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let amount = resolve_numeric_svar(ctx.game, sa, "Amount", 1);
-    if amount <= 0 { return; }
+    if amount <= 0 {
+        return;
+    }
 
     // Try targeted creature first
     if let Some(target) = sa.target_chosen.target_card {

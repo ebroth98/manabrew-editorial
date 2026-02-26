@@ -34,8 +34,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         .cloned()
                         .unwrap_or_default();
 
-                    let remembered: Vec<CardId> =
-                        ctx.game.card(source_id).remembered_cards.clone();
+                    let remembered: Vec<CardId> = ctx.game.card(source_id).remembered_cards.clone();
                     let match_count = remembered
                         .iter()
                         .filter(|&&cid| matches_type_filter(ctx, cid, &cond_present))

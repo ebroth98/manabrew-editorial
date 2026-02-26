@@ -397,6 +397,9 @@ fn run_game(
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human), Box::new(ai)];
     let mut game_loop = GameLoop::new(2);
+    if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
+        game_loop.game_log.set_enabled(true);
+    }
 
     // Register token templates so the engine can instantiate tokens by script name.
     // Uses a placeholder owner (p0); the actual owner/controller is set at creation time.
@@ -460,7 +463,8 @@ fn run_multiplayer_game(
             let resp_rx = remote_rx_map
                 .remove(&i)
                 .expect("Missing response rx for remote player");
-            let agent = TauriAgent::new_relay(pid, i, game_id.clone(), remote_prompt_tx.clone(), resp_rx);
+            let agent =
+                TauriAgent::new_relay(pid, i, game_id.clone(), remote_prompt_tx.clone(), resp_rx);
             agents.push(Box::new(agent));
         }
     }
@@ -476,6 +480,9 @@ fn run_multiplayer_game(
     }
 
     let mut game_loop = GameLoop::new(num_players);
+    if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
+        game_loop.game_log.set_enabled(true);
+    }
 
     let p0 = PlayerId(0);
     let token_db = get_token_db();

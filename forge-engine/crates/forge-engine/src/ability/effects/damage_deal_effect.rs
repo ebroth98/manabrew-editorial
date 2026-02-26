@@ -26,7 +26,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Overload: deal damage to ALL valid creatures instead of the chosen target.
     if sa.overloaded {
         let valid_tgts = sa.params.get("ValidTgts").cloned().unwrap_or_default();
-        let all_bf: Vec<crate::ids::CardId> = ctx.game.player_order.clone().iter()
+        let all_bf: Vec<crate::ids::CardId> = ctx
+            .game
+            .player_order
+            .clone()
+            .iter()
             .flat_map(|&pid| ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec())
             .collect();
         for cid in all_bf {
@@ -83,7 +87,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {
             // Protection: prevents all damage from matching sources
             if let Some(src_id) = sa.source {
-                if ctx.game.card(target_card).is_protected_from(ctx.game.card(src_id)) {
+                if ctx
+                    .game
+                    .card(target_card)
+                    .is_protected_from(ctx.game.card(src_id))
+                {
                     return;
                 }
             }

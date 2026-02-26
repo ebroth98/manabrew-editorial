@@ -379,7 +379,6 @@ impl TriggerMode {
             }
 
             // ── New trigger mode arms (issue #19) ──
-
             TriggerMode::Blocks {
                 valid_card,
                 valid_blocked,
@@ -1095,7 +1094,10 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Blocks" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
             let valid_blocked = params.get("ValidBlocked").map(|s| s.clone());
-            TriggerMode::Blocks { valid_card, valid_blocked }
+            TriggerMode::Blocks {
+                valid_card,
+                valid_blocked,
+            }
         }
         "AttackerBlocked" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
@@ -1116,27 +1118,42 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "CounterAdded" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
             let counter_type = params.get("CounterType").map(|s| s.clone());
-            TriggerMode::CounterAdded { valid_card, counter_type }
+            TriggerMode::CounterAdded {
+                valid_card,
+                counter_type,
+            }
         }
         "CounterRemoved" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
             let counter_type = params.get("CounterType").map(|s| s.clone());
-            TriggerMode::CounterRemoved { valid_card, counter_type }
+            TriggerMode::CounterRemoved {
+                valid_card,
+                counter_type,
+            }
         }
         "Sacrificed" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
             let valid_player = params.get("ValidPlayer").map(|s| s.clone());
-            TriggerMode::Sacrificed { valid_card, valid_player }
+            TriggerMode::Sacrificed {
+                valid_card,
+                valid_player,
+            }
         }
         "Drawn" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
             let valid_player = params.get("ValidPlayer").map(|s| s.clone());
-            TriggerMode::Drawn { valid_card, valid_player }
+            TriggerMode::Drawn {
+                valid_card,
+                valid_player,
+            }
         }
         "Milled" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
             let valid_player = params.get("ValidPlayer").map(|s| s.clone());
-            TriggerMode::Milled { valid_card, valid_player }
+            TriggerMode::Milled {
+                valid_card,
+                valid_player,
+            }
         }
         "Taps" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
@@ -1172,9 +1189,11 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         }
         "AbilityActivated" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_activating_player =
-                params.get("ValidActivatingPlayer").map(|s| s.clone());
-            TriggerMode::AbilityActivated { valid_card, valid_activating_player }
+            let valid_activating_player = params.get("ValidActivatingPlayer").map(|s| s.clone());
+            TriggerMode::AbilityActivated {
+                valid_card,
+                valid_activating_player,
+            }
         }
         "Explored" | "Explores" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
@@ -1369,8 +1388,14 @@ mod tests {
         let t = parse_trigger(
             "Mode$ DamageDone | ValidSource$ Creature.Self | CombatDamage$ True | Execute$ TrigDmg",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::DamageDone { valid_source, combat_damage_only, .. } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::DamageDone {
+            valid_source,
+            combat_damage_only,
+            ..
+        } = &t.mode
+        {
             assert_eq!(valid_source.as_deref(), Some("Creature.Self"));
             assert!(*combat_damage_only);
         } else {
@@ -1384,8 +1409,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Blocks | ValidCard$ Creature.Self | ValidBlocked$ Creature | Execute$ TrigBlock",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::Blocks { valid_card, valid_blocked } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::Blocks {
+            valid_card,
+            valid_blocked,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
             assert_eq!(valid_blocked.as_deref(), Some("Creature"));
         } else {
@@ -1399,7 +1429,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ AttackerBlocked | ValidCard$ Creature.Self | Execute$ TrigBlocked",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::AttackerBlocked { .. }));
     }
 
@@ -1409,7 +1440,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ AttackerUnblocked | ValidCard$ Creature.Self | Execute$ TrigUnblocked",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::AttackerUnblocked { .. }));
     }
 
@@ -1433,7 +1465,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ LifeLost | ValidPlayer$ Opponent | Execute$ TrigLost",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         if let TriggerMode::LifeLost { valid_player } = &t.mode {
             assert_eq!(valid_player.as_deref(), Some("Opponent"));
         } else {
@@ -1447,8 +1480,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ CounterAdded | ValidCard$ Card.Self | CounterType$ P1P1 | Execute$ TrigCounter",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::CounterAdded { valid_card, counter_type } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::CounterAdded {
+            valid_card,
+            counter_type,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Card.Self"));
             assert_eq!(counter_type.as_deref(), Some("P1P1"));
         } else {
@@ -1462,8 +1500,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ CounterRemoved | ValidCard$ Creature | CounterType$ M1M1 | Execute$ TrigRemove",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::CounterRemoved { valid_card, counter_type } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::CounterRemoved {
+            valid_card,
+            counter_type,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Creature"));
             assert_eq!(counter_type.as_deref(), Some("M1M1"));
         } else {
@@ -1477,8 +1520,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Sacrificed | ValidCard$ Creature | ValidPlayer$ You | Execute$ TrigSac",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::Sacrificed { valid_card, valid_player } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::Sacrificed {
+            valid_card,
+            valid_player,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Creature"));
             assert_eq!(valid_player.as_deref(), Some("You"));
         } else {
@@ -1506,8 +1554,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Milled | ValidCard$ Card | ValidPlayer$ Opponent | Execute$ TrigMill",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::Milled { valid_card, valid_player } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::Milled {
+            valid_card,
+            valid_player,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Card"));
             assert_eq!(valid_player.as_deref(), Some("Opponent"));
         } else {
@@ -1521,7 +1574,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Taps | ValidCard$ Creature | Execute$ TrigTap",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Taps { .. }));
     }
 
@@ -1531,7 +1585,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Untaps | ValidCard$ Creature.Self | Execute$ TrigUntap",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Untaps { .. }));
     }
 
@@ -1541,7 +1596,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Transformed | ValidCard$ Card.Self | Execute$ TrigTransform",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Transformed { .. }));
     }
 
@@ -1551,7 +1607,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Attached | ValidCard$ Card.Self | Execute$ TrigAttach",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Attached { .. }));
     }
 
@@ -1561,7 +1618,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Unattached | ValidCard$ Card.Self | Execute$ TrigDetach",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Unattached { .. }));
     }
 
@@ -1585,7 +1643,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ BecomesTarget | ValidCard$ Creature.Self | Execute$ TrigTarget",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::BecomesTarget { .. }));
     }
 
@@ -1610,7 +1669,11 @@ mod tests {
             "Mode$ AbilityActivated | ValidCard$ Creature | ValidActivatingPlayer$ You | Execute$ TrigAct",
             &mut id,
         ).unwrap();
-        if let TriggerMode::AbilityActivated { valid_card, valid_activating_player } = &t.mode {
+        if let TriggerMode::AbilityActivated {
+            valid_card,
+            valid_activating_player,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Creature"));
             assert_eq!(valid_activating_player.as_deref(), Some("You"));
         } else {
@@ -1624,7 +1687,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Explores | ValidCard$ Creature.Self | Execute$ TrigExplore",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Explored { .. }));
     }
 
@@ -1634,7 +1698,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ BecomeMonarch | ValidPlayer$ You | Execute$ TrigMonarch",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         if let TriggerMode::BecomeMonarch { valid_player } = &t.mode {
             assert_eq!(valid_player.as_deref(), Some("You"));
         } else {
@@ -1649,7 +1714,12 @@ mod tests {
             "Mode$ DamageDealtOnce | ValidSource$ Creature.Self | CombatDamage$ True | Execute$ TrigOnce",
             &mut id,
         ).unwrap();
-        if let TriggerMode::DamageDealtOnce { valid_source, combat_damage_only, .. } = &t.mode {
+        if let TriggerMode::DamageDealtOnce {
+            valid_source,
+            combat_damage_only,
+            ..
+        } = &t.mode
+        {
             assert_eq!(valid_source.as_deref(), Some("Creature.Self"));
             assert!(*combat_damage_only);
         } else {
@@ -1663,7 +1733,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Destroyed | ValidCard$ Creature | Execute$ TrigDestroy",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Destroyed { .. }));
     }
 
@@ -1673,7 +1744,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Exiled | ValidCard$ Card | Execute$ TrigExile",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Exiled { .. }));
     }
 
@@ -1683,7 +1755,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ TokenCreated | ValidCard$ Creature | Execute$ TrigToken",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::TokenCreated { .. }));
     }
 
@@ -1704,7 +1777,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Countered | ValidCard$ Card | Execute$ TrigCountered",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Countered { .. }));
     }
 
@@ -1715,6 +1789,9 @@ mod tests {
             "Mode$ Drawn | ValidPlayer$ You | Execute$ TrigDraw | TriggerZones$ Battlefield,Graveyard",
             &mut id,
         ).unwrap();
-        assert_eq!(t.active_zones, vec![ZoneType::Battlefield, ZoneType::Graveyard]);
+        assert_eq!(
+            t.active_zones,
+            vec![ZoneType::Battlefield, ZoneType::Graveyard]
+        );
     }
 }

@@ -4,8 +4,8 @@ use super::{matches_valid_cards, EffectContext};
 use crate::agent::TargetChoice;
 use crate::ids::PlayerId;
 use crate::spellability::target_restrictions::{
-    TargetKind, get_all_candidates_creature_filtered, get_all_candidates_spells,
-    get_valid_cards_in_zone,
+    get_all_candidates_creature_filtered, get_all_candidates_spells, get_valid_cards_in_zone,
+    TargetKind,
 };
 use crate::spellability::{build_spell_ability, SpellAbility};
 use crate::trigger::parse_pipe_params;
@@ -74,15 +74,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .collect();
 
     // Check if Entwine was paid (SA flag) — if so, auto-select all modes
-    let entwine_paid = sa.params.get("Entwine").map(|_| true).unwrap_or(false)
-        || sa.kicked; // Entwine is sometimes represented as kicked
+    let entwine_paid = sa.params.get("Entwine").map(|_| true).unwrap_or(false) || sa.kicked; // Entwine is sometimes represented as kicked
 
     // Check source card for Entwine/Escalate keywords
     let has_entwine = ctx.game.card(source_id).get_entwine_cost().is_some();
     let has_escalate = ctx.game.card(source_id).get_escalate_cost().is_some();
 
     // If Escalate, allow choosing more modes (up to all)
-    let charm_num = if has_escalate { mode_texts.len() } else { charm_num };
+    let charm_num = if has_escalate {
+        mode_texts.len()
+    } else {
+        charm_num
+    };
 
     // Ask the activating player to choose mode(s)
     let card_name = ctx.game.card(source_id).card_name.clone();
@@ -154,8 +157,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
         }
 
         TargetKind::Creature(ref filter) => {
-            let valid =
-                get_all_candidates_creature_filtered(ctx.game, filter.as_deref(), player);
+            let valid = get_all_candidates_creature_filtered(ctx.game, filter.as_deref(), player);
             if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid) {
                 mode_sa.target_chosen.target_card = Some(card);
             }
@@ -166,8 +168,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
             let filter = filter.clone();
             let mut valid = Vec::new();
             for &pid in &ctx.game.player_order.clone() {
-                let zone_cards =
-                    get_valid_cards_in_zone(ctx.game, zone, pid, filter.as_deref());
+                let zone_cards = get_valid_cards_in_zone(ctx.game, zone, pid, filter.as_deref());
                 valid.extend(zone_cards);
             }
             if let Some(card) =
@@ -196,9 +197,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
             if valid.is_empty() {
                 // No battlefield cards match → try targeting a player
                 let players = ctx.game.alive_players();
-                if let Some(p) =
-                    ctx.agents[player.index()].choose_target_player(player, &players)
-                {
+                if let Some(p) = ctx.agents[player.index()].choose_target_player(player, &players) {
                     mode_sa.target_chosen.target_player = Some(p);
                 }
             } else {
@@ -291,7 +290,8 @@ mod tests {
         // Mode B: draw a card for opponent (Defined$ Opponent)
         svars.insert(
             "ModeB".to_string(),
-            "DB$ Draw | NumCards$ 1 | Defined$ Opponent | SpellDescription$ Opponent draws.".to_string(),
+            "DB$ Draw | NumCards$ 1 | Defined$ Opponent | SpellDescription$ Opponent draws."
+                .to_string(),
         );
 
         let charm_card = CardInstance::new(
@@ -325,11 +325,7 @@ mod tests {
         ));
         game.move_card(dummy_a, ZoneType::Library, p0);
 
-        let sa = SpellAbility::new_simple(
-            Some(cid),
-            p0,
-            "A:SP$ Charm | Choices$ ModeA,ModeB",
-        );
+        let sa = SpellAbility::new_simple(Some(cid), p0, "A:SP$ Charm | Choices$ ModeA,ModeB");
 
         let mut th = TriggerHandler::new();
         let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =

@@ -63,9 +63,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         .cards_in_zone(ZoneType::Battlefield, pid)
                         .to_vec()
                         .into_iter()
-                        .filter(|&cid| {
-                            matches_valid_cards(ctx.game.card(cid), &filter, controller)
-                        })
+                        .filter(|&cid| matches_valid_cards(ctx.game.card(cid), &filter, controller))
                         .collect();
 
                     if valid.is_empty() {
@@ -73,9 +71,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     }
 
                     ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
-                    if let Some(card_id) =
-                        ctx.agents[pid.index()].choose_sacrifice(pid, &valid)
-                    {
+                    if let Some(card_id) = ctx.agents[pid.index()].choose_sacrifice(pid, &valid) {
                         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
                             let owner = ctx.game.card(card_id).owner;
                             ctx.trigger_handler.run_trigger(
@@ -102,8 +98,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 // Discard excess cards
                 let hand: Vec<_> = ctx.game.cards_in_zone(ZoneType::Hand, pid).to_vec();
                 ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
-                let to_discard =
-                    ctx.agents[pid.index()].choose_discard(pid, &hand, excess);
+                let to_discard = ctx.agents[pid.index()].choose_discard(pid, &hand, excess);
 
                 for &card_id in to_discard.iter().take(excess) {
                     if ctx.game.card(card_id).zone == ZoneType::Hand {

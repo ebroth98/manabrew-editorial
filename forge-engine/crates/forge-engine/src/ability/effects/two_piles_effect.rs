@@ -18,26 +18,39 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let num_cards = sa.params.get("NumCards")
+    let num_cards = sa
+        .params
+        .get("NumCards")
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(5);
 
-    let zone1 = sa.params.get("Zone1")
+    let zone1 = sa
+        .params
+        .get("Zone1")
         .and_then(|z| super::parse_zone_type(z))
         .unwrap_or(ZoneType::Hand);
-    let zone2 = sa.params.get("Zone2")
+    let zone2 = sa
+        .params
+        .get("Zone2")
         .and_then(|z| super::parse_zone_type(z))
         .unwrap_or(ZoneType::Graveyard);
 
     // Get top N cards from library
-    let lib = ctx.game.cards_in_zone(ZoneType::Library, controller).to_vec();
-    if lib.is_empty() { return; }
+    let lib = ctx
+        .game
+        .cards_in_zone(ZoneType::Library, controller)
+        .to_vec();
+    if lib.is_empty() {
+        return;
+    }
 
     let count = num_cards.min(lib.len());
     // Library is bottom-to-top, so take from the end
     let revealed: Vec<CardId> = lib[lib.len() - count..].to_vec();
 
-    if revealed.is_empty() { return; }
+    if revealed.is_empty() {
+        return;
+    }
 
     // Let the controller peek at the revealed cards
     ctx.agents[controller.index()].on_library_peek(ctx.game, &revealed);
@@ -47,23 +60,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let min_pile1 = if count > 1 { 1 } else { 0 };
     let max_pile1 = if count > 1 { count - 1 } else { count };
 
-    let pile1: Vec<CardId> = ctx.agents[controller.index()].choose_cards_for_effect(
-        controller,
-        &revealed,
-        min_pile1,
-        max_pile1,
-    );
-    let pile2: Vec<CardId> = revealed.iter()
+    let pile1: Vec<CardId> = ctx.agents[controller.index()]
+        .choose_cards_for_effect(controller, &revealed, min_pile1, max_pile1);
+    let pile2: Vec<CardId> = revealed
+        .iter()
         .filter(|c| !pile1.contains(c))
         .copied()
         .collect();
 
     // Opponent chooses which pile goes to zone1
     let opponent = ctx.game.opponent_of(controller);
-    let pile1_names: Vec<String> = pile1.iter()
+    let pile1_names: Vec<String> = pile1
+        .iter()
         .map(|&cid| ctx.game.card(cid).card_name.clone())
         .collect();
-    let pile2_names: Vec<String> = pile2.iter()
+    let pile2_names: Vec<String> = pile2
+        .iter()
         .map(|&cid| ctx.game.card(cid).card_name.clone())
         .collect();
 
@@ -72,11 +84,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         pile1_names.join(", "),
         pile2_names.join(", "),
     );
-    let choose_pile1 = ctx.agents[opponent.index()].choose_optional_trigger(
-        opponent,
-        &prompt,
-        None,
-    );
+    let choose_pile1 =
+        ctx.agents[opponent.index()].choose_optional_trigger(opponent, &prompt, None);
 
     let (chosen_pile, unchosen_pile) = if choose_pile1 {
         (pile1, pile2)

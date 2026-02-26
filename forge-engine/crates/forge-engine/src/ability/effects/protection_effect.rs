@@ -35,11 +35,23 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Check if we need to choose a color/type
     if gains.contains("chosen color") {
-        let choices = sa.params.get("Choices")
-            .map(|s| s.split(',').map(|c| c.trim().to_string()).collect::<Vec<_>>())
-            .unwrap_or_else(|| vec![
-                "White".into(), "Blue".into(), "Black".into(), "Red".into(), "Green".into(),
-            ]);
+        let choices = sa
+            .params
+            .get("Choices")
+            .map(|s| {
+                s.split(',')
+                    .map(|c| c.trim().to_string())
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_else(|| {
+                vec![
+                    "White".into(),
+                    "Blue".into(),
+                    "Black".into(),
+                    "Red".into(),
+                    "Green".into(),
+                ]
+            });
 
         let chosen = ctx.agents[controller.index()].choose_color(controller, &choices);
         if let Some(color) = chosen {

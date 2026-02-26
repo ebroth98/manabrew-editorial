@@ -1,0 +1,818 @@
+use super::*;
+
+impl GameLoop {
+    pub(crate) fn run_turn_state_machine(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) {
+        let mut state = TurnMachineState::Untap;
+        while !game.game_over && state != TurnMachineState::Done {
+            // EndTurn (issue #22): if end_turn_requested, skip directly to cleanup.
+            if game.end_turn_requested
+                && state != TurnMachineState::Cleanup
+                && state != TurnMachineState::Done
+            {
+                game.end_turn_requested = false;
+                self.combat.clear();
+                state = TurnMachineState::Cleanup;
+                continue;
+            }
+            state = match state {
+                TurnMachineState::Untap => {
+                    // SkipPhase: skip untap if flag set
+                    let active = game.active_player();
+                    if game.player(active).skip_next_untap {
+                        game.player_mut(active).skip_next_untap = false;
+                        TurnMachineState::Upkeep
+                    } else {
+                        self.apply_turn_event(
+                            game,
+                            agents,
+                            TurnEvent::EnterPhase {
+                                phase: PhaseType::Untap,
+                                emit_phase_trigger: false,
+                            },
+                        );
+                        self.apply_turn_event(game, agents, TurnEvent::UntapStep);
+                        TurnMachineState::Upkeep
+                    }
+                }
+                TurnMachineState::Upkeep => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Upkeep,
+                            emit_phase_trigger: true,
+                        },
+                    );
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::PriorityWindow {
+                            is_main_phase: false,
+                        },
+                    );
+                    TurnMachineState::Draw
+                }
+                TurnMachineState::Draw => {
+                    // SkipPhase: skip draw if flag set
+                    let active = game.active_player();
+                    if game.player(active).skip_next_draw {
+                        game.player_mut(active).skip_next_draw = false;
+                        TurnMachineState::Main1
+                    } else {
+                        self.apply_turn_event(
+                            game,
+                            agents,
+                            TurnEvent::EnterPhase {
+                                phase: PhaseType::Draw,
+                                emit_phase_trigger: true,
+                            },
+                        );
+                        self.apply_turn_event(game, agents, TurnEvent::DrawStep);
+                        self.apply_turn_event(
+                            game,
+                            agents,
+                            TurnEvent::PriorityWindow {
+                                is_main_phase: false,
+                            },
+                        );
+                        TurnMachineState::Main1
+                    }
+                }
+                TurnMachineState::Main1 => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Main1,
+                            emit_phase_trigger: true,
+                        },
+                    );
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::PriorityWindow {
+                            is_main_phase: true,
+                        },
+                    );
+                    TurnMachineState::Combat
+                }
+                TurnMachineState::Combat => {
+                    // SkipPhase: skip combat if flag set
+                    let active = game.active_player();
+                    if game.player(active).skip_next_combat {
+                        game.player_mut(active).skip_next_combat = false;
+                        TurnMachineState::Main2
+                    } else {
+                        self.apply_turn_event(game, agents, TurnEvent::CombatStep);
+                        // Extra combat phases (issue #22, AddPhase effect)
+                        if game.extra_combat_phases > 0 {
+                            game.extra_combat_phases -= 1;
+                            TurnMachineState::Combat // loop back for another combat
+                        } else {
+                            TurnMachineState::Main2
+                        }
+                    }
+                }
+                TurnMachineState::Main2 => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Main2,
+                            emit_phase_trigger: true,
+                        },
+                    );
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::PriorityWindow {
+                            is_main_phase: true,
+                        },
+                    );
+                    TurnMachineState::EndOfTurn
+                }
+                TurnMachineState::EndOfTurn => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::EndOfTurn,
+                            emit_phase_trigger: true,
+                        },
+                    );
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::PriorityWindow {
+                            is_main_phase: false,
+                        },
+                    );
+                    TurnMachineState::Cleanup
+                }
+                TurnMachineState::Cleanup => {
+                    self.apply_turn_event(
+                        game,
+                        agents,
+                        TurnEvent::EnterPhase {
+                            phase: PhaseType::Cleanup,
+                            emit_phase_trigger: false,
+                        },
+                    );
+                    self.apply_turn_event(game, agents, TurnEvent::CleanupStep);
+                    self.apply_turn_event(game, agents, TurnEvent::AdvanceTurn);
+                    TurnMachineState::Done
+                }
+                TurnMachineState::Done => TurnMachineState::Done,
+            };
+        }
+    }
+
+    fn apply_turn_event(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        event: TurnEvent,
+    ) {
+        if game.game_over {
+            return;
+        }
+        match event {
+            TurnEvent::EnterPhase {
+                phase,
+                emit_phase_trigger,
+            } => {
+                self.set_phase(game, agents, phase);
+                if emit_phase_trigger {
+                    self.emit_phase_trigger(game, phase);
+                }
+                // Suspend: at the beginning of each upkeep, remove a time counter
+                // from each suspended card in exile. If last counter removed, cast for free.
+                if phase == PhaseType::Upkeep {
+                    self.process_suspend_upkeep(game, agents);
+                }
+            }
+            TurnEvent::PriorityWindow { is_main_phase } => {
+                self.step_with_priority(game, agents, is_main_phase);
+            }
+            TurnEvent::UntapStep => {
+                self.with_shared_state_mutation(game, agents, |this, game, _agents| {
+                    this.step_untap(game);
+                });
+            }
+            TurnEvent::DrawStep => {
+                self.with_shared_state_mutation(game, agents, |this, game, _agents| {
+                    this.step_draw(game);
+                });
+            }
+            TurnEvent::CombatStep => {
+                self.step_combat(game, agents);
+            }
+            TurnEvent::CleanupStep => {
+                self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                    this.step_cleanup(game, agents);
+                });
+            }
+            TurnEvent::AdvanceTurn => {
+                self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                    // Extra turns (issue #22): if the queue is non-empty, the
+                    // front player gets the next turn instead of the normal
+                    // rotation.  Mirrors Java's PhaseHandler.handleNextTurn().
+                    if let Some(extra_turn) = game.extra_turns.pop_front() {
+                        game.turn.active_player = extra_turn.player;
+                        game.turn.priority_player = extra_turn.player;
+                        game.turn.turn_number += 1;
+                        game.turn.combat_attackers_declared = false;
+                        game.turn.combat_blockers_declared = false;
+                        game.turn.drawn_for_turn = false;
+                        // SkipUntap on extra turn (issue #22, AddTurn parity fix)
+                        if extra_turn.skip_untap {
+                            game.player_mut(extra_turn.player).skip_next_untap = true;
+                        }
+                    } else {
+                        game.turn.next_player_turn(&game.player_order.clone());
+                    }
+                });
+            }
+        }
+    }
+
+    pub fn step_untap(&mut self, game: &mut GameState) {
+        let active = game.active_player();
+
+        // Phase-in (issue #22): phase in all phased-out permanents controlled by active player.
+        for i in 0..game.cards.len() {
+            if game.cards[i].phased_out
+                && game.cards[i].controller == active
+                && game.cards[i].zone == ZoneType::Battlefield
+            {
+                game.cards[i].phased_out = false;
+            }
+        }
+
+        game.untap_all(active);
+        self.pool_mut(active).empty();
+    }
+
+    pub fn step_draw(&mut self, game: &mut GameState) {
+        let active = game.active_player();
+        // Skip draw on turn 1
+        if game.turn.turn_number > 1 {
+            if let Some(card_id) = game.draw_card(active) {
+                // Fire Drawn trigger for turn draw
+                self.trigger_handler.run_trigger(
+                    TriggerType::Drawn,
+                    RunParams {
+                        card: Some(card_id),
+                        player: Some(active),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+        }
+    }
+    pub fn step_with_priority(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        is_main_phase: bool,
+    ) {
+        self.game_log.log(
+            GameLogEntryType::Info,
+            2,
+            format!(
+                "Priority window opened ({}, stack depth: {})",
+                if is_main_phase {
+                    "main-phase speed"
+                } else {
+                    "instant speed only"
+                },
+                game.stack.len()
+            ),
+        );
+        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+            game.turn.priority_player = game.active_player();
+        });
+        loop {
+            if game.game_over {
+                return;
+            }
+
+            // 1. Process any pending triggers and put them on the stack
+            self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                this.process_triggers(game, agents);
+            });
+
+            // 2. Give players priority
+            self.priority_round(game, agents, is_main_phase);
+
+            if game.game_over {
+                return;
+            }
+
+            // 3. If stack is empty after everyone passed, the phase ends
+            if game.stack.is_empty() {
+                break;
+            }
+
+            // 4. Resolve top of stack (resolve_stack resolves one and gives priority)
+            self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                this.resolve_stack(game, agents);
+            });
+        }
+    }
+    pub fn step_main_phase(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
+        self.step_with_priority(game, agents, true);
+    }
+
+    pub fn step_combat(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
+        let active = game.active_player();
+        let defending = game.opponent_of(active);
+        self.combat.clear();
+        game.turn.combat_block_assignments.clear();
+        self.combat.attacking_player = Some(active);
+        self.combat.defending_player = Some(defending);
+
+        // Begin Combat
+        self.set_phase(game, agents, PhaseType::CombatBegin);
+        self.emit_phase_trigger(game, PhaseType::CombatBegin);
+        self.step_with_priority(game, agents, false);
+        if game.game_over {
+            self.combat.clear();
+            return;
+        }
+
+        // EndCombatPhase (issue #22): if requested, exit combat early
+        if game.end_combat_requested {
+            game.end_combat_requested = false;
+            self.combat.clear();
+            return;
+        }
+
+        // Recompute continuous effects before evaluating attack/block legality.
+        // CantAttack / CantBlock flags are set here.
+        apply_continuous_effects(game);
+
+        // Declare Attackers
+        self.set_phase(game, agents, PhaseType::CombatDeclareAttackers);
+        let available_attackers = combat::get_available_attackers(game, active);
+
+        let chosen_attackers = if available_attackers.is_empty() {
+            Vec::new()
+        } else {
+            agents[active.index()].snapshot_state(game, &self.mana_pools);
+            self.game_log.log(
+                GameLogEntryType::PriorityWaiting,
+                2,
+                format!(
+                    "Waiting for {} attacker declaration",
+                    game.player(active).name
+                ),
+            );
+            let agent = &mut agents[active.index()];
+            let picked = agent.choose_attackers(active, &available_attackers);
+            self.game_log.log(
+                GameLogEntryType::PriorityResponse,
+                2,
+                format!(
+                    "{} declared {} attacker(s)",
+                    game.player(active).name,
+                    picked.len()
+                ),
+            );
+            picked
+        };
+
+        // Tap attackers (Vigilance skips tapping)
+        for &attacker_id in &chosen_attackers {
+            if !game.card(attacker_id).has_vigilance() {
+                game.tap(attacker_id);
+            }
+            game.card_mut(attacker_id).attacked_this_turn = true;
+            self.combat.declare_attacker(attacker_id, defending);
+
+            // Fire Attacks trigger for each attacker
+            self.trigger_handler.run_trigger(
+                TriggerType::Attacks,
+                RunParams {
+                    attacker: Some(attacker_id),
+                    card: Some(attacker_id),
+                    defending_player: Some(defending),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+        self.step_with_priority(game, agents, false);
+        if game.game_over {
+            self.combat.clear();
+            return;
+        }
+
+        // Declare Blockers
+        self.set_phase(game, agents, PhaseType::CombatDeclareBlockers);
+        let available_blockers = combat::get_available_blockers(game, defending);
+
+        if !available_blockers.is_empty() {
+            // Filter out illegal blocks (flying can only be blocked by flying/reach)
+            let legal_blockers =
+                combat::filter_legal_blockers(game, &chosen_attackers, &available_blockers);
+
+            if !legal_blockers.is_empty() {
+                agents[defending.index()].snapshot_state(game, &self.mana_pools);
+                self.game_log.log(
+                    GameLogEntryType::PriorityWaiting,
+                    2,
+                    format!(
+                        "Waiting for {} blocker declaration",
+                        game.player(defending).name
+                    ),
+                );
+                let def_agent = &mut agents[defending.index()];
+                let chosen_blockers =
+                    def_agent.choose_blockers(defending, &chosen_attackers, &legal_blockers);
+                self.game_log.log(
+                    GameLogEntryType::PriorityResponse,
+                    2,
+                    format!(
+                        "{} declared {} blocker assignment(s)",
+                        game.player(defending).name,
+                        chosen_blockers.len()
+                    ),
+                );
+
+                for (blocker, attacker) in chosen_blockers {
+                    // Validate: use comprehensive evasion check
+                    if !combat::can_creature_block(game, blocker, attacker) {
+                        continue; // illegal block
+                    }
+                    self.combat.declare_blocker(blocker, attacker);
+
+                    // Fire Blocks trigger for each (blocker, attacker) pair
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Blocks,
+                        RunParams {
+                            blocker: Some(blocker),
+                            blocked_attacker: Some(attacker),
+                            card: Some(blocker),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+
+                // Menace: attacker with Menace must be blocked by 2+ creatures or 0
+                for &(attacker_id, _) in &self.combat.attackers {
+                    if game.card(attacker_id).has_menace() {
+                        let num_blockers = self.combat.get_blockers_for(attacker_id).len();
+                        if num_blockers == 1 {
+                            // Remove the single blocker — illegal under Menace
+                            self.combat.blockers.retain(|(_, a)| *a != attacker_id);
+                        }
+                    }
+                }
+
+                // Publish finalized blocker assignments for UI snapshots in this combat.
+                game.turn.combat_block_assignments = self.combat.blockers.clone();
+            }
+        }
+        self.step_with_priority(game, agents, false);
+        if game.game_over {
+            self.combat.clear();
+            game.turn.combat_block_assignments.clear();
+            return;
+        }
+
+        // Fire AttackerBlocked / AttackerUnblocked triggers
+        for &(attacker_id, _) in &self.combat.attackers.clone() {
+            if self.combat.is_blocked(attacker_id) {
+                self.trigger_handler.run_trigger(
+                    TriggerType::AttackerBlocked,
+                    RunParams {
+                        attacker: Some(attacker_id),
+                        card: Some(attacker_id),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            } else {
+                self.trigger_handler.run_trigger(
+                    TriggerType::AttackerUnblocked,
+                    RunParams {
+                        attacker: Some(attacker_id),
+                        card: Some(attacker_id),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+        }
+
+        // Determine if we need first strike damage step
+        let has_first_strikers = self.combat.has_first_strikers(game);
+
+        if has_first_strikers && self.combat.has_attackers() {
+            // First Strike Damage step
+            self.set_phase(game, agents, PhaseType::CombatFirstStrikeDamage);
+            let fs_events = self.combat.resolve_damage_step(game, true);
+            self.fire_combat_damage_triggers(&fs_events);
+
+            // SBA between damage steps
+            loop {
+                if !game.check_state_based_actions() {
+                    break;
+                }
+            }
+            if game.game_over {
+                self.set_phase(game, agents, PhaseType::CombatEnd);
+                self.combat.clear();
+                game.turn.combat_block_assignments.clear();
+                return;
+            }
+            self.step_with_priority(game, agents, false);
+            if game.game_over {
+                self.combat.clear();
+                game.turn.combat_block_assignments.clear();
+                return;
+            }
+        }
+
+        // Regular Combat Damage step
+        self.set_phase(game, agents, PhaseType::CombatDamage);
+        let dmg_events = self.combat.resolve_damage_step(game, false);
+        self.fire_combat_damage_triggers(&dmg_events);
+
+        // SBA after combat
+        loop {
+            if !game.check_state_based_actions() {
+                break;
+            }
+        }
+        self.step_with_priority(game, agents, false);
+        if game.game_over {
+            self.combat.clear();
+            game.turn.combat_block_assignments.clear();
+            return;
+        }
+
+        // End combat
+        self.set_phase(game, agents, PhaseType::CombatEnd);
+        self.emit_phase_trigger(game, PhaseType::CombatEnd);
+        self.step_with_priority(game, agents, false);
+        self.combat.clear();
+        game.turn.combat_block_assignments.clear();
+    }
+
+    pub fn step_cleanup(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
+        let active = game.active_player();
+
+        // Discard down to max hand size — player chooses which cards to discard.
+        // Mirrors Java's Player.discard() during cleanup step.
+        let hand_size = game.zone(ZoneType::Hand, active).len() as i32;
+        let max = game.player(active).max_hand_size;
+        if hand_size > max {
+            let to_discard = (hand_size - max) as usize;
+            let hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, active).to_vec();
+            agents[active.index()].snapshot_state(game, &self.mana_pools);
+            self.game_log.log(
+                GameLogEntryType::PriorityWaiting,
+                2,
+                format!(
+                    "Waiting for {} discard decision (choose {})",
+                    game.player(active).name,
+                    to_discard
+                ),
+            );
+            let chosen = agents[active.index()].choose_discard(active, &hand, to_discard);
+            self.game_log.log(
+                GameLogEntryType::PriorityResponse,
+                2,
+                format!(
+                    "{} selected {} card(s) to discard",
+                    game.player(active).name,
+                    chosen.len().min(to_discard)
+                ),
+            );
+            for card_id in chosen.iter().take(to_discard) {
+                if game.card(*card_id).zone == ZoneType::Hand {
+                    let has_madness = game.card(*card_id).get_madness_cost().is_some();
+                    if has_madness {
+                        // Madness: exile instead of graveyard (can cast for madness cost)
+                        game.move_card(*card_id, ZoneType::Exile, active);
+                        effects::emit_zone_trigger(
+                            &mut self.trigger_handler,
+                            *card_id,
+                            ZoneType::Hand,
+                            ZoneType::Exile,
+                        );
+                    } else {
+                        game.move_card(*card_id, ZoneType::Graveyard, active);
+                        effects::emit_zone_trigger(
+                            &mut self.trigger_handler,
+                            *card_id,
+                            ZoneType::Hand,
+                            ZoneType::Graveyard,
+                        );
+                    }
+                    // Fire Discarded trigger regardless of destination
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Discarded,
+                        RunParams {
+                            card: Some(*card_id),
+                            player: Some(active),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+            }
+        }
+
+        // Reset fog flag (issue #22: Fog effect lasts until end of turn).
+        game.prevent_all_combat_damage = false;
+
+        // Reset end-of-turn flags (issue #22).
+        game.end_turn_requested = false;
+        game.end_combat_requested = false;
+        game.extra_combat_phases = 0;
+
+        // Monarch draw (issue #22): at end of turn, the monarch draws a card.
+        if let Some(monarch_id) = game.monarch {
+            if game.player(monarch_id).is_alive() && monarch_id == active {
+                game.draw_card(monarch_id);
+            }
+        }
+
+        // Empty mana pool at end of turn (cleanup step), per Magic rules.
+        self.pool_mut(active).empty();
+
+        // Remove damage and reset until-end-of-turn effects on all battlefield permanents
+        for i in 0..game.cards.len() {
+            if game.cards[i].zone == ZoneType::Battlefield {
+                // Restore animate state before checking creature status (issue #52).
+                // Must happen first: if the card was animated into a creature but its base
+                // form is not a creature, we still need to reset its type/P/T.
+                if let Some(state) = game.cards[i].animate_state.take() {
+                    game.cards[i].type_line = state.original_type_line;
+                    game.cards[i].base_power = state.original_base_power;
+                    game.cards[i].base_toughness = state.original_base_toughness;
+                    game.cards[i].color = state.original_color;
+                }
+
+                if game.cards[i].is_creature() {
+                    game.cards[i].damage = 0;
+                    game.cards[i].power_modifier = 0;
+                    game.cards[i].toughness_modifier = 0;
+                    game.cards[i].pump_keywords.clear();
+                    game.cards[i].has_deathtouch_damage = false;
+                    // Reset regeneration shields at end of turn (issue #22).
+                    game.cards[i].regeneration_shields = 0;
+                }
+            }
+        }
+    }
+    pub(crate) fn emit_phase_trigger(&mut self, game: &GameState, phase: PhaseType) {
+        let active = game.active_player();
+        self.trigger_handler.run_trigger(
+            TriggerType::Phase,
+            RunParams {
+                phase: Some(phase),
+                player: Some(active),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+
+    /// Fire DamageDone and LifeGained triggers from combat damage events.
+    pub(crate) fn fire_combat_damage_triggers(&mut self, events: &[combat::CombatDamageEvent]) {
+        for event in events {
+            self.trigger_handler.run_trigger(
+                TriggerType::DamageDone,
+                RunParams {
+                    damage_source: Some(event.source),
+                    damage_target_player: event.target_player,
+                    damage_target_card: event.target_card,
+                    damage_amount: Some(event.amount),
+                    is_combat_damage: Some(event.is_combat),
+                    ..Default::default()
+                },
+                false,
+            );
+            if let Some(player) = event.lifelink_player {
+                if event.lifelink_amount > 0 {
+                    self.trigger_handler.run_trigger(
+                        TriggerType::LifeGained,
+                        RunParams {
+                            player: Some(player),
+                            life_amount: Some(event.lifelink_amount),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Suspend upkeep processing: for each suspended card in exile owned by the
+    /// active player, remove a time counter. If the last counter was removed,
+    /// cast the card for free (and grant haste if creature).
+    /// Mirrors Java's GameAction.handleSuspendTriggers().
+    pub(crate) fn process_suspend_upkeep(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) {
+        let active = game.active_player();
+        let exile: Vec<CardId> = game.cards_in_zone(ZoneType::Exile, active).to_vec();
+        for card_id in exile {
+            let card = game.card(card_id);
+            // Check if the card has suspend keyword and time counters
+            if card.get_suspend_cost().is_none() {
+                continue;
+            }
+            let time_counters = *card
+                .counters
+                .get(&crate::card::CounterType::Time)
+                .unwrap_or(&0);
+            if time_counters <= 0 {
+                continue;
+            }
+            // Remove one time counter
+            game.card_mut(card_id)
+                .remove_counter(crate::card::CounterType::Time, 1);
+
+            // Emit CounterRemoved trigger
+            self.trigger_handler.run_trigger(
+                TriggerType::CounterRemoved,
+                RunParams {
+                    card: Some(card_id),
+                    player: Some(active),
+                    ..Default::default()
+                },
+                false,
+            );
+
+            let remaining = *game
+                .card(card_id)
+                .counters
+                .get(&crate::card::CounterType::Time)
+                .unwrap_or(&0);
+            if remaining <= 0 {
+                // Last counter removed — cast for free
+                let card_name = game.card(card_id).card_name.clone();
+                let is_creature = game.card(card_id).is_creature();
+                let is_permanent = game.card(card_id).is_permanent();
+                let abilities = game.card(card_id).abilities.clone();
+
+                // Move from exile to stack
+                game.player_mut(active).spells_cast_this_turn += 1;
+
+                // Emit SpellCast trigger
+                self.trigger_handler.run_trigger(
+                    TriggerType::SpellCast,
+                    RunParams {
+                        spell_card: Some(card_id),
+                        spell_controller: Some(active),
+                        ..Default::default()
+                    },
+                    false,
+                );
+
+                // Build SpellAbility
+                let ability_text = abilities.first().cloned().unwrap_or_default();
+                let mut sa = build_spell_ability(game, card_id, &ability_text, active);
+                sa.is_spell = true;
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Suspend);
+                sa.setup_targets(game, agents, &self.mana_pools);
+
+                let entry = StackEntry {
+                    id: 0,
+                    spell_ability: sa,
+                    is_creature_spell: is_creature,
+                    is_permanent_spell: is_permanent,
+                    cast_from_zone: Some(ZoneType::Exile),
+                };
+
+                game.stack.push(entry);
+                self.log_stack_push(&card_name, &game.player(active).name);
+                game.move_card(card_id, ZoneType::Stack, active);
+                agents[active.index()].notify(&format!("Suspend: casting {} for free!", card_name));
+
+                // Grant haste if creature (suspend creatures get haste)
+                if is_creature {
+                    if !game.card(card_id).has_haste() {
+                        game.card_mut(card_id)
+                            .granted_keywords
+                            .push("Haste".to_string());
+                    }
+                }
+            }
+        }
+    }
+}

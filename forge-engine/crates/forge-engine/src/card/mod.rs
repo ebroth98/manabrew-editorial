@@ -181,7 +181,6 @@ pub struct CardInstance {
     pub animate_state: Option<AnimateState>,
 
     // ── Issue #53: High-priority effect fields ──────────────────────────
-
     /// Type chosen by ChooseType effect (e.g. "Goblin", "Artifact").
     pub chosen_type: Option<String>,
     /// Card names chosen by NameCard effect.
@@ -567,8 +566,13 @@ impl CardInstance {
     /// Check "Hexproof from <color>" variants (e.g. "Hexproof from blue").
     pub fn has_hexproof_from(&self, color: &str) -> bool {
         let target = format!("Hexproof from {}", color);
-        self.keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
-            || self.granted_keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
+        self.keywords
+            .iter()
+            .any(|k| k.eq_ignore_ascii_case(&target))
+            || self
+                .granted_keywords
+                .iter()
+                .any(|k| k.eq_ignore_ascii_case(&target))
     }
 
     /// Get Ward cost (e.g. "Ward:2" → Some("2"), "Ward:{U}" → Some("{U}")).
@@ -619,8 +623,13 @@ impl CardInstance {
     /// Check "Protection from <quality>" (e.g. "Protection from red").
     pub fn has_protection_from(&self, quality: &str) -> bool {
         let target = format!("Protection from {}", quality);
-        self.keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
-            || self.granted_keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
+        self.keywords
+            .iter()
+            .any(|k| k.eq_ignore_ascii_case(&target))
+            || self
+                .granted_keywords
+                .iter()
+                .any(|k| k.eq_ignore_ascii_case(&target))
     }
 
     /// Get all "Protection from X" values this card has.
@@ -640,15 +649,51 @@ impl CardInstance {
     pub fn is_protected_from(&self, source: &CardInstance) -> bool {
         for prot in self.get_protections() {
             match prot.as_str() {
-                "white" => if source.color.has_white() { return true; },
-                "blue" => if source.color.has_blue() { return true; },
-                "black" => if source.color.has_black() { return true; },
-                "red" => if source.color.has_red() { return true; },
-                "green" => if source.color.has_green() { return true; },
-                "colorless" => if source.color.is_colorless() { return true; },
-                "artifacts" => if source.type_line.is_artifact() { return true; },
-                "creatures" => if source.type_line.is_creature() { return true; },
-                "enchantments" => if source.type_line.is_enchantment() { return true; },
+                "white" => {
+                    if source.color.has_white() {
+                        return true;
+                    }
+                }
+                "blue" => {
+                    if source.color.has_blue() {
+                        return true;
+                    }
+                }
+                "black" => {
+                    if source.color.has_black() {
+                        return true;
+                    }
+                }
+                "red" => {
+                    if source.color.has_red() {
+                        return true;
+                    }
+                }
+                "green" => {
+                    if source.color.has_green() {
+                        return true;
+                    }
+                }
+                "colorless" => {
+                    if source.color.is_colorless() {
+                        return true;
+                    }
+                }
+                "artifacts" => {
+                    if source.type_line.is_artifact() {
+                        return true;
+                    }
+                }
+                "creatures" => {
+                    if source.type_line.is_creature() {
+                        return true;
+                    }
+                }
+                "enchantments" => {
+                    if source.type_line.is_enchantment() {
+                        return true;
+                    }
+                }
                 _ => {}
             }
         }

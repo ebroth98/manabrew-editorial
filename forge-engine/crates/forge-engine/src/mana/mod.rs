@@ -457,11 +457,15 @@ pub fn auto_tap_lands(
                 continue;
             }
             // Find the most specialized untapped land that produces this color
-            if let Some(idx) = candidates.iter().position(|(_, land_atoms)| {
-                land_atoms.iter().any(|&a| (a & color_atoms) != 0)
-            }) {
+            if let Some(idx) = candidates
+                .iter()
+                .position(|(_, land_atoms)| land_atoms.iter().any(|&a| (a & color_atoms) != 0))
+            {
                 let (land_id, land_atoms) = candidates.remove(idx);
-                let atom = *land_atoms.iter().find(|&&a| (a & color_atoms) != 0).unwrap();
+                let atom = *land_atoms
+                    .iter()
+                    .find(|&&a| (a & color_atoms) != 0)
+                    .unwrap();
                 game.tap(land_id);
                 pool.add(atom, 1);
             }
@@ -561,7 +565,9 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
         let mana_abilities: Vec<_> = card
             .activated_abilities
             .iter()
-            .filter(|ab| ab.is_mana_ability && can_pay_ignoring_mana(&ab.cost, game, card_id, player))
+            .filter(|ab| {
+                ab.is_mana_ability && can_pay_ignoring_mana(&ab.cost, game, card_id, player)
+            })
             .collect();
 
         if mana_abilities.is_empty() {

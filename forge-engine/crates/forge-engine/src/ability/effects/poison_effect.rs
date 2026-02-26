@@ -27,7 +27,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // If targeting was used (ValidTgts$ Player), use the chosen target.
     if let Some(target_player) = sa.target_chosen.target_player {
         if ctx.game.player(target_player).is_alive() {
-            apply_poison(&mut ctx.game.player_mut(target_player).poison_counters, amount);
+            apply_poison(
+                &mut ctx.game.player_mut(target_player).poison_counters,
+                amount,
+            );
         }
         return;
     }

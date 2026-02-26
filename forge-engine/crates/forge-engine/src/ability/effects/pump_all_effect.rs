@@ -147,7 +147,7 @@ mod tests {
         let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates);
         super::resolve(&mut ctx, &sa);
 
-        assert_eq!(ctx.game.card(c1).power(), 4);   // 2+2
+        assert_eq!(ctx.game.card(c1).power(), 4); // 2+2
         assert_eq!(ctx.game.card(c1).toughness(), 4);
         assert_eq!(ctx.game.card(c2).power(), 4);
         assert_eq!(ctx.game.card(c2).toughness(), 4);
@@ -174,7 +174,7 @@ mod tests {
         let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates);
         super::resolve(&mut ctx, &sa);
 
-        assert_eq!(ctx.game.card(c1).power(), 0);    // 2-2
+        assert_eq!(ctx.game.card(c1).power(), 0); // 2-2
         assert_eq!(ctx.game.card(c1).toughness(), 0);
     }
 
@@ -202,7 +202,7 @@ mod tests {
         let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates);
         super::resolve(&mut ctx, &sa);
 
-        assert_eq!(ctx.game.card(mine).power(), 4);    // boosted
-        assert_eq!(ctx.game.card(theirs).power(), 2);  // unchanged
+        assert_eq!(ctx.game.card(mine).power(), 4); // boosted
+        assert_eq!(ctx.game.card(theirs).power(), 2); // unchanged
     }
 }

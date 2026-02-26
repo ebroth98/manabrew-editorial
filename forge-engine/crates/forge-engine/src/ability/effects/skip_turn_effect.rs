@@ -47,7 +47,8 @@ mod tests {
         let p0 = PlayerId(0);
         let p1 = PlayerId(1);
 
-        let sa = SpellAbility::new_simple(None, p0, "SP$ SkipTurn | Defined$ Opponent | NumTurns$ 1");
+        let sa =
+            SpellAbility::new_simple(None, p0, "SP$ SkipTurn | Defined$ Opponent | NumTurns$ 1");
 
         let mut th = TriggerHandler::new();
         let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =

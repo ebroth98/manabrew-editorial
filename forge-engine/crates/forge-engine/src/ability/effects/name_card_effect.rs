@@ -22,7 +22,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else if sa.params.get("ChooseFromDefinedCards").is_some() {
         // Use remembered cards from source
         if let Some(source_id) = sa.source {
-            ctx.game.card(source_id).remembered_cards.iter()
+            ctx.game
+                .card(source_id)
+                .remembered_cards
+                .iter()
                 .map(|&cid| ctx.game.card(cid).card_name.clone())
                 .collect()
         } else {
@@ -33,8 +36,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         vec![]
     };
 
-    let chosen = ctx.agents[controller.index()]
-        .choose_card_name(controller, &valid_names);
+    let chosen = ctx.agents[controller.index()].choose_card_name(controller, &valid_names);
 
     if let Some(chosen_name) = chosen {
         if let Some(source_id) = sa.source {

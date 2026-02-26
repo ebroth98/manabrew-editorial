@@ -44,12 +44,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
 
             ctx.game.move_card(source_card, dest_zone, owner);
-            emit_zone_trigger(
-                ctx.trigger_handler,
-                source_card,
-                ZoneType::Stack,
-                dest_zone,
-            );
+            emit_zone_trigger(ctx.trigger_handler, source_card, ZoneType::Stack, dest_zone);
 
             // Fire Countered trigger
             ctx.trigger_handler.run_trigger(

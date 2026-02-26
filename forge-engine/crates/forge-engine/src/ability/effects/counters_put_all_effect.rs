@@ -1,6 +1,8 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, parse_counter_type, parse_param, resolve_numeric_svar, EffectContext};
+use super::{
+    matches_valid_cards, parse_counter_type, parse_param, resolve_numeric_svar, EffectContext,
+};
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
@@ -20,17 +22,25 @@ use crate::spellability::SpellAbility;
 /// A:SP$ PutCounterAll | CounterType$ CHARGE | CounterNum$ 2 | ValidCards$ Artifact
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let counter_type = sa.params.get("CounterType")
+    let counter_type = sa
+        .params
+        .get("CounterType")
         .map(|s| parse_counter_type(s))
         .unwrap_or(CounterType::P1P1);
     let count = parse_param(&sa.ability_text, "CounterNum$ ")
         .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
-    if count == 0 { return; }
+    if count == 0 {
+        return;
+    }
 
-    let valid_filter = sa.params.get("ValidCards")
+    let valid_filter = sa
+        .params
+        .get("ValidCards")
         .cloned()
         .unwrap_or_else(|| "Creature".to_string());
-    let zone = sa.params.get("ValidZone")
+    let zone = sa
+        .params
+        .get("ValidZone")
         .and_then(|z| super::parse_zone_type(z))
         .unwrap_or(ZoneType::Battlefield);
 

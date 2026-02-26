@@ -28,8 +28,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Find a creature to encode onto — use target or let player choose
     let target = sa.target_chosen.target_card.or_else(|| {
-        let bf = ctx.game.cards_in_zone(ZoneType::Battlefield, controller).to_vec();
-        let creatures: Vec<_> = bf.into_iter()
+        let bf = ctx
+            .game
+            .cards_in_zone(ZoneType::Battlefield, controller)
+            .to_vec();
+        let creatures: Vec<_> = bf
+            .into_iter()
             .filter(|&cid| {
                 let c = ctx.game.card(cid);
                 c.is_creature() && c.controller == controller
@@ -40,18 +44,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             return None;
         }
 
-        let chosen = ctx.agents[controller.index()].choose_cards_for_effect(
-            controller,
-            &creatures,
-            1,
-            1,
-        );
+        let chosen =
+            ctx.agents[controller.index()].choose_cards_for_effect(controller, &creatures, 1, 1);
         chosen.into_iter().next()
     });
 
     let creature_id = match target {
-        Some(id) if ctx.game.card(id).zone == ZoneType::Battlefield
-            && ctx.game.card(id).is_creature() => id,
+        Some(id)
+            if ctx.game.card(id).zone == ZoneType::Battlefield
+                && ctx.game.card(id).is_creature() =>
+        {
+            id
+        }
         _ => return,
     };
 
@@ -62,5 +66,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Encode it onto the creature
-    ctx.game.card_mut(creature_id).encoded_cards.push(spell_card);
+    ctx.game
+        .card_mut(creature_id)
+        .encoded_cards
+        .push(spell_card);
 }
