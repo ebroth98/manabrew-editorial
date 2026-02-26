@@ -3,10 +3,7 @@
 use crate::protocol::{Divergence, GameTrace, MatchupStatus, MatrixReport, ParityReport};
 
 /// Build a parity report from a Rust trace and a set of divergences.
-pub fn build_report(
-    trace: &GameTrace,
-    divergences: Vec<Divergence>,
-) -> ParityReport {
+pub fn build_report(trace: &GameTrace, divergences: Vec<Divergence>) -> ParityReport {
     let passed = divergences.is_empty();
     ParityReport {
         seed: trace.seed,
@@ -187,8 +184,12 @@ pub fn format_trace_text(trace: &GameTrace) -> String {
         for player in &snap.players {
             out.push_str(&format!(
                 "  P{} {} — Life:{} Poison:{} Lost:{} Won:{}\n",
-                player.index, player.name, player.life, player.poison,
-                player.has_lost, player.has_won,
+                player.index,
+                player.name,
+                player.life,
+                player.poison,
+                player.has_lost,
+                player.has_won,
             ));
             if !player.battlefield.is_empty() {
                 out.push_str("    Battlefield: ");
@@ -210,7 +211,11 @@ pub fn format_trace_text(trace: &GameTrace) -> String {
                 out.push('\n');
             }
             if !player.hand.is_empty() {
-                out.push_str(&format!("    Hand ({}): {}\n", player.hand.len(), player.hand.join(", ")));
+                out.push_str(&format!(
+                    "    Hand ({}): {}\n",
+                    player.hand.len(),
+                    player.hand.join(", ")
+                ));
             }
             if !player.graveyard.is_empty() {
                 out.push_str(&format!("    Graveyard: {}\n", player.graveyard.join(", ")));

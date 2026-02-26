@@ -142,28 +142,16 @@ impl TriggerHandler {
             // Check delayed triggers (one-shot, removed after firing).
             let mut fired_indices = Vec::new();
             for (idx, delayed) in self.delayed_triggers.iter().enumerate() {
-                let trigger_type = delayed.mode;
-                if trigger_type != event.mode {
+                if delayed.mode != event.mode {
                     continue;
                 }
-                // For Phase triggers, also check the phase and valid_player
-                if let TriggerMode::Phase {
-                    phase,
-                    valid_player,
-                } = &delayed.trigger_mode
-                {
-                    if let Some(expected_phase) = phase {
-                        if event.params.phase != Some(*expected_phase) {
-                            continue;
-                        }
-                    }
-                    if let Some(vp) = valid_player {
-                        if vp == "You" {
-                            if event.params.player != Some(delayed.controller) {
-                                continue;
-                            }
-                        }
-                    }
+                if !delayed.trigger_mode.perform_test(
+                    &event.params,
+                    game,
+                    delayed.source_card,
+                    delayed.controller,
+                ) {
+                    continue;
                 }
                 let mut sa = build_spell_ability(
                     game,

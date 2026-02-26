@@ -161,23 +161,24 @@ impl GameLoop {
 
                 // -- Post-ETB effects for alternative costs --
 
-                // Evoke: sacrifice this creature immediately after ETB
+                // Evoke: register a one-shot ETB trigger that sacrifices this creature.
+                // This mirrors Forge Java semantics where Evoke uses a ChangesZone trigger
+                // and allows normal ETB abilities to trigger before the sacrifice resolves.
                 if alt_cost == Some(crate::spellability::AlternativeCost::Evoke) {
-                    if game.card(card_id).zone == ZoneType::Battlefield {
-                        let owner = game.card(card_id).owner;
-                        game.move_card(card_id, ZoneType::Graveyard, owner);
-                        self.trigger_handler.unregister_active_triggers(card_id);
-                        // Fire Sacrificed trigger
-                        self.trigger_handler.run_trigger(
-                            TriggerType::Sacrificed,
-                            RunParams {
-                                card: Some(card_id),
-                                player: Some(player),
-                                ..Default::default()
+                    self.trigger_handler.register_delayed_trigger(
+                        crate::trigger::handler::DelayedTrigger {
+                            mode: TriggerType::ChangesZone,
+                            trigger_mode: crate::trigger::TriggerMode::ChangesZone {
+                                origin: None,
+                                destination: Some(ZoneType::Battlefield),
+                                valid_card: Some("Card.Self".to_string()),
                             },
-                            false,
-                        );
-                    }
+                            execute_svar: "DB$ Sacrifice".to_string(),
+                            controller: player,
+                            source_card: card_id,
+                            target_card: Some(card_id),
+                        },
+                    );
                 }
 
                 // Dash: grant haste, register delayed trigger to return to hand at EOT

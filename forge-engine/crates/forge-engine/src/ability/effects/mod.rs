@@ -783,6 +783,11 @@ pub fn matches_change_type(
                     return false;
                 }
             }
+            "nonLand" => {
+                if card.is_land() {
+                    return false;
+                }
+            }
             "ChosenColor" => {
                 if source_chosen_colors.is_empty() {
                     return false;

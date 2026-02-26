@@ -1,4 +1,6 @@
-use crate::protocol::{CardIdentity, GameFormat, PlayerDeckInfo, RoomInfo, RoomPlayerInfo, RoomStatus};
+use crate::protocol::{
+    CardIdentity, GameFormat, PlayerDeckInfo, RoomInfo, RoomPlayerInfo, RoomStatus,
+};
 
 #[derive(Debug, Clone)]
 pub struct RoomSlot {

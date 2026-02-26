@@ -3,7 +3,7 @@ use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::card::CardInstance;
-use crate::cost::can_pay_ignoring_mana;
+use crate::cost::{can_pay_ignoring_mana, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
@@ -284,6 +284,102 @@ pub fn mana_atom_from_produced(produced: &str) -> Option<u16> {
     }
 }
 
+fn mana_atom_to_color_name(atom: u16) -> Option<&'static str> {
+    match atom {
+        ManaAtom::WHITE => Some("White"),
+        ManaAtom::BLUE => Some("Blue"),
+        ManaAtom::BLACK => Some("Black"),
+        ManaAtom::RED => Some("Red"),
+        ManaAtom::GREEN => Some("Green"),
+        ManaAtom::COLORLESS => Some("Colorless"),
+        _ => None,
+    }
+}
+
+fn unique_push(atoms: &mut Vec<u16>, atom: u16) {
+    if !atoms.contains(&atom) {
+        atoms.push(atom);
+    }
+}
+
+fn add_any_colors(atoms: &mut Vec<u16>) {
+    unique_push(atoms, ManaAtom::WHITE);
+    unique_push(atoms, ManaAtom::BLUE);
+    unique_push(atoms, ManaAtom::BLACK);
+    unique_push(atoms, ManaAtom::RED);
+    unique_push(atoms, ManaAtom::GREEN);
+}
+
+fn chosen_colors_to_atoms(chosen_colors: &[String]) -> Vec<u16> {
+    let mut atoms = Vec::new();
+    for chosen in chosen_colors {
+        if let Some(atom) = color_name_to_mana_atom(chosen) {
+            unique_push(&mut atoms, atom);
+            continue;
+        }
+        if let Some(atom) = mana_atom_from_produced(chosen) {
+            unique_push(&mut atoms, atom);
+        }
+    }
+    atoms
+}
+
+/// Parse a Produced$ value into possible mana atoms.
+///
+/// Supports Java-style outputs:
+/// - `W/U/B/R/G/C`
+/// - `Any`
+/// - `Chosen` (from card's chosen color list)
+/// - `Combo ...` including `Combo Any` and `Combo Chosen`
+pub fn produced_to_atoms(produced: &str, chosen_colors: &[String]) -> Vec<u16> {
+    let value = produced.trim();
+    let mut atoms = Vec::new();
+
+    if value.eq_ignore_ascii_case("Any") {
+        add_any_colors(&mut atoms);
+        return atoms;
+    }
+    if value.eq_ignore_ascii_case("Chosen") {
+        return chosen_colors_to_atoms(chosen_colors);
+    }
+
+    if value.starts_with("Combo") {
+        let parts: Vec<&str> = value.split_whitespace().collect();
+        for part in &parts[1..] {
+            if part.eq_ignore_ascii_case("Any") {
+                add_any_colors(&mut atoms);
+            } else if part.eq_ignore_ascii_case("Chosen") {
+                for atom in chosen_colors_to_atoms(chosen_colors) {
+                    unique_push(&mut atoms, atom);
+                }
+            } else if let Some(atom) = mana_atom_from_produced(part) {
+                unique_push(&mut atoms, atom);
+            }
+        }
+        return atoms;
+    }
+
+    // Handles single-token and multi-token raw produced strings ("C C", "W U", etc.)
+    for part in value.split_whitespace() {
+        if let Some(atom) = mana_atom_from_produced(part) {
+            unique_push(&mut atoms, atom);
+        }
+    }
+
+    atoms
+}
+
+/// Parse a Produced$ value into color names for choose-color prompts.
+pub fn produced_to_color_names(produced: &str, chosen_colors: &[String]) -> Vec<String> {
+    let mut colors = Vec::new();
+    for atom in produced_to_atoms(produced, chosen_colors) {
+        if let Some(name) = mana_atom_to_color_name(atom) {
+            colors.push(name.to_string());
+        }
+    }
+    colors
+}
+
 /// Convert a single mana letter ("G", "U", etc.) to its color name ("Green", "Blue", etc.).
 pub fn mana_letter_to_color_name(letter: &str) -> Option<String> {
     match letter.trim() {
@@ -323,14 +419,7 @@ pub fn capitalize_color(s: &str) -> String {
 /// Parse a "Combo G U" produced string into a list of color names.
 /// Returns empty vec for unparseable values (e.g. "Combo ColorIdentity").
 pub fn parse_combo_colors(produced: &str) -> Vec<String> {
-    let parts: Vec<&str> = produced.split_whitespace().collect();
-    if parts.first().map(|s| *s) != Some("Combo") || parts.len() < 2 {
-        return vec![];
-    }
-    parts[1..]
-        .iter()
-        .filter_map(|letter| mana_letter_to_color_name(letter))
-        .collect()
+    produced_to_color_names(produced, &[])
 }
 
 /// Returns all ManaAtom values that correspond to the card's basic land subtypes.
@@ -366,25 +455,22 @@ pub fn land_mana_atoms(card: &CardInstance) -> Vec<u16> {
         if !ab.is_mana_ability {
             continue;
         }
+        // Java parity: don't treat mana abilities with mana activation costs as free
+        // producers during static source detection.
+        if ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_))) {
+            continue;
+        }
         if let Some(produced) = ab.params.get("Produced") {
             if produced == "Combo ColorIdentity" {
                 // In a non-Commander game there is no commander identity, so this land
                 // produces no mana — matches Java Forge's ManaEffect which skips
                 // the mana production entirely when the choice string is empty.
                 // (Java: ManaEffect.java line 141-143: "No mana could be produced here")
-            } else if produced.starts_with("Combo") {
-                // "Combo G U" → individual color atoms
-                let parts: Vec<&str> = produced.split_whitespace().collect();
-                for letter in &parts[1..] {
-                    if let Some(a) = mana_atom_from_produced(letter) {
-                        if !atoms.contains(&a) {
-                            atoms.push(a);
-                        }
+            } else {
+                for atom in produced_to_atoms(produced, &card.chosen_colors) {
+                    if !atoms.contains(&atom) {
+                        atoms.push(atom);
                     }
-                }
-            } else if let Some(a) = mana_atom_from_produced(produced) {
-                if !atoms.contains(&a) {
-                    atoms.push(a);
                 }
             }
         }
@@ -416,12 +502,13 @@ pub fn auto_tap_lands(
     pool: &mut ManaPool,
     player: PlayerId,
     cost: &ManaCost,
-) {
+) -> Vec<CardId> {
     let all_lands: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
 
     // Pre-compute atoms for each untapped land, sorted by specificity (fewest colors first).
     // This ensures single-color lands are tapped before dual/multi-color lands.
     let mut candidates: Vec<(CardId, Vec<u16>)> = Vec::new();
+    let mut tapped_lands: Vec<CardId> = Vec::new();
     for &land_id in &all_lands {
         let land = game.card(land_id);
         if !land.is_land() || land.tapped {
@@ -468,6 +555,7 @@ pub fn auto_tap_lands(
                     .unwrap();
                 game.tap(land_id);
                 pool.add(atom, 1);
+                tapped_lands.push(land_id);
             }
         }
     }
@@ -485,9 +573,12 @@ pub fn auto_tap_lands(
                 game.tap(land_id);
                 pool.add(atom, 1);
                 remaining -= 1;
+                tapped_lands.push(land_id);
             }
         }
     }
+
+    tapped_lands
 }
 
 /// Auto-tap untapped lands to produce `needed` additional generic mana.
@@ -502,11 +593,11 @@ pub fn auto_tap_lands_generic(
     pool: &mut ManaPool,
     player: PlayerId,
     needed: i32,
-) {
+) -> Vec<CardId> {
     // Subtract what the pool can already cover
     let deficit = (needed - pool.total()).max(0);
     if deficit <= 0 {
-        return;
+        return Vec::new();
     }
     let mut remaining = deficit;
     let lands: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
@@ -514,6 +605,7 @@ pub fn auto_tap_lands_generic(
     // Collect untapped lands with atoms, sorted by MOST colors first
     // (multi-color lands tapped first for generic, preserving basics for colored)
     let mut candidates: Vec<(CardId, u16)> = Vec::new();
+    let mut tapped_lands: Vec<CardId> = Vec::new();
     for land_id in lands {
         let land = game.card(land_id);
         if !land.is_land() || land.tapped {
@@ -538,7 +630,10 @@ pub fn auto_tap_lands_generic(
         game.tap(land_id);
         pool.add(atom, 1);
         remaining -= 1;
+        tapped_lands.push(land_id);
     }
+
+    tapped_lands
 }
 
 /// Calculate available mana from the current pool plus untapped lands and non-land mana sources.
@@ -566,7 +661,9 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
             .activated_abilities
             .iter()
             .filter(|ab| {
-                ab.is_mana_ability && can_pay_ignoring_mana(&ab.cost, game, card_id, player)
+                ab.is_mana_ability
+                    && !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_)))
+                    && can_pay_ignoring_mana(&ab.cost, game, card_id, player)
             })
             .collect();
 
@@ -599,28 +696,41 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
         for ab in &mana_abilities {
             if let Some(produced) = ab.params.get("Produced") {
                 if produced == "Combo ColorIdentity" {
-                    // Non-Commander game: no commander identity → produces no mana.
-                    // Matches Java Forge's ManaEffect which skips production entirely
-                    // when the color identity choice string is empty (non-EDH match).
-                    // Do nothing — this land contributes 0 mana.
-                } else if produced.starts_with("Combo") {
-                    // Combo mana: can produce one of listed colors
-                    let parts: Vec<&str> = produced.split_whitespace().collect();
-                    for letter in &parts[1..] {
-                        if let Some(a) = mana_atom_from_produced(letter) {
-                            if !added_atoms.contains(&a) {
-                                available.add(a, 1);
-                                added_atoms.push(a);
+                    // Commander Color Identity support: in non-commander games this remains empty.
+                    let command_cards = game.cards_in_zone(ZoneType::Command, player).to_vec();
+                    if let Some(colors) = command_cards.iter().find_map(|&cid| {
+                        let c = game.card(cid);
+                        if c.is_commander {
+                            let cols: Vec<String> = c
+                                .color
+                                .iter()
+                                .map(|col| capitalize_color(col.long_name()))
+                                .collect();
+                            if cols.is_empty() {
+                                None
+                            } else {
+                                Some(cols)
+                            }
+                        } else {
+                            None
+                        }
+                    }) {
+                        for atom in chosen_colors_to_atoms(&colors) {
+                            if !added_atoms.contains(&atom) {
+                                available.add(atom, 1);
+                                added_atoms.push(atom);
                             }
                         }
+                        added_any = true;
                     }
-                    added_any = true;
-                } else if let Some(atom) = mana_atom_from_produced(produced) {
-                    if !added_atoms.contains(&atom) {
-                        available.add(atom, 1);
-                        added_atoms.push(atom);
+                } else {
+                    for atom in produced_to_atoms(produced, &card.chosen_colors) {
+                        if !added_atoms.contains(&atom) {
+                            available.add(atom, 1);
+                            added_atoms.push(atom);
+                            added_any = true;
+                        }
                     }
-                    added_any = true;
                 }
             }
         }
@@ -691,6 +801,43 @@ mod tests {
         assert_eq!(mana_atom_from_produced("G"), Some(ManaAtom::GREEN));
         assert_eq!(mana_atom_from_produced("C"), Some(ManaAtom::COLORLESS));
         assert_eq!(mana_atom_from_produced("X"), None);
+    }
+
+    #[test]
+    fn produced_to_atoms_any_and_combo_any() {
+        let any = produced_to_atoms("Any", &[]);
+        assert!(any.contains(&ManaAtom::WHITE));
+        assert!(any.contains(&ManaAtom::BLUE));
+        assert!(any.contains(&ManaAtom::BLACK));
+        assert!(any.contains(&ManaAtom::RED));
+        assert!(any.contains(&ManaAtom::GREEN));
+        assert!(!any.contains(&ManaAtom::COLORLESS));
+
+        let combo_any = produced_to_atoms("Combo Any", &[]);
+        assert_eq!(any.len(), combo_any.len());
+        for a in any {
+            assert!(combo_any.contains(&a));
+        }
+    }
+
+    #[test]
+    fn produced_to_atoms_chosen_and_combo_chosen() {
+        let chosen = vec!["Red".to_string(), "Green".to_string()];
+        let a = produced_to_atoms("Chosen", &chosen);
+        assert!(a.contains(&ManaAtom::RED));
+        assert!(a.contains(&ManaAtom::GREEN));
+        assert_eq!(a.len(), 2);
+
+        let b = produced_to_atoms("Combo Chosen", &chosen);
+        assert!(b.contains(&ManaAtom::RED));
+        assert!(b.contains(&ManaAtom::GREEN));
+        assert_eq!(b.len(), 2);
+    }
+
+    #[test]
+    fn produced_to_atoms_multi_token_fixed_output() {
+        let atoms = produced_to_atoms("C C", &[]);
+        assert_eq!(atoms, vec![ManaAtom::COLORLESS]);
     }
 
     #[test]

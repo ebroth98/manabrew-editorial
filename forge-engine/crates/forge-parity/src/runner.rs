@@ -68,9 +68,9 @@ const COMPREHENSIVE_TEST: &[(&str, usize)] = &[
     // Lands (18)
     ("Forest", 3),
     ("Island", 3),
-    ("Plains", 3),  // was 2 + Command Tower (Combo ColorIdentity → unusable in non-Commander)
+    ("Plains", 3), // was 2 + Command Tower (Combo ColorIdentity → unusable in non-Commander)
     ("Mountain", 2),
-    ("Swamp", 3),   // was 2 + Path of Ancestry (Combo ColorIdentity → unusable in non-Commander)
+    ("Swamp", 3), // was 2 + Path of Ancestry (Combo ColorIdentity → unusable in non-Commander)
     ("Breeding Pool", 1),
     ("Hallowed Fountain", 1),
     ("Temple of Mystery", 1),
@@ -89,7 +89,7 @@ const COMPREHENSIVE_TEST: &[(&str, usize)] = &[
     // ETB / explore / proliferate (4)
     ("Merfolk Branchwalker", 1),
     ("Jadelight Ranger", 1),
-    ("Elvish Visionary", 1),  // was Mulldrifter (evoke: Rust uses evoke cost, Java uses main cost)
+    ("Elvish Visionary", 1), // was Mulldrifter (evoke: Rust uses evoke cost, Java uses main cost)
     ("Thrummingbird", 1),
     // Detain / goad / protection (3)
     ("Lyev Skyknight", 1),
@@ -119,12 +119,12 @@ const COMPREHENSIVE_TEST: &[(&str, usize)] = &[
     ("Lingering Souls", 1),
     // Simple creatures / spells (6) — removed alt-cost cards that cause parity divergences
     // (Evoke/Spectacle/Storm/Cascade are not handled uniformly by Java getBasicSpells)
-    ("Faithless Looting", 1),     // flashback: both engines support graveyard cast
-    ("Goblin Bushwhacker", 1),    // kicker is optional; base cost R always used
-    ("Volcanic Hammer", 1),       // was Skewer the Critics (spectacle R)
-    ("Shock", 1),                 // was Grapeshot (storm)
-    ("Lightning Elemental", 1),   // was Bloodbraid Elf (cascade)
-    ("Gray Ogre", 1),             // was Zurgo Bellstriker (dash 1R), simple 2/2
+    ("Faithless Looting", 1), // flashback: both engines support graveyard cast
+    ("Goblin Bushwhacker", 1), // kicker is optional; base cost R always used
+    ("Volcanic Hammer", 1),   // was Skewer the Critics (spectacle R)
+    ("Shock", 1),             // was Grapeshot (storm)
+    ("Lightning Elemental", 1), // was Bloodbraid Elf (cascade)
+    ("Gray Ogre", 1),         // was Zurgo Bellstriker (dash 1R), simple 2/2
     // Static anthems (2)
     ("Glorious Anthem", 1),
     ("Honor of the Pure", 1),
@@ -357,12 +357,7 @@ fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstance {
     card
 }
 
-fn build_deck(
-    game: &mut GameState,
-    db: &CardDatabase,
-    owner: PlayerId,
-    deck: &[(&str, usize)],
-) {
+fn build_deck(game: &mut GameState, db: &CardDatabase, owner: PlayerId, deck: &[(&str, usize)]) {
     for (name, count) in deck {
         match db.get_by_card_name(name) {
             Some(rules) => {
@@ -446,11 +441,7 @@ impl PlayerAgent for CapturingAgent {
         self.inner.notify_phase_changed(phase);
     }
 
-    fn on_library_peek(
-        &mut self,
-        game: &GameState,
-        cards: &[CardId],
-    ) {
+    fn on_library_peek(&mut self, game: &GameState, cards: &[CardId]) {
         self.inner.on_library_peek(game, cards);
     }
 
@@ -466,8 +457,13 @@ impl PlayerAgent for CapturingAgent {
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
     ) -> forge_engine_core::agent::MainPhaseAction {
-        self.inner
-            .choose_action(player, playable, tappable_lands, untappable_lands, activatable)
+        self.inner.choose_action(
+            player,
+            playable,
+            tappable_lands,
+            untappable_lands,
+            activatable,
+        )
     }
 
     fn choose_attackers(&mut self, player: PlayerId, available: &[CardId]) -> Vec<CardId> {
@@ -484,11 +480,7 @@ impl PlayerAgent for CapturingAgent {
             .choose_blockers(player, attackers, available_blockers)
     }
 
-    fn choose_target_player(
-        &mut self,
-        player: PlayerId,
-        valid: &[PlayerId],
-    ) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
         self.inner.choose_target_player(player, valid)
     }
 
@@ -545,12 +537,7 @@ impl PlayerAgent for CapturingAgent {
         self.inner.choose_may_shuffle(player)
     }
 
-    fn choose_discard(
-        &mut self,
-        player: PlayerId,
-        hand: &[CardId],
-        num: usize,
-    ) -> Vec<CardId> {
+    fn choose_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
         self.inner.choose_discard(player, hand, num)
     }
 
@@ -566,11 +553,18 @@ impl PlayerAgent for CapturingAgent {
         max: usize,
         card_name: Option<&str>,
     ) -> Vec<usize> {
-        self.inner.choose_mode(player, descriptions, min, max, card_name)
+        self.inner
+            .choose_mode(player, descriptions, min, max, card_name)
     }
 
-    fn choose_optional_trigger(&mut self, player: PlayerId, description: &str, card_name: Option<&str>) -> bool {
-        self.inner.choose_optional_trigger(player, description, card_name)
+    fn choose_optional_trigger(
+        &mut self,
+        player: PlayerId,
+        description: &str,
+        card_name: Option<&str>,
+    ) -> bool {
+        self.inner
+            .choose_optional_trigger(player, description, card_name)
     }
 
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool> {
@@ -694,7 +688,11 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     // Create deterministic agents — player 0 uses CapturingAgent to collect
     // turn-start snapshots (matching Java's GameEventTurnBegan timing).
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-        Box::new(CapturingAgent::new(p0, config.verbose, Arc::clone(&shared_snapshots))),
+        Box::new(CapturingAgent::new(
+            p0,
+            config.verbose,
+            Arc::clone(&shared_snapshots),
+        )),
         Box::new(DeterministicAgent::new(p1, config.verbose)),
     ];
 
@@ -714,10 +712,11 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             // Sort library by card name for deterministic pre-shuffle ordering,
             // matching Java's Match.preparePlayerZone which sorts after building
             // from ConcurrentHashMap-backed CardPool.
-            let mut lib_cards: Vec<CardId> =
-                game.cards_in_zone(ZoneType::Library, pid).to_vec();
+            let mut lib_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Library, pid).to_vec();
             lib_cards.sort_by(|a, b| {
-                game.cards[a.index()].card_name.cmp(&game.cards[b.index()].card_name)
+                game.cards[a.index()]
+                    .card_name
+                    .cmp(&game.cards[b.index()].card_name)
             });
             // Shuffle using the Java-compatible PRNG
             java_rng.shuffle(&mut lib_cards);

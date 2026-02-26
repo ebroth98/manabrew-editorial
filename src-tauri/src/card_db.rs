@@ -149,11 +149,7 @@ pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstanc
         if card.type_line.has_subtype(subtype) {
             // Check if an existing mana ability already produces this color
             let already_produces = card.activated_abilities.iter().any(|ab| {
-                ab.is_mana_ability
-                    && ab
-                        .params
-                        .get("Produced")
-                        .map_or(false, |p| p == letter)
+                ab.is_mana_ability && ab.params.get("Produced").map_or(false, |p| p == letter)
             });
             if !already_produces {
                 let raw = format!(

@@ -1,7 +1,9 @@
 use std::sync::mpsc;
 use std::thread;
 
-use crate::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, PlayerAction, TargetAnyChoice};
+use crate::prompt::{
+    AgentPrompt, AgentPromptInner, BlockAssignment, PlayerAction, TargetAnyChoice,
+};
 
 pub fn spawn_ai_prompt_responder(
     prompt_rx: mpsc::Receiver<AgentPrompt>,
@@ -29,15 +31,15 @@ pub fn spawn_ai_prompt_responder(
                     available_blocker_ids,
                     ..
                 } => {
-                    let assignments = if !attacker_ids.is_empty() && !available_blocker_ids.is_empty()
-                    {
-                        vec![BlockAssignment {
-                            blocker_id: available_blocker_ids[0].clone(),
-                            attacker_id: attacker_ids[0].clone(),
-                        }]
-                    } else {
-                        Vec::new()
-                    };
+                    let assignments =
+                        if !attacker_ids.is_empty() && !available_blocker_ids.is_empty() {
+                            vec![BlockAssignment {
+                                blocker_id: available_blocker_ids[0].clone(),
+                                attacker_id: attacker_ids[0].clone(),
+                            }]
+                        } else {
+                            Vec::new()
+                        };
                     Some(PlayerAction::DeclareBlockers { assignments })
                 }
                 AgentPromptInner::ChooseTargetPlayer {
@@ -119,12 +121,16 @@ pub fn spawn_ai_prompt_responder(
                 AgentPromptInner::ChooseAlternativeCost { .. } => {
                     Some(PlayerAction::AlternativeCostDecision { chosen_index: 0 })
                 }
-                AgentPromptInner::ChooseColor { valid_colors, .. } => Some(PlayerAction::ColorDecision {
-                    color: valid_colors.first().cloned(),
-                }),
-                AgentPromptInner::ChooseType { valid_types, .. } => Some(PlayerAction::TypeDecision {
-                    chosen_type: valid_types.first().cloned(),
-                }),
+                AgentPromptInner::ChooseColor { valid_colors, .. } => {
+                    Some(PlayerAction::ColorDecision {
+                        color: valid_colors.first().cloned(),
+                    })
+                }
+                AgentPromptInner::ChooseType { valid_types, .. } => {
+                    Some(PlayerAction::TypeDecision {
+                        chosen_type: valid_types.first().cloned(),
+                    })
+                }
                 AgentPromptInner::ChooseNumber { min, .. } => Some(PlayerAction::NumberDecision {
                     chosen_number: Some(min),
                 }),

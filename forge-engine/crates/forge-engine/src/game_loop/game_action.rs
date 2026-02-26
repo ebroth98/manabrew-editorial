@@ -1,6 +1,29 @@
 use super::*;
 
 impl GameLoop {
+    pub(crate) fn emit_tap_for_mana_triggers(&mut self, player: PlayerId, tapped_lands: &[CardId]) {
+        for &land_id in tapped_lands {
+            self.trigger_handler.run_trigger(
+                TriggerType::Taps,
+                RunParams {
+                    card: Some(land_id),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+            self.trigger_handler.run_trigger(
+                TriggerType::TapsForMana,
+                RunParams {
+                    card: Some(land_id),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+    }
+
     pub(crate) fn get_activatable_abilities(
         &self,
         game: &GameState,
@@ -78,12 +101,13 @@ impl GameLoop {
                     );
                 }
                 CostPart::Mana(mana_cost) => {
-                    mana::auto_tap_lands(
+                    let tapped = mana::auto_tap_lands(
                         game,
                         &mut self.mana_pools[player.index()],
                         player,
                         mana_cost,
                     );
+                    self.emit_tap_for_mana_triggers(player, &tapped);
                     self.mana_pools[player.index()].try_pay(mana_cost);
                 }
                 CostPart::PayLife(amount) => {
@@ -238,25 +262,10 @@ impl GameLoop {
                             None
                         }
                     })
-                    .unwrap_or_else(|| {
-                        // Fallback for non-commander games: all 5 colors
-                        vec![
-                            "White".to_string(),
-                            "Blue".to_string(),
-                            "Black".to_string(),
-                            "Red".to_string(),
-                            "Green".to_string(),
-                        ]
-                    });
+                    .unwrap_or_default();
 
-                if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
-                    if let Some(atom) = color_name_to_mana_atom(&chosen) {
-                        self.pool_mut(player).add(atom, 1);
-                    }
-                }
-            } else if produced.starts_with("Combo") {
-                // Combo mana: player chooses one color from the combo
-                let colors = parse_combo_colors(produced);
+                // Java parity: in non-commander games ColorIdentity may be empty;
+                // in that case no mana is produced.
                 if !colors.is_empty() {
                     if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
                         if let Some(atom) = color_name_to_mana_atom(&chosen) {
@@ -264,8 +273,32 @@ impl GameLoop {
                         }
                     }
                 }
-            } else if let Some(atom) = mana_atom_from_produced(produced) {
-                self.pool_mut(player).add(atom, 1);
+            } else {
+                let chosen_colors = game.card(card_id).chosen_colors.clone();
+                let colors = produced_to_color_names(produced, &chosen_colors);
+                if colors.len() > 1 {
+                    // Variable-color production (Any / Combo / multi-choice Chosen)
+                    if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
+                        if let Some(atom) = color_name_to_mana_atom(&chosen) {
+                            self.pool_mut(player).add(atom, 1);
+                        }
+                    }
+                } else if let Some(single) = colors.first() {
+                    // Deterministic selected color (e.g. Produced$ Chosen with one chosen color)
+                    if let Some(atom) = color_name_to_mana_atom(single) {
+                        self.pool_mut(player).add(atom, 1);
+                    }
+                } else if let Some(atom) = mana_atom_from_produced(produced) {
+                    // Backward-compatible single-token fallback
+                    self.pool_mut(player).add(atom, 1);
+                } else {
+                    // Handle raw multi-token fixed outputs like "C C"
+                    for tok in produced.split_whitespace() {
+                        if let Some(atom) = mana_atom_from_produced(tok) {
+                            self.pool_mut(player).add(atom, 1);
+                        }
+                    }
+                }
             }
         }
 

@@ -56,14 +56,14 @@ pub fn decode_relay_response(state: &Value) -> Result<(usize, PlayerAction), Str
         .get("fromPlayer")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "Missing fromPlayer in response envelope".to_string())?;
-    let player_index =
-        parse_player_slot(from_player).ok_or_else(|| format!("Invalid fromPlayer: {}", from_player))?;
+    let player_index = parse_player_slot(from_player)
+        .ok_or_else(|| format!("Invalid fromPlayer: {}", from_player))?;
 
     let action_value = state
         .get("action")
         .ok_or_else(|| "Missing action in response envelope".to_string())?;
-    let action: PlayerAction =
-        serde_json::from_value(action_value.clone()).map_err(|e| format!("Invalid action: {}", e))?;
+    let action: PlayerAction = serde_json::from_value(action_value.clone())
+        .map_err(|e| format!("Invalid action: {}", e))?;
 
     Ok((player_index, action))
 }

@@ -74,10 +74,8 @@ impl DeterministicAgent {
 
     /// Sort card IDs alphabetically by their name.
     fn sort_by_name(&self, ids: &[CardId]) -> Vec<CardId> {
-        let mut sorted: Vec<(CardId, String)> = ids
-            .iter()
-            .map(|&id| (id, self.card_name(id)))
-            .collect();
+        let mut sorted: Vec<(CardId, String)> =
+            ids.iter().map(|&id| (id, self.card_name(id))).collect();
         sorted.sort_by(|a, b| a.1.cmp(&b.1));
         sorted.into_iter().map(|(id, _)| id).collect()
     }
@@ -97,11 +95,8 @@ impl PlayerAgent for DeterministicAgent {
             .iter()
             .map(|c| (c.id, c.card_name.clone()))
             .collect();
-        let card_is_land: Vec<(CardId, bool)> = game
-            .cards
-            .iter()
-            .map(|c| (c.id, c.is_land()))
-            .collect();
+        let card_is_land: Vec<(CardId, bool)> =
+            game.cards.iter().map(|c| (c.id, c.is_land())).collect();
         self.last_game_snapshot = Some(GameSnapshot {
             card_names,
             card_is_land,
@@ -129,8 +124,16 @@ impl PlayerAgent for DeterministicAgent {
         // Partition playable into lands and spells, sort each alphabetically.
         // Play lands first (matching Java's DeterministicController which
         // explicitly checks land plays before spell plays).
-        let lands: Vec<CardId> = playable.iter().copied().filter(|&id| self.is_land(id)).collect();
-        let spells: Vec<CardId> = playable.iter().copied().filter(|&id| !self.is_land(id)).collect();
+        let lands: Vec<CardId> = playable
+            .iter()
+            .copied()
+            .filter(|&id| self.is_land(id))
+            .collect();
+        let spells: Vec<CardId> = playable
+            .iter()
+            .copied()
+            .filter(|&id| !self.is_land(id))
+            .collect();
 
         let sorted_lands = self.sort_by_name(&lands);
         let sorted_spells = self.sort_by_name(&spells);
@@ -170,11 +173,7 @@ impl PlayerAgent for DeterministicAgent {
         Vec::new()
     }
 
-    fn choose_target_player(
-        &mut self,
-        player: PlayerId,
-        valid: &[PlayerId],
-    ) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
         // Target opponent if possible, otherwise first valid
         let target = valid
             .iter()
@@ -303,7 +302,12 @@ impl PlayerAgent for DeterministicAgent {
         (0..count).collect()
     }
 
-    fn choose_optional_trigger(&mut self, _player: PlayerId, description: &str, _card_name: Option<&str>) -> bool {
+    fn choose_optional_trigger(
+        &mut self,
+        _player: PlayerId,
+        description: &str,
+        _card_name: Option<&str>,
+    ) -> bool {
         self.log_decision(&format!("Optional trigger '{}': ACCEPT", description));
         true
     }

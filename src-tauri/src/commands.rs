@@ -28,7 +28,8 @@ pub async fn respond(
     match gm.respond(app, action.clone()) {
         Ok(()) => Ok(()),
         Err(e) if e == "No active game session" => {
-            let slot = player_slot.ok_or_else(|| "Missing player slot for relay response".to_string())?;
+            let slot =
+                player_slot.ok_or_else(|| "Missing player slot for relay response".to_string())?;
             relay_response(&client, &slot, action)
         }
         Err(e) => Err(e),

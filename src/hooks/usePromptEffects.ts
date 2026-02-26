@@ -112,8 +112,9 @@ export function usePromptEffects({
         optional: promptType === "dig" ? currentPrompt.optional : undefined,
       });
     } else if (promptType === "chooseDiscard" && currentPrompt) {
+      const promptHand = currentPrompt.gameView?.myHand ?? myHand;
       const handCards = (currentPrompt.handCardIds ?? [])
-        .map((id) => myHand.find((c) => c.id === id))
+        .map((id) => promptHand.find((c) => c.id === id))
         .filter((c): c is Card => c !== undefined);
       if (handCards.length > 0) {
         setLibraryPeekModal({

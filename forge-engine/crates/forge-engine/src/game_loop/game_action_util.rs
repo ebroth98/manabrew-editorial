@@ -629,12 +629,13 @@ impl GameLoop {
                     );
                     if choice == 1 {
                         // Pay {2}
-                        mana::auto_tap_lands(
+                        let tapped = mana::auto_tap_lands(
                             game,
                             self.pool_mut(player),
                             player,
                             &foretell_exile_cost,
                         );
+                        self.emit_tap_for_mana_triggers(player, &tapped);
                         self.pool_mut(player).try_pay(&foretell_exile_cost);
                         // Exile face-down
                         game.card_mut(card_id).face_down = true;
@@ -664,7 +665,13 @@ impl GameLoop {
                             Some(&name),
                         );
                         if choice == 1 {
-                            mana::auto_tap_lands(game, self.pool_mut(player), player, &suspend_mc);
+                            let tapped = mana::auto_tap_lands(
+                                game,
+                                self.pool_mut(player),
+                                player,
+                                &suspend_mc,
+                            );
+                            self.emit_tap_for_mana_triggers(player, &tapped);
                             self.pool_mut(player).try_pay(&suspend_mc);
                             game.move_card(card_id, ZoneType::Exile, player);
                             game.card_mut(card_id)
@@ -988,11 +995,18 @@ impl GameLoop {
             };
 
             // Auto-tap lands to pay the effective cost
-            mana::auto_tap_lands(game, self.pool_mut(player), player, &mana_cost);
+            let tapped = mana::auto_tap_lands(game, self.pool_mut(player), player, &mana_cost);
+            self.emit_tap_for_mana_triggers(player, &tapped);
 
             // Auto-tap extra lands for commander tax
             if commander_tax > 0 {
-                mana::auto_tap_lands_generic(game, self.pool_mut(player), player, commander_tax);
+                let tapped_tax = mana::auto_tap_lands_generic(
+                    game,
+                    self.pool_mut(player),
+                    player,
+                    commander_tax,
+                );
+                self.emit_tap_for_mana_triggers(player, &tapped_tax);
             }
 
             let abilities = game.card(card_id).abilities.clone();

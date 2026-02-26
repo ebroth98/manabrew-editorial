@@ -15,7 +15,7 @@ use crate::game_log_entry_type::GameLogEntryType;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::{
     self, basic_land_mana_atom, capitalize_color, color_name_to_mana_atom, mana_atom_from_produced,
-    parse_combo_colors, ManaPool,
+    produced_to_color_names, ManaPool,
 };
 use crate::spellability::target_restrictions;
 use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
@@ -425,6 +425,67 @@ mod tests {
         )
     }
 
+    fn mana_land(owner: PlayerId, name: &str, produced: &str) -> CardInstance {
+        CardInstance::new(
+            CardId(0),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse("Land"),
+            ManaCost::no_cost(),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![format!(
+                "AB$ Mana | Cost$ T | Produced$ {} | SpellDescription$ Add mana.",
+                produced
+            )],
+        )
+    }
+
+    fn vanilla_spell(owner: PlayerId, name: &str, cost: &str) -> CardInstance {
+        CardInstance::new(
+            CardId(0),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse("Sorcery"),
+            ManaCost::parse(cost),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        )
+    }
+
+    fn evoked_etb_creature(owner: PlayerId) -> CardInstance {
+        let mut card = CardInstance::new(
+            CardId(0),
+            "Mulldrifter Test".to_string(),
+            owner,
+            CardTypeLine::parse("Creature - Elemental"),
+            ManaCost::parse("4 U"),
+            ColorSet::BLUE,
+            Some(2),
+            Some(2),
+            vec!["Evoke:2 U".to_string()],
+            vec![],
+        );
+
+        let mut next_trigger_id = 0;
+        let etb_draw = crate::trigger::parse_trigger(
+            "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw | TriggerDescription$ When CARDNAME enters the battlefield, draw two cards.",
+            &mut next_trigger_id,
+        )
+        .expect("valid ETB trigger");
+        card.triggers.push(etb_draw);
+        card.svars.insert(
+            "TrigDraw".to_string(),
+            "DB$ Draw | NumCards$ 2 | Defined$ You".to_string(),
+        );
+        card
+    }
+
     #[test]
     fn run_turn_opens_draw_and_combat_priority_windows() {
         let p0 = PlayerId(0);
@@ -499,5 +560,97 @@ mod tests {
         assert!(game.cards_in_zone(ZoneType::Hand, p0).contains(&c0));
         assert!(game.cards_in_zone(ZoneType::Hand, p1).contains(&c1));
         assert_eq!(game.turn.priority_player, game.active_player());
+    }
+
+    #[test]
+    fn play_card_uses_manual_pool_then_auto_taps_deficit() {
+        let p0 = PlayerId(0);
+        let _p1 = PlayerId(1);
+        let mut game = GameState::new(&["A", "B"], 20);
+
+        // Land A: any color (manual tap first)
+        let land_any = game.create_card(mana_land(p0, "Any Land", "Any"));
+        // Land B: can produce U or G (auto-tap should use this for blue requirement)
+        let land_combo = game.create_card(mana_land(p0, "Dual Land", "Combo G U"));
+        let spell = game.create_card(vanilla_spell(p0, "Test Spell", "1 U"));
+
+        game.move_card(land_any, ZoneType::Battlefield, p0);
+        game.move_card(land_combo, ZoneType::Battlefield, p0);
+        game.move_card(spell, ZoneType::Hand, p0);
+
+        let mut gl = GameLoop::new(2);
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+            Box::new(RecordingPassAgent::new(
+                Arc::new(Mutex::new(Vec::new())),
+                Arc::new(AtomicBool::new(false)),
+            )),
+            Box::new(RecordingPassAgent::new(
+                Arc::new(Mutex::new(Vec::new())),
+                Arc::new(AtomicBool::new(false)),
+            )),
+        ];
+
+        // Manual tap: add one mana from the Any land.
+        let ab = game.card(land_any).activated_abilities[0].clone();
+        gl.resolve_mana_ability(&mut game, &mut agents, p0, land_any, &ab);
+        assert_eq!(gl.pool(p0).total(), 1);
+        assert!(game.card(land_any).tapped);
+        assert!(!game.card(land_combo).tapped);
+
+        // Cast 1U spell: should consume manual pool mana and auto-tap exactly one additional land.
+        let played = gl.play_card(&mut game, &mut agents, p0, spell);
+        assert!(
+            played.is_some(),
+            "manual + auto mana payment should succeed"
+        );
+    }
+
+    #[test]
+    fn evoke_keeps_etb_triggers_when_spell_resolves() {
+        let p0 = PlayerId(0);
+        let _p1 = PlayerId(1);
+        let mut game = GameState::new(&["A", "B"], 20);
+
+        let evoked = game.create_card(evoked_etb_creature(p0));
+        game.move_card(evoked, ZoneType::Stack, p0);
+
+        let mut sa = SpellAbility::new_simple(Some(evoked), p0, "SP$ Permanent");
+        sa.alt_cost = Some(crate::spellability::AlternativeCost::Evoke);
+
+        game.stack.push(StackEntry {
+            id: 1,
+            spell_ability: sa,
+            is_creature_spell: true,
+            is_permanent_spell: true,
+            cast_from_zone: Some(ZoneType::Hand),
+        });
+
+        let mut gl = GameLoop::new(2);
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+            Box::new(RecordingPassAgent::new(
+                Arc::new(Mutex::new(Vec::new())),
+                Arc::new(AtomicBool::new(false)),
+            )),
+            Box::new(RecordingPassAgent::new(
+                Arc::new(Mutex::new(Vec::new())),
+                Arc::new(AtomicBool::new(false)),
+            )),
+        ];
+
+        gl.resolve_stack(&mut game, &mut agents);
+
+        assert_eq!(game.card(evoked).zone, ZoneType::Battlefield);
+        assert!(
+            game.stack
+                .iter()
+                .any(|entry| entry.spell_ability.api.as_deref() == Some("Draw")),
+            "ETB draw trigger should be on stack for an evoked creature"
+        );
+        assert!(
+            game.stack
+                .iter()
+                .any(|entry| entry.spell_ability.api.as_deref() == Some("Sacrifice")),
+            "Evoke sacrifice trigger should be on stack"
+        );
     }
 }

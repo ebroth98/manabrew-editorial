@@ -171,7 +171,9 @@ impl TauriAgent {
 
     fn recv_player_choice_or_first(&self, valid: &[PlayerId]) -> Option<PlayerId> {
         match self.recv_action() {
-            PlayerAction::TargetPlayer { player_id } => player_id.and_then(|id| parse_player_id(&id)),
+            PlayerAction::TargetPlayer { player_id } => {
+                player_id.and_then(|id| parse_player_id(&id))
+            }
             _ => valid.first().copied(),
         }
     }
@@ -182,7 +184,6 @@ impl TauriAgent {
             _ => valid.first().copied(),
         }
     }
-
 }
 
 impl PlayerAgent for TauriAgent {
@@ -198,17 +199,18 @@ impl PlayerAgent for TauriAgent {
 
         // Cache per-ability descriptions from battlefield cards
         self.ability_descriptions.clear();
-        let battlefield = game.cards_in_zone(forge_foundation::ZoneType::Battlefield, self.player_id);
+        let battlefield =
+            game.cards_in_zone(forge_foundation::ZoneType::Battlefield, self.player_id);
         for &card_id in battlefield {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                let desc = ab.params.get("SpellDescription")
+                let desc = ab
+                    .params
+                    .get("SpellDescription")
                     .cloned()
                     .unwrap_or_else(|| ab.ability_text.clone());
-                self.ability_descriptions.insert(
-                    (card_id.0, ab.ability_index),
-                    (desc, ab.is_mana_ability),
-                );
+                self.ability_descriptions
+                    .insert((card_id.0, ab.ability_index), (desc, ab.is_mana_ability));
             }
         }
     }
@@ -234,14 +236,10 @@ impl PlayerAgent for TauriAgent {
         activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
         let playable_card_ids = Self::card_ids(playable);
-        let mut tappable_land_ids: Vec<String> = tappable_lands
-            .iter()
-            .map(|&c| card_id_str(c))
-            .collect();
-        let untappable_land_ids: Vec<String> = untappable_lands
-            .iter()
-            .map(|&c| card_id_str(c))
-            .collect();
+        let mut tappable_land_ids: Vec<String> =
+            tappable_lands.iter().map(|&c| card_id_str(c)).collect();
+        let untappable_land_ids: Vec<String> =
+            untappable_lands.iter().map(|&c| card_id_str(c)).collect();
 
         // Build activatable ability info and merge mana-ability cards into tappable list
         let view_ref = self.view();
@@ -603,7 +601,12 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_optional_trigger(&mut self, _player: PlayerId, description: &str, card_name: Option<&str>) -> bool {
+    fn choose_optional_trigger(
+        &mut self,
+        _player: PlayerId,
+        description: &str,
+        card_name: Option<&str>,
+    ) -> bool {
         self.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
             game_view: self.view(),
             description: description.to_string(),
@@ -615,7 +618,12 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_kicker(&mut self, _player: PlayerId, kicker_cost: &str, card_name: Option<&str>) -> bool {
+    fn choose_kicker(
+        &mut self,
+        _player: PlayerId,
+        kicker_cost: &str,
+        card_name: Option<&str>,
+    ) -> bool {
         self.send_prompt(AgentPromptInner::ChooseKicker {
             game_view: self.view(),
             kicker_cost: kicker_cost.to_string(),
@@ -627,7 +635,12 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_buyback(&mut self, _player: PlayerId, buyback_cost: &str, card_name: Option<&str>) -> bool {
+    fn choose_buyback(
+        &mut self,
+        _player: PlayerId,
+        buyback_cost: &str,
+        card_name: Option<&str>,
+    ) -> bool {
         self.send_prompt(AgentPromptInner::ChooseBuyback {
             game_view: self.view(),
             buyback_cost: buyback_cost.to_string(),
@@ -639,7 +652,13 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_multikicker(&mut self, _player: PlayerId, cost: &str, max_kicks: u32, card_name: Option<&str>) -> u32 {
+    fn choose_multikicker(
+        &mut self,
+        _player: PlayerId,
+        cost: &str,
+        max_kicks: u32,
+        card_name: Option<&str>,
+    ) -> u32 {
         self.send_prompt(AgentPromptInner::ChooseMultikicker {
             game_view: self.view(),
             cost: cost.to_string(),
@@ -652,7 +671,13 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_replicate(&mut self, _player: PlayerId, cost: &str, max_replicates: u32, card_name: Option<&str>) -> u32 {
+    fn choose_replicate(
+        &mut self,
+        _player: PlayerId,
+        cost: &str,
+        max_replicates: u32,
+        card_name: Option<&str>,
+    ) -> u32 {
         self.send_prompt(AgentPromptInner::ChooseReplicate {
             game_view: self.view(),
             cost: cost.to_string(),
@@ -660,19 +685,28 @@ impl PlayerAgent for TauriAgent {
             source_card_name: card_name.map(String::from),
         });
         match self.recv_action() {
-            PlayerAction::ReplicateDecision { replicate_count } => replicate_count.min(max_replicates),
+            PlayerAction::ReplicateDecision { replicate_count } => {
+                replicate_count.min(max_replicates)
+            }
             _ => 0,
         }
     }
 
-    fn choose_alternative_cost(&mut self, _player: PlayerId, options: &[String], card_name: Option<&str>) -> usize {
+    fn choose_alternative_cost(
+        &mut self,
+        _player: PlayerId,
+        options: &[String],
+        card_name: Option<&str>,
+    ) -> usize {
         self.send_prompt(AgentPromptInner::ChooseAlternativeCost {
             game_view: self.view(),
             options: options.to_vec(),
             source_card_name: card_name.map(String::from),
         });
         match self.recv_action() {
-            PlayerAction::AlternativeCostDecision { chosen_index } => chosen_index.min(options.len().saturating_sub(1)),
+            PlayerAction::AlternativeCostDecision { chosen_index } => {
+                chosen_index.min(options.len().saturating_sub(1))
+            }
             _ => 0,
         }
     }
@@ -731,7 +765,12 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_type(&mut self, _player: PlayerId, type_category: &str, valid_types: &[String]) -> Option<String> {
+    fn choose_type(
+        &mut self,
+        _player: PlayerId,
+        type_category: &str,
+        valid_types: &[String],
+    ) -> Option<String> {
         self.send_prompt(AgentPromptInner::ChooseType {
             game_view: self.view(),
             type_category: type_category.to_string(),
@@ -779,7 +818,13 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn notify_card_played(&mut self, player: PlayerId, card_id: CardId, card_name: &str, set_code: &str) {
+    fn notify_card_played(
+        &mut self,
+        player: PlayerId,
+        card_id: CardId,
+        card_name: &str,
+        set_code: &str,
+    ) {
         self.pending_display_events.push(DisplayEvent::CardPlayed {
             card_id: card_id_str(card_id),
             card_name: card_name.to_string(),

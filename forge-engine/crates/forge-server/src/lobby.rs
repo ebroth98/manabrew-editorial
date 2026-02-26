@@ -228,7 +228,11 @@ pub fn start_game_sync(
             return Err(ServerError::PlayersNotReady);
         }
 
-        if room.players.iter().any(|p| p.selected_deck_name.is_none() || p.selected_deck_list.is_empty()) {
+        if room
+            .players
+            .iter()
+            .any(|p| p.selected_deck_name.is_none() || p.selected_deck_list.is_empty())
+        {
             return Err(ServerError::DeckNotSelected);
         }
 

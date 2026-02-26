@@ -5,7 +5,9 @@ use std::thread;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::ids_codec::player_slot;
-use crate::network::{decode_relay_response, encode_relay_envelope, wrap_broadcast_state, RelayEnvelope};
+use crate::network::{
+    decode_relay_response, encode_relay_envelope, wrap_broadcast_state, RelayEnvelope,
+};
 use crate::prompt::{AgentPrompt, PlayerAction};
 use crate::server_client::ServerClient;
 
@@ -44,7 +46,8 @@ pub fn spawn_remote_prompt_forwarder(app: AppHandle, rx: mpsc::Receiver<(usize, 
         eprintln!("[remote_fwd] Remote prompt forwarder started");
         while let Ok((player_index, prompt)) = rx.recv() {
             let for_player = player_slot(player_index);
-            let envelope = match encode_relay_envelope(RelayEnvelope::Prompt { for_player, prompt }) {
+            let envelope = match encode_relay_envelope(RelayEnvelope::Prompt { for_player, prompt })
+            {
                 Ok(v) => v,
                 Err(e) => {
                     eprintln!("[remote_fwd] Failed to encode prompt envelope: {}", e);
@@ -60,7 +63,11 @@ pub fn spawn_remote_prompt_forwarder(app: AppHandle, rx: mpsc::Receiver<(usize, 
     });
 }
 
-pub fn relay_response(client: &ServerClient, player_slot: &str, action: PlayerAction) -> Result<(), String> {
+pub fn relay_response(
+    client: &ServerClient,
+    player_slot: &str,
+    action: PlayerAction,
+) -> Result<(), String> {
     let envelope = encode_relay_envelope(RelayEnvelope::Response {
         from_player: player_slot.to_string(),
         action,

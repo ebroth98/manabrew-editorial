@@ -508,7 +508,6 @@ impl ManaCost {
             has_no_cost: false,
         }
     }
-
 }
 
 impl std::fmt::Debug for ManaCost {

@@ -43,12 +43,15 @@ pub async fn server_create_room(
     max_players: u8,
     format: String,
 ) -> Result<(), String> {
-    send_server_message(&client, serde_json::json!({
-        "type": "CreateRoom",
-        "room_name": room_name,
-        "max_players": max_players,
-        "format": format,
-    }))
+    send_server_message(
+        &client,
+        serde_json::json!({
+            "type": "CreateRoom",
+            "room_name": room_name,
+            "max_players": max_players,
+            "format": format,
+        }),
+    )
 }
 
 #[tauri::command]
@@ -56,10 +59,13 @@ pub async fn server_join_room(
     client: State<'_, ServerClient>,
     room_id: String,
 ) -> Result<(), String> {
-    send_server_message(&client, serde_json::json!({
-        "type": "JoinRoom",
-        "room_id": room_id,
-    }))
+    send_server_message(
+        &client,
+        serde_json::json!({
+            "type": "JoinRoom",
+            "room_id": room_id,
+        }),
+    )
 }
 
 #[tauri::command]
@@ -69,10 +75,13 @@ pub async fn server_leave_room(client: State<'_, ServerClient>) -> Result<(), St
 
 #[tauri::command]
 pub async fn server_set_ready(client: State<'_, ServerClient>, ready: bool) -> Result<(), String> {
-    send_server_message(&client, serde_json::json!({
-        "type": "SetReady",
-        "ready": ready,
-    }))
+    send_server_message(
+        &client,
+        serde_json::json!({
+            "type": "SetReady",
+            "ready": ready,
+        }),
+    )
 }
 
 #[tauri::command]
@@ -82,12 +91,15 @@ pub async fn server_set_deck_selection(
     deck_list: Vec<CardIdentity>,
     commander_name: Option<String>,
 ) -> Result<(), String> {
-    send_server_message(&client, serde_json::json!({
-        "type": "SetDeckSelection",
-        "deck_name": deck_name,
-        "deck_list": deck_list,
-        "commander_name": commander_name,
-    }))
+    send_server_message(
+        &client,
+        serde_json::json!({
+            "type": "SetDeckSelection",
+            "deck_name": deck_name,
+            "deck_list": deck_list,
+            "commander_name": commander_name,
+        }),
+    )
 }
 
 #[tauri::command]

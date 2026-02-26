@@ -247,7 +247,11 @@ pub fn card_to_dto(
         // and temporary pump keywords (KW$ parameter, until end of turn).
         keywords: {
             let mut all = card.keywords.clone();
-            for k in card.granted_keywords.iter().chain(card.pump_keywords.iter()) {
+            for k in card
+                .granted_keywords
+                .iter()
+                .chain(card.pump_keywords.iter())
+            {
                 if !all.iter().any(|e| e.eq_ignore_ascii_case(k)) {
                     all.push(k.clone());
                 }

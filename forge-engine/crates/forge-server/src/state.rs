@@ -51,4 +51,17 @@ impl ServerState {
                 )
             })
     }
+
+    pub fn find_connected_by_username(&self, username: &str) -> Option<(String, u64, bool)> {
+        self.players
+            .iter()
+            .find(|entry| entry.value().username == username && entry.value().connected)
+            .map(|entry| {
+                (
+                    entry.value().player_id.clone(),
+                    entry.value().generation,
+                    entry.value().sender.is_closed(),
+                )
+            })
+    }
 }

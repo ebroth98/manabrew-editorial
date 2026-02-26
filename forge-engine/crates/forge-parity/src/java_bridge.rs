@@ -84,10 +84,7 @@ impl JavaBridge {
         } else if let Some(jar_parent) = jar.parent() {
             // Auto-detect: JAR is typically at forge/forge-harness/target/
             // so forge-gui/ is at forge/forge-gui/
-            let forge_gui = jar_parent
-                .join("..")
-                .join("..")
-                .join("forge-gui");
+            let forge_gui = jar_parent.join("..").join("..").join("forge-gui");
             if forge_gui.join("res").join("cardsfolder").exists() {
                 let forge_gui_str = format!("{}/", forge_gui.display());
                 eprintln!("[parity]   auto-detected forge-home: {}", forge_gui_str);
