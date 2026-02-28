@@ -955,14 +955,17 @@
 ### Crate: `forge-parity` (cross-engine differential testing)
 | File | Status | Features |
 |------|--------|----------|
-| `main.rs` | **Implemented** | CLI entry point: Rust-only mode and full parity mode (`--java-jar`) |
-| `runner.rs` | **Implemented** | Rust game runner with deterministic agents, snapshot collection |
-| `deterministic_agent.rs` | **Implemented** | Fully reproducible PlayerAgent: alphabetical choices, always keep, all-attack, no-block |
+| `main.rs` | **Implemented** | CLI entry point: Rust-only, full parity (`--java-jar`), matrix (`--matrix`), and fuzz (`--fuzz`) modes |
+| `runner.rs` | **Implemented** | Rust game runner with deterministic agents, snapshot collection, `resolve_deck_spec()` supporting both preset names and `inline:` deck specs |
+| `deterministic_agent.rs` | **Implemented** | Hybrid RNG agent: JavaRandom for core decisions (play/attack/block/target), fixed values for the rest |
 | `snapshot.rs` | **Implemented** | Extract normalized StateSnapshot from GameState (sorted, name-based) |
-| `protocol.rs` | **Implemented** | Shared JSON types: StateSnapshot, DecisionPoint, Decision, GameTrace, ParityReport |
+| `protocol.rs` | **Implemented** | Shared JSON types: StateSnapshot, DecisionPoint, Decision, GameTrace, ParityReport, MatrixReport, FuzzReport/Result |
 | `comparator.rs` | **Implemented** | Snapshot diff engine: field-by-field comparison, Divergence reporting |
-| `report.rs` | **Implemented** | Report generation: JSON and human-readable text formats |
+| `report.rs` | **Implemented** | Report generation: JSON and human-readable text formats for parity, matrix, and fuzz modes |
 | `java_bridge.rs` | **Implemented** | Subprocess bridge: launches Java harness JAR, reads JSONL snapshots |
+| `java_random.rs` | **Implemented** | Faithful port of `java.util.Random` LCG and `Collections.shuffle()` for cross-engine determinism |
+| `card_pool.rs` | **Implemented** | Dynamic card pool discovery: scans CardDatabase, includes only cards whose triggers/statics/replacements fully parse (~80.9% of 32k cards) |
+| `deck_generator.rs` | **Implemented** | Random deck generation from discovered pool using JavaRandom; inline format (`Name*Count\|...`) for serialization |
 
 ### Java Module: `forge-harness` (Java side of parity testing)
 | File | Status | Features |
@@ -971,7 +974,7 @@
 | `DeterministicController.java` | **Implemented** | Deterministic PlayerController matching Rust DeterministicAgent logic; `canCastSorcery()` gate enforces main-phase-only spell casting |
 | `DeterministicLobbyPlayer.java` | **Implemented** | LobbyPlayer factory that creates DeterministicController instances |
 | `SnapshotExtractor.java` | **Implemented** | Extracts JSON snapshots from Java Game state matching Rust format |
-| `PresetDecks.java` | **Implemented** | Builds preset decks (red_burn, green_stompy, white_aggro, black_control, comprehensive_test, trigger_expanded) |
+| `PresetDecks.java` | **Implemented** | Builds preset decks and inline deck specs (`inline:Name*Count\|...`) for fuzz mode |
 
 ### Crate: `forge-cli`
 | File | Status | Features |

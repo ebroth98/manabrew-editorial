@@ -154,9 +154,16 @@ public final class PresetDecks {
     }
 
     /**
-     * Build a Deck from a preset name. Returns null if the preset is unknown.
+     * Build a Deck from a preset name or inline spec. Returns null if the preset is unknown.
+     *
+     * Supports inline deck specs with the "inline:" prefix:
+     *   "inline:Mountain*17,Lightning Bolt*4,Shock*4"
      */
     public static Deck buildDeck(String presetName) {
+        if (presetName.startsWith("inline:")) {
+            return buildInlineDeck(presetName.substring(7));
+        }
+
         String[][] cards = PRESETS.get(presetName);
         if (cards == null) {
             return null;
@@ -169,6 +176,45 @@ public final class PresetDecks {
         for (String[] entry : cards) {
             String name = entry[0];
             int count = Integer.parseInt(entry[1]);
+
+            PaperCard card = cardDb.getCard(name);
+            if (card == null) {
+                System.err.println("[harness] WARNING: Card not found: " + name);
+                continue;
+            }
+            main.add(card, count);
+        }
+
+        return deck;
+    }
+
+    /**
+     * Build a Deck from an inline spec string: "Name*Count|Name*Count|..."
+     * Uses '|' as delimiter because MTG card names can contain commas.
+     */
+    private static Deck buildInlineDeck(String spec) {
+        Deck deck = new Deck("inline");
+        CardPool main = deck.getOrCreate(DeckSection.Main);
+        CardDb cardDb = FModel.getMagicDb().getCommonCards();
+
+        for (String entry : spec.split("\\|")) {
+            entry = entry.trim();
+            if (entry.isEmpty()) continue;
+
+            int lastStar = entry.lastIndexOf('*');
+            if (lastStar < 0) {
+                System.err.println("[harness] WARNING: Invalid inline entry (no '*'): " + entry);
+                continue;
+            }
+
+            String name = entry.substring(0, lastStar);
+            int count;
+            try {
+                count = Integer.parseInt(entry.substring(lastStar + 1));
+            } catch (NumberFormatException e) {
+                System.err.println("[harness] WARNING: Invalid count in entry: " + entry);
+                continue;
+            }
 
             PaperCard card = cardDb.getCard(name);
             if (card == null) {

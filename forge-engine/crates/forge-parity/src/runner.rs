@@ -21,6 +21,7 @@ use forge_foundation::ZoneType;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+use crate::deck_generator;
 use crate::deterministic_agent::DeterministicAgent;
 use crate::java_random::JavaRandom;
 use crate::protocol::{GameTrace, StateSnapshot};
@@ -320,6 +321,68 @@ pub fn available_presets() -> Vec<&'static str> {
     ]
 }
 
+/// Resolve a deck spec string to a list of (card_name, count) pairs.
+///
+/// Supports:
+/// - `"inline:Name*Count|Name*Count|..."` — inline deck specification
+/// - `"file:/path/to/deck.txt"` — load from a text file (one `Count CardName` per line)
+/// - `"red_burn"` etc. — preset deck name lookup
+pub fn resolve_deck_spec(spec: &str) -> Result<Vec<(String, usize)>, String> {
+    if let Some(inline) = spec.strip_prefix("inline:") {
+        deck_generator::parse_inline(inline)
+    } else if let Some(path) = spec.strip_prefix("file:") {
+        parse_deck_file(path)
+    } else {
+        let preset = get_preset_deck(spec).ok_or_else(|| {
+            format!(
+                "Unknown deck '{}'. Available: {:?}",
+                spec,
+                available_presets()
+            )
+        })?;
+        Ok(preset.iter().map(|(n, c)| (n.to_string(), *c)).collect())
+    }
+}
+
+/// Parse a deck list text file. Each line is `Count CardName`, e.g.:
+///
+/// ```text
+/// 4 Lightning Bolt
+/// 17 Mountain
+/// 1 Zuko, Firebending Master
+/// # this is a comment
+/// ```
+///
+/// Blank lines and lines starting with `#` are ignored.
+fn parse_deck_file(path: &str) -> Result<Vec<(String, usize)>, String> {
+    let contents =
+        std::fs::read_to_string(path).map_err(|e| format!("Failed to read '{}': {}", path, e))?;
+    let mut deck = Vec::new();
+    for (line_num, line) in contents.lines().enumerate() {
+        let line = line.trim();
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
+        // Split on first whitespace: "4 Lightning Bolt" -> ("4", "Lightning Bolt")
+        let (count_str, name) = line
+            .split_once(char::is_whitespace)
+            .ok_or_else(|| format!("Line {}: expected 'Count CardName', got '{}'", line_num + 1, line))?;
+        let count: usize = count_str
+            .trim()
+            .parse()
+            .map_err(|_| format!("Line {}: invalid count '{}' in '{}'", line_num + 1, count_str, line))?;
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(format!("Line {}: empty card name in '{}'", line_num + 1, line));
+        }
+        deck.push((name.to_string(), count));
+    }
+    if deck.is_empty() {
+        return Err(format!("Deck file '{}' contains no cards", path));
+    }
+    Ok(deck)
+}
+
 // ── Card Instance Builder ──────────────────────────────────────────
 // Replicates card_rules_to_instance from src-tauri/src/card_db.rs.
 
@@ -391,8 +454,14 @@ fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstance {
     card
 }
 
-fn build_deck(game: &mut GameState, db: &CardDatabase, owner: PlayerId, deck: &[(&str, usize)]) {
-    for (name, count) in deck {
+/// Build a deck from a resolved spec. Used by inline/fuzz decks and presets.
+fn build_deck_from_spec(
+    game: &mut GameState,
+    db: &CardDatabase,
+    owner: PlayerId,
+    spec: &[(String, usize)],
+) {
+    for (name, count) in spec {
         match db.get_by_card_name(name) {
             Some(rules) => {
                 for _ in 0..*count {
@@ -690,29 +759,17 @@ pub fn load_data(cards_dir: Option<&str>) -> Result<LoadedData, String> {
 
 /// Run a game using pre-loaded data (avoids reloading the DB for each matchup).
 pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace, String> {
-    // Resolve deck lists
-    let deck1_list = get_preset_deck(&config.deck1).ok_or_else(|| {
-        format!(
-            "Unknown deck '{}'. Available: {:?}",
-            config.deck1,
-            available_presets()
-        )
-    })?;
-    let deck2_list = get_preset_deck(&config.deck2).ok_or_else(|| {
-        format!(
-            "Unknown deck '{}'. Available: {:?}",
-            config.deck2,
-            available_presets()
-        )
-    })?;
+    // Resolve deck lists — supports both preset names and inline: specs
+    let deck1_spec = resolve_deck_spec(&config.deck1)?;
+    let deck2_spec = resolve_deck_spec(&config.deck2)?;
 
     // Set up game
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
     let mut game = GameState::new(&["Player1", "Player2"], 20);
 
-    build_deck(&mut game, &data.db, p0, deck1_list);
-    build_deck(&mut game, &data.db, p1, deck2_list);
+    build_deck_from_spec(&mut game, &data.db, p0, &deck1_spec);
+    build_deck_from_spec(&mut game, &data.db, p1, &deck2_spec);
 
     let mut game_loop = GameLoop::new(2);
 

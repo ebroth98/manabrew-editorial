@@ -225,6 +225,36 @@ pub struct MatrixReport {
     pub results: Vec<MatchupResult>,
 }
 
+// ── Fuzz Mode Types ──────────────────────────────────────────────
+
+/// Result of a single fuzz iteration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FuzzResult {
+    pub iteration: usize,
+    pub game_seed: u64,
+    /// Inline-format deck spec for player 1 (for reproducibility).
+    pub deck1_spec: String,
+    /// Inline-format deck spec for player 2 (for reproducibility).
+    pub deck2_spec: String,
+    pub result: MatchupResult,
+}
+
+/// Aggregate report for fuzz random deck testing.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FuzzReport {
+    pub master_seed: u64,
+    pub iterations: usize,
+    pub max_turns: u32,
+    /// Number of cards in the discovered pool.
+    pub pool_size: usize,
+    /// Total cards in the database.
+    pub total_cards: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub errors: usize,
+    pub results: Vec<FuzzResult>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

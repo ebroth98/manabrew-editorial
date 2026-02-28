@@ -15,6 +15,9 @@
 //!
 //! **Matrix mode** (`--matrix`):
 //! Runs all deck pair combinations across multiple seeds.
+//!
+//! **Fuzz mode** (`--fuzz`):
+//! Generates random decks from the parseable card pool and runs parity tests.
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -22,10 +25,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use clap::Parser;
 use rayon::prelude::*;
 
+use forge_parity::card_pool::CardPool;
 use forge_parity::comparator;
+use forge_parity::deck_generator;
 use forge_parity::java_bridge::{JavaBridge, JavaBridgeConfig};
+use forge_parity::java_random::JavaRandom;
 use forge_parity::protocol::{
-    Divergence, MatchupResult, MatchupStatus, MatrixReport,
+    Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
 };
 use forge_parity::report;
 use forge_parity::runner::{self, available_presets, LoadedData, RunConfig};
@@ -36,11 +42,11 @@ use forge_parity::runner::{self, available_presets, LoadedData, RunConfig};
     about = "Cross-engine differential testing for Forge MTG engine"
 )]
 struct Cli {
-    /// Preset deck name for player 1
+    /// Deck for player 1: preset name, "file:path/to/deck.txt", or "inline:Name*Count|..."
     #[arg(long, default_value = "red_burn")]
     deck1: String,
 
-    /// Preset deck name for player 2
+    /// Deck for player 2: preset name, "file:path/to/deck.txt", or "inline:Name*Count|..."
     #[arg(long, default_value = "green_stompy")]
     deck2: String,
 
@@ -83,12 +89,26 @@ struct Cli {
     /// Comma-separated deck names for matrix mode (default: all presets)
     #[arg(long, value_delimiter = ',')]
     decks: Option<Vec<String>>,
+
+    /// Run fuzz random deck testing
+    #[arg(long)]
+    fuzz: bool,
+
+    /// Number of fuzz iterations (default: 100)
+    #[arg(long, default_value_t = 100)]
+    iterations: usize,
+
+    /// Master seed for fuzz reproducibility (default: 42)
+    #[arg(long, default_value_t = 42)]
+    master_seed: u64,
 }
 
 fn main() {
     let cli = Cli::parse();
 
-    if cli.matrix {
+    if cli.fuzz {
+        run_fuzz_mode(&cli);
+    } else if cli.matrix {
         run_matrix_mode(&cli);
     } else {
         eprintln!(
@@ -434,6 +454,136 @@ fn run_matrix_mode(cli: &Cli) {
     let output = match cli.format.as_str() {
         "json" => report::format_matrix_json(&matrix_report),
         _ => report::format_matrix_text(&matrix_report),
+    };
+
+    write_output(cli, &output);
+
+    if failed > 0 || errors > 0 {
+        std::process::exit(1);
+    }
+}
+
+fn run_fuzz_mode(cli: &Cli) {
+    eprintln!(
+        "[parity] Fuzz mode: {} iterations, master_seed={}",
+        cli.iterations, cli.master_seed
+    );
+
+    // Load data once
+    let data = match runner::load_data(cli.cards_dir.as_deref()) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[parity] Load error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Discover card pool
+    let (pool, pool_stats) = CardPool::discover(&data.db);
+    eprintln!("[parity] {}", pool_stats);
+
+    if pool.cards.iter().filter(|c| !c.is_land).count() == 0 {
+        eprintln!("[parity] No spells in pool — nothing to test");
+        std::process::exit(1);
+    }
+
+    let total_cards = pool_stats.total_scanned;
+    let pool_size = pool_stats.included;
+
+    // Derive per-iteration seeds from master seed
+    let mut master_rng = JavaRandom::new(cli.master_seed as i64);
+
+    let mut results: Vec<FuzzResult> = Vec::new();
+    let total = cli.iterations;
+
+    for iteration in 0..total {
+        let deck1_seed = master_rng.next_int(i32::MAX) as u64;
+        let deck2_seed = master_rng.next_int(i32::MAX) as u64;
+        let game_seed = master_rng.next_int(i32::MAX) as u64;
+
+        // Generate random decks
+        let mut deck1_rng = JavaRandom::new(deck1_seed as i64);
+        let mut deck2_rng = JavaRandom::new(deck2_seed as i64);
+        let deck1_spec = deck_generator::generate_deck(&mut deck1_rng, &pool);
+        let deck2_spec = deck_generator::generate_deck(&mut deck2_rng, &pool);
+
+        let deck1_inline = deck_generator::format_inline(&deck1_spec);
+        let deck2_inline = deck_generator::format_inline(&deck2_spec);
+
+        let config = RunConfig {
+            deck1: format!("inline:{}", deck1_inline),
+            deck2: format!("inline:{}", deck2_inline),
+            seed: game_seed,
+            max_turns: cli.max_turns,
+            cards_dir: cli.cards_dir.clone(),
+            verbose: cli.verbose,
+        };
+
+        let matchup_result = run_single_matchup(&config, &data, cli.java_jar.as_ref());
+
+        let n = iteration + 1;
+        match matchup_result.status {
+            MatchupStatus::Pass => {
+                eprintln!(
+                    "[parity] [{}/{}] iteration={} seed={} ... PASS ({} snapshots)",
+                    n, total, iteration, game_seed, matchup_result.snapshots_compared
+                );
+            }
+            MatchupStatus::Fail => {
+                eprintln!(
+                    "[parity] [{}/{}] iteration={} seed={} ... FAIL ({} divergences)",
+                    n, total, iteration, game_seed, matchup_result.divergence_count
+                );
+            }
+            MatchupStatus::Error => {
+                eprintln!(
+                    "[parity] [{}/{}] iteration={} seed={} ... ERROR: {}",
+                    n,
+                    total,
+                    iteration,
+                    game_seed,
+                    matchup_result.error_message.as_deref().unwrap_or("unknown")
+                );
+            }
+        }
+
+        results.push(FuzzResult {
+            iteration,
+            game_seed,
+            deck1_spec: deck1_inline,
+            deck2_spec: deck2_inline,
+            result: matchup_result,
+        });
+    }
+
+    let passed = results
+        .iter()
+        .filter(|r| r.result.status == MatchupStatus::Pass)
+        .count();
+    let failed = results
+        .iter()
+        .filter(|r| r.result.status == MatchupStatus::Fail)
+        .count();
+    let errors = results
+        .iter()
+        .filter(|r| r.result.status == MatchupStatus::Error)
+        .count();
+
+    let fuzz_report = FuzzReport {
+        master_seed: cli.master_seed,
+        iterations: total,
+        max_turns: cli.max_turns,
+        pool_size,
+        total_cards,
+        passed,
+        failed,
+        errors,
+        results,
+    };
+
+    let output = match cli.format.as_str() {
+        "json" => report::format_fuzz_json(&fuzz_report),
+        _ => report::format_fuzz_text(&fuzz_report),
     };
 
     write_output(cli, &output);

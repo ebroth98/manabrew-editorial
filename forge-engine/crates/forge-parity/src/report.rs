@@ -1,6 +1,8 @@
 //! Report generation: JSON and human-readable text summaries of parity results.
 
-use crate::protocol::{Divergence, GameTrace, MatchupStatus, MatrixReport, ParityReport};
+use crate::protocol::{
+    Divergence, GameTrace, FuzzReport, MatchupStatus, MatrixReport, ParityReport,
+};
 
 /// Build a parity report from a Rust trace and a set of divergences.
 pub fn build_report(trace: &GameTrace, divergences: Vec<Divergence>) -> ParityReport {
@@ -145,6 +147,91 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
                             r.deck2,
                             r.seed,
                             r.divergence_count,
+                        ));
+                    }
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// Format a fuzz report as a JSON string.
+pub fn format_fuzz_json(report: &FuzzReport) -> String {
+    serde_json::to_string_pretty(report).unwrap_or_else(|e| format!("{{\"error\": \"{}\"}}", e))
+}
+
+/// Format a fuzz report as human-readable text.
+pub fn format_fuzz_text(report: &FuzzReport) -> String {
+    let mut out = String::new();
+
+    out.push_str("=== Forge Parity Fuzz Report ===\n\n");
+    out.push_str(&format!("Master seed:  {}\n", report.master_seed));
+    out.push_str(&format!("Iterations:   {}\n", report.iterations));
+    out.push_str(&format!("Max turns:    {}\n", report.max_turns));
+    out.push_str(&format!(
+        "Card pool:    {}/{} ({:.1}%)\n\n",
+        report.pool_size,
+        report.total_cards,
+        if report.total_cards > 0 {
+            report.pool_size as f64 / report.total_cards as f64 * 100.0
+        } else {
+            0.0
+        },
+    ));
+
+    out.push_str(&format!(
+        "Results: {} iterations | {} PASS | {} FAIL | {} ERROR\n\n",
+        report.iterations, report.passed, report.failed, report.errors
+    ));
+
+    // Column header
+    out.push_str(&format!(
+        "  {:<6} {:<8} {:<7} {}\n",
+        "Iter", "Seed", "Status", "Divergences"
+    ));
+    out.push_str(&format!("  {}\n", "-".repeat(60)));
+
+    for r in &report.results {
+        let status_str = match r.result.status {
+            MatchupStatus::Pass => "PASS",
+            MatchupStatus::Fail => "FAIL",
+            MatchupStatus::Error => "ERROR",
+        };
+        out.push_str(&format!(
+            "  {:<6} {:<8} {:<7} {}\n",
+            r.iteration, r.game_seed, status_str, r.result.divergence_count
+        ));
+    }
+
+    // Print failure details
+    let failures: Vec<_> = report
+        .results
+        .iter()
+        .filter(|r| r.result.status != MatchupStatus::Pass)
+        .collect();
+    if !failures.is_empty() {
+        out.push_str("\nFailures:\n");
+        for (i, r) in failures.iter().enumerate() {
+            out.push_str(&format!(
+                "\n  {}. iteration={} seed={}\n",
+                i + 1,
+                r.iteration,
+                r.game_seed
+            ));
+            out.push_str(&format!("     deck1: inline:{}\n", r.deck1_spec));
+            out.push_str(&format!("     deck2: inline:{}\n", r.deck2_spec));
+
+            match &r.result.error_message {
+                Some(msg) => {
+                    out.push_str(&format!("     Error: {}\n", msg));
+                }
+                None => {
+                    if let Some(ref div) = r.result.first_divergence {
+                        out.push_str(&format!(
+                            "     [T{} {}] {}: Rust={} Java={}\n",
+                            div.turn, div.phase, div.field, div.rust_value, div.java_value,
                         ));
                     }
                 }

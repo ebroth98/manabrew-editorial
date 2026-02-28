@@ -14,7 +14,9 @@
 //! - [`runner`] — Orchestrates game execution and snapshot collection
 //! - [`java_bridge`] — Stubbed subprocess bridge for the Java engine
 
+pub mod card_pool;
 pub mod comparator;
+pub mod deck_generator;
 pub mod deterministic_agent;
 pub mod java_bridge;
 pub mod java_random;
