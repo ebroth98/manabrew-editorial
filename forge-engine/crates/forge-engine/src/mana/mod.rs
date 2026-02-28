@@ -474,6 +474,24 @@ fn land_pain_damage(card: &CardInstance, chosen_atom: u16) -> i32 {
     0
 }
 
+/// Tap a land for mana, apply pain damage if applicable, and record it.
+fn tap_land_for_mana(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    land_id: CardId,
+    atom: u16,
+    tapped_lands: &mut Vec<CardId>,
+) {
+    let pain = land_pain_damage(game.card(land_id), atom);
+    game.tap(land_id);
+    pool.add(atom, 1);
+    if pain > 0 {
+        game.player_mut(player).lose_life(pain);
+    }
+    tapped_lands.push(land_id);
+}
+
 /// Returns all ManaAtom values a land can produce from its activated mana abilities.
 /// Handles:
 /// - Single color (`Produced$ G`) → that atom
@@ -585,14 +603,7 @@ pub fn auto_tap_lands(
                     .iter()
                     .find(|&&a| (a & color_atoms) != 0)
                     .unwrap();
-                // Check for pain damage before tapping (need card data before mut borrow)
-                let pain = land_pain_damage(game.card(land_id), atom);
-                game.tap(land_id);
-                pool.add(atom, 1);
-                if pain > 0 {
-                    game.player_mut(player).lose_life(pain);
-                }
-                tapped_lands.push(land_id);
+                tap_land_for_mana(game, pool, player, land_id, atom, &mut tapped_lands);
             }
         }
     }
@@ -607,14 +618,8 @@ pub fn auto_tap_lands(
         while remaining > 0 && !candidates.is_empty() {
             let (land_id, land_atoms) = candidates.remove(0);
             if let Some(&atom) = land_atoms.first() {
-                let pain = land_pain_damage(game.card(land_id), atom);
-                game.tap(land_id);
-                pool.add(atom, 1);
-                if pain > 0 {
-                    game.player_mut(player).lose_life(pain);
-                }
+                tap_land_for_mana(game, pool, player, land_id, atom, &mut tapped_lands);
                 remaining -= 1;
-                tapped_lands.push(land_id);
             }
         }
     }
@@ -668,14 +673,8 @@ pub fn auto_tap_lands_generic(
         if remaining <= 0 {
             break;
         }
-        let pain = land_pain_damage(game.card(land_id), atom);
-        game.tap(land_id);
-        pool.add(atom, 1);
-        if pain > 0 {
-            game.player_mut(player).lose_life(pain);
-        }
+        tap_land_for_mana(game, pool, player, land_id, atom, &mut tapped_lands);
         remaining -= 1;
-        tapped_lands.push(land_id);
     }
 
     tapped_lands

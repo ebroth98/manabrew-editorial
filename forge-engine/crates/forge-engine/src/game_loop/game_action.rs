@@ -92,6 +92,53 @@ impl GameLoop {
         }
     }
 
+    /// Pay life and fire the LifeLost trigger.
+    fn pay_life_cost(&mut self, game: &mut GameState, player: PlayerId, amount: i32) {
+        if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
+            game,
+            player,
+            true,
+            None,
+        ) {
+            return;
+        }
+        game.player_mut(player).lose_life(amount);
+        self.trigger_handler.run_trigger(
+            TriggerType::LifeLost,
+            RunParams {
+                player: Some(player),
+                life_amount: Some(amount),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+
+    /// Discard N cards from hand (alphabetical, deterministic) and fire Discarded triggers.
+    fn pay_discard_cost(
+        &mut self,
+        game: &mut GameState,
+        player: PlayerId,
+        _type_filter: &str,
+        amount: i32,
+    ) {
+        let mut hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, player).to_vec();
+        hand.sort_by_key(|&cid| game.card(cid).card_name.clone());
+        for &cid in hand.iter().take(amount as usize) {
+            let owner = game.card(cid).owner;
+            self.trigger_handler.run_trigger(
+                TriggerType::Discarded,
+                RunParams {
+                    card: Some(cid),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+            game.move_card(cid, ZoneType::Graveyard, owner);
+        }
+    }
+
     /// Pay the cost parts of an activated ability (tap, mana, life, sacrifice).
     /// Mirrors Java's `CostPayment.payCost()` iterating over `CostPart`s.
     pub(crate) fn pay_ability_cost(
@@ -106,7 +153,6 @@ impl GameLoop {
             match part {
                 CostPart::Tap => {
                     game.tap(card_id);
-                    // Fire Taps trigger
                     self.trigger_handler.run_trigger(
                         TriggerType::Taps,
                         RunParams {
@@ -128,25 +174,7 @@ impl GameLoop {
                     self.mana_pools[player.index()].try_pay(mana_cost);
                 }
                 CostPart::PayLife(amount) => {
-                    if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
-                        game,
-                        player,
-                        true,
-                        None,
-                    ) {
-                        continue;
-                    }
-                    game.player_mut(player).lose_life(*amount);
-                    // Fire LifeLost trigger
-                    self.trigger_handler.run_trigger(
-                        TriggerType::LifeLost,
-                        RunParams {
-                            player: Some(player),
-                            life_amount: Some(*amount),
-                            ..Default::default()
-                        },
-                        false,
-                    );
+                    self.pay_life_cost(game, player, *amount);
                 }
                 CostPart::Sacrifice {
                     type_filter,
@@ -154,7 +182,6 @@ impl GameLoop {
                 } => {
                     if type_filter == "CARDNAME" {
                         let owner = game.card(card_id).owner;
-                        // Fire Sacrificed trigger before moving
                         self.trigger_handler.run_trigger(
                             TriggerType::Sacrificed,
                             RunParams {
@@ -175,7 +202,6 @@ impl GameLoop {
                 } => {
                     if type_filter == "CARDNAME" {
                         let owner = game.card(card_id).owner;
-                        // Fire Discarded trigger
                         self.trigger_handler.run_trigger(
                             TriggerType::Discarded,
                             RunParams {
@@ -187,23 +213,7 @@ impl GameLoop {
                         );
                         game.move_card(card_id, ZoneType::Graveyard, owner);
                     } else {
-                        // Discard N cards from hand (alphabetical, deterministic)
-                        let mut hand: Vec<CardId> =
-                            game.cards_in_zone(ZoneType::Hand, player).to_vec();
-                        hand.sort_by_key(|&cid| game.card(cid).card_name.clone());
-                        for &cid in hand.iter().take(*amount as usize) {
-                            let owner = game.card(cid).owner;
-                            self.trigger_handler.run_trigger(
-                                TriggerType::Discarded,
-                                RunParams {
-                                    card: Some(cid),
-                                    player: Some(player),
-                                    ..Default::default()
-                                },
-                                false,
-                            );
-                            game.move_card(cid, ZoneType::Graveyard, owner);
-                        }
+                        self.pay_discard_cost(game, player, type_filter, *amount);
                     }
                 }
             }
@@ -223,28 +233,11 @@ impl GameLoop {
     ) {
         for part in &spell_cost.parts {
             match part {
-                // Mana is already paid by play_card's main mana payment flow
+                // Mana is already paid by play_card's main mana payment flow.
+                // Tap is not applicable to spell additional costs.
                 CostPart::Mana(_) | CostPart::Tap => {}
                 CostPart::PayLife(amount) => {
-                    if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
-                        game,
-                        player,
-                        true,
-                        None,
-                    ) {
-                        continue;
-                    }
-                    game.player_mut(player).lose_life(*amount);
-                    // Fire LifeLost trigger
-                    self.trigger_handler.run_trigger(
-                        TriggerType::LifeLost,
-                        RunParams {
-                            player: Some(player),
-                            life_amount: Some(*amount),
-                            ..Default::default()
-                        },
-                        false,
-                    );
+                    self.pay_life_cost(game, player, *amount);
                 }
                 CostPart::Sacrifice {
                     type_filter,
@@ -254,8 +247,13 @@ impl GameLoop {
                         self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
                     }
                 }
-                CostPart::Discard { .. } => {
-                    // Discard costs in spell additional costs not yet handled
+                CostPart::Discard {
+                    type_filter,
+                    amount,
+                } => {
+                    if type_filter != "CARDNAME" {
+                        self.pay_discard_cost(game, player, type_filter, *amount);
+                    }
                 }
             }
         }

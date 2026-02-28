@@ -176,66 +176,7 @@ pub fn can_pay(
     source: CardId,
     player: PlayerId,
 ) -> bool {
-    let card = game.card(source);
-
-    for part in &cost.parts {
-        match part {
-            CostPart::Tap => {
-                if card.tapped {
-                    return false;
-                }
-                // Summoning sick creatures can't tap (unless they have haste)
-                if card.is_creature() && card.summoning_sick && !card.has_haste() {
-                    return false;
-                }
-            }
-            CostPart::Mana(mana_cost) => {
-                if !available_mana.can_pay(mana_cost) {
-                    return false;
-                }
-            }
-            CostPart::PayLife(amount) => {
-                if game.player(player).life < *amount {
-                    return false;
-                }
-            }
-            CostPart::Sacrifice {
-                type_filter,
-                amount,
-            } => {
-                if type_filter == "CARDNAME" {
-                    // Must sacrifice self — check it's on the battlefield
-                    if card.zone != ZoneType::Battlefield {
-                        return false;
-                    }
-                } else {
-                    // Scan battlefield for valid sacrifice targets
-                    let targets = get_sacrifice_targets(game, player, type_filter);
-                    if (targets.len() as i32) < *amount {
-                        return false;
-                    }
-                }
-            }
-            CostPart::Discard {
-                type_filter,
-                amount,
-            } => {
-                if type_filter == "CARDNAME" {
-                    // Must discard self — check it's in hand
-                    if card.zone != ZoneType::Hand {
-                        return false;
-                    }
-                } else {
-                    let hand_size = game.cards_in_zone(ZoneType::Hand, player).len() as i32;
-                    if hand_size < *amount {
-                        return false;
-                    }
-                }
-            }
-        }
-    }
-
-    true
+    can_pay_inner(cost, game, Some(available_mana), source, player)
 }
 
 /// Check if a cost can be paid ignoring mana requirements.
@@ -243,6 +184,18 @@ pub fn can_pay(
 pub fn can_pay_ignoring_mana(
     cost: &Cost,
     game: &GameState,
+    source: CardId,
+    player: PlayerId,
+) -> bool {
+    can_pay_inner(cost, game, None, source, player)
+}
+
+/// Shared implementation for cost payability checks.
+/// When `available_mana` is None, mana costs are skipped.
+fn can_pay_inner(
+    cost: &Cost,
+    game: &GameState,
+    available_mana: Option<&ManaPool>,
     source: CardId,
     player: PlayerId,
 ) -> bool {
@@ -258,8 +211,12 @@ pub fn can_pay_ignoring_mana(
                     return false;
                 }
             }
-            CostPart::Mana(_) => {
-                // Skip mana check
+            CostPart::Mana(mana_cost) => {
+                if let Some(pool) = available_mana {
+                    if !pool.can_pay(mana_cost) {
+                        return false;
+                    }
+                }
             }
             CostPart::PayLife(amount) => {
                 if game.player(player).life < *amount {

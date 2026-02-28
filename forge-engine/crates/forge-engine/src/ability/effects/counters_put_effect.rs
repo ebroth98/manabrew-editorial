@@ -36,7 +36,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
             let cause_player = ctx.game.card(card_id).controller;
-
             ctx.game.card_mut(card_id).add_counter(counter_type, count);
 
             // Fire CounterAdded trigger

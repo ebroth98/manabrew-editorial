@@ -88,6 +88,14 @@ public class DeterministicController extends PlayerControllerAi {
             return null; // pass during non-main phases
         }
 
+        // Only play during main phases — matches Rust's DeterministicAgent which
+        // only plays during Main1/Main2. Without this check, the Java engine would
+        // allow sorcery-speed spells during any priority window (upkeep, combat, etc.)
+        // because it trusts the controller to enforce timing.
+        if (!player.canCastSorcery()) {
+            return null; // pass during non-main phases
+        }
+
         CardCollectionView hand = player.getCardsIn(ZoneType.Hand);
 
         // 1. Land plays
