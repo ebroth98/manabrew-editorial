@@ -199,6 +199,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "All mechanics: 46 keywords, 85 effects, 34 triggers, alt costs, dual/pain/ETB lands, tokens, counters, charms, clone, explore, proliferate, goad, detain, storm, cascade".into(),
             color: "text-yellow-400".into(),
         },
+        PresetDeckInfo {
+            id: "trigger_expanded".into(),
+            label: "Expanded Triggers".into(),
+            desc: "AttackersDeclared + DamageDoneOnce + ChangesZoneAll + CounterAddedOnce + Surveil + SpellCast — exercises new trigger types (#54)".into(),
+            color: "text-teal-500".into(),
+        },
     ]
 }
 
@@ -234,6 +240,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "etb_tapped_lands"
             | "dual_lands"
             | "comprehensive_test"
+            | "trigger_expanded"
     )
 }
 
@@ -351,6 +358,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
             build_named_deck(game, p0, COMPREHENSIVE_TEST);
             build_named_deck(game, p1, GREEN_STOMPY);
         }
+        "trigger_expanded" => {
+            build_named_deck(game, p0, TRIGGER_EXPANDED);
+            build_named_deck(game, p1, WHITE_AGGRO);
+        }
         _ => {
             // red_burn (default)
             build_named_deck(game, p0, RED_BURN);
@@ -390,6 +401,7 @@ pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner
         "etb_tapped_lands" => build_named_deck(game, owner, ETB_TAPPED_LANDS),
         "dual_lands" => build_named_deck(game, owner, DUAL_LANDS),
         "comprehensive_test" => build_named_deck(game, owner, COMPREHENSIVE_TEST),
+        "trigger_expanded" => build_named_deck(game, owner, TRIGGER_EXPANDED),
         _ => build_named_deck(game, owner, RED_BURN),
     }
 }
@@ -1125,6 +1137,52 @@ fn build_named_deck(game: &mut GameState, owner: PlayerId, deck: &[(&str, usize,
 }
 
 /// Build a custom deck for `owner` from a list of card identities (one per
+/// Exercises issue #54: expanded trigger types.
+/// Cards chosen to exercise the 35 new trigger modes:
+/// - Roar of Resistance: AttackersDeclared (whenever you attack)
+/// - Ruby Collector: AttackersDeclared (whenever you attack)
+/// - Guttersnipe: SpellCast (whenever you cast instant/sorcery, deal 2 damage)
+/// - Young Pyromancer: SpellCast (whenever you cast instant/sorcery, create token)
+/// - Essence Warden: ChangesZone (whenever another creature ETBs, gain 1 life)
+/// - Impact Tremors: ChangesZone (whenever a creature ETBs, deal 1 damage)
+/// - Raptor Hatchling: DamageDoneOnce (enrage — whenever ~ is dealt damage)
+/// - Ranging Raptors: DamageDoneOnce (enrage — search for land)
+/// - Woodland Champion: ChangesZoneAll (whenever tokens enter)
+/// - Nest of Scarabs: CounterAddedOnce (whenever -1/-1 counters are placed)
+/// - Thoughtbound Phantasm: Surveil (whenever you surveil)
+/// - Whispering Snitch: Surveil (whenever you surveil)
+/// - Rite of Passage: DamageDoneOnce (whenever a creature is dealt damage)
+/// - Stocking the Pantry: CounterAddedOnce (whenever counters placed)
+const TRIGGER_EXPANDED: &[(&str, usize, &str)] = &[
+    ("Mountain", 7, "akh"),
+    ("Forest", 5, "akh"),
+    ("Swamp", 3, "akh"),
+    ("Island", 3, "akh"),
+    ("Plains", 2, "akh"),
+    // AttackersDeclared — "whenever you attack"
+    ("Roar of Resistance", 3, "lci"),
+    ("Ruby Collector", 3, "otj"),
+    // SpellCast — "whenever you cast an instant or sorcery"
+    ("Guttersnipe", 3, "rtr"),
+    ("Young Pyromancer", 2, "m14"),
+    // ChangesZone — "whenever another creature enters"
+    ("Essence Warden", 3, "plc"),
+    ("Impact Tremors", 2, "dtk"),
+    // DamageDoneOnce — "whenever ~ is dealt damage"
+    ("Raptor Hatchling", 3, "xln"),
+    ("Ranging Raptors", 2, "xln"),
+    // ChangesZoneAll — "whenever one or more tokens enter"
+    ("Woodland Champion", 2, "m20"),
+    // CounterAddedOnce — "whenever counters are placed"
+    ("Nest of Scarabs", 2, "akh"),
+    ("Stocking the Pantry", 2, "woe"),
+    // Surveil — "whenever you surveil"
+    ("Thoughtbound Phantasm", 2, "grn"),
+    ("Whispering Snitch", 2, "grn"),
+    // DamageDoneOnce — "whenever a creature you control is dealt damage"
+    ("Rite of Passage", 2, "5dn"),
+];
+
 /// copy), loading each definition from the global CardDatabase.
 /// Unrecognised names are skipped with a log message.
 pub fn build_custom_deck(game: &mut GameState, owner: PlayerId, identities: &[CardIdentity]) {

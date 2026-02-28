@@ -77,6 +77,75 @@ pub enum TriggerType {
     PhasedOut,
     /// A permanent phased in.
     PhasedIn,
+    // ── New trigger types (issue #54) ──
+    /// All attackers declared at once (batch).
+    AttackersDeclared,
+    /// All blockers declared at once (batch).
+    BlockersDeclared,
+    /// A card changed zones (batch/all variant).
+    ChangesZoneAll,
+    /// A permanent changed controller.
+    ChangesController,
+    /// A turn began.
+    TurnBegin,
+    /// Damage done once (first-time batch).
+    DamageDoneOnce,
+    /// Any spell cast (all players).
+    SpellCastAll,
+    /// Any player lost life (all players).
+    LifeLostAll,
+    /// Counter added once (batch).
+    CounterAddedOnce,
+    /// Any card discarded (all players).
+    DiscardedAll,
+    /// A permanent sacrificed once (batch).
+    SacrificedOnce,
+    /// A card was cycled.
+    Cycled,
+    /// Always fires (every phase).
+    Always,
+    /// Fires immediately when registered.
+    Immediate,
+    /// A player surveilled.
+    Surveil,
+    /// A player scried.
+    Scry,
+    /// A card was foretold.
+    Foretell,
+    /// A player searched their library.
+    SearchedLibrary,
+    /// A player shuffled their library.
+    Shuffled,
+    /// Mana was added to a player's pool.
+    ManaAdded,
+    /// A token was created (batch).
+    TokenCreatedOnce,
+    /// Any permanent tapped (all).
+    TapAll,
+    /// Any permanent untapped (all).
+    UntapAll,
+    /// A permanent became a target (batch).
+    BecomesTargetOnce,
+    /// An attacker was blocked by a specific creature.
+    AttackerBlockedByCreature,
+    /// An attacker was blocked (batch).
+    AttackerBlockedOnce,
+    /// An attacker was unblocked (batch).
+    AttackerUnblockedOnce,
+    /// Any spell cast (batch).
+    SpellCastOnce,
+    /// A spell of a specific type was cast.
+    SpellCastOfType,
+    /// Damage dealt (all instances).
+    DamageAll,
+    /// Damage was prevented (batch).
+    DamagePreventedOnce,
+    /// Excess damage dealt.
+    ExcessDamage,
+    /// Any player gained life (all players).
+    LifeGainedAll,
+    /// A counter was removed (batch).
+    CounterRemovedOnce,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.
@@ -117,4 +186,11 @@ pub struct RunParams {
     pub counter_type: Option<String>,
     /// Number of counters added/removed.
     pub counter_amount: Option<i32>,
+    // ── New fields (issue #54) ──
+    /// Batch of attacker IDs (for AttackersDeclared).
+    pub attacker_ids: Option<Vec<CardId>>,
+    /// Batch of blocker IDs (for BlockersDeclared).
+    pub blocker_ids: Option<Vec<CardId>>,
+    /// Original controller before a control change.
+    pub original_controller: Option<PlayerId>,
 }

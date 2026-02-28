@@ -235,7 +235,7 @@ impl CardInstance {
             .filter_map(|raw| parse_static_ability(raw))
             .collect();
 
-        CardInstance {
+        let mut card = CardInstance {
             id,
             card_name,
             owner,
@@ -297,6 +297,26 @@ impl CardInstance {
             damage_prevention: 0,
             must_block: false,
             encoded_cards: Vec::new(),
+        };
+
+        // Generate keyword-derived activated abilities (mirrors Java CardFactoryUtil.setupKeywordedAbilities)
+        card.generate_keyword_abilities();
+        card
+    }
+
+    /// Generate activated abilities from keywords (e.g. Cycling → AB$ Draw).
+    /// Mirrors Java's `CardFactoryUtil.setupKeywordedAbilities()`.
+    fn generate_keyword_abilities(&mut self) {
+        // Cycling: K:Cycling:{cost} → AB$ Draw | Cost$ {cost} Discard<1/CARDNAME> | ActivationZone$ Hand
+        if let Some(cycling_cost) = self.get_keyword_cost("Cycling") {
+            let ab_text = format!(
+                "AB$ Draw | Cost$ {} Discard<1/CARDNAME> | ActivationZone$ Hand | NumCards$ 1 | Defined$ You",
+                cycling_cost
+            );
+            let next_idx = self.activated_abilities.len();
+            if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                self.activated_abilities.push(ab);
+            }
         }
     }
 

@@ -30,6 +30,8 @@ pub struct DeterministicAgent {
     pub verbose: bool,
     /// Cached game state reference for name lookups.
     last_game_snapshot: Option<GameSnapshot>,
+    /// Current phase — used to only play spells during main phases.
+    current_phase: Option<PhaseType>,
 }
 
 /// Minimal cached state for looking up card names and types from IDs.
@@ -45,6 +47,7 @@ impl DeterministicAgent {
             log: Vec::new(),
             verbose,
             last_game_snapshot: None,
+            current_phase: None,
         }
     }
 
@@ -116,7 +119,13 @@ impl PlayerAgent for DeterministicAgent {
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
-        if playable.is_empty() {
+        // Only play spells during main phases — matches Java's AI behavior which
+        // passes during non-main-phase priority windows (upkeep, combat, etc.).
+        let is_main_phase = matches!(
+            self.current_phase,
+            Some(PhaseType::Main1) | Some(PhaseType::Main2)
+        );
+        if !is_main_phase || playable.is_empty() {
             self.log_decision("Main phase: PASS (nothing playable)");
             return MainPhaseAction::Pass;
         }
@@ -334,6 +343,7 @@ impl PlayerAgent for DeterministicAgent {
     }
 
     fn notify_phase_changed(&mut self, phase: PhaseType) {
+        self.current_phase = Some(phase);
         if self.verbose {
             eprintln!(
                 "[parity-agent p{}] --- Phase: {:?} ---",

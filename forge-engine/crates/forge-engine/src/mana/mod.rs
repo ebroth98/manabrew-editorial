@@ -442,6 +442,38 @@ fn all_basic_subtype_atoms(card: &CardInstance) -> Vec<u16> {
     atoms
 }
 
+/// Returns the pain damage (if any) that a land deals when tapped for the given atom.
+/// Checks the land's mana abilities for one that produces the given atom and has a
+/// SubAbility$ pointing to a DealDamage SVar. Returns the damage amount, or 0.
+fn land_pain_damage(card: &CardInstance, chosen_atom: u16) -> i32 {
+    for ab in &card.activated_abilities {
+        if !ab.is_mana_ability {
+            continue;
+        }
+        // Skip abilities without SubAbility (no pain)
+        let sub_svar_name = match ab.params.get("SubAbility") {
+            Some(name) => name,
+            None => continue,
+        };
+        // Check if this ability produces the chosen atom
+        if let Some(produced) = ab.params.get("Produced") {
+            let atoms = produced_to_atoms(produced, &card.chosen_colors);
+            if atoms.contains(&chosen_atom) {
+                // Look up the SVar to find damage amount
+                if let Some(sub_text) = card.svars.get(sub_svar_name) {
+                    let sub_params = crate::trigger::parse_pipe_params(sub_text);
+                    if sub_params.get("DB").map_or(false, |v| v == "DealDamage") {
+                        if let Some(num_str) = sub_params.get("NumDmg") {
+                            return num_str.parse::<i32>().unwrap_or(0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    0
+}
+
 /// Returns all ManaAtom values a land can produce from its activated mana abilities.
 /// Handles:
 /// - Single color (`Produced$ G`) → that atom
@@ -553,8 +585,13 @@ pub fn auto_tap_lands(
                     .iter()
                     .find(|&&a| (a & color_atoms) != 0)
                     .unwrap();
+                // Check for pain damage before tapping (need card data before mut borrow)
+                let pain = land_pain_damage(game.card(land_id), atom);
                 game.tap(land_id);
                 pool.add(atom, 1);
+                if pain > 0 {
+                    game.player_mut(player).lose_life(pain);
+                }
                 tapped_lands.push(land_id);
             }
         }
@@ -570,8 +607,12 @@ pub fn auto_tap_lands(
         while remaining > 0 && !candidates.is_empty() {
             let (land_id, land_atoms) = candidates.remove(0);
             if let Some(&atom) = land_atoms.first() {
+                let pain = land_pain_damage(game.card(land_id), atom);
                 game.tap(land_id);
                 pool.add(atom, 1);
+                if pain > 0 {
+                    game.player_mut(player).lose_life(pain);
+                }
                 remaining -= 1;
                 tapped_lands.push(land_id);
             }
@@ -627,8 +668,12 @@ pub fn auto_tap_lands_generic(
         if remaining <= 0 {
             break;
         }
+        let pain = land_pain_damage(game.card(land_id), atom);
         game.tap(land_id);
         pool.add(atom, 1);
+        if pain > 0 {
+            game.player_mut(player).lose_life(pain);
+        }
         remaining -= 1;
         tapped_lands.push(land_id);
     }

@@ -18,6 +18,8 @@ pub enum CostPart {
     PayLife(i32),
     /// Sacrifice permanents. type_filter "CARDNAME" means sacrifice self.
     Sacrifice { amount: i32, type_filter: String },
+    /// Discard cards. type_filter "CARDNAME" means discard self.
+    Discard { amount: i32, type_filter: String },
 }
 
 impl CostPart {
@@ -29,6 +31,7 @@ impl CostPart {
             CostPart::Mana(_) => 0,
             CostPart::PayLife(_) => 7,
             CostPart::Sacrifice { .. } => 15,
+            CostPart::Discard { .. } => 14,
         }
     }
 }
@@ -71,6 +74,21 @@ pub fn parse_cost(raw: &str) -> Cost {
                     (1, inner.to_string())
                 };
                 parts.push(CostPart::Sacrifice {
+                    amount,
+                    type_filter: filter,
+                });
+            }
+        } else if token.starts_with("Discard<") {
+            // Parse Discard<amount/filter>
+            if let Some(inner) = token.strip_prefix("Discard<").and_then(|s| s.strip_suffix('>')) {
+                let (amount, filter) = if let Some(slash_idx) = inner.find('/') {
+                    let amt = inner[..slash_idx].parse::<i32>().unwrap_or(1);
+                    let filt = &inner[slash_idx + 1..];
+                    (amt, filt.to_string())
+                } else {
+                    (1, inner.to_string())
+                };
+                parts.push(CostPart::Discard {
                     amount,
                     type_filter: filter,
                 });
@@ -198,6 +216,22 @@ pub fn can_pay(
                     }
                 }
             }
+            CostPart::Discard {
+                type_filter,
+                amount,
+            } => {
+                if type_filter == "CARDNAME" {
+                    // Must discard self — check it's in hand
+                    if card.zone != ZoneType::Hand {
+                        return false;
+                    }
+                } else {
+                    let hand_size = game.cards_in_zone(ZoneType::Hand, player).len() as i32;
+                    if hand_size < *amount {
+                        return false;
+                    }
+                }
+            }
         }
     }
 
@@ -243,6 +277,21 @@ pub fn can_pay_ignoring_mana(
                 } else {
                     let targets = get_sacrifice_targets(game, player, type_filter);
                     if (targets.len() as i32) < *amount {
+                        return false;
+                    }
+                }
+            }
+            CostPart::Discard {
+                type_filter,
+                amount,
+            } => {
+                if type_filter == "CARDNAME" {
+                    if card.zone != ZoneType::Hand {
+                        return false;
+                    }
+                } else {
+                    let hand_size = game.cards_in_zone(ZoneType::Hand, player).len() as i32;
+                    if hand_size < *amount {
                         return false;
                     }
                 }

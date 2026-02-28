@@ -68,6 +68,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             None
         };
 
+        // Fire SearchedLibrary trigger when searching from library
+        if origin_zone == ZoneType::Library && card_to_move.is_some() {
+            ctx.trigger_handler.run_trigger(
+                TriggerType::SearchedLibrary,
+                RunParams {
+                    player: Some(controller),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+
         if let Some(card_id) = card_to_move {
             let card_owner = ctx.game.card(card_id).owner;
             let dest_owner = if dest_zone == ZoneType::Battlefield {
@@ -121,9 +133,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .cards_in_zone(ZoneType::Library, controller)
                 .to_vec();
             if !lib_cards.is_empty() {
-                // No RNG available here — reverse as a placeholder shuffle
-                let zone = ctx.game.zone_mut(ZoneType::Library, controller);
-                zone.cards.reverse();
+                let mut rng = rand::thread_rng();
+                ctx.game.shuffle_library(controller, &mut rng);
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::Shuffled,
+                    RunParams {
+                        player: Some(controller),
+                        ..Default::default()
+                    },
+                    false,
+                );
             }
         }
     }

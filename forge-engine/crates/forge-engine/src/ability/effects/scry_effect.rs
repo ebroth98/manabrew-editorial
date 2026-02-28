@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `ScryEffect.java`.
@@ -59,6 +60,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for &id in &top {
         zone.cards.push(id);
     }
+
+    // Fire Scry trigger
+    ctx.trigger_handler.run_trigger(
+        TriggerType::Scry,
+        RunParams {
+            player: Some(target),
+            ..Default::default()
+        },
+        false,
+    );
 }
 
 #[cfg(test)]

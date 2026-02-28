@@ -36,8 +36,25 @@ impl GameLoop {
         for card_id in battlefield {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
+                // Skip abilities with ActivationZone$ Hand — they're for hand, not battlefield
+                if ab.params.get("ActivationZone").map_or(false, |z| z == "Hand") {
+                    continue;
+                }
                 if can_pay(&ab.cost, game, &available_mana, card_id, player) {
                     result.push((card_id, ab.ability_index));
+                }
+            }
+        }
+
+        // Check hand for abilities with ActivationZone$ Hand (e.g. Cycling)
+        let hand = game.cards_in_zone(ZoneType::Hand, player).to_vec();
+        for card_id in hand {
+            let card = game.card(card_id);
+            for ab in &card.activated_abilities {
+                if ab.params.get("ActivationZone").map_or(false, |z| z == "Hand") {
+                    if can_pay(&ab.cost, game, &available_mana, card_id, player) {
+                        result.push((card_id, ab.ability_index));
+                    }
                 }
             }
         }
@@ -144,6 +161,43 @@ impl GameLoop {
                         self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
                     }
                 }
+                CostPart::Discard {
+                    type_filter,
+                    amount,
+                } => {
+                    if type_filter == "CARDNAME" {
+                        let owner = game.card(card_id).owner;
+                        // Fire Discarded trigger
+                        self.trigger_handler.run_trigger(
+                            TriggerType::Discarded,
+                            RunParams {
+                                card: Some(card_id),
+                                player: Some(player),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                        game.move_card(card_id, ZoneType::Graveyard, owner);
+                    } else {
+                        // Discard N cards from hand (alphabetical, deterministic)
+                        let mut hand: Vec<CardId> =
+                            game.cards_in_zone(ZoneType::Hand, player).to_vec();
+                        hand.sort_by_key(|&cid| game.card(cid).card_name.clone());
+                        for &cid in hand.iter().take(*amount as usize) {
+                            let owner = game.card(cid).owner;
+                            self.trigger_handler.run_trigger(
+                                TriggerType::Discarded,
+                                RunParams {
+                                    card: Some(cid),
+                                    player: Some(player),
+                                    ..Default::default()
+                                },
+                                false,
+                            );
+                            game.move_card(cid, ZoneType::Graveyard, owner);
+                        }
+                    }
+                }
             }
         }
     }
@@ -183,6 +237,9 @@ impl GameLoop {
                     if type_filter != "CARDNAME" {
                         self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
                     }
+                }
+                CostPart::Discard { .. } => {
+                    // Discard costs in spell additional costs not yet handled
                 }
             }
         }
@@ -313,6 +370,17 @@ impl GameLoop {
         // Fire TapsForMana trigger (mana abilities produce mana)
         self.trigger_handler.run_trigger(
             TriggerType::TapsForMana,
+            RunParams {
+                card: Some(card_id),
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
+
+        // Fire ManaAdded trigger (mirrors Java AbilityManaPart.produceMana)
+        self.trigger_handler.run_trigger(
+            TriggerType::ManaAdded,
             RunParams {
                 card: Some(card_id),
                 player: Some(player),

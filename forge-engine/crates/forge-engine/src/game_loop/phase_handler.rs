@@ -6,6 +6,17 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
+        // Fire TurnBegin trigger at the start of each turn.
+        let active = game.active_player();
+        self.trigger_handler.run_trigger(
+            TriggerType::TurnBegin,
+            RunParams {
+                player: Some(active),
+                ..Default::default()
+            },
+            false,
+        );
+
         let mut state = TurnMachineState::Untap;
         while !game.game_over && state != TurnMachineState::Done {
             // EndTurn (issue #22): if end_turn_requested, skip directly to cleanup.
@@ -407,6 +418,18 @@ impl GameLoop {
                 false,
             );
         }
+        // Fire AttackersDeclared batch trigger
+        if !chosen_attackers.is_empty() {
+            self.trigger_handler.run_trigger(
+                TriggerType::AttackersDeclared,
+                RunParams {
+                    player: Some(game.active_player()),
+                    attacker_ids: Some(chosen_attackers.clone()),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
         self.step_with_priority(game, agents, false);
         if game.game_over {
             self.combat.clear();
@@ -486,6 +509,13 @@ impl GameLoop {
             game.turn.combat_block_assignments.clear();
             return;
         }
+
+        // Fire BlockersDeclared batch trigger
+        self.trigger_handler.run_trigger(
+            TriggerType::BlockersDeclared,
+            RunParams::default(),
+            false,
+        );
 
         // Fire AttackerBlocked / AttackerUnblocked triggers
         for &(attacker_id, _) in &self.combat.attackers.clone() {
@@ -679,6 +709,16 @@ impl GameLoop {
         let active = game.active_player();
         self.trigger_handler.run_trigger(
             TriggerType::Phase,
+            RunParams {
+                phase: Some(phase),
+                player: Some(active),
+                ..Default::default()
+            },
+            false,
+        );
+        // Fire Always trigger alongside every phase trigger.
+        self.trigger_handler.run_trigger(
+            TriggerType::Always,
             RunParams {
                 phase: Some(phase),
                 player: Some(active),

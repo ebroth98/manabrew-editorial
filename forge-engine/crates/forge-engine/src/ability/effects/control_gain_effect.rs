@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// SP$ ControlGain — gain control of target permanent until end of turn or permanently.
@@ -29,7 +30,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Change controller
+    let old_controller = ctx.game.card(target_card).controller;
     ctx.game.change_controller(target_card, new_controller);
+
+    // Fire ChangesController trigger (mirrors Java GameAction.doChangeController)
+    if old_controller != new_controller {
+        ctx.trigger_handler.run_trigger(
+            TriggerType::ChangesController,
+            RunParams {
+                card: Some(target_card),
+                player: Some(new_controller),
+                original_controller: Some(old_controller),
+                ..Default::default()
+            },
+            false,
+        );
+    }
 
     // Handle Untap parameter
     if sa.params.contains_key("Untap") {

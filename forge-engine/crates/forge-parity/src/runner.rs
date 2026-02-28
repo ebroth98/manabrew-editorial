@@ -247,6 +247,36 @@ const KEYWORD_TEST: &[(&str, usize)] = &[
     ("Darksteel Myr", 2),
 ];
 
+const TRIGGER_EXPANDED: &[(&str, usize)] = &[
+    ("Mountain", 7),
+    ("Forest", 5),
+    ("Swamp", 3),
+    ("Island", 3),
+    ("Plains", 2),
+    // AttackersDeclared
+    ("Roar of Resistance", 3),
+    ("Ruby Collector", 3),
+    // SpellCast
+    ("Guttersnipe", 3),
+    ("Young Pyromancer", 2),
+    // ChangesZone
+    ("Essence Warden", 3),
+    ("Impact Tremors", 2),
+    // DamageDoneOnce
+    ("Raptor Hatchling", 3),
+    ("Ranging Raptors", 2),
+    // ChangesZoneAll
+    ("Woodland Champion", 2),
+    // CounterAddedOnce
+    ("Nest of Scarabs", 2),
+    ("Stocking the Pantry", 2),
+    // Surveil
+    ("Thoughtbound Phantasm", 2),
+    ("Whispering Snitch", 2),
+    // DamageDoneOnce
+    ("Rite of Passage", 2),
+];
+
 /// Resolve a preset deck name to a card list.
 fn get_preset_deck(name: &str) -> Option<&'static [(&'static str, usize)]> {
     match name {
@@ -263,6 +293,7 @@ fn get_preset_deck(name: &str) -> Option<&'static [(&'static str, usize)]> {
         "mass_effects" => Some(MASS_EFFECTS),
         "trigger_test" => Some(TRIGGER_TEST),
         "keyword_test" => Some(KEYWORD_TEST),
+        "trigger_expanded" => Some(TRIGGER_EXPANDED),
         _ => None,
     }
 }
@@ -283,6 +314,7 @@ pub fn available_presets() -> Vec<&'static str> {
         "mass_effects",
         "trigger_test",
         "keyword_test",
+        "trigger_expanded",
     ]
 }
 

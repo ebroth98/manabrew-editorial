@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// Mirrors the `RearrangeTopOfLibrary` API used by cards like Ponder.
@@ -63,6 +64,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if wants_shuffle {
             let mut rng = rand::thread_rng();
             ctx.game.shuffle_library(target, &mut rng);
+            ctx.trigger_handler.run_trigger(
+                TriggerType::Shuffled,
+                RunParams {
+                    player: Some(target),
+                    ..Default::default()
+                },
+                false,
+            );
         }
     }
 }

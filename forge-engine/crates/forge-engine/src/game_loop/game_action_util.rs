@@ -640,6 +640,16 @@ impl GameLoop {
                         // Exile face-down
                         game.card_mut(card_id).face_down = true;
                         game.move_card(card_id, ZoneType::Exile, player);
+                        // Fire Foretell trigger (mirrors Java Player.addForetoldThisTurn)
+                        self.trigger_handler.run_trigger(
+                            TriggerType::Foretell,
+                            RunParams {
+                                card: Some(card_id),
+                                player: Some(player),
+                                ..Default::default()
+                            },
+                            false,
+                        );
                         agents[player.index()].notify(&format!("Foretold: {}", card_name));
                         return Some((card_id, card_name));
                     }
@@ -1063,7 +1073,13 @@ impl GameLoop {
             );
 
             // Build SpellAbility chain and choose targets.
-            let ability_text = abilities.first().cloned().unwrap_or_default();
+            // Filter out AB$ (activated ability) lines — those are not spell effects.
+            // Only DB$ (direct) and SP$ (spell) lines are the card's ETB/spell effect.
+            let ability_text = abilities
+                .iter()
+                .find(|a| !a.contains("AB$ "))
+                .cloned()
+                .unwrap_or_default();
             let mut sa = build_spell_ability(game, card_id, &ability_text, player);
             sa.is_spell = true;
 

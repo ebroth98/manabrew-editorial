@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, parse_param, resolve_defined_player, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `SurveilEffect.java`.
@@ -59,6 +60,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for &id in &keep_top {
         ctx.game.zone_mut(ZoneType::Library, target).cards.push(id);
     }
+
+    // Fire Surveil trigger
+    ctx.trigger_handler.run_trigger(
+        TriggerType::Surveil,
+        RunParams {
+            player: Some(target),
+            ..Default::default()
+        },
+        false,
+    );
 }
 
 #[cfg(test)]

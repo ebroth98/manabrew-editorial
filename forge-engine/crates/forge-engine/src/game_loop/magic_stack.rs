@@ -26,6 +26,29 @@ impl GameLoop {
         if entry.spell_ability.is_trigger || entry.spell_ability.is_activated {
             // Triggered/activated ability: resolve the effect
             self.resolve_spell_effect(game, agents, &entry);
+
+            // Fire Cycled trigger if this was a cycling ability
+            // (mirrors Java MagicStack resolve → Player.addCycled)
+            if entry.spell_ability.is_activated {
+                let is_cycling = entry
+                    .spell_ability
+                    .params
+                    .get("PrecostDesc")
+                    .map_or(false, |d| d.contains("Cycling"));
+                if is_cycling {
+                    if let Some(source_card) = entry.spell_ability.source {
+                        self.trigger_handler.run_trigger(
+                            TriggerType::Cycled,
+                            RunParams {
+                                card: Some(source_card),
+                                player: Some(entry.spell_ability.activating_player),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
+                }
+            }
         } else if entry.spell_ability.is_copy {
             // Copy of a spell (from Replicate/Storm): resolve effect only, no card movement
             self.resolve_spell_effect(game, agents, &entry);

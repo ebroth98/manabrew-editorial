@@ -18,6 +18,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Default target: the source card
     if let Some(card_id) = sa.source {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
+            let cause_player = ctx.game.card(card_id).controller;
             ctx.game.card_mut(card_id).add_counter(counter_type, count);
 
             // Fire CounterAdded trigger
@@ -27,6 +28,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     card: Some(card_id),
                     counter_type: Some(format!("{:?}", counter_type)),
                     counter_amount: Some(count),
+                    cause_player: Some(cause_player),
                     ..Default::default()
                 },
                 false,
