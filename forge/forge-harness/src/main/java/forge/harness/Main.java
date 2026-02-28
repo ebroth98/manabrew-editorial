@@ -105,14 +105,19 @@ public final class Main {
         // Set a timeout to avoid infinite loops
         rules.setSimTimeout(120);
 
+        // Create a shared Random for agent decisions, seeded identically to
+        // the Rust side's JavaRandom(seed). Both players share this instance
+        // so RNG consumption order matches the Rust agents exactly.
+        Random agentRng = new Random(seed);
+
         List<RegisteredPlayer> players = new ArrayList<>();
 
         RegisteredPlayer rp1 = new RegisteredPlayer(deck1);
-        rp1.setPlayer(new DeterministicLobbyPlayer("Player1"));
+        rp1.setPlayer(new DeterministicLobbyPlayer("Player1", agentRng));
         players.add(rp1);
 
         RegisteredPlayer rp2 = new RegisteredPlayer(deck2);
-        rp2.setPlayer(new DeterministicLobbyPlayer("Player2"));
+        rp2.setPlayer(new DeterministicLobbyPlayer("Player2", agentRng));
         players.add(rp2);
 
         Match match = new Match(rules, players, "ParityTest");

@@ -4,6 +4,8 @@
 //! captures a [`StateSnapshot`] after each phase, and collects them into a
 //! [`GameTrace`].
 
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use forge_carddb::{CardDatabase, CardRules};
@@ -422,9 +424,14 @@ struct CapturingAgent {
 }
 
 impl CapturingAgent {
-    fn new(player_id: PlayerId, verbose: bool, shared: Arc<Mutex<Vec<StateSnapshot>>>) -> Self {
+    fn new(
+        player_id: PlayerId,
+        verbose: bool,
+        shared: Arc<Mutex<Vec<StateSnapshot>>>,
+        rng: Rc<RefCell<JavaRandom>>,
+    ) -> Self {
         Self {
-            inner: DeterministicAgent::new(player_id, verbose),
+            inner: DeterministicAgent::new(player_id, verbose, rng),
             shared_snapshots: shared,
             pending_snapshot: None,
         }
@@ -717,18 +724,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     // Shared storage for turn-start snapshots captured by CapturingAgent
     let shared_snapshots: Arc<Mutex<Vec<StateSnapshot>>> = Arc::new(Mutex::new(Vec::new()));
 
-    // Create deterministic agents — player 0 uses CapturingAgent to collect
-    // turn-start snapshots (matching Java's GameEventTurnBegan timing).
-    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
-        Box::new(CapturingAgent::new(
-            p0,
-            config.verbose,
-            Arc::clone(&shared_snapshots),
-        )),
-        Box::new(DeterministicAgent::new(p1, config.verbose)),
-    ];
-
-    // Run game with fixed seed
+    // Run game with fixed seed (for any engine-internal randomness)
     let mut rng = StdRng::seed_from_u64(config.seed);
 
     // Setup: shuffle libraries with Java-compatible RNG so opening hands match
@@ -739,7 +735,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     //   2. player.shuffle(null) for each player — Collections.shuffle(list, rng)
     //   3. drawStartingHand() — moves top 7 cards to hand (no RNG)
     {
-        let mut java_rng = JavaRandom::new(config.seed as i64);
+        let mut shuffle_rng = JavaRandom::new(config.seed as i64);
         for &pid in &game.player_order.clone() {
             // Sort library by card name for deterministic pre-shuffle ordering,
             // matching Java's Match.preparePlayerZone which sorts after building
@@ -751,7 +747,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
                     .cmp(&game.cards[b.index()].card_name)
             });
             // Shuffle using the Java-compatible PRNG
-            java_rng.shuffle(&mut lib_cards);
+            shuffle_rng.shuffle(&mut lib_cards);
             // Reverse so Java's index-0 "top" becomes Rust's last-element "top"
             // (Rust draws via pop(), Java draws via get(0))
             lib_cards.reverse();
@@ -762,6 +758,25 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             game.draw_cards(pid, 7);
         }
     }
+
+    // Create a SEPARATE agent RNG seeded identically to Java's `new Random(seed)`.
+    // This is distinct from the shuffle RNG — both sides create a fresh Random(seed)
+    // for agent decisions, ensuring the RNG state matches even though the shuffle
+    // RNG is consumed differently by each engine's internals.
+    let agent_rng = Rc::new(RefCell::new(JavaRandom::new(config.seed as i64)));
+
+    // Create deterministic agents — player 0 uses CapturingAgent to collect
+    // turn-start snapshots (matching Java's GameEventTurnBegan timing).
+    // Both agents share the same agent RNG so consumption order matches Java.
+    let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+        Box::new(CapturingAgent::new(
+            p0,
+            config.verbose,
+            Arc::clone(&shared_snapshots),
+            Rc::clone(&agent_rng),
+        )),
+        Box::new(DeterministicAgent::new(p1, config.verbose, Rc::clone(&agent_rng))),
+    ];
 
     // Run turns — CapturingAgent captures turn-start snapshots automatically
     while !game.game_over && game.turn.turn_number <= config.max_turns {

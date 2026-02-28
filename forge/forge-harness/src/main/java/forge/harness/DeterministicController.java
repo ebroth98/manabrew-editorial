@@ -27,33 +27,31 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import java.util.*;
 
 /**
- * A fully deterministic PlayerController for cross-engine parity testing.
+ * A hybrid deterministic PlayerController for cross-engine parity testing.
  * <p>
- * Extends {@link PlayerControllerAi} to inherit the AI infrastructure
- * (AiController, AiCardMemory, cost payment, spell execution) while
- * overriding decision-making methods with deterministic logic that
- * mirrors the Rust {@code DeterministicAgent} exactly:
- * <ul>
- *   <li>Always keep opening hand (no mulligan)</li>
- *   <li>Play first playable card alphabetically, then pass</li>
- *   <li>Attack with all eligible creatures sorted by name</li>
- *   <li>Never block</li>
- *   <li>Target opponent for player targets; first alphabetical for card targets</li>
- *   <li>Discard first N alphabetically</li>
- *   <li>Always confirm actions</li>
- * </ul>
+ * Uses RNG for 4 core decisions (play choice, attackers, blockers, targeting)
+ * and fixed values for everything else. This avoids RNG desync caused by
+ * Java and Rust calling non-core callbacks at different times.
+ * <p>
+ * Both sides share a {@code java.util.Random} / {@code JavaRandom} seeded
+ * identically. Core decisions sort options alphabetically then use
+ * {@code rng.nextInt()} to pick, consuming the RNG in the same order.
  */
 public class DeterministicController extends PlayerControllerAi {
 
-    public DeterministicController(Game game, Player p, LobbyPlayer lp) {
+    /** Shared RNG for all decisions — same instance used by both players. */
+    private final Random rng;
+
+    public DeterministicController(Game game, Player p, LobbyPlayer lp, Random rng) {
         super(game, p, lp);
+        this.rng = rng;
     }
 
     // ── Mulligan ──────────────────────────────────────────────────────
 
     @Override
     public boolean mulliganKeepHand(Player firstPlayer, int cardsToReturn) {
-        return true; // always keep
+        return true; // always keep — no RNG consumed
     }
 
     @Override
@@ -65,9 +63,22 @@ public class DeterministicController extends PlayerControllerAi {
 
     @Override
     public List<SpellAbility> chooseSpellAbilityToPlay() {
-        // Priority: play lands first, then spells — pick first alphabetically.
-        // Uses the AI infrastructure (AiController.canPlaySa, ComputerUtilCost) for
-        // proper spell evaluation, targeting, and mana checking.
+        // Only consume RNG during sorcery-speed windows (our main phase, stack empty).
+        // Matches Rust's choose_action which skips non-sorcery-speed priority.
+        // Java calls this method for ALL priority windows, including instant-speed
+        // during combat/opponent's turn, but those must not consume our shared RNG.
+        forge.game.phase.PhaseHandler ph = getGame().getPhaseHandler();
+        boolean isSorcerySpeed = ph.isPlayerTurn(player)
+            && (ph.is(forge.game.phase.PhaseType.MAIN1) || ph.is(forge.game.phase.PhaseType.MAIN2))
+            && getGame().getStack().isEmpty();
+        if (!isSorcerySpeed) {
+            return null; // pass priority — no RNG consumed
+        }
+
+        // Build combined list: lands first (sorted), then spells (sorted).
+        // Pick randomly: idx 0..count plays a card, idx count = pass.
+        // RNG consumption: exactly 1 call to rng.nextInt(count + 1) if any
+        // playable cards exist, 0 calls if nothing playable.
 
         // Only play during main phases — matches Rust's DeterministicAgent which
         // only plays during Main1/Main2. Without this check, the Java engine would
@@ -79,7 +90,7 @@ public class DeterministicController extends PlayerControllerAi {
 
         CardCollectionView hand = player.getCardsIn(ZoneType.Hand);
 
-        // 1. Land plays — use getAllPossibleAbilities for properly configured land SAs
+        // 1. Land plays
         List<SpellAbility> landPlays = new ArrayList<>();
         for (Card c : hand) {
             if (c.isLand() && player.canPlayLand(c, false, null)) {
@@ -91,65 +102,49 @@ public class DeterministicController extends PlayerControllerAi {
                 }
             }
         }
-        if (!landPlays.isEmpty()) {
-            landPlays.sort(Comparator.comparing(sa -> sa.getHostCard().getName()));
-            return Lists.newArrayList(landPlays.get(0));
-        }
+        landPlays.sort(Comparator.comparing(sa -> sa.getHostCard().getName()));
 
-        // 2. Spell plays — use AiController.canPlaySa to set up targets as a side
-        //    effect, but accept any spell that isn't mechanically uncastable.
-        //    This removes the AI's strategic "willingness" filter so Java plays
-        //    any castable spell — matching Rust's get_playable_cards() behavior.
-        //    If canPlaySa doesn't set up targets (e.g. returns early for strategic
-        //    reasons), we set them deterministically.
+        // 2. Spell plays
         List<SpellAbility> spellPlays = new ArrayList<>();
         for (Card c : hand) {
             if (!c.isLand()) {
                 for (SpellAbility sa : c.getBasicSpells()) {
                     sa.setActivatingPlayer(player);
-                    // canPlaySa sets up targets as a side effect.
-                    // Only skip TargetingFailed (truly no valid targets for a targeted spell).
-                    // CantPlaySa is the AI's *strategic* refusal (e.g. Clone with no creatures),
-                    // not a mechanical impossibility — we still cast it to match Rust's behaviour.
-                    AiPlayDecision decision = getAi().canPlaySa(sa);
-                    if (decision == AiPlayDecision.TargetingFailed) {
-                        continue;
-                    }
+                    // Only check cost + targeting — no AI evaluation.
+                    // Matches Rust's get_playable_cards which checks
+                    // can_pay + has_candidates_in_chain, not AI heuristics.
                     if (!ComputerUtilCost.canPayCost(sa, player, false)) {
                         continue;
                     }
-                    // ALWAYS set deterministic targets for targeted spells.
-                    // canPlaySa() sets targets as a side effect, but the AI may
-                    // choose strategically suboptimal targets (e.g. targeting a
-                    // creature instead of the opponent). We override with
-                    // deterministic targeting (opponent player first) to match
-                    // Rust's DeterministicAgent behavior.
-                    if (sa.usesTargeting()) {
-                        setupDeterministicTargets(sa);
-                        if (!sa.isTargetNumberValid()) {
-                            continue; // no valid targets available
-                        }
+                    if (sa.usesTargeting() && !hasDeterministicTargets(sa)) {
+                        continue;
                     }
                     spellPlays.add(sa);
                 }
             }
         }
+        spellPlays.sort(Comparator.comparing(sa -> sa.getHostCard().getName()));
 
-        if (spellPlays.isEmpty()) {
+        // Combined: lands first, then spells
+        List<SpellAbility> all = new ArrayList<>();
+        all.addAll(landPlays);
+        all.addAll(spellPlays);
+
+        if (all.isEmpty()) {
+            return null; // pass — no RNG consumed
+        }
+
+        // Random pick: 0..count plays, count = pass
+        int idx = rng.nextInt(all.size() + 1);
+        if (idx >= all.size()) {
             return null; // pass
         }
 
-        // Deterministic: pick first alphabetically by card name
-        spellPlays.sort(Comparator.comparing(sa -> sa.getHostCard().getName()));
-        return Lists.newArrayList(spellPlays.get(0));
+        return Lists.newArrayList(all.get(idx));
     }
 
     @Override
     public boolean playChosenSpellAbility(SpellAbility sa) {
-        // For targeted spells, provide a chooseTargets callback to ensure targets
-        // are properly set after moveToStack. This is a safety net: even if targets
-        // were set in chooseSpellAbilityToPlay, they can be lost when the card is
-        // copied for the stack zone.
         if (sa.usesTargeting()) {
             Runnable chooseTargets = () -> {
                 if (!sa.isTargetNumberValid()) {
@@ -165,11 +160,11 @@ public class DeterministicController extends PlayerControllerAi {
 
     @Override
     public void declareAttackers(Player attacker, Combat combat) {
-        // Attack with all eligible creatures, sorted by name
+        // Sort eligible creatures alphabetically, per-creature coin flip.
+        // RNG consumption: exactly 1 call per eligible creature.
         CardCollection creatures = new CardCollection(attacker.getCreaturesInPlay());
         creatures.sort(Comparator.comparing(Card::getName));
 
-        // Find default defender (opponent)
         GameEntity defender = null;
         for (Player p : getGame().getPlayers()) {
             if (!p.equals(attacker)) {
@@ -181,14 +176,36 @@ public class DeterministicController extends PlayerControllerAi {
 
         for (Card c : creatures) {
             if (CombatUtil.canAttack(c, defender)) {
-                combat.addAttacker(c, defender);
+                if (rng.nextInt(2) == 1) {
+                    combat.addAttacker(c, defender);
+                }
             }
         }
     }
 
     @Override
     public void declareBlockers(Player defender, Combat combat) {
-        // Never block — do nothing
+        // Sort eligible blockers alphabetically.
+        // For each: rng.nextInt(attacker_count + 1). 0 = don't block, k = block attacker[k-1].
+        CardCollection blockers = new CardCollection(defender.getCreaturesInPlay());
+        blockers.sort(Comparator.comparing(Card::getName));
+
+        // Get sorted attackers
+        List<Card> attackers = new ArrayList<>(combat.getAttackers());
+        attackers.sort(Comparator.comparing(Card::getName));
+
+        if (attackers.isEmpty()) return;
+
+        for (Card blocker : blockers) {
+            if (!CombatUtil.canBlock(blocker, combat)) continue;
+            int choice = rng.nextInt(attackers.size() + 1);
+            if (choice > 0 && choice <= attackers.size()) {
+                Card attackerToBlock = attackers.get(choice - 1);
+                if (CombatUtil.canBlock(attackerToBlock, blocker, combat)) {
+                    combat.addBlocker(attackerToBlock, blocker);
+                }
+            }
+        }
     }
 
     @Override
@@ -239,19 +256,17 @@ public class DeterministicController extends PlayerControllerAi {
         if (delayedReveal != null) reveal(delayedReveal);
         if (optionList == null || optionList.isEmpty()) return null;
 
-        // Prefer targeting an opponent Player — matches Rust's choose_target_player
-        // which explicitly picks the opponent over self.
-        for (T e : optionList) {
-            if (e instanceof Player && !e.equals(player)) {
-                return e;
-            }
-        }
-
-        // Fall back to alphabetical sort for non-player targets (cards, etc.)
+        // Sort: players first (by name), then non-players (by name)
         List<T> sorted = new ArrayList<>();
         for (T e : optionList) sorted.add(e);
-        sorted.sort(Comparator.comparing(GameEntity::getName));
-        return sorted.get(0);
+        sorted.sort((a, b) -> {
+            boolean aPlayer = a instanceof Player;
+            boolean bPlayer = b instanceof Player;
+            if (aPlayer != bPlayer) return aPlayer ? -1 : 1;
+            return a.getName().compareTo(b.getName());
+        });
+
+        return sorted.get(0); // fixed: always pick first (no RNG consumed)
     }
 
     @Override
@@ -260,7 +275,10 @@ public class DeterministicController extends PlayerControllerAi {
         if (sourceList == null || sourceList.isEmpty()) return new CardCollection();
         CardCollection sorted = new CardCollection(sourceList);
         sorted.sort(Comparator.comparing(Card::getName));
-        return new CardCollection(sorted.subList(0, Math.min(max, sorted.size())));
+
+        int count = Math.min(max, sorted.size());
+        // Fixed: return first `count` cards sorted alphabetically (no RNG consumed)
+        return new CardCollection(sorted.subList(0, count));
     }
 
     // ── Discard ───────────────────────────────────────────────────────
@@ -268,28 +286,34 @@ public class DeterministicController extends PlayerControllerAi {
     @Override
     public CardCollection chooseCardsToDiscardFrom(Player playerDiscard, SpellAbility sa,
             CardCollection validCards, int min, int max) {
-        return chooseFirstN(validCards, min);
+        // Fixed: return first `min` cards sorted alphabetically (no RNG consumed)
+        List<Card> sorted = new ArrayList<>(validCards);
+        sorted.sort(Comparator.comparing(Card::getName));
+        int count = Math.min(min, sorted.size());
+        return new CardCollection(sorted.subList(0, count));
     }
 
     @Override
     public CardCollection chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
-        CardCollection hand = new CardCollection(player.getCardsIn(ZoneType.Hand));
+        // Fixed: return first `numDiscard` cards sorted alphabetically (no RNG consumed)
+        List<Card> hand = new ArrayList<>(player.getCardsIn(ZoneType.Hand));
         hand.sort(Comparator.comparing(Card::getName));
-        return new CardCollection(hand.subList(0, Math.min(numDiscard, hand.size())));
+        int count = Math.min(numDiscard, hand.size());
+        return new CardCollection(hand.subList(0, count));
     }
 
     // ── Scry / Library Manipulation ──────────────────────────────────
 
     @Override
     public ImmutablePair<CardCollection, CardCollection> arrangeForScry(CardCollection topN) {
-        // Keep all on top — matches Rust's DeterministicAgent.choose_scry
+        // Fixed: keep all on top, nothing to bottom (no RNG consumed)
         return ImmutablePair.of(topN, new CardCollection());
     }
 
     @Override
     public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone,
             SpellAbility source) {
-        // Keep original order — matches Rust's choose_reorder_library
+        // Fixed: keep original order (no RNG consumed)
         return cards;
     }
 
@@ -298,15 +322,13 @@ public class DeterministicController extends PlayerControllerAi {
     @Override
     public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
             List<String> options, Card cardToShow, Map<String, Object> params) {
-        // Decline optional shuffles — matches Rust's choose_may_shuffle returning false
-        if (message != null && message.toLowerCase().contains("shuffle")) {
-            return false;
-        }
+        // Fixed: always confirm (no RNG consumed)
         return true;
     }
 
     @Override
     public boolean confirmTrigger(WrappedAbility sa) {
+        // Fixed: always accept triggers (no RNG consumed)
         return true;
     }
 
@@ -314,21 +336,26 @@ public class DeterministicController extends PlayerControllerAi {
 
     @Override
     public byte chooseColor(String message, SpellAbility sa, ColorSet colors) {
-        for (Color color : colors) return color.getColorMask();
-        return Color.WHITE.getColorMask();
+        // Fixed: return first color (no RNG consumed)
+        List<Byte> colorList = new ArrayList<>();
+        for (Color color : colors) colorList.add(color.getColorMask());
+        if (colorList.isEmpty()) return Color.WHITE.getColorMask();
+        return colorList.get(0);
     }
 
     @Override
     public byte chooseColorAllowColorless(String message, Card card, ColorSet colors) {
-        for (Color color : colors) return color.getColorMask();
-        return Color.COLORLESS.getColorMask();
+        // Fixed: return first color (no RNG consumed)
+        List<Byte> colorList = new ArrayList<>();
+        for (Color color : colors) colorList.add(color.getColorMask());
+        if (colorList.isEmpty()) return Color.COLORLESS.getColorMask();
+        return colorList.get(0);
     }
 
     // ── Misc ──────────────────────────────────────────────────────────
 
     @Override
     public Player chooseStartingPlayer(boolean isFirstGame) {
-        // Always pick Player1 (index 0) — matches Rust which hardcodes player_order[0]
         return getGame().getPlayers().get(0);
     }
 
@@ -356,9 +383,6 @@ public class DeterministicController extends PlayerControllerAi {
     @Override
     public boolean payCostToPreventEffect(Cost cost, SpellAbility sa, boolean alreadyPaid,
             FCollectionView<Player> allPayers) {
-        // Always pay costs to prevent effects (e.g. pay 2 life for Breeding Pool to enter untapped).
-        // Matches Rust's choose_optional_trigger which always returns true.
-        // The default AI strategically refuses these costs; we override to agree deterministically.
         if (!ComputerUtilCost.canPayCost(cost, sa, player, true)) {
             return false;
         }
@@ -366,47 +390,58 @@ public class DeterministicController extends PlayerControllerAi {
         return pay.payComputerCosts(new AiCostDecision(player, sa, true));
     }
 
-    // ── Utility ───────────────────────────────────────────────────────
-
-    private CardCollection chooseFirstN(CardCollectionView items, int amount) {
-        if (items == null || items.isEmpty()) return new CardCollection();
-        CardCollection sorted = new CardCollection(items);
-        sorted.sort(Comparator.comparing(Card::getName));
-        return new CardCollection(sorted.subList(0, Math.min(amount, sorted.size())));
+    /**
+     * Check if a targeted spell has at least one valid target.
+     * Does NOT consume RNG — used during candidate evaluation to match
+     * Rust's has_candidates_in_chain filtering.
+     */
+    private boolean hasDeterministicTargets(SpellAbility sa) {
+        for (Player p : getGame().getPlayers()) {
+            if (sa.canTarget(p)) return true;
+        }
+        for (Player p : getGame().getPlayers()) {
+            for (Card c : p.getCardsIn(ZoneType.Battlefield)) {
+                if (sa.canTarget(c)) return true;
+            }
+        }
+        return false;
     }
 
     /**
      * Set up deterministic targets for a spell ability.
-     * Prefers targeting an opponent player (for burn spells etc.),
-     * falls back to self, then to alphabetical card targets.
+     * Sorts all candidate targets alphabetically, then picks randomly.
      */
     private void setupDeterministicTargets(SpellAbility sa) {
         sa.resetTargets();
-        // Prefer opponent player
+
+        // Build unified candidate list: players first (by name), then cards (by name)
+        List<GameEntity> candidates = new ArrayList<>();
         for (Player p : getGame().getPlayers()) {
-            if (!p.equals(player) && sa.canTarget(p)) {
-                sa.getTargets().add(p);
-                if (sa.isTargetNumberValid()) return;
+            if (sa.canTarget(p)) {
+                candidates.add(p);
             }
         }
-        // Fall back to self
-        if (!sa.isTargetNumberValid() && sa.canTarget(player)) {
-            sa.getTargets().add(player);
-            if (sa.isTargetNumberValid()) return;
-        }
-        // Fall back to cards on the battlefield (sorted alphabetically)
-        if (!sa.isTargetNumberValid()) {
-            CardCollection allCards = new CardCollection();
-            for (Player p : getGame().getPlayers()) {
-                allCards.addAll(p.getCardsIn(ZoneType.Battlefield));
-            }
-            allCards.sort(Comparator.comparing(Card::getName));
-            for (Card c : allCards) {
+        // Sort players by name
+        candidates.sort(Comparator.comparing(GameEntity::getName));
+
+        List<Card> cardCandidates = new ArrayList<>();
+        for (Player p : getGame().getPlayers()) {
+            for (Card c : p.getCardsIn(ZoneType.Battlefield)) {
                 if (sa.canTarget(c)) {
-                    sa.getTargets().add(c);
-                    if (sa.isTargetNumberValid()) return;
+                    cardCandidates.add(c);
                 }
             }
         }
+        cardCandidates.sort(Comparator.comparing(Card::getName));
+
+        // Players first, then cards — matching Rust's choose_target_any ordering
+        List<GameEntity> allCandidates = new ArrayList<>(candidates);
+        allCandidates.addAll(cardCandidates);
+
+        if (allCandidates.isEmpty()) return;
+
+        // Pick random target
+        int idx = rng.nextInt(allCandidates.size());
+        sa.getTargets().add(allCandidates.get(idx));
     }
 }

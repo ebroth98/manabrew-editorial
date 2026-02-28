@@ -1,18 +1,25 @@
-//! A fully deterministic [`PlayerAgent`] for reproducible game traces.
+//! A deterministic-but-random [`PlayerAgent`] for reproducible game traces.
 //!
-//! Given the same options, always returns the same choice. Uses card names for
-//! ordering (not internal IDs) so the same logic can be replicated in the Java
-//! harness.
+//! Uses a hybrid RNG strategy to stay in lockstep with the Java harness:
+//! - **RNG for 4 core decisions**: play choice, attackers, blockers, targeting.
+//! - **Fixed values for everything else**: scry, surveil, discard, modes, etc.
+//!   use trait defaults (first option, keep all on top, always accept).
+//!
+//! This avoids RNG desync caused by Java and Rust calling non-core callbacks
+//! (confirmAction, arrangeForScry, etc.) at different times or frequencies.
+//! Both engines consume the RNG in the same order for the core decisions,
+//! producing identical game traces for the same seed.
 //!
 //! Strategy:
-//! - Always keep opening hand
-//! - Play first playable card (alphabetical by name), then pass
-//! - Attack with all eligible creatures (sorted by name)
-//! - Don't block
-//! - Target opponent for player targets; first alphabetical card for card targets
-//! - Discard first N alphabetically
-//! - Scry: keep all on top; Surveil: mill none
-//! - Pick first N modes; always accept optional triggers
+//! - Always keep opening hand (mulligan changes state too much)
+//! - Main phase: randomly pick from playable cards (lands first) or pass
+//! - Attackers: per-creature coin flip (rng.nextInt(2))
+//! - Blockers: per-blocker random attacker assignment
+//! - Targets: random from sorted valid options
+//! - All other decisions: trait defaults (first option, no RNG consumed)
+
+use std::cell::RefCell;
+use std::rc::Rc;
 
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::game::GameState;
@@ -20,7 +27,9 @@ use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_foundation::PhaseType;
 
-/// A deterministic agent that makes reproducible choices for parity testing.
+use crate::java_random::JavaRandom;
+
+/// A hybrid deterministic agent: RNG for core decisions, fixed values for the rest.
 pub struct DeterministicAgent {
     /// The player this agent controls.
     player_id: PlayerId,
@@ -30,6 +39,8 @@ pub struct DeterministicAgent {
     pub verbose: bool,
     /// Cached game state reference for name lookups.
     last_game_snapshot: Option<GameSnapshot>,
+    /// Shared RNG — same instance used for deck shuffling and all agent decisions.
+    rng: Rc<RefCell<JavaRandom>>,
     /// Current phase — used to only play spells during main phases.
     current_phase: Option<PhaseType>,
 }
@@ -38,15 +49,19 @@ pub struct DeterministicAgent {
 struct GameSnapshot {
     card_names: Vec<(CardId, String)>,
     card_is_land: Vec<(CardId, bool)>,
+    active_player: PlayerId,
+    phase: PhaseType,
+    stack_empty: bool,
 }
 
 impl DeterministicAgent {
-    pub fn new(player_id: PlayerId, verbose: bool) -> Self {
+    pub fn new(player_id: PlayerId, verbose: bool, rng: Rc<RefCell<JavaRandom>>) -> Self {
         Self {
             player_id,
             log: Vec::new(),
             verbose,
             last_game_snapshot: None,
+            rng,
             current_phase: None,
         }
     }
@@ -83,6 +98,14 @@ impl DeterministicAgent {
         sorted.into_iter().map(|(id, _)| id).collect()
     }
 
+    /// Pick a random index in [0, len) from the shared RNG.
+    fn pick(&self, len: usize) -> usize {
+        if len <= 1 {
+            return 0;
+        }
+        self.rng.borrow_mut().next_int(len as i32) as usize
+    }
+
     fn log_decision(&self, msg: &str) {
         if self.verbose {
             eprintln!("[parity-agent p{}] {}", self.player_id.0, msg);
@@ -92,7 +115,7 @@ impl DeterministicAgent {
 
 impl PlayerAgent for DeterministicAgent {
     fn snapshot_state(&mut self, game: &GameState, _mana_pools: &[ManaPool]) {
-        // Cache card names and land status for deterministic ordering
+        // Cache card names, land status, and turn info for deterministic ordering
         let card_names: Vec<(CardId, String)> = game
             .cards
             .iter()
@@ -103,12 +126,15 @@ impl PlayerAgent for DeterministicAgent {
         self.last_game_snapshot = Some(GameSnapshot {
             card_names,
             card_is_land,
+            active_player: game.active_player(),
+            phase: game.turn.phase,
+            stack_empty: game.stack.is_empty(),
         });
     }
 
     fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
         self.log_decision("Mulligan: KEEP");
-        true // always keep
+        true // always keep — mulligans change hand size and complicate parity
     }
 
     fn choose_action(
@@ -130,9 +156,24 @@ impl PlayerAgent for DeterministicAgent {
             return MainPhaseAction::Pass;
         }
 
-        // Partition playable into lands and spells, sort each alphabetically.
-        // Play lands first (matching Java's DeterministicController which
-        // explicitly checks land plays before spell plays).
+        // Only make RNG-based play decisions during the active player's
+        // sorcery-speed window (main phase, our turn, stack empty).
+        // This matches Java, where chooseSpellAbilityToPlay() is only called
+        // for the active player during the main phase. Priority responses
+        // (instants during opponent's turn or combat) go through the AI
+        // framework in Java and never touch our shared RNG.
+        if let Some(ref snap) = self.last_game_snapshot {
+            let is_sorcery_speed = snap.active_player == self.player_id
+                && matches!(snap.phase, PhaseType::Main1 | PhaseType::Main2)
+                && snap.stack_empty;
+            if !is_sorcery_speed {
+                self.log_decision("Main phase: PASS (non-sorcery-speed priority)");
+                return MainPhaseAction::Pass;
+            }
+        }
+
+        // Partition into lands and spells, sort each alphabetically.
+        // Lands come first in the combined list.
         let lands: Vec<CardId> = playable
             .iter()
             .copied()
@@ -147,62 +188,98 @@ impl PlayerAgent for DeterministicAgent {
         let sorted_lands = self.sort_by_name(&lands);
         let sorted_spells = self.sort_by_name(&spells);
 
-        let first = if let Some(&land) = sorted_lands.first() {
-            land
-        } else if let Some(&spell) = sorted_spells.first() {
-            spell
-        } else {
-            self.log_decision("Main phase: PASS (nothing playable)");
-            return MainPhaseAction::Pass;
-        };
+        let all: Vec<CardId> = sorted_lands
+            .into_iter()
+            .chain(sorted_spells)
+            .collect();
 
-        let first_name = self.card_name(first);
-        self.log_decision(&format!("Main phase: PLAY {}", first_name));
-        MainPhaseAction::Play(first)
+        // Pick randomly: 0..count plays a card, count = pass
+        let idx = self.rng.borrow_mut().next_int((all.len() + 1) as i32) as usize;
+        if idx >= all.len() {
+            self.log_decision("Main phase: PASS (random)");
+            return MainPhaseAction::Pass;
+        }
+
+        let chosen = all[idx];
+        let name = self.card_name(chosen);
+        self.log_decision(&format!("Main phase: PLAY {} (random idx={})", name, idx));
+        MainPhaseAction::Play(chosen)
     }
 
     fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId]) -> Vec<CardId> {
-        // Attack with all eligible creatures, sorted by name
+        // Sort eligible creatures alphabetically, then per-creature coin flip
         let sorted = self.sort_by_name(available);
-        if self.verbose && !sorted.is_empty() {
-            let names: Vec<String> = sorted.iter().map(|&id| self.card_name(id)).collect();
-            self.log_decision(&format!("Attackers: {}", names.join(", ")));
+        let mut attackers = Vec::new();
+        for &id in &sorted {
+            if self.rng.borrow_mut().next_int(2) == 1 {
+                attackers.push(id);
+            }
         }
-        sorted
+        if self.verbose && !attackers.is_empty() {
+            let names: Vec<String> = attackers.iter().map(|&id| self.card_name(id)).collect();
+            self.log_decision(&format!("Attackers: {}", names.join(", ")));
+        } else if self.verbose {
+            self.log_decision("Attackers: NONE (random)");
+        }
+        attackers
     }
 
     fn choose_blockers(
         &mut self,
         _player: PlayerId,
-        _attackers: &[CardId],
-        _available_blockers: &[CardId],
+        attackers: &[CardId],
+        available_blockers: &[CardId],
     ) -> Vec<(CardId, CardId)> {
-        // Don't block
-        self.log_decision("Blockers: NONE");
-        Vec::new()
+        if attackers.is_empty() || available_blockers.is_empty() {
+            self.log_decision("Blockers: NONE");
+            return Vec::new();
+        }
+
+        let sorted_blockers = self.sort_by_name(available_blockers);
+        let sorted_attackers = self.sort_by_name(attackers);
+
+        // For each blocker: 0 = don't block, 1..=count = block that attacker
+        let mut pairs = Vec::new();
+        for &blocker in &sorted_blockers {
+            let choice = self.rng.borrow_mut().next_int((sorted_attackers.len() + 1) as i32) as usize;
+            if choice > 0 && choice <= sorted_attackers.len() {
+                pairs.push((blocker, sorted_attackers[choice - 1]));
+            }
+        }
+        if self.verbose && !pairs.is_empty() {
+            let desc: Vec<String> = pairs
+                .iter()
+                .map(|(b, a)| format!("{} → {}", self.card_name(*b), self.card_name(*a)))
+                .collect();
+            self.log_decision(&format!("Blockers: {}", desc.join(", ")));
+        } else if self.verbose {
+            self.log_decision("Blockers: NONE (random)");
+        }
+        pairs
     }
 
-    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
-        // Target opponent if possible, otherwise first valid
-        let target = valid
-            .iter()
-            .find(|&&p| p != player)
-            .or_else(|| valid.first())
-            .copied();
-        if let Some(t) = target {
-            self.log_decision(&format!("Target player: P{}", t.0));
+    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+        if valid.is_empty() {
+            return None;
         }
-        target
+        // Sort by player index for determinism
+        let mut sorted = valid.to_vec();
+        sorted.sort_by_key(|p| p.0);
+        let idx = self.pick(sorted.len());
+        let target = sorted[idx];
+        self.log_decision(&format!("Target player: P{}", target.0));
+        Some(target)
     }
 
     fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
-        // First alphabetically
-        let sorted = self.sort_by_name(valid);
-        let target = sorted.first().copied();
-        if let Some(t) = target {
-            self.log_decision(&format!("Target card: {}", self.card_name(t)));
+        if valid.is_empty() {
+            return None;
         }
-        target
+        let sorted = self.sort_by_name(valid);
+        let idx = self.pick(sorted.len());
+        let target = sorted[idx];
+        self.log_decision(&format!("Target card: {}", self.card_name(target)));
+        Some(target)
     }
 
     fn choose_target_card_from_zone(
@@ -216,49 +293,50 @@ impl PlayerAgent for DeterministicAgent {
 
     fn choose_target_any(
         &mut self,
-        player: PlayerId,
+        _player: PlayerId,
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
     ) -> TargetChoice {
-        // Prefer targeting opponent
-        if let Some(&pid) = valid_players.iter().find(|&&p| p != player) {
-            self.log_decision(&format!("Target any: Player P{}", pid.0));
-            return TargetChoice::Player(pid);
+        // Build unified list: players first (sorted by index), then cards (sorted by name).
+        // This matches Java's chooseSingleEntityForEffect sorting.
+        let mut sorted_players = valid_players.to_vec();
+        sorted_players.sort_by_key(|p| p.0);
+
+        let sorted_cards = self.sort_by_name(valid_cards);
+        let total = sorted_players.len() + sorted_cards.len();
+
+        if total == 0 {
+            self.log_decision("Target any: NONE");
+            return TargetChoice::None;
         }
-        if let Some(&pid) = valid_players.first() {
+
+        let idx = self.pick(total);
+        if idx < sorted_players.len() {
+            let pid = sorted_players[idx];
             self.log_decision(&format!("Target any: Player P{}", pid.0));
-            return TargetChoice::Player(pid);
-        }
-        // First card alphabetically
-        let sorted = self.sort_by_name(valid_cards);
-        if let Some(&cid) = sorted.first() {
+            TargetChoice::Player(pid)
+        } else {
+            let card_idx = idx - sorted_players.len();
+            let cid = sorted_cards[card_idx];
             self.log_decision(&format!("Target any: Card {}", self.card_name(cid)));
-            return TargetChoice::Card(cid);
+            TargetChoice::Card(cid)
         }
-        self.log_decision("Target any: NONE");
-        TargetChoice::None
     }
+
+    // ── Fixed overrides that sort alphabetically (matching Java) but use no RNG ──
 
     fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
-        // First alphabetically
-        let sorted = self.sort_by_name(valid);
-        let target = sorted.first().copied();
-        if let Some(t) = target {
-            self.log_decision(&format!("Sacrifice: {}", self.card_name(t)));
+        if valid.is_empty() {
+            return None;
         }
-        target
+        let sorted = self.sort_by_name(valid);
+        Some(sorted[0])
     }
 
-    fn choose_scry(&mut self, _player: PlayerId, _cards: &[CardId]) -> Vec<CardId> {
-        // Keep all on top
-        self.log_decision("Scry: keep all on top");
-        vec![]
-    }
-
-    fn choose_surveil(&mut self, _player: PlayerId, _cards: &[CardId]) -> Vec<CardId> {
-        // Mill none
-        self.log_decision("Surveil: mill none");
-        vec![]
+    fn choose_discard(&mut self, _player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
+        let sorted = self.sort_by_name(hand);
+        let count = num.min(sorted.len());
+        sorted[..count].to_vec()
     }
 
     fn choose_dig(
@@ -268,62 +346,13 @@ impl PlayerAgent for DeterministicAgent {
         max: usize,
         _optional: bool,
     ) -> Vec<CardId> {
-        // Take first `max` alphabetically
         let sorted = self.sort_by_name(valid);
-        sorted.into_iter().take(max).collect()
-    }
-
-    fn choose_reorder_library(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
-        // Keep original order
-        cards.to_vec()
-    }
-
-    fn choose_may_shuffle(&mut self, _player: PlayerId) -> bool {
-        false
-    }
-
-    fn choose_discard(&mut self, _player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
-        // Discard first N alphabetically
-        let sorted = self.sort_by_name(hand);
-        let discarded: Vec<CardId> = sorted.into_iter().take(num).collect();
-        if self.verbose && !discarded.is_empty() {
-            let names: Vec<String> = discarded.iter().map(|&id| self.card_name(id)).collect();
-            self.log_decision(&format!("Discard: {}", names.join(", ")));
-        }
-        discarded
-    }
-
-    fn choose_target_spell(&mut self, _player: PlayerId, valid: &[u32]) -> Option<u32> {
-        valid.first().copied()
-    }
-
-    fn choose_mode(
-        &mut self,
-        _player: PlayerId,
-        descriptions: &[String],
-        min: usize,
-        _max: usize,
-        _card_name: Option<&str>,
-    ) -> Vec<usize> {
-        // Pick first N modes
-        let count = min.min(descriptions.len());
-        self.log_decision(&format!("Mode: pick first {}", count));
-        (0..count).collect()
-    }
-
-    fn choose_optional_trigger(
-        &mut self,
-        _player: PlayerId,
-        description: &str,
-        _card_name: Option<&str>,
-    ) -> bool {
-        self.log_decision(&format!("Optional trigger '{}': ACCEPT", description));
-        true
+        let count = max.min(sorted.len());
+        sorted[..count].to_vec()
     }
 
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
-        // Prefer land
-        Some(true)
+        None // fixed: no RNG consumed
     }
 
     fn notify(&mut self, message: &str) {
@@ -357,23 +386,36 @@ impl PlayerAgent for DeterministicAgent {
 mod tests {
     use super::*;
 
+    fn make_rng(seed: i64) -> Rc<RefCell<JavaRandom>> {
+        Rc::new(RefCell::new(JavaRandom::new(seed)))
+    }
+
     #[test]
     fn always_keeps_hand() {
-        let mut agent = DeterministicAgent::new(PlayerId(0), false);
+        let mut agent = DeterministicAgent::new(PlayerId(0), false, make_rng(42));
         assert!(agent.mulligan_decision(PlayerId(0), &[]));
     }
 
     #[test]
-    fn no_blockers() {
-        let mut agent = DeterministicAgent::new(PlayerId(0), false);
-        let blocks = agent.choose_blockers(PlayerId(0), &[CardId(1)], &[CardId(2)]);
-        assert!(blocks.is_empty());
+    fn random_target_player() {
+        let rng = make_rng(42);
+        let mut agent = DeterministicAgent::new(PlayerId(0), false, rng);
+        // With two valid targets, should randomly pick one
+        let target = agent.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
+        assert!(target.is_some());
     }
 
     #[test]
-    fn prefers_opponent_target() {
-        let mut agent = DeterministicAgent::new(PlayerId(0), false);
-        let target = agent.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
-        assert_eq!(target, Some(PlayerId(1)));
+    fn deterministic_across_runs() {
+        // Same seed → same decisions
+        let rng1 = make_rng(42);
+        let mut agent1 = DeterministicAgent::new(PlayerId(0), false, rng1);
+        let t1 = agent1.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
+
+        let rng2 = make_rng(42);
+        let mut agent2 = DeterministicAgent::new(PlayerId(0), false, rng2);
+        let t2 = agent2.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
+
+        assert_eq!(t1, t2);
     }
 }
