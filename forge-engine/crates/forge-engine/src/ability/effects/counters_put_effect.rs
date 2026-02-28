@@ -18,7 +18,25 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Default target: the source card
     if let Some(card_id) = sa.source {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
+            if crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                &ctx.game.cards,
+                ctx.game.card(card_id),
+                counter_type,
+            ) {
+                return;
+            }
+            if let Some(max) = crate::staticability::static_ability_max_counter::max_counter(
+                &ctx.game.cards,
+                ctx.game.card(card_id),
+                counter_type,
+            ) {
+                let current = ctx.game.card(card_id).counter_count(counter_type);
+                if current >= max {
+                    return;
+                }
+            }
             let cause_player = ctx.game.card(card_id).controller;
+
             ctx.game.card_mut(card_id).add_counter(counter_type, count);
 
             // Fire CounterAdded trigger

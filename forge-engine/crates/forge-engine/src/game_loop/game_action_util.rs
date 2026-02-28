@@ -23,6 +23,17 @@ impl GameLoop {
     ) -> Vec<CardId> {
         let mut playable = Vec::new();
         let hand = game.cards_in_zone(ZoneType::Hand, player);
+        let has_flash_permission = |card_id: CardId| {
+            let card = game.card(card_id);
+            card.type_line.is_instant()
+                || card.has_keyword("Flash")
+                || crate::staticability::static_ability_cast_with_flash::any_with_flash(
+                    &game.cards,
+                    card,
+                    player,
+                    &card.abilities,
+                )
+        };
 
         // Check Command zone for commanders (with commander tax)
         let command_zone: Vec<CardId> = game.cards_in_zone(ZoneType::Command, player).to_vec();
@@ -30,7 +41,7 @@ impl GameLoop {
         for card_id in command_zone {
             let card = game.card(card_id);
             if card.is_commander {
-                if must_be_instant && !card.has_keyword("Flash") && !card.type_line.is_instant() {
+                if must_be_instant && !has_flash_permission(card_id) {
                     continue;
                 }
                 let tax = card.commander_cast_count as i32 * 2;
@@ -46,8 +57,7 @@ impl GameLoop {
         let graveyard: Vec<CardId> = game.cards_in_zone(ZoneType::Graveyard, player).to_vec();
         for card_id in graveyard.iter().copied() {
             let card = game.card(card_id);
-            let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
-            if must_be_instant && !is_instant {
+            if must_be_instant && !has_flash_permission(card_id) {
                 continue;
             }
 
@@ -79,8 +89,7 @@ impl GameLoop {
         for card_id in exile {
             let card = game.card(card_id);
             if let Some(madness_cost_str) = card.get_madness_cost() {
-                let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
-                if must_be_instant && !is_instant {
+                if must_be_instant && !has_flash_permission(card_id) {
                     continue;
                 }
                 let madness_mc = forge_foundation::ManaCost::parse(&madness_cost_str);
@@ -99,8 +108,7 @@ impl GameLoop {
                     playable.push(card_id);
                 }
             } else {
-                let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
-                if must_be_instant && !is_instant {
+                if must_be_instant && !has_flash_permission(card_id) {
                     continue;
                 }
 
@@ -241,8 +249,7 @@ impl GameLoop {
         for card_id in graveyard {
             let card = game.card(card_id);
             if let Some((escape_mana, exile_count)) = card.get_escape_cost() {
-                let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
-                if must_be_instant && !is_instant {
+                if must_be_instant && !has_flash_permission(card_id) {
                     continue;
                 }
                 let available_mana =
@@ -267,8 +274,7 @@ impl GameLoop {
             let card = game.card(card_id);
             if card.face_down {
                 if let Some(foretell_cost_str) = card.get_foretell_cost() {
-                    let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
-                    if must_be_instant && !is_instant {
+                    if must_be_instant && !has_flash_permission(card_id) {
                         continue;
                     }
                     let available_mana =
@@ -282,8 +288,7 @@ impl GameLoop {
             } else if card.has_keyword("MadnessExiled") {
                 // Madness: exiled card that can be cast for madness cost
                 if let Some(madness_cost_str) = card.get_madness_cost() {
-                    let is_instant = card.type_line.is_instant() || card.has_keyword("Flash");
-                    if must_be_instant && !is_instant {
+                    if must_be_instant && !has_flash_permission(card_id) {
                         continue;
                     }
                     let available_mana =

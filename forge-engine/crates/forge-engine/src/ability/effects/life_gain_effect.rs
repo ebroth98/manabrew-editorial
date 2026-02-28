@@ -9,6 +9,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Defined")
         .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
+    if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_gain_life(ctx.game, target) {
+        return;
+    }
     ctx.game.player_mut(target).gain_life(amount);
 
     // Fire LifeGained trigger

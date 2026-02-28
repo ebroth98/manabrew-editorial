@@ -372,7 +372,7 @@ impl GameLoop {
         self.set_phase(game, agents, PhaseType::CombatDeclareAttackers);
         let available_attackers = combat::get_available_attackers(game, active);
 
-        let chosen_attackers = if available_attackers.is_empty() {
+        let mut chosen_attackers = if available_attackers.is_empty() {
             Vec::new()
         } else {
             agents[active.index()].snapshot_state(game, &self.mana_pools);
@@ -397,6 +397,33 @@ impl GameLoop {
             );
             picked
         };
+        // MustAttack: auto-include creatures that must attack if able.
+        for &attacker_id in &available_attackers {
+            if crate::staticability::static_ability_must_attack::must_attack(
+                &game.cards,
+                game.card(attacker_id),
+            ) && !chosen_attackers.contains(&attacker_id)
+            {
+                chosen_attackers.push(attacker_id);
+            }
+        }
+        // AttackRestrict: enforce global maximum attackers.
+        if let Some(max_attackers) =
+            crate::staticability::static_ability_attack_restrict::global_attack_restrict(&game.cards)
+        {
+            if chosen_attackers.len() > max_attackers as usize {
+                chosen_attackers.truncate(max_attackers.max(0) as usize);
+            }
+        }
+        if let Some(max_vs_defender) =
+            crate::staticability::static_ability_attack_restrict::attack_restrict_num_for_defender(
+                &game.cards, defending,
+            )
+        {
+            if chosen_attackers.len() > max_vs_defender as usize {
+                chosen_attackers.truncate(max_vs_defender.max(0) as usize);
+            }
+        }
 
         // Tap attackers (Vigilance skips tapping)
         for &attacker_id in &chosen_attackers {
@@ -468,7 +495,16 @@ impl GameLoop {
                     ),
                 );
 
-                for (blocker, attacker) in chosen_blockers {
+                let max_blockers_for_defender =
+                    crate::staticability::static_ability_block_restrict::block_restrict_num(
+                        &game.cards, defending,
+                    );
+                for (idx, (blocker, attacker)) in chosen_blockers.into_iter().enumerate() {
+                    if max_blockers_for_defender != i32::MAX
+                        && idx >= max_blockers_for_defender.max(0) as usize
+                    {
+                        break;
+                    }
                     // Validate: use comprehensive evasion check
                     if !combat::can_creature_block(game, blocker, attacker) {
                         continue; // illegal block
@@ -496,6 +532,26 @@ impl GameLoop {
                             // Remove the single blocker — illegal under Menace
                             self.combat.blockers.retain(|(_, a)| *a != attacker_id);
                         }
+                    }
+                }
+                // MustBlock: add missing mandatory blockers if possible.
+                let assigned_blockers: Vec<CardId> =
+                    self.combat.blockers.iter().map(|(b, _)| *b).collect();
+                for &blocker in &legal_blockers {
+                    if assigned_blockers.contains(&blocker) {
+                        continue;
+                    }
+                    if !crate::staticability::static_ability_must_block::blocks_each_combat_if_able(
+                        &game.cards,
+                        game.card(blocker),
+                    ) {
+                        continue;
+                    }
+                    if let Some(&attacker) = chosen_attackers
+                        .iter()
+                        .find(|&&a| combat::can_creature_block(game, blocker, a))
+                    {
+                        self.combat.declare_blocker(blocker, attacker);
                     }
                 }
 
@@ -548,7 +604,11 @@ impl GameLoop {
         if has_first_strikers && self.combat.has_attackers() {
             // First Strike Damage step
             self.set_phase(game, agents, PhaseType::CombatFirstStrikeDamage);
-            let fs_events = self.combat.resolve_damage_step(game, true);
+            let fs_unblocked_choices =
+                self.choose_assign_as_unblocked(game, agents, true);
+            let fs_events = self
+                .combat
+                .resolve_damage_step(game, true, &fs_unblocked_choices);
             self.fire_combat_damage_triggers(&fs_events);
 
             // SBA between damage steps
@@ -573,7 +633,10 @@ impl GameLoop {
 
         // Regular Combat Damage step
         self.set_phase(game, agents, PhaseType::CombatDamage);
-        let dmg_events = self.combat.resolve_damage_step(game, false);
+        let unblocked_choices = self.choose_assign_as_unblocked(game, agents, false);
+        let dmg_events = self
+            .combat
+            .resolve_damage_step(game, false, &unblocked_choices);
         self.fire_combat_damage_triggers(&dmg_events);
 
         // SBA after combat
@@ -595,6 +658,52 @@ impl GameLoop {
         self.step_with_priority(game, agents, false);
         self.combat.clear();
         game.turn.combat_block_assignments.clear();
+    }
+
+    fn choose_assign_as_unblocked(
+        &mut self,
+        game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        first_strike_only: bool,
+    ) -> std::collections::HashSet<CardId> {
+        let mut choices = std::collections::HashSet::new();
+        for &(attacker_id, _) in &self.combat.attackers {
+            if !self.combat.is_blocked(attacker_id) {
+                continue;
+            }
+            let attacker = game.card(attacker_id);
+            let has_fs = attacker.has_first_strike();
+            let has_ds = attacker.has_double_strike();
+            let deals_in_step = if first_strike_only {
+                has_fs || has_ds
+            } else {
+                !has_fs || has_ds
+            };
+            if !deals_in_step {
+                continue;
+            }
+            if !crate::staticability::static_ability_assign_combat_damage_as_unblocked::has_optional_assign_as_unblocked(
+                &game.cards,
+                attacker,
+            ) {
+                continue;
+            }
+
+            let controller = attacker.controller;
+            let desc = format!(
+                "Have {} assign combat damage as though unblocked?",
+                attacker.card_name
+            );
+            agents[controller.index()].snapshot_state(game, &self.mana_pools);
+            if agents[controller.index()].choose_optional_trigger(
+                controller,
+                &desc,
+                Some(&attacker.card_name),
+            ) {
+                choices.insert(attacker_id);
+            }
+        }
+        choices
     }
 
     pub fn step_cleanup(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
@@ -680,6 +789,19 @@ impl GameLoop {
         // Empty mana pool at end of turn (cleanup step), per Magic rules.
         self.pool_mut(active).empty();
 
+        // Remove temporary command-zone effect cards created by AB$ Effect
+        // that expire at end of turn.
+        let temp_effect_ids: Vec<CardId> = game
+            .cards
+            .iter()
+            .filter(|c| c.zone == ZoneType::Command && c.temp_effect_until_eot)
+            .map(|c| c.id)
+            .collect();
+        for effect_id in temp_effect_ids {
+            let owner = game.card(effect_id).owner;
+            game.move_card(effect_id, ZoneType::Exile, owner);
+        }
+
         // Remove damage and reset until-end-of-turn effects on all battlefield permanents
         for i in 0..game.cards.len() {
             if game.cards[i].zone == ZoneType::Battlefield {
@@ -694,7 +816,14 @@ impl GameLoop {
                 }
 
                 if game.cards[i].is_creature() {
-                    game.cards[i].damage = 0;
+                    let keep_damage =
+                        crate::staticability::static_ability_no_cleanup_damage::damage_not_removed(
+                            &game.cards,
+                            &game.cards[i],
+                        );
+                    if !keep_damage {
+                        game.cards[i].damage = 0;
+                    }
                     game.cards[i].power_modifier = 0;
                     game.cards[i].toughness_modifier = 0;
                     game.cards[i].pump_keywords.clear();

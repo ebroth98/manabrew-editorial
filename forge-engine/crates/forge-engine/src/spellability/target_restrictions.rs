@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::card::card_property;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::spellability::SpellAbility;
 
 /// What kinds of targets a spell can select.
 /// Mirrors Java's `TargetRestrictions.getValidTgts()` parsed target types.
@@ -253,13 +254,59 @@ pub fn can_be_targeted_by(
     source_controller: PlayerId,
     source_card: Option<CardId>,
 ) -> bool {
+    can_be_targeted_by_internal(game, target_id, source_controller, source_card, None)
+}
+
+pub fn can_be_targeted_by_sa(
+    game: &GameState,
+    target_id: CardId,
+    source_controller: PlayerId,
+    source_sa: &SpellAbility,
+) -> bool {
+    can_be_targeted_by_internal(
+        game,
+        target_id,
+        source_controller,
+        source_sa.source,
+        Some(source_sa),
+    )
+}
+
+fn can_be_targeted_by_internal(
+    game: &GameState,
+    target_id: CardId,
+    source_controller: PlayerId,
+    source_card: Option<CardId>,
+    source_sa: Option<&SpellAbility>,
+) -> bool {
     let target = game.card(target_id);
+    let source_card_ref = source_card.map(|id| game.card(id));
+    if crate::staticability::static_ability_cant_target::cant_target(
+        &game.cards,
+        target,
+        source_controller,
+        source_card_ref,
+        source_sa,
+    ) {
+        return false;
+    }
     // Shroud: can't be targeted by anyone
-    if target.has_shroud() {
+    let ignore_shroud = crate::staticability::static_ability_ignore_hexproof_shroud::ignore_shroud(
+        &game.cards,
+        target,
+        source_controller,
+    );
+    if target.has_shroud() && !ignore_shroud {
         return false;
     }
     // Hexproof: can't be targeted by opponents
-    if target.has_hexproof() && target.controller != source_controller {
+    let ignore_hexproof =
+        crate::staticability::static_ability_ignore_hexproof_shroud::ignore_hexproof(
+            &game.cards,
+            target,
+            source_controller,
+        );
+    if target.has_hexproof() && target.controller != source_controller && !ignore_hexproof {
         return false;
     }
     if let Some(src_id) = source_card {
@@ -268,14 +315,11 @@ pub fn can_be_targeted_by(
         if target.controller != source_controller {
             for color in &["white", "blue", "black", "red", "green"] {
                 if target.has_hexproof_from(color) {
-                    let has_color = match *color {
-                        "white" => src.color.has_white(),
-                        "blue" => src.color.has_blue(),
-                        "black" => src.color.has_black(),
-                        "red" => src.color.has_red(),
-                        "green" => src.color.has_green(),
-                        _ => false,
-                    };
+                    let has_color = crate::staticability::static_ability_colorless_damage_source::source_has_color(
+                        &game.cards,
+                        src,
+                        color,
+                    );
                     if has_color {
                         return false;
                     }
@@ -283,7 +327,9 @@ pub fn can_be_targeted_by(
             }
         }
         // Protection: can't be targeted by matching sources
-        if target.is_protected_from(src) {
+        if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+            &game.cards, target, src,
+        ) {
             return false;
         }
     }

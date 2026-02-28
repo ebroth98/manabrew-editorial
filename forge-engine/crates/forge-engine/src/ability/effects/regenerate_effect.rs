@@ -21,6 +21,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if let Some(target_card) = sa.target_chosen.target_card {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield
             && ctx.game.card(target_card).is_creature()
+            && !crate::staticability::static_ability_cant_regenerate::cant_regenerate(
+                &ctx.game.cards,
+                ctx.game.card(target_card),
+            )
         {
             ctx.game.card_mut(target_card).regeneration_shields += 1;
         }
@@ -31,6 +35,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if let Some(source) = sa.source {
         if ctx.game.card(source).zone == ZoneType::Battlefield
             && ctx.game.card(source).is_creature()
+            && !crate::staticability::static_ability_cant_regenerate::cant_regenerate(
+                &ctx.game.cards,
+                ctx.game.card(source),
+            )
         {
             ctx.game.card_mut(source).regeneration_shields += 1;
         }

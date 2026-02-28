@@ -176,6 +176,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             color: "text-cyan-500".into(),
         },
         PresetDeckInfo {
+            id: "staticability_test".into(),
+            label: "StaticAbility Test".into(),
+            desc: "Focused static-ability coverage deck for critical + high-priority static modes (CantTarget, CantAttach, MustAttack/Block, Panharmonicon, life/draw/sac/counter locks, flash/restrict/legend/targeting/combat-damage variants).".into(),
+            color: "text-orange-500".into(),
+        },
+        PresetDeckInfo {
             id: "pain_lands".into(),
             label: "Pain Lands".into(),
             desc: "Yavimaya Coast — multi-ability mana (Combo G/U + colorless) with SubAbility$ damage".into(),
@@ -236,6 +242,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "extended_cost_test"
             | "critical_effects"
             | "high_priority_effects"
+            | "staticability_test"
             | "pain_lands"
             | "etb_tapped_lands"
             | "dual_lands"
@@ -342,6 +349,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
             build_named_deck(game, p0, HIGH_PRIORITY_EFFECTS);
             build_named_deck(game, p1, GREEN_STOMPY);
         }
+        "staticability_test" => {
+            build_named_deck(game, p0, STATICABILITY_TEST);
+            build_named_deck(game, p1, GREEN_STOMPY);
+        }
         "pain_lands" => {
             build_named_deck(game, p0, PAIN_LANDS);
             build_named_deck(game, p1, RED_BURN);
@@ -397,6 +408,7 @@ pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner
         "extended_cost_test" => build_named_deck(game, owner, EXTENDED_COST_TEST),
         "critical_effects" => build_named_deck(game, owner, CRITICAL_EFFECTS),
         "high_priority_effects" => build_named_deck(game, owner, HIGH_PRIORITY_EFFECTS),
+        "staticability_test" => build_named_deck(game, owner, STATICABILITY_TEST),
         "pain_lands" => build_named_deck(game, owner, PAIN_LANDS),
         "etb_tapped_lands" => build_named_deck(game, owner, ETB_TAPPED_LANDS),
         "dual_lands" => build_named_deck(game, owner, DUAL_LANDS),
@@ -1078,6 +1090,58 @@ const COMPREHENSIVE_TEST: &[(&str, usize, &str)] = &[
     // ── Static anthems (2) ─────────────────────────────────────────────
     ("Glorious Anthem", 1, "m14"),   // +1/+1 to all your creatures
     ("Honor of the Pure", 1, "m11"), // +1/+1 to white creatures
+];
+
+/// Static-ability focused test deck for ticket coverage.
+/// Includes cards that exercise each of the implemented static ability modes
+/// (critical + high-priority list from features.md 23.6).
+const STATICABILITY_TEST: &[(&str, usize, &str)] = &[
+    // 5-color mana base to enable broad static cards.
+    ("Plains", 5, "akh"),
+    ("Island", 5, "akh"),
+    ("Swamp", 4, "akh"),
+    ("Mountain", 4, "akh"),
+    ("Forest", 4, "akh"),
+
+    // Critical modes
+    ("Underworld Cerberus", 1, ""), // CantTarget
+    ("Konda's Banner", 1, ""), // CantAttach
+    ("Juggernaut", 1, ""), // MustAttack
+    ("Watchdog", 1, ""), // MustBlock
+    ("Panharmonicon", 1, ""), // Panharmonicon
+    ("Platinum Emperion", 1, ""), // CantGainLosePayLife (CantChangeLife)
+    ("Maralen of the Mornsong", 1, ""), // CantDraw
+    ("Yasharn, Implacable Earth", 1, ""), // CantSacrifice
+    ("Incinerate", 1, ""), // CantRegenerate
+    ("Hushbringer", 1, ""), // DisableTriggers
+    ("Solemnity", 1, ""), // CantPutCounter
+
+    // High-priority modes
+    ("Winding Canyons", 1, ""), // CastWithFlash
+    ("Silent Arbiter", 1, ""), // BlockRestrict
+    ("Crawlspace", 1, ""), // AttackRestrict
+    ("Glaring Spotlight", 1, ""), // IgnoreHexproof
+    ("Autumn Willow", 1, ""), // IgnoreShroud
+    ("Brothers Yamazaki", 1, ""), // IgnoreLegendRule
+    ("Standard Bearer", 1, ""), // MustTarget
+    ("Wolf Pack", 1, ""), // AssignCombatDamageAsUnblocked
+    ("Pygmy Hippo", 1, ""), // AssignNoCombatDamage
+    ("Walking Bulwark", 1, ""), // CombatDamageToughness
+    ("Patient Zero", 1, ""), // NoCleanupDamage
+    ("Phyrexian Unlife", 1, ""), // InfectDamage
+    ("Everlasting Torment", 1, ""), // WitherDamage
+    ("Ghostly Flame", 1, ""), // ColorlessDamageSource
+    ("Skullbriar, the Walking Grave", 1, ""), // CountersRemain
+    ("Rasputin Dreamweaver", 1, ""), // MaxCounter
+
+    // Support cards to keep games playable and produce interactions.
+    ("Lightning Bolt", 2, "m11"),
+    ("Shock", 2, "m21"),
+    ("Unsummon", 2, "m14"),
+    ("Doom Blade", 2, "m14"),
+    ("Raise the Alarm", 2, "m15"),
+    ("Typhoid Rats", 2, "isd"),
+    ("Vampire Nighthawk", 2, "m13"),
 ];
 
 /// All AI-eligible deck lists, used for random opponent selection.

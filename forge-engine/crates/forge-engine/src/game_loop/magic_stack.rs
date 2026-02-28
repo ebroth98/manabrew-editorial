@@ -200,6 +200,7 @@ impl GameLoop {
                             controller: player,
                             source_card: card_id,
                             target_card: Some(card_id),
+                            remembered_amount: 0,
                         },
                     );
                 }
@@ -222,6 +223,7 @@ impl GameLoop {
                             controller: player,
                             source_card: card_id,
                             target_card: Some(card_id),
+                            remembered_amount: 0,
                         },
                     );
                 }
@@ -265,6 +267,7 @@ impl GameLoop {
                             controller: player,
                             source_card: card_id,
                             target_card: Some(card_id),
+                            remembered_amount: 0,
                         },
                     );
                 }
@@ -303,6 +306,7 @@ impl GameLoop {
                                 controller: player,
                                 source_card: card_id,
                                 target_card: Some(card_id),
+                                remembered_amount: 0,
                             },
                         );
                         ZoneType::Exile

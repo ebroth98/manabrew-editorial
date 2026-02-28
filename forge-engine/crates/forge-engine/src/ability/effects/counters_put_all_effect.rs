@@ -58,13 +58,32 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     for card_id in targets {
         if ctx.game.card(card_id).zone == zone {
-            ctx.game.card_mut(card_id).add_counter(counter_type, count);
+            if crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                &ctx.game.cards,
+                ctx.game.card(card_id),
+                counter_type,
+            ) {
+                continue;
+            }
+            let add_count = if let Some(max) = crate::staticability::static_ability_max_counter::max_counter(
+                &ctx.game.cards,
+                ctx.game.card(card_id),
+                counter_type,
+            ) {
+                (max - ctx.game.card(card_id).counter_count(counter_type)).clamp(0, count)
+            } else {
+                count
+            };
+            if add_count <= 0 {
+                continue;
+            }
+            ctx.game.card_mut(card_id).add_counter(counter_type, add_count);
             ctx.trigger_handler.run_trigger(
                 TriggerType::CounterAdded,
                 RunParams {
                     card: Some(card_id),
                     counter_type: Some(format!("{:?}", counter_type)),
-                    counter_amount: Some(count),
+                    counter_amount: Some(add_count),
                     ..Default::default()
                 },
                 false,

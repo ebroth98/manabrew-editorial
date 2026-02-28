@@ -33,6 +33,8 @@ pub struct DelayedTrigger {
     /// Optional target card for the delayed trigger (e.g. the creature to bounce for Dash
     /// or sacrifice for Blitz at end of turn).
     pub target_card: Option<CardId>,
+    /// Sum of integer values remembered by the delayed trigger at creation.
+    pub remembered_amount: i32,
 }
 
 /// A triggered ability ready to be placed on the stack, with optional metadata.
@@ -98,6 +100,14 @@ impl TriggerHandler {
                 }
                 let trigger = &card.triggers[active.trigger_index];
                 let host_controller = card.controller;
+                if crate::staticability::static_ability_disable_triggers::is_disabled(
+                    game,
+                    active.card_id,
+                    trigger,
+                    &event.params,
+                ) {
+                    continue;
+                }
 
                 if self.can_run_trigger(
                     game,
@@ -136,6 +146,35 @@ impl TriggerHandler {
                         description: trigger.description.clone(),
                     };
                     entries.push((pending, host_controller));
+                    let extra = crate::staticability::static_ability_panharmonicon::extra_triggers(
+                        game,
+                        active.card_id,
+                        trigger,
+                        &event.params,
+                    );
+                    for _ in 0..extra {
+                        let mut sa2 =
+                            build_spell_ability(game, active.card_id, &svar_text, host_controller);
+                        sa2.is_trigger = true;
+                        sa2.trigger_source = Some(active.card_id);
+                        sa2.trigger_index = Some(active.trigger_index);
+                        let extra_entry = StackEntry {
+                            id: 0,
+                            spell_ability: sa2,
+                            is_creature_spell: false,
+                            is_permanent_spell: false,
+                            cast_from_zone: None,
+                        };
+                        entries.push((
+                            PendingTrigger {
+                                entry: extra_entry,
+                                optional: trigger.optional,
+                                decider: host_controller,
+                                description: trigger.description.clone(),
+                            },
+                            host_controller,
+                        ));
+                    }
                 }
             }
 
@@ -161,6 +200,7 @@ impl TriggerHandler {
                 );
                 sa.is_trigger = true;
                 sa.trigger_source = Some(delayed.source_card);
+                sa.trigger_remembered_amount = delayed.remembered_amount;
 
                 let entry = StackEntry {
                     id: 0,

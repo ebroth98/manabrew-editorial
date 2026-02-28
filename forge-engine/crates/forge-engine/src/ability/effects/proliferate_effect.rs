@@ -61,6 +61,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .collect();
 
         for ct in counter_types {
+            if crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                &ctx.game.cards,
+                ctx.game.card(cid),
+                ct,
+            ) {
+                continue;
+            }
+            if let Some(max) = crate::staticability::static_ability_max_counter::max_counter(
+                &ctx.game.cards,
+                ctx.game.card(cid),
+                ct,
+            ) {
+                if ctx.game.card(cid).counter_count(ct) >= max {
+                    continue;
+                }
+            }
             ctx.game.card_mut(cid).add_counter(ct, 1);
             ctx.trigger_handler.run_trigger(
                 TriggerType::CounterAdded,

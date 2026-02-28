@@ -48,9 +48,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Check source card for Infect/Wither keywords
     let source = sa.source;
-    let (source_has_infect, source_has_wither) = if let Some(src_id) = source {
+    let (source_has_infect_keyword, source_has_wither) = if let Some(src_id) = source {
         let src = ctx.game.card(src_id);
-        (src.has_infect(), src.has_wither())
+        (
+            src.has_infect(),
+            src.has_wither()
+                || crate::staticability::static_ability_wither_damage::is_wither_damage(
+                    &ctx.game.cards,
+                    src,
+                ),
+        )
     } else {
         (false, false)
     };
@@ -61,20 +68,26 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
             // Protection: prevents all damage from matching sources
             if let Some(src_id) = source {
-                if ctx
-                    .game
-                    .card(card_id)
-                    .is_protected_from(ctx.game.card(src_id))
-                {
+                if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+                    &ctx.game.cards,
+                    ctx.game.card(card_id),
+                    ctx.game.card(src_id),
+                ) {
                     continue;
                 }
             }
 
-            if source_has_infect || source_has_wither {
+            if source_has_infect_keyword || source_has_wither {
                 // Infect/Wither: damage to creatures as -1/-1 counters
-                ctx.game
-                    .card_mut(card_id)
-                    .add_counter(crate::card::CounterType::M1M1, num_dmg);
+                if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                    &ctx.game.cards,
+                    ctx.game.card(card_id),
+                    crate::card::CounterType::M1M1,
+                ) {
+                    ctx.game
+                        .card_mut(card_id)
+                        .add_counter(crate::card::CounterType::M1M1, num_dmg);
+                }
             } else {
                 ctx.game.deal_damage_to_card(card_id, num_dmg);
             }
@@ -97,8 +110,26 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Deal damage to each player if ValidPlayers$ is set
     if !valid_players.is_empty() {
         for pid in player_ids {
+            let source_has_infect = if let Some(src_id) = source {
+                    let src = ctx.game.card(src_id);
+                    source_has_infect_keyword
+                        || crate::staticability::static_ability_infect_damage::is_infect_damage(
+                            ctx.game,
+                            &ctx.game.cards,
+                            pid,
+                            src.controller,
+                    )
+            } else {
+                false
+            };
             if source_has_infect {
-                ctx.game.player_mut(pid).poison_counters += num_dmg;
+                if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+                    &ctx.game.cards,
+                    pid,
+                    crate::card::CounterType::Poison,
+                ) {
+                    ctx.game.player_mut(pid).poison_counters += num_dmg;
+                }
             } else {
                 ctx.game.deal_damage_to_player(pid, num_dmg);
             }

@@ -128,6 +128,14 @@ impl GameLoop {
                     self.mana_pools[player.index()].try_pay(mana_cost);
                 }
                 CostPart::PayLife(amount) => {
+                    if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
+                        game,
+                        player,
+                        true,
+                        None,
+                    ) {
+                        continue;
+                    }
                     game.player_mut(player).lose_life(*amount);
                     // Fire LifeLost trigger
                     self.trigger_handler.run_trigger(
@@ -218,6 +226,14 @@ impl GameLoop {
                 // Mana is already paid by play_card's main mana payment flow
                 CostPart::Mana(_) | CostPart::Tap => {}
                 CostPart::PayLife(amount) => {
+                    if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
+                        game,
+                        player,
+                        true,
+                        None,
+                    ) {
+                        continue;
+                    }
                     game.player_mut(player).lose_life(*amount);
                     // Fire LifeLost trigger
                     self.trigger_handler.run_trigger(
@@ -262,6 +278,14 @@ impl GameLoop {
                 break;
             }
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                if crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
+                    &game.cards,
+                    game.card(chosen),
+                    None,
+                    true,
+                ) {
+                    continue;
+                }
                 let owner = game.card(chosen).owner;
                 // Fire Sacrificed trigger before moving
                 self.trigger_handler.run_trigger(

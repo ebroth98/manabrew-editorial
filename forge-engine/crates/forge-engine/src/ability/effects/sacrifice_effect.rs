@@ -60,6 +60,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         if let Some(card_id) = card_to_sacrifice {
             if ctx.game.card(card_id).zone == ZoneType::Battlefield {
+                if crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
+                    &ctx.game.cards,
+                    ctx.game.card(card_id),
+                    Some(sa),
+                    false,
+                ) {
+                    continue;
+                }
                 let owner = ctx.game.card(card_id).owner;
                 // Fire Sacrificed trigger
                 ctx.trigger_handler.run_trigger(

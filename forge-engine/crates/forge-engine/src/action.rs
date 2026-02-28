@@ -25,12 +25,36 @@ impl GameState {
         let src_zone = card.zone;
         let src_owner = card.controller;
 
+        let host_left_battlefield = src_zone == ZoneType::Battlefield && dest_zone != ZoneType::Battlefield;
+        let forget_effects: Vec<CardId> = self
+            .cards
+            .iter()
+            .filter(|c| {
+                c.zone == ZoneType::Command
+                    && c.forget_on_moved_origin == Some(src_zone)
+                    && c.remembered_cards.contains(&card_id)
+            })
+            .map(|c| c.id)
+            .collect();
+
         // Tokens and copy-tokens cease to exist when leaving the battlefield (CR 110.5g).
         // Set zone to None (limbo) and remove from source zone without adding to destination.
         if card.is_token && dest_zone != ZoneType::Battlefield {
+            let mut exile_effects = Vec::new();
+            for eff_id in forget_effects.iter().copied() {
+                let eff = &mut self.cards[eff_id.index()];
+                eff.remembered_cards.retain(|&rid| rid != card_id);
+                if eff.exile_when_no_remembered && eff.remembered_cards.is_empty() {
+                    exile_effects.push(eff_id);
+                }
+            }
             self.cards[card_id.index()].zone = ZoneType::None;
             if src_zone != ZoneType::None {
                 self.zone_mut(src_zone, src_owner).remove(card_id);
+            }
+            for eff_id in exile_effects {
+                let owner = self.card(eff_id).owner;
+                self.move_card(eff_id, ZoneType::Exile, owner);
             }
             return;
         }
@@ -65,6 +89,12 @@ impl GameState {
                 self.detach(card_id);
 
                 // Reset battlefield state when leaving (including static modifiers).
+                let keep_counters =
+                    crate::staticability::static_ability_counters_remain::counters_remain(
+                        &self.cards,
+                        &self.cards[card_id.index()],
+                        dest_zone,
+                    );
                 let card = &mut self.cards[card_id.index()];
                 card.tapped = false;
                 card.damage = 0;
@@ -79,6 +109,9 @@ impl GameState {
                 card.cant_block_static = false;
                 card.summoning_sick = true;
                 card.controller = card.owner;
+                if !keep_counters {
+                    card.counters.clear();
+                }
             }
             ZoneType::Command => {
                 // Detach any attachments before resetting state.
@@ -90,6 +123,12 @@ impl GameState {
                 self.detach(card_id);
 
                 // Commander returning to command zone: reset battlefield state.
+                let keep_counters =
+                    crate::staticability::static_ability_counters_remain::counters_remain(
+                        &self.cards,
+                        &self.cards[card_id.index()],
+                        dest_zone,
+                    );
                 let card = &mut self.cards[card_id.index()];
                 card.tapped = false;
                 card.damage = 0;
@@ -104,12 +143,44 @@ impl GameState {
                 card.cant_block_static = false;
                 card.summoning_sick = true;
                 card.controller = card.owner;
+                if !keep_counters {
+                    card.counters.clear();
+                }
             }
             _ => {}
         }
 
         // Add to destination zone
         self.zone_mut(dest_zone, dest_owner).add(card_id);
+
+        // Forget remembered objects for command effects with ForgetOnMoved.
+        let mut exile_effects = Vec::new();
+        for eff_id in forget_effects {
+            let eff = &mut self.cards[eff_id.index()];
+            eff.remembered_cards.retain(|&rid| rid != card_id);
+            if eff.exile_when_no_remembered && eff.remembered_cards.is_empty() {
+                exile_effects.push(eff_id);
+            }
+        }
+        for eff_id in exile_effects {
+            let owner = self.card(eff_id).owner;
+            self.move_card(eff_id, ZoneType::Exile, owner);
+        }
+
+        // Expire temporary effect cards linked to this host leaving play
+        // (Duration$ UntilHostLeavesPlay / UntilHostLeavesPlayOrEOT).
+        if host_left_battlefield {
+            let linked_effects: Vec<CardId> = self
+                .cards
+                .iter()
+                .filter(|c| c.zone == ZoneType::Command && c.temp_effect_host == Some(card_id))
+                .map(|c| c.id)
+                .collect();
+            for eff_id in linked_effects {
+                let owner = self.card(eff_id).owner;
+                self.move_card(eff_id, ZoneType::Exile, owner);
+            }
+        }
     }
 
     /// Deal damage to a card (creature).
@@ -143,6 +214,9 @@ impl GameState {
     /// Mirrors Java `GameAction.addDamage()` calling `ReplacementHandler.run()`.
     pub fn deal_damage_to_player(&mut self, target: PlayerId, amount: i32) {
         if amount <= 0 {
+            return;
+        }
+        if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(self, target) {
             return;
         }
         let mut event = ReplacementEvent::DamageToPlayer {
@@ -247,6 +321,38 @@ impl GameState {
             }
         }
 
+        // Legend rule: for each player, if they control multiple legendary
+        // permanents with the same name, keep one and move the rest to graveyard.
+        // IgnoreLegendRule statics exempt matching cards.
+        for &pid in &self.player_order.clone() {
+            let battlefield = self.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
+            let mut by_name: std::collections::BTreeMap<String, Vec<CardId>> =
+                std::collections::BTreeMap::new();
+            for cid in battlefield {
+                let c = self.card(cid);
+                if !c.type_line.is_legendary() {
+                    continue;
+                }
+                if crate::staticability::static_ability_ignore_legend_rule::ignore_legend_rule(
+                    &self.cards,
+                    c,
+                ) {
+                    continue;
+                }
+                by_name.entry(c.card_name.clone()).or_default().push(cid);
+            }
+            for (_name, ids) in by_name {
+                if ids.len() <= 1 {
+                    continue;
+                }
+                for cid in ids.into_iter().skip(1) {
+                    let owner = self.card(cid).owner;
+                    self.move_card(cid, ZoneType::Graveyard, owner);
+                    any_changes = true;
+                }
+            }
+        }
+
         // Check game over
         let alive = self.alive_players();
         if alive.len() <= 1 {
@@ -275,6 +381,9 @@ impl GameState {
     ///
     /// Mirrors Java `GameAction.draw()` calling `ReplacementHandler.run(Draw, …)`.
     pub fn draw_card(&mut self, player: PlayerId) -> Option<CardId> {
+        if crate::staticability::static_ability_cant_draw::can_draw_amount(self, player, 1) <= 0 {
+            return None;
+        }
         // Run Draw replacement effects.
         let mut event = ReplacementEvent::Draw { player };
         let result = apply_replacements(self, &mut event);

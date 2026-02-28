@@ -105,7 +105,7 @@
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `AbandonEffect.java` | Abandon a card | Not implemented |
-| `ActivateAbilityEffect.java` | Activate an ability on a card | Not implemented |
+| `ActivateAbilityEffect.java` | Activate an ability on a card | **Partial** — `activate_ability_effect.rs`: resolves common `ManaAbility$ True` path by activating one mana ability on each matching permanent (used by Pygmy Hippo) |
 | `AddPhaseEffect.java` | Add extra phase to turn | **Implemented** — `add_phase_effect.rs`: `ExtraPhase$ Combat`, `Amount$`; increments `game.extra_combat_phases`; game loop inserts extra combat cycles |
 | `AddTurnEffect.java` | Add extra turn | **Implemented** — `add_turn_effect.rs`: `Defined$` player, `NumTurns$` (default 1), `SkipUntap$`; pushes `ExtraTurn` struct onto queue; `AdvanceTurn` pops and applies skip_untap flag |
 | `AmassEffect.java` | Amass N (create/grow army token) | Not implemented |
@@ -146,14 +146,15 @@
 | `DamagePreventEffect.java` | Prevent damage | **Implemented** — `prevent_damage_effect.rs`: `Amount$` shields on target creature or player; `Defined$` (Self/Targeted/You/Opponent); decremented when damage dealt |
 | `DamageResolveEffect.java` | Resolve queued damage | Not implemented |
 | `DayTimeEffect.java` | Change day/night | Not implemented |
-| `DelayedTriggerEffect.java` | Create delayed trigger | Not implemented |
+| `DelayedTriggerEffect.java` | Create delayed trigger | **Partial** — `delayed_trigger_effect.rs`: parses/registers delayed triggers (`Mode$ ...`, `Execute$ ...`), supports remembered numeric payload (`RememberNumber$` / `RememberSVarAmount$`) |
 | `DestroyEffect.java` | Destroy target permanent | **Implemented** (`destroy_effect.rs`: moves target battlefield permanent to graveyard) |
 | `DestroyAllEffect.java` | Destroy all matching permanents | **Implemented** — `destroy_all_effect.rs`: `ValidCards$` filter, respects `Indestructible` keyword and R$-based replacement effects; `NoRegen$ True` noted (regeneration not yet implemented) |
 | `DigEffect.java` | Look at top N cards, choose some | **Implemented** — `dig.rs`: `DigNum$`, `ChangeNum$` (All/Any/N), `DestinationZone$`/`DestinationZone2$`, `ChangeValid$`, `LibraryPosition2$`, optional; agent `choose_dig`; TauriAgent `Dig` prompt + `DigDecision` response |
 | `DiscardEffect.java` | Force discard | **Implemented** — `discard.rs`: target player or Defined$ player discards N (`NumCards$`) cards; agent `choose_discard`; TauriAgent `ChooseDiscard` prompt (reuses `LibraryPeekModal` in "discard" mode) + `DiscardDecision` response; fires `Discarded` trigger. Frontend discard modal now resolves card IDs from the prompt-local game snapshot (`currentPrompt.gameView.myHand`) to avoid stale hand races after draw-then-discard chains (`Game.tsx`). |
 | `DiscoverEffect.java` | Discover N mechanic | Not implemented |
 | `DrawEffect.java` | Draw cards | **Partial** (`action.rs` draw_cards) |
-| `EffectEffect.java` | Create emblem/effect on battlefield | Not implemented |
+| `EffectEffect.java` | Create emblem/effect on battlefield | **Partial** — `effect_effect.rs`: supports `AB$ Effect` with `StaticAbilities$` from SVars by creating command-zone effect cards; remembers targeted/remembered cards/players (`RememberObjects$`) and tracks `Card.EffectSource`; duration support includes default EOT, `Permanent`, `UntilHostLeavesPlay`, `UntilHostLeavesPlayOrEOT`; supports `ForgetOnMoved$` origin wiring for remembered-object cleanup/exile |
+| `DrainManaEffect.java` | Drain mana pools | **Partial** — `drain_mana_effect.rs`: clears defined players' mana pools, supports `DrainMana$ True` (as colorless) and `RememberDrainedMana$ True` |
 | `EndTurnEffect.java` | End the turn | **Implemented** — `end_turn_effect.rs`: clears stack, sets `game.end_turn_requested`; game loop skips remaining phases to cleanup |
 | `ExploreEffect.java` | Explore mechanic | **Implemented** — `explore_effect.rs`: reveal top card, land→hand, nonland→+1/+1 counter + optional graveyard; reuses `choose_optional_trigger` |
 | `FightEffect.java` | Fight between creatures | **Implemented** — `fight.rs`: source creature and target creature deal damage to each other equal to power simultaneously; fires `Fight` trigger; `TriggerType::Fight` + `RunParams.card2` added to event system |
@@ -687,46 +688,46 @@
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `StaticAbility.java` | Core static ability class with layer system | **Partial** (`static_ability.rs`: `StaticAbility` struct + parser, `StaticMode` enum (6 modes), `CardFilter` for `Affected$`/`ValidCards$`; missing: 74+ modes, dependency graph, timestamp tracking) |
+| `StaticAbility.java` | Core static ability class with layer system | **Partial** (`static_ability.rs`: `StaticAbility` struct + parser, expanded `StaticMode` enum (critical/high-priority ticket modes wired), `CardFilter` for `Affected$`/`ValidCards$`; still missing Java dependency graph/timestamp parity) |
 | `StaticAbilityLayer.java` | Enum: copy, control, text, type, color, abilities, P/T, rules | **Partial** (`static_ability.rs`: `Layer` enum — Control(2), Type(4), Color(5), Ability(6), SetPT(7b), ModifyPT(7c); missing: copy/text/7a/rules layers) |
-| `StaticAbilityMode.java` | Enum: 80+ static ability modes | **Partial** (`static_ability.rs` `StaticMode`: Continuous, CantAttack, CantBlock, ETBTapped, CantBeCast, ReduceCost, IncreaseCost; 73+ modes not yet handled) |
+| `StaticAbilityMode.java` | Enum: 80+ static ability modes | **Partial** (`static_ability.rs` `StaticMode`: includes baseline 7 plus ticket modes: CantTarget, CantAttach, MustAttack, MustBlock, Panharmonicon, CantGainLosePayLife, CantDraw, CantSacrifice, CantRegenerate, DisableTriggers, CantPutCounter, CastWithFlash, BlockRestrict, AttackRestrict, IgnoreHexproof/Shroud, IgnoreLegendRule, MustTarget, AssignCombatDamageAsUnblocked, AssignNoCombatDamage, CombatDamageToughness, NoCleanupDamage, InfectDamage, WitherDamage, ColorlessDamageSource, CountersRemain, MaxCounter; plus CanAttackDefender) |
 | `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: Control (2, `GainControl$` incl. aura `Card.EnchantedBy`), Ability/keyword-grant (6), SetPT (7b), ModifyPT (7c) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped via static abilities, `R:Event$ Moved | ReplaceWith$ ETBTapped` replacement effects, AND `ReplaceWith$ DBTap` shock land pattern with `UnlessCost$ PayLife<N>` player prompt; missing: type/color layers, dependency resolution) |
 | `StaticAbilityCantAttack.java` | Prevents attacking | **Implemented** (`layer.rs`: `Mode$ CantAttack` sets `cant_attack_static` flag; `card.rs` `can_attack()` respects it) |
 | `StaticAbilityCantBlock.java` | Prevents blocking | **Implemented** (`layer.rs`: `Mode$ CantBlock` sets `cant_block_static` flag; `card.rs` `can_block()` respects it) |
 | `StaticAbilityCantBeSacrificed.java` | Prevents sacrifice | Not implemented |
 | `StaticAbilityCantCast.java` | Prevents casting | Not implemented |
-| `StaticAbilityCantTarget.java` | Grants hexproof/shroud | Not implemented |
-| `StaticAbilityCantDraw.java` | Limits/prevents drawing | Not implemented |
+| `StaticAbilityCantTarget.java` | Grants hexproof/shroud | **Partial** (`static_ability_cant_target.rs` + `target_restrictions.rs` integration) |
+| `StaticAbilityCantDraw.java` | Limits/prevents drawing | **Partial** (`static_ability_cant_draw.rs` + `draw_card()` gate) |
 | `StaticAbilityCantDiscard.java` | Prevents discarding | Not implemented |
 | `StaticAbilityCantDamage.java` | Prevents damage | Not implemented |
 | `StaticAbilityCantExile.java` | Prevents exiling | Not implemented |
-| `StaticAbilityCantRegenerate.java` | Prevents regeneration | Not implemented |
+| `StaticAbilityCantRegenerate.java` | Prevents regeneration | **Partial** (`static_ability_cant_regenerate.rs` + `regenerate_effect.rs` gate) |
 | `StaticAbilityCantTransform.java` | Prevents transformation | Not implemented |
 | `StaticAbilityCantPhase.java` | Prevents phasing | Not implemented |
-| `StaticAbilityCantPutCounter.java` | Prevents counter placement | Not implemented |
+| `StaticAbilityCantPutCounter.java` | Prevents counter placement | **Partial** (`static_ability_cant_put_counter.rs` integrated in PutCounter/PutCounterAll/MoveCounter/Proliferate/Explore and Infect/Wither damage paths) |
 | `StaticAbilityCantPreventDamage.java` | Prevents damage prevention | Not implemented |
-| `StaticAbilityCantSacrifice.java` | Prevents sacrifice | Not implemented |
+| `StaticAbilityCantSacrifice.java` | Prevents sacrifice | **Partial** (`static_ability_cant_sacrifice.rs` integrated in sacrifice effects + sacrifice cost payment) |
 | `StaticAbilityCantVenture.java` | Prevents venturing | Not implemented |
-| `StaticAbilityCantGainLosePayLife.java` | Prevents life gain/loss/payment | Not implemented |
-| `StaticAbilityCastWithFlash.java` | Grants flash to spells | Not implemented |
-| `StaticAbilityMustAttack.java` | Forces creatures to attack | Not implemented |
-| `StaticAbilityMustBlock.java` | Forces creatures to block | Not implemented |
-| `StaticAbilityMustTarget.java` | Forces targeting restrictions | Not implemented |
+| `StaticAbilityCantGainLosePayLife.java` | Prevents life gain/loss/payment | **Partial** (`static_ability_cant_gain_lose_pay_life.rs` integrated in life effects, damage-to-player, and PayLife costs) |
+| `StaticAbilityCastWithFlash.java` | Grants flash to spells | **Partial** (`static_ability_cast_with_flash.rs` + playable-card instant-speed checks) |
+| `StaticAbilityMustAttack.java` | Forces creatures to attack | **Partial** (`static_ability_must_attack.rs` + combat declaration auto-include) |
+| `StaticAbilityMustBlock.java` | Forces creatures to block | **Partial** (`static_ability_must_block.rs` + combat declaration fallback assignment) |
+| `StaticAbilityMustTarget.java` | Forces targeting restrictions | **Partial** (`static_ability_must_target.rs` scaffold; full target-choice enforcement pending) |
 | `StaticAbilityAdapt.java` | Adapt mechanic interactions | Not implemented |
-| `StaticAbilityPanharmonicon.java` | Double trigger effects | Not implemented |
+| `StaticAbilityPanharmonicon.java` | Double trigger effects | **Partial** (`static_ability_panharmonicon.rs` + trigger duplication hook in `trigger/handler.rs`) |
 | `StaticAbilityManaConvert.java` | Mana color conversion | Not implemented |
-| `StaticAbilityIgnoreHexproofShroud.java` | Ignore hexproof/shroud | Not implemented |
+| `StaticAbilityIgnoreHexproofShroud.java` | Ignore hexproof/shroud | **Partial** (`static_ability_ignore_hexproof_shroud.rs` + `target_restrictions.rs` integration) |
 | `StaticAbilityIgnoreLandwalk.java` | Ignore landwalk | Not implemented |
-| `StaticAbilityIgnoreLegendRule.java` | Ignore legend rule | Not implemented |
-| `StaticAbilityInfectDamage.java` | Makes damage infect | Not implemented |
-| `StaticAbilityWitherDamage.java` | Makes damage wither | Not implemented |
-| `StaticAbilityColorlessDamageSource.java` | Makes damage colorless | Not implemented |
-| `StaticAbilityCombatDamageToughness.java` | Use toughness for combat damage | Not implemented |
-| `StaticAbilityNoCleanupDamage.java` | Prevents damage removal at cleanup | Not implemented |
-| `StaticAbilityCountersRemain.java` | Prevents counter removal | Not implemented |
-| `StaticAbilityMaxCounter.java` | Sets maximum counters | Not implemented |
+| `StaticAbilityIgnoreLegendRule.java` | Ignore legend rule | **Partial** (`static_ability_ignore_legend_rule.rs` + legend-rule SBA pass in `action.rs`) |
+| `StaticAbilityInfectDamage.java` | Makes damage infect | **Partial** (`static_ability_infect_damage.rs` integrated in combat/spell damage paths) |
+| `StaticAbilityWitherDamage.java` | Makes damage wither | **Partial** (`static_ability_wither_damage.rs` integrated in combat/spell damage paths) |
+| `StaticAbilityColorlessDamageSource.java` | Makes damage colorless | **Partial** (`static_ability_colorless_damage_source.rs` scaffold; color-identity downstream usage pending) |
+| `StaticAbilityCombatDamageToughness.java` | Use toughness for combat damage | **Partial** (`static_ability_combat_damage_toughness.rs` integrated in combat damage power calculation) |
+| `StaticAbilityNoCleanupDamage.java` | Prevents damage removal at cleanup | **Partial** (`static_ability_no_cleanup_damage.rs` + cleanup damage reset guard) |
+| `StaticAbilityCountersRemain.java` | Prevents counter removal | **Partial** (`static_ability_counters_remain.rs` + zone-change counter clearing exceptions) |
+| `StaticAbilityMaxCounter.java` | Sets maximum counters | **Partial** (`static_ability_max_counter.rs` integrated in counter-add paths) |
 | `StaticAbilityDevotion.java` | Modifies devotion calculation | Not implemented |
-| `StaticAbilityDisableTriggers.java` | Disables triggered abilities | Not implemented |
+| `StaticAbilityDisableTriggers.java` | Disables triggered abilities | **Partial** (`static_ability_disable_triggers.rs` + pre-dispatch trigger gate in `trigger/handler.rs`) |
 | `StaticAbilityFlipCoinMod.java` | Fixes coin flip results | Not implemented |
 | `StaticAbilityNumLoyaltyAct.java` | Modifies loyalty activation count | Not implemented |
 | `StaticAbilityTurnPhaseReversed.java` | Reverses turn/phase order | Not implemented |
@@ -1051,7 +1052,7 @@
 |---|-----------|:----:|:----:|:--------:|----------|
 | 1 | Core Game | 37 | 6 | ~30% | Logging, snapshots, rules config, formats |
 | 2 | Ability System | 10 | 2 | ~20% | Factory partial, API type dispatch partial |
-| 3 | **Ability Effects** | 204 | 60 | **29%** | 144 effects missing (7 critical, 25 high) |
+| 3 | **Ability Effects** | 204 | 61 | **30%** | 143 effects missing (7 critical, 25 high) |
 | 4 | Card System | 38 | 2 | ~25% | Factory, views, damage history, clone states |
 | 5 | Perpetual | 9 | 0 | 0% | Arena-specific (low priority) |
 | 6 | Tokens | 1 | — | ~80% | Token creation works via TokenEffect |
@@ -1117,12 +1118,12 @@
 | TokenEffectBase | `TokenEffectBase.java` | **Implemented** — `token_effect.rs` (enhanced with inline TokenPower$/TokenToughness$/TokenTypes$/TokenKeywords$ params) |
 | TwoPiles | `TwoPilesEffect.java` | **Implemented** — `two_piles_effect.rs` |
 
-#### Medium Priority (65 effects)
+#### Medium Priority (62 effects)
 
 <details>
 <summary>Click to expand full list</summary>
 
-ActivateAbility, Amass, AssignGroup, BidLife, Block, Bond, Branch, Camouflage, ChangeCombatants, ChangeSpeed, ChangeTargets, ChangeText, ChangeX, ChangeZoneResolve, Clash, ClassLevelUp, Cloak, Connive, ControlExchange, ControlExchangeVariant, ControlPlayer, ControlSpell, CountersMultiply, CountersNote, CountersPutOrRemove, CountersRemoveAll, DamageBase, DamageResolve, DayTime, Debuff, DelayedTrigger, DetachedCard, Discover, DrainMana, EffectEffect, Endure, Haunt, ImmediateTrigger, Incubate, Intensify, Investigate, Learn, LifeExchangeVariant, ManifestBase, Manifest, ManaReflected, Meld, MultiplePiles, Mutate, PermanentCreature, Permanent, PermanentNoncreature, PlayLandVariant, RegenerationEffect, RemoveFromGame, RemoveFromMatch, ReorderZone, RepeatEffect, ReplaceCounter, ReplaceDamage, ReplaceMana, ReplaceSplitDamage, ReplaceToken, StoreSVar
+Amass, AssignGroup, BidLife, Block, Bond, Branch, Camouflage, ChangeCombatants, ChangeSpeed, ChangeTargets, ChangeText, ChangeX, ChangeZoneResolve, Clash, ClassLevelUp, Cloak, Connive, ControlExchange, ControlExchangeVariant, ControlPlayer, ControlSpell, CountersMultiply, CountersNote, CountersPutOrRemove, CountersRemoveAll, DamageBase, DamageResolve, DayTime, Debuff, DetachedCard, Discover, EffectEffect, Endure, Haunt, ImmediateTrigger, Incubate, Intensify, Investigate, Learn, LifeExchangeVariant, ManifestBase, Manifest, ManaReflected, Meld, MultiplePiles, Mutate, PermanentCreature, Permanent, PermanentNoncreature, PlayLandVariant, RegenerationEffect, RemoveFromGame, RemoveFromMatch, ReorderZone, RepeatEffect, ReplaceCounter, ReplaceDamage, ReplaceMana, ReplaceSplitDamage, ReplaceToken, StoreSVar
 
 </details>
 
@@ -1187,27 +1188,27 @@ Ninjutsu, Champion, Devour, Hideaway, Companion, Mutate, Boast, Forage, Landwalk
 
 ### 23.6 Static Abilities — Missing
 
-**Implemented (7 modes):** Continuous (layer system), CantAttack, CantBlock, ETBTapped, CantBeCast, ReduceCost, IncreaseCost
+**Implemented/Partial:** Baseline 7 modes fully implemented; 26 ticket modes now have Rust mode variants, per-mode files, and core hook integration (many still partial vs Java edge-case parity). Additional parity mode wired: `CanAttackDefender` (Walking Bulwark path).
 
-#### Critical Missing (11 modes)
+#### Critical Modes (status)
 
 | Mode | Java File | Description |
 |------|-----------|-------------|
-| CantTarget | `StaticAbilityCantTarget.java` | "Can't be the target of spells" |
-| CantAttach | `StaticAbilityCantAttach.java` | "Can't be enchanted/equipped" |
-| MustAttack | `StaticAbilityMustAttack.java` | Forced attack requirement |
-| MustBlock | `StaticAbilityMustBlock.java` | Forced blocking requirement |
-| Panharmonicon | `StaticAbilityPanharmonicon.java` | Double ETB triggers |
-| CantGainLosePayLife | `StaticAbilityCantGainLosePayLife.java` | Platinum Emperion, etc. |
-| CantDraw | `StaticAbilityCantDraw.java` | "Players can't draw cards" |
-| CantSacrifice | `StaticAbilityCantSacrifice.java` | Sigarda, Host of Herons |
-| CantRegenerate | `StaticAbilityCantRegenerate.java` | "Can't be regenerated" |
-| DisableTriggers | `StaticAbilityDisableTriggers.java` | Torpor Orb, Hushbringer |
-| CantPutCounter | `StaticAbilityCantPutCounter.java` | Solemnity |
+| CantTarget | `StaticAbilityCantTarget.java` | **Partial** — target legality hook added |
+| CantAttach | `StaticAbilityCantAttach.java` | **Partial** — attach effect gate added |
+| MustAttack | `StaticAbilityMustAttack.java` | **Partial** — combat declaration auto-include |
+| MustBlock | `StaticAbilityMustBlock.java` | **Partial** — combat declaration fallback assignment |
+| Panharmonicon | `StaticAbilityPanharmonicon.java` | **Partial** — trigger duplication hook |
+| CantGainLosePayLife | `StaticAbilityCantGainLosePayLife.java` | **Partial** — gain/lose/pay-life gates wired |
+| CantDraw | `StaticAbilityCantDraw.java` | **Partial** — draw limit gate wired |
+| CantSacrifice | `StaticAbilityCantSacrifice.java` | **Partial** — sacrifice effect/cost gates wired |
+| CantRegenerate | `StaticAbilityCantRegenerate.java` | **Partial** — regenerate gate wired |
+| DisableTriggers | `StaticAbilityDisableTriggers.java` | **Partial** — trigger pre-dispatch gate wired |
+| CantPutCounter | `StaticAbilityCantPutCounter.java` | **Partial** — counter add gates wired across core paths |
 
-#### High Priority Missing (15 modes)
+#### High Priority Modes (15) — status
 
-CastWithFlash, BlockRestrict, AttackRestrict, IgnoreHexproofShroud, IgnoreLegendRule, MustTarget, AssignCombatDamageAsUnblocked, AssignNoCombatDamage, CombatDamageToughness, NoCleanupDamage, InfectDamage, WitherDamage, ColorlessDamageSource, CountersRemain, MaxCounter
+CastWithFlash, BlockRestrict, AttackRestrict, IgnoreHexproofShroud, IgnoreLegendRule, MustTarget, AssignCombatDamageAsUnblocked, AssignNoCombatDamage, CombatDamageToughness, NoCleanupDamage, InfectDamage, WitherDamage, ColorlessDamageSource, CountersRemain, MaxCounter are implemented with partial Java parity; remaining work is edge-case/AI/UI decision coverage.
 
 #### Medium Priority Missing (28 modes)
 

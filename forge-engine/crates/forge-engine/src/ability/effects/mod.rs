@@ -6,6 +6,7 @@
 
 pub mod add_phase_effect;
 pub mod add_turn_effect;
+pub mod activate_ability_effect;
 pub mod animate_all_effect;
 pub mod animate_effect;
 pub mod attach_effect;
@@ -32,6 +33,7 @@ pub mod counters_put_effect;
 pub mod counters_remove_effect;
 pub mod damage_all_effect;
 pub mod damage_deal_effect;
+pub mod delayed_trigger_effect;
 pub mod destroy_all_effect;
 pub mod destroy_effect;
 pub mod detain_effect;
@@ -40,7 +42,9 @@ pub mod dig_multiple_effect;
 pub mod dig_until_effect;
 pub mod discard_effect;
 pub mod draw_effect;
+pub mod drain_mana_effect;
 pub mod each_damage_effect;
+pub mod effect_effect;
 pub mod encode_effect;
 pub mod end_combat_phase_effect;
 pub mod end_turn_effect;
@@ -228,6 +232,7 @@ fn resolve_effect_once(ctx: &mut EffectContext, sa: &SpellAbility) {
         "GameLoss" => game_loss_effect::resolve(ctx, sa),
         "GameDraw" => game_draw_effect::resolve(ctx, sa),
         "AddTurn" => add_turn_effect::resolve(ctx, sa),
+        "ActivateAbility" => activate_ability_effect::resolve(ctx, sa),
         "Fog" => fog_effect::resolve(ctx, sa),
         // New player & game-state effects (issue #22, expanded)
         "ReverseTurnOrder" => reverse_turn_order_effect::resolve(ctx, sa),
@@ -256,6 +261,9 @@ fn resolve_effect_once(ctx: &mut EffectContext, sa: &SpellAbility) {
         "Shuffle" => shuffle_effect::resolve(ctx, sa),
         "PutCounterAll" => counters_put_all_effect::resolve(ctx, sa),
         "EachDamage" => each_damage_effect::resolve(ctx, sa),
+        "Effect" => effect_effect::resolve(ctx, sa),
+        "DelayedTrigger" => delayed_trigger_effect::resolve(ctx, sa),
+        "DrainMana" => drain_mana_effect::resolve(ctx, sa),
         "RemoveFromCombat" => remove_from_combat_effect::resolve(ctx, sa),
         "Detain" => detain_effect::resolve(ctx, sa),
         "Goad" => goad_effect::resolve(ctx, sa),
@@ -318,6 +326,8 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "Sacrifice"
     } else if ability.contains("Token") {
         "Token"
+    } else if ability.contains("DrainMana") {
+        "DrainMana"
     } else if ability.contains("Mana") {
         "Mana"
     } else if ability.contains("Mill") {
@@ -384,6 +394,8 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "GameDraw"
     } else if ability.contains("AddTurn") {
         "AddTurn"
+    } else if ability.contains("ActivateAbility") {
+        "ActivateAbility"
     } else if ability.contains("$ Fog") {
         "Fog"
     } else if ability.contains("$ Tap") {
@@ -435,6 +447,10 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "PutCounterAll"
     } else if ability.contains("EachDamage") {
         "EachDamage"
+    } else if ability.contains("$ Effect") {
+        "Effect"
+    } else if ability.contains("DelayedTrigger") {
+        "DelayedTrigger"
     } else if ability.contains("$ Shuffle") {
         "Shuffle"
     } else if ability.contains("RemoveFromCombat") {
@@ -546,6 +562,9 @@ pub fn resolve_numeric_svar(
 /// Supports `Count$Kicked.A.B` (returns A if kicked, B otherwise)
 /// and `Count$KickedCount` (returns the multikicker count).
 pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
+    if expr == "Count$TriggerRememberAmount" {
+        return sa.trigger_remembered_amount;
+    }
     // Count$KickedCount — return the multikicker count (for Multikicker effects)
     if expr == "Count$KickedCount" {
         return sa.kick_count as i32;
@@ -581,6 +600,7 @@ pub fn resolve_defined_player(
             let opp = game.opponent_of(controller);
             Some(opp)
         }
+        "DefendingPlayer" => Some(game.opponent_of(controller)),
         _ => None,
     }
 }
@@ -596,6 +616,7 @@ pub fn resolve_defined_players(
     match defined {
         "You" => vec![controller],
         "Opponent" | "OpponentCtrl" => vec![game.opponent_of(controller)],
+        "DefendingPlayer" => vec![game.opponent_of(controller)],
         "Each" | "All" | "Player" => game.alive_players(),
         _ => {
             // Fall back to single-player resolution

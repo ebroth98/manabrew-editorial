@@ -38,9 +38,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let lib = ctx.game.cards_in_zone(ZoneType::Library, controller);
     if lib.is_empty() {
         // Explorer still gets the +1/+1 counter per rules
-        ctx.game
-            .card_mut(explorer_id)
-            .add_counter(CounterType::P1P1, 1);
+        if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+            &ctx.game.cards,
+            ctx.game.card(explorer_id),
+            CounterType::P1P1,
+        ) {
+            ctx.game
+                .card_mut(explorer_id)
+                .add_counter(CounterType::P1P1, 1);
+        }
         ctx.trigger_handler.run_trigger(
             TriggerType::CounterAdded,
             RunParams {
@@ -74,9 +80,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         );
     } else {
         // Nonland → put +1/+1 counter on explorer
-        ctx.game
-            .card_mut(explorer_id)
-            .add_counter(CounterType::P1P1, 1);
+        if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+            &ctx.game.cards,
+            ctx.game.card(explorer_id),
+            CounterType::P1P1,
+        ) {
+            ctx.game
+                .card_mut(explorer_id)
+                .add_counter(CounterType::P1P1, 1);
+        }
         ctx.trigger_handler.run_trigger(
             TriggerType::CounterAdded,
             RunParams {

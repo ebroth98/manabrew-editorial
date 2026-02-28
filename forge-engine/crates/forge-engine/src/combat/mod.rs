@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
@@ -101,6 +103,7 @@ impl CombatState {
         &self,
         game: &mut GameState,
         first_strike_only: bool,
+        as_unblocked_choices: &HashSet<CardId>,
     ) -> Vec<CombatDamageEvent> {
         // Fog effect: skip all combat damage this turn (issue #22).
         if game.prevent_all_combat_damage {
@@ -116,13 +119,29 @@ impl CombatState {
             }
 
             let attacker = game.card(attacker_id);
+            if crate::staticability::static_ability_assign_no_combat_damage::assign_no_combat_damage(
+                &game.cards,
+                attacker,
+            ) {
+                continue;
+            }
             let attacker_has_fs = attacker.has_first_strike();
             let attacker_has_ds = attacker.has_double_strike();
             let attacker_has_trample = attacker.has_trample();
             let attacker_has_deathtouch = attacker.has_deathtouch();
             let attacker_has_lifelink = attacker.has_lifelink();
-            let attacker_has_infect = attacker.has_infect();
-            let attacker_has_wither = attacker.has_wither();
+            let attacker_has_infect = attacker.has_infect()
+                || crate::staticability::static_ability_infect_damage::is_infect_damage(
+                    game,
+                    &game.cards,
+                    defending_player,
+                    attacker.controller,
+                );
+            let attacker_has_wither = attacker.has_wither()
+                || crate::staticability::static_ability_wither_damage::is_wither_damage(
+                    &game.cards,
+                    attacker,
+                );
             let attacker_toxic_count = attacker.get_toxic_count();
             let attacker_controller = attacker.controller;
 
@@ -138,12 +157,35 @@ impl CombatState {
                 continue;
             }
 
-            let attacker_power = game.card(attacker_id).power();
+            let attacker_power = if crate::staticability::static_ability_combat_damage_toughness::combat_damage_uses_toughness(
+                &game.cards,
+                game.card(attacker_id),
+            ) {
+                game.card(attacker_id).toughness()
+            } else {
+                game.card(attacker_id).power()
+            };
             if attacker_power <= 0 {
                 continue;
             }
 
-            let blockers = self.get_blockers_for(attacker_id);
+            let attacker_card = game.card(attacker_id);
+            let assign_as_unblocked =
+                crate::staticability::static_ability_assign_combat_damage_as_unblocked::has_mandatory_assign_as_unblocked(
+                    &game.cards,
+                    attacker_card,
+                )
+                    || crate::staticability::static_ability_assign_combat_damage_as_unblocked::assign_as_unblocked(
+                        &game.cards,
+                        attacker_card,
+                        as_unblocked_choices.contains(&attacker_id),
+                    );
+
+            let blockers = if assign_as_unblocked {
+                Vec::new()
+            } else {
+                self.get_blockers_for(attacker_id)
+            };
 
             if blockers.is_empty() {
                 // Unblocked — damage goes to defending player
@@ -198,10 +240,11 @@ impl CombatState {
                     // framework handles DamageDone prevention (Java uses ReplaceDamage).
                     // Blocking rules already prevent most cases via can_creature_block(),
                     // but this covers edge cases like gaining protection after blocks.
-                    if game
-                        .card(blocker_id)
-                        .is_protected_from(game.card(attacker_id))
-                    {
+                    if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+                        &game.cards,
+                        game.card(blocker_id),
+                        game.card(attacker_id),
+                    ) {
                         continue;
                     }
 
@@ -248,12 +291,28 @@ impl CombatState {
 
                     // Blocker damages attacker (only in the step it should deal damage)
                     let blocker_card = game.card(blocker_id);
+                    if crate::staticability::static_ability_assign_no_combat_damage::assign_no_combat_damage(
+                        &game.cards,
+                        blocker_card,
+                    ) {
+                        continue;
+                    }
                     let blocker_has_fs = blocker_card.has_first_strike();
                     let blocker_has_ds = blocker_card.has_double_strike();
                     let blocker_has_deathtouch = blocker_card.has_deathtouch();
                     let blocker_has_lifelink = blocker_card.has_lifelink();
-                    let blocker_has_infect = blocker_card.has_infect();
-                    let blocker_has_wither = blocker_card.has_wither();
+                    let blocker_has_infect = blocker_card.has_infect()
+                        || crate::staticability::static_ability_infect_damage::is_infect_damage(
+                            game,
+                            &game.cards,
+                            game.card(attacker_id).controller,
+                            blocker_card.controller,
+                        );
+                    let blocker_has_wither = blocker_card.has_wither()
+                        || crate::staticability::static_ability_wither_damage::is_wither_damage(
+                            &game.cards,
+                            blocker_card,
+                        );
                     let blocker_controller = blocker_card.controller;
 
                     let blocker_deals = if first_strike_only {
@@ -264,14 +323,22 @@ impl CombatState {
 
                     if blocker_deals {
                         // Protection damage prevention — see note above.
-                        if game
-                            .card(attacker_id)
-                            .is_protected_from(game.card(blocker_id))
-                        {
+                        if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+                            &game.cards,
+                            game.card(attacker_id),
+                            game.card(blocker_id),
+                        ) {
                             continue;
                         }
 
-                        let blocker_power = game.card(blocker_id).power();
+                        let blocker_power = if crate::staticability::static_ability_combat_damage_toughness::combat_damage_uses_toughness(
+                            &game.cards,
+                            game.card(blocker_id),
+                        ) {
+                            game.card(blocker_id).toughness()
+                        } else {
+                            game.card(blocker_id).power()
+                        };
                         if blocker_power > 0 {
                             deal_combat_damage_to_card(
                                 game,
@@ -351,9 +418,25 @@ impl CombatState {
 
 /// Get available attackers: untapped creatures that can attack.
 pub fn get_available_attackers(game: &GameState, player: PlayerId) -> Vec<CardId> {
+    let defending = game.opponent_of(player);
     game.creatures_on_battlefield(player)
         .into_iter()
-        .filter(|&cid| game.card(cid).can_attack())
+        .filter(|&cid| {
+            let card = game.card(cid);
+            if card.can_attack() {
+                return true;
+            }
+            card.is_creature()
+                && !card.tapped
+                && !card.cant_attack_static
+                && !card.detained
+                && (card.has_haste() || !card.summoning_sick)
+                && card.zone == ZoneType::Battlefield
+                && card.has_defender()
+                && crate::staticability::static_ability_can_attack_defender::can_attack_defender(
+                    &game.cards, card, defending,
+                )
+        })
         .collect()
 }
 
@@ -437,13 +520,25 @@ fn deal_combat_damage_to_player(
     if amount > 0 {
         if source_has_infect {
             // Infect: deal damage as poison counters instead of life loss
-            game.player_mut(target).poison_counters += amount;
+            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+                &game.cards,
+                target,
+                crate::card::CounterType::Poison,
+            ) {
+                game.player_mut(target).poison_counters += amount;
+            }
         } else {
             game.deal_damage_to_player(target, amount);
         }
         // Toxic: add poison counters in addition to normal damage
         if let Some(toxic) = source_toxic_count {
-            game.player_mut(target).poison_counters += toxic;
+            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+                &game.cards,
+                target,
+                crate::card::CounterType::Poison,
+            ) {
+                game.player_mut(target).poison_counters += toxic;
+            }
         }
         if lifelink {
             game.player_mut(source_controller).gain_life(amount);
@@ -464,8 +559,14 @@ fn deal_combat_damage_to_card(
     if amount > 0 {
         if source_has_wither_or_infect {
             // Wither/Infect: damage to creatures as -1/-1 counters instead
-            game.card_mut(target)
-                .add_counter(crate::card::CounterType::M1M1, amount);
+            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                &game.cards,
+                game.card(target),
+                crate::card::CounterType::M1M1,
+            ) {
+                game.card_mut(target)
+                    .add_counter(crate::card::CounterType::M1M1, amount);
+            }
         } else {
             game.deal_damage_to_card(target, amount);
         }

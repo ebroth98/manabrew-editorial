@@ -59,6 +59,7 @@ pub enum TriggerMode {
     Countered {
         valid_card: Option<String>,
         valid_cause: Option<String>,
+        valid_sa: Option<String>,
     },
     // ── New trigger modes (issue #19) ──
     /// A creature blocks an attacker.
@@ -481,6 +482,7 @@ impl TriggerMode {
             TriggerMode::Countered {
                 valid_card,
                 valid_cause,
+                valid_sa,
             } => {
                 // Check ValidCard$
                 if let Some(filter) = valid_card {
@@ -494,10 +496,32 @@ impl TriggerMode {
                 }
 
                 // Check ValidCause$
-                if let Some(_filter) = valid_cause {
-                    // TODO: Implement ValidCause checking
-                    // For now, assume it matches if we have a cause
-                    if run_params.cause.is_none() {
+                if let Some(filter) = valid_cause {
+                    if let Some(cause) = run_params.cause.as_ref() {
+                        let cause_src = cause.source;
+                        let Some(cause_card) = cause_src else {
+                            return false;
+                        };
+                        if !matches_valid_card(
+                            filter,
+                            cause_card,
+                            host_card,
+                            host_controller,
+                            game,
+                        ) {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                // Check ValidSA$ on countered spell/ability
+                if let Some(filter) = valid_sa {
+                    if let Some(countered_sa) = run_params.spell_ability.as_ref() {
+                        if !matches_valid_sa(filter, countered_sa) {
+                            return false;
+                        }
+                    } else {
                         return false;
                     }
                 }
@@ -1370,6 +1394,20 @@ impl TriggerMode {
     }
 }
 
+fn matches_valid_sa(filter: &str, sa: &crate::spellability::SpellAbility) -> bool {
+    let f = filter.trim();
+    if f.is_empty() {
+        return true;
+    }
+    if f.eq_ignore_ascii_case("Spell") {
+        return sa.is_spell;
+    }
+    if f.eq_ignore_ascii_case("Ability") {
+        return !sa.is_spell;
+    }
+    true
+}
+
 /// Matches a card against a ValidCard$ filter string.
 /// Handles: Card.Self, Creature.Other, Creature.YouCtrl, Creature,
 /// Instant,Sorcery (comma = OR), type filters.
@@ -1643,9 +1681,11 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Countered" => {
             let valid_card = params.get("ValidCard").map(|s| s.clone());
             let valid_cause = params.get("ValidCause").map(|s| s.clone());
+            let valid_sa = params.get("ValidSA").map(|s| s.clone());
             TriggerMode::Countered {
                 valid_card,
                 valid_cause,
+                valid_sa,
             }
         }
         // ── New trigger modes (issue #19) ──

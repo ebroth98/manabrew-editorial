@@ -89,6 +89,9 @@ pub struct SpellAbility {
     pub kick_count: u32,
     /// Number of times the replicate cost was paid.
     pub replicate_count: u32,
+    /// Sum of integer values remembered on the trigger that spawned this
+    /// ability (Java: TriggerRememberAmount / sa.getTriggerRemembered()).
+    pub trigger_remembered_amount: i32,
 }
 
 impl SpellAbility {
@@ -190,6 +193,7 @@ impl SpellAbility {
             is_copy: false,
             kick_count: 0,
             replicate_count: 0,
+            trigger_remembered_amount: 0,
         }
     }
 }
@@ -247,6 +251,7 @@ pub fn build_spell_ability(
         is_copy: false,
         kick_count: 0,
         replicate_count: 0,
+        trigger_remembered_amount: 0,
     }
 }
 
@@ -282,13 +287,28 @@ fn choose_targets_for(
         TargetKind::Any => {
             // "any target" includes all alive players (the caster too) and all creatures.
             let valid_players: Vec<PlayerId> = game.alive_players().into_iter().collect();
-            let valid_creatures: Vec<CardId> =
+            let mut valid_creatures: Vec<CardId> =
                 target_restrictions::get_all_candidates_creatures(game)
                     .into_iter()
                     .filter(|&cid| {
-                        target_restrictions::can_be_targeted_by(game, cid, player, sa.source)
+                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
                     })
                     .collect();
+            valid_creatures =
+                crate::staticability::static_ability_must_target::filter_must_target_cards(
+                    game,
+                    sa,
+                    valid_creatures,
+                );
+            let valid_players = if crate::staticability::static_ability_must_target::must_target_cards_required(
+                game,
+                sa,
+                &valid_creatures,
+            ) {
+                Vec::new()
+            } else {
+                valid_players
+            };
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             match agent.choose_target_any(player, &valid_players, &valid_creatures) {
@@ -298,24 +318,30 @@ fn choose_targets_for(
             }
         }
         TargetKind::Creature(ref filter) => {
-            let valid: Vec<CardId> = target_restrictions::get_all_candidates_creature_filtered(
+            let mut valid: Vec<CardId> = target_restrictions::get_all_candidates_creature_filtered(
                 game,
                 filter.as_deref(),
                 player,
             )
             .into_iter()
-            .filter(|&cid| target_restrictions::can_be_targeted_by(game, cid, player, sa.source))
+            .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
             .collect();
+            valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
+                game, sa, valid,
+            );
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
         }
         TargetKind::CardInZone { zone, filter } => {
-            let valid = target_restrictions::get_valid_cards_in_zone(
+            let mut valid = target_restrictions::get_valid_cards_in_zone(
                 game,
                 *zone,
                 player,
                 filter.as_deref(),
+            );
+            valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
+                game, sa, valid,
             );
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];

@@ -148,8 +148,21 @@ pub struct CardInstance {
     // Memory for "Remember" parameters
     /// Cards remembered by this card (for RememberCountered, etc.)
     pub remembered_cards: Vec<CardId>,
+    /// Players remembered by this card (for Player.IsRemembered checks).
+    pub remembered_players: Vec<PlayerId>,
     /// CMC values remembered by this card
     pub remembered_cmc: Vec<i32>,
+    /// Source card that created this effect card (for Card.EffectSource checks).
+    pub effect_source: Option<CardId>,
+    /// True if this temporary effect expires at end of turn cleanup.
+    pub temp_effect_until_eot: bool,
+    /// Host card this temporary effect is linked to; when host leaves the
+    /// battlefield, this effect expires.
+    pub temp_effect_host: Option<CardId>,
+    /// Forget remembered cards when they move from this origin zone.
+    pub forget_on_moved_origin: Option<ZoneType>,
+    /// Exile this effect when remembered cards become empty after forget logic.
+    pub exile_when_no_remembered: bool,
 
     // Double-faced card (DFC) state
     /// True if this card is currently showing its back face.
@@ -278,7 +291,13 @@ impl CardInstance {
             attached_to: None,
             attachments: Vec::new(),
             remembered_cards: Vec::new(),
+            remembered_players: Vec::new(),
             remembered_cmc: Vec::new(),
+            effect_source: None,
+            temp_effect_until_eot: false,
+            temp_effect_host: None,
+            forget_on_moved_origin: None,
+            exile_when_no_remembered: false,
             is_transformed: false,
             other_part: None,
             set_code: None,
@@ -833,6 +852,7 @@ impl CardInstance {
 pub enum CounterType {
     P1P1,
     M1M1,
+    Poison,
     Loyalty,
     Charge,
     Quest,

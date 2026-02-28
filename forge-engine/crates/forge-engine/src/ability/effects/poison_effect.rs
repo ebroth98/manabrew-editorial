@@ -27,10 +27,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // If targeting was used (ValidTgts$ Player), use the chosen target.
     if let Some(target_player) = sa.target_chosen.target_player {
         if ctx.game.player(target_player).is_alive() {
-            apply_poison(
-                &mut ctx.game.player_mut(target_player).poison_counters,
-                amount,
-            );
+            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+                &ctx.game.cards,
+                target_player,
+                crate::card::CounterType::Poison,
+            ) {
+                apply_poison(
+                    &mut ctx.game.player_mut(target_player).poison_counters,
+                    amount,
+                );
+            }
         }
         return;
     }
@@ -47,7 +53,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if defined == "Player" {
         let alive: Vec<_> = ctx.game.alive_players().into_iter().collect();
         for pid in alive {
-            apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
+            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+                &ctx.game.cards,
+                pid,
+                crate::card::CounterType::Poison,
+            ) {
+                apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
+            }
         }
         return;
     }
@@ -55,7 +67,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Single player: You, Opponent, TriggeredTarget, etc.
     if let Some(pid) = resolve_defined_player(defined, controller, ctx.game) {
         if ctx.game.player(pid).is_alive() {
-            apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
+            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+                &ctx.game.cards,
+                pid,
+                crate::card::CounterType::Poison,
+            ) {
+                apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
+            }
         }
     }
 }
