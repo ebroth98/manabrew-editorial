@@ -5,6 +5,7 @@
 //!              [--java-jar <path>]
 //!              [--output <path>] [--format json|text] [--verbose]
 //!              [--matrix] [--seeds 42,100,999] [--decks red_burn,green_stompy]
+//!              [--java-workers N]
 //! ```
 //!
 //! **Rust-only mode** (default, no `--java-jar`):
@@ -21,6 +22,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Mutex;
 
 use clap::Parser;
 use rayon::prelude::*;
@@ -28,7 +30,7 @@ use rayon::prelude::*;
 use forge_parity::card_pool::CardPool;
 use forge_parity::comparator;
 use forge_parity::deck_generator;
-use forge_parity::java_bridge::{JavaBridge, JavaBridgeConfig};
+use forge_parity::java_bridge::{JavaBridge, JavaBridgeConfig, JavaBridgeError, JavaServer, JavaServerConfig};
 use forge_parity::java_random::JavaRandom;
 use forge_parity::protocol::{
     Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
@@ -101,6 +103,10 @@ struct Cli {
     /// Master seed for fuzz reproducibility (default: 42)
     #[arg(long, default_value_t = 42)]
     master_seed: u64,
+
+    /// Number of Java server worker processes (default: 1 for fuzz/single, num_cpus for matrix)
+    #[arg(long)]
+    java_workers: Option<usize>,
 }
 
 fn main() {
@@ -176,7 +182,26 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
         }
     };
 
-    let result = run_single_matchup(&config, &data, Some(jar_path));
+    // Spawn a Java server for the single matchup
+    let server_config = JavaServerConfig {
+        jar_path: jar_path.clone(),
+        forge_home: None,
+    };
+
+    let result = match JavaServer::spawn(&server_config) {
+        Ok(mut server) => {
+            let result = run_single_matchup_server(&config, &data, &mut server);
+            server.shutdown();
+            result
+        }
+        Err(e) => {
+            eprintln!(
+                "[parity] Failed to spawn Java server, falling back to one-shot mode: {}",
+                e
+            );
+            run_single_matchup_oneshot(&config, &data, jar_path)
+        }
+    };
 
     let parity_report = report::build_report(
         // Build a minimal trace for the report
@@ -220,11 +245,11 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
     }
 }
 
-/// Run a single matchup (Rust, and optionally Java) and return a structured result.
-fn run_single_matchup(
+/// Run a single matchup using a JavaServer (server mode).
+fn run_single_matchup_server(
     config: &RunConfig,
     data: &LoadedData,
-    jar_path: Option<&PathBuf>,
+    server: &mut JavaServer,
 ) -> MatchupResult {
     // Run Rust engine
     let rust_trace = match runner::run_with_data(config, data) {
@@ -243,24 +268,51 @@ fn run_single_matchup(
         }
     };
 
-    // If no Java JAR, it's Rust-only — just check it didn't panic
-    let jar_path = match jar_path {
-        Some(p) => p,
-        None => {
+    // Run Java engine via server
+    let java_snapshots =
+        match server.run_matchup(&config.deck1, &config.deck2, config.seed, config.max_turns) {
+            Ok(snaps) => snaps,
+            Err(e) => {
+                return MatchupResult {
+                    deck1: config.deck1.clone(),
+                    deck2: config.deck2.clone(),
+                    seed: config.seed,
+                    status: MatchupStatus::Error,
+                    snapshots_compared: 0,
+                    divergence_count: 0,
+                    first_divergence: None,
+                    error_message: Some(format!("Java server error: {}", e)),
+                };
+            }
+        };
+
+    compare_snapshots(config, &rust_trace.snapshots, &java_snapshots)
+}
+
+/// Run a single matchup using one-shot JavaBridge (fallback mode).
+fn run_single_matchup_oneshot(
+    config: &RunConfig,
+    data: &LoadedData,
+    jar_path: &PathBuf,
+) -> MatchupResult {
+    // Run Rust engine
+    let rust_trace = match runner::run_with_data(config, data) {
+        Ok(trace) => trace,
+        Err(e) => {
             return MatchupResult {
                 deck1: config.deck1.clone(),
                 deck2: config.deck2.clone(),
                 seed: config.seed,
-                status: MatchupStatus::Pass,
-                snapshots_compared: rust_trace.snapshots.len(),
+                status: MatchupStatus::Error,
+                snapshots_compared: 0,
                 divergence_count: 0,
                 first_divergence: None,
-                error_message: None,
+                error_message: Some(format!("Rust engine error: {}", e)),
             };
         }
     };
 
-    // Run Java engine
+    // Run Java engine via one-shot bridge
     let bridge_config = JavaBridgeConfig {
         jar_path: jar_path.clone(),
         seed: config.seed,
@@ -287,12 +339,46 @@ fn run_single_matchup(
         }
     };
 
-    // Compare snapshots
-    let max_snapshots = rust_trace.snapshots.len().max(java_snapshots.len());
+    compare_snapshots(config, &rust_trace.snapshots, &java_snapshots)
+}
+
+/// Run a single matchup: Rust only (no Java). Used when no JAR is provided.
+fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> MatchupResult {
+    match runner::run_with_data(config, data) {
+        Ok(trace) => MatchupResult {
+            deck1: config.deck1.clone(),
+            deck2: config.deck2.clone(),
+            seed: config.seed,
+            status: MatchupStatus::Pass,
+            snapshots_compared: trace.snapshots.len(),
+            divergence_count: 0,
+            first_divergence: None,
+            error_message: None,
+        },
+        Err(e) => MatchupResult {
+            deck1: config.deck1.clone(),
+            deck2: config.deck2.clone(),
+            seed: config.seed,
+            status: MatchupStatus::Error,
+            snapshots_compared: 0,
+            divergence_count: 0,
+            first_divergence: None,
+            error_message: Some(format!("Rust engine error: {}", e)),
+        },
+    }
+}
+
+/// Compare Rust and Java snapshot lists and build a MatchupResult.
+fn compare_snapshots(
+    config: &RunConfig,
+    rust_snapshots: &[forge_parity::protocol::StateSnapshot],
+    java_snapshots: &[forge_parity::protocol::StateSnapshot],
+) -> MatchupResult {
+    let max_snapshots = rust_snapshots.len().max(java_snapshots.len());
     let mut all_divergences: Vec<Divergence> = Vec::new();
 
     for i in 0..max_snapshots {
-        match (rust_trace.snapshots.get(i), java_snapshots.get(i)) {
+        match (rust_snapshots.get(i), java_snapshots.get(i)) {
             (Some(rs), Some(js)) => {
                 let divs = comparator::compare(i, rs, js);
                 all_divergences.extend(divs);
@@ -338,6 +424,58 @@ fn run_single_matchup(
         divergence_count,
         first_divergence,
         error_message: None,
+    }
+}
+
+/// A pool of JavaServer instances behind mutexes for parallel access.
+struct ServerPool {
+    servers: Vec<Mutex<JavaServer>>,
+}
+
+impl ServerPool {
+    /// Spawn N server instances.
+    fn spawn(n: usize, config: &JavaServerConfig) -> Result<Self, JavaBridgeError> {
+        let mut servers = Vec::with_capacity(n);
+        for i in 0..n {
+            eprintln!("[parity] Spawning Java worker {}/{}", i + 1, n);
+            let server = JavaServer::spawn(config)?;
+            servers.push(Mutex::new(server));
+        }
+        Ok(Self { servers })
+    }
+
+    /// Run a matchup on any available server. Tries each server in round-robin.
+    /// If a server has crashed, marks it as dead and tries the next.
+    fn run_matchup(
+        &self,
+        deck1: &str,
+        deck2: &str,
+        seed: u64,
+        max_turns: u32,
+    ) -> Result<Vec<forge_parity::protocol::StateSnapshot>, JavaBridgeError> {
+        // Try each server — grab whichever lock is available
+        for server_mutex in &self.servers {
+            if let Ok(mut server) = server_mutex.try_lock() {
+                if !server.is_alive() {
+                    continue;
+                }
+                return server.run_matchup(deck1, deck2, seed, max_turns);
+            }
+        }
+        // All busy on try_lock — block on the first one
+        let mut server = self.servers[0]
+            .lock()
+            .map_err(|e| JavaBridgeError::ProtocolError(format!("Mutex poisoned: {}", e)))?;
+        server.run_matchup(deck1, deck2, seed, max_turns)
+    }
+
+    /// Shutdown all servers.
+    fn shutdown(self) {
+        for server_mutex in self.servers {
+            if let Ok(server) = server_mutex.into_inner() {
+                server.shutdown();
+            }
+        }
     }
 }
 
@@ -395,6 +533,28 @@ fn run_matrix_mode(cli: &Cli) {
 
     let completed = AtomicUsize::new(0);
 
+    // Spawn server pool if Java JAR is provided
+    let num_workers = cli
+        .java_workers
+        .unwrap_or_else(|| if cli.java_jar.is_some() { num_cpus() } else { 0 });
+
+    let pool = if let Some(ref jar_path) = cli.java_jar {
+        let server_config = JavaServerConfig {
+            jar_path: jar_path.clone(),
+            forge_home: None,
+        };
+        match ServerPool::spawn(num_workers.max(1), &server_config) {
+            Ok(pool) => Some(pool),
+            Err(e) => {
+                eprintln!("[parity] Failed to spawn Java server pool: {}", e);
+                eprintln!("[parity] Falling back to one-shot mode");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     let results: Vec<MatchupResult> = jobs
         .par_iter()
         .map(|&(d1, d2, seed)| {
@@ -407,7 +567,13 @@ fn run_matrix_mode(cli: &Cli) {
                 verbose: cli.verbose,
             };
 
-            let result = run_single_matchup(&config, &data, cli.java_jar.as_ref());
+            let result = if let Some(ref pool) = pool {
+                run_single_matchup_with_pool(&config, &data, pool)
+            } else if let Some(ref jar_path) = cli.java_jar {
+                run_single_matchup_oneshot(&config, &data, jar_path)
+            } else {
+                run_single_matchup_rust_only(&config, &data)
+            };
 
             let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
             match result.status {
@@ -436,6 +602,11 @@ fn run_matrix_mode(cli: &Cli) {
         })
         .collect();
 
+    // Shutdown pool
+    if let Some(pool) = pool {
+        pool.shutdown();
+    }
+
     let passed = results.iter().filter(|r| r.status == MatchupStatus::Pass).count();
     let failed = results.iter().filter(|r| r.status == MatchupStatus::Fail).count();
     let errors = results.iter().filter(|r| r.status == MatchupStatus::Error).count();
@@ -461,6 +632,50 @@ fn run_matrix_mode(cli: &Cli) {
     if failed > 0 || errors > 0 {
         std::process::exit(1);
     }
+}
+
+/// Run a single matchup using the server pool.
+fn run_single_matchup_with_pool(
+    config: &RunConfig,
+    data: &LoadedData,
+    pool: &ServerPool,
+) -> MatchupResult {
+    // Run Rust engine
+    let rust_trace = match runner::run_with_data(config, data) {
+        Ok(trace) => trace,
+        Err(e) => {
+            return MatchupResult {
+                deck1: config.deck1.clone(),
+                deck2: config.deck2.clone(),
+                seed: config.seed,
+                status: MatchupStatus::Error,
+                snapshots_compared: 0,
+                divergence_count: 0,
+                first_divergence: None,
+                error_message: Some(format!("Rust engine error: {}", e)),
+            };
+        }
+    };
+
+    // Run Java via pool
+    let java_snapshots =
+        match pool.run_matchup(&config.deck1, &config.deck2, config.seed, config.max_turns) {
+            Ok(snaps) => snaps,
+            Err(e) => {
+                return MatchupResult {
+                    deck1: config.deck1.clone(),
+                    deck2: config.deck2.clone(),
+                    seed: config.seed,
+                    status: MatchupStatus::Error,
+                    snapshots_compared: 0,
+                    divergence_count: 0,
+                    first_divergence: None,
+                    error_message: Some(format!("Java server error: {}", e)),
+                };
+            }
+        };
+
+    compare_snapshots(config, &rust_trace.snapshots, &java_snapshots)
 }
 
 fn run_fuzz_mode(cli: &Cli) {
@@ -489,6 +704,24 @@ fn run_fuzz_mode(cli: &Cli) {
 
     let total_cards = pool_stats.total_scanned;
     let pool_size = pool_stats.included;
+
+    // Spawn a single Java server for all iterations (if Java JAR provided)
+    let mut server = if let Some(ref jar_path) = cli.java_jar {
+        let server_config = JavaServerConfig {
+            jar_path: jar_path.clone(),
+            forge_home: None,
+        };
+        match JavaServer::spawn(&server_config) {
+            Ok(s) => Some(s),
+            Err(e) => {
+                eprintln!("[parity] Failed to spawn Java server: {}", e);
+                eprintln!("[parity] Falling back to one-shot mode");
+                None
+            }
+        }
+    } else {
+        None
+    };
 
     // Derive per-iteration seeds from master seed
     let mut master_rng = JavaRandom::new(cli.master_seed as i64);
@@ -519,7 +752,36 @@ fn run_fuzz_mode(cli: &Cli) {
             verbose: cli.verbose,
         };
 
-        let matchup_result = run_single_matchup(&config, &data, cli.java_jar.as_ref());
+        let matchup_result = if let Some(ref mut srv) = server {
+            if srv.is_alive() {
+                run_single_matchup_server(&config, &data, srv)
+            } else {
+                // Server crashed — try to respawn
+                eprintln!("[parity] Java server crashed, attempting respawn...");
+                match JavaServer::spawn(&JavaServerConfig {
+                    jar_path: cli.java_jar.as_ref().unwrap().clone(),
+                    forge_home: None,
+                }) {
+                    Ok(new_srv) => {
+                        *srv = new_srv;
+                        run_single_matchup_server(&config, &data, srv)
+                    }
+                    Err(e) => {
+                        eprintln!("[parity] Failed to respawn Java server: {}", e);
+                        // Fall back to one-shot for this iteration
+                        if let Some(ref jar_path) = cli.java_jar {
+                            run_single_matchup_oneshot(&config, &data, jar_path)
+                        } else {
+                            run_single_matchup_rust_only(&config, &data)
+                        }
+                    }
+                }
+            }
+        } else if let Some(ref jar_path) = cli.java_jar {
+            run_single_matchup_oneshot(&config, &data, jar_path)
+        } else {
+            run_single_matchup_rust_only(&config, &data)
+        };
 
         let n = iteration + 1;
         match matchup_result.status {
@@ -554,6 +816,11 @@ fn run_fuzz_mode(cli: &Cli) {
             deck2_spec: deck2_inline,
             result: matchup_result,
         });
+    }
+
+    // Shutdown server
+    if let Some(srv) = server {
+        srv.shutdown();
     }
 
     let passed = results
@@ -605,4 +872,12 @@ fn write_output(cli: &Cli, output: &str) {
     } else {
         println!("{}", output);
     }
+}
+
+/// Get the number of available CPUs (capped at a reasonable number).
+fn num_cpus() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+        .min(8)
 }
