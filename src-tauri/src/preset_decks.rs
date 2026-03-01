@@ -211,6 +211,12 @@ pub fn list_preset_decks() -> Vec<PresetDeckInfo> {
             desc: "AttackersDeclared + DamageDoneOnce + ChangesZoneAll + CounterAddedOnce + Surveil + SpellCast — exercises new trigger types (#54)".into(),
             color: "text-teal-500".into(),
         },
+        PresetDeckInfo {
+            id: "replacement_test".into(),
+            label: "Replacement Effects".into(),
+            desc: "Platinum Angel (can't lose), Hardened Scales (+1 counter), Anointed Procession (double tokens), Loxodon Smiter (can't be countered) — exercises expanded replacement effects (#56)".into(),
+            color: "text-amber-400".into(),
+        },
     ]
 }
 
@@ -248,6 +254,7 @@ pub fn is_preset_id(id: &str) -> bool {
             | "dual_lands"
             | "comprehensive_test"
             | "trigger_expanded"
+            | "replacement_test"
     )
 }
 
@@ -373,6 +380,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
             build_named_deck(game, p0, TRIGGER_EXPANDED);
             build_named_deck(game, p1, WHITE_AGGRO);
         }
+        "replacement_test" => {
+            build_named_deck(game, p0, REPLACEMENT_TEST);
+            build_named_deck(game, p1, RED_BURN);
+        }
         _ => {
             // red_burn (default)
             build_named_deck(game, p0, RED_BURN);
@@ -414,6 +425,7 @@ pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner
         "dual_lands" => build_named_deck(game, owner, DUAL_LANDS),
         "comprehensive_test" => build_named_deck(game, owner, COMPREHENSIVE_TEST),
         "trigger_expanded" => build_named_deck(game, owner, TRIGGER_EXPANDED),
+        "replacement_test" => build_named_deck(game, owner, REPLACEMENT_TEST),
         _ => build_named_deck(game, owner, RED_BURN),
     }
 }
@@ -1245,6 +1257,25 @@ const TRIGGER_EXPANDED: &[(&str, usize, &str)] = &[
     ("Whispering Snitch", 2, "grn"),
     // DamageDoneOnce — "whenever a creature you control is dealt damage"
     ("Rite of Passage", 2, "5dn"),
+];
+
+const REPLACEMENT_TEST: &[(&str, usize, &str)] = &[
+    ("Plains", 8, "akh"),
+    ("Forest", 8, "akh"),
+    ("Island", 4, "akh"),
+    // GameLoss replacement — "You can't lose the game"
+    ("Platinum Angel", 3, "m11"),
+    // AddCounter replacement — Hardened Scales adds +1
+    ("Hardened Scales", 3, "ktk"),
+    // CreateToken replacement — Anointed Procession doubles tokens
+    ("Anointed Procession", 3, "akh"),
+    // Counter replacement — "can't be countered"
+    ("Loxodon Smiter", 3, "rtr"),
+    // Creatures that benefit from counters
+    ("Servant of the Scale", 3, "dtk"),
+    ("Experiment One", 2, "gtc"),
+    // Token producers
+    ("Raise the Alarm", 3, "m15"),
 ];
 
 /// copy), loading each definition from the global CardDatabase.

@@ -4,12 +4,13 @@ use super::{emit_zone_trigger, EffectContext};
 use crate::card::CardInstance;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
+use crate::replacement::handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Create token creature(s) on the battlefield.
     // Mirrors Java TokenEffect / TokenEffectBase.
-    let amount: usize = sa
+    let mut amount: usize = sa
         .params
         .get("TokenAmount")
         .and_then(|s| s.parse().ok())
@@ -31,6 +32,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else {
         sa.activating_player
     };
+
+    // Run CreateToken replacement effects (e.g. Anointed Procession doubles tokens).
+    let mut event = ReplacementEvent::CreateToken {
+        player: token_controller,
+        count: amount as i32,
+    };
+    apply_replacements(ctx.game, &mut event);
+    if let ReplacementEvent::CreateToken { count: final_count, .. } = event {
+        amount = final_count.max(0) as usize;
+    }
 
     if !token_script.is_empty() {
         if let Some(template) = ctx.token_templates.get(&token_script).cloned() {

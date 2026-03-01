@@ -4,6 +4,7 @@ use super::EffectContext;
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
+use crate::replacement::handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 /// `SP$ Proliferate` — choose any number of permanents and/or players that
@@ -77,7 +78,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     continue;
                 }
             }
-            ctx.game.card_mut(cid).add_counter(ct, 1);
+            // Run AddCounter replacement effects.
+            let mut add_event = ReplacementEvent::AddCounter {
+                target: cid,
+                counter_type: ct,
+                count: 1,
+            };
+            apply_replacements(ctx.game, &mut add_event);
+            let final_count = if let ReplacementEvent::AddCounter { count, .. } = add_event {
+                count
+            } else {
+                1
+            };
+            ctx.game.card_mut(cid).add_counter(ct, final_count);
             ctx.trigger_handler.run_trigger(
                 TriggerType::CounterAdded,
                 RunParams {

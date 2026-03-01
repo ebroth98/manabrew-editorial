@@ -1,4 +1,6 @@
 use super::{resolve_defined_player, EffectContext};
+use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ GameWin` — a player wins the game.
@@ -21,6 +23,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let winner = resolve_defined_player(defined, controller, ctx.game).unwrap_or(controller);
 
     if !ctx.game.player(winner).is_alive() {
+        return;
+    }
+
+    // Run GameWin replacement effects.
+    let mut event = ReplacementEvent::GameWin { player: winner };
+    let result = apply_replacements(ctx.game, &mut event);
+    if result == ReplacementResult::Replaced {
         return;
     }
 

@@ -3,6 +3,7 @@ use forge_foundation::ZoneType;
 use super::{parse_counter_type, parse_param, resolve_numeric_svar, EffectContext};
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
+use crate::replacement::handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -35,6 +36,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     return;
                 }
             }
+            // Run AddCounter replacement effects (e.g. Hardened Scales adds extra).
+            let mut event = ReplacementEvent::AddCounter {
+                target: card_id,
+                counter_type,
+                count,
+            };
+            apply_replacements(ctx.game, &mut event);
+            let count = if let ReplacementEvent::AddCounter { count: final_count, .. } = event {
+                final_count
+            } else {
+                count
+            };
             let cause_player = ctx.game.card(card_id).controller;
             ctx.game.card_mut(card_id).add_counter(counter_type, count);
 

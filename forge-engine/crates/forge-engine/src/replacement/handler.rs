@@ -10,6 +10,7 @@
 
 use forge_foundation::ZoneType;
 
+use crate::card::CounterType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::replacement::{ReplacementEffect, ReplacementLayer, ReplacementResult};
@@ -35,6 +36,8 @@ pub enum ReplacementEvent {
         amount: i32,
         /// The card dealing the damage, if known.
         source: Option<CardId>,
+        /// Whether this is combat damage.
+        is_combat: bool,
     },
 
     /// Damage is being dealt to a player.
@@ -43,6 +46,8 @@ pub enum ReplacementEvent {
         amount: i32,
         /// The card dealing the damage, if known.
         source: Option<CardId>,
+        /// Whether this is combat damage.
+        is_combat: bool,
     },
 
     /// A permanent is being destroyed (lethal damage or destroy effect).
@@ -54,6 +59,28 @@ pub enum ReplacementEvent {
         origin: ZoneType,
         destination: ZoneType,
     },
+
+    /// A player is gaining life.
+    GainLife { player: PlayerId, amount: i32 },
+
+    /// Token(s) are being created.
+    CreateToken { player: PlayerId, count: i32 },
+
+    /// Counter(s) are being added to a permanent.
+    AddCounter {
+        target: CardId,
+        counter_type: CounterType,
+        count: i32,
+    },
+
+    /// A player is losing the game.
+    GameLoss { player: PlayerId },
+
+    /// A player is winning the game.
+    GameWin { player: PlayerId },
+
+    /// A spell is being countered.
+    Counter { card: CardId },
 }
 
 // ── Public API ────────────────────────────────────────────────────────────────
@@ -163,6 +190,32 @@ fn collect_effects(
                     let moving_card = &game.cards[moving_id.index()];
                     re.can_replace_moved(*origin, *destination, moving_card, card)
                 }
+
+                ReplacementEvent::GainLife { player, .. } => {
+                    re.can_replace_gain_life(*player, card)
+                }
+
+                ReplacementEvent::CreateToken { player, .. } => {
+                    re.can_replace_create_token(*player, card)
+                }
+
+                ReplacementEvent::AddCounter { target, .. } => {
+                    let target_card = &game.cards[target.index()];
+                    re.can_replace_add_counter(target_card, card)
+                }
+
+                ReplacementEvent::GameLoss { player } => {
+                    re.can_replace_game_loss(*player, card)
+                }
+
+                ReplacementEvent::GameWin { player } => {
+                    re.can_replace_game_win(*player, card)
+                }
+
+                ReplacementEvent::Counter { card: target_id } => {
+                    let target_card = &game.cards[target_id.index()];
+                    re.can_replace_counter(target_card, card)
+                }
             };
 
             if applies {
@@ -241,6 +294,67 @@ fn execute_effect(effect: &ReplacementEffect, event: &mut ReplacementEvent) -> R
                     return ReplacementResult::Updated;
                 }
             }
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::GainLife { amount, .. } => {
+            if effect
+                .params
+                .get("Prevent")
+                .map(|s| s == "True")
+                .unwrap_or(false)
+            {
+                *amount = 0;
+                return ReplacementResult::Skipped;
+            }
+            if let Some(replace) = effect.params.get("ReplaceWith") {
+                if replace == "GainDouble" {
+                    *amount *= 2;
+                    return ReplacementResult::Updated;
+                }
+            }
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::CreateToken { count, .. } => {
+            if let Some(replace) = effect.params.get("ReplaceWith") {
+                if replace == "DoubleToken" {
+                    *count *= 2;
+                    return ReplacementResult::Updated;
+                }
+            }
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::AddCounter { count, .. } => {
+            if let Some(replace) = effect.params.get("ReplaceWith") {
+                match replace.as_str() {
+                    "AddOneMoreCounter" => {
+                        *count += 1;
+                        return ReplacementResult::Updated;
+                    }
+                    "AddTwiceCounters" | "DoubleCounters" => {
+                        *count *= 2;
+                        return ReplacementResult::Updated;
+                    }
+                    _ => {}
+                }
+            }
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::GameLoss { .. } => {
+            // CantHappen layer prevents the game loss (e.g. Platinum Angel).
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::GameWin { .. } => {
+            // CantHappen layer prevents the game win.
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::Counter { .. } => {
+            // CantHappen layer prevents countering (e.g. "can't be countered").
             ReplacementResult::Replaced
         }
     }
@@ -366,6 +480,7 @@ mod tests {
             target: alice,
             amount: 5,
             source: None,
+            is_combat: false,
         };
         let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::Prevented);
@@ -394,6 +509,7 @@ mod tests {
             target: alice,
             amount: 0,
             source: None,
+            is_combat: false,
         };
         let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
@@ -418,6 +534,7 @@ mod tests {
             target: target_creature,
             amount: 3,
             source: None,
+            is_combat: false,
         };
         let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::Prevented);
