@@ -4,10 +4,13 @@
 //! engine can fully parse. As the engine implements more effects, the pool
 //! automatically expands.
 
-use forge_carddb::CardDatabase;
+use std::collections::BTreeMap;
+
+use forge_carddb::{CardDatabase, CardFace};
+use forge_engine_core::ability::effects::IMPLEMENTED_API_TYPES;
 use forge_engine_core::replacement::parse_replacement_effect;
 use forge_engine_core::staticability::parse_static_ability;
-use forge_engine_core::trigger::parse_trigger;
+use forge_engine_core::trigger::{parse_pipe_params, parse_trigger};
 use forge_foundation::color::Color;
 use forge_foundation::CardSplitType;
 
@@ -33,13 +36,14 @@ pub struct PoolStats {
     pub excluded_no_mana_cost: usize,
     pub excluded_unusable_type: usize,
     pub excluded_parse_failure: usize,
+    pub excluded_unimplemented_effect: usize,
 }
 
 impl std::fmt::Display for PoolStats {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "Pool: {}/{} cards supported ({:.1}%) [excluded: {} multi-faced, {} no cost, {} unusable type, {} parse failure]",
+            "Pool: {}/{} cards supported ({:.1}%) [excluded: {} multi-faced, {} no cost, {} unusable type, {} parse failure, {} unimplemented effect]",
             self.included,
             self.total_scanned,
             if self.total_scanned > 0 {
@@ -51,6 +55,7 @@ impl std::fmt::Display for PoolStats {
             self.excluded_no_mana_cost,
             self.excluded_unusable_type,
             self.excluded_parse_failure,
+            self.excluded_unimplemented_effect,
         )
     }
 }
@@ -79,6 +84,7 @@ impl CardPool {
             excluded_no_mana_cost: 0,
             excluded_unusable_type: 0,
             excluded_parse_failure: 0,
+            excluded_unimplemented_effect: 0,
         };
 
         // Always include basic lands
@@ -176,6 +182,12 @@ impl CardPool {
                 continue;
             }
 
+            // 5. All effect API types must be implemented
+            if !check_abilities_implemented(face) {
+                stats.excluded_unimplemented_effect += 1;
+                continue;
+            }
+
             let color_set = face.resolved_color();
             let colors: Vec<Color> = color_set.iter().collect();
 
@@ -230,4 +242,79 @@ impl CardPool {
             })
             .collect()
     }
+}
+
+/// Check that all effect API types referenced by a card's abilities (and their
+/// sub-ability chains via SVars) are in the implemented set.
+fn check_abilities_implemented(face: &CardFace) -> bool {
+    // Check all spell abilities
+    for raw in &face.abilities {
+        if !check_ability_chain_implemented(raw, &face.svars, 0) {
+            return false;
+        }
+    }
+
+    // Check trigger execute SVars
+    for raw in &face.triggers {
+        let params = parse_pipe_params(raw);
+        if let Some(execute_svar) = params.get("Execute") {
+            if let Some(svar_text) = face.svars.get(execute_svar.as_str()) {
+                if !check_ability_chain_implemented(svar_text, &face.svars, 0) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    // Check replacement effect execute SVars
+    for raw in &face.replacements {
+        let params = parse_pipe_params(raw);
+        if let Some(execute_svar) = params.get("Execute") {
+            if let Some(svar_text) = face.svars.get(execute_svar.as_str()) {
+                if !check_ability_chain_implemented(svar_text, &face.svars, 0) {
+                    return false;
+                }
+            }
+        }
+    }
+
+    true
+}
+
+/// Recursively validate that an ability string and its SubAbility chain
+/// only reference implemented API types. Depth-limited to 10 to prevent
+/// infinite loops from circular SVar references.
+fn check_ability_chain_implemented(
+    raw: &str,
+    svars: &BTreeMap<String, String>,
+    depth: usize,
+) -> bool {
+    if depth > 10 {
+        return false;
+    }
+
+    let params = parse_pipe_params(raw);
+
+    // Extract API type from SP$, DB$, or AB$
+    let api_type = params
+        .get("SP")
+        .or_else(|| params.get("DB"))
+        .or_else(|| params.get("AB"));
+
+    if let Some(api) = api_type {
+        if !IMPLEMENTED_API_TYPES.contains(&api.as_str()) {
+            return false;
+        }
+    }
+
+    // Follow SubAbility chain
+    if let Some(sub_svar_name) = params.get("SubAbility") {
+        if let Some(sub_text) = svars.get(sub_svar_name.as_str()) {
+            if !check_ability_chain_implemented(sub_text, svars, depth + 1) {
+                return false;
+            }
+        }
+    }
+
+    true
 }
