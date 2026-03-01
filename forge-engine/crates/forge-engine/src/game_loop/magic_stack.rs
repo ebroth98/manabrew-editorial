@@ -374,6 +374,16 @@ impl GameLoop {
         sa: &SpellAbility,
         parent_target_card: Option<CardId>,
     ) {
+        let source_name = sa
+            .source
+            .and_then(|cid| game.cards.get(cid.index()).map(|c| c.card_name.clone()))
+            .unwrap_or_else(|| "Unknown source".to_string());
+        let effect_kind = sa.api.clone().unwrap_or_else(|| "Unknown".to_string());
+        agents[sa.activating_player.index()].notify(&format!(
+            "Effect resolved: {} | source={}",
+            effect_kind, source_name
+        ));
+
         let mut ctx = EffectContext {
             game,
             agents,

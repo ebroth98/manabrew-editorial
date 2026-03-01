@@ -29,6 +29,10 @@ pub struct JavaBridgeConfig {
     pub deck2: String,
     /// Path to the forge-gui/ assets directory (optional, auto-detected from JAR path).
     pub forge_home: Option<String>,
+    /// If true, print step-by-step Java bridge logs.
+    pub verbose: bool,
+    /// If true, bias main-phase random decisions toward actions over pass.
+    pub prefer_actions: bool,
 }
 
 /// Java bridge that manages a subprocess running the Java Forge engine (one-shot mode).
@@ -48,6 +52,7 @@ impl JavaBridge {
     /// and reads JSONL output (one `StateSnapshot` per line) from stdout.
     pub fn run(&self) -> Result<Vec<StateSnapshot>, JavaBridgeError> {
         let jar = &self.config.jar_path;
+        let verbose = self.config.verbose;
 
         if !jar.exists() {
             return Err(JavaBridgeError::SpawnError(format!(
@@ -56,13 +61,15 @@ impl JavaBridge {
             )));
         }
 
-        eprintln!("[parity] Launching Java harness: {}", jar.display());
-        eprintln!(
-            "[parity]   args: --deck1 {} --deck2 {} --seed {} --max-turns {}",
-            self.config.deck1, self.config.deck2, self.config.seed, self.config.max_turns
-        );
+        if verbose {
+            eprintln!("[parity] Launching Java harness: {}", jar.display());
+            eprintln!(
+                "[parity]   args: --deck1 {} --deck2 {} --seed {} --max-turns {}",
+                self.config.deck1, self.config.deck2, self.config.seed, self.config.max_turns
+            );
+        }
 
-        let java_bin = resolve_java_bin();
+        let java_bin = resolve_java_bin(verbose);
 
         let mut cmd = Command::new(&java_bin);
         cmd.arg("-jar")
@@ -75,6 +82,9 @@ impl JavaBridge {
             .arg(self.config.seed.to_string())
             .arg("--max-turns")
             .arg(self.config.max_turns.to_string());
+        if self.config.prefer_actions {
+            cmd.arg("--prefer-actions");
+        }
 
         // Add --forge-home if specified, otherwise auto-detect from JAR path
         if let Some(ref home) = self.config.forge_home {
@@ -85,7 +95,9 @@ impl JavaBridge {
             let forge_gui = jar_parent.join("..").join("..").join("forge-gui");
             if forge_gui.join("res").join("cardsfolder").exists() {
                 let forge_gui_str = format!("{}/", forge_gui.display());
-                eprintln!("[parity]   auto-detected forge-home: {}", forge_gui_str);
+                if verbose {
+                    eprintln!("[parity]   auto-detected forge-home: {}", forge_gui_str);
+                }
                 cmd.arg("--forge-home").arg(forge_gui_str);
             }
         }
@@ -102,7 +114,9 @@ impl JavaBridge {
             if let Some(stderr) = stderr {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().flatten() {
-                    eprintln!("[java] {}", line);
+                    if verbose {
+                        eprintln!("[java] {}", line);
+                    }
                 }
             }
         });
@@ -128,18 +142,22 @@ impl JavaBridge {
 
             match serde_json::from_str::<StateSnapshot>(&line) {
                 Ok(snapshot) => {
-                    eprintln!(
-                        "[parity] Java snapshot: turn={} phase={} game_over={}",
-                        snapshot.turn, snapshot.phase, snapshot.game_over
-                    );
+                    if verbose {
+                        eprintln!(
+                            "[parity] Java snapshot: turn={} phase={} game_over={}",
+                            snapshot.turn, snapshot.phase, snapshot.game_over
+                        );
+                    }
                     snapshots.push(snapshot);
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[parity] Warning: failed to parse Java output as snapshot: {}",
-                        e
-                    );
-                    eprintln!("[parity]   line: {}", line);
+                    if verbose {
+                        eprintln!(
+                            "[parity] Warning: failed to parse Java output as snapshot: {}",
+                            e
+                        );
+                        eprintln!("[parity]   line: {}", line);
+                    }
                     // Continue reading — might be a diagnostic line that leaked to stdout
                 }
             }
@@ -153,14 +171,18 @@ impl JavaBridge {
 
         if !status.success() {
             let code = status.code().unwrap_or(-1);
-            eprintln!("[parity] Java process exited with code {}", code);
+            if verbose {
+                eprintln!("[parity] Java process exited with code {}", code);
+            }
             return Err(JavaBridgeError::ProcessError(code));
         }
 
-        eprintln!(
-            "[parity] Java harness completed: {} snapshot(s)",
-            snapshots.len()
-        );
+        if verbose {
+            eprintln!(
+                "[parity] Java harness completed: {} snapshot(s)",
+                snapshots.len()
+            );
+        }
         Ok(snapshots)
     }
 }
@@ -175,6 +197,8 @@ pub struct JavaServerConfig {
     pub jar_path: PathBuf,
     /// Path to the forge-gui/ assets directory (optional, auto-detected from JAR path).
     pub forge_home: Option<String>,
+    /// If true, print step-by-step Java server logs.
+    pub verbose: bool,
 }
 
 /// Request sent to the Java server over stdin (JSONL).
@@ -185,6 +209,7 @@ pub struct MatchupRequest {
     pub deck2: String,
     pub seed: u64,
     pub max_turns: u32,
+    pub prefer_actions: bool,
 }
 
 /// Sentinel line from the Java server indicating end-of-game.
@@ -204,12 +229,14 @@ pub struct JavaServer {
     stdout: BufReader<ChildStdout>,
     #[allow(dead_code)]
     stderr_handle: Option<std::thread::JoinHandle<()>>,
+    verbose: bool,
 }
 
 impl JavaServer {
     /// Spawn a new Java server process with `--server` flag.
     pub fn spawn(config: &JavaServerConfig) -> Result<Self, JavaBridgeError> {
         let jar = &config.jar_path;
+        let verbose = config.verbose;
 
         if !jar.exists() {
             return Err(JavaBridgeError::SpawnError(format!(
@@ -218,9 +245,11 @@ impl JavaServer {
             )));
         }
 
-        eprintln!("[parity] Spawning Java server: {}", jar.display());
+        if verbose {
+            eprintln!("[parity] Spawning Java server: {}", jar.display());
+        }
 
-        let java_bin = resolve_java_bin();
+        let java_bin = resolve_java_bin(verbose);
 
         let mut cmd = Command::new(&java_bin);
         cmd.arg("-jar").arg(jar).arg("--server");
@@ -232,7 +261,9 @@ impl JavaServer {
             let forge_gui = jar_parent.join("..").join("..").join("forge-gui");
             if forge_gui.join("res").join("cardsfolder").exists() {
                 let forge_gui_str = format!("{}/", forge_gui.display());
-                eprintln!("[parity]   auto-detected forge-home: {}", forge_gui_str);
+                if verbose {
+                    eprintln!("[parity]   auto-detected forge-home: {}", forge_gui_str);
+                }
                 cmd.arg("--forge-home").arg(forge_gui_str);
             }
         }
@@ -259,18 +290,23 @@ impl JavaServer {
             if let Some(stderr) = stderr {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().flatten() {
-                    eprintln!("[java] {}", line);
+                    if verbose {
+                        eprintln!("[java] {}", line);
+                    }
                 }
             }
         });
 
-        eprintln!("[parity] Java server spawned (pid={})", child.id());
+        if verbose {
+            eprintln!("[parity] Java server spawned (pid={})", child.id());
+        }
 
         Ok(Self {
             child,
             stdin: BufWriter::new(stdin),
             stdout: BufReader::new(stdout),
             stderr_handle: Some(stderr_handle),
+            verbose,
         })
     }
 
@@ -281,6 +317,7 @@ impl JavaServer {
         deck2: &str,
         seed: u64,
         max_turns: u32,
+        prefer_actions: bool,
     ) -> Result<Vec<StateSnapshot>, JavaBridgeError> {
         let request = MatchupRequest {
             command: "run".to_string(),
@@ -288,6 +325,7 @@ impl JavaServer {
             deck2: deck2.to_string(),
             seed,
             max_turns,
+            prefer_actions,
         };
 
         // Write request as a single JSON line
@@ -343,26 +381,32 @@ impl JavaServer {
             // Otherwise parse as a snapshot
             match serde_json::from_str::<StateSnapshot>(line) {
                 Ok(snapshot) => {
-                    eprintln!(
-                        "[parity] Java snapshot: turn={} phase={} game_over={}",
-                        snapshot.turn, snapshot.phase, snapshot.game_over
-                    );
+                    if self.verbose {
+                        eprintln!(
+                            "[parity] Java snapshot: turn={} phase={} game_over={}",
+                            snapshot.turn, snapshot.phase, snapshot.game_over
+                        );
+                    }
                     snapshots.push(snapshot);
                 }
                 Err(e) => {
-                    eprintln!(
-                        "[parity] Warning: failed to parse Java output: {} (line: {})",
-                        e, line
-                    );
+                    if self.verbose {
+                        eprintln!(
+                            "[parity] Warning: failed to parse Java output: {} (line: {})",
+                            e, line
+                        );
+                    }
                     // Continue — might be a stray diagnostic line
                 }
             }
         }
 
-        eprintln!(
-            "[parity] Java server matchup completed: {} snapshot(s)",
-            snapshots.len()
-        );
+        if self.verbose {
+            eprintln!(
+                "[parity] Java server matchup completed: {} snapshot(s)",
+                snapshots.len()
+            );
+        }
         Ok(snapshots)
     }
 
@@ -373,26 +417,38 @@ impl JavaServer {
 
     /// Send quit command and wait for the server to exit.
     pub fn shutdown(mut self) {
-        eprintln!("[parity] Shutting down Java server...");
+        if self.verbose {
+            eprintln!("[parity] Shutting down Java server...");
+        }
         let quit = "{\"command\":\"quit\"}\n";
         let _ = self.stdin.write_all(quit.as_bytes());
         let _ = self.stdin.flush();
 
         // Wait for the process to exit (with a timeout via drop)
         match self.child.wait() {
-            Ok(status) => eprintln!("[parity] Java server exited: {}", status),
-            Err(e) => eprintln!("[parity] Error waiting for Java server: {}", e),
+            Ok(status) => {
+                if self.verbose {
+                    eprintln!("[parity] Java server exited: {}", status);
+                }
+            }
+            Err(e) => {
+                if self.verbose {
+                    eprintln!("[parity] Error waiting for Java server: {}", e);
+                }
+            }
         }
     }
 }
 
 /// Resolve the `java` binary path from JAVA_HOME or PATH.
-fn resolve_java_bin() -> String {
+fn resolve_java_bin(verbose: bool) -> String {
     std::env::var("JAVA_HOME")
         .ok()
         .map(|home| {
             let bin = PathBuf::from(&home).join("bin").join("java");
-            eprintln!("[parity]   using JAVA_HOME: {}", home);
+            if verbose {
+                eprintln!("[parity]   using JAVA_HOME: {}", home);
+            }
             bin.to_string_lossy().to_string()
         })
         .unwrap_or_else(|| "java".to_string())

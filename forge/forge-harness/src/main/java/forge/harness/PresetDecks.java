@@ -1,6 +1,5 @@
 package forge.harness;
 
-import forge.StaticData;
 import forge.card.CardDb;
 import forge.deck.CardPool;
 import forge.deck.Deck;

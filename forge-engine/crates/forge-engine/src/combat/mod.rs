@@ -454,6 +454,11 @@ pub fn can_creature_block(game: &GameState, blocker_id: CardId, attacker_id: Car
     let attacker = game.card(attacker_id);
     let blocker = game.card(blocker_id);
 
+    // Blockers must satisfy baseline legality (untapped, creature, not detained, etc.).
+    if !blocker.can_block() {
+        return false;
+    }
+
     // Flying: only blocked by flying or reach
     if attacker.has_flying() && !blocker.has_flying() && !blocker.has_reach() {
         return false;

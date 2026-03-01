@@ -5,6 +5,7 @@
 //! [`GameTrace`].
 
 use std::cell::RefCell;
+use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
@@ -24,7 +25,7 @@ use rand::SeedableRng;
 use crate::deck_generator;
 use crate::deterministic_agent::DeterministicAgent;
 use crate::java_random::JavaRandom;
-use crate::protocol::{GameTrace, StateSnapshot};
+use crate::protocol::{GameTrace, MechanicSignal, StateSnapshot};
 use crate::snapshot::snapshot_game;
 
 // ── Preset Deck Lists ──────────────────────────────────────────────
@@ -278,6 +279,13 @@ const TRIGGER_EXPANDED: &[(&str, usize)] = &[
     ("Whispering Snitch", 2),
     // DamageDoneOnce
     ("Rite of Passage", 2),
+    // Support package to unlock more trigger pathways:
+    // - SpellCast + Surveil in one card
+    ("Consider", 4),
+    // - Reliable token creation for ChangesZoneAll / ETB token synergies
+    ("Raise the Alarm", 2),
+    // - Explicit -1/-1 counter source for CounterAddedOnce (Nest of Scarabs)
+    ("Fume Spitter", 3),
 ];
 
 // Static-ability focused test deck for parity.
@@ -537,21 +545,34 @@ struct CapturingAgent {
     inner: DeterministicAgent,
     /// Shared snapshot storage — collected after the game ends.
     shared_snapshots: Arc<Mutex<Vec<StateSnapshot>>>,
+    /// Shared coverage storage — card names played/cast at least once.
+    shared_covered_cards: Arc<Mutex<BTreeSet<String>>>,
+    /// Shared low-effort mechanic signals (notify message buckets).
+    shared_mechanic_signals: Arc<Mutex<BTreeMap<String, usize>>>,
     /// Snapshot cached by `snapshot_state()`, pushed on `notify_turn_changed()`.
     pending_snapshot: Option<StateSnapshot>,
+    /// If true, capture snapshots at turn start.
+    capture_snapshots: bool,
 }
 
 impl CapturingAgent {
     fn new(
         player_id: PlayerId,
         verbose: bool,
+        prefer_actions: bool,
         shared: Arc<Mutex<Vec<StateSnapshot>>>,
+        covered: Arc<Mutex<BTreeSet<String>>>,
+        mechanics: Arc<Mutex<BTreeMap<String, usize>>>,
         rng: Rc<RefCell<JavaRandom>>,
+        capture_snapshots: bool,
     ) -> Self {
         Self {
-            inner: DeterministicAgent::new(player_id, verbose, rng),
+            inner: DeterministicAgent::new(player_id, verbose, rng, prefer_actions),
             shared_snapshots: shared,
+            shared_covered_cards: covered,
+            shared_mechanic_signals: mechanics,
             pending_snapshot: None,
+            capture_snapshots,
         }
     }
 }
@@ -563,12 +584,18 @@ impl PlayerAgent for CapturingAgent {
         mana_pools: &[forge_engine_core::mana::ManaPool],
     ) {
         self.inner.snapshot_state(game, mana_pools);
+        if !self.capture_snapshots {
+            return;
+        }
         // Cache the snapshot — it will be pushed when notify_turn_changed fires
         self.pending_snapshot = Some(snapshot_game(game));
     }
 
     fn notify_turn_changed(&mut self, active_player: PlayerId, turn_number: u32) {
         self.inner.notify_turn_changed(active_player, turn_number);
+        if !self.capture_snapshots {
+            return;
+        }
         // Push the pending snapshot captured by the preceding snapshot_state() call.
         // This fires after new_turn_for_player() has reset per-turn state but before
         // any actions — matching Java's GameEventTurnBegan.
@@ -729,6 +756,15 @@ impl PlayerAgent for CapturingAgent {
     }
 
     fn notify(&mut self, message: &str) {
+        if let Some(card_name) = extract_coverage_card(message) {
+            self.shared_covered_cards
+                .lock()
+                .unwrap()
+                .insert(card_name.to_string());
+        } else if let Some(label) = extract_mechanic_signal(message) {
+            let mut map = self.shared_mechanic_signals.lock().unwrap();
+            *map.entry(label).or_insert(0) += 1;
+        }
         self.inner.notify(message);
     }
 
@@ -758,6 +794,7 @@ pub struct RunConfig {
     pub max_turns: u32,
     pub cards_dir: Option<String>,
     pub verbose: bool,
+    pub prefer_actions: bool,
 }
 
 /// Pre-loaded card database and token templates, reusable across multiple matchups.
@@ -767,7 +804,7 @@ pub struct LoadedData {
 }
 
 /// Load the card database and token templates once.
-pub fn load_data(cards_dir: Option<&str>) -> Result<LoadedData, String> {
+pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, String> {
     let cards_dir = cards_dir.unwrap_or("forge/forge-gui/res/cardsfolder");
     let cards_path = std::path::Path::new(cards_dir);
 
@@ -778,12 +815,16 @@ pub fn load_data(cards_dir: Option<&str>) -> Result<LoadedData, String> {
         ));
     }
 
-    eprintln!("[parity] Loading cards from {:?} ...", cards_path);
+    if verbose {
+        eprintln!("[parity] Loading cards from {:?} ...", cards_path);
+    }
     let (db, result) = CardDatabase::load_from_directory(cards_path);
-    eprintln!(
-        "[parity] Loaded {} cards ({} failed)",
-        result.loaded, result.failed
-    );
+    if verbose {
+        eprintln!(
+            "[parity] Loaded {} cards ({} failed)",
+            result.loaded, result.failed
+        );
+    }
 
     let mut token_templates = Vec::new();
     let token_dir_path = cards_path
@@ -791,12 +832,16 @@ pub fn load_data(cards_dir: Option<&str>) -> Result<LoadedData, String> {
         .map(|p| p.join("tokenscripts"))
         .unwrap_or_default();
     if token_dir_path.exists() {
-        eprintln!("[parity] Loading token scripts from {:?} ...", token_dir_path);
+        if verbose {
+            eprintln!("[parity] Loading token scripts from {:?} ...", token_dir_path);
+        }
         let (token_db, token_result) = CardDatabase::load_from_directory(&token_dir_path);
-        eprintln!(
-            "[parity] Loaded {} token scripts",
-            token_result.loaded
-        );
+        if verbose {
+            eprintln!(
+                "[parity] Loaded {} token scripts",
+                token_result.loaded
+            );
+        }
         for (script_name, rules) in token_db.iter() {
             let template = card_rules_to_instance(rules, PlayerId(0));
             token_templates.push((script_name.clone(), template));
@@ -829,6 +874,10 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
 
     // Shared storage for turn-start snapshots captured by CapturingAgent
     let shared_snapshots: Arc<Mutex<Vec<StateSnapshot>>> = Arc::new(Mutex::new(Vec::new()));
+    let shared_covered_cards: Arc<Mutex<BTreeSet<String>>> =
+        Arc::new(Mutex::new(BTreeSet::new()));
+    let shared_mechanic_signals: Arc<Mutex<BTreeMap<String, usize>>> =
+        Arc::new(Mutex::new(BTreeMap::new()));
 
     // Run game with fixed seed (for any engine-internal randomness)
     let mut rng = StdRng::seed_from_u64(config.seed);
@@ -878,10 +927,23 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         Box::new(CapturingAgent::new(
             p0,
             config.verbose,
+            config.prefer_actions,
             Arc::clone(&shared_snapshots),
+            Arc::clone(&shared_covered_cards),
+            Arc::clone(&shared_mechanic_signals),
             Rc::clone(&agent_rng),
+            true,
         )),
-        Box::new(DeterministicAgent::new(p1, config.verbose, Rc::clone(&agent_rng))),
+        Box::new(CapturingAgent::new(
+            p1,
+            config.verbose,
+            config.prefer_actions,
+            Arc::clone(&shared_snapshots),
+            Arc::clone(&shared_covered_cards),
+            Arc::clone(&shared_mechanic_signals),
+            Rc::clone(&agent_rng),
+            false,
+        )),
     ];
 
     // Run turns — CapturingAgent captures turn-start snapshots automatically
@@ -893,6 +955,21 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     let turn_snapshots = shared_snapshots.lock().unwrap();
     let snapshots: Vec<StateSnapshot> = turn_snapshots.clone();
     drop(turn_snapshots);
+    let covered_cards: Vec<String> = shared_covered_cards
+        .lock()
+        .unwrap()
+        .iter()
+        .cloned()
+        .collect();
+    let mechanic_signals: Vec<MechanicSignal> = shared_mechanic_signals
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|(label, count)| MechanicSignal {
+            label: label.clone(),
+            count: *count,
+        })
+        .collect();
 
     Ok(GameTrace {
         seed: config.seed,
@@ -900,12 +977,73 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         deck2: config.deck2.clone(),
         max_turns: config.max_turns,
         snapshots,
+        covered_cards,
+        mechanic_signals,
     })
 }
 
 /// Run the Rust engine with deterministic agents and collect per-phase snapshots.
 /// Convenience wrapper that loads data fresh each call.
 pub fn run_rust_only(config: &RunConfig) -> Result<GameTrace, String> {
-    let data = load_data(config.cards_dir.as_deref())?;
+    let data = load_data(config.cards_dir.as_deref(), config.verbose)?;
     run_with_data(config, &data)
+}
+
+fn extract_coverage_card(message: &str) -> Option<&str> {
+    message
+        .strip_prefix("Played land: ")
+        .or_else(|| message.strip_prefix("Cast: "))
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+}
+
+fn extract_mechanic_signal(message: &str) -> Option<String> {
+    if message.starts_with("Illegal action") || message.starts_with("Card play failed") {
+        return None;
+    }
+    if message.starts_with("Played land: ") || message.starts_with("Cast: ") {
+        return None;
+    }
+    if let Some(rest) = message.strip_prefix("Trigger fired:") {
+        let mode = extract_pipe_value(rest, "mode").unwrap_or("Unknown");
+        let api = extract_pipe_value(rest, "api").unwrap_or("Unknown");
+        return Some(format!("Trigger fired: mode={} | api={}", mode, api));
+    }
+    if let Some(rest) = message.strip_prefix("Effect resolved:") {
+        let api = rest.split('|').next().map(str::trim).unwrap_or("Unknown");
+        return Some(format!("Effect resolved: {}", api));
+    }
+    if let Some(rest) = message.strip_prefix("Activated ability:") {
+        let api = rest.split('|').next().map(str::trim).unwrap_or("Unknown");
+        return Some(format!("Activated ability: {}", api));
+    }
+    let interesting = [
+        "Suspend:",
+        "Foretold:",
+        "Storm count:",
+        "Storm copy:",
+        "Replicate:",
+        "Replicate copy:",
+        "Cascade found:",
+        "Cascade cast:",
+        "Rebound:",
+        "Revealed:",
+        "Rolled a ",
+    ];
+    if interesting.iter().any(|p| message.starts_with(p)) {
+        return Some(message.to_string());
+    }
+    None
+}
+
+fn extract_pipe_value<'a>(text: &'a str, key: &str) -> Option<&'a str> {
+    text.split('|').find_map(|part| {
+        let trimmed = part.trim();
+        let (lhs, rhs) = trimmed.split_once('=')?;
+        if lhs.trim().eq_ignore_ascii_case(key) {
+            Some(rhs.trim())
+        } else {
+            None
+        }
+    })
 }

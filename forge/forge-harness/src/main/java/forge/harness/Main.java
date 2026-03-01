@@ -45,6 +45,7 @@ public final class Main {
         String deck2Name = "green_stompy";
         long seed = 42;
         int maxTurns = 10;
+        boolean preferActions = false;
         String forgeHome = null;
         boolean serverMode = false;
 
@@ -61,6 +62,9 @@ public final class Main {
                     break;
                 case "--max-turns":
                     if (i + 1 < args.length) maxTurns = Integer.parseInt(args[++i]);
+                    break;
+                case "--prefer-actions":
+                    preferActions = true;
                     break;
                 case "--forge-home":
                     if (i + 1 < args.length) forgeHome = args[++i];
@@ -106,21 +110,27 @@ public final class Main {
         if (serverMode) {
             runServerMode();
         } else {
-            runOneShot(deck1Name, deck2Name, seed, maxTurns);
+            runOneShot(deck1Name, deck2Name, seed, maxTurns, preferActions);
         }
     }
 
     /**
      * Original one-shot mode: run a single game and exit.
      */
-    private static void runOneShot(String deck1Name, String deck2Name, long seed, int maxTurns) {
+    private static void runOneShot(
+        String deck1Name,
+        String deck2Name,
+        long seed,
+        int maxTurns,
+        boolean preferActions
+    ) {
         // In one-shot mode, protocol output goes to real System.out
         protocolOut = System.out;
 
         System.err.printf("[harness] Running: %s vs %s | seed=%d | max_turns=%d%n",
             deck1Name, deck2Name, seed, maxTurns);
 
-        runGame(deck1Name, deck2Name, seed, maxTurns);
+        runGame(deck1Name, deck2Name, seed, maxTurns, preferActions);
 
         System.err.println("[harness] Done.");
         protocolOut.flush();
@@ -173,12 +183,13 @@ public final class Main {
                 String deck2 = request.has("deck2") ? request.get("deck2").getAsString() : "green_stompy";
                 long gameSeed = request.has("seed") ? request.get("seed").getAsLong() : 42;
                 int gameMaxTurns = request.has("max_turns") ? request.get("max_turns").getAsInt() : 10;
+                boolean gamePreferActions = request.has("prefer_actions") && request.get("prefer_actions").getAsBoolean();
 
                 System.err.printf("[harness] Request: %s vs %s | seed=%d | max_turns=%d%n",
                     deck1, deck2, gameSeed, gameMaxTurns);
 
                 try {
-                    runGame(deck1, deck2, gameSeed, gameMaxTurns);
+                    runGame(deck1, deck2, gameSeed, gameMaxTurns, gamePreferActions);
                     protocolOut.println("{\"done\":true,\"error\":null}");
                 } catch (Exception e) {
                     System.err.println("[harness] Game error: " + e.getMessage());
@@ -199,7 +210,13 @@ public final class Main {
      * Run a single game with the given parameters.
      * Snapshots are written to {@link #protocolOut} (not System.out).
      */
-    private static void runGame(String deck1Name, String deck2Name, long seed, int maxTurns) {
+    private static void runGame(
+        String deck1Name,
+        String deck2Name,
+        long seed,
+        int maxTurns,
+        boolean preferActions
+    ) {
         // Build decks
         Deck deck1 = PresetDecks.buildDeck(deck1Name);
         Deck deck2 = PresetDecks.buildDeck(deck2Name);
@@ -234,11 +251,11 @@ public final class Main {
         List<RegisteredPlayer> players = new ArrayList<>();
 
         RegisteredPlayer rp1 = new RegisteredPlayer(deck1);
-        rp1.setPlayer(new DeterministicLobbyPlayer("Player1", agentRng));
+        rp1.setPlayer(new DeterministicLobbyPlayer("Player1", agentRng, preferActions));
         players.add(rp1);
 
         RegisteredPlayer rp2 = new RegisteredPlayer(deck2);
-        rp2.setPlayer(new DeterministicLobbyPlayer("Player2", agentRng));
+        rp2.setPlayer(new DeterministicLobbyPlayer("Player2", agentRng, preferActions));
         players.add(rp2);
 
         Match match = new Match(rules, players, "ParityTest");
@@ -351,6 +368,7 @@ public final class Main {
         System.err.println("  --deck2 <name>       Preset deck for player 2 (default: green_stompy)");
         System.err.println("  --seed <number>      RNG seed (default: 42)");
         System.err.println("  --max-turns <n>      Maximum turns (default: 10)");
+        System.err.println("  --prefer-actions     Bias random choices toward acting instead of passing");
         System.err.println("  --forge-home <path>  Path to forge-gui/ assets directory");
         System.err.println("  --server             Run in server mode (stdin/stdout JSONL protocol)");
         System.err.println("  --help               Show this help");

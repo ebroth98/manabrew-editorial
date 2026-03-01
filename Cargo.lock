@@ -1136,6 +1136,7 @@ version = "0.1.0"
 dependencies = [
  "forge-carddb",
  "forge-foundation",
+ "indexmap 2.13.0",
  "rand 0.8.5",
  "serde",
  "serde_json",

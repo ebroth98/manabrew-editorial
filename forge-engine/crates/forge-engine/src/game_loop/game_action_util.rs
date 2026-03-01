@@ -648,6 +648,7 @@ impl GameLoop {
                             self.pool_mut(player),
                             player,
                             &foretell_exile_cost,
+                            Some(card_id),
                         );
                         self.emit_tap_for_mana_triggers(player, &tapped);
                         self.pool_mut(player).try_pay(&foretell_exile_cost);
@@ -694,6 +695,7 @@ impl GameLoop {
                                 self.pool_mut(player),
                                 player,
                                 &suspend_mc,
+                                Some(card_id),
                             );
                             self.emit_tap_for_mana_triggers(player, &tapped);
                             self.pool_mut(player).try_pay(&suspend_mc);
@@ -1019,7 +1021,13 @@ impl GameLoop {
             };
 
             // Auto-tap lands to pay the effective cost
-            let tapped = mana::auto_tap_lands(game, self.pool_mut(player), player, &mana_cost);
+            let tapped = mana::auto_tap_lands(
+                game,
+                self.pool_mut(player),
+                player,
+                &mana_cost,
+                Some(card_id),
+            );
             self.emit_tap_for_mana_triggers(player, &tapped);
 
             // Auto-tap extra lands for commander tax

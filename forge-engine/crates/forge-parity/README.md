@@ -51,12 +51,14 @@ cargo run -p forge-parity -- --matrix \
 | `--deck1 <name>` | `red_burn` | Preset deck for player 1 |
 | `--deck2 <name>` | `green_stompy` | Preset deck for player 2 |
 | `--seed <N>` | `42` | RNG seed for reproducibility |
+| `--games <N>` | `1` | Number of games in single-match mode; uses seeds `seed..seed+N-1` |
 | `--max-turns <N>` | `10` | Maximum turns before stopping |
 | `--java-jar <path>` | _(none)_ | Path to Java harness JAR (enables parity mode) |
 | `--cards-dir <path>` | _(none)_ | Path to Forge card scripts directory |
 | `--output <path>` / `-o` | _(stdout)_ | Write report to file instead of stdout |
 | `--format <fmt>` | `text` | Output format: `text` or `json` |
-| `--verbose` / `-v` | `false` | Print agent decisions to stderr |
+| `--verbose` / `-v` | `false` | Print step-by-step logs (agent decisions, Java snapshots, per-game progress) |
+| `--prefer-actions` | `false` | Bias random main-phase choices toward play/activate actions over pass |
 | `--matrix` | `false` | Run all deck pairs × seeds |
 | `--seeds <list>` | `42,100,999` | Comma-separated seeds for matrix mode |
 | `--decks <list>` | _(all presets)_ | Comma-separated deck names for matrix mode |
@@ -91,6 +93,18 @@ cargo run -p forge-parity -- \
   --deck1 trigger_expanded --deck2 comprehensive_test --seed 42 \
   --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar
 
+# Run multiple parity games with incrementing seeds (42..141)
+cargo run -p forge-parity -- \
+  --deck1 trigger_expanded --deck2 comprehensive_test \
+  --games 100 --seed 42 --max-turns 30 \
+  --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar
+
+# Same run, but with per-step logging enabled
+cargo run -p forge-parity -- \
+  --deck1 trigger_expanded --deck2 comprehensive_test \
+  --games 100 --seed 42 --max-turns 30 --verbose \
+  --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar
+
 # JSON output for CI
 cargo run -p forge-parity -- \
   --deck1 red_burn --deck2 green_stompy --format json \
@@ -117,3 +131,12 @@ cargo run -p forge-parity -- --deck1 black_control --deck2 blue_control --max-tu
 
 - `0` — All snapshots match (parity pass) or Rust-only completed successfully
 - `1` — Divergence detected or engine error
+
+## Coverage report
+
+For single-match runs (`--games N` with fixed `--deck1`/`--deck2`) in text mode, the report ends with:
+
+- total unique deck-card coverage across the run
+- uncovered card names (cards in the specified deck lists that were never played/cast)
+- per-game completion status in the table (`FINISHED TURN X` or `STOPPED AT MAX`)
+- low-effort ability/effect/trigger signal list inferred from agent `notify` messages

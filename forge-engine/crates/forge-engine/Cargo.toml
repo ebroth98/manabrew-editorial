@@ -9,3 +9,4 @@ forge-carddb = { path = "../forge-carddb" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rand = "0.8"
+indexmap = "2"

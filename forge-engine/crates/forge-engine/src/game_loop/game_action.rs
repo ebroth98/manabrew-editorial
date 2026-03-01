@@ -1,4 +1,5 @@
 use super::*;
+use forge_foundation::mana::ManaAtom;
 
 impl GameLoop {
     pub(crate) fn emit_tap_for_mana_triggers(&mut self, player: PlayerId, tapped_lands: &[CardId]) {
@@ -31,7 +32,151 @@ impl GameLoop {
     ) -> Vec<(CardId, usize)> {
         let mut result = Vec::new();
         let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
+        let deterministic_mana_probe =
+            |exclude_source: Option<CardId>| -> crate::mana::ManaPool {
+                let mut probe = crate::mana::ManaPool::new();
+                let mut source_count: i32 = 0;
+
+                for &cid in game.cards_in_zone(ZoneType::Battlefield, player) {
+                    if Some(cid) == exclude_source {
+                        continue;
+                    }
+                    let c = game.card(cid);
+                    if c.tapped {
+                        continue;
+                    }
+
+                    let mut can_w = false;
+                    let mut can_u = false;
+                    let mut can_b = false;
+                    let mut can_r = false;
+                    let mut can_g = false;
+                    let mut can_c = false;
+
+                    for mab in &c.activated_abilities {
+                        if !mab.is_mana_ability {
+                            continue;
+                        }
+                        if let Some(produced) = mab.params.get("Produced") {
+                            let upper = produced.to_ascii_uppercase();
+                            if upper.contains('W') {
+                                can_w = true;
+                            }
+                            if upper.contains('U') {
+                                can_u = true;
+                            }
+                            if upper.contains('B') {
+                                can_b = true;
+                            }
+                            if upper.contains('R') {
+                                can_r = true;
+                            }
+                            if upper.contains('G') {
+                                can_g = true;
+                            }
+                            if upper.contains('C') {
+                                can_c = true;
+                            }
+                            if upper.contains("ANY") {
+                                can_w = true;
+                                can_u = true;
+                                can_b = true;
+                                can_r = true;
+                                can_g = true;
+                                can_c = true;
+                            }
+                            for atom in mana::produced_to_atoms(produced, &c.chosen_colors) {
+                                match atom {
+                                    ManaAtom::WHITE => can_w = true,
+                                    ManaAtom::BLUE => can_u = true,
+                                    ManaAtom::BLACK => can_b = true,
+                                    ManaAtom::RED => can_r = true,
+                                    ManaAtom::GREEN => can_g = true,
+                                    ManaAtom::COLORLESS => can_c = true,
+                                    _ => {}
+                                }
+                            }
+                        }
+                    }
+
+                    if !can_w && !can_u && !can_b && !can_r && !can_g && !can_c && c.is_land() {
+                        for atom in mana::land_mana_atoms(c) {
+                            match atom {
+                                ManaAtom::WHITE => can_w = true,
+                                ManaAtom::BLUE => can_u = true,
+                                ManaAtom::BLACK => can_b = true,
+                                ManaAtom::RED => can_r = true,
+                                ManaAtom::GREEN => can_g = true,
+                                ManaAtom::COLORLESS => can_c = true,
+                                _ => {}
+                            }
+                        }
+                        if let Some(atom) = mana::basic_land_mana_atom(c) {
+                            match atom {
+                                ManaAtom::WHITE => can_w = true,
+                                ManaAtom::BLUE => can_u = true,
+                                ManaAtom::BLACK => can_b = true,
+                                ManaAtom::RED => can_r = true,
+                                ManaAtom::GREEN => can_g = true,
+                                ManaAtom::COLORLESS => can_c = true,
+                                _ => {}
+                            }
+                        }
+                    }
+
+                    if can_w || can_u || can_b || can_r || can_g || can_c {
+                        source_count += 1;
+                        if can_w {
+                            probe.white += 1;
+                        }
+                        if can_u {
+                            probe.blue += 1;
+                        }
+                        if can_b {
+                            probe.black += 1;
+                        }
+                        if can_r {
+                            probe.red += 1;
+                        }
+                        if can_g {
+                            probe.green += 1;
+                        }
+                        if can_c {
+                            probe.colorless += 1;
+                        }
+                    }
+                }
+
+                probe.total_sources = Some(source_count);
+                probe
+            };
         let battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
+        let can_activate = |card_id: CardId, ab: &crate::ability::ActivatedAbility| {
+            // Mirror Java deterministic controller action-space:
+            // do not expose pure mana abilities as standalone random actions.
+            if ab.is_mana_ability {
+                return false;
+            }
+            if !can_pay(&ab.cost, game, &available_mana, card_id, player) {
+                return false;
+            }
+            // Java DeterministicController hasDeterministicMana parity:
+            // for non-mana activated abilities in play, do not assume the source can
+            // pay its own mana cost during deterministic probing (even without Tap cost).
+            // This keeps the action space aligned with Java chooseSpellAbilityToPlay().
+            let has_mana_cost = ab
+                .cost
+                .parts
+                .iter()
+                .any(|p| matches!(p, CostPart::Mana(_)));
+            if has_mana_cost {
+                let available_without_source = deterministic_mana_probe(Some(card_id));
+                if !can_pay(&ab.cost, game, &available_without_source, card_id, player) {
+                    return false;
+                }
+            }
+            true
+        };
 
         for card_id in battlefield {
             let card = game.card(card_id);
@@ -40,7 +185,7 @@ impl GameLoop {
                 if ab.params.get("ActivationZone").map_or(false, |z| z == "Hand") {
                     continue;
                 }
-                if can_pay(&ab.cost, game, &available_mana, card_id, player) {
+                if can_activate(card_id, ab) {
                     result.push((card_id, ab.ability_index));
                 }
             }
@@ -52,7 +197,7 @@ impl GameLoop {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
                 if ab.params.get("ActivationZone").map_or(false, |z| z == "Hand") {
-                    if can_pay(&ab.cost, game, &available_mana, card_id, player) {
+                    if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }
                 }
@@ -169,6 +314,7 @@ impl GameLoop {
                         &mut self.mana_pools[player.index()],
                         player,
                         mana_cost,
+                        Some(card_id),
                     );
                     self.emit_tap_for_mana_triggers(player, &tapped);
                     self.mana_pools[player.index()].try_pay(mana_cost);
@@ -216,6 +362,12 @@ impl GameLoop {
                         self.pay_discard_cost(game, player, type_filter, *amount);
                     }
                 }
+                CostPart::SubCounter {
+                    amount,
+                    counter_type,
+                } => {
+                    game.card_mut(card_id).remove_counter(*counter_type, *amount);
+                }
             }
         }
     }
@@ -253,6 +405,16 @@ impl GameLoop {
                 } => {
                     if type_filter != "CARDNAME" {
                         self.pay_discard_cost(game, player, type_filter, *amount);
+                    }
+                }
+                CostPart::SubCounter {
+                    amount,
+                    counter_type,
+                } => {
+                    // Spell additional counter payments also come from source permanent.
+                    // If source is not on battlefield, this is a no-op (can_pay guards this).
+                    if game.card(_card_id).zone == ZoneType::Battlefield {
+                        game.card_mut(_card_id).remove_counter(*counter_type, *amount);
                     }
                 }
             }
@@ -423,8 +585,10 @@ impl GameLoop {
     ) {
         let ability_text = ab.ability_text.clone();
 
-        // Build SpellAbility and choose targets
-        let mut sa = SpellAbility::new_simple(Some(card_id), player, &ability_text);
+        // Build full SpellAbility chain (including SubAbility$ links) and choose targets.
+        // This mirrors Java activated ability resolution for abilities like Walking Bulwark,
+        // where the root AB$ Pump resolves a DB$ Effect sub-ability.
+        let mut sa = crate::spellability::build_spell_ability(game, card_id, &ability_text, player);
         sa.is_activated = true;
         sa.setup_targets(game, agents, &self.mana_pools);
 
@@ -455,7 +619,15 @@ impl GameLoop {
         };
         game.stack.push(entry);
         self.log_stack_push(&format!("{} ability", card_name), &game.player(player).name);
-        agents[player.index()].notify(&format!("Activated ability of {}", card_name));
+        let ability_kind = ab
+            .params
+            .get("AB")
+            .cloned()
+            .unwrap_or_else(|| "Unknown".to_string());
+        agents[player.index()].notify(&format!(
+            "Activated ability: {} | source={}",
+            ability_kind, card_name
+        ));
 
         // Fire AbilityActivated trigger
         self.trigger_handler.run_trigger(

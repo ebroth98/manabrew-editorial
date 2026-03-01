@@ -431,7 +431,11 @@ impl GameLoop {
             crate::staticability::static_ability_attack_restrict::global_attack_restrict(&game.cards)
         {
             if chosen_attackers.len() > max_attackers as usize {
-                chosen_attackers.truncate(max_attackers.max(0) as usize);
+                // Java deterministic controller validates attacker declarations and,
+                // when invalid, falls back to Combat's legal-attacker map. With no
+                // mandatory attackers this usually becomes empty rather than
+                // truncating to an arbitrary subset.
+                chosen_attackers.clear();
             }
         }
         if let Some(max_vs_defender) =
@@ -440,7 +444,7 @@ impl GameLoop {
             )
         {
             if chosen_attackers.len() > max_vs_defender as usize {
-                chosen_attackers.truncate(max_vs_defender.max(0) as usize);
+                chosen_attackers.clear();
             }
         }
 
@@ -810,6 +814,8 @@ impl GameLoop {
 
         // Remove temporary command-zone effect cards created by AB$ Effect
         // that expire at end of turn.
+        // These helper effect cards should cease to exist when they expire;
+        // keeping them in Exile causes parity drift versus Java snapshots.
         let temp_effect_ids: Vec<CardId> = game
             .cards
             .iter()
@@ -817,8 +823,11 @@ impl GameLoop {
             .map(|c| c.id)
             .collect();
         for effect_id in temp_effect_ids {
-            let owner = game.card(effect_id).owner;
-            game.move_card(effect_id, ZoneType::Exile, owner);
+            if game.card(effect_id).zone == ZoneType::Command {
+                let controller = game.card(effect_id).controller;
+                game.zone_mut(ZoneType::Command, controller).remove(effect_id);
+                game.cards[effect_id.index()].zone = ZoneType::None;
+            }
         }
 
         // Remove damage and reset until-end-of-turn effects on all battlefield permanents

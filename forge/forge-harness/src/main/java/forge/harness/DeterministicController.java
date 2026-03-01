@@ -3,13 +3,14 @@ package forge.harness;
 import com.google.common.collect.Lists;
 import forge.LobbyPlayer;
 import forge.ai.AiCostDecision;
-import forge.ai.AiPlayDecision;
 import forge.ai.ComputerUtil;
+import forge.ai.ComputerUtilAbility;
 import forge.ai.ComputerUtilCombat;
 import forge.ai.ComputerUtilCost;
 import forge.ai.PlayerControllerAi;
 import forge.game.cost.Cost;
 import forge.game.cost.CostPayment;
+import forge.card.mana.ManaCost;
 import forge.card.ColorSet;
 import forge.card.MagicColor.Color;
 import forge.game.*;
@@ -38,11 +39,11 @@ import java.util.*;
  * {@code rng.nextInt()} to pick, consuming the RNG in the same order.
  */
 public class DeterministicController extends PlayerControllerAi {
+    private static final boolean DEBUG_ACTIONS = true;
 
     /** Shared RNG for all decisions — same instance used by both players. */
     private final Random rng;
-
-    public DeterministicController(Game game, Player p, LobbyPlayer lp, Random rng) {
+    public DeterministicController(Game game, Player p, LobbyPlayer lp, Random rng, boolean preferActions) {
         super(game, p, lp);
         this.rng = rng;
     }
@@ -72,27 +73,27 @@ public class DeterministicController extends PlayerControllerAi {
             && (ph.is(forge.game.phase.PhaseType.MAIN1) || ph.is(forge.game.phase.PhaseType.MAIN2))
             && getGame().getStack().isEmpty();
         if (!isSorcerySpeed) {
+            if (DEBUG_ACTIONS) {
+                System.err.printf("[det-java p%d t%d] pass non-sorcery%n", player.getId(),
+                        getGame().getPhaseHandler().getTurn());
+            }
             return null; // pass priority — no RNG consumed
         }
 
-        // Build combined list: lands first (sorted), then spells (sorted).
-        // Pick randomly: idx 0..count plays a card, idx count = pass.
-        // RNG consumption: exactly 1 call to rng.nextInt(count + 1) if any
-        // playable cards exist, 0 calls if nothing playable.
+        // Build combined list: lands first (sorted), then spells (sorted),
+        // then activatable non-mana abilities (sorted).
+        // Use Java's native legality filtering via getAllPossibleAbilities(..., true).
+        // RNG consumption: exactly 1 call per decision if any actions exist.
 
         // Only play during main phases — matches Rust's DeterministicAgent which
         // only plays during Main1/Main2. Without this check, the Java engine would
         // allow sorcery-speed spells during any priority window (upkeep, combat, etc.)
         // because it trusts the controller to enforce timing.
         if (!player.canCastSorcery()) {
-            return null; // pass during non-main phases
-        }
-
-        // Only play during main phases — matches Rust's DeterministicAgent which
-        // only plays during Main1/Main2. Without this check, the Java engine would
-        // allow sorcery-speed spells during any priority window (upkeep, combat, etc.)
-        // because it trusts the controller to enforce timing.
-        if (!player.canCastSorcery()) {
+            if (DEBUG_ACTIONS) {
+                System.err.printf("[det-java p%d t%d] pass !canCastSorcery%n", player.getId(),
+                        getGame().getPhaseHandler().getTurn());
+            }
             return null; // pass during non-main phases
         }
 
@@ -100,50 +101,90 @@ public class DeterministicController extends PlayerControllerAi {
 
         // 1. Land plays
         List<SpellAbility> landPlays = new ArrayList<>();
-        for (Card c : hand) {
-            if (c.isLand() && player.canPlayLand(c, false, null)) {
-                List<SpellAbility> abilities = c.getAllPossibleAbilities(player, true);
-                for (SpellAbility sa : abilities) {
-                    if (sa.isLandAbility()) {
-                        landPlays.add(sa);
-                    }
-                }
-            }
-        }
-        landPlays.sort(Comparator.comparing(sa -> sa.getHostCard().getName()));
-
-        // 2. Spell plays
         List<SpellAbility> spellPlays = new ArrayList<>();
+        List<SpellAbility> activatable = new ArrayList<>();
+
         for (Card c : hand) {
-            if (!c.isLand()) {
-                for (SpellAbility sa : c.getBasicSpells()) {
-                    sa.setActivatingPlayer(player);
-                    // Only check cost + targeting — no AI evaluation.
-                    // Matches Rust's get_playable_cards which checks
-                    // can_pay + has_candidates_in_chain, not AI heuristics.
-                    if (!ComputerUtilCost.canPayCost(sa, player, false)) {
+            List<SpellAbility> abilities = c.getAllPossibleAbilities(player, true);
+            for (SpellAbility sa : abilities) {
+                sa.setActivatingPlayer(player);
+                if (sa.isLandAbility()) {
+                    landPlays.add(sa);
+                } else if (sa.isSpell()) {
+                    if (!hasDeterministicMana(sa)) {
                         continue;
                     }
-                    if (sa.usesTargeting() && !hasDeterministicTargets(sa)) {
+                    if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
                         continue;
                     }
                     spellPlays.add(sa);
+                } else if (sa.isAbility() && !sa.isManaAbility()) {
+                    // Rust parity engine does not yet materialize K:Equip keyword
+                    // activations in card generation, so exclude them here to keep
+                    // deterministic action spaces mirrored.
+                    if (sa.isEquip()) {
+                        continue;
+                    }
+                    if (!hasDeterministicMana(sa)) {
+                        continue;
+                    }
+                    if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
+                        continue;
+                    }
+                    activatable.add(sa);
                 }
             }
         }
+
+        landPlays.sort(Comparator.comparing(sa -> sa.getHostCard().getName()));
         spellPlays.sort(Comparator.comparing(sa -> sa.getHostCard().getName()));
 
-        // Combined: lands first, then spells
+        // 2. Activatable non-mana abilities from battlefield.
         List<SpellAbility> all = new ArrayList<>();
         all.addAll(landPlays);
         all.addAll(spellPlays);
+        CardCollectionView battlefield = player.getCardsIn(ZoneType.Battlefield);
+        for (Card c : battlefield) {
+            for (SpellAbility sa : c.getAllPossibleAbilities(player, true)) {
+                sa.setActivatingPlayer(player);
+                if (sa.isAbility() && !sa.isManaAbility()) {
+                    if (sa.isEquip()) {
+                        continue;
+                    }
+                    if (!hasDeterministicMana(sa)) {
+                        continue;
+                    }
+                    if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
+                        continue;
+                    }
+                    activatable.add(sa);
+                }
+            }
+        }
+        activatable.sort(Comparator
+            .comparing((SpellAbility sa) -> sa.getHostCard().getName())
+            .thenComparing(sa -> Objects.toString(sa.getApi(), ""))
+            .thenComparing(sa -> Objects.toString(sa.getOriginalDescription(), "")));
+        all.addAll(activatable);
 
         if (all.isEmpty()) {
+            if (DEBUG_ACTIONS) {
+                System.err.printf("[det-java p%d t%d] pass empty%n", player.getId(),
+                        getGame().getPhaseHandler().getTurn());
+            }
             return null; // pass — no RNG consumed
         }
 
-        // Random pick: 0..count plays, count = pass
-        int idx = rng.nextInt(all.size() + 1);
+        final int idx = rng.nextInt(all.size() + 1);
+        if (DEBUG_ACTIONS) {
+            List<String> opts = new ArrayList<>();
+            for (SpellAbility sa : all) {
+                String kind = sa.isLandAbility() ? "LAND" : (sa.isSpell() ? "SPELL" : "AB");
+                opts.add(kind + ":" + sa.getHostCard().getName());
+            }
+            System.err.printf("[det-java p%d t%d] options=%s idx=%d/%d%n", player.getId(),
+                    getGame().getPhaseHandler().getTurn(), opts, idx, all.size());
+        }
         if (idx >= all.size()) {
             return null; // pass
         }
@@ -168,6 +209,10 @@ public class DeterministicController extends PlayerControllerAi {
 
     @Override
     public void declareAttackers(Player attacker, Combat combat) {
+        // PhaseHandler may re-prompt attack declaration after invalid selections
+        // or unpaid attack costs; always rebuild from an empty declaration.
+        combat.clearAttackers();
+
         // Sort eligible creatures alphabetically, per-creature coin flip.
         // RNG consumption: exactly 1 call per eligible creature.
         CardCollection creatures = new CardCollection(attacker.getCreaturesInPlay());
@@ -182,11 +227,32 @@ public class DeterministicController extends PlayerControllerAi {
         }
         if (defender == null) return;
 
+        if (DEBUG_ACTIONS) {
+            List<String> names = new ArrayList<>();
+            for (Card c : creatures) names.add(c.getName());
+            System.err.printf("[det-java p%d t%d] atk candidates=%s%n",
+                player.getId(), getGame().getPhaseHandler().getTurn(), names);
+        }
         for (Card c : creatures) {
             if (CombatUtil.canAttack(c, defender)) {
-                if (rng.nextInt(2) == 1) {
+                int roll = rng.nextInt(2);
+                if (DEBUG_ACTIONS) {
+                    System.err.printf("[det-java p%d t%d] atk roll %s -> %d%n",
+                        player.getId(), getGame().getPhaseHandler().getTurn(), c.getName(), roll);
+                }
+                if (roll == 1) {
                     combat.addAttacker(c, defender);
                 }
+            }
+        }
+
+        // Match Java AI fallback: if our random declaration is illegal, replace it
+        // with the engine-provided legal attacker map to guarantee progress.
+        if (!CombatUtil.validateAttackers(combat)) {
+            combat.clearAttackers();
+            final Map<Card, GameEntity> legal = combat.getAttackConstraints().getLegalAttackers().getLeft();
+            for (final Map.Entry<Card, GameEntity> e : legal.entrySet()) {
+                combat.addAttacker(e.getKey(), e.getValue());
             }
         }
     }
@@ -204,9 +270,22 @@ public class DeterministicController extends PlayerControllerAi {
 
         if (attackers.isEmpty()) return;
 
+        if (DEBUG_ACTIONS) {
+            List<String> b = new ArrayList<>();
+            for (Card c : blockers) b.add(c.getName());
+            List<String> a = new ArrayList<>();
+            for (Card c : attackers) a.add(c.getName());
+            System.err.printf("[det-java p%d t%d] blk candidates=%s attackers=%s%n",
+                player.getId(), getGame().getPhaseHandler().getTurn(), b, a);
+        }
         for (Card blocker : blockers) {
             if (!CombatUtil.canBlock(blocker, combat)) continue;
             int choice = rng.nextInt(attackers.size() + 1);
+            if (DEBUG_ACTIONS) {
+                System.err.printf("[det-java p%d t%d] blk roll %s -> %d/%d%n",
+                    player.getId(), getGame().getPhaseHandler().getTurn(),
+                    blocker.getName(), choice, attackers.size());
+            }
             if (choice > 0 && choice <= attackers.size()) {
                 Card attackerToBlock = attackers.get(choice - 1);
                 if (CombatUtil.canBlock(attackerToBlock, blocker, combat)) {
@@ -273,7 +352,6 @@ public class DeterministicController extends PlayerControllerAi {
             if (aPlayer != bPlayer) return aPlayer ? -1 : 1;
             return a.getName().compareTo(b.getName());
         });
-
         return sorted.get(0); // fixed: always pick first (no RNG consumed)
     }
 
@@ -399,20 +477,82 @@ public class DeterministicController extends PlayerControllerAi {
     }
 
     /**
-     * Check if a targeted spell has at least one valid target.
-     * Does NOT consume RNG — used during candidate evaluation to match
-     * Rust's has_candidates_in_chain filtering.
+     * Conservative, side-effect-free mana gate.
+     * Prevents selecting actions that are obviously unpayable with current untapped mana sources.
      */
-    private boolean hasDeterministicTargets(SpellAbility sa) {
-        for (Player p : getGame().getPlayers()) {
-            if (sa.canTarget(p)) return true;
+    private boolean hasDeterministicMana(SpellAbility sa) {
+        final Cost costs = sa.getPayCosts();
+        if (costs == null || !costs.hasManaCost()) {
+            return true;
         }
-        for (Player p : getGame().getPlayers()) {
-            for (Card c : p.getCardsIn(ZoneType.Battlefield)) {
-                if (sa.canTarget(c)) return true;
+
+        final ManaCost manaCost = costs.getCostMana().getManaCostFor(sa);
+        if (manaCost == null || manaCost.isNoCost()) {
+            return false;
+        }
+
+        // Conservative rule for deterministic probing:
+        // non-mana activations should not assume the source can also fund its own mana cost.
+        final boolean excludesSource = costs.hasTapCost()
+            || (sa.isAbility() && !sa.isManaAbility() && sa.getHostCard().isInPlay());
+        final Card source = sa.getHostCard();
+        final int sourceId = source.getId();
+        int totalSources = 0;
+        int w = 0, u = 0, b = 0, r = 0, g = 0, c = 0;
+
+        for (Card card : player.getCardsIn(ZoneType.Battlefield)) {
+            if (card.isTapped()) {
+                continue;
+            }
+            if (excludesSource && card.getId() == sourceId) {
+                continue;
+            }
+            boolean canProduceW = false;
+            boolean canProduceU = false;
+            boolean canProduceB = false;
+            boolean canProduceR = false;
+            boolean canProduceG = false;
+            boolean canProduceC = false;
+
+            for (SpellAbility manaSa : card.getManaAbilities()) {
+                if (manaSa.getManaPart() == null) {
+                    continue;
+                }
+                final String produced = Objects.toString(manaSa.getManaPart().getOrigProduced(), "");
+                final String upper = produced.toUpperCase(Locale.ROOT);
+                if (upper.contains("W")) canProduceW = true;
+                if (upper.contains("U")) canProduceU = true;
+                if (upper.contains("B")) canProduceB = true;
+                if (upper.contains("R")) canProduceR = true;
+                if (upper.contains("G")) canProduceG = true;
+                if (upper.contains("C")) canProduceC = true;
+                if (upper.contains("ANY")) {
+                    canProduceW = canProduceU = canProduceB = canProduceR = canProduceG = canProduceC = true;
+                }
+            }
+
+            if (canProduceW || canProduceU || canProduceB || canProduceR || canProduceG || canProduceC) {
+                totalSources++;
+                if (canProduceW) w++;
+                if (canProduceU) u++;
+                if (canProduceB) b++;
+                if (canProduceR) r++;
+                if (canProduceG) g++;
+                if (canProduceC) c++;
             }
         }
-        return false;
+
+        if (totalSources < manaCost.getCMC()) {
+            return false;
+        }
+
+        final int[] required = manaCost.getColorShardCounts(); // W U B R G C
+        return w >= required[0]
+            && u >= required[1]
+            && b >= required[2]
+            && r >= required[3]
+            && g >= required[4]
+            && c >= required[5];
     }
 
     /**

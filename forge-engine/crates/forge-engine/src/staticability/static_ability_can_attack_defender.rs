@@ -9,7 +9,10 @@ pub fn can_attack_defender(
     card: &CardInstance,
     defender: PlayerId,
 ) -> bool {
-    for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for source in cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command)
+    {
         for st_ab in source
             .static_abilities
             .iter()
@@ -60,4 +63,3 @@ fn matches_valid_attacked(
         _ => true,
     }
 }
-
