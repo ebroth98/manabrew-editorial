@@ -141,6 +141,9 @@ export default function Game() {
   activatePassUntilEotRef.current = activatePassUntilEot;
 
   // Card hover preview with delayed show / auto-dismiss
+  // Note: promptType is NOT a dismiss dep — modal prompt types are already guarded
+  // by the render condition on CardPreview, and modal states are tracked separately.
+  // Including promptType caused hover to break during autopass (rapid prompt changes).
   const {
     hoveredCard,
     mousePos,
@@ -148,7 +151,7 @@ export default function Game() {
     dismissHover,
     handleFlipCard,
     handleHoverCard,
-  } = useCardHover([viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen, promptType]);
+  } = useCardHover([viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen]);
 
   // Hand drag-to-play
   const battlefieldContainerRef = useRef<HTMLDivElement>(null);
