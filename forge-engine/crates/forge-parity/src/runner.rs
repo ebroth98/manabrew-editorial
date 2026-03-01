@@ -280,6 +280,53 @@ const TRIGGER_EXPANDED: &[(&str, usize)] = &[
     ("Rite of Passage", 2),
 ];
 
+// Static-ability focused test deck for parity.
+const STATICABILITY_TEST: &[(&str, usize)] = &[
+    // 5-color mana base to enable broad static cards.
+    ("Plains", 5),
+    ("Island", 5),
+    ("Swamp", 4),
+    ("Mountain", 4),
+    ("Forest", 4),
+    // Critical modes
+    ("Underworld Cerberus", 1),
+    ("Konda's Banner", 1),
+    ("Juggernaut", 1),
+    ("Watchdog", 1),
+    ("Panharmonicon", 1),
+    ("Platinum Emperion", 1),
+    ("Maralen of the Mornsong", 1),
+    ("Yasharn, Implacable Earth", 1),
+    ("Incinerate", 1),
+    ("Hushbringer", 1),
+    ("Solemnity", 1),
+    // High-priority modes
+    ("Winding Canyons", 1),
+    ("Silent Arbiter", 1),
+    ("Crawlspace", 1),
+    ("Glaring Spotlight", 1),
+    ("Autumn Willow", 1),
+    ("Brothers Yamazaki", 1),
+    ("Standard Bearer", 1),
+    ("Wolf Pack", 1),
+    ("Pygmy Hippo", 1),
+    ("Walking Bulwark", 1),
+    ("Patient Zero", 1),
+    ("Phyrexian Unlife", 1),
+    ("Everlasting Torment", 1),
+    ("Ghostly Flame", 1),
+    ("Skullbriar, the Walking Grave", 1),
+    ("Rasputin Dreamweaver", 1),
+    // Support cards
+    ("Lightning Bolt", 2),
+    ("Shock", 2),
+    ("Unsummon", 2),
+    ("Doom Blade", 2),
+    ("Raise the Alarm", 2),
+    ("Typhoid Rats", 2),
+    ("Vampire Nighthawk", 2),
+];
+
 /// Resolve a preset deck name to a card list.
 fn get_preset_deck(name: &str) -> Option<&'static [(&'static str, usize)]> {
     match name {
@@ -297,6 +344,7 @@ fn get_preset_deck(name: &str) -> Option<&'static [(&'static str, usize)]> {
         "trigger_test" => Some(TRIGGER_TEST),
         "keyword_test" => Some(KEYWORD_TEST),
         "trigger_expanded" => Some(TRIGGER_EXPANDED),
+        "staticability_test" => Some(STATICABILITY_TEST),
         _ => None,
     }
 }
@@ -318,6 +366,7 @@ pub fn available_presets() -> Vec<&'static str> {
         "trigger_test",
         "keyword_test",
         "trigger_expanded",
+        "staticability_test",
     ]
 }
 

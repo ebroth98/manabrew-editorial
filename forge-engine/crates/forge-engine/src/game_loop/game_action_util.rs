@@ -229,14 +229,23 @@ impl GameLoop {
                 };
 
                 if additional_costs_ok {
-                    let all_valid = card.abilities.iter().all(|ab| {
-                        target_restrictions::has_candidates_in_chain(
-                            game,
-                            player,
-                            ab,
-                            Some(card_id),
-                        )
-                    });
+                    // Only validate cast-time targets from SP$ abilities.
+                    // Non-spell abilities (AB$/DB$/...) must not gate whether the card
+                    // can be cast from hand. Otherwise cards with target-dependent
+                    // activated abilities (e.g. Walking Bulwark) become incorrectly
+                    // uncastable when no valid AB$ target exists.
+                    let all_valid = card
+                        .abilities
+                        .iter()
+                        .filter(|ab| parse_pipe_params(ab).contains_key("SP"))
+                        .all(|ab| {
+                            target_restrictions::has_candidates_in_chain(
+                                game,
+                                player,
+                                ab,
+                                Some(card_id),
+                            )
+                        });
                     if all_valid {
                         playable.push(card_id);
                     }

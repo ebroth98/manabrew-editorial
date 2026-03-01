@@ -648,6 +648,7 @@ pub fn parse_counter_type(s: &str) -> CounterType {
         "LEVEL" => CounterType::Level,
         "LORE" => CounterType::Lore,
         "PAGE" => CounterType::Page,
+        "DREAM" => CounterType::Dream,
         _ => CounterType::P1P1, // fallback
     }
 }
@@ -790,6 +791,14 @@ pub fn matches_change_type(
         "Land" => card.is_land(),
         "Creature" => card.is_creature(),
         "Card" => true,
+        // Support land-subtype selectors used in tutor scripts
+        // (e.g. "Forest.Basic", "Plains.Basic").
+        "Plains" | "Island" | "Swamp" | "Mountain" | "Forest" => {
+            card.type_line
+                .subtypes
+                .iter()
+                .any(|st| st.eq_ignore_ascii_case(type_part))
+        }
         _ => true,
     };
 

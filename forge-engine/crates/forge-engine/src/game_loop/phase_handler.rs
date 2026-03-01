@@ -375,38 +375,57 @@ impl GameLoop {
         let mut chosen_attackers = if available_attackers.is_empty() {
             Vec::new()
         } else {
-            agents[active.index()].snapshot_state(game, &self.mana_pools);
-            self.game_log.log(
-                GameLogEntryType::PriorityWaiting,
-                2,
-                format!(
-                    "Waiting for {} attacker declaration",
-                    game.player(active).name
-                ),
-            );
-            let agent = &mut agents[active.index()];
-            let picked = agent.choose_attackers(active, &available_attackers);
-            self.game_log.log(
-                GameLogEntryType::PriorityResponse,
-                2,
-                format!(
-                    "{} declared {} attacker(s)",
-                    game.player(active).name,
-                    picked.len()
-                ),
-            );
+            let must_attackers: Vec<CardId> = available_attackers
+                .iter()
+                .copied()
+                .filter(|&attacker_id| {
+                    crate::staticability::static_ability_must_attack::must_attack(
+                        &game.cards,
+                        game.card(attacker_id),
+                    )
+                })
+                .collect();
+
+            let mut accumulated: Vec<CardId> = Vec::new();
+            let picked = loop {
+                agents[active.index()].snapshot_state(game, &self.mana_pools);
+                self.game_log.log(
+                    GameLogEntryType::PriorityWaiting,
+                    2,
+                    format!(
+                        "Waiting for {} attacker declaration",
+                        game.player(active).name
+                    ),
+                );
+                let agent = &mut agents[active.index()];
+                let picked = agent.choose_attackers(active, &available_attackers);
+                self.game_log.log(
+                    GameLogEntryType::PriorityResponse,
+                    2,
+                    format!(
+                        "{} declared {} attacker(s)",
+                        game.player(active).name,
+                        picked.len()
+                    ),
+                );
+
+                // Java retries attacker declaration until "must attack" constraints
+                // are satisfied; each retry can preserve previously-declared attackers
+                // on the same combat object. Mirror that by accumulating picks.
+                for cid in picked {
+                    if !accumulated.contains(&cid) {
+                        accumulated.push(cid);
+                    }
+                }
+                let must_attack_satisfied = must_attackers
+                    .iter()
+                    .all(|cid| accumulated.contains(cid));
+                if must_attack_satisfied {
+                    break accumulated;
+                }
+            };
             picked
         };
-        // MustAttack: auto-include creatures that must attack if able.
-        for &attacker_id in &available_attackers {
-            if crate::staticability::static_ability_must_attack::must_attack(
-                &game.cards,
-                game.card(attacker_id),
-            ) && !chosen_attackers.contains(&attacker_id)
-            {
-                chosen_attackers.push(attacker_id);
-            }
-        }
         // AttackRestrict: enforce global maximum attackers.
         if let Some(max_attackers) =
             crate::staticability::static_ability_attack_restrict::global_attack_restrict(&game.cards)
@@ -613,7 +632,7 @@ impl GameLoop {
 
             // SBA between damage steps
             loop {
-                if !game.check_state_based_actions() {
+                if !game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler)) {
                     break;
                 }
             }
@@ -641,7 +660,7 @@ impl GameLoop {
 
         // SBA after combat
         loop {
-            if !game.check_state_based_actions() {
+            if !game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler)) {
                 break;
             }
         }

@@ -151,6 +151,52 @@ public final class PresetDecks {
             // DamageDoneOnce
             {"Rite of Passage", "2"},
         });
+
+        PRESETS.put("staticability_test", new String[][] {
+            // 5-color mana base to enable broad static cards.
+            {"Plains", "5"},
+            {"Island", "5"},
+            {"Swamp", "4"},
+            {"Mountain", "4"},
+            {"Forest", "4"},
+            // Critical modes
+            {"Underworld Cerberus", "1"},
+            {"Konda's Banner", "1"},
+            {"Juggernaut", "1"},
+            {"Watchdog", "1"},
+            {"Panharmonicon", "1"},
+            {"Platinum Emperion", "1"},
+            {"Maralen of the Mornsong", "1"},
+            {"Yasharn, Implacable Earth", "1"},
+            {"Incinerate", "1"},
+            {"Hushbringer", "1"},
+            {"Solemnity", "1"},
+            // High-priority modes
+            {"Winding Canyons", "1"},
+            {"Silent Arbiter", "1"},
+            {"Crawlspace", "1"},
+            {"Glaring Spotlight", "1"},
+            {"Autumn Willow", "1"},
+            {"Brothers Yamazaki", "1"},
+            {"Standard Bearer", "1"},
+            {"Wolf Pack", "1"},
+            {"Pygmy Hippo", "1"},
+            {"Walking Bulwark", "1"},
+            {"Patient Zero", "1"},
+            {"Phyrexian Unlife", "1"},
+            {"Everlasting Torment", "1"},
+            {"Ghostly Flame", "1"},
+            {"Skullbriar, the Walking Grave", "1"},
+            {"Rasputin Dreamweaver", "1"},
+            // Support cards
+            {"Lightning Bolt", "2"},
+            {"Shock", "2"},
+            {"Unsummon", "2"},
+            {"Doom Blade", "2"},
+            {"Raise the Alarm", "2"},
+            {"Typhoid Rats", "2"},
+            {"Vampire Nighthawk", "2"},
+        });
     }
 
     /**

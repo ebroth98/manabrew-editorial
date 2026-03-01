@@ -375,16 +375,21 @@ fn compare_snapshots(
     java_snapshots: &[forge_parity::protocol::StateSnapshot],
 ) -> MatchupResult {
     let max_snapshots = rust_snapshots.len().max(java_snapshots.len());
-    let mut all_divergences: Vec<Divergence> = Vec::new();
+    let mut first_divergence: Option<Divergence> = None;
+    let mut compared_until = max_snapshots;
 
     for i in 0..max_snapshots {
         match (rust_snapshots.get(i), java_snapshots.get(i)) {
             (Some(rs), Some(js)) => {
                 let divs = comparator::compare(i, rs, js);
-                all_divergences.extend(divs);
+                if let Some(div) = divs.into_iter().next() {
+                    first_divergence = Some(div);
+                    compared_until = i + 1;
+                    break;
+                }
             }
             (Some(_rs), None) => {
-                all_divergences.push(Divergence {
+                first_divergence = Some(Divergence {
                     snapshot_index: i,
                     turn: _rs.turn,
                     phase: _rs.phase.clone(),
@@ -392,9 +397,11 @@ fn compare_snapshots(
                     rust_value: "present".into(),
                     java_value: "missing".into(),
                 });
+                compared_until = i + 1;
+                break;
             }
             (None, Some(_js)) => {
-                all_divergences.push(Divergence {
+                first_divergence = Some(Divergence {
                     snapshot_index: i,
                     turn: _js.turn,
                     phase: _js.phase.clone(),
@@ -402,14 +409,15 @@ fn compare_snapshots(
                     rust_value: "missing".into(),
                     java_value: "present".into(),
                 });
+                compared_until = i + 1;
+                break;
             }
             (None, None) => {}
         }
     }
 
-    let divergence_count = all_divergences.len();
-    let first_divergence = all_divergences.into_iter().next();
-    let status = if divergence_count == 0 {
+    let divergence_count = usize::from(first_divergence.is_some());
+    let status = if first_divergence.is_none() {
         MatchupStatus::Pass
     } else {
         MatchupStatus::Fail
@@ -420,7 +428,7 @@ fn compare_snapshots(
         deck2: config.deck2.clone(),
         seed: config.seed,
         status,
-        snapshots_compared: max_snapshots,
+        snapshots_compared: compared_until,
         divergence_count,
         first_divergence,
         error_message: None,

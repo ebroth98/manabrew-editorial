@@ -147,6 +147,7 @@ fn counter_type_name(ct: &CounterType) -> String {
         CounterType::Level => "level".into(),
         CounterType::Lore => "lore".into(),
         CounterType::Page => "page".into(),
+        CounterType::Dream => "dream".into(),
         CounterType::Poison => "poison".into(),
     }
 }

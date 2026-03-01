@@ -867,6 +867,7 @@ pub enum CounterType {
     Level,
     Lore,
     Page,
+    Dream,
     // Add more as needed
 }
 

@@ -18,7 +18,7 @@ impl GameLoop {
         if entry.spell_ability.is_copy {
             self.resolve_spell_effect(game, agents, &entry);
             apply_continuous_effects(game);
-            game.check_state_based_actions();
+            game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
             self.process_triggers(game, agents);
             return;
         }
@@ -320,7 +320,7 @@ impl GameLoop {
 
         // Continuous effects might change after resolution
         apply_continuous_effects(game);
-        game.check_state_based_actions();
+        game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
 
         // Process triggers that may have fired during resolution
         self.process_triggers(game, agents);

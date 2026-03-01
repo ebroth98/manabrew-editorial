@@ -555,9 +555,12 @@ pub fn auto_tap_lands(
 ) -> Vec<CardId> {
     let all_lands: Vec<CardId> = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
 
-    // Pre-compute atoms for each untapped land, sorted by specificity (fewest colors first).
-    // This ensures single-color lands are tapped before dual/multi-color lands.
-    let mut candidates: Vec<(CardId, Vec<u16>)> = Vec::new();
+    // Pre-compute atoms for each untapped land.
+    // Sort order mirrors Java ComputerUtilMana behavior:
+    // - prefer "plain" mana sources over utility lands with extra non-mana abilities
+    // - then prefer sources with fewer color options (single-color before dual/multi)
+    // - keep original battlefield order as final tie-break (stable sort)
+    let mut candidates: Vec<(CardId, Vec<u16>, bool, bool)> = Vec::new();
     let mut tapped_lands: Vec<CardId> = Vec::new();
     for &land_id in &all_lands {
         let land = game.card(land_id);
@@ -571,11 +574,14 @@ pub fn auto_tap_lands(
             }
         }
         if !atoms.is_empty() {
-            candidates.push((land_id, atoms));
+            let has_non_mana_ability = land.activated_abilities.iter().any(|ab| !ab.is_mana_ability);
+            let is_pure_colorless = atoms.iter().all(|&a| a == ManaAtom::COLORLESS);
+            candidates.push((land_id, atoms, has_non_mana_ability, is_pure_colorless));
         }
     }
-    // Sort: fewest colors first (basic lands before duals before Command Tower)
-    candidates.sort_by_key(|(_, atoms)| atoms.len());
+    candidates.sort_by_key(|(_, atoms, has_non_mana_ability, _)| {
+        (*has_non_mana_ability, atoms.len())
+    });
 
     // Track what the pool can already cover (virtual copy, not mutated on real pool)
     let mut pool_tracker = pool.clone();
@@ -596,9 +602,11 @@ pub fn auto_tap_lands(
             // Find the most specialized untapped land that produces this color
             if let Some(idx) = candidates
                 .iter()
-                .position(|(_, land_atoms)| land_atoms.iter().any(|&a| (a & color_atoms) != 0))
+                .position(|(_, land_atoms, _, _)| {
+                    land_atoms.iter().any(|&a| (a & color_atoms) != 0)
+                })
             {
-                let (land_id, land_atoms) = candidates.remove(idx);
+                let (land_id, land_atoms, _, _) = candidates.remove(idx);
                 let atom = *land_atoms
                     .iter()
                     .find(|&&a| (a & color_atoms) != 0)
@@ -612,11 +620,37 @@ pub fn auto_tap_lands(
     let generic_needed = (cost.generic_cost() - pool_tracker.total()).max(0);
     if generic_needed > 0 {
         let mut remaining = generic_needed;
-        // For generic, tap from the FRONT of the sorted list (zone/entry order within
-        // same atom count), matching Java's ComputerUtilMana which iterates mana sources
-        // in zone order (FIFO: first-entered lands used first for generic costs).
+        let has_colored_requirement = cost.shards().iter().any(|shard| {
+            !shard.is_x() && (shard.shard() & ManaAtom::COLORS_SUPERPOSITION) != 0
+        });
+        // For generic costs, Java AI's selection differs between pure-generic and
+        // mixed-color spells. Match that shape:
+        // - pure generic spells: spend pure colorless sources first
+        // - mixed spells: preserve utility/non-mana lands where possible
         while remaining > 0 && !candidates.is_empty() {
-            let (land_id, land_atoms) = candidates.remove(0);
+            let pick_idx = candidates
+                .iter()
+                .enumerate()
+                .min_by_key(|(idx, (_, atoms, has_non_mana_ability, is_pure_colorless))| {
+                    if has_colored_requirement {
+                        (
+                            if *has_non_mana_ability { 1 } else { 0 },
+                            atoms.len(),
+                            if *is_pure_colorless { 1 } else { 0 },
+                            *idx,
+                        )
+                    } else {
+                        (
+                            if *is_pure_colorless { 0 } else { 1 },
+                            if *has_non_mana_ability { 1 } else { 0 },
+                            atoms.len(),
+                            *idx,
+                        )
+                    }
+                })
+                .map(|(idx, _)| idx)
+                .unwrap_or(0);
+            let (land_id, land_atoms, _, _) = candidates.remove(pick_idx);
             if let Some(&atom) = land_atoms.first() {
                 tap_land_for_mana(game, pool, player, land_id, atom, &mut tapped_lands);
                 remaining -= 1;
@@ -813,6 +847,10 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::card::CardInstance;
+    use crate::game::GameState;
+    use crate::ids::{CardId, PlayerId};
+    use forge_foundation::{CardTypeLine, ColorSet, ZoneType};
     use forge_foundation::ManaCost;
 
     #[test]
@@ -921,5 +959,73 @@ mod tests {
         pool.white = 3;
         pool.empty();
         assert_eq!(pool.total(), 0);
+    }
+
+    #[test]
+    fn auto_tap_prefers_basic_sources_over_utility_lands_for_generic() {
+        let mut game = GameState::new(&["P1", "P2"], 20);
+        let p0 = PlayerId(0);
+
+        let make_land = |id: usize, name: &str, abilities: Vec<&str>| {
+            CardInstance::new(
+                CardId(id as u32),
+                name.to_string(),
+                p0,
+                CardTypeLine::parse("Land"),
+                ManaCost::no_cost(),
+                ColorSet::COLORLESS,
+                None,
+                None,
+                vec![],
+                abilities.into_iter().map(|s| s.to_string()).collect(),
+            )
+        };
+
+        // Insertion order intentionally places Winding Canyons before a second Island.
+        let island1 = game.create_card(make_land(
+            1,
+            "Island",
+            vec!["AB$ Mana | Cost$ T | Produced$ U | SpellDescription$ Add {U}."],
+        ));
+        let canyons = game.create_card(make_land(
+            2,
+            "Winding Canyons",
+            vec![
+                "AB$ Mana | Cost$ T | Produced$ C | SpellDescription$ Add {C}.",
+                "AB$ Effect | Cost$ 2 T | SpellDescription$ Utility ability.",
+            ],
+        ));
+        let island2 = game.create_card(make_land(
+            3,
+            "Island",
+            vec!["AB$ Mana | Cost$ T | Produced$ U | SpellDescription$ Add {U}."],
+        ));
+        let swamp1 = game.create_card(make_land(
+            4,
+            "Swamp",
+            vec!["AB$ Mana | Cost$ T | Produced$ B | SpellDescription$ Add {B}."],
+        ));
+        let swamp2 = game.create_card(make_land(
+            5,
+            "Swamp",
+            vec!["AB$ Mana | Cost$ T | Produced$ B | SpellDescription$ Add {B}."],
+        ));
+
+        game.zone_mut(ZoneType::Battlefield, p0).add(island1);
+        game.zone_mut(ZoneType::Battlefield, p0).add(canyons);
+        game.zone_mut(ZoneType::Battlefield, p0).add(island2);
+        game.zone_mut(ZoneType::Battlefield, p0).add(swamp1);
+        game.zone_mut(ZoneType::Battlefield, p0).add(swamp2);
+
+        // Simulate one Island already spent on a previous spell this main phase.
+        game.card_mut(island1).tapped = true;
+
+        let mut pool = ManaPool::new();
+        auto_tap_lands(&mut game, &mut pool, p0, &ManaCost::parse("1 B B"));
+
+        assert!(game.card(swamp1).tapped);
+        assert!(game.card(swamp2).tapped);
+        assert!(game.card(island2).tapped);
+        assert!(!game.card(canyons).tapped);
     }
 }

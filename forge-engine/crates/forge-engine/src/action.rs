@@ -5,6 +5,7 @@ use crate::ids::{CardId, PlayerId};
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::staticability::layer::apply_etb_tapped;
+use crate::trigger::handler::TriggerHandler;
 
 /// Game state mutation methods — moving cards, dealing damage, state-based actions.
 impl GameState {
@@ -76,6 +77,25 @@ impl GameState {
                 self.zone_mut(dest_zone, dest_owner).add(card_id);
                 // Apply ETB-tapped effects (intrinsic + extrinsic).
                 apply_etb_tapped(self, card_id);
+                // Keyword ETB counters: K:etbCounter:TYPE:N
+                let etb_keywords = self.cards[card_id.index()].keywords.clone();
+                for kw in etb_keywords {
+                    let mut parts = kw.split(':');
+                    let head = parts.next().unwrap_or_default();
+                    if !head.eq_ignore_ascii_case("etbCounter") {
+                        continue;
+                    }
+                    let counter_type = parts.next().unwrap_or_default();
+                    let amount = parts
+                        .next()
+                        .and_then(|s| s.parse::<i32>().ok())
+                        .unwrap_or(0);
+                    if amount <= 0 {
+                        continue;
+                    }
+                    let ct = crate::ability::effects::parse_counter_type(counter_type);
+                    self.cards[card_id.index()].add_counter(ct, amount);
+                }
                 return;
             }
             ZoneType::Graveyard | ZoneType::Hand | ZoneType::Exile | ZoneType::Library => {
@@ -238,6 +258,15 @@ impl GameState {
 
     /// Check and apply state-based actions. Returns true if any were applied.
     pub fn check_state_based_actions(&mut self) -> bool {
+        self.check_state_based_actions_with_triggers(None)
+    }
+
+    /// Check and apply state-based actions. Returns true if any were applied.
+    /// If provided, emits ChangesZone triggers for SBA zone moves.
+    pub fn check_state_based_actions_with_triggers(
+        &mut self,
+        mut trigger_handler: Option<&mut TriggerHandler>,
+    ) -> bool {
         let mut any_changes = false;
 
         // Check players with 0 or less life
@@ -311,7 +340,13 @@ impl GameState {
                             } else {
                                 ZoneType::Graveyard
                             };
+                        let old_zone = self.card(cid).zone;
                         self.move_card(cid, final_dest, owner);
+                        if let Some(handler) = trigger_handler.as_deref_mut() {
+                            crate::ability::effects::emit_zone_trigger(
+                                handler, cid, old_zone, final_dest,
+                            );
+                        }
                         any_changes = true;
                     } else {
                         // Indestructible — destruction was replaced; creature stays.
@@ -347,7 +382,16 @@ impl GameState {
                 }
                 for cid in ids.into_iter().skip(1) {
                     let owner = self.card(cid).owner;
+                    let old_zone = self.card(cid).zone;
                     self.move_card(cid, ZoneType::Graveyard, owner);
+                    if let Some(handler) = trigger_handler.as_deref_mut() {
+                        crate::ability::effects::emit_zone_trigger(
+                            handler,
+                            cid,
+                            old_zone,
+                            ZoneType::Graveyard,
+                        );
+                    }
                     any_changes = true;
                 }
             }

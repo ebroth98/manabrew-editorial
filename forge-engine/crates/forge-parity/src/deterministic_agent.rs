@@ -100,9 +100,11 @@ impl DeterministicAgent {
 
     /// Pick a random index in [0, len) from the shared RNG.
     fn pick(&self, len: usize) -> usize {
-        if len <= 1 {
+        if len == 0 {
             return 0;
         }
+        // Important for parity: Java's Random.nextInt(1) still advances RNG state.
+        // So we must consume RNG even when len == 1.
         self.rng.borrow_mut().next_int(len as i32) as usize
     }
 
