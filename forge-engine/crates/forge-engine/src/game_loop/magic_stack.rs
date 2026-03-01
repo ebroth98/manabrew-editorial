@@ -320,6 +320,9 @@ impl GameLoop {
 
         // Continuous effects might change after resolution
         apply_continuous_effects(game);
+        // Flush triggers before SBA so that triggers from creatures about to
+        // die (e.g. enrage from damage spells) are matched while still alive.
+        self.trigger_handler.flush_waiting_triggers(game);
         game.check_state_based_actions();
 
         // Process triggers that may have fired during resolution

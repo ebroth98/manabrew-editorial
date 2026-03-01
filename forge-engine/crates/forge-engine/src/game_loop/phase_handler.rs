@@ -610,6 +610,9 @@ impl GameLoop {
                 .combat
                 .resolve_damage_step(game, true, &fs_unblocked_choices);
             self.fire_combat_damage_triggers(&fs_events);
+            // Flush triggers before SBA so that triggers from creatures about
+            // to die (e.g. enrage) are matched while still on the battlefield.
+            self.trigger_handler.flush_waiting_triggers(game);
 
             // SBA between damage steps
             loop {
@@ -638,6 +641,9 @@ impl GameLoop {
             .combat
             .resolve_damage_step(game, false, &unblocked_choices);
         self.fire_combat_damage_triggers(&dmg_events);
+        // Flush triggers before SBA so that triggers from creatures about
+        // to die (e.g. enrage) are matched while still on the battlefield.
+        self.trigger_handler.flush_waiting_triggers(game);
 
         // SBA after combat
         loop {

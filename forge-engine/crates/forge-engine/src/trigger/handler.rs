@@ -59,6 +59,10 @@ pub struct TriggerHandler {
     delayed_triggers: Vec<DelayedTrigger>,
     suppressed_modes: HashSet<TriggerType>,
     next_trigger_id: u32,
+    /// Triggers that were matched early (before SBA) and are waiting to be
+    /// placed on the stack. This ensures triggers from creatures that die to
+    /// SBA (e.g. Raptor Hatchling's enrage) are not lost.
+    pre_matched_triggers: Vec<(PendingTrigger, PlayerId)>,
 }
 
 impl TriggerHandler {
@@ -69,6 +73,7 @@ impl TriggerHandler {
             delayed_triggers: Vec::new(),
             suppressed_modes: HashSet::new(),
             next_trigger_id: 0,
+            pre_matched_triggers: Vec::new(),
         }
     }
 
@@ -80,14 +85,53 @@ impl TriggerHandler {
         self.waiting_triggers.push(TriggerWaiting { mode, params });
     }
 
+    /// Match waiting triggers NOW, while source cards are still in their
+    /// current zones.  Stores results in `pre_matched_triggers` so that a
+    /// subsequent `run_waiting_triggers` call returns them even if SBA has
+    /// since moved the source card (e.g. Raptor Hatchling dying to combat
+    /// damage before triggers go on the stack).
+    ///
+    /// Call this immediately after firing triggers and before SBA.
+    pub fn flush_waiting_triggers(&mut self, game: &GameState) {
+        if self.waiting_triggers.is_empty() && self.delayed_triggers.is_empty() {
+            return;
+        }
+        let matched = self.match_waiting_triggers(game);
+        self.pre_matched_triggers.extend(matched);
+    }
+
     /// Mirrors Java's runWaitingTriggers().
     /// Drains waiting queue, matches triggers, returns PendingTriggers.
     /// The caller (game_loop) handles OptionalDecider$ prompting.
     pub fn run_waiting_triggers(&mut self, game: &GameState) -> Vec<PendingTrigger> {
+        // Start with any triggers that were pre-matched (flushed before SBA).
+        let mut entries: Vec<(PendingTrigger, PlayerId)> =
+            std::mem::take(&mut self.pre_matched_triggers);
+
         if self.waiting_triggers.is_empty() && self.delayed_triggers.is_empty() {
-            return Vec::new();
+            if entries.is_empty() {
+                return Vec::new();
+            }
+            // Only have pre-matched — apply APNAP ordering and return.
+            let active_player = game.active_player();
+            entries.sort_by_key(|(_, controller)| if *controller == active_player { 0 } else { 1 });
+            return entries.into_iter().map(|(pending, _)| pending).collect();
         }
 
+        // Match any remaining waiting triggers (those fired after the flush).
+        entries.extend(self.match_waiting_triggers(game));
+
+        // APNAP ordering: active player's triggers first
+        let active_player = game.active_player();
+        entries.sort_by_key(|(_, controller)| if *controller == active_player { 0 } else { 1 });
+
+        entries.into_iter().map(|(pending, _)| pending).collect()
+    }
+
+    /// Drain `waiting_triggers`, match them against active and delayed triggers,
+    /// and return the matched entries.  This is the core matching logic shared by
+    /// both `flush_waiting_triggers` and `run_waiting_triggers`.
+    fn match_waiting_triggers(&mut self, game: &GameState) -> Vec<(PendingTrigger, PlayerId)> {
         let waiting = std::mem::take(&mut self.waiting_triggers);
         let mut entries: Vec<(PendingTrigger, PlayerId)> = Vec::new();
 
@@ -117,14 +161,12 @@ impl TriggerHandler {
                     &event.mode,
                     &event.params,
                 ) {
-                    // Look up the SVar for the execute key
                     let svar_text = card
                         .svars
                         .get(&trigger.execute)
                         .cloned()
                         .unwrap_or_default();
 
-                    // Use build_spell_ability so SubAbility$ chains are resolved.
                     let mut sa =
                         build_spell_ability(game, active.card_id, &svar_text, host_controller);
                     sa.is_trigger = true;
@@ -225,11 +267,7 @@ impl TriggerHandler {
             }
         }
 
-        // APNAP ordering: active player's triggers first
-        let active_player = game.active_player();
-        entries.sort_by_key(|(_, controller)| if *controller == active_player { 0 } else { 1 });
-
-        entries.into_iter().map(|(pending, _)| pending).collect()
+        entries
     }
 
     /// Register a delayed trigger (one-shot, fires once then is removed).
