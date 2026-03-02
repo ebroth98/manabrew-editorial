@@ -141,6 +141,12 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         phase: PhaseType,
     ) {
+        // Empty all players' mana pools at each phase/step transition.
+        // Mirrors Java's PhaseHandler.onPhaseEnd() which calls clearPool(true)
+        // for every player whenever a phase ends (MTG rule 500.4).
+        for pool in self.mana_pools.iter_mut() {
+            pool.empty();
+        }
         game.turn.phase = phase;
         self.log_phase_begin(phase);
         self.notify_phase_changed(game, agents);
