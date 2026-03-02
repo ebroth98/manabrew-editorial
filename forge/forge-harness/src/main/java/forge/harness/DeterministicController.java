@@ -196,15 +196,22 @@ public class DeterministicController extends PlayerControllerAi {
 
     @Override
     public boolean playChosenSpellAbility(SpellAbility sa) {
-        if (sa.usesTargeting()) {
-            Runnable chooseTargets = () -> {
-                if (!sa.isTargetNumberValid()) {
-                    setupDeterministicTargets(sa);
+        // Always provide a chooseTargets callback that walks the entire ability
+        // chain (including Charm sub-abilities chained by CharmEffect.makeChoices).
+        // Previously, Charm spells fell through to super.playChosenSpellAbility()
+        // because sa.usesTargeting() is false for the top-level CharmEffect SA.
+        // This left sub-ability targets unset, causing the spell to get stuck in
+        // the Stack zone (invisible to snapshots).
+        Runnable chooseTargets = () -> {
+            SpellAbility current = sa;
+            while (current != null) {
+                if (current.usesTargeting() && !current.isTargetNumberValid()) {
+                    setupDeterministicTargets(current);
                 }
-            };
-            return ComputerUtil.handlePlayingSpellAbility(player, sa, getGame(), chooseTargets);
-        }
-        return super.playChosenSpellAbility(sa);
+                current = current.getSubAbility();
+            }
+        };
+        return ComputerUtil.handlePlayingSpellAbility(player, sa, getGame(), chooseTargets);
     }
 
     // ── Combat ────────────────────────────────────────────────────────
