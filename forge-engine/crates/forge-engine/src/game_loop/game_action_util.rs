@@ -53,36 +53,11 @@ impl GameLoop {
             }
         }
 
-        // Check Graveyard for Flashback and Escape cards
-        let graveyard: Vec<CardId> = game.cards_in_zone(ZoneType::Graveyard, player).to_vec();
-        for card_id in graveyard.iter().copied() {
-            let card = game.card(card_id);
-            if must_be_instant && !has_flash_permission(card_id) {
-                continue;
-            }
-
-            // Flashback
-            if let Some(fb_cost_str) = card.get_flashback_cost() {
-                let fb_cost = forge_foundation::ManaCost::parse(&fb_cost_str);
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                if available_mana.can_pay(&fb_cost) {
-                    playable.push(card_id);
-                    continue;
-                }
-            }
-
-            // Escape: cast from graveyard with escape cost + exiling other graveyard cards
-            if let Some((escape_mana_str, exile_count)) = card.get_escape_cost() {
-                let escape_mc = forge_foundation::ManaCost::parse(&escape_mana_str);
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                let other_gy_count = graveyard.iter().filter(|&&cid| cid != card_id).count() as i32;
-                if available_mana.can_pay(&escape_mc) && other_gy_count >= exile_count {
-                    playable.push(card_id);
-                }
-            }
-        }
+        // NOTE: Graveyard flashback/escape is intentionally excluded from the deterministic
+        // action list. Java's DeterministicController.chooseSpellAbilityToPlay() only queries
+        // Hand and Battlefield — it never considers graveyard actions. Including them here
+        // causes decision divergences in parity testing (e.g. Lingering Souls flashback).
+        // To re-enable for non-deterministic agents, add a parameter to control this.
 
         // Check Exile for Madness cards (discarded with madness go to exile)
         let exile: Vec<CardId> = game.cards_in_zone(ZoneType::Exile, player).to_vec();

@@ -761,7 +761,9 @@ fn matches_single_valid_card(
                 _ => {
                     // Check counters_GE/GT/LT/LE/EQ patterns like "counters_GE3_P1P1"
                     if sub.starts_with("counters_") {
-                        // ignore for now
+                        if !check_counter_condition(sub, card) {
+                            return false;
+                        }
                     }
                     // Ignore unknown qualifiers for now
                 }
@@ -798,6 +800,34 @@ fn matches_amount(filter: &str, count: usize) -> bool {
         "EQ" => count == n,
         "NE" => count != n,
         _ => count > 0,
+    }
+}
+
+/// Check a counter condition like "counters_GE3_P1P1".
+/// Format: counters_{op}{num}_{counter_type}
+fn check_counter_condition(condition: &str, card: &crate::card::CardInstance) -> bool {
+    use crate::ability::effects::parse_counter_type;
+    let rest = &condition["counters_".len()..];
+    if rest.len() < 3 {
+        return true;
+    }
+    let op = &rest[..2];
+    let after_op = &rest[2..];
+    let (num_str, counter_type_str) = match after_op.find('_') {
+        Some(idx) => (&after_op[..idx], &after_op[idx + 1..]),
+        None => return true,
+    };
+    let threshold: i32 = num_str.parse().unwrap_or(0);
+    let counter_type = parse_counter_type(counter_type_str);
+    let count = card.counter_count(counter_type);
+    match op {
+        "GE" => count >= threshold,
+        "GT" => count > threshold,
+        "LE" => count <= threshold,
+        "LT" => count < threshold,
+        "EQ" => count == threshold,
+        "NE" => count != threshold,
+        _ => true,
     }
 }
 

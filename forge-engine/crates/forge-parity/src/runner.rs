@@ -279,13 +279,6 @@ const TRIGGER_EXPANDED: &[(&str, usize)] = &[
     ("Whispering Snitch", 2),
     // DamageDoneOnce
     ("Rite of Passage", 2),
-    // Support package to unlock more trigger pathways:
-    // - SpellCast + Surveil in one card
-    ("Consider", 4),
-    // - Reliable token creation for ChangesZoneAll / ETB token synergies
-    ("Raise the Alarm", 2),
-    // - Explicit -1/-1 counter source for CounterAddedOnce (Nest of Scarabs)
-    ("Fume Spitter", 3),
 ];
 
 // Static-ability focused test deck for parity.
@@ -564,10 +557,11 @@ impl CapturingAgent {
         covered: Arc<Mutex<BTreeSet<String>>>,
         mechanics: Arc<Mutex<BTreeMap<String, usize>>>,
         rng: Rc<RefCell<JavaRandom>>,
+        game_rng: Rc<RefCell<JavaRandom>>,
         capture_snapshots: bool,
     ) -> Self {
         Self {
-            inner: DeterministicAgent::new(player_id, verbose, rng, prefer_actions),
+            inner: DeterministicAgent::new(player_id, verbose, rng, game_rng, prefer_actions),
             shared_snapshots: shared,
             shared_covered_cards: covered,
             shared_mechanic_signals: mechanics,
@@ -723,6 +717,15 @@ impl PlayerAgent for CapturingAgent {
 
     fn choose_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
         self.inner.choose_discard(player, hand, num)
+    }
+
+    fn choose_random_discard(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        num: usize,
+    ) -> Vec<CardId> {
+        self.inner.choose_random_discard(player, hand, num)
     }
 
     fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> {
@@ -889,8 +892,15 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     //   1. prepareAllZones() — builds libraries (no RNG)
     //   2. player.shuffle(null) for each player — Collections.shuffle(list, rng)
     //   3. drawStartingHand() — moves top 7 cards to hand (no RNG)
+    //
+    // The game_rng mirrors Java's MyRandom — same seed, same consumption order.
+    // It's used for both shuffling and game-level random effects (e.g.
+    // Aggregates.random() in DiscardEffect Mode$ Random). After shuffling,
+    // its state matches Java's MyRandom post-shuffle, so subsequent random
+    // effects produce identical results.
+    let game_rng = Rc::new(RefCell::new(JavaRandom::new(config.seed as i64)));
     {
-        let mut shuffle_rng = JavaRandom::new(config.seed as i64);
+        let mut shuffle_rng = game_rng.borrow_mut();
         for &pid in &game.player_order.clone() {
             // Sort library by card name for deterministic pre-shuffle ordering,
             // matching Java's Match.preparePlayerZone which sorts after building
@@ -909,20 +919,31 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             // Write back the shuffled order
             game.zone_mut(ZoneType::Library, pid).cards = lib_cards;
         }
-        for &pid in &game.player_order.clone() {
-            game.draw_cards(pid, 7);
-        }
+    }
+
+    // Match Java's determineFirstTurnPlayer() "coin flip".
+    // Java calls Aggregates.random(game.getPlayers()) which does nextInt(numPlayers)
+    // on MyRandom to pick who goes first. The result is then overridden by
+    // DeterministicController.chooseStartingPlayer() which always returns player 0.
+    // We must consume the same RNG call to keep game_rng in sync, but ignore the result.
+    {
+        let num_players = game.player_order.len() as i32;
+        let _coin_flip = game_rng.borrow_mut().next_int(num_players);
+    }
+    for &pid in &game.player_order.clone() {
+        game.draw_cards(pid, 7);
     }
 
     // Create a SEPARATE agent RNG seeded identically to Java's `new Random(seed)`.
-    // This is distinct from the shuffle RNG — both sides create a fresh Random(seed)
-    // for agent decisions, ensuring the RNG state matches even though the shuffle
+    // This is distinct from the game RNG — both sides create a fresh Random(seed)
+    // for agent decisions, ensuring the RNG state matches even though the game
     // RNG is consumed differently by each engine's internals.
     let agent_rng = Rc::new(RefCell::new(JavaRandom::new(config.seed as i64)));
 
     // Create deterministic agents — player 0 uses CapturingAgent to collect
     // turn-start snapshots (matching Java's GameEventTurnBegan timing).
     // Both agents share the same agent RNG so consumption order matches Java.
+    // Both agents share the same game RNG so random effects match Java's MyRandom.
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
         Box::new(CapturingAgent::new(
             p0,
@@ -932,6 +953,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_mechanic_signals),
             Rc::clone(&agent_rng),
+            Rc::clone(&game_rng),
             true,
         )),
         Box::new(CapturingAgent::new(
@@ -942,6 +964,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_mechanic_signals),
             Rc::clone(&agent_rng),
+            Rc::clone(&game_rng),
             false,
         )),
     ];

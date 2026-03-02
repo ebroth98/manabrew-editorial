@@ -24,6 +24,29 @@ impl GameLoop {
         }
 
         if entry.spell_ability.is_trigger || entry.spell_ability.is_activated {
+            // Check if the triggered/activated ability has a mana cost that must be paid.
+            // Mirrors Java's trigger resolution: if Cost$ is present, the player pays
+            // when the ability resolves. If they can't pay, the ability does nothing.
+            if entry.spell_ability.is_trigger {
+                if let Some(cost) = &entry.spell_ability.pay_costs {
+                    let player = entry.spell_ability.activating_player;
+                    let source = entry.spell_ability.source.unwrap_or(CardId(0));
+                    let available = crate::mana::calculate_available_mana(
+                        &self.mana_pools[player.index()],
+                        game,
+                        player,
+                    );
+                    if !crate::cost::can_pay(cost, game, &available, source, player) {
+                        // Can't pay the cost — ability fizzles
+                        apply_continuous_effects(game);
+                        game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
+                        self.process_triggers(game, agents);
+                        return;
+                    }
+                    // Pay the cost
+                    self.pay_ability_cost(game, agents, player, source, cost);
+                }
+            }
             // Triggered/activated ability: resolve the effect
             self.resolve_spell_effect(game, agents, &entry);
 

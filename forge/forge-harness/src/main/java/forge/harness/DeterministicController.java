@@ -21,6 +21,7 @@ import forge.game.combat.CombatUtil;
 import forge.game.player.*;
 import forge.game.spellability.*;
 import forge.game.trigger.WrappedAbility;
+import forge.game.ability.ApiType;
 import forge.game.zone.ZoneType;
 import forge.util.collect.FCollectionView;
 
@@ -195,15 +196,22 @@ public class DeterministicController extends PlayerControllerAi {
 
     @Override
     public boolean playChosenSpellAbility(SpellAbility sa) {
-        if (sa.usesTargeting()) {
-            Runnable chooseTargets = () -> {
-                if (!sa.isTargetNumberValid()) {
-                    setupDeterministicTargets(sa);
+        // Always provide a chooseTargets callback that walks the entire ability
+        // chain (including Charm sub-abilities chained by CharmEffect.makeChoices).
+        // Previously, Charm spells fell through to super.playChosenSpellAbility()
+        // because sa.usesTargeting() is false for the top-level CharmEffect SA.
+        // This left sub-ability targets unset, causing the spell to get stuck in
+        // the Stack zone (invisible to snapshots).
+        Runnable chooseTargets = () -> {
+            SpellAbility current = sa;
+            while (current != null) {
+                if (current.usesTargeting() && !current.isTargetNumberValid()) {
+                    setupDeterministicTargets(current);
                 }
-            };
-            return ComputerUtil.handlePlayingSpellAbility(player, sa, getGame(), chooseTargets);
-        }
-        return super.playChosenSpellAbility(sa);
+                current = current.getSubAbility();
+            }
+        };
+        return ComputerUtil.handlePlayingSpellAbility(player, sa, getGame(), chooseTargets);
     }
 
     // ── Combat ────────────────────────────────────────────────────────
@@ -404,12 +412,30 @@ public class DeterministicController extends PlayerControllerAi {
         return cards;
     }
 
+    // ── Charm / Modal ────────────────────────────────────────────────
+
+    @Override
+    public List<AbilitySub> chooseModeForAbility(SpellAbility sa, List<AbilitySub> possible, int min, int num, boolean allowRepeat) {
+        // Fixed: always pick first `min` modes in declaration order (no RNG consumed).
+        // Matches Rust's default choose_mode which returns (0..min).
+        if (possible == null || possible.isEmpty()) return new ArrayList<>();
+        int count = Math.min(min, possible.size());
+        return new ArrayList<>(possible.subList(0, count));
+    }
+
     // ── Confirmations ─────────────────────────────────────────────────
 
     @Override
     public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
             List<String> options, Card cardToShow, Map<String, Object> params) {
-        // Fixed: always confirm (no RNG consumed)
+        // Decline shuffle for RearrangeTopOfLibrary (Ponder-like effects).
+        // The shuffle uses game-level RNG (MyRandom) which is NOT synchronized
+        // between Java and Rust engines, causing library order divergence.
+        // Rust's choose_may_shuffle() also returns false (never shuffle).
+        if (sa != null && sa.getApi() == ApiType.RearrangeTopOfLibrary) {
+            return false;
+        }
+        // For all other confirmations: always confirm (no RNG consumed)
         return true;
     }
 

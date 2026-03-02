@@ -204,6 +204,8 @@ pub struct CardInstance {
     pub chosen_player: Option<PlayerId>,
     /// True if detained — can't attack, block, or activate abilities. Clears at controller's next turn.
     pub detained: bool,
+    /// Set during combat to the player this creature is attacking; None if not attacking.
+    pub attacking_player: Option<PlayerId>,
     /// Player who goaded this creature. Goaded creature must attack but can't attack goader.
     pub goaded_by: Option<PlayerId>,
     /// Damage prevention shields (decremented when damage would be dealt). Resets at EOT.
@@ -312,6 +314,7 @@ impl CardInstance {
             chosen_number: None,
             chosen_player: None,
             detained: false,
+            attacking_player: None,
             goaded_by: None,
             damage_prevention: 0,
             must_block: false,

@@ -689,6 +689,21 @@ pub fn matches_valid_cards(card: &CardInstance, filter: &str, activating_player:
         return true;
     }
 
+    // Comma-separated = OR conditions (e.g. "Creature.attacking Opponent, Creature.attacking Planeswalker.OppCtrl")
+    if filter.contains(", ") {
+        return filter
+            .split(", ")
+            .any(|part| matches_valid_cards_single(card, part.trim(), activating_player));
+    }
+
+    matches_valid_cards_single(card, filter, activating_player)
+}
+
+fn matches_valid_cards_single(
+    card: &CardInstance,
+    filter: &str,
+    activating_player: PlayerId,
+) -> bool {
     let parts: Vec<&str> = filter.split('.').collect();
     let type_part = parts[0];
 
@@ -761,14 +776,30 @@ fn matches_valid_cards_qualifier(
                     .any(|k| k.eq_ignore_ascii_case("Flying"))
         }
         _ => {
+            // "attacking Opponent" / "attacking Planeswalker" — space-separated combat qualifier
+            if let Some(target) = qualifier.strip_prefix("attacking ") {
+                let attacking = card.attacking_player;
+                match target {
+                    "Opponent" => match attacking {
+                        Some(def) => def != activating_player,
+                        None => false,
+                    },
+                    // "attacking Planeswalker" — only true if attacking a planeswalker (not a player).
+                    // Currently combat only tracks player targets, so this is always false.
+                    "Planeswalker" => false,
+                    _ => attacking.is_some(), // any attack target
+                }
+            }
             // Color filters: "nonBlack", "nonRed", "nonWhite", etc.
-            let lower = qualifier.to_ascii_lowercase();
-            if let Some(color_name) = lower.strip_prefix("non") {
-                let excluded = ColorSet::from_names(color_name);
-                !card.color.shares_color_with(excluded)
-            } else {
-                // Unknown qualifier — match everything (forward-compatible)
-                true
+            else {
+                let lower = qualifier.to_ascii_lowercase();
+                if let Some(color_name) = lower.strip_prefix("non") {
+                    let excluded = ColorSet::from_names(color_name);
+                    !card.color.shares_color_with(excluded)
+                } else {
+                    // Unknown qualifier — match everything (forward-compatible)
+                    true
+                }
             }
         }
     }

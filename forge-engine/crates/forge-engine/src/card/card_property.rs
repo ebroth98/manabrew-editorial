@@ -14,8 +14,9 @@ use crate::ids::PlayerId;
 /// and combined dot-separated filters (e.g. "OppCtrl.nonBlack").
 /// Mirrors Java's `CardProperty.cardHasProperty()` with dot-separated qualifiers.
 pub fn card_has_property(card: &CardInstance, filter: &str, source_controller: PlayerId) -> bool {
-    // Handle dot-separated compound filters (e.g. "OppCtrl.nonBlack")
-    for part in filter.split('.') {
+    // Handle compound filters separated by '.' or '+' (e.g. "OppCtrl.nonBlack", "nonLand+OppCtrl")
+    // Both separators mean AND — all parts must match.
+    for part in filter.split(|c| c == '.' || c == '+') {
         if !matches_single_property(card, part, source_controller) {
             return false;
         }
@@ -33,7 +34,12 @@ fn matches_single_property(
     match property {
         "OppCtrl" => card.controller != source_controller,
         "YouCtrl" => card.controller == source_controller,
+        "YouDontCtrl" => card.controller != source_controller,
         "Other" => true, // "Other" means "not self" — handled at call site
+        // Type-based filters
+        "nonLand" => !card.type_line.is_land(),
+        "nonCreature" => !card.is_creature(),
+        "nonArtifact" => !card.type_line.is_artifact(),
         _ => {
             let lower = property.to_ascii_lowercase();
             if let Some(color_name) = lower.strip_prefix("non") {

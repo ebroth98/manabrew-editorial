@@ -30,15 +30,15 @@ import java.util.Random;
  * @version $Id$
  */
 public class MyRandom {
-    /** Constant <code>random</code>. */
-    private static Random random = new SecureRandom();
+    /** Thread-local random to avoid cross-thread contamination in concurrent harness runs. */
+    private static final ThreadLocal<Random> random = ThreadLocal.withInitial(SecureRandom::new);
 
     /**
      * <p>
      * percentTrue.<br>
      * If percent is like 30, then 30% of the time it will be true.
      * </p>
-     * 
+     *
      * @param percent an int.
      * @return a boolean.
      */
@@ -48,26 +48,27 @@ public class MyRandom {
 
     /**
      * Gets the random.
-     * 
+     *
      * @return the random
      */
     public static Random getRandom() {
-        return MyRandom.random;
+        return MyRandom.random.get();
     }
 
     /**
      * Sets the random provider. Used for deterministic simulation.
-     * @param random the random
+     * Thread-local: only affects the calling thread.
+     * @param rng the random
      */
-    public static void setRandom(Random random) {
-        MyRandom.random = random;
+    public static void setRandom(Random rng) {
+        MyRandom.random.set(rng);
     }
 
     public static int[] splitIntoRandomGroups(final int value, final int numGroups) {
         int[] groups = new int[numGroups];
-        
+
         for (int i = 0; i < value; i++) {
-            groups[random.nextInt(numGroups)]++;
+            groups[getRandom().nextInt(numGroups)]++;
         }
 
         return groups;

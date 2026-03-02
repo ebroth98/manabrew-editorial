@@ -34,11 +34,20 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let count = num.min(lib_len);
 
     // Take top N cards (last `count` elements).
-    let top_n: Vec<_> = {
+    let mut top_n: Vec<_> = {
         let zone = ctx.game.zone_mut(ZoneType::Library, target);
         let len = zone.cards.len();
         zone.cards.split_off(len - count)
     };
+
+    // Reverse to present in top-first order, matching Java's getTopXCardsFromLibrary
+    // which returns [top, 2nd, 3rd, ...]. Rust's split_off gives [3rd, 2nd, top].
+    // The agent convention (shared with Java) is: last element = will go on top.
+    // Java's moveToLibrary(card, 0) loop reverses the returned list (first card
+    // ends up deepest, last card on top). Rust's push loop does the same (last
+    // element pushed = end of Vec = top). By reversing the input, both agents
+    // see the same card order, and "keep original" produces the same result.
+    top_n.reverse();
 
     // Ask the agent to reorder the cards.
     let reordered = ctx.agents[sa.activating_player.index()]
@@ -53,6 +62,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         };
 
     // Put cards back on top (append to end = top of library).
+    // Convention: last element in put_back = top of library, matching Java's
+    // moveToLibrary(card, 0) loop where the last card iterated ends up on top.
     for &id in &put_back {
         ctx.game.zone_mut(ZoneType::Library, target).cards.push(id);
     }

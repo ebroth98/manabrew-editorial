@@ -24,6 +24,9 @@ pub enum TargetKind {
     Any,
     /// Creature with optional filter (e.g. "ValidTgts$ Creature.nonBlack")
     Creature(Option<String>),
+    /// Any permanent on the battlefield with optional filter
+    /// (e.g. "ValidTgts$ Permanent.nonLand+OppCtrl")
+    Permanent(Option<String>),
     /// Card in a specific zone with optional filter (e.g. Raise Dead from graveyard)
     CardInZone {
         zone: ZoneType,
@@ -121,6 +124,11 @@ impl TargetRestrictions {
                     .into_iter()
                     .any(|cid| can_be_targeted_by(game, cid, player, source_card))
             }
+            TargetKind::Permanent(ref filter) => {
+                get_all_battlefield_permanents_filtered(game, filter.as_deref(), player)
+                    .into_iter()
+                    .any(|cid| can_be_targeted_by(game, cid, player, source_card))
+            }
             TargetKind::CardInZone { zone, filter } => {
                 has_valid_target_in_zone(game, player, *zone, filter.as_deref())
             }
@@ -187,6 +195,14 @@ fn parse_target_kind(val: &str) -> TargetKind {
         }
         let filter = filter.strip_prefix('.').unwrap_or(filter);
         return TargetKind::Creature(Some(filter.to_string()));
+    }
+    if val.starts_with("Permanent") {
+        let filter = val.strip_prefix("Permanent").unwrap();
+        if filter.is_empty() {
+            return TargetKind::Permanent(None);
+        }
+        let filter = filter.strip_prefix('.').unwrap_or(filter);
+        return TargetKind::Permanent(Some(filter.to_string()));
     }
     // Fallback: treat as "Any" if unrecognized
     TargetKind::Any
@@ -367,6 +383,34 @@ pub fn get_all_candidates_creature_filtered(
     }
 }
 
+/// Get all permanents on the battlefield (any player).
+pub fn get_all_battlefield_permanents(game: &GameState) -> Vec<CardId> {
+    let mut permanents = Vec::new();
+    for &pid in &game.player_order {
+        for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
+            permanents.push(cid);
+        }
+    }
+    permanents
+}
+
+/// Get battlefield permanents matching an optional filter (e.g. "nonLand+OppCtrl").
+/// Similar to `get_all_candidates_creature_filtered` but for any permanent type.
+pub fn get_all_battlefield_permanents_filtered(
+    game: &GameState,
+    filter: Option<&str>,
+    source_controller: PlayerId,
+) -> Vec<CardId> {
+    let all = get_all_battlefield_permanents(game);
+    match filter {
+        None => all,
+        Some(f) => all
+            .into_iter()
+            .filter(|&cid| card_property::card_has_property(game.card(cid), f, source_controller))
+            .collect(),
+    }
+}
+
 // ── Zone-aware targeting for cards like Raise Dead ───────────────────
 
 /// Parse a zone type string ("Graveyard", "Hand", "Battlefield", etc.)
@@ -434,6 +478,14 @@ fn parse_target_kind_legacy(val: &str) -> TargetKind {
         }
         let filter = filter.strip_prefix('.').unwrap_or(filter);
         return TargetKind::Creature(Some(filter.to_string()));
+    }
+    if val.starts_with("Permanent") {
+        let filter = val.strip_prefix("Permanent").unwrap();
+        if filter.is_empty() {
+            return TargetKind::Permanent(None);
+        }
+        let filter = filter.strip_prefix('.').unwrap_or(filter);
+        return TargetKind::Permanent(Some(filter.to_string()));
     }
     // Fallback: treat as "Any" if unrecognized
     TargetKind::Any

@@ -333,6 +333,23 @@ fn choose_targets_for(
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
         }
+        TargetKind::Permanent(ref filter) => {
+            let mut valid: Vec<CardId> =
+                target_restrictions::get_all_battlefield_permanents_filtered(
+                    game,
+                    filter.as_deref(),
+                    player,
+                )
+                .into_iter()
+                .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
+                .collect();
+            valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
+                game, sa, valid,
+            );
+            agents[player.index()].snapshot_state(game, mana_pools);
+            let agent = &mut agents[player.index()];
+            sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
+        }
         TargetKind::CardInZone { zone, filter } => {
             let mut valid = target_restrictions::get_valid_cards_in_zone(
                 game,

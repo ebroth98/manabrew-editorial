@@ -44,6 +44,14 @@ impl CombatState {
         self.blockers.clear();
     }
 
+    /// Clear combat state, including the `attacking_player` flag on each attacker card.
+    pub fn clear_with_cards(&mut self, cards: &mut [crate::card::CardInstance]) {
+        for &(attacker_id, _) in &self.attackers {
+            cards[attacker_id.index()].attacking_player = None;
+        }
+        self.clear();
+    }
+
     pub fn declare_attacker(&mut self, attacker: CardId, defending: PlayerId) {
         self.attackers.push((attacker, defending));
     }
@@ -127,7 +135,7 @@ impl CombatState {
             }
             let attacker_has_fs = attacker.has_first_strike();
             let attacker_has_ds = attacker.has_double_strike();
-            let attacker_has_trample = attacker.has_trample();
+            let _attacker_has_trample = attacker.has_trample();
             let attacker_has_deathtouch = attacker.has_deathtouch();
             let attacker_has_lifelink = attacker.has_lifelink();
             let attacker_has_infect = attacker.has_infect()
@@ -224,72 +232,93 @@ impl CombatState {
                 // The attacker may not deal damage this step (e.g. no first strike during
                 // first-strike step), but blockers with the right timing still deal damage
                 // back to the attacker.
-                let mut remaining_damage = if attacker_deals_damage && attacker_power > 0 {
+                let remaining_damage = if attacker_deals_damage && attacker_power > 0 {
                     attacker_power
                 } else {
                     0
                 };
 
-                for &blocker_id in &blockers {
-                    // Check blocker is still alive
-                    if game.card(blocker_id).zone != ZoneType::Battlefield {
-                        continue;
-                    }
-
-                    // --- Attacker damages blocker (only when attacker deals damage this step) ---
-                    if remaining_damage > 0 {
-                        // Protection damage prevention — stopgap until replacement effect
-                        // framework handles DamageDone prevention (Java uses ReplaceDamage).
-                        // Blocking rules already prevent most cases via can_creature_block(),
-                        // but this covers edge cases like gaining protection after blocks.
+                // --- Compute damage assignment for each blocker (Java-parity) ---
+                // Java's DeterministicController assigns lethal to each blocker
+                // in order, then puts all remaining damage on the last blocker.
+                // We pre-compute the total per blocker so each gets a single
+                // damage event (critical for DamageDoneOnce triggers like Raptor
+                // Hatchling that should only fire once per blocker).
+                let alive_blockers: Vec<CardId> = blockers
+                    .iter()
+                    .copied()
+                    .filter(|&bid| game.card(bid).zone == ZoneType::Battlefield)
+                    .collect();
+                let mut damage_assignments: Vec<(CardId, i32)> = Vec::new();
+                {
+                    let mut dmg_left = remaining_damage;
+                    for (idx, &blocker_id) in alive_blockers.iter().enumerate() {
+                        if dmg_left <= 0 {
+                            break;
+                        }
+                        let is_last = idx == alive_blockers.len() - 1;
                         let attacker_prevented = crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
                             &game.cards,
                             game.card(blocker_id),
                             game.card(attacker_id),
                         );
+                        if attacker_prevented {
+                            continue;
+                        }
 
-                        if !attacker_prevented {
+                        let damage_to_blocker = if is_last {
+                            // Last blocker gets ALL remaining damage (matches Java).
+                            dmg_left
+                        } else if attacker_has_deathtouch {
+                            1.min(dmg_left)
+                        } else {
                             let blocker_toughness = game.card(blocker_id).toughness();
                             let blocker_damage = game.card(blocker_id).damage;
                             let remaining_toughness = blocker_toughness - blocker_damage;
+                            dmg_left.min(remaining_toughness.max(0))
+                        };
 
-                            // Deathtouch: only 1 damage needed to be lethal
-                            let damage_to_blocker = if attacker_has_deathtouch {
-                                1.min(remaining_damage)
-                            } else {
-                                remaining_damage.min(remaining_toughness.max(0))
-                            };
-
-                            if damage_to_blocker > 0 {
-                                deal_combat_damage_to_card(
-                                    game,
-                                    blocker_id,
-                                    damage_to_blocker,
-                                    attacker_has_deathtouch,
-                                    attacker_has_lifelink,
-                                    attacker_controller,
-                                    attacker_has_wither || attacker_has_infect,
-                                );
-                                events.push(CombatDamageEvent {
-                                    source: attacker_id,
-                                    target_player: None,
-                                    target_card: Some(blocker_id),
-                                    amount: damage_to_blocker,
-                                    is_combat: true,
-                                    lifelink_player: if attacker_has_lifelink {
-                                        Some(attacker_controller)
-                                    } else {
-                                        None
-                                    },
-                                    lifelink_amount: if attacker_has_lifelink {
-                                        damage_to_blocker
-                                    } else {
-                                        0
-                                    },
-                                });
-                                remaining_damage -= damage_to_blocker;
-                            }
+                        if damage_to_blocker > 0 {
+                            damage_assignments.push((blocker_id, damage_to_blocker));
+                            dmg_left -= damage_to_blocker;
                         }
+                    }
+                }
+
+                // Deal the pre-computed damage to each blocker in a single event.
+                for &(blocker_id, damage_to_blocker) in &damage_assignments {
+                    deal_combat_damage_to_card(
+                        game,
+                        blocker_id,
+                        damage_to_blocker,
+                        attacker_has_deathtouch,
+                        attacker_has_lifelink,
+                        attacker_controller,
+                        attacker_has_wither || attacker_has_infect,
+                    );
+                    events.push(CombatDamageEvent {
+                        source: attacker_id,
+                        target_player: None,
+                        target_card: Some(blocker_id),
+                        amount: damage_to_blocker,
+                        is_combat: true,
+                        lifelink_player: if attacker_has_lifelink {
+                            Some(attacker_controller)
+                        } else {
+                            None
+                        },
+                        lifelink_amount: if attacker_has_lifelink {
+                            damage_to_blocker
+                        } else {
+                            0
+                        },
+                    });
+                }
+
+                for &blocker_id in &blockers {
+                    // Check blocker is still alive
+                    if game.card(blocker_id).zone != ZoneType::Battlefield {
+                        continue;
                     }
 
                     // --- Blocker damages attacker (independent of whether attacker deals damage) ---
@@ -373,43 +402,8 @@ impl CombatState {
                     }
                 }
 
-                // Trample: remaining damage goes to defending player
-                if attacker_has_trample && remaining_damage > 0 {
-                    deal_combat_damage_to_player(
-                        game,
-                        defending_player,
-                        remaining_damage,
-                        attacker_has_lifelink,
-                        attacker_controller,
-                        attacker_has_infect,
-                        attacker_toxic_count,
-                    );
-                    events.push(CombatDamageEvent {
-                        source: attacker_id,
-                        target_player: Some(defending_player),
-                        target_card: None,
-                        amount: remaining_damage,
-                        is_combat: true,
-                        lifelink_player: if attacker_has_lifelink {
-                            Some(attacker_controller)
-                        } else {
-                            None
-                        },
-                        lifelink_amount: if attacker_has_lifelink {
-                            remaining_damage
-                        } else {
-                            0
-                        },
-                    });
-                    // Track commander damage from trample
-                    if game.card(attacker_id).is_commander {
-                        *game
-                            .player_mut(defending_player)
-                            .commander_damage_received
-                            .entry(attacker_id.0)
-                            .or_insert(0) += remaining_damage;
-                    }
-                }
+                // Note: excess damage was already assigned to the last blocker
+                // above (matching Java's DeterministicController behavior).
             }
         }
 

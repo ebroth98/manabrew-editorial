@@ -175,6 +175,13 @@ impl TriggerHandler {
                     sa.trigger_source = Some(active.card_id);
                     sa.trigger_index = Some(active.trigger_index);
 
+                    // Propagate trigger target from event params so that
+                    // Defined$ TriggeredTarget can resolve in downstream effects.
+                    // For DamageDone triggers, this is the player who was dealt damage.
+                    if let Some(pid) = event.params.damage_target_player {
+                        sa.target_chosen.target_player = Some(pid);
+                    }
+
                     let entry = StackEntry {
                         id: 0,
                         spell_ability: sa,
@@ -202,6 +209,9 @@ impl TriggerHandler {
                         sa2.is_trigger = true;
                         sa2.trigger_source = Some(active.card_id);
                         sa2.trigger_index = Some(active.trigger_index);
+                        if let Some(pid) = event.params.damage_target_player {
+                            sa2.target_chosen.target_player = Some(pid);
+                        }
                         let extra_entry = StackEntry {
                             id: 0,
                             spell_ability: sa2,
@@ -432,6 +442,16 @@ impl TriggerHandler {
             && params.destination != Some(ZoneType::Battlefield)
         {
             // LKI active-zone check for "leaves battlefield" self triggers (e.g. dies).
+            ZoneType::Battlefield
+        } else if *mode == TriggerType::DamageDone
+            && params.damage_target_card == Some(host_card)
+            && trigger.active_zones.contains(&ZoneType::Battlefield)
+            && card.zone != ZoneType::Battlefield
+        {
+            // LKI for DamageDone triggers targeting self (e.g. Raptor Hatchling
+            // enrage). When combat damage kills the creature, SBAs move it to
+            // graveyard before triggers are processed. The trigger was queued
+            // while the card was on the battlefield, so we use LKI.
             ZoneType::Battlefield
         } else {
             card.zone
