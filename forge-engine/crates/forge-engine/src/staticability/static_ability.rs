@@ -186,6 +186,9 @@ pub struct CardFilter {
     pub required_color: Option<ColorSet>,
     /// Only match colorless cards (`Colorless` qualifier).
     pub colorless_only: bool,
+    /// Only match creatures currently attacking the source's controller
+    /// (`attackingYou` qualifier, e.g. Watchdog).
+    pub attacking_you: bool,
 }
 
 impl CardFilter {
@@ -223,6 +226,7 @@ impl CardFilter {
             "Red" => f.required_color = Some(ColorSet::RED),
             "Green" => f.required_color = Some(ColorSet::GREEN),
             "Colorless" => f.colorless_only = true,
+            "attackingYou" => f.attacking_you = true,
             s => {
                 // Unknown tokens are treated as subtype filters (e.g. "Goblin").
                 if f.subtype.is_none() {
@@ -261,6 +265,9 @@ impl CardFilter {
             }
         }
         if self.colorless_only && !card.color.is_colorless() {
+            return false;
+        }
+        if self.attacking_you && card.attacking_player != Some(source.controller) {
             return false;
         }
         true

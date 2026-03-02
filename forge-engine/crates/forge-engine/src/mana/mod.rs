@@ -3,7 +3,7 @@ use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
 use crate::card::CardInstance;
-use crate::cost::{can_pay_ignoring_mana, CostPart};
+use crate::cost::CostPart;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
@@ -577,14 +577,18 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
             continue;
         }
 
-        // Check for mana abilities on this permanent
+        // Check for mana abilities on this permanent.
+        // Java parity: DeterministicController.hasDeterministicMana() does NOT check
+        // summoning sickness or other cost payability — it only checks isTapped() and
+        // then iterates getManaAbilities() for produced colors. So we skip
+        // can_pay_ignoring_mana here (which checks summoning sickness) and only filter
+        // on is_mana_ability + no mana cost part.
         let mana_abilities: Vec<_> = card
             .activated_abilities
             .iter()
             .filter(|ab| {
                 ab.is_mana_ability
                     && !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_)))
-                    && can_pay_ignoring_mana(&ab.cost, game, card_id, player)
             })
             .collect();
 

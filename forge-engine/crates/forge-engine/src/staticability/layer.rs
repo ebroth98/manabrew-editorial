@@ -105,6 +105,14 @@ pub fn apply_continuous_effects(game: &mut GameState) {
     for (source_id, sa) in &sources {
         let source_card = &game.cards[source_id.index()];
 
+        // IsPresent$ — conditional activation (e.g. "Card.Self+untapped").
+        // If the condition is not met, skip this static ability entirely.
+        if let Some(is_present) = sa.params.get("IsPresent") {
+            if !check_is_present(game, *source_id, is_present) {
+                continue;
+            }
+        }
+
         // Determine which cards are affected by this static ability.
         let affected_str = sa
             .params
@@ -395,6 +403,44 @@ pub fn get_etb_unless_life_cost(card: &crate::card::CardInstance) -> Option<i32>
         }
     }
     None
+}
+
+/// Check the `IsPresent$` condition for a static ability.
+///
+/// Supported forms:
+/// - `"Card.Self+untapped"` — the source card must be untapped
+/// - `"Card.Self+tapped"` — the source card must be tapped
+/// - `"Card.Self"` — always true (source on battlefield is implied)
+///
+/// Mirrors Java `StaticAbility.checkConditions()` → `isPresent$` handling.
+fn check_is_present(game: &GameState, source_id: CardId, condition: &str) -> bool {
+    let parts: Vec<&str> = condition.split('+').collect();
+    let base = parts.first().copied().unwrap_or("");
+
+    // For "Card.Self" forms, check the source card itself.
+    if base == "Card.Self" || base.eq_ignore_ascii_case("card.self") {
+        let card = game.card(source_id);
+        for &qualifier in &parts[1..] {
+            match qualifier.to_lowercase().as_str() {
+                "untapped" => {
+                    if card.tapped {
+                        return false;
+                    }
+                }
+                "tapped" => {
+                    if !card.tapped {
+                        return false;
+                    }
+                }
+                _ => {} // Unknown qualifiers are ignored for now
+            }
+        }
+        return true;
+    }
+
+    // For other IsPresent$ forms, check if any matching card exists on battlefield.
+    // This is a simplified version; extend as needed.
+    true
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

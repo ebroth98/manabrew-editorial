@@ -4,8 +4,8 @@ use super::{matches_valid_cards, EffectContext};
 use crate::agent::TargetChoice;
 use crate::ids::PlayerId;
 use crate::spellability::target_restrictions::{
-    get_all_candidates_creature_filtered, get_all_candidates_spells, get_valid_cards_in_zone,
-    TargetKind,
+    get_all_battlefield_permanents_filtered, get_all_candidates_creature_filtered,
+    get_all_candidates_spells, get_valid_cards_in_zone, TargetKind,
 };
 use crate::spellability::{build_spell_ability, SpellAbility};
 use crate::trigger::parse_pipe_params;
@@ -177,6 +177,9 @@ fn mode_has_valid_targets(
         TargetKind::Creature(ref filter) => {
             !get_all_candidates_creature_filtered(ctx.game, filter.as_deref(), player).is_empty()
         }
+        TargetKind::Permanent(ref filter) => {
+            !get_all_battlefield_permanents_filtered(ctx.game, filter.as_deref(), player).is_empty()
+        }
         TargetKind::CardInZone { zone, filter } => ctx.game.player_order.iter().any(|&pid| {
             !get_valid_cards_in_zone(ctx.game, *zone, pid, filter.as_deref()).is_empty()
         }),
@@ -224,6 +227,14 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
 
         TargetKind::Creature(ref filter) => {
             let valid = get_all_candidates_creature_filtered(ctx.game, filter.as_deref(), player);
+            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid) {
+                mode_sa.target_chosen.target_card = Some(card);
+            }
+        }
+
+        TargetKind::Permanent(ref filter) => {
+            let valid =
+                get_all_battlefield_permanents_filtered(ctx.game, filter.as_deref(), player);
             if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid) {
                 mode_sa.target_chosen.target_card = Some(card);
             }

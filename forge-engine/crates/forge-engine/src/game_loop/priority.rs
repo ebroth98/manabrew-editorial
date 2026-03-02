@@ -153,6 +153,13 @@ impl GameLoop {
                                 &set_code,
                             );
                         }
+                        // Process SpellCast / BecomesTarget triggers immediately so they
+                        // go on the stack ABOVE the spell (resolving before it).
+                        // Mirrors Java's MagicStack.addAndUnfreeze() which runs waiting
+                        // triggers right after the spell is placed on the stack.
+                        self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                            this.process_triggers(game, agents);
+                        });
                         passed_count = 0;
                     } else {
                         // Payment failed — treat as a pass to avoid infinite retry loop

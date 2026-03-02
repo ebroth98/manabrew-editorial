@@ -481,6 +481,10 @@ impl GameLoop {
                 false,
             );
         }
+        // Recompute continuous effects now that `attacking_player` is set on
+        // declared attackers.  This allows effects like Watchdog's
+        // "Affected$ Creature.attackingYou | AddPower$ -1" to apply correctly.
+        apply_continuous_effects(game);
         self.step_with_priority(game, agents, false);
         if game.game_over {
             self.combat.clear_with_cards(&mut game.cards);
@@ -688,6 +692,11 @@ impl GameLoop {
         self.step_with_priority(game, agents, false);
         self.combat.clear_with_cards(&mut game.cards);
         game.turn.combat_block_assignments.clear();
+        // Recompute continuous effects after combat ends so that stale
+        // combat-dependent modifiers (e.g. Watchdog's "creatures attacking you
+        // get -1/-0") are cleared.  Without this, static_power_modifier lingers
+        // until the next apply_continuous_effects call, causing snapshot drift.
+        apply_continuous_effects(game);
     }
 
     fn choose_assign_as_unblocked(
