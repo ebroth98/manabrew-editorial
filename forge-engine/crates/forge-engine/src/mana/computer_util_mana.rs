@@ -297,6 +297,7 @@ fn sort_mana_abilities(
                     .copied()
                     .unwrap_or(usize::MAX);
                 pre_order += (a_pos as isize) - (b_pos as isize);
+
                 return pre_order.cmp(&0);
             }
 
@@ -422,6 +423,7 @@ fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId>
         let mut has_any_mana_ability = false;
         let mut usable_mana_abilities = 0usize;
         let mut produces_any_color = false;
+        let mut needs_limited_resources = false;
         let mut unique_atoms: Vec<u16> = Vec::new();
 
         for ab in &card.activated_abilities {
@@ -440,6 +442,21 @@ fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId>
             };
             if produced.eq_ignore_ascii_case("Any") {
                 produces_any_color = true;
+            }
+            // Java parity: mana abilities with SubAbility drawbacks (e.g. pain lands
+            // with DealDamage) set needsLimitedResources = true, pushing the card into
+            // otherManaSources (near end of the priority list).
+            if let Some(sub_name) = ab.params.get("SubAbility") {
+                if let Some(sub_text) = card.svars.get(sub_name) {
+                    let sub_params = crate::trigger::parse_pipe_params(sub_text);
+                    let sub_type = sub_params.get("DB").map(String::as_str).unwrap_or("");
+                    if matches!(
+                        sub_type,
+                        "DealDamage" | "LoseLife" | "Discard" | "Destroy" | "Sacrifice" | "Mill"
+                    ) {
+                        needs_limited_resources = true;
+                    }
+                }
             }
             for atom in produced_to_atoms(produced, &card.chosen_colors) {
                 if !unique_atoms.contains(&atom) {
@@ -466,6 +483,10 @@ fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId>
         }
 
         if card.is_creature() {
+            other_sources.push(cid);
+        } else if needs_limited_resources {
+            // Java parity: cards with SubAbility drawbacks on mana abilities
+            // (e.g. pain lands like Yavimaya Coast) go to otherManaSources.
             other_sources.push(cid);
         } else if produces_any_color {
             any_color_sources.push(cid);
@@ -627,6 +648,25 @@ fn score_mana_ability(
             _ => {}
         }
         score += 1;
+    }
+
+    // Java parity: SpellAbility.calculateScoreForManaAbility() adds +50 for
+    // non-undoable abilities (those with side-effect SubAbilities like DealDamage).
+    // Also adds +2 for any SubAbility presence. This heavily de-prioritizes pain
+    // lands (e.g. Yavimaya Coast's colored mana ability with DealDamage sub).
+    if let Some(sub_name) = ab.params.get("SubAbility") {
+        score += 2;
+        // Check if the SubAbility is non-undoable (damage, discard, etc.)
+        if let Some(sub_text) = card.svars.get(sub_name) {
+            let sub_params = crate::trigger::parse_pipe_params(sub_text);
+            let sub_type = sub_params.get("DB").map(String::as_str).unwrap_or("");
+            if matches!(
+                sub_type,
+                "DealDamage" | "LoseLife" | "Discard" | "Destroy" | "Sacrifice" | "Mill"
+            ) {
+                score += 50; // non-undoable: only use as last resort
+            }
+        }
     }
 
     score

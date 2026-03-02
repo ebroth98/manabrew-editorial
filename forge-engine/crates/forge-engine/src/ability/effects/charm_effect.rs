@@ -73,6 +73,24 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         })
         .collect();
 
+    // Filter modes to only those with valid targets (matching Java's CharmEffect
+    // which passes only `possible` modes to chooseModeForAbility).
+    let valid_mode_indices: Vec<usize> = mode_texts
+        .iter()
+        .enumerate()
+        .filter(|(_, text)| mode_has_valid_targets(ctx, text, player, source_id))
+        .map(|(i, _)| i)
+        .collect();
+
+    if valid_mode_indices.is_empty() {
+        return; // No modes have valid targets — spell fizzles
+    }
+
+    let valid_descriptions: Vec<String> = valid_mode_indices
+        .iter()
+        .map(|&i| mode_descriptions[i].clone())
+        .collect();
+
     // Check if Entwine was paid (SA flag) — if so, auto-select all modes
     let entwine_paid = sa.params.get("Entwine").map(|_| true).unwrap_or(false) || sa.kicked; // Entwine is sometimes represented as kicked
 
@@ -89,17 +107,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Ask the activating player to choose mode(s)
     let card_name = ctx.game.card(source_id).card_name.clone();
-    let chosen_indices = if entwine_paid || (has_entwine && sa.kicked) {
-        // Entwine: all modes
-        (0..mode_texts.len()).collect()
+    let chosen_indices: Vec<usize> = if entwine_paid || (has_entwine && sa.kicked) {
+        // Entwine: all valid modes (mapped back to original indices)
+        valid_mode_indices.clone()
     } else {
-        ctx.agents[player.index()].choose_mode(
+        let agent_choices = ctx.agents[player.index()].choose_mode(
             player,
-            &mode_descriptions,
+            &valid_descriptions,
             min_charm_num,
-            charm_num,
+            charm_num.min(valid_mode_indices.len()),
             Some(&card_name),
-        )
+        );
+        // Map agent choices (indices into valid_descriptions) back to original mode indices
+        agent_choices
+            .into_iter()
+            .filter_map(|i| valid_mode_indices.get(i).copied())
+            .collect()
     };
 
     // Resolve each chosen mode in declaration order
@@ -128,6 +151,49 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.game_over {
             break;
         }
+    }
+}
+
+/// Check whether a charm mode has valid targets (or needs no targets).
+///
+/// Mirrors Java's pre-filtering of `possible` modes in CharmEffect before
+/// calling `chooseModeForAbility`. Modes without targeting requirements are
+/// always valid. Modes requiring specific targets are valid only if at least
+/// one legal candidate exists.
+fn mode_has_valid_targets(
+    ctx: &EffectContext,
+    mode_text: &str,
+    player: PlayerId,
+    source_id: crate::ids::CardId,
+) -> bool {
+    let sa = build_spell_ability(ctx.game, source_id, mode_text, player);
+    let tr = match &sa.target_restrictions {
+        Some(tr) => tr,
+        None => return true, // No targeting = always valid
+    };
+    match &tr.target_kind {
+        TargetKind::Player => true,
+        TargetKind::Spell => !get_all_candidates_spells(ctx.game).is_empty(),
+        TargetKind::Creature(ref filter) => {
+            !get_all_candidates_creature_filtered(ctx.game, filter.as_deref(), player).is_empty()
+        }
+        TargetKind::CardInZone { zone, filter } => ctx.game.player_order.iter().any(|&pid| {
+            !get_valid_cards_in_zone(ctx.game, *zone, pid, filter.as_deref()).is_empty()
+        }),
+        TargetKind::Any => {
+            let filter = tr
+                .valid_tgts
+                .first()
+                .map(String::as_str)
+                .unwrap_or("Permanent");
+            ctx.game.player_order.iter().any(|&pid| {
+                ctx.game
+                    .cards_in_zone(ZoneType::Battlefield, pid)
+                    .iter()
+                    .any(|&cid| matches_valid_cards(ctx.game.card(cid), filter, player))
+            }) || !ctx.game.alive_players().is_empty()
+        }
+        TargetKind::None => true,
     }
 }
 
