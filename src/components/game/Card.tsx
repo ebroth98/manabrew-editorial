@@ -52,7 +52,6 @@ export function Card({
           "ring-2 ring-dashed ring-gray-400",
         className,
       )}
-      title={card.name}
       onClick={onClick}
     >
       {imageUrl && !hasError ? (

@@ -55,6 +55,15 @@ pub enum ReplacementType {
     /// `Event$ GameLoss` — a player losing the game (e.g. Platinum Angel).
     GameLoss,
 
+    /// `Event$ GameWin` — a player winning the game.
+    GameWin,
+
+    /// `Event$ CreateToken` — creating token(s).
+    CreateToken,
+
+    /// `Event$ Counter` — countering a spell.
+    Counter,
+
     /// Any event type not yet recognised — stored but not applied.
     Other(String),
 }
@@ -185,6 +194,88 @@ impl ReplacementEffect {
                 _ => false,
             };
             if !target_matches {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Returns `true` if this effect can replace a `GainLife` event for `player_id`.
+    pub fn can_replace_gain_life(&self, player_id: PlayerId, source: &CardInstance) -> bool {
+        if self.event != ReplacementType::GainLife {
+            return false;
+        }
+        if let Some(valid) = self.params.get("ValidPlayer") {
+            if !matches_valid_player(valid, player_id, source) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Returns `true` if this effect can replace a `CreateToken` event for `player_id`.
+    pub fn can_replace_create_token(&self, player_id: PlayerId, source: &CardInstance) -> bool {
+        if self.event != ReplacementType::CreateToken {
+            return false;
+        }
+        if let Some(valid) = self.params.get("ValidPlayer") {
+            if !matches_valid_player(valid, player_id, source) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Returns `true` if this effect can replace an `AddCounter` event.
+    pub fn can_replace_add_counter(
+        &self,
+        target: &CardInstance,
+        source: &CardInstance,
+    ) -> bool {
+        if self.event != ReplacementType::AddCounter {
+            return false;
+        }
+        if let Some(valid) = self.params.get("ValidCard") {
+            if !matches_valid_card(valid, target, source) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Returns `true` if this effect can replace a `GameLoss` event for `player_id`.
+    pub fn can_replace_game_loss(&self, player_id: PlayerId, source: &CardInstance) -> bool {
+        if self.event != ReplacementType::GameLoss {
+            return false;
+        }
+        if let Some(valid) = self.params.get("ValidPlayer") {
+            if !matches_valid_player(valid, player_id, source) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Returns `true` if this effect can replace a `GameWin` event for `player_id`.
+    pub fn can_replace_game_win(&self, player_id: PlayerId, source: &CardInstance) -> bool {
+        if self.event != ReplacementType::GameWin {
+            return false;
+        }
+        if let Some(valid) = self.params.get("ValidPlayer") {
+            if !matches_valid_player(valid, player_id, source) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Returns `true` if this effect can replace a `Counter` (counterspell) event.
+    pub fn can_replace_counter(&self, target: &CardInstance, source: &CardInstance) -> bool {
+        if self.event != ReplacementType::Counter {
+            return false;
+        }
+        if let Some(valid) = self.params.get("ValidCard") {
+            if !matches_valid_card(valid, target, source) {
                 return false;
             }
         }
@@ -336,6 +427,9 @@ pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
         Some("GainLife") => ReplacementType::GainLife,
         Some("AddCounter") => ReplacementType::AddCounter,
         Some("GameLoss") => ReplacementType::GameLoss,
+        Some("GameWin") => ReplacementType::GameWin,
+        Some("CreateToken") => ReplacementType::CreateToken,
+        Some("Counter") => ReplacementType::Counter,
         Some(other) => ReplacementType::Other(other.to_string()),
         None => return None,
     };

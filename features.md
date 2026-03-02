@@ -606,27 +606,27 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 |-----------|---------|:-------------------:|
 | `ReplacementHandler.java` | Central replacement effect dispatcher | **Implemented** (`replacement_handler.rs` — `apply_replacements`, CR 616 layer loop, `ReplacementEvent` enum) |
 | `ReplacementEffect.java` | Base replacement effect class | **Implemented** (`replacement.rs` — `ReplacementEffect` struct, `can_replace_*`, `active_in_zone`, R$ parser) |
-| `ReplacementType.java` | Enum of all replacement types | **Partial** (`replacement.rs` — DamageDone, Draw, DrawCards, Destroy, Moved, GainLife, AddCounter, GameLoss; 35 others as `Other`) |
+| `ReplacementType.java` | Enum of all replacement types | **Partial** (`replacement.rs` — DamageDone, Draw, DrawCards, Destroy, Moved, GainLife, AddCounter, GameLoss, GameWin, CreateToken, Counter; 32 others as `Other`) |
 | `ReplacementResult.java` | Replacement processing result | **Implemented** (`replacement.rs` — Replaced, NotReplaced, Prevented, Updated, Skipped) |
 | `ReplacementLayer.java` | Replacement effect ordering layers | **Implemented** (`replacement.rs` — CantHappen, Control, Copy, Transform, Other) |
 | `ReplacementEffectView.java` | Replacement effect UI view | Not implemented |
-| `ReplaceDamage.java` | Replace damage events | **Partial** (`replacement_handler.rs` — Prevent$ True zeroes damage; no amount operators, no redirection) |
+| `ReplaceDamage.java` | Replace damage events | **Partial** (`replacement_handler.rs` — Prevent$ True zeroes damage, is_combat field threaded; no amount operators, no redirection) |
 | `ReplaceDealtDamage.java` | Replace damage-dealt events | Not implemented |
 | `ReplaceAssignDealDamage.java` | Replace damage assignment | Not implemented |
 | `ReplaceDraw.java` | Replace single draw | **Partial** (`replacement_handler.rs` — Skipped/Replaced result; no draw-into replacement) |
 | `ReplaceDrawCards.java` | Replace multiple draws | Not implemented |
-| `ReplaceGainLife.java` | Replace life gain | Not implemented |
+| `ReplaceGainLife.java` | Replace life gain | **Implemented** (`handler.rs` — GainLife event with Prevent$/ReplaceWith$ GainDouble; wired in `life_gain_effect.rs`) |
 | `ReplaceLifeReduced.java` | Replace life reduction | Not implemented |
 | `ReplacePayLife.java` | Replace life payment | Not implemented |
-| `ReplaceGameLoss.java` | Replace game loss | Not implemented |
-| `ReplaceGameWin.java` | Replace game win | Not implemented |
+| `ReplaceGameLoss.java` | Replace game loss | **Implemented** (`handler.rs` — GameLoss event; CantHappen prevents loss; wired in `game_loss_effect.rs` + SBA life/poison checks) |
+| `ReplaceGameWin.java` | Replace game win | **Implemented** (`handler.rs` — GameWin event; CantHappen prevents win; wired in `game_win_effect.rs`) |
 | `ReplaceDestroy.java` | Replace destroy events | **Partial** (`replacement_handler.rs` — Replaced blocks SBA destruction; no regeneration shield) |
 | `ReplaceMoved.java` | Replace zone change events | **Partial** (`replacement_handler.rs` — NewDestination$ reroutes zone; Destination$/Origin$/ValidCard$ filters; no LKI/ETB handling) |
-| `ReplaceCounter.java` | Replace counter spell | Not implemented |
-| `ReplaceAddCounter.java` | Replace counter addition | Not implemented |
+| `ReplaceCounter.java` | Replace counter spell | **Implemented** (`handler.rs` — Counter event; CantHappen prevents countering; wired in `counter_effect.rs`) |
+| `ReplaceAddCounter.java` | Replace counter addition | **Implemented** (`handler.rs` — AddCounter event with AddOneMoreCounter/DoubleCounters; wired in `counters_put_effect.rs` + `proliferate_effect.rs`) |
 | `ReplaceRemoveCounter.java` | Replace counter removal | Not implemented |
 | `ReplaceMill.java` | Replace mill events | Not implemented |
-| `ReplaceToken.java` | Replace token creation | Not implemented |
+| `ReplaceToken.java` | Replace token creation | **Implemented** (`handler.rs` — CreateToken event with DoubleToken; wired in `token_effect.rs`) |
 | `ReplaceTap.java` | Replace tap events | Not implemented |
 | `ReplaceUntap.java` | Replace untap events | Not implemented |
 | `ReplaceTransform.java` | Replace transformation | Not implemented |
@@ -1005,16 +1005,16 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Phases | 7 | 1 | 3 | 3 |
 | Player | 17 | 2 | 2 | 13 |
 | Player Actions | 10 | 1 | 3 | 6 |
-| Replacement Effects | 46 | 4 | 4 | 38 |
+| Replacement Effects | 46 | 10 | 4 | 32 |
 | Spell Abilities | 23 | 4 | 2 | 17 |
 | Static Abilities | 61 | 2 | 4 | 55 |
 | Triggers | 139 | 70 | 1 | 68 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **189** | **62** | **518** |
+| **TOTAL** | **769** | **195** | **62** | **512** |
 
-> **Coverage: ~32.6% implemented or partially implemented** (251 of 769 features have some Rust counterpart).
+> **Coverage: ~33.4% implemented or partially implemented** (257 of 769 features have some Rust counterpart).
 >
-> The Rust engine has **~115 implementation files** (150+ total incl. tests/tools) across 6 crates. **85 effect handlers**, **68 trigger types**, **47 keyword abilities**, **7 static ability modes**, **8 replacement event types**, and **5 cost types** are functional. The architecture is solid — game loop, phase system, combat, mana pool, stack, triggers, replacement effects, static ability layer system all work.
+> The Rust engine has **~115 implementation files** (150+ total incl. tests/tools) across 6 crates. **85 effect handlers**, **68 trigger types**, **47 keyword abilities**, **7 static ability modes**, **14 replacement event types**, and **5 cost types** are functional. The architecture is solid — game loop, phase system, combat, mana pool, stack, triggers, replacement effects, static ability layer system all work.
 >
 > **Issue #53 complete**: All 25 high-priority effects implemented, unlocking ~2,200 additional cards. New Choose* UI modals (ChooseType, ChooseNumber, ChooseCardName) added to frontend.
 >
@@ -1025,7 +1025,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 > - **Triggers**: 68 not implemented (0 critical, 1 high, 40+ medium)
 > - **Static Abilities**: 55 modes not implemented (11 critical, 15 high)
 > - **Costs**: 45 types not implemented (7 critical, 12 high)
-> - **Replacement Effects**: 38 types not implemented (8 critical, 12 high)
+> - **Replacement Effects**: 32 types not implemented (2 critical, 12 high)
 > - **Mana**: X costs, phyrexian life payment, conversion matrix
 > - **Combat**: Attack requirements/restrictions, damage assignment order
 > - **Infrastructure**: Game logging, snapshots, format configuration
@@ -1221,20 +1221,14 @@ Devotion, Exhaust, FlipCoinMod, GainLifeRadiation, IgnoreLandwalk, ManaConvert, 
 
 ### 23.7 Replacement Effects — Missing
 
-**Implemented (8 event types):** DamageDone, Draw, DrawCards, Destroy, Moved, GainLife, AddCounter, GameLoss
+**Implemented (14 event types):** DamageDone, Draw, DrawCards, Destroy, Moved, GainLife, AddCounter, GameLoss, GameWin, CreateToken, Counter + fire points wired for all
 
-#### Critical Missing (8 types)
+#### Critical Missing (2 types)
 
 | Type | Java File | Description |
 |------|-----------|-------------|
-| ReplaceGainLife | `ReplaceGainLife.java` | Modify/prevent life gain (Erebos, Tibalt) |
-| ReplaceToken | `ReplaceToken.java` | Modify token creation (Doubling Season, Anointed Procession) |
 | ReplaceDamage (full) | `ReplaceDamage.java` | Full damage replacement (redirect, modify, prevent with shield) |
-| ReplaceGameLoss | `ReplaceGameLoss.java` | "You can't lose the game" (Platinum Angel) |
-| ReplaceGameWin | `ReplaceGameWin.java` | "Players can't win the game" (Angel's Grace) |
 | ReplaceTap | `ReplaceTap.java` | Replace tap events |
-| ReplaceCounter | `ReplaceCounter.java` | Replace counterspell events |
-| ReplaceAddCounter (full) | `ReplaceAddCounter.java` | Modify counter addition (Doubling Season, Hardened Scales) |
 
 #### High Priority Missing (12 types)
 

@@ -564,6 +564,11 @@ pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
     if expr == "Count$TriggerRememberAmount" {
         return sa.trigger_remembered_amount;
     }
+    // TriggerCount$Amount — number of objects that matched the trigger event.
+    // For per-event triggers (ChangesZoneAll batched as individual fires), this is 1.
+    if expr == "TriggerCount$Amount" {
+        return sa.trigger_remembered_amount.max(1);
+    }
     // Count$KickedCount — return the multikicker count (for Multikicker effects)
     if expr == "Count$KickedCount" {
         return sa.kick_count as i32;

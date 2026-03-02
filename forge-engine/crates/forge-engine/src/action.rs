@@ -215,6 +215,7 @@ impl GameState {
             target,
             amount,
             source: None,
+            is_combat: false,
         };
         apply_replacements(self, &mut event);
         if let ReplacementEvent::DamageToCard {
@@ -243,6 +244,7 @@ impl GameState {
             target,
             amount,
             source: None,
+            is_combat: false,
         };
         apply_replacements(self, &mut event);
         if let ReplacementEvent::DamageToPlayer {
@@ -272,13 +274,21 @@ impl GameState {
         // Check players with 0 or less life
         for pid in self.player_order.clone() {
             if self.player(pid).life <= 0 && self.player(pid).is_alive() {
-                self.player_mut(pid).has_lost = true;
-                any_changes = true;
+                let mut event = ReplacementEvent::GameLoss { player: pid };
+                let result = apply_replacements(self, &mut event);
+                if result != ReplacementResult::Replaced {
+                    self.player_mut(pid).has_lost = true;
+                    any_changes = true;
+                }
             }
             // Check poison counters (10+ = lose)
             if self.player(pid).poison_counters >= 10 && self.player(pid).is_alive() {
-                self.player_mut(pid).has_lost = true;
-                any_changes = true;
+                let mut event = ReplacementEvent::GameLoss { player: pid };
+                let result = apply_replacements(self, &mut event);
+                if result != ReplacementResult::Replaced {
+                    self.player_mut(pid).has_lost = true;
+                    any_changes = true;
+                }
             }
             // Check commander damage (21+ from a single commander source = lose)
             let commander_dmg_entries: Vec<(u32, i32)> = self

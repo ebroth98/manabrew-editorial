@@ -2,6 +2,8 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
 use crate::event::{RunParams, TriggerType};
+use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 /// SP$ Counter — remove a targeted spell from the stack and put it into
@@ -20,6 +22,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Destination")
         .and_then(|d| super::parse_zone_type(d))
         .unwrap_or(ZoneType::Graveyard);
+
+    // Check if the spell has a "can't be countered" replacement effect.
+    // Find the source card of the targeted stack entry.
+    if let Some(entry) = ctx.game.stack.find_by_id(entry_id) {
+        if let Some(source_card) = entry.spell_ability.source {
+            let mut event = ReplacementEvent::Counter { card: source_card };
+            let result = apply_replacements(ctx.game, &mut event);
+            if result == ReplacementResult::Replaced {
+                return;
+            }
+        }
+    }
 
     // Remove from stack
     if let Some(entry) = ctx.game.stack.remove_by_id(entry_id) {

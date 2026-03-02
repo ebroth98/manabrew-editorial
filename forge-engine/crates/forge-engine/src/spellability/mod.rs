@@ -429,6 +429,11 @@ impl MagicStack {
         self.entries.iter()
     }
 
+    /// Find a stack entry by ID without removing it.
+    pub fn find_by_id(&self, id: u32) -> Option<&StackEntry> {
+        self.entries.iter().find(|e| e.id == id)
+    }
+
     /// Remove and return the stack entry with the given ID (for Counter effects).
     /// Returns `None` if no entry with that ID exists.
     pub fn remove_by_id(&mut self, id: u32) -> Option<StackEntry> {
