@@ -12,7 +12,7 @@
 //!
 //! Strategy:
 //! - Always keep opening hand (mulligan changes state too much)
-//! - Main phase: randomly pick from playable cards (lands first) or pass
+//! - Main phase: randomly pick from playable cards / activatable abilities or pass
 //! - Attackers: per-creature coin flip (rng.nextInt(2))
 //! - Blockers: per-blocker random attacker assignment
 //! - Targets: random from sorted valid options
@@ -29,6 +29,11 @@ use forge_foundation::PhaseType;
 
 use crate::java_random::JavaRandom;
 
+const ANSI_RESET: &str = "\x1b[0m";
+const ANSI_DIM_GRAY: &str = "\x1b[90m";
+const ANSI_YELLOW: &str = "\x1b[33m";
+const PREFER_ACTION_WEIGHT: usize = 3;
+
 /// A hybrid deterministic agent: RNG for core decisions, fixed values for the rest.
 pub struct DeterministicAgent {
     /// The player this agent controls.
@@ -41,6 +46,8 @@ pub struct DeterministicAgent {
     last_game_snapshot: Option<GameSnapshot>,
     /// Shared RNG — same instance used for deck shuffling and all agent decisions.
     rng: Rc<RefCell<JavaRandom>>,
+    /// If true, bias random main-phase choices toward taking an action over pass.
+    prefer_actions: bool,
     /// Current phase — used to only play spells during main phases.
     current_phase: Option<PhaseType>,
 }
@@ -49,19 +56,26 @@ pub struct DeterministicAgent {
 struct GameSnapshot {
     card_names: Vec<(CardId, String)>,
     card_is_land: Vec<(CardId, bool)>,
+    ability_sort_keys: Vec<(CardId, usize, String, String)>,
     active_player: PlayerId,
     phase: PhaseType,
     stack_empty: bool,
 }
 
 impl DeterministicAgent {
-    pub fn new(player_id: PlayerId, verbose: bool, rng: Rc<RefCell<JavaRandom>>) -> Self {
+    pub fn new(
+        player_id: PlayerId,
+        verbose: bool,
+        rng: Rc<RefCell<JavaRandom>>,
+        prefer_actions: bool,
+    ) -> Self {
         Self {
             player_id,
             log: Vec::new(),
             verbose,
             last_game_snapshot: None,
             rng,
+            prefer_actions,
             current_phase: None,
         }
     }
@@ -98,17 +112,48 @@ impl DeterministicAgent {
         sorted.into_iter().map(|(id, _)| id).collect()
     }
 
+    /// Return Java-like sort key for activated abilities:
+    /// host card name, then API, then original description text.
+    fn ability_sort_key(&self, card_id: CardId, ability_idx: usize) -> (String, String) {
+        if let Some(ref snap) = self.last_game_snapshot {
+            for (cid, idx, api, desc) in &snap.ability_sort_keys {
+                if *cid == card_id && *idx == ability_idx {
+                    return (api.clone(), desc.clone());
+                }
+            }
+        }
+        (String::new(), String::new())
+    }
+
     /// Pick a random index in [0, len) from the shared RNG.
     fn pick(&self, len: usize) -> usize {
-        if len <= 1 {
+        if len == 0 {
             return 0;
         }
+        // Important for parity: Java's Random.nextInt(1) still advances RNG state.
+        // So we must consume RNG even when len == 1.
         self.rng.borrow_mut().next_int(len as i32) as usize
     }
 
     fn log_decision(&self, msg: &str) {
         if self.verbose {
-            eprintln!("[parity-agent p{}] {}", self.player_id.0, msg);
+            let styled = if msg.starts_with("Priority: PASS")
+                || msg.contains("PASS (nothing playable)")
+                || msg.contains("PASS (random)")
+                || msg.contains("PASS (random weighted)")
+                || msg.contains("PASS (non-sorcery-speed priority)")
+            {
+                format!("{ANSI_DIM_GRAY}{msg}{ANSI_RESET}")
+            } else if msg.contains("Main phase: PLAY ")
+                || msg.contains("Main phase: ACTIVATE ")
+                || msg.starts_with("Attackers:")
+                || msg.starts_with("Blockers:")
+            {
+                format!("{ANSI_YELLOW}{msg}{ANSI_RESET}")
+            } else {
+                msg.to_string()
+            };
+            eprintln!("[parity-agent p{}] {}", self.player_id.0, styled);
         }
     }
 }
@@ -123,9 +168,18 @@ impl PlayerAgent for DeterministicAgent {
             .collect();
         let card_is_land: Vec<(CardId, bool)> =
             game.cards.iter().map(|c| (c.id, c.is_land())).collect();
+        let mut ability_sort_keys: Vec<(CardId, usize, String, String)> = Vec::new();
+        for c in &game.cards {
+            for ab in &c.activated_abilities {
+                let api = ab.params.get("AB").cloned().unwrap_or_default();
+                let desc = ab.params.get("SpellDescription").cloned().unwrap_or_default();
+                ability_sort_keys.push((c.id, ab.ability_index, api, desc));
+            }
+        }
         self.last_game_snapshot = Some(GameSnapshot {
             card_names,
             card_is_land,
+            ability_sort_keys,
             active_player: game.active_player(),
             phase: game.turn.phase,
             stack_empty: game.stack.is_empty(),
@@ -143,7 +197,7 @@ impl PlayerAgent for DeterministicAgent {
         playable: &[CardId],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
-        _activatable: &[(CardId, usize)],
+        activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
         // Only play spells during main phases — matches Java's AI behavior which
         // passes during non-main-phase priority windows (upkeep, combat, etc.).
@@ -151,7 +205,11 @@ impl PlayerAgent for DeterministicAgent {
             self.current_phase,
             Some(PhaseType::Main1) | Some(PhaseType::Main2)
         );
-        if !is_main_phase || playable.is_empty() {
+        if !is_main_phase {
+            self.log_decision("Priority: PASS (non-main phase)");
+            return MainPhaseAction::Pass;
+        }
+        if playable.is_empty() && activatable.is_empty() {
             self.log_decision("Main phase: PASS (nothing playable)");
             return MainPhaseAction::Pass;
         }
@@ -188,22 +246,96 @@ impl PlayerAgent for DeterministicAgent {
         let sorted_lands = self.sort_by_name(&lands);
         let sorted_spells = self.sort_by_name(&spells);
 
-        let all: Vec<CardId> = sorted_lands
+        let cards: Vec<CardId> = sorted_lands
             .into_iter()
             .chain(sorted_spells)
             .collect();
+        let mut abilities: Vec<(CardId, usize)> = activatable.to_vec();
+        abilities.sort_by(|(card_a, idx_a), (card_b, idx_b)| {
+            let name_a = self.card_name(*card_a);
+            let name_b = self.card_name(*card_b);
+            let key_a = self.ability_sort_key(*card_a, *idx_a);
+            let key_b = self.ability_sort_key(*card_b, *idx_b);
+            name_a
+                .cmp(&name_b)
+                .then(key_a.0.cmp(&key_b.0))
+                .then(key_a.1.cmp(&key_b.1))
+                .then(idx_a.cmp(idx_b))
+        });
 
-        // Pick randomly: 0..count plays a card, count = pass
-        let idx = self.rng.borrow_mut().next_int((all.len() + 1) as i32) as usize;
-        if idx >= all.len() {
-            self.log_decision("Main phase: PASS (random)");
-            return MainPhaseAction::Pass;
+        enum ActionChoice {
+            Card(CardId),
+            Ability(CardId, usize),
         }
+        let choices: Vec<ActionChoice> = cards
+            .into_iter()
+            .map(ActionChoice::Card)
+            .chain(
+                abilities
+                    .into_iter()
+                    .map(|(card_id, idx)| ActionChoice::Ability(card_id, idx)),
+            )
+            .collect();
+        // Pick randomly:
+        // - default: each action + pass are equally likely
+        // - prefer-actions: each action has weight PREFER_ACTION_WEIGHT, pass has weight 1
+        let chosen_idx = if self.prefer_actions {
+            let total_weight = choices.len() * PREFER_ACTION_WEIGHT + 1;
+            let roll = self.rng.borrow_mut().next_int(total_weight as i32) as usize;
+            if roll >= choices.len() * PREFER_ACTION_WEIGHT {
+                self.log_decision("Main phase: PASS (random weighted)");
+                return MainPhaseAction::Pass;
+            }
+            roll / PREFER_ACTION_WEIGHT
+        } else {
+            let idx = self.rng.borrow_mut().next_int((choices.len() + 1) as i32) as usize;
+            if self.verbose {
+                let opts: Vec<String> = choices
+                    .iter()
+                    .map(|c| match *c {
+                        ActionChoice::Card(cid) => {
+                            if self.is_land(cid) {
+                                format!("LAND:{}", self.card_name(cid))
+                            } else {
+                                format!("SPELL:{}", self.card_name(cid))
+                            }
+                        }
+                        ActionChoice::Ability(cid, _) => format!("AB:{}", self.card_name(cid)),
+                    })
+                    .collect();
+                eprintln!(
+                    "[det-rust p{}] options={:?} idx={}/{}",
+                    self.player_id.0,
+                    opts,
+                    idx,
+                    choices.len()
+                );
+            }
+            if idx >= choices.len() {
+                self.log_decision("Main phase: PASS (random)");
+                return MainPhaseAction::Pass;
+            }
+            idx
+        };
 
-        let chosen = all[idx];
-        let name = self.card_name(chosen);
-        self.log_decision(&format!("Main phase: PLAY {} (random idx={})", name, idx));
-        MainPhaseAction::Play(chosen)
+        match choices[chosen_idx] {
+            ActionChoice::Card(chosen) => {
+                let name = self.card_name(chosen);
+                self.log_decision(&format!(
+                    "Main phase: PLAY {} (random idx={})",
+                    name, chosen_idx
+                ));
+                MainPhaseAction::Play(chosen)
+            }
+            ActionChoice::Ability(card_id, ability_idx) => {
+                let name = self.card_name(card_id);
+                self.log_decision(&format!(
+                    "Main phase: ACTIVATE {} [ab#{}] (random idx={})",
+                    name, ability_idx, chosen_idx
+                ));
+                MainPhaseAction::ActivateAbility(card_id, ability_idx)
+            }
+        }
     }
 
     fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId]) -> Vec<CardId> {
@@ -339,6 +471,32 @@ impl PlayerAgent for DeterministicAgent {
         sorted[..count].to_vec()
     }
 
+    fn choose_random_discard(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        num: usize,
+    ) -> Vec<CardId> {
+        if hand.is_empty() || num == 0 {
+            return vec![];
+        }
+        // Sort alphabetically first (same canonical ordering as Java's card list),
+        // then use reservoir sampling with the seeded RNG to pick `num` cards.
+        // This mirrors Java's Aggregates.random() which iterates the list and uses
+        // rng.nextInt(i) for reservoir replacement.
+        let sorted = self.sort_by_name(hand);
+        let count = num.min(sorted.len());
+        let mut rng = self.rng.borrow_mut();
+        let mut result: Vec<CardId> = sorted[..count].to_vec();
+        for i in count..sorted.len() {
+            let j = rng.next_int(i as i32 + 1) as usize;
+            if j < count {
+                result[j] = sorted[i];
+            }
+        }
+        result
+    }
+
     fn choose_dig(
         &mut self,
         _player: PlayerId,
@@ -358,15 +516,25 @@ impl PlayerAgent for DeterministicAgent {
     fn notify(&mut self, message: &str) {
         self.log.push(message.to_string());
         if self.verbose {
-            eprintln!("[parity-agent p{}] notify: {}", self.player_id.0, message);
+            let styled = if message.starts_with("Played land:")
+                || message.starts_with("Cast:")
+                || message.starts_with("Activated ability:")
+                || message.starts_with("Trigger fired:")
+                || message.starts_with("Effect resolved:")
+            {
+                format!("{ANSI_YELLOW}{message}{ANSI_RESET}")
+            } else {
+                message.to_string()
+            };
+            eprintln!("[parity-agent p{}] notify: {}", self.player_id.0, styled);
         }
     }
 
     fn notify_turn_changed(&mut self, active_player: PlayerId, turn_number: u32) {
         if self.verbose {
             eprintln!(
-                "[parity-agent p{}] === Turn {} (P{} active) ===",
-                self.player_id.0, turn_number, active_player.0
+                "[parity-agent p{}] {}=== Turn {} (P{} active) ==={}",
+                self.player_id.0, ANSI_DIM_GRAY, turn_number, active_player.0, ANSI_RESET
             );
         }
     }
@@ -375,8 +543,8 @@ impl PlayerAgent for DeterministicAgent {
         self.current_phase = Some(phase);
         if self.verbose {
             eprintln!(
-                "[parity-agent p{}] --- Phase: {:?} ---",
-                self.player_id.0, phase
+                "[parity-agent p{}] {}--- Phase: {:?} ---{}",
+                self.player_id.0, ANSI_DIM_GRAY, phase, ANSI_RESET
             );
         }
     }
@@ -392,14 +560,14 @@ mod tests {
 
     #[test]
     fn always_keeps_hand() {
-        let mut agent = DeterministicAgent::new(PlayerId(0), false, make_rng(42));
+        let mut agent = DeterministicAgent::new(PlayerId(0), false, make_rng(42), false);
         assert!(agent.mulligan_decision(PlayerId(0), &[]));
     }
 
     #[test]
     fn random_target_player() {
         let rng = make_rng(42);
-        let mut agent = DeterministicAgent::new(PlayerId(0), false, rng);
+        let mut agent = DeterministicAgent::new(PlayerId(0), false, rng, false);
         // With two valid targets, should randomly pick one
         let target = agent.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
         assert!(target.is_some());
@@ -409,11 +577,11 @@ mod tests {
     fn deterministic_across_runs() {
         // Same seed → same decisions
         let rng1 = make_rng(42);
-        let mut agent1 = DeterministicAgent::new(PlayerId(0), false, rng1);
+        let mut agent1 = DeterministicAgent::new(PlayerId(0), false, rng1, false);
         let t1 = agent1.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
 
         let rng2 = make_rng(42);
-        let mut agent2 = DeterministicAgent::new(PlayerId(0), false, rng2);
+        let mut agent2 = DeterministicAgent::new(PlayerId(0), false, rng2, false);
         let t2 = agent2.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
 
         assert_eq!(t1, t2);

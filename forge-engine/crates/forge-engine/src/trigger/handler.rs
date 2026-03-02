@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use forge_foundation::ZoneType;
+
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -421,8 +423,20 @@ impl TriggerHandler {
             return false;
         }
 
-        // Check active zones
-        if !trigger.active_zones.contains(&card.zone) {
+        // Check active zones.
+        // For self zone-change events, use origin as LKI zone so "dies" triggers
+        // (active on Battlefield) still fire after the card has moved.
+        let zone_for_active_check = if *mode == TriggerType::ChangesZone
+            && params.card == Some(host_card)
+            && params.origin == Some(ZoneType::Battlefield)
+            && params.destination != Some(ZoneType::Battlefield)
+        {
+            // LKI active-zone check for "leaves battlefield" self triggers (e.g. dies).
+            ZoneType::Battlefield
+        } else {
+            card.zone
+        };
+        if !trigger.active_zones.contains(&zone_for_active_check) {
             return false;
         }
 

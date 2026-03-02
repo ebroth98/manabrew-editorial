@@ -4,6 +4,12 @@ use crate::protocol::{
     Divergence, GameTrace, FuzzReport, MatchupStatus, MatrixReport, ParityReport,
 };
 
+const ANSI_RESET: &str = "\x1b[0m";
+const ANSI_GREEN: &str = "\x1b[32m";
+const ANSI_RED: &str = "\x1b[31m";
+const ANSI_YELLOW: &str = "\x1b[33m";
+const ANSI_DIM: &str = "\x1b[90m";
+
 /// Build a parity report from a Rust trace and a set of divergences.
 pub fn build_report(trace: &GameTrace, divergences: Vec<Divergence>) -> ParityReport {
     let passed = divergences.is_empty();
@@ -81,27 +87,32 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
     out.push_str(&format!("Decks:      {}\n", report.decks.join(", ")));
     out.push_str(&format!("Max turns:  {}\n\n", report.max_turns));
 
-    out.push_str(&format!(
-        "Results: {} matchups | {} PASS | {} FAIL | {} ERROR\n\n",
-        report.total_matchups, report.passed, report.failed, report.errors
-    ));
-
     // Column header
     out.push_str(&format!(
-        "  {:<20} {:<20} {:<6} {:<7} {}\n",
-        "Deck1", "Deck2", "Seed", "Status", "Divergences"
+        "  {:<20} {:<20} {:<6} {:<7} {:<11} {}\n",
+        "Deck1", "Deck2", "Seed", "Status", "Divergences", "Completion"
     ));
-    out.push_str(&format!("  {}\n", "-".repeat(75)));
+    out.push_str(&format!("  {}\n", "-".repeat(104)));
 
     for r in &report.results {
         let status_str = match r.status {
-            MatchupStatus::Pass => "PASS",
-            MatchupStatus::Fail => "FAIL",
-            MatchupStatus::Error => "ERROR",
+            MatchupStatus::Pass => format!("{ANSI_GREEN}PASS{ANSI_RESET}"),
+            MatchupStatus::Fail => format!("{ANSI_RED}FAIL{ANSI_RESET}"),
+            MatchupStatus::Error => format!("{ANSI_RED}ERROR{ANSI_RESET}"),
         };
         out.push_str(&format!(
-            "  {:<20} {:<20} {:<6} {:<7} {}\n",
-            r.deck1, r.deck2, r.seed, status_str, r.divergence_count
+            "  {:<20} {:<20} {:<6} {:<7} {:<11} {}\n",
+            r.deck1,
+            r.deck2,
+            r.seed,
+            status_str,
+            r.divergence_count,
+            completion_label(
+                &r.status,
+                r.first_divergence.as_ref().map(|d| d.turn),
+                r.finished_turn,
+                report.max_turns,
+            ),
         ));
     }
 
@@ -139,6 +150,32 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
                             div.rust_value,
                             div.java_value,
                         ));
+                        match (&r.trace, &r.java_trace) {
+                            (Some(rust_trace), Some(java_trace)) => {
+                                out.push_str("     Rust vs Java trace (git-style):\n");
+                                out.push_str(&format_unified_trace_diff(rust_trace, java_trace, "       "));
+                                out.push('\n');
+                            }
+                            (Some(rust_trace), None) => {
+                                out.push_str("     Rust trace:\n");
+                                for line in rust_trace.lines() {
+                                    out.push_str("       ");
+                                    out.push_str(line);
+                                    out.push('\n');
+                                }
+                                out.push('\n');
+                            }
+                            (None, Some(java_trace)) => {
+                                out.push_str("     Java trace:\n");
+                                for line in java_trace.lines() {
+                                    out.push_str("       ");
+                                    out.push_str(line);
+                                    out.push('\n');
+                                }
+                                out.push('\n');
+                            }
+                            (None, None) => {}
+                        }
                     } else {
                         out.push_str(&format!(
                             "  {}. {} vs {} | seed={}\n     {} divergence(s)\n\n",
@@ -153,6 +190,34 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
             }
         }
     }
+
+    let pass_rate = if report.total_matchups == 0 {
+        0.0
+    } else {
+        report.passed as f64 / report.total_matchups as f64
+    };
+    let (health_color, health_label) = if (pass_rate - 1.0).abs() < f64::EPSILON {
+        (ANSI_GREEN, "HEALTHY")
+    } else if pass_rate > 0.70 {
+        (ANSI_YELLOW, "WARNING")
+    } else {
+        (ANSI_RED, "CRITICAL")
+    };
+
+    let passed_col = format!("{ANSI_GREEN}{} PASS{ANSI_RESET}", report.passed);
+    let failed_col = format!("{ANSI_RED}{} FAIL{ANSI_RESET}", report.failed);
+    let errors_col = format!("{ANSI_RED}{} ERROR{ANSI_RESET}", report.errors);
+    out.push_str(&format!(
+        "\nResults: {} matchups | {} | {} | {}\n",
+        report.total_matchups, passed_col, failed_col, errors_col
+    ));
+    out.push_str(&format!(
+        "{}Overall health: {} ({:.1}% pass rate){}\n",
+        health_color,
+        health_label,
+        pass_rate * 100.0,
+        ANSI_RESET
+    ));
 
     out
 }
@@ -188,10 +253,10 @@ pub fn format_fuzz_text(report: &FuzzReport) -> String {
 
     // Column header
     out.push_str(&format!(
-        "  {:<6} {:<8} {:<7} {}\n",
-        "Iter", "Seed", "Status", "Divergences"
+        "  {:<6} {:<8} {:<7} {:<11} {}\n",
+        "Iter", "Seed", "Status", "Divergences", "Completion"
     ));
-    out.push_str(&format!("  {}\n", "-".repeat(60)));
+    out.push_str(&format!("  {}\n", "-".repeat(90)));
 
     for r in &report.results {
         let status_str = match r.result.status {
@@ -200,8 +265,17 @@ pub fn format_fuzz_text(report: &FuzzReport) -> String {
             MatchupStatus::Error => "ERROR",
         };
         out.push_str(&format!(
-            "  {:<6} {:<8} {:<7} {}\n",
-            r.iteration, r.game_seed, status_str, r.result.divergence_count
+            "  {:<6} {:<8} {:<7} {:<11} {}\n",
+            r.iteration,
+            r.game_seed,
+            status_str,
+            r.result.divergence_count,
+            completion_label(
+                &r.result.status,
+                r.result.first_divergence.as_ref().map(|d| d.turn),
+                r.result.finished_turn,
+                report.max_turns,
+            ),
         ));
     }
 
@@ -233,9 +307,87 @@ pub fn format_fuzz_text(report: &FuzzReport) -> String {
                             "     [T{} {}] {}: Rust={} Java={}\n",
                             div.turn, div.phase, div.field, div.rust_value, div.java_value,
                         ));
+                        match (&r.result.trace, &r.result.java_trace) {
+                            (Some(rust_trace), Some(java_trace)) => {
+                                out.push_str("     Rust vs Java trace (git-style):\n");
+                                out.push_str(&format_unified_trace_diff(rust_trace, java_trace, "       "));
+                            }
+                            (Some(rust_trace), None) => {
+                                out.push_str("     Rust trace:\n");
+                                for line in rust_trace.lines() {
+                                    out.push_str("       ");
+                                    out.push_str(line);
+                                    out.push('\n');
+                                }
+                            }
+                            (None, Some(java_trace)) => {
+                                out.push_str("     Java trace:\n");
+                                for line in java_trace.lines() {
+                                    out.push_str("       ");
+                                    out.push_str(line);
+                                    out.push('\n');
+                                }
+                            }
+                            (None, None) => {}
+                        }
                     }
                 }
             }
+        }
+    }
+
+    out
+}
+
+fn completion_label(
+    status: &MatchupStatus,
+    failed_turn: Option<u32>,
+    finished_turn: Option<u32>,
+    max_turns: u32,
+) -> String {
+    match status {
+        MatchupStatus::Fail => failed_turn
+            .map(|t| format!("FAILED AT TURN {}", t))
+            .unwrap_or_else(|| "FAILED".to_string()),
+        MatchupStatus::Pass => finished_turn
+            .map(|turn| format!("FINISHED TURN {}", turn))
+            .unwrap_or_else(|| {
+                let _ = max_turns;
+                "STOPPED AT MAX".to_string()
+            }),
+        MatchupStatus::Error => "ERROR".to_string(),
+    }
+}
+
+fn format_unified_trace_diff(rust_trace: &str, java_trace: &str, indent: &str) -> String {
+    let rust_lines: Vec<&str> = rust_trace.lines().collect();
+    let java_lines: Vec<&str> = java_trace.lines().collect();
+    let rows = rust_lines.len().max(java_lines.len());
+    let mut out = String::new();
+
+    out.push_str(indent);
+    out.push_str(&format!("{ANSI_DIM}--- Rust{ANSI_RESET}\n"));
+    out.push_str(indent);
+    out.push_str(&format!("{ANSI_DIM}+++ Java{ANSI_RESET}\n"));
+    out.push_str(indent);
+    out.push_str(&format!("{ANSI_DIM}@@ trace @@{ANSI_RESET}\n"));
+
+    for i in 0..rows {
+        let rust_line = rust_lines.get(i).copied().unwrap_or("");
+        let java_line = java_lines.get(i).copied().unwrap_or("");
+        if rust_line == java_line {
+            out.push_str(indent);
+            out.push_str(&format!("{ANSI_DIM}  {}{ANSI_RESET}\n", rust_line));
+            continue;
+        }
+
+        if !rust_line.is_empty() {
+            out.push_str(indent);
+            out.push_str(&format!("{ANSI_RED}- {rust_line}{ANSI_RESET}\n"));
+        }
+        if !java_line.is_empty() {
+            out.push_str(indent);
+            out.push_str(&format!("{ANSI_GREEN}+ {java_line}{ANSI_RESET}\n"));
         }
     }
 
@@ -368,6 +520,8 @@ mod tests {
             deck1: "red_burn".into(),
             deck2: "green_stompy".into(),
             max_turns: 5,
+            covered_cards: vec![],
+            mechanic_signals: vec![],
             snapshots: vec![StateSnapshot {
                 turn: 1,
                 phase: "Untap".into(),

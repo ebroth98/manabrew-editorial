@@ -39,6 +39,10 @@ fn matches_single_property(
             if let Some(color_name) = lower.strip_prefix("non") {
                 let excluded = ColorSet::from_names(color_name);
                 !card.color.shares_color_with(excluded)
+            } else if let Some(keyword) = property.strip_prefix("with") {
+                card.has_keyword(keyword)
+            } else if let Some(keyword) = property.strip_prefix("without") {
+                !card.has_keyword(keyword)
             } else {
                 // No recognized property — match everything
                 true

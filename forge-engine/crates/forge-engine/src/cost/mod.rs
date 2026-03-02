@@ -1,7 +1,8 @@
 use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
-use crate::ability::effects::matches_change_type;
+use crate::ability::effects::{matches_change_type, parse_counter_type};
+use crate::card::CounterType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
@@ -20,6 +21,8 @@ pub enum CostPart {
     Sacrifice { amount: i32, type_filter: String },
     /// Discard cards. type_filter "CARDNAME" means discard self.
     Discard { amount: i32, type_filter: String },
+    /// Remove counters from the source permanent (e.g. SubCounter<1/DREAM/NICKNAME>).
+    SubCounter { amount: i32, counter_type: CounterType },
 }
 
 impl CostPart {
@@ -32,6 +35,7 @@ impl CostPart {
             CostPart::PayLife(_) => 7,
             CostPart::Sacrifice { .. } => 15,
             CostPart::Discard { .. } => 14,
+            CostPart::SubCounter { .. } => 6,
         }
     }
 }
@@ -100,6 +104,26 @@ pub fn parse_cost(raw: &str) -> Cost {
             {
                 let amount = inner.parse::<i32>().unwrap_or(0);
                 parts.push(CostPart::PayLife(amount));
+            }
+        } else if token.starts_with("SubCounter<") {
+            // Parse SubCounter<amount/counterType/source>.
+            // We currently support paying from source only (CARDNAME/NICKNAME).
+            if let Some(inner) = token
+                .strip_prefix("SubCounter<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let mut it = inner.split('/');
+                let amount = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
+                let counter_type_str = it.next().unwrap_or("P1P1");
+                let source = it.next().unwrap_or("CARDNAME");
+                if source.eq_ignore_ascii_case("CARDNAME")
+                    || source.eq_ignore_ascii_case("NICKNAME")
+                {
+                    parts.push(CostPart::SubCounter {
+                        amount,
+                        counter_type: parse_counter_type(counter_type_str),
+                    });
+                }
             }
         } else {
             // Accumulate as mana token
@@ -251,6 +275,17 @@ fn can_pay_inner(
                     if hand_size < *amount {
                         return false;
                     }
+                }
+            }
+            CostPart::SubCounter {
+                amount,
+                counter_type,
+            } => {
+                if card.zone != ZoneType::Battlefield {
+                    return false;
+                }
+                if card.counter_count(*counter_type) < *amount {
+                    return false;
                 }
             }
         }

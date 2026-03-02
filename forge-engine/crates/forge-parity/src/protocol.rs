@@ -162,6 +162,17 @@ pub struct GameTrace {
     pub deck2: String,
     pub max_turns: u32,
     pub snapshots: Vec<StateSnapshot>,
+    /// Card names that were played/cast during the game.
+    pub covered_cards: Vec<String>,
+    /// Low-effort mechanic signals extracted from notify messages.
+    pub mechanic_signals: Vec<MechanicSignal>,
+}
+
+/// Low-effort mechanic signal observed during a run.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MechanicSignal {
+    pub label: String,
+    pub count: usize,
 }
 
 // ── Parity Report ──────────────────────────────────────────────────
@@ -210,6 +221,16 @@ pub struct MatchupResult {
     pub divergence_count: usize,
     pub first_divergence: Option<Divergence>,
     pub error_message: Option<String>,
+    /// Full Rust-side game trace text, attached for failed matchups.
+    pub trace: Option<String>,
+    /// Full Java-side game trace text, attached for failed matchups.
+    pub java_trace: Option<String>,
+    /// Card names covered in this matchup (played/cast at least once).
+    pub covered_cards: Vec<String>,
+    /// Low-effort mechanic signals observed in this matchup.
+    pub mechanic_signals: Vec<MechanicSignal>,
+    /// If the game ended naturally, the turn it finished on; otherwise None means stopped at max turns.
+    pub finished_turn: Option<u32>,
 }
 
 /// Aggregate report for all matchups in matrix mode.
@@ -293,9 +314,11 @@ mod tests {
             stack: vec![],
         };
 
+        let covered_cards = vec!["Lightning Bolt".into()];
         let json = serde_json::to_string(&snap).unwrap();
         let parsed: StateSnapshot = serde_json::from_str(&json).unwrap();
         assert_eq!(snap, parsed);
+        assert_eq!(covered_cards.len(), 1);
     }
 
     #[test]

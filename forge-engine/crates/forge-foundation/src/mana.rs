@@ -405,14 +405,31 @@ impl ManaCost {
             if let Ok(n) = token.parse::<i32>() {
                 generic_cost += n;
             } else {
-                if let Some(shard) = ManaCostShard::parse_non_generic(token) {
-                    if shard != ManaCostShard::Generic {
-                        if shard == ManaCostShard::X {
-                            has_x = true;
+                // Forge can encode colored pips as adjacent symbols (e.g. "BR"
+                // means "{B}{R}"), while hybrid/phyrexian/colorless-hybrid
+                // symbols are slash-separated (e.g. "B/R", "W/P", "2/W").
+                if token.contains('/') {
+                    if let Some(shard) = ManaCostShard::parse_non_generic(token) {
+                        if shard != ManaCostShard::Generic {
+                            if shard == ManaCostShard::X {
+                                has_x = true;
+                            }
+                            shards.push(shard);
                         }
-                        shards.push(shard);
+                        // If it parsed to Generic, it was a numeric handled above
                     }
-                    // If it parsed to Generic, it was a numeric handled above
+                } else {
+                    for c in token.chars() {
+                        let sym = c.to_ascii_uppercase().to_string();
+                        if let Some(shard) = ManaCostShard::parse_non_generic(&sym) {
+                            if shard != ManaCostShard::Generic {
+                                if shard == ManaCostShard::X {
+                                    has_x = true;
+                                }
+                                shards.push(shard);
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -578,6 +595,13 @@ mod tests {
         assert_eq!(cost.shards().len(), 1);
         assert!(cost.color_set().has_white());
         assert!(cost.color_set().has_blue());
+    }
+
+    #[test]
+    fn parse_adjacent_multicolor_as_separate_pips() {
+        let cost = ManaCost::parse("2 BR");
+        assert_eq!(cost.generic_cost(), 2);
+        assert_eq!(cost.shards(), &[ManaCostShard::Black, ManaCostShard::Red]);
     }
 
     #[test]

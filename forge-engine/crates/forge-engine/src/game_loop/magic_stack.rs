@@ -18,7 +18,7 @@ impl GameLoop {
         if entry.spell_ability.is_copy {
             self.resolve_spell_effect(game, agents, &entry);
             apply_continuous_effects(game);
-            game.check_state_based_actions();
+            game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
             self.process_triggers(game, agents);
             return;
         }
@@ -320,10 +320,7 @@ impl GameLoop {
 
         // Continuous effects might change after resolution
         apply_continuous_effects(game);
-        // Flush triggers before SBA so that triggers from creatures about to
-        // die (e.g. enrage from damage spells) are matched while still alive.
-        self.trigger_handler.flush_waiting_triggers(game);
-        game.check_state_based_actions();
+        game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
 
         // Process triggers that may have fired during resolution
         self.process_triggers(game, agents);
@@ -377,6 +374,16 @@ impl GameLoop {
         sa: &SpellAbility,
         parent_target_card: Option<CardId>,
     ) {
+        let source_name = sa
+            .source
+            .and_then(|cid| game.cards.get(cid.index()).map(|c| c.card_name.clone()))
+            .unwrap_or_else(|| "Unknown source".to_string());
+        let effect_kind = sa.api.clone().unwrap_or_else(|| "Unknown".to_string());
+        agents[sa.activating_player.index()].notify(&format!(
+            "Effect resolved: {} | source={}",
+            effect_kind, source_name
+        ));
+
         let mut ctx = EffectContext {
             game,
             agents,

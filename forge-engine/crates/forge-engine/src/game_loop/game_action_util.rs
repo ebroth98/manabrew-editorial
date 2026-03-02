@@ -229,14 +229,23 @@ impl GameLoop {
                 };
 
                 if additional_costs_ok {
-                    let all_valid = card.abilities.iter().all(|ab| {
-                        target_restrictions::has_candidates_in_chain(
-                            game,
-                            player,
-                            ab,
-                            Some(card_id),
-                        )
-                    });
+                    // Only validate cast-time targets from SP$ abilities.
+                    // Non-spell abilities (AB$/DB$/...) must not gate whether the card
+                    // can be cast from hand. Otherwise cards with target-dependent
+                    // activated abilities (e.g. Walking Bulwark) become incorrectly
+                    // uncastable when no valid AB$ target exists.
+                    let all_valid = card
+                        .abilities
+                        .iter()
+                        .filter(|ab| parse_pipe_params(ab).contains_key("SP"))
+                        .all(|ab| {
+                            target_restrictions::has_candidates_in_chain(
+                                game,
+                                player,
+                                ab,
+                                Some(card_id),
+                            )
+                        });
                     if all_valid {
                         playable.push(card_id);
                     }
@@ -639,6 +648,7 @@ impl GameLoop {
                             self.pool_mut(player),
                             player,
                             &foretell_exile_cost,
+                            Some(card_id),
                         );
                         self.emit_tap_for_mana_triggers(player, &tapped);
                         self.pool_mut(player).try_pay(&foretell_exile_cost);
@@ -685,6 +695,7 @@ impl GameLoop {
                                 self.pool_mut(player),
                                 player,
                                 &suspend_mc,
+                                Some(card_id),
                             );
                             self.emit_tap_for_mana_triggers(player, &tapped);
                             self.pool_mut(player).try_pay(&suspend_mc);
@@ -1010,7 +1021,13 @@ impl GameLoop {
             };
 
             // Auto-tap lands to pay the effective cost
-            let tapped = mana::auto_tap_lands(game, self.pool_mut(player), player, &mana_cost);
+            let tapped = mana::auto_tap_lands(
+                game,
+                self.pool_mut(player),
+                player,
+                &mana_cost,
+                Some(card_id),
+            );
             self.emit_tap_for_mana_triggers(player, &tapped);
 
             // Auto-tap extra lands for commander tax

@@ -110,6 +110,7 @@ fn parse_counter_type_opt(s: &str) -> Option<CounterType> {
         "LEVEL" => Some(CounterType::Level),
         "LORE" => Some(CounterType::Lore),
         "PAGE" => Some(CounterType::Page),
+        "DREAM" => Some(CounterType::Dream),
         _ => None,
     }
 }

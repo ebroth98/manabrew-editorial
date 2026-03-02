@@ -114,6 +114,127 @@ use crate::mana::ManaPool;
 use crate::spellability::SpellAbility;
 use crate::trigger::handler::TriggerHandler;
 
+/// Generates both `IMPLEMENTED_API_TYPES` and `resolve_effect_once` from a
+/// single source of truth. Adding a new effect requires only one entry.
+macro_rules! effect_dispatch {
+    ( $( $api:literal => $handler:path ),* $(,)? ) => {
+        /// All API type strings that have implemented effect handlers.
+        /// Used by the fuzz card pool filter to exclude cards with unimplemented effects.
+        pub const IMPLEMENTED_API_TYPES: &[&str] = &[ $( $api ),* ];
+
+        /// Inner dispatch for a single execution of an effect.
+        fn resolve_effect_once(ctx: &mut EffectContext, sa: &SpellAbility) {
+            let api_type = sa.api.as_deref().unwrap_or_else(|| {
+                // Fallback: detect from ability text (for backwards compat)
+                detect_api_type_from_text(&sa.ability_text)
+            });
+            match api_type {
+                $( $api => $handler(ctx, sa), )*
+                _ => {} // Unimplemented effect — silently skip
+            }
+        }
+    };
+}
+
+effect_dispatch! {
+    "DealDamage" => damage_deal_effect::resolve,
+    "GainLife" => life_gain_effect::resolve,
+    "LoseLife" => life_lose_effect::resolve,
+    "PutCounter" => counters_put_effect::resolve,
+    "RemoveCounter" => counters_remove_effect::resolve,
+    "Poison" => poison_effect::resolve,
+    "Pump" => pump_effect::resolve,
+    "Destroy" => destroy_effect::resolve,
+    "Draw" => draw_effect::resolve,
+    "ChangeZoneAll" => change_zone_all_effect::resolve,
+    "ChangeZone" => change_zone_effect::resolve,
+    "SacrificeAll" => sacrifice_all_effect::resolve,
+    "Sacrifice" => sacrifice_effect::resolve,
+    "CopyPermanent" => copy_permanent_effect::resolve,
+    "Token" => token_effect::resolve,
+    "Mana" => mana_effect::resolve,
+    "Mill" => mill_effect::resolve,
+    "Scry" => scry_effect::resolve,
+    "Surveil" => surveil_effect::resolve,
+    "Dig" => dig_effect::resolve,
+    "DigMultiple" => dig_multiple_effect::resolve,
+    "RearrangeTopOfLibrary" => rearrange_top_of_library_effect::resolve,
+    "Reveal" => reveal_effect::resolve,
+    "RevealHand" => reveal_hand_effect::resolve,
+    "LookAt" => look_at_effect::resolve,
+    "Charm" => charm_effect::resolve,
+    "PeekAndReveal" => peek_and_reveal_effect::resolve,
+    "SetState" => set_state_effect::resolve,
+    "Cleanup" => cleanup_effect::resolve,
+    "Counter" => counter_effect::resolve,
+    "ControlGain" => control_gain_effect::resolve,
+    "Fight" => fight_effect::resolve,
+    "Discard" => discard_effect::resolve,
+    "Attach" => attach_effect::resolve,
+    "DestroyAll" => destroy_all_effect::resolve,
+    "DamageAll" => damage_all_effect::resolve,
+    "PumpAll" => pump_all_effect::resolve,
+    "TapAll" => tap_all_effect::resolve,
+    "UntapAll" => untap_all_effect::resolve,
+    "Tap" => tap_effect::resolve,
+    "Untap" => untap_effect::resolve,
+    "LifeSet" => life_set_effect::resolve,
+    "LifeExchange" => life_exchange_effect::resolve,
+    "GameWin" => game_win_effect::resolve,
+    "GameLoss" => game_loss_effect::resolve,
+    "GameDraw" => game_draw_effect::resolve,
+    "AddTurn" => add_turn_effect::resolve,
+    "ActivateAbility" => activate_ability_effect::resolve,
+    "Fog" => fog_effect::resolve,
+    "ReverseTurnOrder" => reverse_turn_order_effect::resolve,
+    "EndCombatPhase" => end_combat_phase_effect::resolve,
+    "EndTurn" => end_turn_effect::resolve,
+    "PowerExchange" => power_exchange_effect::resolve,
+    "BecomeMonarch" => become_monarch_effect::resolve,
+    "TakeInitiative" => take_initiative_effect::resolve,
+    "SkipTurn" => skip_turn_effect::resolve,
+    "SkipPhase" => skip_phase_effect::resolve,
+    "AddPhase" => add_phase_effect::resolve,
+    "Phases" => phases_effect::resolve,
+    "Regenerate" => regenerate_effect::resolve,
+    "Play" => play_effect::resolve,
+    "Animate" => animate_effect::resolve,
+    "AnimateAll" => animate_all_effect::resolve,
+    "Balance" => balance_effect::resolve,
+    "ChooseCard" => choose_card_effect::resolve,
+    "ChooseColor" => choose_color_effect::resolve,
+    "Clone" => clone_effect::resolve,
+    "ControlGainVariant" => control_gain_variant_effect::resolve,
+    "RepeatEach" => repeat_each_effect::resolve,
+    "Shuffle" => shuffle_effect::resolve,
+    "PutCounterAll" => counters_put_all_effect::resolve,
+    "EachDamage" => each_damage_effect::resolve,
+    "Effect" => effect_effect::resolve,
+    "DelayedTrigger" => delayed_trigger_effect::resolve,
+    "DrainMana" => drain_mana_effect::resolve,
+    "RemoveFromCombat" => remove_from_combat_effect::resolve,
+    "Detain" => detain_effect::resolve,
+    "Goad" => goad_effect::resolve,
+    "ChoosePlayer" => choose_player_effect::resolve,
+    "ChooseSource" => choose_source_effect::resolve,
+    "ChooseType" => choose_type_effect::resolve,
+    "NameCard" => name_card_effect::resolve,
+    "ChooseNumber" => choose_number_effect::resolve,
+    "DigUntil" => dig_until_effect::resolve,
+    "FlipACoin" => flip_a_coin_effect::resolve,
+    "Explore" => explore_effect::resolve,
+    "RollDice" => roll_dice_effect::resolve,
+    "Protection" => protection_effect::resolve,
+    "ProtectionAll" => protection_all_effect::resolve,
+    "PreventDamage" => prevent_damage_effect::resolve,
+    "Proliferate" => proliferate_effect::resolve,
+    "MoveCounter" => move_counter_effect::resolve,
+    "MustBlock" => must_block_effect::resolve,
+    "CopySpellAbility" => copy_spell_ability_effect::resolve,
+    "TwoPiles" => two_piles_effect::resolve,
+    "Encode" => encode_effect::resolve,
+}
+
 /// Everything an effect needs to resolve.
 pub struct EffectContext<'a> {
     pub game: &'a mut GameState,
@@ -170,128 +291,6 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
-/// Inner dispatch for a single execution of an effect.
-fn resolve_effect_once(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let api_type = sa.api.as_deref().unwrap_or_else(|| {
-        // Fallback: detect from ability text (for backwards compat)
-        detect_api_type_from_text(&sa.ability_text)
-    });
-
-    match api_type {
-        "DealDamage" => damage_deal_effect::resolve(ctx, sa),
-        "GainLife" => life_gain_effect::resolve(ctx, sa),
-        "LoseLife" => life_lose_effect::resolve(ctx, sa),
-        "PutCounter" => counters_put_effect::resolve(ctx, sa),
-        "RemoveCounter" => counters_remove_effect::resolve(ctx, sa),
-        "Poison" => poison_effect::resolve(ctx, sa),
-        "Pump" => pump_effect::resolve(ctx, sa),
-        "Destroy" => destroy_effect::resolve(ctx, sa),
-        "Draw" => draw_effect::resolve(ctx, sa),
-        "ChangeZoneAll" => change_zone_all_effect::resolve(ctx, sa),
-        "ChangeZone" => change_zone_effect::resolve(ctx, sa),
-        "SacrificeAll" => sacrifice_all_effect::resolve(ctx, sa),
-        "Sacrifice" => sacrifice_effect::resolve(ctx, sa),
-        "CopyPermanent" => copy_permanent_effect::resolve(ctx, sa),
-        "Token" => token_effect::resolve(ctx, sa),
-        "Mana" => mana_effect::resolve(ctx, sa),
-        // Library manipulation (issue #15)
-        "Mill" => mill_effect::resolve(ctx, sa),
-        "Scry" => scry_effect::resolve(ctx, sa),
-        "Surveil" => surveil_effect::resolve(ctx, sa),
-        "Dig" => dig_effect::resolve(ctx, sa),
-        "DigMultiple" => dig_multiple_effect::resolve(ctx, sa),
-        "RearrangeTopOfLibrary" => rearrange_top_of_library_effect::resolve(ctx, sa),
-        // Reveal / Look (informational)
-        "Reveal" => reveal_effect::resolve(ctx, sa),
-        "RevealHand" => reveal_hand_effect::resolve(ctx, sa),
-        "LookAt" => look_at_effect::resolve(ctx, sa),
-        // Modal effects (issue #18)
-        "Charm" => charm_effect::resolve(ctx, sa),
-        // Double-faced card / transform effects (issue #19)
-        "PeekAndReveal" => peek_and_reveal_effect::resolve(ctx, sa),
-        "SetState" => set_state_effect::resolve(ctx, sa),
-        "Cleanup" => cleanup_effect::resolve(ctx, sa),
-        // Counter, Control, Fight, Discard, Attach (issue #16)
-        "Counter" => counter_effect::resolve(ctx, sa),
-        "ControlGain" => control_gain_effect::resolve(ctx, sa),
-        "Fight" => fight_effect::resolve(ctx, sa),
-        "Discard" => discard_effect::resolve(ctx, sa),
-        "Attach" => attach_effect::resolve(ctx, sa),
-        // Mass / board-wide effects (issue #17)
-        "DestroyAll" => destroy_all_effect::resolve(ctx, sa),
-        "DamageAll" => damage_all_effect::resolve(ctx, sa),
-        "PumpAll" => pump_all_effect::resolve(ctx, sa),
-        "TapAll" => tap_all_effect::resolve(ctx, sa),
-        "UntapAll" => untap_all_effect::resolve(ctx, sa),
-        // Player & game-state effects (issue #22)
-        "Tap" => tap_effect::resolve(ctx, sa),
-        "Untap" => untap_effect::resolve(ctx, sa),
-        "LifeSet" => life_set_effect::resolve(ctx, sa),
-        "LifeExchange" => life_exchange_effect::resolve(ctx, sa),
-        "GameWin" => game_win_effect::resolve(ctx, sa),
-        "GameLoss" => game_loss_effect::resolve(ctx, sa),
-        "GameDraw" => game_draw_effect::resolve(ctx, sa),
-        "AddTurn" => add_turn_effect::resolve(ctx, sa),
-        "ActivateAbility" => activate_ability_effect::resolve(ctx, sa),
-        "Fog" => fog_effect::resolve(ctx, sa),
-        // New player & game-state effects (issue #22, expanded)
-        "ReverseTurnOrder" => reverse_turn_order_effect::resolve(ctx, sa),
-        "EndCombatPhase" => end_combat_phase_effect::resolve(ctx, sa),
-        "EndTurn" => end_turn_effect::resolve(ctx, sa),
-        "PowerExchange" => power_exchange_effect::resolve(ctx, sa),
-        "BecomeMonarch" => become_monarch_effect::resolve(ctx, sa),
-        "TakeInitiative" => take_initiative_effect::resolve(ctx, sa),
-        "SkipTurn" => skip_turn_effect::resolve(ctx, sa),
-        "SkipPhase" => skip_phase_effect::resolve(ctx, sa),
-        "AddPhase" => add_phase_effect::resolve(ctx, sa),
-        "Phases" => phases_effect::resolve(ctx, sa),
-        "Regenerate" => regenerate_effect::resolve(ctx, sa),
-        // Cast from exile / without mana cost (Rebound, etc.) (issue #21)
-        "Play" => play_effect::resolve(ctx, sa),
-        // Critical effects (issue #52)
-        "Animate" => animate_effect::resolve(ctx, sa),
-        "AnimateAll" => animate_all_effect::resolve(ctx, sa),
-        "Balance" => balance_effect::resolve(ctx, sa),
-        "ChooseCard" => choose_card_effect::resolve(ctx, sa),
-        "ChooseColor" => choose_color_effect::resolve(ctx, sa),
-        "Clone" => clone_effect::resolve(ctx, sa),
-        "ControlGainVariant" => control_gain_variant_effect::resolve(ctx, sa),
-        "RepeatEach" => repeat_each_effect::resolve(ctx, sa),
-        // High-priority effects (issue #53, Batch 1)
-        "Shuffle" => shuffle_effect::resolve(ctx, sa),
-        "PutCounterAll" => counters_put_all_effect::resolve(ctx, sa),
-        "EachDamage" => each_damage_effect::resolve(ctx, sa),
-        "Effect" => effect_effect::resolve(ctx, sa),
-        "DelayedTrigger" => delayed_trigger_effect::resolve(ctx, sa),
-        "DrainMana" => drain_mana_effect::resolve(ctx, sa),
-        "RemoveFromCombat" => remove_from_combat_effect::resolve(ctx, sa),
-        "Detain" => detain_effect::resolve(ctx, sa),
-        "Goad" => goad_effect::resolve(ctx, sa),
-        "ChoosePlayer" => choose_player_effect::resolve(ctx, sa),
-        "ChooseSource" => choose_source_effect::resolve(ctx, sa),
-        // High-priority effects (issue #53, Batch 2)
-        "ChooseType" => choose_type_effect::resolve(ctx, sa),
-        "NameCard" => name_card_effect::resolve(ctx, sa),
-        "ChooseNumber" => choose_number_effect::resolve(ctx, sa),
-        // High-priority effects (issue #53, Batch 3)
-        "DigUntil" => dig_until_effect::resolve(ctx, sa),
-        "FlipACoin" => flip_a_coin_effect::resolve(ctx, sa),
-        "Explore" => explore_effect::resolve(ctx, sa),
-        "RollDice" => roll_dice_effect::resolve(ctx, sa),
-        // High-priority effects (issue #53, Batch 4)
-        "Protection" => protection_effect::resolve(ctx, sa),
-        "ProtectionAll" => protection_all_effect::resolve(ctx, sa),
-        "PreventDamage" => prevent_damage_effect::resolve(ctx, sa),
-        "Proliferate" => proliferate_effect::resolve(ctx, sa),
-        "MoveCounter" => move_counter_effect::resolve(ctx, sa),
-        "MustBlock" => must_block_effect::resolve(ctx, sa),
-        // High-priority effects (issue #53, Batch 5)
-        "CopySpellAbility" => copy_spell_ability_effect::resolve(ctx, sa),
-        "TwoPiles" => two_piles_effect::resolve(ctx, sa),
-        "Encode" => encode_effect::resolve(ctx, sa),
-        _ => {} // Unimplemented effect — silently skip
-    }
-}
 
 /// Fallback: detect API type from raw ability text via contains-matching.
 /// Only used when `SpellAbility.api` is None (shouldn't happen for properly
@@ -653,6 +652,7 @@ pub fn parse_counter_type(s: &str) -> CounterType {
         "LEVEL" => CounterType::Level,
         "LORE" => CounterType::Lore,
         "PAGE" => CounterType::Page,
+        "DREAM" => CounterType::Dream,
         _ => CounterType::P1P1, // fallback
     }
 }
@@ -795,6 +795,14 @@ pub fn matches_change_type(
         "Land" => card.is_land(),
         "Creature" => card.is_creature(),
         "Card" => true,
+        // Support land-subtype selectors used in tutor scripts
+        // (e.g. "Forest.Basic", "Plains.Basic").
+        "Plains" | "Island" | "Swamp" | "Mountain" | "Forest" => {
+            card.type_line
+                .subtypes
+                .iter()
+                .any(|st| st.eq_ignore_ascii_case(type_part))
+        }
         _ => true,
     };
 

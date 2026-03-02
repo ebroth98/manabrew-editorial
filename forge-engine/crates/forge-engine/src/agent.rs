@@ -148,6 +148,19 @@ pub trait PlayerAgent {
         hand.iter().copied().take(num).collect()
     }
 
+    /// Choose cards to discard at random (for Mode$ Random discard, e.g. Hypnotic Specter).
+    /// The engine calls this instead of `choose_discard` when the discard is random.
+    /// Default: discard the first `num` cards (same as choose_discard).
+    /// Deterministic agents should override this to use their seeded RNG.
+    fn choose_random_discard(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        num: usize,
+    ) -> Vec<CardId> {
+        hand.iter().copied().take(num).collect()
+    }
+
     /// Choose a target spell on the stack (for SP$ Counter effects).
     /// `valid` is a slice of stack entry IDs.
     /// Default: target the first (topmost) spell.

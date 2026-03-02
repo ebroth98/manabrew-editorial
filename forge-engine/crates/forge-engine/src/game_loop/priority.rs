@@ -51,7 +51,7 @@ impl GameLoop {
 
             // Check SBA before any player gets priority
             loop {
-                if !game.check_state_based_actions() {
+                if !game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler)) {
                     break;
                 }
             }
