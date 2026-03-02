@@ -30,7 +30,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &ctx.game.cards,
                 target_player,
-                crate::card::CounterType::Poison,
+                &crate::card::CounterType::Poison,
             ) {
                 apply_poison(
                     &mut ctx.game.player_mut(target_player).poison_counters,
@@ -56,7 +56,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &ctx.game.cards,
                 pid,
-                crate::card::CounterType::Poison,
+                &crate::card::CounterType::Poison,
             ) {
                 apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
             }
@@ -70,7 +70,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &ctx.game.cards,
                 pid,
-                crate::card::CounterType::Poison,
+                &crate::card::CounterType::Poison,
             ) {
                 apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
             }

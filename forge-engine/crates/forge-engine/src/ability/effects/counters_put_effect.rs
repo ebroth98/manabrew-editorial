@@ -22,16 +22,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                 &ctx.game.cards,
                 ctx.game.card(card_id),
-                counter_type,
+                &counter_type,
             ) {
                 return;
             }
             if let Some(max) = crate::staticability::static_ability_max_counter::max_counter(
                 &ctx.game.cards,
                 ctx.game.card(card_id),
-                counter_type,
+                &counter_type,
             ) {
-                let current = ctx.game.card(card_id).counter_count(counter_type);
+                let current = ctx.game.card(card_id).counter_count(&counter_type);
                 if current >= max {
                     return;
                 }
@@ -39,7 +39,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // Run AddCounter replacement effects (e.g. Hardened Scales adds extra).
             let mut event = ReplacementEvent::AddCounter {
                 target: card_id,
-                counter_type,
+                counter_type: counter_type.clone(),
                 count,
             };
             apply_replacements(ctx.game, &mut event);
@@ -49,7 +49,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 count
             };
             let cause_player = ctx.game.card(card_id).controller;
-            ctx.game.card_mut(card_id).add_counter(counter_type, count);
+            ctx.game.card_mut(card_id).add_counter(&counter_type, count);
 
             // Fire CounterAdded trigger
             ctx.trigger_handler.run_trigger(

@@ -634,6 +634,9 @@ pub fn resolve_defined_players(
 }
 
 /// Parse a counter type string to CounterType enum (case-insensitive).
+/// Unknown types produce `CounterType::Named(UPPER)` instead of silently
+/// falling back to P1P1, so cards like Stocking the Pantry get the correct
+/// SUPPLY counters.
 pub fn parse_counter_type(s: &str) -> CounterType {
     match s.to_uppercase().as_str() {
         "P1P1" | "+1/+1" => CounterType::P1P1,
@@ -653,7 +656,7 @@ pub fn parse_counter_type(s: &str) -> CounterType {
         "LORE" => CounterType::Lore,
         "PAGE" => CounterType::Page,
         "DREAM" => CounterType::Dream,
-        _ => CounterType::P1P1, // fallback
+        other => CounterType::Named(other.to_string()),
     }
 }
 

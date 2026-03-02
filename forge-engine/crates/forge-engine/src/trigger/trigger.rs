@@ -819,7 +819,7 @@ fn check_counter_condition(condition: &str, card: &crate::card::CardInstance) ->
     };
     let threshold: i32 = num_str.parse().unwrap_or(0);
     let counter_type = parse_counter_type(counter_type_str);
-    let count = card.counter_count(counter_type);
+    let count = card.counter_count(&counter_type);
     match op {
         "GE" => count >= threshold,
         "GT" => count > threshold,

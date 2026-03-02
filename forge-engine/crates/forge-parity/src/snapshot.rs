@@ -149,6 +149,7 @@ fn counter_type_name(ct: &CounterType) -> String {
         CounterType::Page => "page".into(),
         CounterType::Dream => "dream".into(),
         CounterType::Poison => "poison".into(),
+        CounterType::Named(name) => name.to_lowercase(),
     }
 }
 

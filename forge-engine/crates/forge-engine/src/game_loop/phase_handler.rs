@@ -963,7 +963,7 @@ impl GameLoop {
             }
             // Remove one time counter
             game.card_mut(card_id)
-                .remove_counter(crate::card::CounterType::Time, 1);
+                .remove_counter(&crate::card::CounterType::Time, 1);
 
             // Emit CounterRemoved trigger
             self.trigger_handler.run_trigger(

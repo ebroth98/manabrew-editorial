@@ -70,7 +70,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Compute actual removal count (can't remove more than present).
-    let current = ctx.game.card(card_id).counter_count(counter_type);
+    let current = ctx.game.card(card_id).counter_count(&counter_type);
     let actual = requested_count.min(current);
     if actual <= 0 {
         return;
@@ -79,7 +79,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Remove counters.
     ctx.game
         .card_mut(card_id)
-        .remove_counter(counter_type, actual);
+        .remove_counter(&counter_type, actual);
 
     // Fire CounterRemoved trigger.
     ctx.trigger_handler.run_trigger(

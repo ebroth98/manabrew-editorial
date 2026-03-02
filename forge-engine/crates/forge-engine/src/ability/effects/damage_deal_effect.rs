@@ -51,11 +51,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                     &ctx.game.cards,
                     ctx.game.card(cid),
-                    crate::card::CounterType::M1M1,
+                    &crate::card::CounterType::M1M1,
                 ) {
                     ctx.game
                         .card_mut(cid)
-                        .add_counter(crate::card::CounterType::M1M1, damage);
+                        .add_counter(&crate::card::CounterType::M1M1, damage);
                 }
             } else {
                 ctx.game.deal_damage_to_card(cid, damage);
@@ -93,7 +93,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &ctx.game.cards,
                 target_player,
-                crate::card::CounterType::Poison,
+                &crate::card::CounterType::Poison,
             ) {
                 ctx.game.player_mut(target_player).poison_counters += damage;
             }
@@ -132,11 +132,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                     &ctx.game.cards,
                     ctx.game.card(target_card),
-                    crate::card::CounterType::M1M1,
+                    &crate::card::CounterType::M1M1,
                 ) {
                     ctx.game
                         .card_mut(target_card)
-                        .add_counter(crate::card::CounterType::M1M1, damage);
+                        .add_counter(&crate::card::CounterType::M1M1, damage);
                 }
             } else {
                 ctx.game.deal_damage_to_card(target_card, damage);

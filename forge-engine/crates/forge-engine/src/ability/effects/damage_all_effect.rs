@@ -82,11 +82,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                     &ctx.game.cards,
                     ctx.game.card(card_id),
-                    crate::card::CounterType::M1M1,
+                    &crate::card::CounterType::M1M1,
                 ) {
                     ctx.game
                         .card_mut(card_id)
-                        .add_counter(crate::card::CounterType::M1M1, num_dmg);
+                        .add_counter(&crate::card::CounterType::M1M1, num_dmg);
                 }
             } else {
                 ctx.game.deal_damage_to_card(card_id, num_dmg);
@@ -126,7 +126,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                     &ctx.game.cards,
                     pid,
-                    crate::card::CounterType::Poison,
+                    &crate::card::CounterType::Poison,
                 ) {
                     ctx.game.player_mut(pid).poison_counters += num_dmg;
                 }

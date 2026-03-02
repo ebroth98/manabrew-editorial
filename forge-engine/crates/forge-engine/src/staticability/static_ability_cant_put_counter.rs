@@ -7,7 +7,7 @@ use crate::staticability::StaticMode;
 pub fn any_cant_put_counter_on_card(
     cards: &[CardInstance],
     target: &CardInstance,
-    counter_type: CounterType,
+    counter_type: &CounterType,
 ) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
@@ -15,7 +15,7 @@ pub fn any_cant_put_counter_on_card(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(st_ab.params.get("CounterType").map(String::as_str), counter_type) {
+            if !counter_type_matches(st_ab.params.get("CounterType").map(String::as_str), &counter_type) {
                 continue;
             }
             if !matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), target, source) {
@@ -33,7 +33,7 @@ pub fn any_cant_put_counter_on_card(
 pub fn any_cant_put_counter_on_player(
     cards: &[CardInstance],
     player: PlayerId,
-    counter_type: CounterType,
+    counter_type: &CounterType,
 ) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
@@ -41,7 +41,7 @@ pub fn any_cant_put_counter_on_player(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(st_ab.params.get("CounterType").map(String::as_str), counter_type) {
+            if !counter_type_matches(st_ab.params.get("CounterType").map(String::as_str), &counter_type) {
                 continue;
             }
             if !matches_valid_player(
@@ -60,10 +60,10 @@ pub fn any_cant_put_counter_on_player(
     false
 }
 
-fn counter_type_matches(param: Option<&str>, ct: CounterType) -> bool {
+fn counter_type_matches(param: Option<&str>, ct: &CounterType) -> bool {
     match param {
         None => true,
-        Some(s) => parse_counter_type_opt(s).map(|p| p == ct).unwrap_or(true),
+        Some(s) => parse_counter_type_opt(s).map(|p| p == *ct).unwrap_or(true),
     }
 }
 
@@ -92,7 +92,8 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
 }
 
 fn parse_counter_type_opt(s: &str) -> Option<CounterType> {
-    match s.to_uppercase().as_str() {
+    let upper = s.to_uppercase();
+    match upper.as_str() {
         "POISON" => Some(CounterType::Poison),
         "P1P1" | "+1/+1" => Some(CounterType::P1P1),
         "M1M1" | "-1/-1" => Some(CounterType::M1M1),
@@ -111,6 +112,6 @@ fn parse_counter_type_opt(s: &str) -> Option<CounterType> {
         "LORE" => Some(CounterType::Lore),
         "PAGE" => Some(CounterType::Page),
         "DREAM" => Some(CounterType::Dream),
-        _ => None,
+        _ => Some(CounterType::Named(upper)),
     }
 }

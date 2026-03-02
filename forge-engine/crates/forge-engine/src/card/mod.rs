@@ -355,8 +355,8 @@ impl CardInstance {
             .unwrap_or(self.base_power.unwrap_or(0));
         base + self.static_power_modifier
             + self.power_modifier
-            + self.counter_count(CounterType::P1P1)
-            - self.counter_count(CounterType::M1M1)
+            + self.counter_count(&CounterType::P1P1)
+            - self.counter_count(&CounterType::M1M1)
     }
 
     /// Effective toughness, accounting for all layer effects and counters.
@@ -366,8 +366,8 @@ impl CardInstance {
             .unwrap_or(self.base_toughness.unwrap_or(0));
         base + self.static_toughness_modifier
             + self.toughness_modifier
-            + self.counter_count(CounterType::P1P1)
-            - self.counter_count(CounterType::M1M1)
+            + self.counter_count(&CounterType::P1P1)
+            - self.counter_count(&CounterType::M1M1)
     }
 
     pub fn lethal_damage(&self) -> bool {
@@ -768,17 +768,17 @@ impl CardInstance {
         true
     }
 
-    pub fn counter_count(&self, ct: CounterType) -> i32 {
-        *self.counters.get(&ct).unwrap_or(&0)
+    pub fn counter_count(&self, ct: &CounterType) -> i32 {
+        *self.counters.get(ct).unwrap_or(&0)
     }
 
-    pub fn add_counter(&mut self, ct: CounterType, count: i32) {
-        let entry = self.counters.entry(ct).or_insert(0);
+    pub fn add_counter(&mut self, ct: &CounterType, count: i32) {
+        let entry = self.counters.entry(ct.clone()).or_insert(0);
         *entry += count;
     }
 
-    pub fn remove_counter(&mut self, ct: CounterType, count: i32) {
-        let entry = self.counters.entry(ct).or_insert(0);
+    pub fn remove_counter(&mut self, ct: &CounterType, count: i32) {
+        let entry = self.counters.entry(ct.clone()).or_insert(0);
         *entry = (*entry - count).max(0);
     }
 
@@ -851,7 +851,9 @@ impl CardInstance {
 }
 
 /// Counter types commonly used in MTG.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Note: `Copy` is intentionally absent because the `Named(String)` variant
+/// holds heap-allocated data. Use `.clone()` when an owned copy is needed.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CounterType {
     P1P1,
     M1M1,
@@ -871,7 +873,9 @@ pub enum CounterType {
     Lore,
     Page,
     Dream,
-    // Add more as needed
+    /// Catch-all for counter types not in the enum (e.g. SUPPLY, VERSE, LUCK).
+    /// Stored as uppercase name for consistent comparison.
+    Named(String),
 }
 
 #[cfg(test)]
@@ -896,7 +900,7 @@ mod tests {
         assert_eq!(card.power(), 2);
         assert_eq!(card.toughness(), 2);
 
-        card.add_counter(CounterType::P1P1, 1);
+        card.add_counter(&CounterType::P1P1, 1);
         assert_eq!(card.power(), 3);
         assert_eq!(card.toughness(), 3);
     }

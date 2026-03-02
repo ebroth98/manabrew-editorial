@@ -43,11 +43,17 @@ import java.util.*;
 public class DeterministicController extends PlayerControllerAi {
     private static final boolean DEBUG_ACTIONS = true;
 
+    /** Weight multiplier for actions vs pass when preferActions is enabled. Must match Rust's PREFER_ACTION_WEIGHT. */
+    private static final int PREFER_ACTION_WEIGHT = 3;
+
     /** Shared RNG for all decisions — same instance used by both players. */
     private final Random rng;
+    /** If true, bias random main-phase choices toward taking an action over pass. */
+    private final boolean preferActions;
     public DeterministicController(Game game, Player p, LobbyPlayer lp, Random rng, boolean preferActions) {
         super(game, p, lp);
         this.rng = rng;
+        this.preferActions = preferActions;
     }
 
     // ── Mulligan ──────────────────────────────────────────────────────
@@ -177,7 +183,20 @@ public class DeterministicController extends PlayerControllerAi {
             return null; // pass — no RNG consumed
         }
 
-        final int idx = rng.nextInt(all.size() + 1);
+        final int idx;
+        if (preferActions) {
+            // Weighted random: each action has weight PREFER_ACTION_WEIGHT, pass has weight 1.
+            // Matches Rust's DeterministicAgent::choose_action() prefer_actions branch.
+            int totalWeight = all.size() * PREFER_ACTION_WEIGHT + 1;
+            int roll = rng.nextInt(totalWeight);
+            if (roll >= all.size() * PREFER_ACTION_WEIGHT) {
+                idx = all.size(); // pass
+            } else {
+                idx = roll / PREFER_ACTION_WEIGHT;
+            }
+        } else {
+            idx = rng.nextInt(all.size() + 1);
+        }
         if (DEBUG_ACTIONS) {
             List<String> opts = new ArrayList<>();
             for (SpellAbility sa : all) {

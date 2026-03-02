@@ -98,7 +98,7 @@ impl GameState {
                         continue;
                     }
                     let ct = crate::ability::effects::parse_counter_type(counter_type);
-                    self.cards[card_id.index()].add_counter(ct, amount);
+                    self.cards[card_id.index()].add_counter(&ct, amount);
                 }
                 return;
             }

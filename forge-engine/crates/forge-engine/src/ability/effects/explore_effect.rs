@@ -41,11 +41,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
             &ctx.game.cards,
             ctx.game.card(explorer_id),
-            CounterType::P1P1,
+            &CounterType::P1P1,
         ) {
             ctx.game
                 .card_mut(explorer_id)
-                .add_counter(CounterType::P1P1, 1);
+                .add_counter(&CounterType::P1P1, 1);
         }
         ctx.trigger_handler.run_trigger(
             TriggerType::CounterAdded,
@@ -83,11 +83,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
             &ctx.game.cards,
             ctx.game.card(explorer_id),
-            CounterType::P1P1,
+            &CounterType::P1P1,
         ) {
             ctx.game
                 .card_mut(explorer_id)
-                .add_counter(CounterType::P1P1, 1);
+                .add_counter(&CounterType::P1P1, 1);
         }
         ctx.trigger_handler.run_trigger(
             TriggerType::CounterAdded,

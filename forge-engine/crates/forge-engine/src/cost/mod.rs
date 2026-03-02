@@ -284,7 +284,7 @@ fn can_pay_inner(
                 if card.zone != ZoneType::Battlefield {
                     return false;
                 }
-                if card.counter_count(*counter_type) < *amount {
+                if card.counter_count(counter_type) < *amount {
                     return false;
                 }
             }

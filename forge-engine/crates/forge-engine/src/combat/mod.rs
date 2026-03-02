@@ -525,7 +525,7 @@ fn deal_combat_damage_to_player(
             if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &game.cards,
                 target,
-                crate::card::CounterType::Poison,
+                &crate::card::CounterType::Poison,
             ) {
                 game.player_mut(target).poison_counters += amount;
             }
@@ -537,7 +537,7 @@ fn deal_combat_damage_to_player(
             if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &game.cards,
                 target,
-                crate::card::CounterType::Poison,
+                &crate::card::CounterType::Poison,
             ) {
                 game.player_mut(target).poison_counters += toxic;
             }
@@ -564,10 +564,10 @@ fn deal_combat_damage_to_card(
             if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                 &game.cards,
                 game.card(target),
-                crate::card::CounterType::M1M1,
+                &crate::card::CounterType::M1M1,
             ) {
                 game.card_mut(target)
-                    .add_counter(crate::card::CounterType::M1M1, amount);
+                    .add_counter(&crate::card::CounterType::M1M1, amount);
             }
         } else {
             game.deal_damage_to_card(target, amount);

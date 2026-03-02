@@ -366,7 +366,7 @@ impl GameLoop {
                     amount,
                     counter_type,
                 } => {
-                    game.card_mut(card_id).remove_counter(*counter_type, *amount);
+                    game.card_mut(card_id).remove_counter(counter_type, *amount);
                 }
             }
         }
@@ -414,7 +414,7 @@ impl GameLoop {
                     // Spell additional counter payments also come from source permanent.
                     // If source is not on battlefield, this is a no-op (can_pay guards this).
                     if game.card(_card_id).zone == ZoneType::Battlefield {
-                        game.card_mut(_card_id).remove_counter(*counter_type, *amount);
+                        game.card_mut(_card_id).remove_counter(counter_type, *amount);
                     }
                 }
             }
