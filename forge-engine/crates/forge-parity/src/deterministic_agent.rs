@@ -471,6 +471,32 @@ impl PlayerAgent for DeterministicAgent {
         sorted[..count].to_vec()
     }
 
+    fn choose_random_discard(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        num: usize,
+    ) -> Vec<CardId> {
+        if hand.is_empty() || num == 0 {
+            return vec![];
+        }
+        // Sort alphabetically first (same canonical ordering as Java's card list),
+        // then use reservoir sampling with the seeded RNG to pick `num` cards.
+        // This mirrors Java's Aggregates.random() which iterates the list and uses
+        // rng.nextInt(i) for reservoir replacement.
+        let sorted = self.sort_by_name(hand);
+        let count = num.min(sorted.len());
+        let mut rng = self.rng.borrow_mut();
+        let mut result: Vec<CardId> = sorted[..count].to_vec();
+        for i in count..sorted.len() {
+            let j = rng.next_int(i as i32 + 1) as usize;
+            if j < count {
+                result[j] = sorted[i];
+            }
+        }
+        result
+    }
+
     fn choose_dig(
         &mut self,
         _player: PlayerId,

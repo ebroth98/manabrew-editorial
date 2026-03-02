@@ -12,6 +12,7 @@ import forge.game.cost.Cost;
 import forge.game.cost.CostPayment;
 import forge.card.mana.ManaCost;
 import forge.card.ColorSet;
+import forge.card.MagicColor;
 import forge.card.MagicColor.Color;
 import forge.game.*;
 import forge.game.card.*;
@@ -540,6 +541,18 @@ public class DeterministicController extends PlayerControllerAi {
                 if (canProduceG) g++;
                 if (canProduceC) c++;
             }
+        }
+
+        // Also count mana already floating in the pool (from rituals like Dark Ritual).
+        forge.game.mana.ManaPool pool = player.getManaPool();
+        if (!pool.isEmpty()) {
+            totalSources += pool.totalMana();
+            w += pool.getAmountOfColor(MagicColor.WHITE);
+            u += pool.getAmountOfColor(MagicColor.BLUE);
+            b += pool.getAmountOfColor(MagicColor.BLACK);
+            r += pool.getAmountOfColor(MagicColor.RED);
+            g += pool.getAmountOfColor(MagicColor.GREEN);
+            c += pool.getAmountOfColor((byte) 0); // colorless
         }
 
         if (totalSources < manaCost.getCMC()) {

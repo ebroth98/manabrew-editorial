@@ -146,16 +146,12 @@ impl CombatState {
             let attacker_controller = attacker.controller;
 
             // Determine if this attacker deals damage in this step
-            let deals_damage = if first_strike_only {
+            let attacker_deals_damage = if first_strike_only {
                 attacker_has_fs || attacker_has_ds
             } else {
                 // Regular damage step: creatures without first strike, plus double strike
                 !attacker_has_fs || attacker_has_ds
             };
-
-            if !deals_damage {
-                continue;
-            }
 
             let attacker_power = if crate::staticability::static_ability_combat_damage_toughness::combat_damage_uses_toughness(
                 &game.cards,
@@ -165,9 +161,6 @@ impl CombatState {
             } else {
                 game.card(attacker_id).power()
             };
-            if attacker_power <= 0 {
-                continue;
-            }
 
             let attacker_card = game.card(attacker_id);
             let assign_as_unblocked =
@@ -189,6 +182,9 @@ impl CombatState {
 
             if blockers.is_empty() {
                 // Unblocked — damage goes to defending player
+                if !attacker_deals_damage || attacker_power <= 0 {
+                    continue;
+                }
                 deal_combat_damage_to_player(
                     game,
                     defending_player,
@@ -224,72 +220,79 @@ impl CombatState {
                         .or_insert(0) += attacker_power;
                 }
             } else {
-                // Blocked — mutual damage
-                let mut remaining_damage = attacker_power;
+                // Blocked — mutual damage.
+                // The attacker may not deal damage this step (e.g. no first strike during
+                // first-strike step), but blockers with the right timing still deal damage
+                // back to the attacker.
+                let mut remaining_damage = if attacker_deals_damage && attacker_power > 0 {
+                    attacker_power
+                } else {
+                    0
+                };
 
                 for &blocker_id in &blockers {
-                    if remaining_damage <= 0 {
-                        break;
-                    }
                     // Check blocker is still alive
                     if game.card(blocker_id).zone != ZoneType::Battlefield {
                         continue;
                     }
 
-                    // Protection damage prevention — stopgap until replacement effect
-                    // framework handles DamageDone prevention (Java uses ReplaceDamage).
-                    // Blocking rules already prevent most cases via can_creature_block(),
-                    // but this covers edge cases like gaining protection after blocks.
-                    if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
-                        &game.cards,
-                        game.card(blocker_id),
-                        game.card(attacker_id),
-                    ) {
-                        continue;
-                    }
-
-                    let blocker_toughness = game.card(blocker_id).toughness();
-                    let blocker_damage = game.card(blocker_id).damage;
-                    let remaining_toughness = blocker_toughness - blocker_damage;
-
-                    // Deathtouch: only 1 damage needed to be lethal
-                    let damage_to_blocker = if attacker_has_deathtouch {
-                        1.min(remaining_damage)
-                    } else {
-                        remaining_damage.min(remaining_toughness.max(0))
-                    };
-
-                    if damage_to_blocker > 0 {
-                        deal_combat_damage_to_card(
-                            game,
-                            blocker_id,
-                            damage_to_blocker,
-                            attacker_has_deathtouch,
-                            attacker_has_lifelink,
-                            attacker_controller,
-                            attacker_has_wither || attacker_has_infect,
+                    // --- Attacker damages blocker (only when attacker deals damage this step) ---
+                    if remaining_damage > 0 {
+                        // Protection damage prevention — stopgap until replacement effect
+                        // framework handles DamageDone prevention (Java uses ReplaceDamage).
+                        // Blocking rules already prevent most cases via can_creature_block(),
+                        // but this covers edge cases like gaining protection after blocks.
+                        let attacker_prevented = crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+                            &game.cards,
+                            game.card(blocker_id),
+                            game.card(attacker_id),
                         );
-                        events.push(CombatDamageEvent {
-                            source: attacker_id,
-                            target_player: None,
-                            target_card: Some(blocker_id),
-                            amount: damage_to_blocker,
-                            is_combat: true,
-                            lifelink_player: if attacker_has_lifelink {
-                                Some(attacker_controller)
+
+                        if !attacker_prevented {
+                            let blocker_toughness = game.card(blocker_id).toughness();
+                            let blocker_damage = game.card(blocker_id).damage;
+                            let remaining_toughness = blocker_toughness - blocker_damage;
+
+                            // Deathtouch: only 1 damage needed to be lethal
+                            let damage_to_blocker = if attacker_has_deathtouch {
+                                1.min(remaining_damage)
                             } else {
-                                None
-                            },
-                            lifelink_amount: if attacker_has_lifelink {
-                                damage_to_blocker
-                            } else {
-                                0
-                            },
-                        });
-                        remaining_damage -= damage_to_blocker;
+                                remaining_damage.min(remaining_toughness.max(0))
+                            };
+
+                            if damage_to_blocker > 0 {
+                                deal_combat_damage_to_card(
+                                    game,
+                                    blocker_id,
+                                    damage_to_blocker,
+                                    attacker_has_deathtouch,
+                                    attacker_has_lifelink,
+                                    attacker_controller,
+                                    attacker_has_wither || attacker_has_infect,
+                                );
+                                events.push(CombatDamageEvent {
+                                    source: attacker_id,
+                                    target_player: None,
+                                    target_card: Some(blocker_id),
+                                    amount: damage_to_blocker,
+                                    is_combat: true,
+                                    lifelink_player: if attacker_has_lifelink {
+                                        Some(attacker_controller)
+                                    } else {
+                                        None
+                                    },
+                                    lifelink_amount: if attacker_has_lifelink {
+                                        damage_to_blocker
+                                    } else {
+                                        0
+                                    },
+                                });
+                                remaining_damage -= damage_to_blocker;
+                            }
+                        }
                     }
 
-                    // Blocker damages attacker (only in the step it should deal damage)
+                    // --- Blocker damages attacker (independent of whether attacker deals damage) ---
                     let blocker_card = game.card(blocker_id);
                     if crate::staticability::static_ability_assign_no_combat_damage::assign_no_combat_damage(
                         &game.cards,
