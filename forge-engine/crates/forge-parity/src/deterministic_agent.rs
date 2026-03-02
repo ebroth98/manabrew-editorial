@@ -44,8 +44,12 @@ pub struct DeterministicAgent {
     pub verbose: bool,
     /// Cached game state reference for name lookups.
     last_game_snapshot: Option<GameSnapshot>,
-    /// Shared RNG — same instance used for deck shuffling and all agent decisions.
+    /// Shared RNG for agent decisions — mirrors Java's `agentRng`.
     rng: Rc<RefCell<JavaRandom>>,
+    /// Shared game RNG — mirrors Java's `MyRandom` (used for game effects like
+    /// `Aggregates.random()` in random discard). This is the same instance used
+    /// for deck shuffling, so its post-shuffle state matches Java's MyRandom.
+    game_rng: Rc<RefCell<JavaRandom>>,
     /// If true, bias random main-phase choices toward taking an action over pass.
     prefer_actions: bool,
     /// Current phase — used to only play spells during main phases.
@@ -67,6 +71,7 @@ impl DeterministicAgent {
         player_id: PlayerId,
         verbose: bool,
         rng: Rc<RefCell<JavaRandom>>,
+        game_rng: Rc<RefCell<JavaRandom>>,
         prefer_actions: bool,
     ) -> Self {
         Self {
@@ -75,6 +80,7 @@ impl DeterministicAgent {
             verbose,
             last_game_snapshot: None,
             rng,
+            game_rng,
             prefer_actions,
             current_phase: None,
         }
@@ -480,18 +486,21 @@ impl PlayerAgent for DeterministicAgent {
         if hand.is_empty() || num == 0 {
             return vec![];
         }
-        // Sort alphabetically first (same canonical ordering as Java's card list),
-        // then use reservoir sampling with the seeded RNG to pick `num` cards.
-        // This mirrors Java's Aggregates.random() which iterates the list and uses
-        // rng.nextInt(i) for reservoir replacement.
-        let sorted = self.sort_by_name(hand);
-        let count = num.min(sorted.len());
-        let mut rng = self.rng.borrow_mut();
-        let mut result: Vec<CardId> = sorted[..count].to_vec();
-        for i in count..sorted.len() {
+        // Reservoir sampling with the game RNG, mirroring Java's Aggregates.random()
+        // which uses MyRandom.getRandom().nextInt(i) for reservoir replacement.
+        // We use game_rng (not agent rng) to match Java's architecture where
+        // Aggregates.random() uses MyRandom (the game-level RNG) rather than
+        // the agent's decision RNG.
+        // IMPORTANT: Do NOT sort — Java iterates cards in zone order (the order
+        // they were added to hand), not alphabetically. Sorting would change the
+        // reservoir sampling input sequence and produce different results.
+        let count = num.min(hand.len());
+        let mut rng = self.game_rng.borrow_mut();
+        let mut result: Vec<CardId> = hand[..count].to_vec();
+        for i in count..hand.len() {
             let j = rng.next_int(i as i32 + 1) as usize;
             if j < count {
-                result[j] = sorted[i];
+                result[j] = hand[i];
             }
         }
         result
@@ -560,14 +569,15 @@ mod tests {
 
     #[test]
     fn always_keeps_hand() {
-        let mut agent = DeterministicAgent::new(PlayerId(0), false, make_rng(42), false);
+        let mut agent =
+            DeterministicAgent::new(PlayerId(0), false, make_rng(42), make_rng(42), false);
         assert!(agent.mulligan_decision(PlayerId(0), &[]));
     }
 
     #[test]
     fn random_target_player() {
         let rng = make_rng(42);
-        let mut agent = DeterministicAgent::new(PlayerId(0), false, rng, false);
+        let mut agent = DeterministicAgent::new(PlayerId(0), false, rng, make_rng(42), false);
         // With two valid targets, should randomly pick one
         let target = agent.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
         assert!(target.is_some());
@@ -577,11 +587,13 @@ mod tests {
     fn deterministic_across_runs() {
         // Same seed → same decisions
         let rng1 = make_rng(42);
-        let mut agent1 = DeterministicAgent::new(PlayerId(0), false, rng1, false);
+        let mut agent1 =
+            DeterministicAgent::new(PlayerId(0), false, rng1, make_rng(42), false);
         let t1 = agent1.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
 
         let rng2 = make_rng(42);
-        let mut agent2 = DeterministicAgent::new(PlayerId(0), false, rng2, false);
+        let mut agent2 =
+            DeterministicAgent::new(PlayerId(0), false, rng2, make_rng(42), false);
         let t2 = agent2.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
 
         assert_eq!(t1, t2);
