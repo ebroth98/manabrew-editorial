@@ -53,9 +53,13 @@ impl GameState {
             if src_zone != ZoneType::None {
                 self.zone_mut(src_zone, src_owner).remove(card_id);
             }
+            // Effect cards with ForgetOnMoved should be removed from the game
+            // entirely (zone = None), not moved to Exile. Moving them to Exile
+            // creates phantom cards that diverge from Java parity.
             for eff_id in exile_effects {
-                let owner = self.card(eff_id).owner;
-                self.move_card(eff_id, ZoneType::Exile, owner);
+                let controller = self.card(eff_id).controller;
+                self.zone_mut(ZoneType::Command, controller).remove(eff_id);
+                self.cards[eff_id.index()].zone = ZoneType::None;
             }
             return;
         }
@@ -182,9 +186,12 @@ impl GameState {
                 exile_effects.push(eff_id);
             }
         }
+        // Effect cards with ForgetOnMoved should be removed from the game
+        // entirely (zone = None), not moved to Exile.
         for eff_id in exile_effects {
-            let owner = self.card(eff_id).owner;
-            self.move_card(eff_id, ZoneType::Exile, owner);
+            let controller = self.card(eff_id).controller;
+            self.zone_mut(ZoneType::Command, controller).remove(eff_id);
+            self.cards[eff_id.index()].zone = ZoneType::None;
         }
 
         // Expire temporary effect cards linked to this host leaving play
@@ -197,8 +204,9 @@ impl GameState {
                 .map(|c| c.id)
                 .collect();
             for eff_id in linked_effects {
-                let owner = self.card(eff_id).owner;
-                self.move_card(eff_id, ZoneType::Exile, owner);
+                let controller = self.card(eff_id).controller;
+                self.zone_mut(ZoneType::Command, controller).remove(eff_id);
+                self.cards[eff_id.index()].zone = ZoneType::None;
             }
         }
     }

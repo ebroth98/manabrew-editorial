@@ -279,13 +279,6 @@ const TRIGGER_EXPANDED: &[(&str, usize)] = &[
     ("Whispering Snitch", 2),
     // DamageDoneOnce
     ("Rite of Passage", 2),
-    // Support package to unlock more trigger pathways:
-    // - SpellCast + Surveil in one card
-    ("Consider", 4),
-    // - Reliable token creation for ChangesZoneAll / ETB token synergies
-    ("Raise the Alarm", 2),
-    // - Explicit -1/-1 counter source for CounterAddedOnce (Nest of Scarabs)
-    ("Fume Spitter", 3),
 ];
 
 // Static-ability focused test deck for parity.

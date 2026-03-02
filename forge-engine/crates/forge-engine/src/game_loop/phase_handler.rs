@@ -25,7 +25,7 @@ impl GameLoop {
                 && state != TurnMachineState::Done
             {
                 game.end_turn_requested = false;
-                self.combat.clear();
+                self.combat.clear_with_cards(&mut game.cards);
                 state = TurnMachineState::Cleanup;
                 continue;
             }
@@ -343,7 +343,7 @@ impl GameLoop {
     pub fn step_combat(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         let active = game.active_player();
         let defending = game.opponent_of(active);
-        self.combat.clear();
+        self.combat.clear_with_cards(&mut game.cards);
         game.turn.combat_block_assignments.clear();
         self.combat.attacking_player = Some(active);
         self.combat.defending_player = Some(defending);
@@ -353,14 +353,14 @@ impl GameLoop {
         self.emit_phase_trigger(game, PhaseType::CombatBegin);
         self.step_with_priority(game, agents, false);
         if game.game_over {
-            self.combat.clear();
+            self.combat.clear_with_cards(&mut game.cards);
             return;
         }
 
         // EndCombatPhase (issue #22): if requested, exit combat early
         if game.end_combat_requested {
             game.end_combat_requested = false;
-            self.combat.clear();
+            self.combat.clear_with_cards(&mut game.cards);
             return;
         }
 
@@ -454,6 +454,7 @@ impl GameLoop {
                 game.tap(attacker_id);
             }
             game.card_mut(attacker_id).attacked_this_turn = true;
+            game.card_mut(attacker_id).attacking_player = Some(defending);
             self.combat.declare_attacker(attacker_id, defending);
 
             // Fire Attacks trigger for each attacker
@@ -482,7 +483,7 @@ impl GameLoop {
         }
         self.step_with_priority(game, agents, false);
         if game.game_over {
-            self.combat.clear();
+            self.combat.clear_with_cards(&mut game.cards);
             return;
         }
 
@@ -584,7 +585,7 @@ impl GameLoop {
         }
         self.step_with_priority(game, agents, false);
         if game.game_over {
-            self.combat.clear();
+            self.combat.clear_with_cards(&mut game.cards);
             game.turn.combat_block_assignments.clear();
             return;
         }
@@ -645,13 +646,13 @@ impl GameLoop {
             }
             if game.game_over {
                 self.set_phase(game, agents, PhaseType::CombatEnd);
-                self.combat.clear();
+                self.combat.clear_with_cards(&mut game.cards);
                 game.turn.combat_block_assignments.clear();
                 return;
             }
             self.step_with_priority(game, agents, false);
             if game.game_over {
-                self.combat.clear();
+                self.combat.clear_with_cards(&mut game.cards);
                 game.turn.combat_block_assignments.clear();
                 return;
             }
@@ -676,7 +677,7 @@ impl GameLoop {
         }
         self.step_with_priority(game, agents, false);
         if game.game_over {
-            self.combat.clear();
+            self.combat.clear_with_cards(&mut game.cards);
             game.turn.combat_block_assignments.clear();
             return;
         }
@@ -685,7 +686,7 @@ impl GameLoop {
         self.set_phase(game, agents, PhaseType::CombatEnd);
         self.emit_phase_trigger(game, PhaseType::CombatEnd);
         self.step_with_priority(game, agents, false);
-        self.combat.clear();
+        self.combat.clear_with_cards(&mut game.cards);
         game.turn.combat_block_assignments.clear();
     }
 
@@ -847,6 +848,11 @@ impl GameLoop {
                     game.cards[i].base_power = state.original_base_power;
                     game.cards[i].base_toughness = state.original_base_toughness;
                     game.cards[i].color = state.original_color;
+                    // Clear damage accumulated while animated as a creature.
+                    // Without this, damage leaks into the next turn if the
+                    // card is re-animated (the is_creature() check below would
+                    // miss it since the card is no longer a creature).
+                    game.cards[i].damage = 0;
                 }
 
                 if game.cards[i].is_creature() {

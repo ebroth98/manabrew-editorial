@@ -433,6 +433,16 @@ impl TriggerHandler {
         {
             // LKI active-zone check for "leaves battlefield" self triggers (e.g. dies).
             ZoneType::Battlefield
+        } else if *mode == TriggerType::DamageDone
+            && params.damage_target_card == Some(host_card)
+            && trigger.active_zones.contains(&ZoneType::Battlefield)
+            && card.zone != ZoneType::Battlefield
+        {
+            // LKI for DamageDone triggers targeting self (e.g. Raptor Hatchling
+            // enrage). When combat damage kills the creature, SBAs move it to
+            // graveyard before triggers are processed. The trigger was queued
+            // while the card was on the battlefield, so we use LKI.
+            ZoneType::Battlefield
         } else {
             card.zone
         };
