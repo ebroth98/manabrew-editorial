@@ -68,47 +68,40 @@ struct LoadedPreset {
 
 // ── Lazy-loaded deck registry ──────────────────────────────────────
 
-/// Default directory for preset deck JSON files (relative to CWD).
+/// Default directory name for preset deck JSON files at repo root.
 const DEFAULT_DECKS_DIR: &str = "preset_decks";
 
 static DECK_REGISTRY: OnceLock<Vec<LoadedPreset>> = OnceLock::new();
 
-fn get_decks_dir() -> &'static str {
-    // Allow override via environment variable for testing/deployment
-    static DIR: OnceLock<String> = OnceLock::new();
+fn get_decks_dir() -> &'static std::path::PathBuf {
+    // Resolve path relative to this crate (`src-tauri`) instead of process CWD.
+    static DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
-        std::env::var("PRESET_DECKS_DIR").unwrap_or_else(|_| DEFAULT_DECKS_DIR.to_string())
+        let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
+        let configured = std::env::var("PRESET_DECKS_DIR")
+            .unwrap_or_else(|_| DEFAULT_DECKS_DIR.to_string());
+        let configured_path = std::path::PathBuf::from(configured);
+        if configured_path.is_absolute() {
+            configured_path
+        } else {
+            project_root.join(configured_path)
+        }
     })
 }
 
 fn load_registry() -> Vec<LoadedPreset> {
-    let configured = std::path::PathBuf::from(get_decks_dir());
-    let mut candidate_dirs = vec![configured.clone()];
-    // In Tauri dev/runtime, CWD may be `src-tauri`; support decks in repo root.
-    if configured == std::path::PathBuf::from(DEFAULT_DECKS_DIR) {
-        candidate_dirs.push(std::path::PathBuf::from("../preset_decks"));
-    }
-
+    let dir = get_decks_dir();
     let mut presets = Vec::new();
-    let mut entries = None;
-
-    for dir in &candidate_dirs {
-        match std::fs::read_dir(dir) {
-            Ok(e) => {
-                entries = Some(e);
-                break;
-            }
-            Err(e) => {
-                eprintln!(
-                    "[preset_decks] Failed to read directory '{}': {}",
-                    dir.display(),
-                    e
-                );
-            }
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!(
+                "[preset_decks] Failed to read directory '{}': {}",
+                dir.display(),
+                e
+            );
+            return presets;
         }
-    }
-    let Some(entries) = entries else {
-        return presets;
     };
 
     for entry in entries.flatten() {
