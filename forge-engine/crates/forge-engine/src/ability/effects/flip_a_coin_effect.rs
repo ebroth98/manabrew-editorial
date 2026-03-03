@@ -22,11 +22,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or(false);
 
     // Flip the coin (random)
-    let is_heads = {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        rng.gen_bool(0.5)
-    };
+    let is_heads = ctx.rng.next_int(2) == 0;
 
     let source_id = match sa.source {
         Some(id) => id,

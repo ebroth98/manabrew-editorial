@@ -465,18 +465,75 @@ impl JavaServer {
     }
 }
 
-/// Resolve the `java` binary path from JAVA_HOME or PATH.
+/// Extract the major Java version from a JDK home directory name.
+/// Handles names like "zulu-18.jdk", "temurin-21.jdk", "zulu-8.jdk".
+fn extract_jdk_version(name: &str) -> Option<u32> {
+    name.split('-')
+        .flat_map(|s| s.split('.'))
+        .find_map(|s| s.parse().ok())
+}
+
+/// Resolve the `java` binary path. Forge requires Java 17+.
+/// If JAVA_HOME points to a JDK ≥17 use it; otherwise auto-detect the
+/// highest-version JDK under /Library/Java/JavaVirtualMachines.
 fn resolve_java_bin(verbose: bool) -> String {
-    std::env::var("JAVA_HOME")
-        .ok()
-        .map(|home| {
-            let bin = PathBuf::from(&home).join("bin").join("java");
+    // Check JAVA_HOME first — only use it if ≥17 (Forge's minimum).
+    if let Ok(home) = std::env::var("JAVA_HOME") {
+        let home_path = PathBuf::from(&home);
+        let bin = home_path.join("bin").join("java");
+        // Try to infer version from the JDK directory name (e.g. "zulu-18.jdk").
+        // JAVA_HOME is usually .../zulu-18.jdk/Contents/Home, so look for the
+        // ancestor whose name ends with ".jdk".
+        let dir_name = home_path
+            .ancestors()
+            .filter_map(|p| p.file_name())
+            .find(|n| n.to_string_lossy().ends_with(".jdk"))
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
+        let version = extract_jdk_version(&dir_name).unwrap_or(17); // assume OK if can't parse
+        if version >= 17 && bin.exists() {
             if verbose {
-                eprintln!("[parity]   using JAVA_HOME: {}", home);
+                eprintln!("[parity]   using JAVA_HOME (Java {}): {}", version, home);
             }
-            bin.to_string_lossy().to_string()
-        })
-        .unwrap_or_else(|| "java".to_string())
+            return bin.to_string_lossy().to_string();
+        }
+        if verbose {
+            eprintln!(
+                "[parity]   JAVA_HOME points to Java {} (<17), searching for newer JDK...",
+                version
+            );
+        }
+    }
+
+    // Auto-detect: pick the highest-versioned JDK (≥17) on macOS.
+    let jvms_dir = PathBuf::from("/Library/Java/JavaVirtualMachines");
+    if jvms_dir.is_dir() {
+        let mut best: Option<(u32, PathBuf)> = None;
+        if let Ok(entries) = std::fs::read_dir(&jvms_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if let Some(v) = extract_jdk_version(&name) {
+                    if v >= 17 {
+                        let home = entry.path().join("Contents").join("Home");
+                        if home.join("bin").join("java").exists() {
+                            if best.as_ref().map_or(true, |(bv, _)| v > *bv) {
+                                best = Some((v, home));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if let Some((v, home)) = best {
+            if verbose {
+                eprintln!("[parity]   auto-detected Java {}: {}", v, home.display());
+            }
+            return home.join("bin").join("java").to_string_lossy().to_string();
+        }
+    }
+
+    "java".to_string()
 }
 
 /// Errors from the Java bridge.

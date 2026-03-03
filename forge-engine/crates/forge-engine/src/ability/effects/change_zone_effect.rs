@@ -170,8 +170,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .cards_in_zone(ZoneType::Library, controller)
                 .to_vec();
             if !lib_cards.is_empty() {
-                let mut rng = rand::thread_rng();
-                ctx.game.shuffle_library(controller, &mut rng);
+                let lib = ctx.game.zone_mut(ZoneType::Library, controller);
+                ctx.rng.shuffle_cards(&mut lib.cards);
                 ctx.trigger_handler.run_trigger(
                     TriggerType::Shuffled,
                     RunParams {

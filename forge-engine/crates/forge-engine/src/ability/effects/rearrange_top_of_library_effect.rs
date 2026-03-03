@@ -73,8 +73,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let wants_shuffle =
             ctx.agents[sa.activating_player.index()].choose_may_shuffle(sa.activating_player);
         if wants_shuffle {
-            let mut rng = rand::thread_rng();
-            ctx.game.shuffle_library(target, &mut rng);
+            let lib = ctx.game.zone_mut(ZoneType::Library, target);
+            ctx.rng.shuffle_cards(&mut lib.cards);
             ctx.trigger_handler.run_trigger(
                 TriggerType::Shuffled,
                 RunParams {

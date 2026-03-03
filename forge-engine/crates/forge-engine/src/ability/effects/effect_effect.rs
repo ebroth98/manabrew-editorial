@@ -218,6 +218,7 @@ mod tests {
         let mut trigger_handler = TriggerHandler::new();
         let token_templates = std::collections::HashMap::new();
         let mut mana_pools = vec![ManaPool::new(), ManaPool::new()];
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
             agents: &mut agents,
@@ -225,6 +226,7 @@ mod tests {
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
+            rng: &mut rng_adapter,
         };
         resolve(&mut ctx, &sa);
 

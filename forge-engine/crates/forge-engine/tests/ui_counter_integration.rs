@@ -225,6 +225,7 @@ fn test_counterspell_targeting_flow() {
         Box::new(forge_engine_core::agent::PassAgent),
     ];
 
+    let mut rng_adapter = forge_engine_core::game_rng::ThreadRngAdapter;
     let mut ctx = EffectContext {
         game: &mut game,
         agents: &mut pass_agents,
@@ -232,6 +233,7 @@ fn test_counterspell_targeting_flow() {
         token_templates: &game_loop.token_templates,
         mana_pools: &mut game_loop.mana_pools,
         parent_target_card: None,
+        rng: &mut rng_adapter,
     };
 
     resolve_effect(&mut ctx, &counterspell_sa);

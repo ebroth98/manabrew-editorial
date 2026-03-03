@@ -205,6 +205,34 @@ pub trait PlayerAgent {
         (0..min.min(descriptions.len())).collect()
     }
 
+    /// Choose whether to put a revealed nonland card into the graveyard during Explore.
+    /// `revealed_cmc` is the mana value of the revealed card.
+    /// `lands_on_battlefield` and `lands_in_hand` are the player's current land counts.
+    /// Returns true to put in graveyard, false to keep on top of library.
+    /// Default: use Java's ExploreAi.shouldPutInGraveyard() heuristic.
+    fn choose_explore_put_in_graveyard(
+        &mut self,
+        _player: PlayerId,
+        _revealed_card_name: &str,
+        revealed_cmc: i32,
+        lands_on_battlefield: usize,
+        lands_in_hand: usize,
+    ) -> bool {
+        // Mirrors Java's ExploreAi.shouldPutInGraveyard() with default AI profile values:
+        // EXPLORE_MAX_CMC_DIFF_TO_PUT_IN_GRAVEYARD = 2
+        // EXPLORE_NUM_LANDS_TO_STILL_NEED_MORE = 2
+        const MAX_CMC_DIFF: i32 = 2;
+        const NUM_LANDS_TO_STILL_NEED_MORE: usize = 2;
+
+        if lands_in_hand == 0 && lands_on_battlefield <= NUM_LANDS_TO_STILL_NEED_MORE {
+            return true; // Need more lands, discard nonland
+        }
+        if revealed_cmc - MAX_CMC_DIFF >= lands_on_battlefield as i32 {
+            return true; // Too expensive to cast soon
+        }
+        false // Keep on top
+    }
+
     /// Choose whether an optional triggered ability fires.
     /// `description` is the trigger text shown to the player.
     /// `card_name` is the name of the source card (for UI display).

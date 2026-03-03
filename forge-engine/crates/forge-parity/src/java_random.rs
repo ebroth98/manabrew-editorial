@@ -55,6 +55,30 @@ impl JavaRandom {
     }
 }
 
+// ── GameRng adapter for parity testing ────────────────────────────────
+
+use std::cell::RefCell;
+use std::rc::Rc;
+
+use forge_engine_core::game_rng::GameRng;
+use forge_engine_core::ids::CardId;
+
+/// Wraps a shared `JavaRandom` (via `Rc<RefCell<>>`) so it can be used as
+/// the game-level RNG for effect resolvers. This ensures shuffles, coin flips,
+/// and dice rolls consume the same RNG instance that agents use for random
+/// discard, matching Java's single `MyRandom` consumption order.
+pub struct JavaGameRng(pub Rc<RefCell<JavaRandom>>);
+
+impl GameRng for JavaGameRng {
+    fn shuffle_cards(&mut self, cards: &mut [CardId]) {
+        self.0.borrow_mut().shuffle(cards);
+    }
+
+    fn next_int(&mut self, bound: i32) -> i32 {
+        self.0.borrow_mut().next_int(bound)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

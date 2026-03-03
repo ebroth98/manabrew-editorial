@@ -22,11 +22,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or(20);
 
     // Roll the die
-    let result = {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        rng.gen_range(1..=sides)
-    };
+    let result = ctx.rng.next_int(sides) + 1;
 
     let source_id = match sa.source {
         Some(id) => id,

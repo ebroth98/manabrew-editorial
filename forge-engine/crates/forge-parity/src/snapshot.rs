@@ -69,7 +69,7 @@ fn snapshot_player(game: &GameState, pid: PlayerId) -> PlayerSnapshot {
                     None
                 },
                 damage: card.damage,
-                summoning_sick: card.summoning_sick,
+                summoning_sick: card.summoning_sick && !card.has_haste(),
                 counters,
                 controller: card.controller.0,
             }

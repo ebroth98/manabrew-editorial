@@ -64,6 +64,7 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
             agents: &mut agents,
@@ -71,6 +72,7 @@ mod tests {
             token_templates: &templates,
             mana_pools: &mut mp,
             parent_target_card: None,
+            rng: &mut rng_adapter,
         };
         super::resolve(&mut ctx, &sa);
 
@@ -91,6 +93,7 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
             agents: &mut agents,
@@ -98,6 +101,7 @@ mod tests {
             token_templates: &templates,
             mana_pools: &mut mp,
             parent_target_card: None,
+            rng: &mut rng_adapter,
         };
         super::resolve(&mut ctx, &sa);
 

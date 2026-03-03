@@ -602,7 +602,7 @@ mod tests {
 
     #[test]
     fn always_keeps_hand() {
-        let mut agent = DeterministicAgent::new(PlayerId(0), false, make_rng(42), false);
+        let mut agent = DeterministicAgent::new(PlayerId(0), false, make_rng(42), make_rng(42), false);
         assert!(agent.mulligan_decision(PlayerId(0), &[], 0));
     }
 

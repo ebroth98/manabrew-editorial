@@ -246,6 +246,10 @@ pub struct EffectContext<'a> {
     /// sub-ability chain so that `Defined$ ParentTarget` effects can resolve it.
     /// Mirrors Java's `SpellAbility.getParentTargetCard()` (via getRootAbility()).
     pub parent_target_card: Option<CardId>,
+    /// Pluggable RNG for game effects (shuffles, coin flips, dice rolls).
+    /// Parity tests inject a JavaRandom-backed implementation; normal gameplay
+    /// uses the default ThreadRngAdapter.
+    pub rng: &'a mut dyn crate::game_rng::GameRng,
 }
 
 /// Check if a conditional gate on this SA is satisfied.

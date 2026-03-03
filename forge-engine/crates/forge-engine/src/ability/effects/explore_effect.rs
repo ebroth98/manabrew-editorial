@@ -114,14 +114,27 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
 
-            // Player may put revealed card into graveyard (otherwise it stays on top)
+            // Player may put revealed card into graveyard (otherwise it stays on top).
+            // Mirrors Java's ExploreAi.shouldPutInGraveyard() heuristic which evaluates
+            // based on lands in hand, lands on battlefield, and revealed card's CMC.
             let card_name = ctx.game.card(top_card).card_name.clone();
-            let source_name = ctx.game.card(explorer_id).card_name.clone();
-            let put_in_gy = ctx.agents[controller.index()].choose_optional_trigger(
+            let revealed_cmc = ctx.game.card(top_card).mana_value();
+            let lands_otb = ctx.game
+                .cards_in_zone(ZoneType::Battlefield, controller)
+                .iter()
+                .filter(|&&cid| ctx.game.card(cid).is_land())
+                .count();
+            let lands_in_hand = ctx.game
+                .cards_in_zone(ZoneType::Hand, controller)
+                .iter()
+                .filter(|&&cid| ctx.game.card(cid).is_land())
+                .count();
+            let put_in_gy = ctx.agents[controller.index()].choose_explore_put_in_graveyard(
                 controller,
-                &format!("Put {} into your graveyard?", card_name),
-                Some(&source_name),
-                None,
+                &card_name,
+                revealed_cmc,
+                lands_otb,
+                lands_in_hand,
             );
 
             if put_in_gy {
@@ -137,3 +150,4 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 }
+

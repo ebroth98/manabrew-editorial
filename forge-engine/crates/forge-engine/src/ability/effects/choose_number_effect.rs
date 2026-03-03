@@ -28,9 +28,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or(false);
 
     let chosen = if is_random {
-        use rand::Rng;
-        let mut rng = rand::thread_rng();
-        Some(rng.gen_range(min..=max))
+        let range = max - min + 1;
+        Some(ctx.rng.next_int(range) + min)
     } else {
         ctx.agents[controller.index()].choose_number(controller, min, max)
     };

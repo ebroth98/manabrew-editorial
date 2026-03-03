@@ -1426,9 +1426,7 @@ impl GameLoop {
         }
 
         // Put exiled cards on bottom of library in random order
-        use rand::seq::SliceRandom;
-        let mut rng = rand::thread_rng();
-        exiled_ids.shuffle(&mut rng);
+        self.game_rng.shuffle_cards(&mut exiled_ids);
         for card_id in exiled_ids {
             // Move from exile to library, but at the bottom
             let card = &mut game.cards[card_id.index()];

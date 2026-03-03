@@ -51,14 +51,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         "Random" => {
             // Scrambleverse: assign each permanent to a random player
-            use rand::Rng;
             let alive = ctx.game.alive_players();
             if alive.is_empty() {
                 return;
             }
-            let mut rng = rand::thread_rng();
             for cid in matching {
-                let random_idx = rng.gen_range(0..alive.len());
+                let random_idx = ctx.rng.next_int(alive.len() as i32) as usize;
                 let new_controller = alive[random_idx];
                 if ctx.game.card(cid).can_be_controlled_by(new_controller) {
                     ctx.game.change_controller(cid, new_controller);

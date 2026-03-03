@@ -12,6 +12,7 @@ use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::game_log::GameLog;
 use crate::game_log_entry_type::GameLogEntryType;
+use crate::game_rng::{GameRng, ThreadRngAdapter};
 use crate::ids::{CardId, PlayerId};
 use crate::mana::{
     self, basic_land_mana_atom, capitalize_color, color_name_to_mana_atom, mana_atom_from_produced,
@@ -34,6 +35,10 @@ pub struct GameLoop {
     /// Token templates keyed by their script filename stem (e.g. "r_1_1_goblin").
     /// Populated at game start by the Tauri layer; used by the Token effect handler.
     pub token_templates: HashMap<String, CardInstance>,
+    /// Pluggable RNG for game effects (shuffles, coin flips, dice rolls).
+    /// Default: ThreadRngAdapter (non-deterministic). For parity testing,
+    /// replace with a JavaRandom-backed implementation.
+    pub game_rng: Box<dyn GameRng>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -73,6 +78,7 @@ impl GameLoop {
             trigger_handler: TriggerHandler::new(),
             game_log: GameLog::new(),
             token_templates: HashMap::new(),
+            game_rng: Box::new(ThreadRngAdapter),
         }
     }
 

@@ -111,6 +111,7 @@ mod tests {
         trigger_handler: &'a mut TriggerHandler,
         mana_pools: &'a mut Vec<ManaPool>,
         token_templates: &'a HashMap<String, CardInstance>,
+        rng: &'a mut dyn crate::game_rng::GameRng,
     ) -> EffectContext<'a> {
         EffectContext {
             game,
@@ -119,6 +120,7 @@ mod tests {
             token_templates,
             mana_pools,
             parent_target_card: None,
+            rng,
         }
     }
 
@@ -142,7 +144,8 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
-        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates);
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates, &mut rng_adapter);
         super::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Battlefield, p0).len(), 0);
@@ -170,7 +173,8 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
-        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates);
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates, &mut rng_adapter);
         super::resolve(&mut ctx, &sa);
 
         // One creature destroyed, indestructible one stays

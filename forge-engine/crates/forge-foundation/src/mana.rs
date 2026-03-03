@@ -419,14 +419,39 @@ impl ManaCost {
                         // If it parsed to Generic, it was a numeric handled above
                     }
                 } else {
-                    for c in token.chars() {
-                        let sym = c.to_ascii_uppercase().to_string();
-                        if let Some(shard) = ManaCostShard::parse_non_generic(&sym) {
-                            if shard != ManaCostShard::Generic {
-                                if shard == ManaCostShard::X {
-                                    has_x = true;
+                    // First try parsing the whole token as a single shard.
+                    // In Forge card files, adjacent color chars like "BR" mean
+                    // hybrid {B/R}, not separate {B}{R} (which would be "B R").
+                    let whole = ManaCostShard::parse_non_generic(token);
+                    if let Some(shard) = whole {
+                        if shard.is_multi_color() {
+                            // Hybrid shard (e.g. "BR" → BlackRed)
+                            shards.push(shard);
+                        } else {
+                            // Mono-color or other — fall back to per-character
+                            // so "WW" correctly becomes two White shards.
+                            for c in token.chars() {
+                                let sym = c.to_ascii_uppercase().to_string();
+                                if let Some(shard) = ManaCostShard::parse_non_generic(&sym) {
+                                    if shard != ManaCostShard::Generic {
+                                        if shard == ManaCostShard::X {
+                                            has_x = true;
+                                        }
+                                        shards.push(shard);
+                                    }
                                 }
-                                shards.push(shard);
+                            }
+                        }
+                    } else {
+                        for c in token.chars() {
+                            let sym = c.to_ascii_uppercase().to_string();
+                            if let Some(shard) = ManaCostShard::parse_non_generic(&sym) {
+                                if shard != ManaCostShard::Generic {
+                                    if shard == ManaCostShard::X {
+                                        has_x = true;
+                                    }
+                                    shards.push(shard);
+                                }
                             }
                         }
                     }
@@ -598,10 +623,30 @@ mod tests {
     }
 
     #[test]
-    fn parse_adjacent_multicolor_as_separate_pips() {
+    fn parse_adjacent_multicolor_as_hybrid() {
+        // In Forge card files, "BR" (single token) means hybrid {B/R},
+        // while separate pips would be written as "B R".
         let cost = ManaCost::parse("2 BR");
         assert_eq!(cost.generic_cost(), 2);
+        assert_eq!(cost.shards(), &[ManaCostShard::BlackRed]);
+        assert_eq!(cost.cmc(), 3); // 2 generic + 1 hybrid
+    }
+
+    #[test]
+    fn parse_separate_pips_not_hybrid() {
+        // Space-separated "B R" means two separate color pips
+        let cost = ManaCost::parse("2 B R");
+        assert_eq!(cost.generic_cost(), 2);
         assert_eq!(cost.shards(), &[ManaCostShard::Black, ManaCostShard::Red]);
+        assert_eq!(cost.cmc(), 4); // 2 generic + B + R
+    }
+
+    #[test]
+    fn parse_repeated_same_color_not_hybrid() {
+        // "WW" = two White pips (not hybrid)
+        let cost = ManaCost::parse("WW");
+        assert_eq!(cost.shards(), &[ManaCostShard::White, ManaCostShard::White]);
+        assert_eq!(cost.cmc(), 2);
     }
 
     #[test]

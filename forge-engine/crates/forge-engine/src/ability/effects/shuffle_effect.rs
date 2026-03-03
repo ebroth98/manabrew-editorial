@@ -20,9 +20,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or("You");
     let players = resolve_defined_players(defined, sa.activating_player, ctx.game);
 
-    let mut rng = rand::thread_rng();
     for pid in players {
-        ctx.game.shuffle_library(pid, &mut rng);
+        let lib = ctx.game.zone_mut(forge_foundation::ZoneType::Library, pid);
+        ctx.rng.shuffle_cards(&mut lib.cards);
         // Fire Shuffled trigger (mirrors Java Player.shuffle)
         ctx.trigger_handler.run_trigger(
             TriggerType::Shuffled,

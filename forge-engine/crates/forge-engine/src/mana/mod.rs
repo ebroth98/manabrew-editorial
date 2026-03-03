@@ -94,6 +94,44 @@ impl ManaPool {
                 return false;
             }
         }
+
+        // Java parity: ManaCost.getColorShardCounts() iterates the string
+        // representation character-by-character. For a hybrid shard like {B/R},
+        // it counts both 'B' and 'R', effectively requiring the pool to have
+        // BOTH colors available (not just one). This is more conservative than
+        // correct game rules but matches Java's hasDeterministicMana() check.
+        let mut required = [0i32; 6]; // W, U, B, R, G, C
+        for shard in cost.shards() {
+            let atoms = shard.shard();
+            if (atoms & ManaAtom::WHITE) != 0 {
+                required[0] += 1;
+            }
+            if (atoms & ManaAtom::BLUE) != 0 {
+                required[1] += 1;
+            }
+            if (atoms & ManaAtom::BLACK) != 0 {
+                required[2] += 1;
+            }
+            if (atoms & ManaAtom::RED) != 0 {
+                required[3] += 1;
+            }
+            if (atoms & ManaAtom::GREEN) != 0 {
+                required[4] += 1;
+            }
+            if (atoms & ManaAtom::COLORLESS) != 0 && !shard.is_multi_color() {
+                required[5] += 1;
+            }
+        }
+        if self.white < required[0]
+            || self.blue < required[1]
+            || self.black < required[2]
+            || self.red < required[3]
+            || self.green < required[4]
+            || self.colorless < required[5]
+        {
+            return false;
+        }
+
         let mut pool = self.clone();
         pool.try_pay(cost)
     }

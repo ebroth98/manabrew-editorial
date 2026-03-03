@@ -27,10 +27,39 @@ impl GameLoop {
             // Check if the triggered/activated ability has a mana cost that must be paid.
             // Mirrors Java's trigger resolution: if Cost$ is present, the player pays
             // when the ability resolves. If they can't pay, the ability does nothing.
+            //
+            // For triggers with costs (e.g. Roar of Resistance's "you may pay {1}{R}"),
+            // the optionality lives in the cost payment, not in OptionalDecider$. Java's
+            // AI brain evaluates whether the cost is worth paying (e.g. PumpAllAi declines).
+            // We mirror this by asking the agent before paying.
             if entry.spell_ability.is_trigger {
                 if let Some(cost) = &entry.spell_ability.pay_costs {
                     let player = entry.spell_ability.activating_player;
                     let source = entry.spell_ability.source.unwrap_or(CardId(0));
+
+                    // Ask agent if they want to pay — mirrors Java's AI brain evaluation
+                    // (e.g. PumpAllAi.doTriggerNoCost() declining optional pump costs).
+                    let api = entry.spell_ability.api.as_deref();
+                    let source_name = entry
+                        .spell_ability
+                        .source
+                        .and_then(|cid| game.cards.get(cid.index()).map(|c| c.card_name.clone()))
+                        .unwrap_or_else(|| "Ability".to_string());
+                    agents[player.index()].snapshot_state(game, &self.mana_pools);
+                    let wants_to_pay = agents[player.index()].choose_optional_trigger(
+                        player,
+                        &format!("Pay trigger cost for {}?", source_name),
+                        Some(&source_name),
+                        api,
+                    );
+                    if !wants_to_pay {
+                        // Agent declined to pay — ability does nothing
+                        apply_continuous_effects(game);
+                        game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
+                        self.process_triggers(game, agents);
+                        return;
+                    }
+
                     let available = crate::mana::calculate_available_mana(
                         &self.mana_pools[player.index()],
                         game,
@@ -433,6 +462,7 @@ impl GameLoop {
             token_templates: &self.token_templates,
             mana_pools: &mut self.mana_pools,
             parent_target_card,
+            rng: &mut *self.game_rng,
         };
         effects::resolve_effect(&mut ctx, sa);
     }

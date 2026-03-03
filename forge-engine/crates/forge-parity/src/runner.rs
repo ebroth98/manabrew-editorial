@@ -758,6 +758,11 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         )),
     ];
 
+    // Wire the Java-compatible RNG into the game loop so that effect-level
+    // shuffles, coin flips, and dice rolls consume the same PRNG instance
+    // as the agents, matching Java's single MyRandom consumption order.
+    game_loop.game_rng = Box::new(crate::java_random::JavaGameRng(Rc::clone(&game_rng)));
+
     // Run turns — CapturingAgent captures turn-start snapshots automatically
     while !game.game_over && game.turn.turn_number <= config.max_turns {
         game_loop.run_turn(&mut game, &mut agents, &mut rng);

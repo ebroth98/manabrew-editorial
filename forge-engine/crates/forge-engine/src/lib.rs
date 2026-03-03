@@ -11,6 +11,7 @@ pub mod game_log_entry;
 pub mod game_log_entry_type;
 pub mod game_log_formatter;
 pub mod game_loop;
+pub mod game_rng;
 pub mod ids;
 pub mod mana;
 pub mod mulligan;
