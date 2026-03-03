@@ -21,6 +21,7 @@ import forge.game.combat.CombatUtil;
 import forge.game.player.*;
 import forge.game.spellability.*;
 import forge.game.ability.ApiType;
+import forge.game.keyword.KeywordInterface;
 import forge.game.zone.ZoneType;
 import forge.util.collect.FCollectionView;
 
@@ -469,6 +470,25 @@ public class DeterministicController extends PlayerControllerAi {
         // Delegate to parent AI brain for all other confirmations.
         // This avoids infinite loops from blindly accepting optional effects.
         return super.confirmAction(sa, mode, message, options, cardToShow, params);
+    }
+
+    // ── Additional Costs (Kicker, Buyback, Multikicker, Replicate) ────
+    // Rust defaults: choose_kicker→false, choose_buyback→false,
+    // choose_multikicker→0, choose_replicate→0.
+    // We must match by never paying optional costs.
+
+    @Override
+    public List<OptionalCostValue> chooseOptionalCosts(SpellAbility chosen,
+            List<OptionalCostValue> optionalCostValues) {
+        // Never pay kicker, buyback, or any other optional cost.
+        return Collections.emptyList();
+    }
+
+    @Override
+    public int chooseNumberForKeywordCost(SpellAbility sa, Cost cost,
+            KeywordInterface keyword, String prompt, int max) {
+        // Never pay multikicker, replicate, or any repeated keyword cost.
+        return 0;
     }
 
     // ── Numbers & Colors ──────────────────────────────────────────────
