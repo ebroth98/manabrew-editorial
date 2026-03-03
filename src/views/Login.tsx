@@ -95,7 +95,7 @@ export default function Login() {
       <Card className="w-full max-w-md">
         <CardHeader>
           <div className="flex justify-center mb-2">
-            <img src={iconSvg} alt="Logo" className="h-16 w-16 dark:invert" />
+            <img src={iconSvg} alt="Logo" className="h-24 w-24 dark:invert" />
           </div>
           <CardTitle className="text-2xl text-center">
             Bardidina Magica Client
