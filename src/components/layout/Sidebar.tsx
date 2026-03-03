@@ -10,6 +10,7 @@ import {
   Swords,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import iconSvg from "@/assets/icon.svg";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
 
@@ -25,9 +26,12 @@ export function Sidebar({ className }: SidebarProps) {
     >
       <div className="flex-1 space-y-4 py-4">
         <div className="px-3 py-2">
-          <h2 className="mb-2 px-4 text-lg font-semibold tracking-tight">
-            Bardidina Magica
-          </h2>
+          <div className="mb-2 px-4 flex items-center gap-2">
+            <img src={iconSvg} alt="Logo" className="h-8 w-8 dark:invert" />
+            <h2 className="text-lg font-semibold tracking-tight">
+              Bardidina Magica
+            </h2>
+          </div>
           <div className="space-y-1">
             <NavLink to="/play">
               {({ isActive }) => (
