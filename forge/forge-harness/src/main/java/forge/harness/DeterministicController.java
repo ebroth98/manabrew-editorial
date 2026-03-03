@@ -115,6 +115,10 @@ public class DeterministicController extends PlayerControllerAi {
             List<SpellAbility> abilities = c.getAllPossibleAbilities(player, true);
             for (SpellAbility sa : abilities) {
                 sa.setActivatingPlayer(player);
+                // Skip alternative costs — Rust always uses normal cost
+                if (sa.getAlternativeCost() != null) {
+                    continue;
+                }
                 if (sa.isLandAbility()) {
                     landPlays.add(sa);
                 } else if (sa.isSpell()) {
