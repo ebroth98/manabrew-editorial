@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::sync::OnceLock;
 
 use forge_engine_core::game::GameState;
@@ -83,19 +82,33 @@ fn get_decks_dir() -> &'static str {
 }
 
 fn load_registry() -> Vec<LoadedPreset> {
-    let dir = std::path::Path::new(get_decks_dir());
-    let mut presets = Vec::new();
+    let configured = std::path::PathBuf::from(get_decks_dir());
+    let mut candidate_dirs = vec![configured.clone()];
+    // In Tauri dev/runtime, CWD may be `src-tauri`; support decks in repo root.
+    if configured == std::path::PathBuf::from(DEFAULT_DECKS_DIR) {
+        candidate_dirs.push(std::path::PathBuf::from("../preset_decks"));
+    }
 
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(e) => {
-            eprintln!(
-                "[preset_decks] Failed to read directory '{}': {}",
-                dir.display(),
-                e
-            );
-            return presets;
+    let mut presets = Vec::new();
+    let mut entries = None;
+
+    for dir in &candidate_dirs {
+        match std::fs::read_dir(dir) {
+            Ok(e) => {
+                entries = Some(e);
+                break;
+            }
+            Err(e) => {
+                eprintln!(
+                    "[preset_decks] Failed to read directory '{}': {}",
+                    dir.display(),
+                    e
+                );
+            }
         }
+    }
+    let Some(entries) = entries else {
+        return presets;
     };
 
     for entry in entries.flatten() {
@@ -133,9 +146,80 @@ fn load_registry() -> Vec<LoadedPreset> {
         });
     }
 
+    ensure_registry_invariants(&mut presets);
+
     // Sort by order field to maintain deterministic UI ordering
     presets.sort_by_key(|p| (p.order, p.id.clone()));
     presets
+}
+
+fn fallback_preset(
+    id: &str,
+    label: &str,
+    desc: &str,
+    color: &str,
+    opponent: Option<&str>,
+    ai_eligible: bool,
+    basic_land_name: &str,
+    order: i32,
+) -> LoadedPreset {
+    LoadedPreset {
+        id: id.to_string(),
+        label: label.to_string(),
+        desc: desc.to_string(),
+        color: color.to_string(),
+        opponent: opponent.map(str::to_string),
+        ai_eligible,
+        order,
+        cards: vec![DeckCardEntry {
+            name: basic_land_name.to_string(),
+            count: 60,
+            set: String::new(),
+        }],
+    }
+}
+
+fn ensure_registry_invariants(presets: &mut Vec<LoadedPreset>) {
+    if presets.is_empty() {
+        eprintln!(
+            "[preset_decks] No decks loaded from JSON. Injecting fallback presets."
+        );
+    }
+
+    if !presets.iter().any(|p| p.id == "red_burn") {
+        eprintln!("[preset_decks] Missing 'red_burn'. Injecting fallback preset.");
+        presets.push(fallback_preset(
+            "red_burn",
+            "Red Burn (Fallback)",
+            "Failsafe deck used when preset JSON loading fails",
+            "text-red-500",
+            Some("green_stompy"),
+            true,
+            "Mountain",
+            10_000,
+        ));
+    }
+
+    if !presets.iter().any(|p| p.id == "green_stompy") {
+        eprintln!("[preset_decks] Missing 'green_stompy'. Injecting fallback preset.");
+        presets.push(fallback_preset(
+            "green_stompy",
+            "Green Stompy (Fallback)",
+            "Failsafe deck used when preset JSON loading fails",
+            "text-green-500",
+            Some("red_burn"),
+            true,
+            "Forest",
+            10_001,
+        ));
+    }
+
+    if !presets.iter().any(|p| p.ai_eligible) {
+        eprintln!("[preset_decks] No AI-eligible decks. Marking 'red_burn' fallback as eligible.");
+        if let Some(rb) = presets.iter_mut().find(|p| p.id == "red_burn") {
+            rb.ai_eligible = true;
+        }
+    }
 }
 
 fn get_registry() -> &'static Vec<LoadedPreset> {
@@ -226,6 +310,7 @@ pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner
 
 /// Pick a random deck from all AI-eligible presets.
 fn random_ai_deck_cards() -> &'static Vec<DeckCardEntry> {
+    static EMPTY_DECK: OnceLock<Vec<DeckCardEntry>> = OnceLock::new();
     let registry = get_registry();
     let ai_eligible: Vec<&LoadedPreset> = registry.iter().filter(|p| p.ai_eligible).collect();
     let mut rng = rand::thread_rng();
@@ -233,8 +318,15 @@ fn random_ai_deck_cards() -> &'static Vec<DeckCardEntry> {
         .choose(&mut rng)
         .map(|p| &p.cards)
         .unwrap_or_else(|| {
-            // Fallback: first deck in registry
-            &registry[0].cards
+            // Fallback: first deck in registry, otherwise empty deck to avoid panics.
+            if let Some(first) = registry.first() {
+                &first.cards
+            } else {
+                eprintln!(
+                    "[preset_decks] Registry is empty; AI opponent will receive an empty deck"
+                );
+                EMPTY_DECK.get_or_init(Vec::new)
+            }
         })
 }
 
