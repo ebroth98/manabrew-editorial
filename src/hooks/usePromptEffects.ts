@@ -89,10 +89,7 @@ export function usePromptEffects({
     if (!shouldAutoPass) return;
 
     setIsAutoPassing(true);
-    const delay = 300 + Math.floor(Math.random() * 500);
-    const timer = setTimeout(() => {
-      passPriority();
-    }, delay);
+    const timer = setTimeout(() => passPriority(), 0);
 
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
