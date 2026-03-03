@@ -77,6 +77,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
 
+            // Track damage source for DamagedBy trigger filters
+            if let Some(src_id) = source {
+                if !ctx.game.card(card_id).damage_sources_this_turn.contains(&src_id) {
+                    ctx.game.card_mut(card_id).damage_sources_this_turn.push(src_id);
+                }
+            }
             if source_has_infect_keyword || source_has_wither {
                 // Infect/Wither: damage to creatures as -1/-1 counters
                 if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(

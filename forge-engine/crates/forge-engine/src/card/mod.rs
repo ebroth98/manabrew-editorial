@@ -214,6 +214,9 @@ pub struct CardInstance {
     pub must_block: bool,
     /// Spell cards encoded/ciphered onto this creature.
     pub encoded_cards: Vec<CardId>,
+    /// Cards that dealt damage to this creature this turn (for DamagedBy trigger filters).
+    /// Mirrors Java `CardDamageHistory.getDamageReceivedThisTurn()`.
+    pub damage_sources_this_turn: Vec<CardId>,
 }
 
 impl CardInstance {
@@ -319,6 +322,7 @@ impl CardInstance {
             damage_prevention: 0,
             must_block: false,
             encoded_cards: Vec::new(),
+            damage_sources_this_turn: Vec::new(),
         };
 
         // Generate keyword-derived activated abilities (mirrors Java CardFactoryUtil.setupKeywordedAbilities)
@@ -790,6 +794,7 @@ impl CardInstance {
         self.has_deathtouch_damage = false;
         self.entered_battlefield_this_turn = true;
         self.attacked_this_turn = false;
+        self.damage_sources_this_turn.clear();
     }
 
     /// Reset per-turn state at start of turn.
@@ -797,6 +802,7 @@ impl CardInstance {
         self.entered_battlefield_this_turn = false;
         self.attacked_this_turn = false;
         self.has_deathtouch_damage = false;
+        self.damage_sources_this_turn.clear();
         if self.zone == ZoneType::Battlefield {
             self.summoning_sick = false;
         }

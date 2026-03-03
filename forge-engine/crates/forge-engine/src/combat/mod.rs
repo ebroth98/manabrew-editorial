@@ -289,6 +289,7 @@ impl CombatState {
                 for &(blocker_id, damage_to_blocker) in &damage_assignments {
                     deal_combat_damage_to_card(
                         game,
+                        attacker_id,
                         blocker_id,
                         damage_to_blocker,
                         attacker_has_deathtouch,
@@ -374,6 +375,7 @@ impl CombatState {
                         if blocker_power > 0 {
                             deal_combat_damage_to_card(
                                 game,
+                                blocker_id,
                                 attacker_id,
                                 blocker_power,
                                 blocker_has_deathtouch,
@@ -551,6 +553,7 @@ fn deal_combat_damage_to_player(
 /// Deal combat damage to a card, handling deathtouch, lifelink, Infect/Wither.
 fn deal_combat_damage_to_card(
     game: &mut GameState,
+    source: CardId,
     target: CardId,
     amount: i32,
     deathtouch: bool,
@@ -559,6 +562,10 @@ fn deal_combat_damage_to_card(
     source_has_wither_or_infect: bool,
 ) {
     if amount > 0 {
+        // Track damage source for DamagedBy trigger filters (Sengir Vampire, etc.)
+        if !game.card(target).damage_sources_this_turn.contains(&source) {
+            game.card_mut(target).damage_sources_this_turn.push(source);
+        }
         if source_has_wither_or_infect {
             // Wither/Infect: damage to creatures as -1/-1 counters instead
             if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(

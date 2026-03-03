@@ -47,6 +47,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if !super::matches_valid_cards(ctx.game.card(cid), &valid_tgts, sa.activating_player) {
                 continue;
             }
+            // Track damage source for DamagedBy trigger filters
+            if let Some(src_id) = sa.source {
+                if !ctx.game.card(cid).damage_sources_this_turn.contains(&src_id) {
+                    ctx.game.card_mut(cid).damage_sources_this_turn.push(src_id);
+                }
+            }
             if source_has_infect_keyword || source_has_wither {
                 if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                     &ctx.game.cards,
@@ -127,6 +133,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
 
+            // Track damage source for DamagedBy trigger filters
+            if let Some(src_id) = sa.source {
+                if !ctx.game.card(target_card).damage_sources_this_turn.contains(&src_id) {
+                    ctx.game.card_mut(target_card).damage_sources_this_turn.push(src_id);
+                }
+            }
             if source_has_infect_keyword || source_has_wither {
                 // Infect/Wither: damage to creatures as -1/-1 counters
                 if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(

@@ -758,6 +758,14 @@ fn matches_single_valid_card(
                         return false;
                     }
                 }
+                "DamagedBy" => {
+                    // Check if this card was dealt damage by the host card this turn.
+                    // Mirrors Java's CardProperty "DamagedBy" check using
+                    // getDamageReceivedThisTurn().
+                    if !card.damage_sources_this_turn.contains(&host_card) {
+                        return false;
+                    }
+                }
                 _ => {
                     // Check counters_GE/GT/LT/LE/EQ patterns like "counters_GE3_P1P1"
                     if sub.starts_with("counters_") {
