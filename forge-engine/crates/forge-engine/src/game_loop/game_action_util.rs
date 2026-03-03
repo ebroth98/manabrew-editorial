@@ -676,7 +676,7 @@ impl GameLoop {
                             self.pool_mut(player).try_pay(&suspend_mc);
                             game.move_card(card_id, ZoneType::Exile, player);
                             game.card_mut(card_id)
-                                .add_counter(crate::card::CounterType::Time, counters);
+                                .add_counter(&crate::card::CounterType::Time, counters);
                             agents[player.index()].notify(&format!(
                                 "Suspended: {} with {} time counters",
                                 card_name, counters

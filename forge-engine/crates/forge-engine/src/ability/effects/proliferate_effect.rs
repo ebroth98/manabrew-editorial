@@ -58,10 +58,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .counters
             .iter()
             .filter(|(_, &count)| count > 0)
-            .map(|(&ct, _)| ct)
+            .map(|(ct, _)| ct.clone())
             .collect();
 
-        for ct in counter_types {
+        for ct in &counter_types {
             if crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                 &ctx.game.cards,
                 ctx.game.card(cid),
@@ -81,7 +81,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // Run AddCounter replacement effects.
             let mut add_event = ReplacementEvent::AddCounter {
                 target: cid,
-                counter_type: ct,
+                counter_type: ct.clone(),
                 count: 1,
             };
             apply_replacements(ctx.game, &mut add_event);

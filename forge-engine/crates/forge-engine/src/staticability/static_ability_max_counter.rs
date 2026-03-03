@@ -3,7 +3,7 @@ use forge_foundation::ZoneType;
 use crate::card::{CardInstance, CounterType};
 use crate::staticability::StaticMode;
 
-pub fn max_counter(cards: &[CardInstance], target: &CardInstance, counter_type: CounterType) -> Option<i32> {
+pub fn max_counter(cards: &[CardInstance], target: &CardInstance, counter_type: &CounterType) -> Option<i32> {
     let mut result: Option<i32> = None;
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
@@ -13,7 +13,7 @@ pub fn max_counter(cards: &[CardInstance], target: &CardInstance, counter_type: 
         {
             if let Some(s) = st_ab.params.get("CounterType") {
                 if let Some(parsed) = parse_counter_type_opt(s) {
-                    if parsed != counter_type {
+                    if parsed != *counter_type {
                         continue;
                     }
                 }
@@ -43,7 +43,8 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
 }
 
 fn parse_counter_type_opt(s: &str) -> Option<CounterType> {
-    match s.to_uppercase().as_str() {
+    let upper = s.to_uppercase();
+    match upper.as_str() {
         "POISON" => Some(CounterType::Poison),
         "P1P1" | "+1/+1" => Some(CounterType::P1P1),
         "M1M1" | "-1/-1" => Some(CounterType::M1M1),
@@ -62,6 +63,6 @@ fn parse_counter_type_opt(s: &str) -> Option<CounterType> {
         "LORE" => Some(CounterType::Lore),
         "PAGE" => Some(CounterType::Page),
         "DREAM" => Some(CounterType::Dream),
-        _ => None,
+        _ => Some(CounterType::Named(upper)),
     }
 }

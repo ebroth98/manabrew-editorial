@@ -177,9 +177,12 @@ impl TriggerHandler {
 
                     // Propagate trigger target from event params so that
                     // Defined$ TriggeredTarget can resolve in downstream effects.
-                    // For DamageDone triggers, this is the player who was dealt damage.
+                    // For DamageDone triggers, this is the player/card dealt damage.
                     if let Some(pid) = event.params.damage_target_player {
                         sa.target_chosen.target_player = Some(pid);
+                    }
+                    if let Some(cid) = event.params.damage_target_card {
+                        sa.target_chosen.target_card = Some(cid);
                     }
 
                     let entry = StackEntry {
@@ -211,6 +214,9 @@ impl TriggerHandler {
                         sa2.trigger_index = Some(active.trigger_index);
                         if let Some(pid) = event.params.damage_target_player {
                             sa2.target_chosen.target_player = Some(pid);
+                        }
+                        if let Some(cid) = event.params.damage_target_card {
+                            sa2.target_chosen.target_card = Some(cid);
                         }
                         let extra_entry = StackEntry {
                             id: 0,

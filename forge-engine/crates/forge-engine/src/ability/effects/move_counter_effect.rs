@@ -58,14 +58,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Calculate how many we can actually move
-    let available = ctx.game.card(from).counter_count(counter_type);
+    let available = ctx.game.card(from).counter_count(&counter_type);
     let actual = count.min(available);
     if actual <= 0 {
         return;
     }
 
     // Remove from source
-    ctx.game.card_mut(from).remove_counter(counter_type, actual);
+    ctx.game.card_mut(from).remove_counter(&counter_type, actual);
     ctx.trigger_handler.run_trigger(
         TriggerType::CounterRemoved,
         RunParams {
@@ -81,23 +81,23 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
         &ctx.game.cards,
         ctx.game.card(to),
-        counter_type,
+        &counter_type,
     ) {
         return;
     }
     let add_amount = if let Some(max) = crate::staticability::static_ability_max_counter::max_counter(
         &ctx.game.cards,
         ctx.game.card(to),
-        counter_type,
+        &counter_type,
     ) {
-        (max - ctx.game.card(to).counter_count(counter_type)).clamp(0, actual)
+        (max - ctx.game.card(to).counter_count(&counter_type)).clamp(0, actual)
     } else {
         actual
     };
     if add_amount <= 0 {
         return;
     }
-    ctx.game.card_mut(to).add_counter(counter_type, add_amount);
+    ctx.game.card_mut(to).add_counter(&counter_type, add_amount);
     ctx.trigger_handler.run_trigger(
         TriggerType::CounterAdded,
         RunParams {

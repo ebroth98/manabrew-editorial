@@ -52,6 +52,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let source_power = ctx.game.card(source).power();
     let target_power = ctx.game.card(target).power();
 
+    // Track damage sources for DamagedBy trigger filters
+    if !ctx.game.card(target).damage_sources_this_turn.contains(&source) {
+        ctx.game.card_mut(target).damage_sources_this_turn.push(source);
+    }
+    if !ctx.game.card(source).damage_sources_this_turn.contains(&target) {
+        ctx.game.card_mut(source).damage_sources_this_turn.push(target);
+    }
     // Deal damage simultaneously
     ctx.game.deal_damage_to_card(target, source_power);
     ctx.game.deal_damage_to_card(source, target_power);

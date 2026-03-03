@@ -15,7 +15,7 @@ use crate::spellability::SpellAbility;
 /// # Card script examples
 /// ```text
 /// A:SP$ Explore | Defined$ Self
-/// A:SP$ Explore | Defined$ Targeted
+/// A:SP$ Explore | Defined$ Targeted | Num$ 2
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
@@ -34,90 +34,105 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         _ => return,
     };
 
-    // Check if library has cards
-    let lib = ctx.game.cards_in_zone(ZoneType::Library, controller);
-    if lib.is_empty() {
-        // Explorer still gets the +1/+1 counter per rules
-        if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
-            &ctx.game.cards,
-            ctx.game.card(explorer_id),
-            CounterType::P1P1,
-        ) {
-            ctx.game
-                .card_mut(explorer_id)
-                .add_counter(CounterType::P1P1, 1);
+    // Parse Num parameter for multiple explores (e.g. Jadelight Ranger explores twice).
+    // Mirrors Java's `AbilityUtils.calculateAmount(host, sa.getParamOrDefault("Num", "1"), sa)`.
+    let amount: i32 = sa
+        .params
+        .get("Num")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1);
+
+    for _ in 0..amount {
+        // Re-check explorer is still on battlefield (may have been removed by a trigger)
+        if ctx.game.card(explorer_id).zone != ZoneType::Battlefield {
+            return;
         }
-        ctx.trigger_handler.run_trigger(
-            TriggerType::CounterAdded,
-            RunParams {
-                card: Some(explorer_id),
-                counter_type: Some("P1P1".to_string()),
-                counter_amount: Some(1),
-                ..Default::default()
-            },
-            false,
-        );
-        return;
-    }
 
-    // Reveal top card
-    let top_card = *lib.last().unwrap();
-
-    // Let UI agents build card info
-    ctx.agents[controller.index()].on_library_peek(ctx.game, &[top_card]);
-
-    let is_land = ctx.game.card(top_card).is_land();
-
-    if is_land {
-        // Land → put into hand
-        let owner = ctx.game.card(top_card).owner;
-        ctx.game.move_card(top_card, ZoneType::Hand, owner);
-        emit_zone_trigger(
-            ctx.trigger_handler,
-            top_card,
-            ZoneType::Library,
-            ZoneType::Hand,
-        );
-    } else {
-        // Nonland → put +1/+1 counter on explorer
-        if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
-            &ctx.game.cards,
-            ctx.game.card(explorer_id),
-            CounterType::P1P1,
-        ) {
-            ctx.game
-                .card_mut(explorer_id)
-                .add_counter(CounterType::P1P1, 1);
+        // Check if library has cards
+        let lib = ctx.game.cards_in_zone(ZoneType::Library, controller);
+        if lib.is_empty() {
+            // Explorer still gets the +1/+1 counter per rules
+            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                &ctx.game.cards,
+                ctx.game.card(explorer_id),
+                &CounterType::P1P1,
+            ) {
+                ctx.game
+                    .card_mut(explorer_id)
+                    .add_counter(&CounterType::P1P1, 1);
+            }
+            ctx.trigger_handler.run_trigger(
+                TriggerType::CounterAdded,
+                RunParams {
+                    card: Some(explorer_id),
+                    counter_type: Some("P1P1".to_string()),
+                    counter_amount: Some(1),
+                    ..Default::default()
+                },
+                false,
+            );
+            continue;
         }
-        ctx.trigger_handler.run_trigger(
-            TriggerType::CounterAdded,
-            RunParams {
-                card: Some(explorer_id),
-                counter_type: Some("P1P1".to_string()),
-                counter_amount: Some(1),
-                ..Default::default()
-            },
-            false,
-        );
 
-        // Player may put revealed card into graveyard (otherwise it stays on top)
-        let card_name = ctx.game.card(top_card).card_name.clone();
-        let source_name = ctx.game.card(explorer_id).card_name.clone();
-        let put_in_gy = ctx.agents[controller.index()].choose_optional_trigger(
-            controller,
-            &format!("Put {} into your graveyard?", card_name),
-            Some(&source_name),
-        );
+        // Reveal top card
+        let top_card = *lib.last().unwrap();
 
-        if put_in_gy {
+        // Let UI agents build card info
+        ctx.agents[controller.index()].on_library_peek(ctx.game, &[top_card]);
+
+        let is_land = ctx.game.card(top_card).is_land();
+
+        if is_land {
+            // Land → put into hand
             let owner = ctx.game.card(top_card).owner;
-            ctx.game.move_card(top_card, ZoneType::Graveyard, owner);
+            ctx.game.move_card(top_card, ZoneType::Hand, owner);
             emit_zone_trigger(
                 ctx.trigger_handler,
                 top_card,
                 ZoneType::Library,
-                ZoneType::Graveyard,
+                ZoneType::Hand,
             );
+        } else {
+            // Nonland → put +1/+1 counter on explorer
+            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                &ctx.game.cards,
+                ctx.game.card(explorer_id),
+                &CounterType::P1P1,
+            ) {
+                ctx.game
+                    .card_mut(explorer_id)
+                    .add_counter(&CounterType::P1P1, 1);
+            }
+            ctx.trigger_handler.run_trigger(
+                TriggerType::CounterAdded,
+                RunParams {
+                    card: Some(explorer_id),
+                    counter_type: Some("P1P1".to_string()),
+                    counter_amount: Some(1),
+                    ..Default::default()
+                },
+                false,
+            );
+
+            // Player may put revealed card into graveyard (otherwise it stays on top)
+            let card_name = ctx.game.card(top_card).card_name.clone();
+            let source_name = ctx.game.card(explorer_id).card_name.clone();
+            let put_in_gy = ctx.agents[controller.index()].choose_optional_trigger(
+                controller,
+                &format!("Put {} into your graveyard?", card_name),
+                Some(&source_name),
+            );
+
+            if put_in_gy {
+                let owner = ctx.game.card(top_card).owner;
+                ctx.game.move_card(top_card, ZoneType::Graveyard, owner);
+                emit_zone_trigger(
+                    ctx.trigger_handler,
+                    top_card,
+                    ZoneType::Library,
+                    ZoneType::Graveyard,
+                );
+            }
         }
     }
 }

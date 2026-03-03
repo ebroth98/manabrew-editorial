@@ -43,11 +43,17 @@ import java.util.*;
 public class DeterministicController extends PlayerControllerAi {
     private static final boolean DEBUG_ACTIONS = true;
 
+    /** Weight multiplier for actions vs pass when preferActions is enabled. Must match Rust's PREFER_ACTION_WEIGHT. */
+    private static final int PREFER_ACTION_WEIGHT = 3;
+
     /** Shared RNG for all decisions — same instance used by both players. */
     private final Random rng;
+    /** If true, bias random main-phase choices toward taking an action over pass. */
+    private final boolean preferActions;
     public DeterministicController(Game game, Player p, LobbyPlayer lp, Random rng, boolean preferActions) {
         super(game, p, lp);
         this.rng = rng;
+        this.preferActions = preferActions;
     }
 
     // ── Mulligan ──────────────────────────────────────────────────────
@@ -177,7 +183,20 @@ public class DeterministicController extends PlayerControllerAi {
             return null; // pass — no RNG consumed
         }
 
-        final int idx = rng.nextInt(all.size() + 1);
+        final int idx;
+        if (preferActions) {
+            // Weighted random: each action has weight PREFER_ACTION_WEIGHT, pass has weight 1.
+            // Matches Rust's DeterministicAgent::choose_action() prefer_actions branch.
+            int totalWeight = all.size() * PREFER_ACTION_WEIGHT + 1;
+            int roll = rng.nextInt(totalWeight);
+            if (roll >= all.size() * PREFER_ACTION_WEIGHT) {
+                idx = all.size(); // pass
+            } else {
+                idx = roll / PREFER_ACTION_WEIGHT;
+            }
+        } else {
+            idx = rng.nextInt(all.size() + 1);
+        }
         if (DEBUG_ACTIONS) {
             List<String> opts = new ArrayList<>();
             for (SpellAbility sa : all) {
@@ -236,22 +255,15 @@ public class DeterministicController extends PlayerControllerAi {
         }
         if (defender == null) return;
 
-        if (DEBUG_ACTIONS) {
-            List<String> names = new ArrayList<>();
-            for (Card c : creatures) names.add(c.getName());
-            System.err.printf("[det-java p%d t%d] atk candidates=%s%n",
-                player.getId(), getGame().getPhaseHandler().getTurn(), names);
-        }
         for (Card c : creatures) {
-            if (CombatUtil.canAttack(c, defender)) {
-                int roll = rng.nextInt(2);
-                if (DEBUG_ACTIONS) {
-                    System.err.printf("[det-java p%d t%d] atk roll %s -> %d%n",
-                        player.getId(), getGame().getPhaseHandler().getTurn(), c.getName(), roll);
-                }
-                if (roll == 1) {
-                    combat.addAttacker(c, defender);
-                }
+            if (!CombatUtil.canAttack(c, defender)) continue;
+            int roll = rng.nextInt(2);
+            if (DEBUG_ACTIONS) {
+                System.err.printf("[det-java p%d t%d] atk roll %s -> %d%n",
+                    player.getId(), getGame().getPhaseHandler().getTurn(), c.getName(), roll);
+            }
+            if (roll == 1) {
+                combat.addAttacker(c, defender);
             }
         }
 
@@ -279,14 +291,6 @@ public class DeterministicController extends PlayerControllerAi {
 
         if (attackers.isEmpty()) return;
 
-        if (DEBUG_ACTIONS) {
-            List<String> b = new ArrayList<>();
-            for (Card c : blockers) b.add(c.getName());
-            List<String> a = new ArrayList<>();
-            for (Card c : attackers) a.add(c.getName());
-            System.err.printf("[det-java p%d t%d] blk candidates=%s attackers=%s%n",
-                player.getId(), getGame().getPhaseHandler().getTurn(), b, a);
-        }
         for (Card blocker : blockers) {
             if (!CombatUtil.canBlock(blocker, combat)) continue;
             int choice = rng.nextInt(attackers.size() + 1);
@@ -376,6 +380,21 @@ public class DeterministicController extends PlayerControllerAi {
         return new CardCollection(sorted.subList(0, count));
     }
 
+    // ── Zone Change (Search/Tutor) ──────────────────────────────────
+
+    @Override
+    public Card chooseSingleCardForZoneChange(ZoneType destination, List<ZoneType> origin,
+            SpellAbility sa, CardCollection fetchList, DelayedReveal delayedReveal,
+            String selectPrompt, boolean isOptional, Player decider) {
+        if (delayedReveal != null) reveal(delayedReveal);
+        if (fetchList == null || fetchList.isEmpty()) return null;
+        // Deterministic: sort alphabetically and pick first. No RNG consumed.
+        // Bypasses AI logic (basicManaFixing, CardLists.shuffle, etc.) to match Rust.
+        List<Card> sorted = new ArrayList<>(fetchList);
+        sorted.sort(Comparator.comparing(Card::getName));
+        return sorted.get(0);
+    }
+
     // ── Discard ───────────────────────────────────────────────────────
 
     @Override
@@ -397,7 +416,7 @@ public class DeterministicController extends PlayerControllerAi {
         return new CardCollection(hand.subList(0, count));
     }
 
-    // ── Scry / Library Manipulation ──────────────────────────────────
+    // ── Scry / Surveil / Library Manipulation ───────────────────────
 
     @Override
     public ImmutablePair<CardCollection, CardCollection> arrangeForScry(CardCollection topN) {

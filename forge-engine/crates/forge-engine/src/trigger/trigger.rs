@@ -758,6 +758,14 @@ fn matches_single_valid_card(
                         return false;
                     }
                 }
+                "DamagedBy" => {
+                    // Check if this card was dealt damage by the host card this turn.
+                    // Mirrors Java's CardProperty "DamagedBy" check using
+                    // getDamageReceivedThisTurn().
+                    if !card.damage_sources_this_turn.contains(&host_card) {
+                        return false;
+                    }
+                }
                 _ => {
                     // Check counters_GE/GT/LT/LE/EQ patterns like "counters_GE3_P1P1"
                     if sub.starts_with("counters_") {
@@ -819,7 +827,7 @@ fn check_counter_condition(condition: &str, card: &crate::card::CardInstance) ->
     };
     let threshold: i32 = num_str.parse().unwrap_or(0);
     let counter_type = parse_counter_type(counter_type_str);
-    let count = card.counter_count(counter_type);
+    let count = card.counter_count(&counter_type);
     match op {
         "GE" => count >= threshold,
         "GT" => count > threshold,

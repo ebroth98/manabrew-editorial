@@ -47,15 +47,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if !super::matches_valid_cards(ctx.game.card(cid), &valid_tgts, sa.activating_player) {
                 continue;
             }
+            // Track damage source for DamagedBy trigger filters
+            if let Some(src_id) = sa.source {
+                if !ctx.game.card(cid).damage_sources_this_turn.contains(&src_id) {
+                    ctx.game.card_mut(cid).damage_sources_this_turn.push(src_id);
+                }
+            }
             if source_has_infect_keyword || source_has_wither {
                 if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                     &ctx.game.cards,
                     ctx.game.card(cid),
-                    crate::card::CounterType::M1M1,
+                    &crate::card::CounterType::M1M1,
                 ) {
                     ctx.game
                         .card_mut(cid)
-                        .add_counter(crate::card::CounterType::M1M1, damage);
+                        .add_counter(&crate::card::CounterType::M1M1, damage);
                 }
             } else {
                 ctx.game.deal_damage_to_card(cid, damage);
@@ -93,7 +99,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &ctx.game.cards,
                 target_player,
-                crate::card::CounterType::Poison,
+                &crate::card::CounterType::Poison,
             ) {
                 ctx.game.player_mut(target_player).poison_counters += damage;
             }
@@ -127,16 +133,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
 
+            // Track damage source for DamagedBy trigger filters
+            if let Some(src_id) = sa.source {
+                if !ctx.game.card(target_card).damage_sources_this_turn.contains(&src_id) {
+                    ctx.game.card_mut(target_card).damage_sources_this_turn.push(src_id);
+                }
+            }
             if source_has_infect_keyword || source_has_wither {
                 // Infect/Wither: damage to creatures as -1/-1 counters
                 if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                     &ctx.game.cards,
                     ctx.game.card(target_card),
-                    crate::card::CounterType::M1M1,
+                    &crate::card::CounterType::M1M1,
                 ) {
                     ctx.game
                         .card_mut(target_card)
-                        .add_counter(crate::card::CounterType::M1M1, damage);
+                        .add_counter(&crate::card::CounterType::M1M1, damage);
                 }
             } else {
                 ctx.game.deal_damage_to_card(target_card, damage);

@@ -16,53 +16,65 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let count = parse_param(&sa.ability_text, "CounterNum$ ")
         .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
 
-    // Default target: the source card
-    if let Some(card_id) = sa.source {
-        if ctx.game.card(card_id).zone == ZoneType::Battlefield {
-            if crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
-                &ctx.game.cards,
-                ctx.game.card(card_id),
-                counter_type,
-            ) {
-                return;
-            }
-            if let Some(max) = crate::staticability::static_ability_max_counter::max_counter(
-                &ctx.game.cards,
-                ctx.game.card(card_id),
-                counter_type,
-            ) {
-                let current = ctx.game.card(card_id).counter_count(counter_type);
-                if current >= max {
-                    return;
-                }
-            }
-            // Run AddCounter replacement effects (e.g. Hardened Scales adds extra).
-            let mut event = ReplacementEvent::AddCounter {
-                target: card_id,
-                counter_type,
-                count,
-            };
-            apply_replacements(ctx.game, &mut event);
-            let count = if let ReplacementEvent::AddCounter { count: final_count, .. } = event {
-                final_count
-            } else {
-                count
-            };
-            let cause_player = ctx.game.card(card_id).controller;
-            ctx.game.card_mut(card_id).add_counter(counter_type, count);
+    // Resolve target card based on Defined$ parameter.
+    let defined = sa.params.get("Defined").map(|s| s.as_str()).unwrap_or("Self");
+    let target_id = match defined {
+        "TriggeredTarget" | "TriggeredTargetLKICopy" => {
+            // For trigger-based PutCounter (e.g. Rite of Passage):
+            // put counters on the triggered target, not the source enchantment.
+            sa.target_chosen.target_card.or(sa.source)
+        }
+        "Targeted" => sa.target_chosen.target_card.or(sa.source),
+        "Self" | _ => sa.source,
+    };
 
-            // Fire CounterAdded trigger
-            ctx.trigger_handler.run_trigger(
-                TriggerType::CounterAdded,
-                RunParams {
-                    card: Some(card_id),
-                    counter_type: Some(format!("{:?}", counter_type)),
-                    counter_amount: Some(count),
-                    cause_player: Some(cause_player),
-                    ..Default::default()
-                },
-                false,
-            );
+    let Some(card_id) = target_id else { return };
+    if ctx.game.card(card_id).zone != ZoneType::Battlefield {
+        return;
+    }
+
+    if crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+        &ctx.game.cards,
+        ctx.game.card(card_id),
+        &counter_type,
+    ) {
+        return;
+    }
+    if let Some(max) = crate::staticability::static_ability_max_counter::max_counter(
+        &ctx.game.cards,
+        ctx.game.card(card_id),
+        &counter_type,
+    ) {
+        let current = ctx.game.card(card_id).counter_count(&counter_type);
+        if current >= max {
+            return;
         }
     }
+    // Run AddCounter replacement effects (e.g. Hardened Scales adds extra).
+    let mut event = ReplacementEvent::AddCounter {
+        target: card_id,
+        counter_type: counter_type.clone(),
+        count,
+    };
+    apply_replacements(ctx.game, &mut event);
+    let count = if let ReplacementEvent::AddCounter { count: final_count, .. } = event {
+        final_count
+    } else {
+        count
+    };
+    let cause_player = ctx.game.card(card_id).controller;
+    ctx.game.card_mut(card_id).add_counter(&counter_type, count);
+
+    // Fire CounterAdded trigger
+    ctx.trigger_handler.run_trigger(
+        TriggerType::CounterAdded,
+        RunParams {
+            card: Some(card_id),
+            counter_type: Some(format!("{:?}", counter_type)),
+            counter_amount: Some(count),
+            cause_player: Some(cause_player),
+            ..Default::default()
+        },
+        false,
+    );
 }

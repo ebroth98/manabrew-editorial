@@ -1,5 +1,6 @@
 use forge_foundation::ZoneType;
 
+use crate::card::CounterType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
@@ -98,7 +99,7 @@ impl GameState {
                         continue;
                     }
                     let ct = crate::ability::effects::parse_counter_type(counter_type);
-                    self.cards[card_id.index()].add_counter(ct, amount);
+                    self.cards[card_id.index()].add_counter(&ct, amount);
                 }
                 return;
             }
@@ -370,6 +371,21 @@ impl GameState {
                         // Indestructible — destruction was replaced; creature stays.
                         // Damage is still marked but the creature does not die.
                     }
+                }
+            }
+        }
+
+        // CR 704.5q: +1/+1 and -1/-1 counter cancellation
+        for &pid in &self.player_order.clone() {
+            let battlefield = self.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
+            for cid in battlefield {
+                let p1 = self.card(cid).counter_count(&CounterType::P1P1);
+                let m1 = self.card(cid).counter_count(&CounterType::M1M1);
+                if p1 > 0 && m1 > 0 {
+                    let cancel = p1.min(m1);
+                    self.card_mut(cid).remove_counter(&CounterType::P1P1, cancel);
+                    self.card_mut(cid).remove_counter(&CounterType::M1M1, cancel);
+                    any_changes = true;
                 }
             }
         }
