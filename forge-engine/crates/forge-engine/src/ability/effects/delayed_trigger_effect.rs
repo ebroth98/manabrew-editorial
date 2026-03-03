@@ -132,6 +132,7 @@ fn trigger_mode_to_type(mode: &TriggerMode) -> Option<TriggerType> {
         TriggerMode::ExcessDamage { .. } => TriggerType::DamageDone,
         TriggerMode::LifeGainedAll { .. } => TriggerType::LifeGained,
         TriggerMode::CounterRemovedOnce { .. } => TriggerType::CounterRemoved,
+        TriggerMode::Exerted { .. } => TriggerType::Exerted,
     })
 }
 

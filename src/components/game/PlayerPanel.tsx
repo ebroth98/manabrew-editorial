@@ -97,6 +97,15 @@ export function PlayerPanel({
           {player.poison} ☠
         </Badge>
       )}
+      {(player.energyCounters ?? 0) > 0 && (
+        <Badge
+          variant="outline"
+          className="text-xs h-5 px-1 text-yellow-600 border-yellow-400 shrink-0"
+          title="Energy counters"
+        >
+          {player.energyCounters} ⚡
+        </Badge>
+      )}
       {totalCmdDmg > 0 && (
         <Badge
           variant="outline"

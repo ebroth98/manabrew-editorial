@@ -48,6 +48,9 @@ pub struct PlayerState {
 
     // Damage prevention shields (issue #53, PreventDamage effect). Resets at EOT.
     pub damage_prevention: i32,
+
+    // Energy counters (Kaladesh block). Persistent resource like mana.
+    pub energy_counters: i32,
 }
 
 impl PlayerState {
@@ -74,6 +77,7 @@ impl PlayerState {
             skip_next_combat: false,
             skip_next_untap: false,
             damage_prevention: 0,
+            energy_counters: 0,
         }
     }
 

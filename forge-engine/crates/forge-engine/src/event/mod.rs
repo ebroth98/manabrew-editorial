@@ -146,6 +146,8 @@ pub enum TriggerType {
     LifeGainedAll,
     /// A counter was removed (batch).
     CounterRemovedOnce,
+    /// A creature was exerted.
+    Exerted,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.

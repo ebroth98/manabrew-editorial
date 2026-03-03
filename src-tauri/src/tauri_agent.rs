@@ -606,6 +606,7 @@ impl PlayerAgent for TauriAgent {
         _player: PlayerId,
         description: &str,
         card_name: Option<&str>,
+        _api: Option<&str>,
     ) -> bool {
         self.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
             game_view: self.view(),

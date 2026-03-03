@@ -1,0 +1,21 @@
+{
+  "label": "Game Effects",
+  "desc": "Fog + Extra turns + Tap effects",
+  "color": "text-teal-400",
+  "opponent": "green_stompy",
+  "ai_eligible": false,
+  "order": 17,
+  "cards": [
+    { "name": "Forest", "count": 8, "set": "akh" },
+    { "name": "Island", "count": 6, "set": "akh" },
+    { "name": "Plains", "count": 4, "set": "akh" },
+    { "name": "Fog", "count": 4, "set": "m12" },
+    { "name": "Holy Day", "count": 3, "set": "m13" },
+    { "name": "Time Warp", "count": 3, "set": "m10" },
+    { "name": "Icy Manipulator", "count": 3, "set": "m14" },
+    { "name": "Giant Spider", "count": 3, "set": "m14" },
+    { "name": "Serra Angel", "count": 3, "set": "m21" },
+    { "name": "Grizzly Bears", "count": 4, "set": "m12" },
+    { "name": "Giant Growth", "count": 4, "set": "m11" }
+  ]
+}

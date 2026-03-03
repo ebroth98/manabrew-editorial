@@ -63,8 +63,16 @@ export function Card({
             onError={() => setHasError(true)}
             loading="lazy"
           />
+          {/* Exerted indicator */}
+          {card.exerted && (
+            <div className="absolute top-0 left-0 right-0 flex justify-center z-20 pointer-events-none">
+              <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-b leading-none bg-orange-500/90 text-white">
+                EXERTED
+              </span>
+            </div>
+          )}
           {/* Token / Transformed indicator — top-center banner */}
-          {(card.isToken || card.isTransformed) && (
+          {!card.exerted && (card.isToken || card.isTransformed) && (
             <div className="absolute top-0 left-0 right-0 flex justify-center z-20 pointer-events-none">
               <span
                 className={cn(

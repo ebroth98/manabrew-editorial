@@ -303,33 +303,33 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `Cost.java` | Cost container: parses cost strings, holds cost parts | **Partial** (`cost/mod.rs` parse_cost + spell cost extraction from SP$ lines) |
 | `CostPartMana.java` | Mana portion of costs | **Implemented** (`mana_pool.rs` try_pay) |
 | `CostPayment.java` | Cost payment orchestration | **Partial** (`game_loop.rs` pay_ability_cost + pay_additional_costs) |
-| `CostPart.java` | Abstract base for cost components | **Partial** (`cost/mod.rs` CostPart enum: Tap, Mana, PayLife, Sacrifice) |
+| `CostPart.java` | Abstract base for cost components | **Partial** (`cost/mod.rs` CostPart enum — 17 variants implemented) |
 | `CostPartWithList.java` | Cost part tracking affected cards | Not implemented |
 | `CostPartWithTrigger.java` | Cost part that fires triggers | Not implemented |
-| `CostTap.java` | Tap as cost | **Partial** (tap in `action.rs`) |
-| `CostUntap.java` | Untap as cost | Not implemented |
+| `CostTap.java` | Tap as cost | **Implemented** (`CostPart::Tap` in `cost/mod.rs`) |
+| `CostUntap.java` | Untap as cost | **Implemented** (`CostPart::Untap` in `cost/mod.rs`, `Q` token) |
 | `CostSacrifice.java` | Sacrifice as cost | **Implemented** (`cost/mod.rs` get_sacrifice_targets, `game_loop.rs` pay_sacrifice_cost) |
-| `CostPayLife.java` | Pay life as cost | Not implemented |
-| `CostPayEnergy.java` | Pay energy counters | Not implemented |
+| `CostPayLife.java` | Pay life as cost | **Implemented** (`CostPart::PayLife`, `PayLife<n>` token) |
+| `CostPayEnergy.java` | Pay energy counters | **Implemented** (`CostPart::PayEnergy`, `PayEnergy<n>` token; energy tracked on `PlayerState`) |
 | `CostPayShards.java` | Pay shard tokens | Not implemented |
-| `CostDiscard.java` | Discard as cost | Not implemented |
-| `CostExile.java` | Exile as cost | Not implemented |
+| `CostDiscard.java` | Discard as cost | **Implemented** (`CostPart::Discard`, `Discard<n/filter>` token) |
+| `CostExile.java` | Exile as cost | **Implemented** (`CostPart::Exile`, `Exile<n/filter>` / `ExileFromHand<>` / `ExileFromGrave<>` / `ExileFromTop<>`) |
 | `CostExileFromStack.java` | Exile from stack as cost | Not implemented |
-| `CostDamage.java` | Deal damage to self as cost | Not implemented |
-| `CostDraw.java` | Draw as cost | Not implemented |
-| `CostMill.java` | Mill as cost | Not implemented |
-| `CostReturn.java` | Return to hand as cost | Not implemented |
-| `CostReveal.java` | Reveal as cost | Not implemented |
-| `CostPutCounter.java` | Put counter as cost | Not implemented |
-| `CostRemoveCounter.java` | Remove counter as cost | Not implemented |
-| `CostRemoveAnyCounter.java` | Remove any counter as cost | Not implemented |
-| `CostTapType.java` | Tap matching permanent as cost | Not implemented |
-| `CostUntapType.java` | Untap matching permanent as cost | Not implemented |
-| `CostGainLife.java` | Opponent gains life as cost | Not implemented |
-| `CostGainControl.java` | Give control as cost | Not implemented |
+| `CostDamage.java` | Deal damage to self as cost | **Implemented** (`CostPart::DamageYou`, `DamageYou<n>` token) |
+| `CostDraw.java` | Draw as cost | **Implemented** (`CostPart::Draw`, `Draw<n>` token) |
+| `CostMill.java` | Mill as cost | **Implemented** (`CostPart::Mill`, `Mill<n>` token) |
+| `CostReturn.java` | Return to hand as cost | **Implemented** (`CostPart::Return`, `Return<n/filter>` token) |
+| `CostReveal.java` | Reveal as cost | **Implemented** (`CostPart::Reveal`, `Reveal<n/filter>` token; no-op state change) |
+| `CostPutCounter.java` | Put counter as cost | **Implemented** (`CostPart::AddCounter`, `AddCounter<n/type>` token) |
+| `CostRemoveCounter.java` | Remove counter as cost | **Implemented** (`CostPart::SubCounter`, `SubCounter<n/type/CARDNAME>` token) |
+| `CostRemoveAnyCounter.java` | Remove any counter as cost | **Implemented** (`CostPart::RemoveAnyCounter`, `RemoveAnyCounter<n/type/filter>` token) |
+| `CostTapType.java` | Tap matching permanent as cost | **Implemented** (`CostPart::TapType`, `tapXType<n/filter>` token) |
+| `CostUntapType.java` | Untap matching permanent as cost | **Implemented** (`CostPart::UntapType`, `untapYType<n/filter>` token) |
+| `CostGainLife.java` | Opponent gains life as cost | **Implemented** (`CostPart::GainLife`, `GainLife<n>` token) |
+| `CostGainControl.java` | Give control as cost | **Implemented** (`CostPart::GainControl`, `GainControl<n/filter>` token; calls `change_controller`) |
 | `CostFlipCoin.java` | Flip coin as cost | Not implemented |
 | `CostRollDice.java` | Roll dice as cost | Not implemented |
-| `CostExert.java` | Exert as cost | Not implemented |
+| `CostExert.java` | Exert as cost | **Implemented** (`CostPart::Exert`, `Exert<>` token; sets `card.exerted` flag) |
 | `CostEnlist.java` | Enlist as cost | Not implemented |
 | `CostForage.java` | Forage as cost | Not implemented |
 | `CostCollectEvidence.java` | Collect evidence as cost | Not implemented |
@@ -337,14 +337,14 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `CostChooseCreatureType.java` | Choose creature type as cost | Not implemented |
 | `CostPutCardToLib.java` | Put card to library as cost | Not implemented |
 | `CostAddMana.java` | Add mana to pool as cost | Not implemented |
-| `CostUnattach.java` | Unattach as cost | Not implemented |
+| `CostUnattach.java` | Unattach as cost | **Implemented** (`CostPart::Unattach`, `Unattach<>` token; calls `game.detach()`) |
 | `CostAdjustment.java` | Cost increase/decrease logic | Not implemented |
 | `CostBlight.java` | Blight as cost | Not implemented |
 | `CostBehold.java` | Behold as cost | Not implemented |
 | `CostBeholdExile.java` | Behold exile variant | Not implemented |
 | `CostPromiseGift.java` | Promise a gift as cost | Not implemented |
 | `CostRevealChosen.java` | Reveal chosen card as cost | Not implemented |
-| `CostExiledMoveToGrave.java` | Move exiled to graveyard as cost | Not implemented |
+| `CostExiledMoveToGrave.java` | Move exiled to graveyard as cost | **Implemented** (`CostPart::ExiledMoveToGrave`, `ExiledMoveToGrave<n/filter>` token) |
 | `CostWaterbend.java` | Waterbend as cost | Not implemented |
 | `CostDecisionMakerBase.java` | Base for AI cost decisions | Not implemented |
 | `ICostVisitor.java` | Visitor pattern for costs | Not implemented |
@@ -1238,29 +1238,11 @@ ReplaceDealtDamage, ReplaceLifeReduced, ReplacePayLife, ReplaceMill, ReplaceRemo
 
 ReplaceAttached, ReplaceBeginPhase, ReplaceBeginTurn, ReplaceExplore, ReplaceLearn, ReplaceLoseMana, ReplacePlanarDiceResult, ReplacePlaneswalk, ReplaceProliferate, ReplaceRollDice, ReplaceRollPlanarDice, ReplaceSetInMotion, ReplaceUntap, ReplaceAssembleContraption, ReplaceAssignDealDamage, ReplaceBehold, ReplaceBeholdExile, ReplaceDrawCards (full)
 
-### 23.8 Cost System — Missing
+### 23.8 Cost System
 
-**Implemented (5 types):** Mana (CostPartMana), Tap (CostTap), PayLife (partial), Sacrifice (CostSacrifice), Discard (CostDiscard — `CostPart::Discard` in `cost/mod.rs`, supports CARDNAME + type filter)
+**Implemented (21 types — all critical + all high priority from issue #57):** Mana, Tap, Untap (Q), PayLife, Sacrifice, Discard, Exile (battlefield/hand/graveyard/library), AddCounter (PutCounter), SubCounter (RemoveCounter), Return, TapType (tapXType), UntapType (untapYType), PayEnergy, DamageYou, Draw, Mill, Reveal, Exert, GainLife, GainControl, RemoveAnyCounter, Unattach, ExiledMoveToGrave — all in `cost/mod.rs` with payment logic in `game_action.rs`.
 
-#### Critical Missing (7 types)
-
-| Cost | Java File | Description |
-|------|-----------|-------------|
-| CostExile | `CostExile.java` | Exile cards as cost (Force of Will, Delve) |
-| CostPayLife | `CostPayLife.java` | Full life payment (Phyrexian mana, shocklands) |
-| CostPutCounter | `CostPutCounter.java` | Put counters as cost (Planeswalker loyalty) |
-| CostRemoveCounter | `CostRemoveCounter.java` | Remove counters as cost (Planeswalker minus) |
-| CostReturn | `CostReturn.java` | Return permanent to hand as cost (Ninjutsu) |
-| CostTapType | `CostTapType.java` | Tap other permanents as cost (Convoke, Crew) |
-| CostPayEnergy | `CostPayEnergy.java` | Pay energy counters |
-
-#### High Priority Missing (12 types)
-
-CostDamage, CostDraw, CostExert, CostGainControl, CostGainLife, CostMill, CostRemoveAnyCounter, CostReveal, CostUntap, CostUntapType, CostUnattach, CostExiledMoveToGrave
-
-#### Medium/Low Priority Missing (27 types)
-
-CostAddMana, CostAdjustment, CostBehold, CostBeholdExile, CostBlight, CostChooseColor, CostChooseCreatureType, CostCollectEvidence, CostDecisionMakerBase, CostEnlist, CostExileFromStack, CostFlipCoin, CostForage, CostPartWithList, CostPartWithTrigger, CostPayShards, CostPromiseGift, CostPutCardToLib, CostRevealChosen, CostRollDice, CostWaterbend, ICostVisitor, IndividualCostPaymentInstance, PaymentDecision
+**Still Missing (medium/low priority, not in issue #57):** CostAddMana, CostAdjustment, CostBehold, CostBeholdExile, CostBlight, CostChooseColor, CostChooseCreatureType, CostCollectEvidence, CostEnlist, CostExileFromStack, CostFlipCoin, CostForage, CostPayShards, CostPromiseGift, CostPutCardToLib, CostRevealChosen, CostRollDice, CostWaterbend
 
 ### 23.9 Combat System — Gaps
 

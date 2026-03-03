@@ -1,0 +1,15 @@
+{
+  "label": "Black Control",
+  "desc": "Removal + Evasive threats",
+  "color": "text-purple-400",
+  "opponent": "white_aggro",
+  "ai_eligible": true,
+  "order": 3,
+  "cards": [
+    { "name": "Swamp", "count": 17, "set": "akh" },
+    { "name": "Doom Blade", "count": 4, "set": "m14" },
+    { "name": "Dark Ritual", "count": 2, "set": "a25" },
+    { "name": "Hypnotic Specter", "count": 3, "set": "m10" },
+    { "name": "Sengir Vampire", "count": 2, "set": "m14" }
+  ]
+}

@@ -15,6 +15,7 @@ use forge_engine_core::card::{CardInstance, CardOtherPart};
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::ability::activated::parse_activated_ability;
 use forge_engine_core::replacement::parse_replacement_effect;
 use forge_engine_core::staticability::parse_static_ability;
 use forge_engine_core::trigger::parse_trigger;
@@ -22,353 +23,58 @@ use forge_foundation::ZoneType;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
 
+use serde::Deserialize;
+
 use crate::deck_generator;
 use crate::deterministic_agent::DeterministicAgent;
 use crate::java_random::JavaRandom;
 use crate::protocol::{GameTrace, MechanicSignal, StateSnapshot};
 use crate::snapshot::snapshot_game;
 
-// ── Preset Deck Lists ──────────────────────────────────────────────
-// Mirrored from src-tauri/src/preset_decks.rs so this crate is self-contained.
-// Each entry is (card_name, count).
+// ── Preset Deck Loading (from preset_decks/*.json) ───────────────
 
-const RED_BURN: &[(&str, usize)] = &[
-    ("Mountain", 17),
-    ("Lightning Bolt", 4),
-    ("Shock", 4),
-    ("Gray Ogre", 3),
-    ("Hill Giant", 3),
-    ("Guttersnipe", 3),
-];
+/// Default directory for preset deck JSON files (relative to CWD).
+pub const DEFAULT_DECKS_DIR: &str = "preset_decks";
 
-const GREEN_STOMPY: &[(&str, usize)] = &[
-    ("Forest", 17),
-    ("Giant Growth", 4),
-    ("Grizzly Bears", 3),
-    ("Centaur Courser", 2),
-    ("Garruk's Companion", 3),
-    ("Giant Spider", 2),
-    ("Wall of Ice", 2),
-    ("Craw Wurm", 2),
-];
-
-const WHITE_AGGRO: &[(&str, usize)] = &[
-    ("Plains", 17),
-    ("Savannah Lions", 4),
-    ("White Knight", 3),
-    ("Serra Angel", 3),
-    ("Soul Warden", 3),
-];
-
-const BLACK_CONTROL: &[(&str, usize)] = &[
-    ("Swamp", 17),
-    ("Doom Blade", 4),
-    ("Dark Ritual", 2),
-    ("Hypnotic Specter", 3),
-    ("Sengir Vampire", 2),
-];
-
-const COMPREHENSIVE_TEST: &[(&str, usize)] = &[
-    // Lands (18)
-    ("Forest", 3),
-    ("Island", 3),
-    ("Plains", 3), // was 2 + Command Tower (Combo ColorIdentity → unusable in non-Commander)
-    ("Mountain", 2),
-    ("Swamp", 3), // was 2 + Path of Ancestry (Combo ColorIdentity → unusable in non-Commander)
-    ("Breeding Pool", 1),
-    ("Hallowed Fountain", 1),
-    ("Temple of Mystery", 1),
-    ("Yavimaya Coast", 1),
-    // Keyword creatures (11)
-    ("Vampire Nighthawk", 1),
-    ("Serra Angel", 1),
-    ("Darksteel Myr", 1),
-    ("Boggart Brute", 1),
-    ("Glistener Elf", 1),
-    ("White Knight", 1),
-    ("Giant Spider", 1),
-    ("Llanowar Elves", 2),
-    ("Soul Warden", 1),
-    ("Guttersnipe", 1),
-    // ETB / explore / proliferate (4)
-    ("Merfolk Branchwalker", 1),
-    ("Jadelight Ranger", 1),
-    ("Elvish Visionary", 1), // was Mulldrifter (evoke: Rust uses evoke cost, Java uses main cost)
-    ("Thrummingbird", 1),
-    // Detain / goad / protection (3)
-    ("Lyev Skyknight", 1),
-    ("Gods Willing", 1),
-    ("Brave the Elements", 1),
-    // Damage / removal (4)
-    ("Lightning Bolt", 2),
-    ("Wrath of God", 1),
-    ("Doom Blade", 1),
-    ("Prey Upon", 1),
-    // Card advantage (4)
-    ("Ponder", 1),
-    ("Preordain", 1),
-    ("Thought Scour", 1),
-    ("Steady Progress", 1),
-    // Modal / draw / choice (3)
-    ("Izzet Charm", 1),
-    ("Divination", 1),
-    ("Control Magic", 1),
-    // Combat tricks / bounce / fog (3)
-    ("Giant Growth", 1),
-    ("Fog", 1),
-    ("Unsummon", 1),
-    // Tokens (3)
-    ("Raise the Alarm", 1),
-    ("Dragon Fodder", 1),
-    ("Lingering Souls", 1),
-    // Simple creatures / spells (6) — removed alt-cost cards that cause parity divergences
-    // (Evoke/Spectacle/Storm/Cascade are not handled uniformly by Java getBasicSpells)
-    ("Faithless Looting", 1), // flashback: both engines support graveyard cast
-    ("Goblin Bushwhacker", 1), // kicker is optional; base cost R always used
-    ("Volcanic Hammer", 1),   // was Skewer the Critics (spectacle R)
-    ("Shock", 1),             // was Grapeshot (storm)
-    ("Lightning Elemental", 1), // was Bloodbraid Elf (cascade)
-    ("Gray Ogre", 1),         // was Zurgo Bellstriker (dash 1R), simple 2/2
-    // Static anthems (2)
-    ("Glorious Anthem", 1),
-    ("Honor of the Pure", 1),
-];
-
-// Exercises ChangeZone (bounce/reanimate), Sacrifice effects.
-const ZONE_CHANGE: &[(&str, usize)] = &[
-    ("Swamp", 12),
-    ("Island", 4),
-    ("Unsummon", 4),
-    ("Boomerang", 2),
-    ("Raise Dead", 13),
-    ("Diabolic Edict", 3),
-    ("Innocent Blood", 3),
-    ("Typhoid Rats", 4),
-    ("Vampire Nighthawk", 3),
-    ("Doom Blade", 2),
-];
-
-// Exercises token creation (SP$ Token).
-const TOKEN_SWARM: &[(&str, usize)] = &[
-    ("Plains", 8),
-    ("Mountain", 8),
-    ("Raise the Alarm", 4),
-    ("Krenko's Command", 4),
-    ("Dragon Fodder", 4),
-    ("Savannah Lions", 4),
-    ("Lightning Bolt", 4),
-    ("Shock", 4),
-];
-
-// Exercises Counter, Discard, and ControlGain effects.
-const BLUE_CONTROL: &[(&str, usize)] = &[
-    ("Island", 17),
-    ("Counterspell", 4),
-    ("Cancel", 4),
-    ("Mind Rot", 4),
-    ("Control Magic", 3),
-    ("Mulldrifter", 3),
-    ("Divination", 4),
-    ("Wall of Ice", 4),
-    ("Sea Serpent", 4),
-];
-
-// Exercises Scry, Surveil, Mill, Dig, RearrangeTopOfLibrary.
-const LIBRARY_MANIPULATION: &[(&str, usize)] = &[
-    ("Island", 16),
-    ("Swamp", 4),
-    ("Preordain", 4),
-    ("Ponder", 4),
-    ("Thought Scour", 4),
-    ("Ransack the Lab", 4),
-    ("Taigam's Scheming", 2),
-    ("Notion Rain", 2),
-    ("Divination", 4),
-    ("Mulldrifter", 4),
-    ("Typhoid Rats", 4),
-    ("Doom Blade", 4),
-    ("Vampire Nighthawk", 4),
-];
-
-// Exercises Fight effects (Prey Upon, Ram Through).
-const GREEN_FIGHT: &[(&str, usize)] = &[
-    ("Forest", 17),
-    ("Prey Upon", 4),
-    ("Ram Through", 4),
-    ("Garruk's Companion", 4),
-    ("Centaur Courser", 4),
-    ("Giant Spider", 3),
-    ("Craw Wurm", 3),
-    ("Giant Growth", 4),
-    ("Grizzly Bears", 4),
-];
-
-// Exercises DestroyAll, DamageAll, PumpAll mass effects.
-const MASS_EFFECTS: &[(&str, usize)] = &[
-    ("Plains", 18),
-    ("Wrath of God", 4),
-    ("Pyroclasm", 4),
-    ("Righteous Charge", 4),
-    ("Rising Miasma", 4),
-    ("Savannah Lions", 4),
-    ("White Knight", 4),
-    ("Serra Angel", 4),
-    ("Darksteel Myr", 4),
-];
-
-// Exercises expanded trigger types (ETB, SpellCast, DamageDone, LifeGained).
-const TRIGGER_TEST: &[(&str, usize)] = &[
-    ("Plains", 10),
-    ("Mountain", 7),
-    ("Soul Warden", 7),
-    ("Guttersnipe", 7),
-    ("Savannah Lions", 4),
-    ("Serra Angel", 3),
-    ("Lightning Bolt", 4),
-    ("Shock", 4),
-    ("Raise the Alarm", 4),
-    ("Vampire Nighthawk", 3),
-    ("White Knight", 3),
-];
-
-// Exercises evasion & protection keywords (Hexproof, Menace, Infect, etc.).
-const KEYWORD_TEST: &[(&str, usize)] = &[
-    ("Swamp", 7),
-    ("Forest", 3),
-    ("Mountain", 3),
-    ("Island", 3),
-    ("Plague Stinger", 2),
-    ("Sickle Ripper", 2),
-    ("Rancid Rats", 2),
-    ("Severed Legion", 2),
-    ("Boggart Brute", 2),
-    ("Bladetusk Boar", 2),
-    ("Thalakos Sentry", 2),
-    ("Humble Budoka", 2),
-    ("Wardscale Crocodile", 2),
-    ("Zombie Outlander", 2),
-    ("Yavimaya Barbarian", 2),
-    ("Darksteel Myr", 2),
-];
-
-const TRIGGER_EXPANDED: &[(&str, usize)] = &[
-    ("Mountain", 7),
-    ("Forest", 5),
-    ("Swamp", 3),
-    ("Island", 3),
-    ("Plains", 2),
-    // AttackersDeclared
-    ("Roar of Resistance", 3),
-    ("Ruby Collector", 3),
-    // SpellCast
-    ("Guttersnipe", 3),
-    ("Young Pyromancer", 2),
-    // ChangesZone
-    ("Essence Warden", 3),
-    ("Impact Tremors", 2),
-    // DamageDoneOnce
-    ("Raptor Hatchling", 3),
-    ("Ranging Raptors", 2),
-    // ChangesZoneAll
-    ("Woodland Champion", 2),
-    // CounterAddedOnce
-    ("Nest of Scarabs", 2),
-    ("Stocking the Pantry", 2),
-    // Surveil
-    ("Thoughtbound Phantasm", 2),
-    ("Whispering Snitch", 2),
-    // DamageDoneOnce
-    ("Rite of Passage", 2),
-];
-
-// Static-ability focused test deck for parity.
-const STATICABILITY_TEST: &[(&str, usize)] = &[
-    // 5-color mana base to enable broad static cards.
-    ("Plains", 5),
-    ("Island", 5),
-    ("Swamp", 4),
-    ("Mountain", 4),
-    ("Forest", 4),
-    // Critical modes
-    ("Underworld Cerberus", 1),
-    ("Konda's Banner", 1),
-    ("Juggernaut", 1),
-    ("Watchdog", 1),
-    ("Panharmonicon", 1),
-    ("Platinum Emperion", 1),
-    ("Maralen of the Mornsong", 1),
-    ("Yasharn, Implacable Earth", 1),
-    ("Incinerate", 1),
-    ("Hushbringer", 1),
-    ("Solemnity", 1),
-    // High-priority modes
-    ("Winding Canyons", 1),
-    ("Silent Arbiter", 1),
-    ("Crawlspace", 1),
-    ("Glaring Spotlight", 1),
-    ("Autumn Willow", 1),
-    ("Brothers Yamazaki", 1),
-    ("Standard Bearer", 1),
-    ("Wolf Pack", 1),
-    ("Pygmy Hippo", 1),
-    ("Walking Bulwark", 1),
-    ("Patient Zero", 1),
-    ("Phyrexian Unlife", 1),
-    ("Everlasting Torment", 1),
-    ("Ghostly Flame", 1),
-    ("Skullbriar, the Walking Grave", 1),
-    ("Rasputin Dreamweaver", 1),
-    // Support cards
-    ("Lightning Bolt", 2),
-    ("Shock", 2),
-    ("Unsummon", 2),
-    ("Doom Blade", 2),
-    ("Raise the Alarm", 2),
-    ("Typhoid Rats", 2),
-    ("Vampire Nighthawk", 2),
-];
-
-/// Resolve a preset deck name to a card list.
-fn get_preset_deck(name: &str) -> Option<&'static [(&'static str, usize)]> {
-    match name {
-        "red_burn" => Some(RED_BURN),
-        "green_stompy" => Some(GREEN_STOMPY),
-        "white_aggro" => Some(WHITE_AGGRO),
-        "black_control" => Some(BLACK_CONTROL),
-        "comprehensive_test" => Some(COMPREHENSIVE_TEST),
-        "zone_change" => Some(ZONE_CHANGE),
-        "token_swarm" => Some(TOKEN_SWARM),
-        "blue_control" => Some(BLUE_CONTROL),
-        "library_manipulation" => Some(LIBRARY_MANIPULATION),
-        "green_fight" => Some(GREEN_FIGHT),
-        "mass_effects" => Some(MASS_EFFECTS),
-        "trigger_test" => Some(TRIGGER_TEST),
-        "keyword_test" => Some(KEYWORD_TEST),
-        "trigger_expanded" => Some(TRIGGER_EXPANDED),
-        "staticability_test" => Some(STATICABILITY_TEST),
-        _ => None,
-    }
+/// JSON schema for a single card entry in a preset deck file.
+#[derive(Debug, Deserialize)]
+struct DeckCardEntry {
+    name: String,
+    count: usize,
 }
 
-/// All available preset deck IDs.
-pub fn available_presets() -> Vec<&'static str> {
-    vec![
-        "red_burn",
-        "green_stompy",
-        "white_aggro",
-        "black_control",
-        "comprehensive_test",
-        "zone_change",
-        "token_swarm",
-        "blue_control",
-        "library_manipulation",
-        "green_fight",
-        "mass_effects",
-        "trigger_test",
-        "keyword_test",
-        "trigger_expanded",
-        "staticability_test",
-    ]
+/// JSON schema for a preset deck file (only the fields parity needs).
+#[derive(Debug, Deserialize)]
+struct PresetDeckFile {
+    cards: Vec<DeckCardEntry>,
+}
+
+/// Load a preset deck from `{decks_dir}/{name}.json`, returning (card_name, count) pairs.
+fn load_preset_deck(name: &str, decks_dir: &str) -> Result<Vec<(String, usize)>, String> {
+    let path = std::path::Path::new(decks_dir).join(format!("{}.json", name));
+    let contents = std::fs::read_to_string(&path)
+        .map_err(|e| format!("Failed to read preset deck '{}': {}", path.display(), e))?;
+    let deck: PresetDeckFile = serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to parse '{}': {}", path.display(), e))?;
+    Ok(deck.cards.into_iter().map(|c| (c.name, c.count)).collect())
+}
+
+/// All available preset deck IDs, derived from JSON files in `decks_dir`.
+pub fn available_presets(decks_dir: &str) -> Vec<String> {
+    let dir = std::path::Path::new(decks_dir);
+    let mut names = Vec::new();
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("json") {
+                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+                    names.push(stem.to_string());
+                }
+            }
+        }
+    }
+    names.sort();
+    names
 }
 
 /// Resolve a deck spec string to a list of (card_name, count) pairs.
@@ -376,21 +82,14 @@ pub fn available_presets() -> Vec<&'static str> {
 /// Supports:
 /// - `"inline:Name*Count|Name*Count|..."` — inline deck specification
 /// - `"file:/path/to/deck.txt"` — load from a text file (one `Count CardName` per line)
-/// - `"red_burn"` etc. — preset deck name lookup
-pub fn resolve_deck_spec(spec: &str) -> Result<Vec<(String, usize)>, String> {
+/// - `"red_burn"` etc. — preset deck name lookup from `decks_dir`
+pub fn resolve_deck_spec(spec: &str, decks_dir: &str) -> Result<Vec<(String, usize)>, String> {
     if let Some(inline) = spec.strip_prefix("inline:") {
         deck_generator::parse_inline(inline)
     } else if let Some(path) = spec.strip_prefix("file:") {
         parse_deck_file(path)
     } else {
-        let preset = get_preset_deck(spec).ok_or_else(|| {
-            format!(
-                "Unknown deck '{}'. Available: {:?}",
-                spec,
-                available_presets()
-            )
-        })?;
-        Ok(preset.iter().map(|(n, c)| (n.to_string(), *c)).collect())
+        load_preset_deck(spec, decks_dir)
     }
 }
 
@@ -435,16 +134,64 @@ fn parse_deck_file(path: &str) -> Result<Vec<(String, usize)>, String> {
 
 // ── Card Instance Builder ──────────────────────────────────────────
 // Replicates card_rules_to_instance from src-tauri/src/card_db.rs.
+// IMPORTANT: Keep in sync with card_db.rs when adding new keyword/trigger logic.
+
+/// Parse `Mode$ AlternativeCost | Cost$ GainLife<N/...> | IsPresent$ ...` from a
+/// static ability raw string and return `Some("AltCostGainLife:N:condition")` keyword.
+fn parse_gainlife_alt_cost_keyword(raw: &str) -> Option<String> {
+    if !raw.contains("AlternativeCost") {
+        return None;
+    }
+    let life_amount = raw.split('|').find_map(|part| {
+        let p = part.trim();
+        if let Some(rest) = p.strip_prefix("Cost$") {
+            let cost = rest.trim();
+            if let Some(inner) = cost.strip_prefix("GainLife<").and_then(|s| s.split('>').next()) {
+                let n = inner.split('/').next().and_then(|s| s.trim().parse::<i32>().ok())?;
+                return Some(n);
+            }
+        }
+        None
+    })?;
+    let condition = raw.split('|').find_map(|part| {
+        let p = part.trim();
+        p.strip_prefix("IsPresent$").map(|s| s.trim().to_string())
+    }).unwrap_or_default();
+    Some(format!("AltCostGainLife:{}:{}", life_amount, condition))
+}
 
 fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstance {
     let face = &rules.main_part;
     let mut next_trigger_id = 0u32;
 
-    let triggers: Vec<_> = face
-        .triggers
-        .iter()
-        .filter_map(|raw| parse_trigger(raw, &mut next_trigger_id))
-        .collect();
+    let mut triggers: Vec<_> = Vec::new();
+    let mut spell_cast_or_copy_raw: Vec<String> = Vec::new();
+    for raw in &face.triggers {
+        let result = parse_trigger(raw, &mut next_trigger_id);
+        if let Some(trig) = result {
+            triggers.push(trig);
+            if raw.contains("Mode$ SpellCastOrCopy") {
+                spell_cast_or_copy_raw.push(raw.clone());
+            }
+        }
+    }
+    for raw in &spell_cast_or_copy_raw {
+        let converted = raw.replace("Mode$ SpellCastOrCopy", "Mode$ SpellCopied");
+        if let Some(trig) = parse_trigger(&converted, &mut next_trigger_id) {
+            triggers.push(trig);
+        }
+    }
+
+    // Auto-generate keyword triggers (e.g. Prowess)
+    for kw in &face.keywords {
+        if kw == "Prowess" {
+            let raw = "Mode$ SpellCast | ValidCard$ Card.nonCreature | ValidActivatingPlayer$ You | Execute$ TrigProwess | TriggerZones$ Battlefield | TriggerDescription$ Prowess";
+            if let Some(mut trig) = parse_trigger(raw, &mut next_trigger_id) {
+                trig.execute = "TrigProwess".to_string();
+                triggers.push(trig);
+            }
+        }
+    }
 
     let mut card = CardInstance::new(
         CardId(0),
@@ -459,10 +206,49 @@ fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstance {
         face.abilities.clone(),
     );
 
+    // Auto-generate intrinsic mana abilities for basic land subtypes.
+    const SUBTYPE_MANA: &[(&str, &str, &str)] = &[
+        ("Plains", "W", "Add {W}."),
+        ("Island", "U", "Add {U}."),
+        ("Swamp", "B", "Add {B}."),
+        ("Mountain", "R", "Add {R}."),
+        ("Forest", "G", "Add {G}."),
+    ];
+    for &(subtype, letter, desc) in SUBTYPE_MANA {
+        if card.type_line.has_subtype(subtype) {
+            let already_produces = card.activated_abilities.iter().any(|ab| {
+                ab.is_mana_ability && ab.params.get("Produced").map_or(false, |p| p == letter)
+            });
+            if !already_produces {
+                let raw = format!(
+                    "AB$ Mana | Cost$ T | Produced$ {} | SpellDescription$ {}",
+                    letter, desc
+                );
+                let idx = card.abilities.len();
+                card.abilities.push(raw.clone());
+                if let Some(ab) = parse_activated_ability(&raw, idx) {
+                    card.activated_abilities.push(ab);
+                }
+            }
+        }
+    }
+
     card.triggers = triggers;
     card.svars = face.svars.clone();
 
+    // Inject Prowess SVar
+    if face.keywords.iter().any(|k| k == "Prowess") && !card.svars.contains_key("TrigProwess") {
+        card.svars.insert(
+            "TrigProwess".to_string(),
+            "DB$ Pump | Defined$ Self | NumAtt$ 1 | NumDef$ 1".to_string(),
+        );
+    }
+
     for raw in &face.static_abilities {
+        // Convert Mode$ AlternativeCost | Cost$ GainLife<N> to keyword for runtime detection.
+        if let Some(kw) = parse_gainlife_alt_cost_keyword(raw) {
+            card.keywords.push(kw);
+        }
         let prefixed = format!("S$ {}", raw);
         if let Some(sa) = parse_static_ability(&prefixed) {
             card.static_abilities.push(sa);
@@ -749,9 +535,10 @@ impl PlayerAgent for CapturingAgent {
         player: PlayerId,
         description: &str,
         card_name: Option<&str>,
+        api: Option<&str>,
     ) -> bool {
         self.inner
-            .choose_optional_trigger(player, description, card_name)
+            .choose_optional_trigger(player, description, card_name, api)
     }
 
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool> {
@@ -796,6 +583,7 @@ pub struct RunConfig {
     pub seed: u64,
     pub max_turns: u32,
     pub cards_dir: Option<String>,
+    pub decks_dir: Option<String>,
     pub verbose: bool,
     pub prefer_actions: bool,
 }
@@ -856,9 +644,10 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
 
 /// Run a game using pre-loaded data (avoids reloading the DB for each matchup).
 pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace, String> {
-    // Resolve deck lists — supports both preset names and inline: specs
-    let deck1_spec = resolve_deck_spec(&config.deck1)?;
-    let deck2_spec = resolve_deck_spec(&config.deck2)?;
+    // Resolve deck lists — supports preset names, inline: specs, and file: specs
+    let decks_dir = config.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+    let deck1_spec = resolve_deck_spec(&config.deck1, decks_dir)?;
+    let deck2_spec = resolve_deck_spec(&config.deck2, decks_dir)?;
 
     // Set up game
     let p0 = PlayerId(0);

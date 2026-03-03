@@ -259,17 +259,31 @@ impl GameLoop {
         );
     }
 
-    /// Discard N cards from hand (alphabetical, deterministic) and fire Discarded triggers.
+    /// Discard N cards from hand via agent choice and fire Discarded triggers.
+    /// Mirrors Java's `CostDiscard.doListPayment()`.
     fn pay_discard_cost(
         &mut self,
         game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
-        _type_filter: &str,
+        type_filter: &str,
         amount: i32,
     ) {
-        let mut hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, player).to_vec();
-        hand.sort_by_key(|&cid| game.card(cid).card_name.clone());
-        for &cid in hand.iter().take(amount as usize) {
+        // Build eligible hand cards — filtered by type if the cost specifies it.
+        let eligible: Vec<CardId> = if type_filter == "Card" || type_filter.is_empty() {
+            game.cards_in_zone(ZoneType::Hand, player).to_vec()
+        } else {
+            game.cards_in_zone(ZoneType::Hand, player)
+                .iter()
+                .copied()
+                .filter(|&cid| {
+                    crate::ability::effects::matches_change_type(game.card(cid), type_filter, &[])
+                })
+                .collect()
+        };
+        // Let the agent choose which cards to discard.
+        let chosen = agents[player.index()].choose_discard(player, &eligible, amount as usize);
+        for cid in chosen {
             let owner = game.card(cid).owner;
             self.trigger_handler.run_trigger(
                 TriggerType::Discarded,
@@ -281,10 +295,16 @@ impl GameLoop {
                 false,
             );
             game.move_card(cid, ZoneType::Graveyard, owner);
+            crate::ability::effects::emit_zone_trigger(
+                &mut self.trigger_handler,
+                cid,
+                ZoneType::Hand,
+                ZoneType::Graveyard,
+            );
         }
     }
 
-    /// Pay the cost parts of an activated ability (tap, mana, life, sacrifice).
+    /// Pay the cost parts of an activated ability (tap, mana, life, sacrifice, etc.).
     /// Mirrors Java's `CostPayment.payCost()` iterating over `CostPart`s.
     pub(crate) fn pay_ability_cost(
         &mut self,
@@ -294,8 +314,8 @@ impl GameLoop {
         card_id: CardId,
         cost: &crate::cost::Cost,
     ) {
-        for part in &cost.parts {
-            match part {
+        for part in cost.parts.clone() {
+            match &part {
                 CostPart::Tap => {
                     game.tap(card_id);
                     self.trigger_handler.run_trigger(
@@ -307,6 +327,9 @@ impl GameLoop {
                         },
                         false,
                     );
+                }
+                CostPart::Untap => {
+                    game.untap(card_id);
                 }
                 CostPart::Mana(mana_cost) => {
                     let tapped = mana::auto_tap_lands(
@@ -359,14 +382,137 @@ impl GameLoop {
                         );
                         game.move_card(card_id, ZoneType::Graveyard, owner);
                     } else {
-                        self.pay_discard_cost(game, player, type_filter, *amount);
+                        self.pay_discard_cost(game, agents, player, type_filter, *amount);
                     }
+                }
+                CostPart::ExileFromAnyGrave { amount, type_filter } => {
+                    self.pay_exile_from_any_grave_cost(game, agents, player, type_filter, *amount);
                 }
                 CostPart::SubCounter {
                     amount,
                     counter_type,
                 } => {
                     game.card_mut(card_id).remove_counter(counter_type, *amount);
+                }
+                CostPart::AddCounter {
+                    amount,
+                    counter_type,
+                } => {
+                    game.card_mut(card_id).add_counter(counter_type, *amount);
+                }
+                CostPart::Exile { amount, type_filter, from } => {
+                    if type_filter == "CARDNAME" {
+                        game.move_card(card_id, ZoneType::Exile, game.card(card_id).owner);
+                    } else {
+                        self.pay_exile_cost(game, agents, player, type_filter, *amount, *from);
+                    }
+                }
+                CostPart::Return { amount, type_filter } => {
+                    if type_filter == "CARDNAME" {
+                        let owner = game.card(card_id).owner;
+                        game.move_card(card_id, ZoneType::Hand, owner);
+                    } else {
+                        self.pay_return_cost(game, agents, player, type_filter, *amount);
+                    }
+                }
+                CostPart::TapType { amount, type_filter } => {
+                    self.pay_tap_type_cost(game, agents, player, card_id, type_filter, *amount);
+                }
+                CostPart::UntapType { amount, type_filter } => {
+                    self.pay_untap_type_cost(game, agents, player, card_id, type_filter, *amount);
+                }
+                CostPart::PayEnergy(amount) => {
+                    game.player_mut(player).energy_counters -= amount;
+                }
+                CostPart::DamageYou(amount) => {
+                    // Java CostDamage calls game.getAction().dealDamage() — use the
+                    // same path so damage prevention, replacement effects, and
+                    // DamageDone triggers all fire correctly.
+                    game.deal_damage_to_player(player, *amount);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::DamageDone,
+                        RunParams {
+                            damage_target_player: Some(player),
+                            damage_amount: Some(*amount),
+                            is_combat_damage: Some(false),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                CostPart::Draw(amount) => {
+                    for _ in 0..*amount {
+                        game.draw_card(player);
+                    }
+                }
+                CostPart::Mill(amount) => {
+                    for _ in 0..*amount {
+                        let lib: Vec<CardId> =
+                            game.cards_in_zone(ZoneType::Library, player).to_vec();
+                        if let Some(&top) = lib.first() {
+                            let owner = game.card(top).owner;
+                            game.move_card(top, ZoneType::Graveyard, owner);
+                            self.trigger_handler.run_trigger(
+                                TriggerType::Milled,
+                                RunParams {
+                                    card: Some(top),
+                                    player: Some(player),
+                                    ..Default::default()
+                                },
+                                false,
+                            );
+                            crate::ability::effects::emit_zone_trigger(
+                                &mut self.trigger_handler,
+                                top,
+                                ZoneType::Library,
+                                ZoneType::Graveyard,
+                            );
+                        }
+                    }
+                }
+                CostPart::Reveal { .. } => {
+                    // Reveal is a visible-information cost — no hidden state change.
+                    // In a full implementation we'd notify all players. No-op here.
+                }
+                CostPart::Exert => {
+                    // Exert: the creature doesn't untap during your next untap step.
+                    game.card_mut(card_id).exerted = true;
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Exerted,
+                        RunParams {
+                            card: Some(card_id),
+                            player: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                CostPart::GainLife(amount) => {
+                    // Opponent gains life
+                    let opponent = game.opponent_of(player);
+                    game.player_mut(opponent).gain_life(*amount);
+                }
+                CostPart::GainControl { amount, type_filter } => {
+                    self.pay_gain_control_cost(game, agents, player, type_filter, *amount);
+                }
+                CostPart::RemoveAnyCounter { amount, type_filter, counter_type } => {
+                    self.pay_remove_any_counter_cost(game, agents, player, type_filter, *amount, counter_type.as_ref());
+                }
+                CostPart::Unattach => {
+                    // Detach the source equipment from whatever it is equipping
+                    game.detach(card_id);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Unattached,
+                        RunParams {
+                            card: Some(card_id),
+                            player: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                CostPart::ExiledMoveToGrave { amount, type_filter } => {
+                    self.pay_exiled_move_to_grave_cost(game, agents, player, type_filter, *amount);
                 }
             }
         }
@@ -380,14 +526,14 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
-        _card_id: CardId,
+        card_id: CardId,
         spell_cost: &crate::cost::Cost,
     ) {
-        for part in &spell_cost.parts {
-            match part {
+        for part in spell_cost.parts.clone() {
+            match &part {
                 // Mana is already paid by play_card's main mana payment flow.
-                // Tap is not applicable to spell additional costs.
-                CostPart::Mana(_) | CostPart::Tap => {}
+                // Tap/Untap are not applicable to spell additional costs.
+                CostPart::Mana(_) | CostPart::Tap | CostPart::Untap => {}
                 CostPart::PayLife(amount) => {
                     self.pay_life_cost(game, player, *amount);
                 }
@@ -404,19 +550,423 @@ impl GameLoop {
                     amount,
                 } => {
                     if type_filter != "CARDNAME" {
-                        self.pay_discard_cost(game, player, type_filter, *amount);
+                        self.pay_discard_cost(game, agents, player, type_filter, *amount);
                     }
+                }
+                CostPart::ExileFromAnyGrave { amount, type_filter } => {
+                    self.pay_exile_from_any_grave_cost(game, agents, player, type_filter, *amount);
                 }
                 CostPart::SubCounter {
                     amount,
                     counter_type,
                 } => {
-                    // Spell additional counter payments also come from source permanent.
-                    // If source is not on battlefield, this is a no-op (can_pay guards this).
-                    if game.card(_card_id).zone == ZoneType::Battlefield {
-                        game.card_mut(_card_id).remove_counter(counter_type, *amount);
+                    if game.card(card_id).zone == ZoneType::Battlefield {
+                        game.card_mut(card_id).remove_counter(counter_type, *amount);
                     }
                 }
+                CostPart::AddCounter { amount, counter_type } => {
+                    if game.card(card_id).zone == ZoneType::Battlefield {
+                        game.card_mut(card_id).add_counter(counter_type, *amount);
+                    }
+                }
+                CostPart::Exile { amount, type_filter, from } => {
+                    if type_filter != "CARDNAME" {
+                        self.pay_exile_cost(game, agents, player, type_filter, *amount, *from);
+                    }
+                }
+                CostPart::Return { amount, type_filter } => {
+                    if type_filter != "CARDNAME" {
+                        self.pay_return_cost(game, agents, player, type_filter, *amount);
+                    }
+                }
+                CostPart::TapType { amount, type_filter } => {
+                    self.pay_tap_type_cost(game, agents, player, card_id, type_filter, *amount);
+                }
+                CostPart::UntapType { amount, type_filter } => {
+                    self.pay_untap_type_cost(game, agents, player, card_id, type_filter, *amount);
+                }
+                CostPart::PayEnergy(amount) => {
+                    game.player_mut(player).energy_counters -= amount;
+                }
+                CostPart::DamageYou(amount) => {
+                    // Java CostDamage calls game.getAction().dealDamage() — use the
+                    // same path so damage prevention, replacement effects, and
+                    // DamageDone triggers all fire correctly.
+                    game.deal_damage_to_player(player, *amount);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::DamageDone,
+                        RunParams {
+                            damage_target_player: Some(player),
+                            damage_amount: Some(*amount),
+                            is_combat_damage: Some(false),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                CostPart::Draw(amount) => {
+                    for _ in 0..*amount {
+                        game.draw_card(player);
+                    }
+                }
+                CostPart::Mill(amount) => {
+                    for _ in 0..*amount {
+                        let lib: Vec<CardId> =
+                            game.cards_in_zone(ZoneType::Library, player).to_vec();
+                        if let Some(&top) = lib.first() {
+                            let owner = game.card(top).owner;
+                            game.move_card(top, ZoneType::Graveyard, owner);
+                            self.trigger_handler.run_trigger(
+                                TriggerType::Milled,
+                                RunParams {
+                                    card: Some(top),
+                                    player: Some(player),
+                                    ..Default::default()
+                                },
+                                false,
+                            );
+                            crate::ability::effects::emit_zone_trigger(
+                                &mut self.trigger_handler,
+                                top,
+                                ZoneType::Library,
+                                ZoneType::Graveyard,
+                            );
+                        }
+                    }
+                }
+                CostPart::Reveal { .. } => {}
+                CostPart::Exert => {
+                    game.card_mut(card_id).exerted = true;
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Exerted,
+                        RunParams {
+                            card: Some(card_id),
+                            player: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                CostPart::GainLife(amount) => {
+                    let opponent = game.opponent_of(player);
+                    game.player_mut(opponent).gain_life(*amount);
+                }
+                CostPart::GainControl { amount, type_filter } => {
+                    self.pay_gain_control_cost(game, agents, player, type_filter, *amount);
+                }
+                CostPart::RemoveAnyCounter { amount, type_filter, counter_type } => {
+                    self.pay_remove_any_counter_cost(game, agents, player, type_filter, *amount, counter_type.as_ref());
+                }
+                CostPart::Unattach => {
+                    game.detach(card_id);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Unattached,
+                        RunParams {
+                            card: Some(card_id),
+                            player: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                CostPart::ExiledMoveToGrave { amount, type_filter } => {
+                    self.pay_exiled_move_to_grave_cost(game, agents, player, type_filter, *amount);
+                }
+            }
+        }
+    }
+
+    /// Exile `amount` cards from ANY player's graveyard matching `type_filter`.
+    /// Mirrors Java's CostExile with zoneMode=-1 (ExileAnyGrave).
+    pub(crate) fn pay_exile_from_any_grave_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            let valid: Vec<CardId> = game
+                .players
+                .iter()
+                .map(|p| p.id)
+                .flat_map(|pid| game.cards_in_zone(ZoneType::Graveyard, pid).to_vec())
+                .filter(|&cid| {
+                    type_filter == "Card"
+                        || type_filter.is_empty()
+                        || crate::ability::effects::matches_change_type(
+                            game.card(cid),
+                            type_filter,
+                            &[],
+                        )
+                })
+                .collect();
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                let owner = game.card(chosen).owner;
+                game.move_card(chosen, ZoneType::Exile, owner);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    ZoneType::Graveyard,
+                    ZoneType::Exile,
+                );
+            }
+        }
+    }
+
+    /// Exile `amount` cards from `zone` matching `type_filter` for `player`.
+    /// Mirrors Java's `CostExile.doListPayment()`.
+    pub(crate) fn pay_exile_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+        from: ZoneType,
+    ) {
+        for _ in 0..amount {
+            let valid = cost::get_zone_targets(game, player, from, type_filter);
+            if valid.is_empty() {
+                break;
+            }
+            // Use choose_sacrifice to pick target (reuse the choose interface)
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                let owner = game.card(chosen).owner;
+                game.move_card(chosen, ZoneType::Exile, owner);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    from,
+                    ZoneType::Exile,
+                );
+            }
+        }
+    }
+
+    /// Return `amount` permanents matching `type_filter` for `player` to hand.
+    /// Mirrors Java's `CostReturn.doListPayment()`.
+    pub(crate) fn pay_return_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            let valid = cost::get_sacrifice_targets(game, player, type_filter);
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                let owner = game.card(chosen).owner;
+                let from_zone = game.card(chosen).zone;
+                game.move_card(chosen, ZoneType::Hand, owner);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    from_zone,
+                    ZoneType::Hand,
+                );
+            }
+        }
+    }
+
+    /// Tap `amount` other permanents matching `type_filter` as cost.
+    /// Mirrors Java's `CostTapType.doListPayment()`.
+    pub(crate) fn pay_tap_type_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        source: CardId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            let valid = cost::get_tap_type_targets(game, player, type_filter, source);
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                game.tap(chosen);
+                self.trigger_handler.run_trigger(
+                    TriggerType::Taps,
+                    RunParams {
+                        card: Some(chosen),
+                        player: Some(player),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+        }
+    }
+
+    /// Untap `amount` tapped permanents matching `type_filter` as cost.
+    /// Mirrors Java's `CostUntapType.doListPayment()`.
+    pub(crate) fn pay_untap_type_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        source: CardId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            let valid: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Battlefield, player)
+                .to_vec()
+                .into_iter()
+                .filter(|&cid| {
+                    cid != source
+                        && game.card(cid).tapped
+                        && (type_filter == "Card"
+                            || type_filter.is_empty()
+                            || crate::ability::effects::matches_change_type(
+                                game.card(cid),
+                                type_filter,
+                                &[],
+                            ))
+                })
+                .collect();
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                game.untap(chosen);
+            }
+        }
+    }
+
+    /// Gain control of `amount` permanents matching `type_filter` as cost.
+    /// Mirrors Java's `CostGainControl.doPayment()` which calls `addTempController`.
+    pub(crate) fn pay_gain_control_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            // Rebuild valid list each iteration so already-controlled permanents are excluded.
+            let valid: Vec<CardId> = game
+                .players
+                .iter()
+                .map(|p| p.id)
+                .flat_map(|pid| game.cards_in_zone(ZoneType::Battlefield, pid).to_vec())
+                .filter(|&cid| {
+                    game.card(cid).controller != player
+                        && crate::ability::effects::matches_change_type(
+                            game.card(cid),
+                            type_filter,
+                            &[],
+                        )
+                })
+                .collect();
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                game.change_controller(chosen, player);
+            }
+        }
+    }
+
+    /// Remove `amount` counters (of `counter_type` or any type if None) from permanents
+    /// matching `type_filter` as cost. Mirrors Java's `CostRemoveAnyCounter.payAsDecided()`.
+    pub(crate) fn pay_remove_any_counter_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+        counter_type: Option<&crate::card::CounterType>,
+    ) {
+        for _ in 0..amount {
+            // Build candidates that have at least one counter of the required type.
+            let candidates: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Battlefield, player)
+                .to_vec()
+                .into_iter()
+                .filter(|&cid| {
+                    let matches_type = type_filter == "Permanent"
+                        || type_filter.is_empty()
+                        || crate::ability::effects::matches_change_type(
+                            game.card(cid),
+                            type_filter,
+                            &[],
+                        );
+                    if !matches_type {
+                        return false;
+                    }
+                    if let Some(ct) = counter_type {
+                        game.card(cid).counter_count(ct) > 0
+                    } else {
+                        !game.card(cid).counters.is_empty()
+                    }
+                })
+                .collect();
+            if candidates.is_empty() {
+                break;
+            }
+            // Let the agent choose which permanent to remove a counter from.
+            let chosen = agents[player.index()]
+                .choose_sacrifice(player, &candidates)
+                .unwrap_or(candidates[0]);
+            let ct_to_remove = if let Some(ct) = counter_type {
+                ct.clone()
+            } else {
+                // Pick first available counter type on the chosen card.
+                game.card(chosen).counters.keys().next().unwrap().clone()
+            };
+            game.card_mut(chosen).remove_counter(&ct_to_remove, 1);
+            self.trigger_handler.run_trigger(
+                TriggerType::CounterRemoved,
+                RunParams {
+                    card: Some(chosen),
+                    player: Some(player),
+                    counter_type: Some(format!("{:?}", ct_to_remove)),
+                    counter_amount: Some(1),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+    }
+
+    /// Move `amount` cards from exile to graveyard as cost.
+    /// Mirrors Java's `CostExiledMoveToGrave.doPayment()`.
+    pub(crate) fn pay_exiled_move_to_grave_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            let valid = cost::get_exiled_targets(game, type_filter);
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                let owner = game.card(chosen).owner;
+                game.move_card(chosen, ZoneType::Graveyard, owner);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    ZoneType::Exile,
+                    ZoneType::Graveyard,
+                );
             }
         }
     }

@@ -1,5 +1,25 @@
 use super::*;
 
+/// Check a Forge `IsPresent$` condition against the game state for the given player.
+///
+/// Supported forms:
+/// - `Forest.YouCtrl` — player controls a permanent with subtype Forest
+/// - Other forms default to `false` (conservatively unpayable).
+pub(crate) fn check_is_present(game: &GameState, player: PlayerId, condition: &str) -> bool {
+    // Handle "Type.YouCtrl" and similar
+    if let Some(type_part) = condition.strip_suffix(".YouCtrl") {
+        // Check if player controls a permanent matching type_part (treated as subtype)
+        return game
+            .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
+            .iter()
+            .any(|&cid| {
+                let card = game.card(cid);
+                card.type_line.has_subtype(type_part)
+            });
+    }
+    false
+}
+
 impl GameLoop {
     pub(crate) fn parse_spell_cost(abilities: &[String]) -> Option<crate::cost::Cost> {
         for ability in abilities {
@@ -148,6 +168,15 @@ impl GameLoop {
                     false
                 };
 
+                // GainLife alternative cost (e.g. Invigorate: free if you control a Forest
+                // and an opponent gains life as the alt cost).
+                let gainlife_alt_ok =
+                    if let Some((_life, condition)) = card.get_gainlife_alt_cost() {
+                        check_is_present(game, player, &condition)
+                    } else {
+                        false
+                    };
+
                 // Emerge: alt cost minus sacrificed creature's mana value
                 let emerge_ok = if let Some(emerge_cost_str) = card.get_emerge_cost() {
                     // Simplified: check if emerge base cost is affordable
@@ -176,6 +205,7 @@ impl GameLoop {
                     && !suspend_ok
                     && !foretell_exile_ok
                     && !emerge_ok
+                    && !gainlife_alt_ok
                 {
                     continue;
                 }
@@ -304,16 +334,37 @@ impl GameLoop {
             // Check for shock-land-style "pay life or enter tapped" before entering
             let etb_life_cost =
                 crate::staticability::layer::get_etb_unless_life_cost(game.card(card_id));
+            // Check for "reveal <type> from hand or enter tapped" (e.g. Wanderwine Hub)
+            let etb_reveal_cost =
+                crate::staticability::layer::get_etb_unless_reveal_cost(game.card(card_id));
 
             // Play land — goes directly to battlefield
             game.move_card(card_id, ZoneType::Battlefield, player);
+
+            // Handle "reveal or enter tapped" before the shock-land check
+            if let Some((_n, filter_str)) = etb_reveal_cost {
+                // Check if player has matching cards in hand to reveal
+                let type_name = filter_str.split('/').next().unwrap_or(&filter_str);
+                let has_matching = game
+                    .cards_in_zone(ZoneType::Hand, player)
+                    .iter()
+                    .any(|&cid| game.card(cid).type_line.has_subtype(type_name));
+                if has_matching {
+                    // Player can choose to reveal — DeterministicAgent always passes (no reveal)
+                    // to match Java DeterministicController which passes optional pays
+                    game.card_mut(card_id).tapped = true;
+                } else {
+                    // No matching card — must enter tapped
+                    game.card_mut(card_id).tapped = true;
+                }
+            }
 
             // Prompt for shock land life payment (after ETB so the card is on battlefield)
             if let Some(life_cost) = etb_life_cost {
                 let desc = format!("Pay {} life so {} enters untapped?", life_cost, card_name);
                 agents[player.index()].snapshot_state(game, &self.mana_pools);
                 let pay =
-                    agents[player.index()].choose_optional_trigger(player, &desc, Some(&card_name));
+                    agents[player.index()].choose_optional_trigger(player, &desc, Some(&card_name), None);
                 if pay {
                     // Player pays life — untap the card (it wasn't tapped by apply_etb_tapped
                     // since we removed the third pass, but ensure untapped state)
@@ -595,6 +646,30 @@ impl GameLoop {
                 false
             };
 
+            // Detect GainLife alternative cost (e.g. Invigorate):
+            // free cast when condition is met (opponent gains N life instead).
+            // Auto-selected when the condition holds — mirrors Java's behavior
+            // of preferring the cheaper/free option.
+            let is_gainlife_alt = if !is_flashback
+                && !is_foretell
+                && !is_spectacle
+                && !is_evoke
+                && !is_escape
+                && !is_overload
+                && !is_dash
+                && !is_blitz
+                && !is_madness
+                && !is_emerge
+            {
+                if let Some((_life, condition)) = game.card(card_id).get_gainlife_alt_cost() {
+                    check_is_present(game, player, &condition)
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
             // ── Foretell exile: special action, not a cast ────────────
             // If foretell card is in hand (not being cast from exile), offer to exile face-down for {2}.
             if !is_foretell
@@ -723,6 +798,10 @@ impl GameLoop {
             } else if is_emerge {
                 let emerge_cost_str = game.card(card_id).get_emerge_cost().unwrap();
                 forge_foundation::ManaCost::parse(&emerge_cost_str)
+            } else if is_gainlife_alt {
+                // GainLife alternative cost: cast for free (zero mana).
+                // The side effect (opponent gains life) is applied below.
+                forge_foundation::ManaCost::generic(0)
             } else {
                 game.card(card_id).mana_cost.clone()
             };
@@ -1051,6 +1130,14 @@ impl GameLoop {
                 }
             }
 
+            // Apply GainLife alternative cost side-effect: opponent gains N life.
+            if is_gainlife_alt {
+                if let Some((life_amount, _)) = game.card(card_id).get_gainlife_alt_cost() {
+                    let opp = game.opponent_of(player);
+                    game.player_mut(opp).life += life_amount;
+                }
+            }
+
             // Increment commander cast count (before moving card to stack)
             if is_commander_cast {
                 game.card_mut(card_id).commander_cast_count += 1;
@@ -1292,6 +1379,7 @@ impl GameLoop {
                 player,
                 &format!("Cascade: Cast {} without paying its mana cost?", card_name),
                 Some(&card_name),
+                None,
             );
 
             if wants_to_cast {

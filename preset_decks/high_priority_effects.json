@@ -1,0 +1,25 @@
+{
+  "label": "High Priority Effects",
+  "desc": "Proliferate + Explore + Goad + Detain",
+  "color": "text-yellow-400",
+  "opponent": "green_stompy",
+  "ai_eligible": false,
+  "order": 23,
+  "cards": [
+    { "name": "Island", "count": 5, "set": "akh" },
+    { "name": "Forest", "count": 5, "set": "akh" },
+    { "name": "Plains", "count": 4, "set": "akh" },
+    { "name": "Swamp", "count": 2, "set": "akh" },
+    { "name": "Thrummingbird", "count": 2, "set": "c16" },
+    { "name": "Steady Progress", "count": 2, "set": "mbs" },
+    { "name": "Merfolk Branchwalker", "count": 2, "set": "xln" },
+    { "name": "Jadelight Ranger", "count": 2, "set": "rix" },
+    { "name": "Disrupt Decorum", "count": 1, "set": "c17" },
+    { "name": "Lyev Skyknight", "count": 2, "set": "rtr" },
+    { "name": "Gods Willing", "count": 2, "set": "ths" },
+    { "name": "Brave the Elements", "count": 2, "set": "m14" },
+    { "name": "Ponder", "count": 3, "set": "m12" },
+    { "name": "Llanowar Elves", "count": 3, "set": "m19" },
+    { "name": "Serra Angel", "count": 2, "set": "m21" }
+  ]
+}

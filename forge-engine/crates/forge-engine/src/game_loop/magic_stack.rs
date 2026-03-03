@@ -136,6 +136,7 @@ impl GameLoop {
                                 player,
                                 &desc,
                                 Some(&card_name),
+                                None,
                             );
                             if !accept {
                                 continue;
@@ -167,8 +168,26 @@ impl GameLoop {
                 // Check for shock-land-style "pay life or enter tapped" before entering
                 let etb_life_cost =
                     crate::staticability::layer::get_etb_unless_life_cost(game.card(card_id));
+                // Check for "reveal <type> from hand or enter tapped"
+                let etb_reveal_cost =
+                    crate::staticability::layer::get_etb_unless_reveal_cost(game.card(card_id));
 
                 game.move_card(card_id, ZoneType::Battlefield, player);
+
+                // Handle reveal-or-enter-tapped
+                if let Some((_n, filter_str)) = etb_reveal_cost {
+                    let type_name = filter_str.split('/').next().unwrap_or(&filter_str).to_string();
+                    let has_matching = game
+                        .cards_in_zone(ZoneType::Hand, player)
+                        .iter()
+                        .any(|&cid| game.card(cid).type_line.has_subtype(&type_name));
+                    if !has_matching {
+                        game.card_mut(card_id).tapped = true;
+                    } else {
+                        // DeterministicAgent always passes optional reveals (enter tapped)
+                        game.card_mut(card_id).tapped = true;
+                    }
+                }
 
                 // Prompt for shock land life payment
                 if let Some(life_cost) = etb_life_cost {
@@ -176,7 +195,7 @@ impl GameLoop {
                     let desc = format!("Pay {} life so {} enters untapped?", life_cost, cname);
                     agents[player.index()].snapshot_state(game, &self.mana_pools);
                     let pay =
-                        agents[player.index()].choose_optional_trigger(player, &desc, Some(&cname));
+                        agents[player.index()].choose_optional_trigger(player, &desc, Some(&cname), None);
                     if pay {
                         game.card_mut(card_id).tapped = false;
                         game.player_mut(player).lose_life(life_cost);

@@ -82,6 +82,30 @@ pub fn get_token_db() -> &'static CardDatabase {
 ///
 /// The `CardId` inside the returned instance is a placeholder (0); the real
 /// ID is assigned by `game.create_card()`.
+/// Parse `Mode$ AlternativeCost | Cost$ GainLife<N/...> | IsPresent$ ...` from a
+/// static ability raw string and return `Some("AltCostGainLife:N:condition")` keyword.
+fn parse_gainlife_alt_cost_keyword(raw: &str) -> Option<String> {
+    if !raw.contains("AlternativeCost") {
+        return None;
+    }
+    let life_amount = raw.split('|').find_map(|part| {
+        let p = part.trim();
+        if let Some(rest) = p.strip_prefix("Cost$") {
+            let cost = rest.trim();
+            if let Some(inner) = cost.strip_prefix("GainLife<").and_then(|s| s.split('>').next()) {
+                let n = inner.split('/').next().and_then(|s| s.trim().parse::<i32>().ok())?;
+                return Some(n);
+            }
+        }
+        None
+    })?;
+    let condition = raw.split('|').find_map(|part| {
+        let p = part.trim();
+        p.strip_prefix("IsPresent$").map(|s| s.trim().to_string())
+    }).unwrap_or_default();
+    Some(format!("AltCostGainLife:{}:{}", life_amount, condition))
+}
+
 pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstance {
     let face = &rules.main_part;
     let mut next_trigger_id = 0u32;
@@ -181,6 +205,10 @@ pub fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstanc
     // in Forge card scripts).  The parser strips the "S:" key and stores only the
     // value, so we re-prefix with "S$ " to match parse_static_ability's format.
     for raw in &face.static_abilities {
+        // Convert Mode$ AlternativeCost | Cost$ GainLife<N> to a keyword for runtime detection.
+        if let Some(kw) = parse_gainlife_alt_cost_keyword(raw) {
+            card.keywords.push(kw);
+        }
         let prefixed = format!("S$ {}", raw);
         if let Some(sa) = parse_static_ability(&prefixed) {
             card.static_abilities.push(sa);

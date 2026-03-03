@@ -264,7 +264,17 @@ impl GameLoop {
             }
         }
 
-        game.untap_all(active);
+        // Untap permanents, skipping exerted ones and resetting their flag.
+        let cards: Vec<crate::ids::CardId> =
+            game.cards_in_zone(ZoneType::Battlefield, active).to_vec();
+        for cid in cards {
+            if game.card(cid).exerted {
+                // Exerted creatures don't untap this turn; reset flag so they untap next turn.
+                game.card_mut(cid).exerted = false;
+            } else {
+                game.untap(cid);
+            }
+        }
         self.pool_mut(active).empty();
     }
 
@@ -386,44 +396,35 @@ impl GameLoop {
                 })
                 .collect();
 
-            let mut accumulated: Vec<CardId> = Vec::new();
-            let picked = loop {
-                agents[active.index()].snapshot_state(game, &self.mana_pools);
-                self.game_log.log(
-                    GameLogEntryType::PriorityWaiting,
-                    2,
-                    format!(
-                        "Waiting for {} attacker declaration",
-                        game.player(active).name
-                    ),
-                );
-                let agent = &mut agents[active.index()];
-                let picked = agent.choose_attackers(active, &available_attackers);
-                self.game_log.log(
-                    GameLogEntryType::PriorityResponse,
-                    2,
-                    format!(
-                        "{} declared {} attacker(s)",
-                        game.player(active).name,
-                        picked.len()
-                    ),
-                );
+            agents[active.index()].snapshot_state(game, &self.mana_pools);
+            self.game_log.log(
+                GameLogEntryType::PriorityWaiting,
+                2,
+                format!(
+                    "Waiting for {} attacker declaration",
+                    game.player(active).name
+                ),
+            );
+            let agent = &mut agents[active.index()];
+            let mut picked = agent.choose_attackers(active, &available_attackers);
+            self.game_log.log(
+                GameLogEntryType::PriorityResponse,
+                2,
+                format!(
+                    "{} declared {} attacker(s)",
+                    game.player(active).name,
+                    picked.len()
+                ),
+            );
 
-                // Java retries attacker declaration until "must attack" constraints
-                // are satisfied; each retry can preserve previously-declared attackers
-                // on the same combat object. Mirror that by accumulating picks.
-                for cid in picked {
-                    if !accumulated.contains(&cid) {
-                        accumulated.push(cid);
-                    }
+            // Mirror Java's validateAttackers + getLegalAttackers fallback:
+            // if must-attack creatures were not included by the agent, add them
+            // directly without re-calling the agent (no extra RNG consumption).
+            for &must in &must_attackers {
+                if !picked.contains(&must) {
+                    picked.push(must);
                 }
-                let must_attack_satisfied = must_attackers
-                    .iter()
-                    .all(|cid| accumulated.contains(cid));
-                if must_attack_satisfied {
-                    break accumulated;
-                }
-            };
+            }
             picked
         };
         // AttackRestrict: enforce global maximum attackers.
@@ -738,6 +739,7 @@ impl GameLoop {
                 controller,
                 &desc,
                 Some(&attacker.card_name),
+                None,
             ) {
                 choices.insert(attacker_id);
             }

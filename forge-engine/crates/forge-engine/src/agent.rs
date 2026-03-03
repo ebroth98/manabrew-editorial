@@ -190,6 +190,7 @@ pub trait PlayerAgent {
     /// Choose whether an optional triggered ability fires.
     /// `description` is the trigger text shown to the player.
     /// `card_name` is the name of the source card (for UI display).
+    /// `api` is the spell ability API type (e.g. "Pump", "PumpAll", "DealDamage").
     /// Returns true to allow the trigger, false to decline.
     /// Default: always allow (non-interactive agents accept all optional triggers).
     fn choose_optional_trigger(
@@ -197,6 +198,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         _description: &str,
         _card_name: Option<&str>,
+        _api: Option<&str>,
     ) -> bool {
         true
     }

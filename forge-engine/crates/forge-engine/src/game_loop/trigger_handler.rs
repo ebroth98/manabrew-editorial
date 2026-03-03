@@ -19,11 +19,15 @@ impl GameLoop {
                 .name
                 .clone();
             if pt.optional {
-                // Prompt the deciding player
+                // Prompt the deciding player, passing the SA's API type so AI agents
+                // can make informed decisions (e.g. Java's PumpAi declines optional
+                // non-targeted pump triggers).
+                let api = pt.entry.spell_ability.api.as_deref();
                 let accepted = agents[pt.decider.index()].choose_optional_trigger(
                     pt.decider,
                     &pt.description,
                     Some(&source_name),
+                    api,
                 );
                 if !accepted {
                     continue; // Player declined the optional trigger

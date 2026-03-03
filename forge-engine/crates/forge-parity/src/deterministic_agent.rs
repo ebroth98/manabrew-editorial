@@ -461,6 +461,39 @@ impl PlayerAgent for DeterministicAgent {
         }
     }
 
+    // ── Trigger confirmation — mirrors Java AI brain logic (no RNG consumed) ──
+
+    fn choose_optional_trigger(
+        &mut self,
+        _player: PlayerId,
+        description: &str,
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        // Mirror Java's AI brain behavior for optional triggers:
+        // - PumpAi.doTriggerNoCost() returns NO for optional non-targeted pump
+        // - PumpAllAi inherits the same behavior
+        // This matches DeterministicController delegating confirmTrigger to the
+        // AI brain (PlayerControllerAi → AiController.doTrigger → SpellApiToAi).
+        let decline = matches!(api, Some("Pump" | "PumpAll"));
+        if decline {
+            self.log_decision(&format!(
+                "Optional trigger DECLINED (api={:?}): {} [{}]",
+                api,
+                description,
+                card_name.unwrap_or("?")
+            ));
+            return false;
+        }
+        self.log_decision(&format!(
+            "Optional trigger ACCEPTED (api={:?}): {} [{}]",
+            api,
+            description,
+            card_name.unwrap_or("?")
+        ));
+        true
+    }
+
     // ── Fixed overrides that sort alphabetically (matching Java) but use no RNG ──
 
     fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {

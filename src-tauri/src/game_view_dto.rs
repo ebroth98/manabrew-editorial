@@ -88,6 +88,8 @@ pub struct PlayerDto {
     pub mana_pool: HashMap<String, i32>,
     /// Commander damage received: source card id string → total damage.
     pub commander_damage: HashMap<String, i32>,
+    /// Energy counters (Kaladesh block).
+    pub energy_counters: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -125,6 +127,8 @@ pub struct CardDto {
     pub is_transformed: bool,
     /// True if this card is phased out (issue #22).
     pub phased_out: bool,
+    /// True if this creature has been exerted (won't untap next untap step).
+    pub exerted: bool,
     /// Flashback cost string, if the card has flashback (e.g. "1 R").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flashback_cost: Option<String>,
@@ -267,6 +271,7 @@ pub fn card_to_dto(
         kicker_cost: card.get_kicker_cost(),
         is_transformed: card.is_transformed,
         phased_out: card.phased_out,
+        exerted: card.exerted,
     }
 }
 
@@ -300,6 +305,7 @@ impl GameViewDto {
                 exile_count: game.cards_in_zone(ZoneType::Exile, pid).len(),
                 mana_pool: mana_pool_to_map(&pool),
                 commander_damage,
+                energy_counters: ps.energy_counters,
             });
         }
 

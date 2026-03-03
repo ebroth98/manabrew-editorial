@@ -443,6 +443,44 @@ fn check_is_present(game: &GameState, source_id: CardId, condition: &str) -> boo
     true
 }
 
+/// Check if a card has a "enters tapped unless you reveal a <type> from hand" effect.
+///
+/// Looks for `R:Event$ Moved | Destination$ Battlefield | ReplaceWith$ <SVar>`
+/// where the SVar is `DB$ Tap | ETB$ True | UnlessCost$ Reveal<N/Filter>`.
+///
+/// Returns `Some((n, filter))` if found (e.g. `Some((1, "Merfolk"))` for Wanderwine Hub).
+pub fn get_etb_unless_reveal_cost(card: &crate::card::CardInstance) -> Option<(i32, String)> {
+    for re in &card.replacement_effects {
+        if re.event != ReplacementType::Moved {
+            continue;
+        }
+        if re.params.get("Destination").map(|s| s.as_str()) != Some("Battlefield") {
+            continue;
+        }
+        if let Some(svar_name) = re.params.get("ReplaceWith") {
+            if svar_name == "ETBTapped" {
+                continue;
+            }
+            if let Some(svar_val) = card.svars.get(svar_name) {
+                if svar_val.contains("DB$ Tap") && svar_val.contains("ETB$ True") {
+                    // Parse reveal cost from "UnlessCost$ Reveal<N/Filter>"
+                    if let Some(pos) = svar_val.find("Reveal<") {
+                        let after = &svar_val[pos + 7..]; // skip "Reveal<"
+                        if let Some(end) = after.find('>') {
+                            let inner = &after[..end]; // "1/Merfolk" or "1/Filter"
+                            let mut parts = inner.splitn(2, '/');
+                            let n = parts.next().and_then(|s| s.trim().parse::<i32>().ok()).unwrap_or(1);
+                            let filter = parts.next().unwrap_or("").trim().to_string();
+                            return Some((n, filter));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

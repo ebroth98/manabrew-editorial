@@ -297,6 +297,10 @@ pub enum TriggerMode {
         valid_card: Option<String>,
         counter_type: Option<String>,
     },
+    /// A creature was exerted (Mirrors Java TriggerExerted).
+    Exerted {
+        valid_card: Option<String>,
+    },
 }
 
 /// Check an optional ValidCard$ filter against a card from RunParams.
@@ -575,7 +579,8 @@ impl TriggerMode {
             | TriggerMode::BecomesTargetOnce { valid_card }
             | TriggerMode::AttackerBlockedOnce { valid_card }
             | TriggerMode::AttackerUnblockedOnce { valid_card }
-            | TriggerMode::DamagePreventedOnce { valid_card } => {
+            | TriggerMode::DamagePreventedOnce { valid_card }
+            | TriggerMode::Exerted { valid_card } => {
                 check_card_filter(valid_card, run_params.card, host_card, host_controller, game)
             }
 
@@ -1274,6 +1279,10 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             let valid_card = params.get("ValidCard").cloned();
             let counter_type = params.get("CounterType").cloned();
             TriggerMode::CounterRemovedOnce { valid_card, counter_type }
+        }
+        "Exerted" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::Exerted { valid_card }
         }
         _ => return None,
     };

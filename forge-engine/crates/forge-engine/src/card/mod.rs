@@ -83,6 +83,7 @@ pub struct CardInstance {
     pub flipped: bool,
     pub face_down: bool,
     pub summoning_sick: bool,
+    pub exerted: bool,
     pub damage: i32,
 
     // Counters
@@ -274,6 +275,7 @@ impl CardInstance {
             flipped: false,
             face_down: false,
             summoning_sick: true,
+            exerted: false,
             damage: 0,
             counters: HashMap::new(),
             keywords,
@@ -502,6 +504,23 @@ impl CardInstance {
     /// Get spectacle cost (e.g. "Spectacle:B R" → Some("B R")).
     pub fn get_spectacle_cost(&self) -> Option<String> {
         self.get_keyword_cost("Spectacle")
+    }
+
+    /// Get GainLife alternative cost info.
+    ///
+    /// Stored as keyword `AltCostGainLife:N:IsPresent` where N is the life amount
+    /// and IsPresent is the condition string (e.g. `Forest.YouCtrl`).
+    /// Returns `Some((life_amount, condition))` if present.
+    pub fn get_gainlife_alt_cost(&self) -> Option<(i32, String)> {
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(rest) = kw.strip_prefix("AltCostGainLife:") {
+                let mut parts = rest.splitn(2, ':');
+                let amount = parts.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+                let condition = parts.next().unwrap_or("").to_string();
+                return Some((amount, condition));
+            }
+        }
+        None
     }
 
     /// Get evoke cost (e.g. "Evoke:2 B" → Some("2 B")).

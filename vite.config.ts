@@ -22,8 +22,7 @@ export default defineConfig({
       ? { protocol: "ws", host, port: 1421 }
       : undefined,
     watch: {
-      // don't watch src-tauri to avoid rebuild loops
-      ignored: ["**/src-tauri/**"],
+      ignored: ["**/src-tauri/**", '**/forge/**', '**/node_modules/**'],
     },
   },
 })

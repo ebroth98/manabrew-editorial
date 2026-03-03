@@ -99,7 +99,14 @@ impl GameState {
                         continue;
                     }
                     let ct = crate::ability::effects::parse_counter_type(counter_type);
-                    self.cards[card_id.index()].add_counter(&ct, amount);
+                    // Respect CantPutCounter (e.g. Solemnity) before placing ETB counters.
+                    if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                        &self.cards,
+                        &self.cards[card_id.index()],
+                        &ct,
+                    ) {
+                        self.cards[card_id.index()].add_counter(&ct, amount);
+                    }
                 }
                 return;
             }

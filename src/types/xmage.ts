@@ -34,6 +34,8 @@ export interface Card {
   isTransformed?: boolean;
   /** True if this card is phased out (treated as not on battlefield). */
   phasedOut?: boolean;
+  /** True if this creature has been exerted (won't untap next untap step). */
+  exerted?: boolean;
   /** Flashback cost string if the card has flashback (e.g. "1 R"). */
   flashbackCost?: string;
   /** Kicker cost string if the card has kicker (e.g. "W"). */
@@ -61,6 +63,8 @@ export interface Player {
   manaPool: Record<string, number>; // W, U, B, R, G, C
   /** Commander damage received: source card id → total damage. */
   commanderDamage?: Record<string, number>;
+  /** Energy counters (Kaladesh block). */
+  energyCounters?: number;
 }
 
 export interface Table {

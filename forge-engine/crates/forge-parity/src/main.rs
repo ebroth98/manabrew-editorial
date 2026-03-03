@@ -39,7 +39,7 @@ use forge_parity::protocol::{
     Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport, MechanicSignal,
 };
 use forge_parity::report;
-use forge_parity::runner::{self, available_presets, LoadedData, RunConfig};
+use forge_parity::runner::{self, available_presets, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
 
 #[derive(Parser, Debug)]
 #[command(
@@ -74,6 +74,10 @@ struct Cli {
     /// Path to the Forge card scripts directory
     #[arg(long)]
     cards_dir: Option<String>,
+
+    /// Path to the preset deck JSON files directory
+    #[arg(long)]
+    decks_dir: Option<String>,
 
     /// Output file path (stdout if not specified)
     #[arg(long, short)]
@@ -162,6 +166,7 @@ fn run_multi_game_mode(cli: &Cli) {
         let server_config = JavaServerConfig {
             jar_path: jar_path.clone(),
             forge_home: None,
+            decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
         };
         match JavaServer::spawn(&server_config) {
@@ -185,6 +190,7 @@ fn run_multi_game_mode(cli: &Cli) {
             seed,
             max_turns: cli.max_turns,
             cards_dir: cli.cards_dir.clone(),
+            decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
         };
@@ -257,12 +263,14 @@ fn run_multi_game_mode(cli: &Cli) {
         "json" => report::format_matrix_json(&report_data),
         _ => {
             let mut out = String::new();
-            out.push_str(&build_coverage_report(&cli.deck1, &cli.deck2, &report_data.results));
+            let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+            out.push_str(&build_coverage_report(&cli.deck1, &cli.deck2, &report_data.results, dd));
             out.push_str(&build_mechanics_report(
                 &cli.deck1,
                 &cli.deck2,
                 &report_data.results,
                 Some(&data.db),
+                dd,
             ));
             out.push_str(&report::format_matrix_text(&report_data));
             out
@@ -296,6 +304,7 @@ fn run_rust_only_mode(cli: &Cli) {
         seed: cli.seed,
         max_turns: cli.max_turns,
         cards_dir: cli.cards_dir.clone(),
+        decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
         prefer_actions: cli.prefer_actions,
     };
@@ -316,11 +325,12 @@ fn run_rust_only_mode(cli: &Cli) {
                 _ => report::format_trace_text(&trace),
             };
             if cli.format != "json" {
+                let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
                 output.push_str(&build_coverage_report_from_cards(
-                    &collect_unique_deck_cards(&cli.deck1, &cli.deck2),
+                    &collect_unique_deck_cards(&cli.deck1, &cli.deck2, dd),
                     &trace.covered_cards,
                 ));
-                let defs = collect_defined_mechanics(&cli.deck1, &cli.deck2, &data.db);
+                let defs = collect_defined_mechanics(&cli.deck1, &cli.deck2, &data.db, dd);
                 output.push_str(&build_mechanics_report_from_signals(
                     &trace.mechanic_signals,
                     Some(&defs),
@@ -354,6 +364,7 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
         seed: cli.seed,
         max_turns: cli.max_turns,
         cards_dir: cli.cards_dir.clone(),
+        decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
         prefer_actions: cli.prefer_actions,
     };
@@ -370,6 +381,7 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
     let server_config = JavaServerConfig {
         jar_path: jar_path.clone(),
         forge_home: None,
+        decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
     };
 
@@ -416,16 +428,19 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
         _ => report::format_text(&parity_report),
     };
     if cli.format != "json" {
+        let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
         output.push_str(&build_coverage_report(
             &cli.deck1,
             &cli.deck2,
             std::slice::from_ref(&result),
+            dd,
         ));
         output.push_str(&build_mechanics_report(
             &cli.deck1,
             &cli.deck2,
             std::slice::from_ref(&result),
             Some(&data.db),
+            dd,
         ));
     }
 
@@ -550,6 +565,7 @@ fn run_single_matchup_oneshot(
         deck1: config.deck1.clone(),
         deck2: config.deck2.clone(),
         forge_home: None,
+        decks_dir: config.decks_dir.clone(),
         verbose: config.verbose,
         prefer_actions: config.prefer_actions,
     };
@@ -785,16 +801,17 @@ impl ServerPool {
 }
 
 fn run_matrix_mode(cli: &Cli) {
+    let decks_dir = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
     let seeds = cli.seeds.clone().unwrap_or_else(|| vec![42, 100, 999]);
     let deck_names: Vec<String> = cli
         .decks
         .clone()
-        .unwrap_or_else(|| available_presets().into_iter().map(String::from).collect());
+        .unwrap_or_else(|| available_presets(decks_dir));
 
     // Validate deck names
-    let valid = available_presets();
+    let valid = available_presets(decks_dir);
     for d in &deck_names {
-        if !valid.contains(&d.as_str()) {
+        if !valid.contains(d) {
             eprintln!(
                 "[parity] Unknown deck '{}'. Available: {:?}",
                 d, valid
@@ -849,6 +866,7 @@ fn run_matrix_mode(cli: &Cli) {
         let server_config = JavaServerConfig {
             jar_path: jar_path.clone(),
             forge_home: None,
+            decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
         };
         match ServerPool::spawn(num_workers.max(1), &server_config) {
@@ -872,6 +890,7 @@ fn run_matrix_mode(cli: &Cli) {
                 seed,
                 max_turns: cli.max_turns,
                 cards_dir: cli.cards_dir.clone(),
+                decks_dir: cli.decks_dir.clone(),
                 verbose: cli.verbose,
                 prefer_actions: cli.prefer_actions,
             };
@@ -1041,6 +1060,7 @@ fn run_fuzz_mode(cli: &Cli) {
         let server_config = JavaServerConfig {
             jar_path: jar_path.clone(),
             forge_home: None,
+            decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
         };
         match JavaServer::spawn(&server_config) {
@@ -1081,6 +1101,7 @@ fn run_fuzz_mode(cli: &Cli) {
             seed: game_seed,
             max_turns: cli.max_turns,
             cards_dir: cli.cards_dir.clone(),
+            decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
         };
@@ -1096,6 +1117,7 @@ fn run_fuzz_mode(cli: &Cli) {
                 match JavaServer::spawn(&JavaServerConfig {
                     jar_path: cli.java_jar.as_ref().unwrap().clone(),
                     forge_home: None,
+                    decks_dir: cli.decks_dir.clone(),
                     verbose: cli.verbose,
                 }) {
                     Ok(new_srv) => {
@@ -1211,10 +1233,10 @@ fn write_output(cli: &Cli, output: &str) {
     }
 }
 
-fn collect_unique_deck_cards(deck1: &str, deck2: &str) -> Vec<String> {
+fn collect_unique_deck_cards(deck1: &str, deck2: &str, decks_dir: &str) -> Vec<String> {
     let mut cards: BTreeSet<String> = BTreeSet::new();
     for deck in [deck1, deck2] {
-        match runner::resolve_deck_spec(deck) {
+        match runner::resolve_deck_spec(deck, decks_dir) {
             Ok(spec) => {
                 for (name, _) in spec {
                     cards.insert(name);
@@ -1228,8 +1250,8 @@ fn collect_unique_deck_cards(deck1: &str, deck2: &str) -> Vec<String> {
     cards.into_iter().collect()
 }
 
-fn build_coverage_report(deck1: &str, deck2: &str, results: &[MatchupResult]) -> String {
-    let deck_cards = collect_unique_deck_cards(deck1, deck2);
+fn build_coverage_report(deck1: &str, deck2: &str, results: &[MatchupResult], decks_dir: &str) -> String {
+    let deck_cards = collect_unique_deck_cards(deck1, deck2, decks_dir);
     let mut covered: BTreeSet<String> = BTreeSet::new();
     for r in results {
         for c in &r.covered_cards {
@@ -1252,6 +1274,7 @@ fn build_mechanics_report(
     deck2: &str,
     results: &[MatchupResult],
     db: Option<&CardDatabase>,
+    decks_dir: &str,
 ) -> String {
     let mut aggregated: BTreeMap<String, usize> = BTreeMap::new();
     for r in results {
@@ -1263,7 +1286,7 @@ fn build_mechanics_report(
         .into_iter()
         .map(|(label, count)| MechanicSignal { label, count })
         .collect();
-    let defs = db.map(|card_db| collect_defined_mechanics(deck1, deck2, card_db));
+    let defs = db.map(|card_db| collect_defined_mechanics(deck1, deck2, card_db, decks_dir));
     build_mechanics_report_from_signals(&signals, defs.as_ref())
 }
 
@@ -1357,10 +1380,10 @@ fn coverage_line(label: &str, defined: &BTreeSet<String>, observed: &BTreeSet<St
     format!("{}: {}/{} ({:.1}%)\n", label, matched, total, pct)
 }
 
-fn collect_defined_mechanics(deck1: &str, deck2: &str, db: &CardDatabase) -> DefinedMechanics {
+fn collect_defined_mechanics(deck1: &str, deck2: &str, db: &CardDatabase, decks_dir: &str) -> DefinedMechanics {
     let mut card_names: BTreeSet<String> = BTreeSet::new();
     for deck in [deck1, deck2] {
-        match runner::resolve_deck_spec(deck) {
+        match runner::resolve_deck_spec(deck, decks_dir) {
             Ok(spec) => {
                 for (name, _) in spec {
                     card_names.insert(name);

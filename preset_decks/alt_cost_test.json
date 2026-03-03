@@ -1,0 +1,21 @@
+{
+  "label": "Alt Cost Test",
+  "desc": "Flashback + Kicker + Storm + Cascade",
+  "color": "text-orange-300",
+  "opponent": "red_burn",
+  "ai_eligible": false,
+  "order": 20,
+  "cards": [
+    { "name": "Mountain", "count": 10, "set": "akh" },
+    { "name": "Forest", "count": 4, "set": "akh" },
+    { "name": "Swamp", "count": 3, "set": "akh" },
+    { "name": "Faithless Looting", "count": 4, "set": "dka" },
+    { "name": "Think Twice", "count": 3, "set": "isd" },
+    { "name": "Lingering Souls", "count": 3, "set": "dka" },
+    { "name": "Goblin Bushwhacker", "count": 3, "set": "zen" },
+    { "name": "Grapeshot", "count": 3, "set": "tsp" },
+    { "name": "Bloodbraid Elf", "count": 3, "set": "arb" },
+    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
+    { "name": "Shock", "count": 4, "set": "m21" }
+  ]
+}

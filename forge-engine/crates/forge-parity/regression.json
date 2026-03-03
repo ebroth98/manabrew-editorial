@@ -1,6 +1,6 @@
 [
   {
     "name": "staticability",
-    "args": "--deck1 staticability_test --deck2 staticability_test --max-turns 30"
+    "args": "--deck1 staticability_test --deck2 staticability_test --max-turns 30 --seed 42"
   }
 ]

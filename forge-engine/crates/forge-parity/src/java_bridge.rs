@@ -29,6 +29,8 @@ pub struct JavaBridgeConfig {
     pub deck2: String,
     /// Path to the forge-gui/ assets directory (optional, auto-detected from JAR path).
     pub forge_home: Option<String>,
+    /// Path to the preset deck JSON files directory.
+    pub decks_dir: Option<String>,
     /// If true, print step-by-step Java bridge logs.
     pub verbose: bool,
     /// If true, bias main-phase random decisions toward actions over pass.
@@ -72,6 +74,15 @@ impl JavaBridge {
         let java_bin = resolve_java_bin(verbose);
 
         let mut cmd = Command::new(&java_bin);
+
+        // Pass preset decks directory as JVM system property (must come before -jar)
+        if let Some(ref dd) = self.config.decks_dir {
+            let abs = std::path::Path::new(dd)
+                .canonicalize()
+                .unwrap_or_else(|_| std::path::PathBuf::from(dd));
+            cmd.arg(format!("-Dpreset.decks.dir={}", abs.display()));
+        }
+
         cmd.arg("-jar")
             .arg(jar)
             .arg("--deck1")
@@ -197,6 +208,8 @@ pub struct JavaServerConfig {
     pub jar_path: PathBuf,
     /// Path to the forge-gui/ assets directory (optional, auto-detected from JAR path).
     pub forge_home: Option<String>,
+    /// Path to the preset deck JSON files directory (passed to Java as -Dpreset.decks.dir).
+    pub decks_dir: Option<String>,
     /// If true, print step-by-step Java server logs.
     pub verbose: bool,
 }
@@ -252,6 +265,18 @@ impl JavaServer {
         let java_bin = resolve_java_bin(verbose);
 
         let mut cmd = Command::new(&java_bin);
+
+        // Pass preset decks directory as JVM system property (must come before -jar)
+        if let Some(ref dd) = config.decks_dir {
+            let abs = std::path::Path::new(dd)
+                .canonicalize()
+                .unwrap_or_else(|_| std::path::PathBuf::from(dd));
+            cmd.arg(format!("-Dpreset.decks.dir={}", abs.display()));
+            if verbose {
+                eprintln!("[parity]   preset.decks.dir = {}", abs.display());
+            }
+        }
+
         cmd.arg("-jar").arg(jar).arg("--server");
 
         // Add --forge-home if specified, otherwise auto-detect from JAR path

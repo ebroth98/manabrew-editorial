@@ -20,7 +20,6 @@ import forge.game.combat.Combat;
 import forge.game.combat.CombatUtil;
 import forge.game.player.*;
 import forge.game.spellability.*;
-import forge.game.trigger.WrappedAbility;
 import forge.game.ability.ApiType;
 import forge.game.zone.ZoneType;
 import forge.util.collect.FCollectionView;
@@ -443,6 +442,15 @@ public class DeterministicController extends PlayerControllerAi {
     }
 
     // ── Confirmations ─────────────────────────────────────────────────
+    // NOTE: confirmAction and confirmTrigger are intentionally NOT overridden.
+    // The parent PlayerControllerAi delegates to the AI brain (getAi()) which
+    // has smart logic to decline optional triggers and actions that could cause
+    // infinite loops. Blindly returning true for all confirmations caused the
+    // Java engine to get stuck in infinite trigger/priority loops (e.g. when
+    // Standard Bearer's Flagbearer ability interacted with certain board states).
+    //
+    // The only exception is confirmAction for RearrangeTopOfLibrary (Ponder),
+    // where we must decline the shuffle to keep library order synchronized.
 
     @Override
     public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
@@ -454,14 +462,9 @@ public class DeterministicController extends PlayerControllerAi {
         if (sa != null && sa.getApi() == ApiType.RearrangeTopOfLibrary) {
             return false;
         }
-        // For all other confirmations: always confirm (no RNG consumed)
-        return true;
-    }
-
-    @Override
-    public boolean confirmTrigger(WrappedAbility sa) {
-        // Fixed: always accept triggers (no RNG consumed)
-        return true;
+        // Delegate to parent AI brain for all other confirmations.
+        // This avoids infinite loops from blindly accepting optional effects.
+        return super.confirmAction(sa, mode, message, options, cardToShow, params);
     }
 
     // ── Numbers & Colors ──────────────────────────────────────────────

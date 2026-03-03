@@ -418,6 +418,7 @@ impl TriggerHandler {
             TriggerMode::LifeGainedAll { .. } => TriggerType::LifeGained,
             TriggerMode::CounterAddedOnce { .. } => TriggerType::CounterAdded,
             TriggerMode::CounterRemovedOnce { .. } => TriggerType::CounterRemoved,
+            TriggerMode::Exerted { .. } => TriggerType::Exerted,
             TriggerMode::DiscardedAll { .. } => TriggerType::Discarded,
             TriggerMode::SacrificedOnce { .. } => TriggerType::Sacrificed,
             TriggerMode::ChangesZoneAll { .. } => TriggerType::ChangesZone,

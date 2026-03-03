@@ -1,0 +1,20 @@
+{
+  "label": "Replacement Test",
+  "desc": "Platinum Angel + Hardened Scales + Anointed Procession",
+  "color": "text-zinc-300",
+  "opponent": "red_burn",
+  "ai_eligible": false,
+  "order": 30,
+  "cards": [
+    { "name": "Plains", "count": 8, "set": "akh" },
+    { "name": "Forest", "count": 8, "set": "akh" },
+    { "name": "Island", "count": 4, "set": "akh" },
+    { "name": "Platinum Angel", "count": 3, "set": "m11" },
+    { "name": "Hardened Scales", "count": 3, "set": "ktk" },
+    { "name": "Anointed Procession", "count": 3, "set": "akh" },
+    { "name": "Loxodon Smiter", "count": 3, "set": "rtr" },
+    { "name": "Servant of the Scale", "count": 3, "set": "dtk" },
+    { "name": "Experiment One", "count": 2, "set": "gtc" },
+    { "name": "Raise the Alarm", "count": 3, "set": "m15" }
+  ]
+}

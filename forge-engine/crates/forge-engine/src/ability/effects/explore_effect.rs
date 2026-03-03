@@ -121,6 +121,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 controller,
                 &format!("Put {} into your graveyard?", card_name),
                 Some(&source_name),
+                None,
             );
 
             if put_in_gy {

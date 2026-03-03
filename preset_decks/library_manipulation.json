@@ -1,0 +1,23 @@
+{
+  "label": "Library Manipulation",
+  "desc": "Scry + Surveil + Mill + Dig",
+  "color": "text-blue-300",
+  "opponent": "red_burn",
+  "ai_eligible": true,
+  "order": 8,
+  "cards": [
+    { "name": "Island", "count": 16, "set": "akh" },
+    { "name": "Swamp", "count": 4, "set": "akh" },
+    { "name": "Preordain", "count": 4, "set": "m11" },
+    { "name": "Ponder", "count": 4, "set": "m12" },
+    { "name": "Thought Scour", "count": 4, "set": "dka" },
+    { "name": "Ransack the Lab", "count": 4, "set": "mh1" },
+    { "name": "Taigam's Scheming", "count": 2, "set": "ktk" },
+    { "name": "Notion Rain", "count": 2, "set": "grn" },
+    { "name": "Divination", "count": 4, "set": "m14" },
+    { "name": "Mulldrifter", "count": 4, "set": "mma" },
+    { "name": "Typhoid Rats", "count": 4, "set": "isd" },
+    { "name": "Doom Blade", "count": 4, "set": "m14" },
+    { "name": "Vampire Nighthawk", "count": 4, "set": "m13" }
+  ]
+}

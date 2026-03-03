@@ -1,27 +1,51 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_counter_type, parse_param, resolve_numeric_svar, EffectContext};
+use super::{parse_counter_type, parse_param, resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let counter_type = sa
+    let counter_type_str = sa
         .params
         .get("CounterType")
-        .map(|s| parse_counter_type(s))
-        .unwrap_or(CounterType::P1P1);
+        .map(|s| s.as_str())
+        .unwrap_or("P1P1");
+    let counter_type = parse_counter_type(counter_type_str);
     // Support SVar references for CounterNum (e.g. Count$Kicked.4.0 for kicker cards)
     let count = parse_param(&sa.ability_text, "CounterNum$ ")
         .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
+
+    // Resolve the controller of this ability (for Defined$ You etc.)
+    let controller = sa.source.map(|id| ctx.game.card(id).controller).unwrap_or_else(|| {
+        ctx.game.player_order[0]
+    });
+
+    // Check for Defined$ — if targeting a player (e.g. Defined$ You for energy),
+    // handle player-level counters like ENERGY instead of card counters.
+    if let Some(defined) = sa.params.get("Defined") {
+        if let Some(target_player) =
+            resolve_defined_player(defined, controller, ctx.game)
+        {
+            match counter_type_str.to_uppercase().as_str() {
+                "ENERGY" => {
+                    ctx.game.player_mut(target_player).energy_counters += count;
+                    return;
+                }
+                _ => {
+                    // Other player-level counters (e.g. EXPERIENCE) can be
+                    // added here in the future. For now, fall through to
+                    // the card path if we somehow arrive here.
+                }
+            }
+        }
+    }
 
     // Resolve target card based on Defined$ parameter.
     let defined = sa.params.get("Defined").map(|s| s.as_str()).unwrap_or("Self");
     let target_id = match defined {
         "TriggeredTarget" | "TriggeredTargetLKICopy" => {
-            // For trigger-based PutCounter (e.g. Rite of Passage):
-            // put counters on the triggered target, not the source enchantment.
             sa.target_chosen.target_card.or(sa.source)
         }
         "Targeted" => sa.target_chosen.target_card.or(sa.source),
