@@ -192,9 +192,9 @@ impl PlayerAgent for DeterministicAgent {
         });
     }
 
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
         self.log_decision("Mulligan: KEEP");
-        true // always keep — mulligans change hand size and complicate parity
+        true
     }
 
     fn choose_action(
@@ -602,9 +602,8 @@ mod tests {
 
     #[test]
     fn always_keeps_hand() {
-        let mut agent =
-            DeterministicAgent::new(PlayerId(0), false, make_rng(42), make_rng(42), false);
-        assert!(agent.mulligan_decision(PlayerId(0), &[]));
+        let mut agent = DeterministicAgent::new(PlayerId(0), false, make_rng(42), false);
+        assert!(agent.mulligan_decision(PlayerId(0), &[], 0));
     }
 
     #[test]

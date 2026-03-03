@@ -48,6 +48,7 @@ export default function Game() {
     targetCard,
     targetAny,
     mulliganDecision,
+    mulliganPutBackDecision,
     tapLand,
     untapLand,
     activateAbility,
@@ -525,7 +526,6 @@ export default function Game() {
           attackerIds={currentPrompt?.attackerIds ?? []}
           blockAssignments={blockAssignments}
           onDeclareBlockers={declareBlockers}
-          onMulliganDecision={mulliganDecision}
           stack={gameView.stack}
           onOpenStack={() => setSpellStackModalOpen(true)}
           onConcede={concede}
@@ -565,6 +565,10 @@ export default function Game() {
         abilityPickerState={abilityPickerState}
         onSelectAbility={(ability) => { activateAbility(abilityPickerState!.cardId, ability.abilityIndex); setAbilityPickerState(null); }}
         onCancelAbilityPicker={() => setAbilityPickerState(null)}
+        onMulliganDecision={mulliganDecision}
+        onMulliganPutBackDecision={mulliganPutBackDecision}
+        isWaitingForResponse={isWaitingForResponse}
+        myHand={gameView.myHand}
         onModeDecision={modeDecision}
         onOptionalTriggerDecision={optionalTriggerDecision}
         onKickerDecision={(kicked) => respond({ type: "kickerDecision", kicked })}
@@ -637,7 +641,8 @@ export default function Game() {
        promptType !== "chooseKicker" && promptType !== "chooseBuyback" &&
        promptType !== "chooseMultikicker" && promptType !== "chooseReplicate" &&
        promptType !== "chooseAlternativeCost" && promptType !== "chooseMode" &&
-       promptType !== "chooseOptionalTrigger" && (
+       promptType !== "chooseOptionalTrigger" &&
+       promptType !== "mulligan" && promptType !== "mulliganPutBack" && (
         <CardPreview
           card={hoveredCard}
           mouseX={mousePos.x}

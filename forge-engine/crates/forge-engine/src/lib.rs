@@ -13,6 +13,7 @@ pub mod game_log_formatter;
 pub mod game_loop;
 pub mod ids;
 pub mod mana;
+pub mod mulligan;
 pub mod phase;
 pub mod player;
 pub mod replacement;

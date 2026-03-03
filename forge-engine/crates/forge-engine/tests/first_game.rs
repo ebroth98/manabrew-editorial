@@ -42,8 +42,8 @@ impl ScriptedAgent {
 }
 
 impl PlayerAgent for ScriptedAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
-        true // always keep
+    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
+        true
     }
 
     fn choose_action(
@@ -394,7 +394,7 @@ fn full_game_runs() {
     // Simple agents that play the first available card and attack with everything
     struct SimpleAgent;
     impl PlayerAgent for SimpleAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(
@@ -885,7 +885,7 @@ fn upkeep_trigger_fires_each_turn() {
     // Simple agents that just pass
     struct PassAgent;
     impl PlayerAgent for PassAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(
@@ -983,7 +983,7 @@ fn full_game_with_triggers_runs() {
 
     struct SimpleAgent;
     impl PlayerAgent for SimpleAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(
@@ -1131,7 +1131,7 @@ fn llanowar_elves_taps_for_mana() {
         step: usize,
     }
     impl PlayerAgent for ElvesAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(
@@ -1252,7 +1252,7 @@ fn summoning_sick_creature_cant_tap() {
         saw_activatable: bool,
     }
     impl PlayerAgent for CheckAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(
@@ -1339,7 +1339,7 @@ fn prodigal_sorcerer_pings_opponent() {
         activated: bool,
     }
     impl PlayerAgent for PingAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(
@@ -1443,7 +1443,7 @@ fn sakura_tribe_elder_fetches_land() {
         activated: bool,
     }
     impl PlayerAgent for SacAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(

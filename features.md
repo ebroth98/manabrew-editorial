@@ -60,7 +60,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `GameOutcome.java` | Game result data: player stats, ante, turn count, end conditions | **Partial** (winner tracked) |
 | `GameRules.java` | Rule configuration: mana burn, poison, ante, AI settings | Not implemented |
 | `GameSnapshot.java` | Game state snapshot/restore for copying | Not implemented |
-| `GameStage.java` | Enum: BeforeMulligan, Mulligan, Play, RestartedByKarn, GameOver | **Partial** (game_over bool) |
+| `GameStage.java` | Enum: BeforeMulligan, Mulligan, Play, RestartedByKarn, GameOver | **Partial** (game_over bool, mulligan phase in setup) |
 | `GameType.java` | Enum: Sealed, Draft, Commander, Constructed, etc. | Not implemented |
 | `GameView.java` | Trackable game view for UI synchronization | Not implemented |
 | `CardTraitBase.java` | Base class for triggers, replacements, static abilities | **Partial** (trigger struct in `trigger.rs`) |
@@ -397,7 +397,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `GameEventPlayerStatsChanged.java` | Player stats changed | Not implemented |
 | `GameEventManaPool.java` | Mana pool changed | Not implemented |
 | `GameEventManaBurn.java` | Mana burn event | Not implemented |
-| `GameEventMulligan.java` | Mulligan event | Not implemented |
+| `GameEventMulligan.java` | Mulligan event | **Partial** (logged via GameLogEntryType::Mulligan) |
 | `GameEventLandPlayed.java` | Land played event | Not implemented |
 | `GameEventTokenCreated.java` | Token created | Not implemented |
 | `GameEventShuffle.java` | Library shuffled | Not implemented |
@@ -527,9 +527,9 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `MulliganService.java` | Mulligan orchestration for all players | Not implemented |
-| `AbstractMulligan.java` | Base mulligan with draw/keep/tuck logic | Not implemented |
-| `LondonMulligan.java` | London mulligan (draw 7, put back N) | Not implemented |
+| `MulliganService.java` | Mulligan orchestration for all players | **Implemented** (`mulligan/mod.rs`) |
+| `AbstractMulligan.java` | Base mulligan with draw/keep/tuck logic | **Implemented** (`mulligan/mod.rs`) |
+| `LondonMulligan.java` | London mulligan (draw 7, put back N) | **Implemented** (`mulligan/mod.rs`) |
 | `VancouverMulligan.java` | Vancouver mulligan (Paris + scry 1) | Not implemented |
 | `ParisMulligan.java` | Paris mulligan (draw N-1) | Not implemented |
 | `OriginalMulligan.java` | Original mulligan (all-land/no-land only) | Not implemented |
@@ -1001,7 +1001,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Extra Hands | 1 | 0 | 0 | 1 |
 | Keywords | 32 | 4 | 8 | 20 |
 | Mana | 6 | 2 | 2 | 2 |
-| Mulligan | 7 | 0 | 0 | 7 |
+| Mulligan | 7 | 3 | 0 | 4 |
 | Phases | 7 | 1 | 3 | 3 |
 | Player | 17 | 2 | 2 | 13 |
 | Player Actions | 10 | 1 | 3 | 6 |
@@ -1067,7 +1067,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | 10 | Extra Hands | 1 | 0 | 0% | Niche (Conspiracy format) |
 | 11 | **Keywords** | 32 | — | ~70% | Infrastructure classes, ~150+ niche keywords |
 | 12 | Mana | 6 | 1 | ~50% | X costs, phyrexian life, conversion, refunds |
-| 13 | Mulligan | 7 | 1 | ~40% | Paris, Vancouver variants |
+| 13 | Mulligan | 7 | 3 | ~43% | Paris, Vancouver, Original, Houston variants |
 | 14 | Phases | 7 | 1 | ~40% | Extra phase/turn objects, untap handler |
 | 15 | Player | 17 | 1 | ~25% | Controller, properties, predicates |
 | 16 | Player Actions | 10 | — | — | Handled in Tauri layer (prompt.rs) |

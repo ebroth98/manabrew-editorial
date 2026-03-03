@@ -17,7 +17,6 @@ interface PromptActionControllerProps {
   pendingAttacker: string | null;
   blockAssignments: CombatAssignment[];
   onDeclareBlockers: (assignments: CombatAssignment[]) => void;
-  onMulliganDecision: (keep: boolean) => void;
   onOpenStack: () => void;
 }
 
@@ -35,7 +34,6 @@ export function PromptActionController({
   pendingAttacker,
   blockAssignments,
   onDeclareBlockers,
-  onMulliganDecision,
   onOpenStack,
 }: PromptActionControllerProps) {
   if (isPassingUntilEot) {
@@ -131,21 +129,8 @@ export function PromptActionController({
       );
 
     case "mulligan":
-      return (
-        <div className={PROMPT_BUTTON_COLUMN}>
-          <Button size="sm" onClick={() => onMulliganDecision(true)} disabled={isWaitingForResponse}>
-            Keep Hand
-          </Button>
-          <Button
-            size="sm"
-            variant="destructive"
-            onClick={() => onMulliganDecision(false)}
-            disabled={isWaitingForResponse}
-          >
-            Mulligan
-          </Button>
-        </div>
-      );
+    case "mulliganPutBack":
+      return <p className={PROMPT_HINT}>Mulligan decision is open. Complete the prompt there.</p>;
 
     case "chooseTargetSpell":
       return (

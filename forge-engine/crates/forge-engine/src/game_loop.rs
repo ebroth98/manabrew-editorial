@@ -90,12 +90,27 @@ impl GameLoop {
         &mut self.mana_pools[pid.index()]
     }
 
-    /// Set up the game: shuffle libraries, draw opening hands.
-    pub fn setup(&mut self, game: &mut GameState, rng: &mut impl rand::Rng) {
+    /// Set up the game: shuffle libraries, draw opening hands, run mulligans.
+    pub fn setup(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        rng: &mut impl rand::Rng,
+    ) {
         for &pid in &game.player_order.clone() {
             game.shuffle_library(pid, rng);
             game.draw_cards(pid, 7);
         }
+
+        let first_player = game.active_player();
+        crate::mulligan::run_london_mulligans(
+            game,
+            agents,
+            rng,
+            first_player,
+            &self.mana_pools,
+            &self.game_log,
+        );
     }
 
     /// Run the full game until someone wins or loses.
@@ -107,7 +122,7 @@ impl GameLoop {
         rng: &mut impl rand::Rng,
         max_turns: u32,
     ) -> Option<PlayerId> {
-        self.setup(game, rng);
+        self.setup(game, agents, rng);
 
         while !game.game_over && game.turn.turn_number <= max_turns {
             self.run_turn(game, agents, rng);
@@ -260,7 +275,7 @@ mod tests {
     struct InvalidPlayAgent;
 
     impl PlayerAgent for InvalidPlayAgent {
-        fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
             true
         }
 
@@ -342,7 +357,7 @@ mod tests {
             self.last_priority = Some(game.turn.priority_player);
         }
 
-        fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
             true
         }
 

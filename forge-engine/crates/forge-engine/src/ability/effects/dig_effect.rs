@@ -187,7 +187,7 @@ mod tests {
     /// Agent that always picks the first card offered during dig.
     struct TakeFirstAgent;
     impl PlayerAgent for TakeFirstAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(

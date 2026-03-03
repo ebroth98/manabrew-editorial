@@ -215,15 +215,37 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn mulligan_decision(&mut self, _player: PlayerId, hand: &[CardId]) -> bool {
+    fn mulligan_decision(&mut self, _player: PlayerId, hand: &[CardId], mulligan_count: u32) -> bool {
         let hand_card_ids = Self::card_ids(hand);
         self.send_prompt(AgentPromptInner::Mulligan {
             game_view: self.view(),
             hand_card_ids,
+            mulligan_count,
         });
         match self.recv_action() {
             PlayerAction::MulliganDecision { keep } => keep,
-            _ => true, // default: keep
+            _ => true,
+        }
+    }
+
+    fn choose_cards_to_bottom(&mut self, _player: PlayerId, hand: &[CardId], count: usize) -> Vec<CardId> {
+        let view = self.view();
+        let hand_card_ids = Self::card_ids(hand);
+        let cards: Vec<CardDto> = hand.iter().filter_map(|&cid| {
+            let id_str = card_id_str(cid);
+            view.my_hand.iter().find(|c| c.id == id_str).cloned()
+        }).collect();
+        self.send_prompt(AgentPromptInner::MulliganPutBack {
+            game_view: view,
+            hand_card_ids,
+            cards,
+            count,
+        });
+        match self.recv_action() {
+            PlayerAction::MulliganPutBackDecision { card_ids } => {
+                card_ids.iter().filter_map(|s| parse_card_id(s)).collect()
+            }
+            _ => hand.iter().copied().take(count).collect(),
         }
     }
 

@@ -76,6 +76,10 @@ export interface AgentPrompt {
   validNames?: string[];
   /** chooseAction: activated abilities on battlefield permanents */
   activatableAbilityIds?: ActivatableAbilityInfo[];
+  /** mulligan: how many mulligans taken so far */
+  mulliganCount?: number;
+  /** mulliganPutBack: how many cards must be put on the bottom */
+  count?: number;
 }
 
 interface GameConfig {
@@ -130,6 +134,7 @@ interface GameState {
   targetCard: (cardId: string | null) => void;
   targetAny: (target: { kind: string; playerId?: string; cardId?: string }) => void;
   mulliganDecision: (keep: boolean) => void;
+  mulliganPutBackDecision: (cardIds: string[]) => void;
   tapLand: (cardId: string) => void;
   untapLand: (cardId: string) => void;
   activateAbility: (cardId: string, abilityIndex: number) => void;
@@ -311,6 +316,10 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   mulliganDecision: (keep) => {
     get().respond({ type: 'mulliganDecision', keep });
+  },
+
+  mulliganPutBackDecision: (cardIds) => {
+    get().respond({ type: 'mulliganPutBackDecision', cardIds });
   },
 
   tapLand: (cardId) => {

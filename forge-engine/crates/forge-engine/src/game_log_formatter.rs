@@ -40,6 +40,7 @@ impl ConsoleGameLogFormatter {
             GameLogEntryType::PriorityPass => "PASS",
             GameLogEntryType::StackPush => "STACK",
             GameLogEntryType::StackResolve => "STACK",
+            GameLogEntryType::Mulligan => "MULL",
             GameLogEntryType::Info => "INFO",
         }
     }

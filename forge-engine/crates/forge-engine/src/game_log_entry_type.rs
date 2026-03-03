@@ -10,5 +10,6 @@ pub enum GameLogEntryType {
     PriorityPass,
     StackPush,
     StackResolve,
+    Mulligan,
     Info,
 }

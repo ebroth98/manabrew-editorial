@@ -5,6 +5,7 @@ export type PromptActionType =
   | "chooseAttackers"
   | "chooseBlockers"
   | "mulligan"
+  | "mulliganPutBack"
   | "chooseTargetPlayer"
   | "chooseTargetCard"
   | "chooseTargetAny"
@@ -104,7 +105,6 @@ export interface RightActionPanelProps {
   attackerIds: string[];
   blockAssignments: CombatAssignment[];
   onDeclareBlockers: (assignments: CombatAssignment[]) => void;
-  onMulliganDecision: (keep: boolean) => void;
   stack: StackObject[];
   onOpenStack: () => void;
   onConcede: () => void;

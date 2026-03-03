@@ -34,3 +34,4 @@ forge/**/target/
 *.class
 *.jar
 *.war
+.mvn/

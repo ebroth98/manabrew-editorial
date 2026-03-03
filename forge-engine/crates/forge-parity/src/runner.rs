@@ -409,8 +409,8 @@ impl PlayerAgent for CapturingAgent {
         self.inner.on_library_peek(game, cards);
     }
 
-    fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId]) -> bool {
-        self.inner.mulligan_decision(player, hand)
+    fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId], mulligan_count: u32) -> bool {
+        self.inner.mulligan_decision(player, hand, mulligan_count)
     }
 
     fn choose_action(

@@ -43,6 +43,19 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         #[serde(rename = "handCardIds")]
         hand_card_ids: Vec<String>,
+        #[serde(rename = "mulliganCount")]
+        mulligan_count: u32,
+    },
+    /// London Mulligan: choose which cards to put on the bottom of the library.
+    MulliganPutBack {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "handCardIds")]
+        hand_card_ids: Vec<String>,
+        /// Card DTOs for display.
+        cards: Vec<CardDto>,
+        /// Number of cards that must be put back.
+        count: usize,
     },
     ChooseAction {
         #[serde(rename = "gameView")]
@@ -300,6 +313,7 @@ impl AgentPromptInner {
     pub fn game_view(&self) -> &GameViewDto {
         match self {
             AgentPromptInner::Mulligan { game_view, .. }
+            | AgentPromptInner::MulliganPutBack { game_view, .. }
             | AgentPromptInner::ChooseAction { game_view, .. }
             | AgentPromptInner::ChooseAttackers { game_view, .. }
             | AgentPromptInner::ChooseBlockers { game_view, .. }
@@ -346,6 +360,11 @@ pub struct ActivatableAbilityInfo {
 pub enum PlayerAction {
     MulliganDecision {
         keep: bool,
+    },
+    /// Response to MulliganPutBack: IDs of the cards to put on the bottom.
+    MulliganPutBackDecision {
+        #[serde(rename = "cardIds")]
+        card_ids: Vec<String>,
     },
     PlayCard {
         #[serde(rename = "cardId")]

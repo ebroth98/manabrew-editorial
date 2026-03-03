@@ -33,7 +33,6 @@ export function RightActionPanel({
   attackerIds,
   blockAssignments,
   onDeclareBlockers,
-  onMulliganDecision,
   stack,
   onOpenStack,
   onConcede,
@@ -183,7 +182,6 @@ export function RightActionPanel({
                 pendingAttacker={pendingAttacker}
                 blockAssignments={blockAssignments}
                 onDeclareBlockers={onDeclareBlockers}
-                onMulliganDecision={onMulliganDecision}
                 onOpenStack={onOpenStack}
               />
             </div>

@@ -219,7 +219,7 @@ impl VerboseAgent {
 }
 
 impl PlayerAgent for VerboseAgent {
-    fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+    fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
         true
     }
     fn choose_action(
@@ -400,16 +400,15 @@ fn trigger_demo_game() {
     let mut game_loop = GameLoop::new(2);
     let mut rng = rand::rngs::StdRng::seed_from_u64(12345);
 
-    // Shuffle and draw opening hands
-    game_loop.setup(&mut game, &mut rng);
-
-    println!("  Opening hands drawn (7 cards each).");
-    println!();
-
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
         Box::new(VerboseAgent::new("Alice")),
         Box::new(VerboseAgent::new("Bob")),
     ];
+
+    game_loop.setup(&mut game, &mut agents, &mut rng);
+
+    println!("  Opening hands drawn (7 cards each).");
+    println!();
 
     // Play up to 15 turns
     let max_turns = 15;

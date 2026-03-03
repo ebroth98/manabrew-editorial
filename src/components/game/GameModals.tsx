@@ -11,6 +11,8 @@ import { ChooseTypeModal } from "@/components/game/ChooseTypeModal";
 import { ChooseNumberModal } from "@/components/game/ChooseNumberModal";
 import { ChooseCardNameModal } from "@/components/game/ChooseCardNameModal";
 import { AbilityPickerModal } from "@/components/game/AbilityPickerModal";
+import { MulliganModal } from "@/components/game/MulliganModal";
+import { MulliganBottomModal } from "@/components/game/MulliganBottomModal";
 import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/xmage";
 import type { AgentPrompt } from "@/stores/useGameStore";
 
@@ -37,6 +39,11 @@ interface GameModalsProps {
   abilityPickerState: { cardId: string; cardName: string; abilities: ActivatableAbilityInfo[] } | null;
   onSelectAbility: (ability: ActivatableAbilityInfo) => void;
   onCancelAbilityPicker: () => void;
+  // Mulligan callbacks
+  onMulliganDecision: (keep: boolean) => void;
+  onMulliganPutBackDecision: (cardIds: string[]) => void;
+  isWaitingForResponse: boolean;
+  myHand: XMageCard[];
   // Decision callbacks
   onModeDecision: (indices: number[]) => void;
   onOptionalTriggerDecision: (accept: boolean) => void;
@@ -70,6 +77,10 @@ export function GameModals({
   abilityPickerState,
   onSelectAbility,
   onCancelAbilityPicker,
+  onMulliganDecision,
+  onMulliganPutBackDecision,
+  isWaitingForResponse,
+  myHand,
   onModeDecision,
   onOptionalTriggerDecision,
   onKickerDecision,
@@ -85,6 +96,24 @@ export function GameModals({
 }: GameModalsProps) {
   return (
     <>
+      {promptType === "mulligan" && currentPrompt && (
+        <MulliganModal
+          handCards={myHand}
+          mulliganCount={currentPrompt.mulliganCount ?? 0}
+          onKeep={() => onMulliganDecision(true)}
+          onMulligan={() => onMulliganDecision(false)}
+          isWaitingForResponse={isWaitingForResponse}
+        />
+      )}
+
+      {promptType === "mulliganPutBack" && currentPrompt?.cards && currentPrompt?.count != null && (
+        <MulliganBottomModal
+          handCards={currentPrompt.cards}
+          count={currentPrompt.count}
+          onConfirm={onMulliganPutBackDecision}
+        />
+      )}
+
       {viewingZone && (
         <ZoneViewer
           title={viewingZone.title}

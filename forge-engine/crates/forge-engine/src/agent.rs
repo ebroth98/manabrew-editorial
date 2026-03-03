@@ -39,9 +39,27 @@ pub trait PlayerAgent {
     /// Default implementation is a no-op.
     fn on_library_peek(&mut self, _game: &GameState, _cards: &[CardId]) {}
 
-    /// Choose which cards to keep in opening hand (mulligan decision).
+    /// Choose whether to keep the current opening hand or mulligan.
+    /// `mulligan_count` is the number of mulligans already taken this game.
     /// Returns true to keep, false to mulligan.
-    fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId]) -> bool;
+    fn mulligan_decision(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        mulligan_count: u32,
+    ) -> bool;
+
+    /// London Mulligan: after keeping, choose `count` cards from hand to put
+    /// on the bottom of the library. Returns exactly `count` card IDs.
+    /// Default: picks the first `count` cards (suitable for simple AI agents).
+    fn choose_cards_to_bottom(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        count: usize,
+    ) -> Vec<CardId> {
+        hand.iter().copied().take(count).collect()
+    }
 
     /// Choose a main-phase action: play a card from hand, tap a land for mana, untap a land,
     /// activate an ability, or pass.
@@ -359,8 +377,8 @@ pub trait PlayerAgent {
 pub struct PassAgent;
 
 impl PlayerAgent for PassAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
-        true // always keep
+    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
+        true
     }
 
     fn choose_action(

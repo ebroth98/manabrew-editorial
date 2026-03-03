@@ -576,6 +576,21 @@ impl GameState {
         }
     }
 
+    /// Move a card from its current zone to the bottom of a player's library.
+    /// Unlike `move_card`, this places the card at the bottom rather than the top.
+    pub fn put_on_bottom_of_library(&mut self, card_id: CardId, owner: PlayerId) {
+        let card = &self.cards[card_id.index()];
+        let src_zone = card.zone;
+        let src_owner = card.controller;
+
+        if src_zone != ZoneType::None {
+            self.zone_mut(src_zone, src_owner).remove(card_id);
+        }
+
+        self.cards[card_id.index()].zone = ZoneType::Library;
+        self.zone_mut(ZoneType::Library, owner).add_to_bottom(card_id);
+    }
+
     /// Remove a spell from the stack by its entry ID (used by Counter).
     /// Mirrors Java's `Game.getStack().remove(sa)`.
     pub fn remove_from_stack(&mut self, entry_id: u32) -> bool {

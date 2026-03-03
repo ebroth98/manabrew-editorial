@@ -105,7 +105,7 @@ mod tests {
     /// Agent that puts all surveiled cards into graveyard.
     struct GraveyardAllAgent;
     impl PlayerAgent for GraveyardAllAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(

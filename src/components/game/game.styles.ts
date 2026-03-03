@@ -24,6 +24,8 @@ export const HAND_CARD = "w-[80px] h-[112px]" as const;
 export const MODAL_CARD_SIZE = "w-[100px] h-[140px]" as const;
 /** Large preview card (e.g., CardPreview floating overlay) */
 export const FLASH_CARD_SIZE = { w: 240, h: 336 } as const;
+/** Cards inside mulligan modals */
+export const MULLIGAN_CARD_SIZE = "w-[160px] h-[222px]" as const;
 
 // ── Modal shared styles ────────────────────────────────────────────────────
 

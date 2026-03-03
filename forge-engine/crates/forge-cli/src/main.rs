@@ -291,15 +291,56 @@ impl InteractiveAgent {
 }
 
 impl PlayerAgent for InteractiveAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, hand: &[CardId]) -> bool {
+    fn mulligan_decision(&mut self, _player: PlayerId, hand: &[CardId], mulligan_count: u32) -> bool {
         let game = self.game();
-        println!("\n{}{}Opening Hand:{}", CYAN, BOLD, RESET);
+        if mulligan_count > 0 {
+            println!(
+                "\n{}{}Opening Hand (mulligan #{} — must put {} card{} back):{}", CYAN, BOLD,
+                mulligan_count, mulligan_count,
+                if mulligan_count == 1 { "" } else { "s" }, RESET
+            );
+        } else {
+            println!("\n{}{}Opening Hand:{}", CYAN, BOLD, RESET);
+        }
         for (i, &cid) in hand.iter().enumerate() {
             println!("  {}: {}", i, format_card_with_cost(game.card(cid)));
         }
         print!("{}Keep this hand? (y/n): {}", CYAN, RESET);
         let input = read_line();
         input != "n" && input != "no"
+    }
+
+    fn choose_cards_to_bottom(&mut self, _player: PlayerId, hand: &[CardId], count: usize) -> Vec<CardId> {
+        let game = self.game();
+        println!(
+            "\n{}{}Choose {} card{} to put on the bottom of your library:{}",
+            CYAN, BOLD, count,
+            if count == 1 { "" } else { "s" }, RESET
+        );
+        for (i, &cid) in hand.iter().enumerate() {
+            println!("  {}: {}", i, format_card_with_cost(game.card(cid)));
+        }
+        let mut chosen = Vec::new();
+        while chosen.len() < count {
+            print!(
+                "{}Card {} of {} (enter index): {}",
+                CYAN,
+                chosen.len() + 1,
+                count,
+                RESET
+            );
+            let input = read_line();
+            if let Ok(idx) = input.trim().parse::<usize>() {
+                if idx < hand.len() && !chosen.contains(&hand[idx]) {
+                    chosen.push(hand[idx]);
+                } else {
+                    println!("  {}Invalid or duplicate choice.{}", RED, RESET);
+                }
+            } else {
+                println!("  {}Enter a number.{}", RED, RESET);
+            }
+        }
+        chosen
     }
 
     fn choose_action(
@@ -589,7 +630,7 @@ impl PlayerAgent for InteractiveAgent {
 struct SimpleAiAgent;
 
 impl PlayerAgent for SimpleAiAgent {
-    fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+    fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
         true
     }
 
@@ -1213,13 +1254,13 @@ fn main() {
     let mut game_loop = GameLoop::new(2);
     let mut rng = rand::rngs::StdRng::from_entropy();
 
-    // Shuffle and draw
-    game_loop.setup(&mut game, &mut rng);
-
     let human = InteractiveAgent::new();
     let ai = SimpleAiAgent;
-
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human), Box::new(ai)];
+
+    let game_ptr = &game as *const GameState;
+    set_game_ptr(&mut agents[0], game_ptr);
+    game_loop.setup(&mut game, &mut agents, &mut rng);
 
     println!("  {}Game Start! Good luck.{}", BOLD, RESET);
     println!(

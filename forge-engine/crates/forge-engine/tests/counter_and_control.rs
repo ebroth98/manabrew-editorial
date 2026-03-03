@@ -17,7 +17,7 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 struct PassAgent;
 
 impl PlayerAgent for PassAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
         true
     }
 

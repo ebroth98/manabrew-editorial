@@ -105,7 +105,7 @@ mod tests {
     /// Agent that always puts all cards on the bottom.
     struct BottomAllAgent;
     impl PlayerAgent for BottomAllAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(

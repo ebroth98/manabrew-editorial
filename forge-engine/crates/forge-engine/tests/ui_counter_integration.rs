@@ -21,7 +21,7 @@ impl CounterspellAgent {
 }
 
 impl PlayerAgent for CounterspellAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
         true
     }
 

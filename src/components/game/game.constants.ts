@@ -39,6 +39,7 @@ export const ZONE_COLUMN_RESERVED_PX = 68;
 
 export const PROMPT_LABELS: Record<string, string> = {
   mulligan: "Keep this hand?",
+  mulliganPutBack: "Choose cards to put on bottom",
   chooseAction: "Play a card or pass priority",
   chooseAttackers: "Declare attackers",
   chooseBlockers: "Declare blockers",

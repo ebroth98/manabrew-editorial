@@ -15,6 +15,13 @@ pub fn spawn_ai_prompt_responder(
                 AgentPromptInner::Mulligan { .. } => {
                     Some(PlayerAction::MulliganDecision { keep: true })
                 }
+                AgentPromptInner::MulliganPutBack {
+                    hand_card_ids,
+                    count,
+                    ..
+                } => Some(PlayerAction::MulliganPutBackDecision {
+                    card_ids: hand_card_ids.into_iter().take(count).collect(),
+                }),
                 AgentPromptInner::ChooseAction {
                     playable_card_ids, ..
                 } => Some(PlayerAction::PlayCard {
