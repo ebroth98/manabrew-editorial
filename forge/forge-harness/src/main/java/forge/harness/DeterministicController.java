@@ -255,22 +255,15 @@ public class DeterministicController extends PlayerControllerAi {
         }
         if (defender == null) return;
 
-        if (DEBUG_ACTIONS) {
-            List<String> names = new ArrayList<>();
-            for (Card c : creatures) names.add(c.getName());
-            System.err.printf("[det-java p%d t%d] atk candidates=%s%n",
-                player.getId(), getGame().getPhaseHandler().getTurn(), names);
-        }
         for (Card c : creatures) {
-            if (CombatUtil.canAttack(c, defender)) {
-                int roll = rng.nextInt(2);
-                if (DEBUG_ACTIONS) {
-                    System.err.printf("[det-java p%d t%d] atk roll %s -> %d%n",
-                        player.getId(), getGame().getPhaseHandler().getTurn(), c.getName(), roll);
-                }
-                if (roll == 1) {
-                    combat.addAttacker(c, defender);
-                }
+            if (!CombatUtil.canAttack(c, defender)) continue;
+            int roll = rng.nextInt(2);
+            if (DEBUG_ACTIONS) {
+                System.err.printf("[det-java p%d t%d] atk roll %s -> %d%n",
+                    player.getId(), getGame().getPhaseHandler().getTurn(), c.getName(), roll);
+            }
+            if (roll == 1) {
+                combat.addAttacker(c, defender);
             }
         }
 
@@ -298,14 +291,6 @@ public class DeterministicController extends PlayerControllerAi {
 
         if (attackers.isEmpty()) return;
 
-        if (DEBUG_ACTIONS) {
-            List<String> b = new ArrayList<>();
-            for (Card c : blockers) b.add(c.getName());
-            List<String> a = new ArrayList<>();
-            for (Card c : attackers) a.add(c.getName());
-            System.err.printf("[det-java p%d t%d] blk candidates=%s attackers=%s%n",
-                player.getId(), getGame().getPhaseHandler().getTurn(), b, a);
-        }
         for (Card blocker : blockers) {
             if (!CombatUtil.canBlock(blocker, combat)) continue;
             int choice = rng.nextInt(attackers.size() + 1);
@@ -395,6 +380,21 @@ public class DeterministicController extends PlayerControllerAi {
         return new CardCollection(sorted.subList(0, count));
     }
 
+    // ── Zone Change (Search/Tutor) ──────────────────────────────────
+
+    @Override
+    public Card chooseSingleCardForZoneChange(ZoneType destination, List<ZoneType> origin,
+            SpellAbility sa, CardCollection fetchList, DelayedReveal delayedReveal,
+            String selectPrompt, boolean isOptional, Player decider) {
+        if (delayedReveal != null) reveal(delayedReveal);
+        if (fetchList == null || fetchList.isEmpty()) return null;
+        // Deterministic: sort alphabetically and pick first. No RNG consumed.
+        // Bypasses AI logic (basicManaFixing, CardLists.shuffle, etc.) to match Rust.
+        List<Card> sorted = new ArrayList<>(fetchList);
+        sorted.sort(Comparator.comparing(Card::getName));
+        return sorted.get(0);
+    }
+
     // ── Discard ───────────────────────────────────────────────────────
 
     @Override
@@ -416,7 +416,7 @@ public class DeterministicController extends PlayerControllerAi {
         return new CardCollection(hand.subList(0, count));
     }
 
-    // ── Scry / Library Manipulation ──────────────────────────────────
+    // ── Scry / Surveil / Library Manipulation ───────────────────────
 
     @Override
     public ImmutablePair<CardCollection, CardCollection> arrangeForScry(CardCollection topN) {

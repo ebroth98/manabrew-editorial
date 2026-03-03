@@ -77,6 +77,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 controller
             };
             let mut zone_cards = ctx.game.cards_in_zone(origin_zone, search_player).to_vec();
+            // Sort candidates alphabetically by name to match Java's fetchList.sort().
+            // Java sorts before selection so the DeterministicController always picks
+            // the first alphabetically, ensuring parity across engines.
+            zone_cards.sort_by(|&a, &b| {
+                ctx.game.card(a).card_name.cmp(&ctx.game.card(b).card_name)
+            });
             if let Some(each_spec) = change_type.strip_prefix("EACH ") {
                 let mut out = Vec::new();
                 for clause in each_spec.split('&').map(str::trim).filter(|s| !s.is_empty()) {
