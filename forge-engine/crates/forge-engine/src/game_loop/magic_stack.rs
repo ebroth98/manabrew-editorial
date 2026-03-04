@@ -1,6 +1,33 @@
 use super::*;
 
 impl GameLoop {
+    fn effect_kind_for_sa(sa: &SpellAbility) -> String {
+        if let Some(api) = sa.api.as_ref() {
+            return api.clone();
+        }
+        if let Some(kind) = sa
+            .params
+            .get("SP")
+            .or_else(|| sa.params.get("DB"))
+            .or_else(|| sa.params.get("AB"))
+        {
+            return kind.clone();
+        }
+        if sa.is_trigger {
+            if let Some(mode) = sa.params.get("Mode") {
+                return format!("Trigger({mode})");
+            }
+            return "Trigger".to_string();
+        }
+        if sa.is_activated {
+            return "ActivatedAbility".to_string();
+        }
+        if sa.is_spell {
+            return "Spell".to_string();
+        }
+        "Effect".to_string()
+    }
+
     pub fn resolve_stack(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         if game.stack.is_empty() {
             return;
@@ -449,11 +476,19 @@ impl GameLoop {
             .source
             .and_then(|cid| game.cards.get(cid.index()).map(|c| c.card_name.clone()))
             .unwrap_or_else(|| "Unknown source".to_string());
-        let effect_kind = sa.api.clone().unwrap_or_else(|| "Unknown".to_string());
-        agents[sa.activating_player.index()].notify(&format!(
+        let effect_kind = Self::effect_kind_for_sa(sa);
+        let mut event = crate::agent::GameLogEvent::stack(format!(
             "Effect resolved: {} | source={}",
             effect_kind, source_name
-        ));
+        ))
+        .with_player(sa.activating_player);
+        if let Some(source_id) = sa.source {
+            event = event.with_source_card(source_id);
+        }
+        if let Some(target_id) = sa.target_chosen.target_card {
+            event = event.with_target_card(target_id);
+        }
+        crate::agent::notify_all_agents(agents, event);
 
         let mut ctx = EffectContext {
             game,

@@ -1,4 +1,5 @@
 use super::EffectContext;
+use crate::agent::GameLogEvent;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// `SP$ RollDice` — roll a die and resolve a sub-ability based on the result.
@@ -30,7 +31,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     // Notify agents of the roll result
-    ctx.agents[controller.index()].notify(&format!("Rolled a {} (d{})", result, sides));
+    crate::agent::notify_all_agents(
+        ctx.agents,
+        GameLogEvent::rule(format!("Rolled a {} (d{})", result, sides)).with_player(controller),
+    );
 
     // Parse ResultSubAbilities$ and find the matching threshold
     if let Some(result_str) = sa.params.get("ResultSubAbilities") {

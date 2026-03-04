@@ -2,6 +2,8 @@ mod ai_agent;
 mod card_db;
 mod commands;
 mod game_manager;
+mod game_log_event;
+mod game_snapshot_event;
 mod game_view_dto;
 mod ids_codec;
 mod multiplayer_controller;
@@ -25,6 +27,7 @@ pub fn run() {
             commands::start_game,
             commands::respond,
             commands::end_game,
+            commands::restore_snapshot,
             commands::get_prompt,
             commands::get_preset_decks,
             server_commands::server_connect,

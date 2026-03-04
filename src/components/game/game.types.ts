@@ -1,4 +1,6 @@
 import type { Card as XMageCard, Player, StackObject } from "@/types/xmage";
+import type { GameLogEntry } from "@/types/gameLog";
+import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 
 export type PromptActionType =
   | "chooseAction"
@@ -110,9 +112,14 @@ export interface RightActionPanelProps {
   onOpenStack: () => void;
   onConcede: () => void;
   resolveCardName: (cardId: string) => string;
+  resolvePlayerName: (playerId: string) => string;
   isMyPriority: boolean;
   turn: number;
   activePlayerName: string;
   isMyTurn: boolean;
-  gameLog: string[];
+  gameLog: GameLogEntry[];
+  onHoverLogCard: (cardId: string | null, e?: React.MouseEvent) => void;
+  snapshots: GameSnapshotEntry[];
+  canRestoreSnapshots: boolean;
+  onRestoreSnapshot: (checkpointId: number) => void;
 }

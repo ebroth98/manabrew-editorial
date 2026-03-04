@@ -39,6 +39,7 @@ export default function Game() {
     isGameActive,
     isWaitingForResponse,
     gameLog,
+    snapshots,
     debugInfo,
     passPriority,
     castSpell,
@@ -69,6 +70,9 @@ export default function Game() {
     declineCombatCost,
     concede,
     endGame,
+    restoreSnapshot,
+    isMultiplayer,
+    isHost,
     setupListeners,
   } = useGameStore();
   const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
@@ -241,6 +245,73 @@ export default function Game() {
     opponentPlayerId: opponent?.id ?? "",
   });
 
+  const visibleCardsById = useMemo(() => {
+    if (!gameView) return new Map<string, XMageCard>();
+    const cards: XMageCard[] = [
+      ...gameView.battlefield,
+      ...gameView.myHand,
+      ...gameView.graveyard,
+      ...gameView.exile,
+      ...gameView.opponentGraveyard,
+      ...gameView.opponentExile,
+      ...(gameView.myCommandZone ?? []),
+      ...(gameView.opponentCommandZone ?? []),
+    ];
+    return new Map(cards.map((c) => [c.id, c]));
+  }, [gameView]);
+
+  const stackCardsBySourceId = useMemo(() => {
+    if (!gameView) return new Map<string, XMageCard>();
+    const byId = new Map<string, XMageCard>();
+    for (const s of gameView.stack) {
+      if (byId.has(s.sourceId)) continue;
+      byId.set(s.sourceId, {
+        id: s.sourceId,
+        name: s.name,
+        setCode: "",
+        cardNumber: "",
+        color: "",
+        manaCost: "",
+        types: [],
+        subtypes: [],
+        supertypes: [],
+        text: s.text,
+        isPlayable: false,
+        isSelected: false,
+        isChoosable: false,
+        controllerId: "",
+        ownerId: "",
+        zoneId: "",
+      });
+    }
+    return byId;
+  }, [gameView]);
+
+  const handleLogCardHover = (cardId: string | null, e?: React.MouseEvent) => {
+    if (!cardId) {
+      handleHoverCard(null);
+      return;
+    }
+    const card = visibleCardsById.get(cardId) ?? stackCardsBySourceId.get(cardId) ?? null;
+    handleHoverCard(card, e);
+  };
+
+  const cardNameById = useMemo(() => {
+    const byId = new Map<string, string>();
+    for (const c of visibleCardsById.values()) {
+      byId.set(c.id, c.name);
+    }
+    for (const [sourceId, c] of stackCardsBySourceId.entries()) {
+      if (!byId.has(sourceId)) byId.set(sourceId, c.name);
+    }
+    return byId;
+  }, [visibleCardsById, stackCardsBySourceId]);
+
+  const playerNameById = useMemo(
+    () => new Map((gameView?.players ?? []).map((p) => [p.id, p.name] as const)),
+    [gameView?.players],
+  );
+
   // Auto-return to play menu when game is over
   useEffect(() => {
     if (!gameView?.gameOver && currentPrompt?.type !== "gameOver") return;
@@ -263,9 +334,6 @@ export default function Game() {
       op.id,
       gameView.battlefield.filter((c) => c.controllerId === op.id),
     ]),
-  );
-  const battlefieldCardNameById = new Map(
-    gameView.battlefield.map((card) => [card.id, card.name] as const),
   );
 
   // Game over overlay
@@ -514,7 +582,7 @@ export default function Game() {
 
         </div>
 
-        <RightActionPanel
+          <RightActionPanel
           collapsed={isActionPanelCollapsed}
           onToggleCollapse={() => setIsActionPanelCollapsed((prev) => !prev)}
           promptType={promptType}
@@ -533,7 +601,8 @@ export default function Game() {
           stack={gameView.stack}
           onOpenStack={() => setSpellStackModalOpen(true)}
           onConcede={concede}
-          resolveCardName={(cardId) => battlefieldCardNameById.get(cardId) ?? cardId}
+          resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
+          resolvePlayerName={(playerId) => playerNameById.get(playerId) ?? playerId}
           isMyPriority={gameView.priorityPlayerId === me!.id}
           turn={gameView.turn}
           activePlayerName={
@@ -541,8 +610,17 @@ export default function Game() {
             "Unknown"
           }
           isMyTurn={gameView.activePlayerId === me!.id}
-          gameLog={gameLog}
-        />
+            gameLog={gameLog}
+            onHoverLogCard={handleLogCardHover}
+            snapshots={snapshots}
+            canRestoreSnapshots={
+              (!isMultiplayer || isHost) &&
+              (promptType === "chooseAction" ||
+                promptType === "chooseAttackers" ||
+                promptType === "chooseBlockers")
+            }
+            onRestoreSnapshot={restoreSnapshot}
+          />
       </div>
 
       <GameModals

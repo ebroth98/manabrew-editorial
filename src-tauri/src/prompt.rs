@@ -529,6 +529,11 @@ pub enum PlayerAction {
     PayCombatCost,
     /// Decline to pay the attack cost (remove attacker).
     DeclineCombatCost,
+    /// Host-only control action: restore engine state to a checkpoint.
+    RestoreSnapshot {
+        #[serde(rename = "checkpointId")]
+        checkpoint_id: u64,
+    },
     Concede,
 }
 

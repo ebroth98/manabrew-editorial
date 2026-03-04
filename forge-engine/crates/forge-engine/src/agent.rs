@@ -4,6 +4,100 @@ use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use forge_foundation::PhaseType;
 
+/// Structured log event delivered to agents for UI/debug rendering.
+#[derive(Debug, Clone)]
+pub struct GameLogEvent {
+    pub kind: GameLogKind,
+    pub message: String,
+    pub player: Option<PlayerId>,
+    pub card: Option<CardId>,
+    pub source_card: Option<CardId>,
+    pub target_card: Option<CardId>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameLogKind {
+    Info,
+    Action,
+    Stack,
+    Priority,
+    Rule,
+    Warning,
+}
+
+/// Broadcast a public log event to all agents.
+pub fn notify_all_agents(agents: &mut [Box<dyn PlayerAgent>], event: GameLogEvent) {
+    for agent in agents.iter_mut() {
+        agent.notify_event(event.clone());
+    }
+}
+
+impl GameLogEvent {
+    pub fn new(kind: GameLogKind, message: impl Into<String>) -> Self {
+        Self {
+            kind,
+            message: message.into(),
+            player: None,
+            card: None,
+            source_card: None,
+            target_card: None,
+        }
+    }
+
+    pub fn info(message: impl Into<String>) -> Self {
+        Self::new(GameLogKind::Info, message)
+    }
+
+    pub fn action(message: impl Into<String>) -> Self {
+        Self::new(GameLogKind::Action, message)
+    }
+
+    pub fn stack(message: impl Into<String>) -> Self {
+        Self::new(GameLogKind::Stack, message)
+    }
+
+    pub fn priority(message: impl Into<String>) -> Self {
+        Self::new(GameLogKind::Priority, message)
+    }
+
+    pub fn rule(message: impl Into<String>) -> Self {
+        Self::new(GameLogKind::Rule, message)
+    }
+
+    pub fn warning(message: impl Into<String>) -> Self {
+        Self::new(GameLogKind::Warning, message)
+    }
+
+    pub fn with_player(mut self, player: PlayerId) -> Self {
+        self.player = Some(player);
+        self
+    }
+
+    pub fn with_card(mut self, card: CardId) -> Self {
+        self.card = Some(card);
+        if self.source_card.is_none() {
+            self.source_card = Some(card);
+        }
+        self
+    }
+
+    pub fn with_source_card(mut self, card: CardId) -> Self {
+        self.source_card = Some(card);
+        if self.card.is_none() {
+            self.card = Some(card);
+        }
+        self
+    }
+
+    pub fn with_target_card(mut self, card: CardId) -> Self {
+        self.target_card = Some(card);
+        if self.card.is_none() {
+            self.card = Some(card);
+        }
+        self
+    }
+}
+
 /// A target choice that can be a player, a card, or nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetChoice {
@@ -33,6 +127,14 @@ pub trait PlayerAgent {
     /// Called before each agent decision point with the current game state.
     /// Override this to capture snapshots for a UI or network layer.
     fn snapshot_state(&mut self, _game: &GameState, _mana_pools: &[ManaPool]) {}
+
+    /// Called when the engine records a new checkpoint snapshot.
+    fn notify_snapshot_created(&mut self, _checkpoint_id: u64, _label: &str) {}
+
+    /// Poll and clear any pending snapshot-restore request from this agent.
+    fn take_restore_request(&mut self) -> Option<u64> {
+        None
+    }
 
     /// Called before library-peek choices (Scry, Surveil, Dig) so UI agents
     /// can build card info for the cards being revealed from the library.
@@ -463,6 +565,12 @@ pub trait PlayerAgent {
 
     /// Notify the agent of a game event (for display/logging).
     fn notify(&mut self, message: &str);
+
+    /// Structured notification variant.
+    /// Default implementation forwards message text only.
+    fn notify_event(&mut self, event: GameLogEvent) {
+        self.notify(&event.message);
+    }
 
     /// Display-only notification: a card was played (land or spell).
     /// Called on all agents so every player's UI can show the animation.

@@ -42,6 +42,14 @@ pub async fn end_game(gm: State<'_, GameManager>) -> Result<(), String> {
 }
 
 #[tauri::command]
+pub async fn restore_snapshot(
+    gm: State<'_, GameManager>,
+    checkpoint_id: u64,
+) -> Result<(), String> {
+    gm.restore_snapshot(checkpoint_id)
+}
+
+#[tauri::command]
 pub async fn get_prompt(gm: State<'_, GameManager>) -> Result<Option<AgentPrompt>, String> {
     Ok(gm.get_latest_prompt())
 }

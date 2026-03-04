@@ -456,7 +456,12 @@ impl GameLoop {
             }
 
             game.player_mut(player).lands_played_this_turn += 1;
-            agents[player.index()].notify(&format!("Played land: {}", card_name));
+            crate::agent::notify_all_agents(
+                agents,
+                crate::agent::GameLogEvent::action(format!("Played land: {}", card_name))
+                    .with_player(player)
+                    .with_card(card_id),
+            );
 
             // Fire LandPlayed trigger
             self.trigger_handler.run_trigger(
@@ -785,7 +790,12 @@ impl GameLoop {
                             },
                             false,
                         );
-                        agents[player.index()].notify(&format!("Foretold: {}", card_name));
+                        crate::agent::notify_all_agents(
+                            agents,
+                            crate::agent::GameLogEvent::rule(format!("Foretold: {}", card_name))
+                                .with_player(player)
+                                .with_card(card_id),
+                        );
                         return Some((card_id, card_name));
                     }
                 }
@@ -822,10 +832,15 @@ impl GameLoop {
                             game.move_card(card_id, ZoneType::Exile, player);
                             game.card_mut(card_id)
                                 .add_counter(&crate::card::CounterType::Time, counters);
-                            agents[player.index()].notify(&format!(
-                                "Suspended: {} with {} time counters",
-                                card_name, counters
-                            ));
+                            crate::agent::notify_all_agents(
+                                agents,
+                                crate::agent::GameLogEvent::rule(format!(
+                                    "Suspended: {} with {} time counters",
+                                    card_name, counters
+                                ))
+                                .with_player(player)
+                                .with_card(card_id),
+                            );
                             return Some((card_id, card_name));
                         }
                     }
@@ -1431,13 +1446,33 @@ impl GameLoop {
 
             game.stack.push(entry.clone());
             self.log_stack_push(&card_name, &game.player(player).name);
+            let chosen_target = entry.spell_ability.target_chosen.target_card;
             if is_flashback {
-                agents[player.index()].notify(&format!(
+                let mut event = crate::agent::GameLogEvent::stack(format!(
                     "Cast: {} [Flashback from Graveyard]",
                     card_name
-                ));
+                ))
+                .with_player(player)
+                .with_source_card(card_id);
+                if let Some(target_id) = chosen_target {
+                    event = event.with_target_card(target_id);
+                }
+                crate::agent::notify_all_agents(
+                    agents,
+                    event,
+                );
             } else {
-                agents[player.index()].notify(&format!("Cast: {}", card_name));
+                let mut event =
+                    crate::agent::GameLogEvent::stack(format!("Cast: {}", card_name))
+                        .with_player(player)
+                        .with_source_card(card_id);
+                if let Some(target_id) = chosen_target {
+                    event = event.with_target_card(target_id);
+                }
+                crate::agent::notify_all_agents(
+                    agents,
+                    event,
+                );
             }
 
             // Move spell to stack zone
@@ -1447,17 +1482,29 @@ impl GameLoop {
             if game.card(card_id).has_storm() {
                 let storm_count = game.player(player).spells_cast_this_turn - 1;
                 if storm_count > 0 {
-                    agents[player.index()].notify(&format!("Storm count: {} copies", storm_count));
+                    crate::agent::notify_all_agents(
+                        agents,
+                        crate::agent::GameLogEvent::stack(format!(
+                            "Storm count: {} copies",
+                            storm_count
+                        ))
+                        .with_player(player)
+                        .with_card(card_id),
+                    );
                     for i in 0..storm_count {
                         let mut copy = entry.clone();
                         copy.spell_ability.is_copy = true;
                         if copy.spell_ability.uses_targeting() {
                             agents[player.index()].snapshot_state(game, &self.mana_pools);
-                            agents[player.index()].notify(&format!(
-                                "Choose target for Storm copy {}/{}",
-                                i + 1,
-                                storm_count
-                            ));
+                            agents[player.index()].notify_event(
+                                crate::agent::GameLogEvent::stack(format!(
+                                    "Choose target for Storm copy {}/{}",
+                                    i + 1,
+                                    storm_count
+                                ))
+                                .with_player(player)
+                                .with_card(card_id),
+                            );
                             copy.spell_ability
                                 .setup_targets(game, agents, &self.mana_pools);
                         }
@@ -1483,17 +1530,29 @@ impl GameLoop {
 
             // Replicate: create N copies where N = replicate_count
             if replicate_count > 0 {
-                agents[player.index()].notify(&format!("Replicate: {} copies", replicate_count));
+                crate::agent::notify_all_agents(
+                    agents,
+                    crate::agent::GameLogEvent::stack(format!(
+                        "Replicate: {} copies",
+                        replicate_count
+                    ))
+                    .with_player(player)
+                    .with_card(card_id),
+                );
                 for i in 0..replicate_count {
                     let mut copy = entry.clone();
                     copy.spell_ability.is_copy = true;
                     if copy.spell_ability.uses_targeting() {
                         agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        agents[player.index()].notify(&format!(
-                            "Choose target for Replicate copy {}/{}",
-                            i + 1,
-                            replicate_count
-                        ));
+                        agents[player.index()].notify_event(
+                            crate::agent::GameLogEvent::stack(format!(
+                                "Choose target for Replicate copy {}/{}",
+                                i + 1,
+                                replicate_count
+                            ))
+                            .with_player(player)
+                            .with_card(card_id),
+                        );
                         copy.spell_ability
                             .setup_targets(game, agents, &self.mana_pools);
                     }
@@ -1557,7 +1616,15 @@ impl GameLoop {
 
             if !is_land && mv < caster_mv {
                 found_card = Some(top_id);
-                agents[player.index()].notify(&format!("Cascade found: {}", card.card_name));
+                crate::agent::notify_all_agents(
+                    agents,
+                    crate::agent::GameLogEvent::stack(format!(
+                        "Cascade found: {}",
+                        card.card_name
+                    ))
+                    .with_player(player)
+                    .with_card(top_id),
+                );
                 break;
             }
             exiled_ids.push(top_id);
@@ -1602,7 +1669,12 @@ impl GameLoop {
                 };
                 game.stack.push(entry);
                 self.log_stack_push(&card_name, &game.player(player).name);
-                agents[player.index()].notify(&format!("Cascade cast: {}", card_name));
+                crate::agent::notify_all_agents(
+                    agents,
+                    crate::agent::GameLogEvent::stack(format!("Cascade cast: {}", card_name))
+                        .with_player(player)
+                        .with_card(cascade_card_id),
+                );
                 game.move_card(cascade_card_id, ZoneType::Stack, player);
 
                 // Cascade spell counts as being cast

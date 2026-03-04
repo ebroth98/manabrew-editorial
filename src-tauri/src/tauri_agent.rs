@@ -1,13 +1,17 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use forge_engine_core::agent::{CombatCostAction, MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{
+    CombatCostAction, GameLogEvent, MainPhaseAction, PlayerAgent, TargetChoice,
+};
 use forge_engine_core::game::GameState;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_foundation::{PhaseType, ZoneType};
 
+use crate::game_log_event::GameLogEntryDto;
+use crate::game_snapshot_event::GameSnapshotEventDto;
 use crate::game_view_dto::{card_to_dto, CardDto, GameViewDto};
 use crate::ids_codec::{
     card_id_str, parse_card_id, parse_player_id, parse_stack_id, player_id_str, stack_id_str,
@@ -23,7 +27,8 @@ pub struct TauriAgent {
     pub game_id: String,
     prompt_sink: PromptSink,
     pub response_rx: mpsc::Receiver<PlayerAction>,
-    pub notify_tx: Option<mpsc::Sender<String>>,
+    pub notify_tx: Option<mpsc::Sender<GameLogEntryDto>>,
+    pub snapshot_tx: Option<mpsc::Sender<GameSnapshotEventDto>>,
     response_timeout: Option<Duration>,
     latest_view: Option<GameViewDto>,
     /// Display events accumulated between prompts — drained and attached to each outgoing prompt.
@@ -33,6 +38,7 @@ pub struct TauriAgent {
     /// Cached per-ability descriptions and is_mana_ability flags, populated in snapshot_state.
     /// Key: (card_id.0, ability_index) → (description, is_mana_ability)
     ability_descriptions: std::collections::HashMap<(u32, usize), (String, bool)>,
+    pending_restore_checkpoint: Option<u64>,
 }
 
 enum PromptSink {
@@ -50,7 +56,8 @@ impl TauriAgent {
         game_id: String,
         prompt_tx: mpsc::Sender<AgentPrompt>,
         response_rx: mpsc::Receiver<PlayerAction>,
-        notify_tx: mpsc::Sender<String>,
+        notify_tx: mpsc::Sender<GameLogEntryDto>,
+        snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
     ) -> Self {
         Self {
             player_id,
@@ -58,11 +65,13 @@ impl TauriAgent {
             prompt_sink: PromptSink::Local(prompt_tx),
             response_rx,
             notify_tx: Some(notify_tx),
+            snapshot_tx: Some(snapshot_tx),
             response_timeout: None,
             latest_view: None,
             pending_display_events: Vec::new(),
             peeked_library_cards: Vec::new(),
             ability_descriptions: std::collections::HashMap::new(),
+            pending_restore_checkpoint: None,
         }
     }
 
@@ -82,11 +91,13 @@ impl TauriAgent {
             },
             response_rx,
             notify_tx: None,
+            snapshot_tx: None,
             response_timeout: Some(Duration::from_secs(120)),
             latest_view: None,
             pending_display_events: Vec::new(),
             peeked_library_cards: Vec::new(),
             ability_descriptions: std::collections::HashMap::new(),
+            pending_restore_checkpoint: None,
         }
     }
 
@@ -102,11 +113,13 @@ impl TauriAgent {
             prompt_sink: PromptSink::Ai(prompt_tx),
             response_rx,
             notify_tx: None,
+            snapshot_tx: None,
             response_timeout: Some(Duration::from_secs(5)),
             latest_view: None,
             pending_display_events: Vec::new(),
             peeked_library_cards: Vec::new(),
             ability_descriptions: std::collections::HashMap::new(),
+            pending_restore_checkpoint: None,
         }
     }
 
@@ -349,6 +362,10 @@ impl PlayerAgent for TauriAgent {
             activatable_ability_ids,
         });
         match self.recv_action() {
+            PlayerAction::RestoreSnapshot { checkpoint_id } => {
+                self.pending_restore_checkpoint = Some(checkpoint_id);
+                MainPhaseAction::Pass
+            }
             PlayerAction::PlayCard { card_id } => card_id
                 .and_then(|id| parse_card_id(&id))
                 .map(MainPhaseAction::Play)
@@ -397,6 +414,10 @@ impl PlayerAgent for TauriAgent {
             .copied()
             .unwrap_or(DefenderId::Player(PlayerId(1)));
         match self.recv_action() {
+            PlayerAction::RestoreSnapshot { checkpoint_id } => {
+                self.pending_restore_checkpoint = Some(checkpoint_id);
+                Vec::new()
+            }
             PlayerAction::DeclareAttackers { assignments } => assignments
                 .iter()
                 .filter_map(|a| {
@@ -426,6 +447,10 @@ impl PlayerAgent for TauriAgent {
             available_blocker_ids,
         });
         match self.recv_action() {
+            PlayerAction::RestoreSnapshot { checkpoint_id } => {
+                self.pending_restore_checkpoint = Some(checkpoint_id);
+                Vec::new()
+            }
             PlayerAction::DeclareBlockers { assignments } => assignments
                 .iter()
                 .filter_map(
@@ -966,8 +991,24 @@ impl PlayerAgent for TauriAgent {
 
     fn notify(&mut self, message: &str) {
         if let Some(tx) = &self.notify_tx {
-            let _ = tx.send(message.to_string());
+            let _ = tx.send(GameLogEntryDto::from_message(message));
         }
+    }
+
+    fn notify_event(&mut self, event: GameLogEvent) {
+        if let Some(tx) = &self.notify_tx {
+            let _ = tx.send(GameLogEntryDto::from_event(event));
+        }
+    }
+
+    fn notify_snapshot_created(&mut self, checkpoint_id: u64, label: &str) {
+        if let (Some(tx), Some(view)) = (&self.snapshot_tx, self.latest_view.clone()) {
+            let _ = tx.send(GameSnapshotEventDto::new(checkpoint_id, label.to_string(), view));
+        }
+    }
+
+    fn take_restore_request(&mut self) -> Option<u64> {
+        self.pending_restore_checkpoint.take()
     }
 
     fn notify_card_played(
@@ -997,6 +1038,15 @@ impl PlayerAgent for TauriAgent {
             .and_then(|v| v.players.iter().find(|p| p.id == player_id))
             .map(|p| p.name.clone())
             .unwrap_or_else(|| format!("Player {}", active_player.0));
+        if let Some(tx) = &self.notify_tx {
+            let _ = tx.send(GameLogEntryDto::from_event(
+                forge_engine_core::agent::GameLogEvent::rule(format!(
+                    "TURN {} — {}",
+                    turn_number, active_player_name
+                ))
+                .with_player(active_player),
+            ));
+        }
         self.pending_display_events.push(DisplayEvent::TurnChanged {
             active_player_id: player_id,
             active_player_name,

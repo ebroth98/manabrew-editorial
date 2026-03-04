@@ -40,7 +40,7 @@ pub struct DelayedTrigger {
 }
 
 /// A triggered ability ready to be placed on the stack, with optional metadata.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PendingTrigger {
     pub entry: StackEntry,
     /// Whether this trigger is optional (has OptionalDecider$).
@@ -55,6 +55,7 @@ pub struct PendingTrigger {
 /// In Java, lives on Game. In Rust, lives on GameLoop because
 /// active_triggers and waiting_triggers are transient processing state.
 #[allow(dead_code)]
+#[derive(Debug, Clone)]
 pub struct TriggerHandler {
     active_triggers: Vec<ActiveTrigger>,
     waiting_triggers: Vec<TriggerWaiting>,

@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{resolve_defined_player, EffectContext};
+use crate::agent::GameLogEvent;
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `RevealHandEffect.java`.
@@ -31,6 +32,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         names.join(", ")
     );
     for agent in ctx.agents.iter_mut() {
-        agent.notify(&msg);
+        agent.notify_event(GameLogEvent::rule(msg.clone()).with_player(target));
     }
 }

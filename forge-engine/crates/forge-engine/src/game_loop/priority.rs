@@ -113,6 +113,12 @@ impl GameLoop {
                 &activatable,
             );
 
+            if self.apply_pending_snapshot_restore(game, agents) {
+                passed_count = 0;
+                priority_player = game.turn.priority_player;
+                continue;
+            }
+
             match action {
                 MainPhaseAction::Pass => {
                     self.log_priority_pass(game, priority_player);
@@ -129,8 +135,13 @@ impl GameLoop {
                         &self.describe_priority_action(game, action, None),
                     );
                     if !playable.contains(&card_id) {
-                        agents[priority_player.index()]
-                            .notify("Illegal action ignored: unplayable card");
+                        crate::agent::notify_all_agents(
+                            agents,
+                            crate::agent::GameLogEvent::warning(
+                                "Illegal action ignored: unplayable card",
+                            )
+                            .with_player(priority_player),
+                        );
                         passed_count += 1;
                         priority_player = game.next_player(priority_player);
                         self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
@@ -163,8 +174,13 @@ impl GameLoop {
                         passed_count = 0;
                     } else {
                         // Payment failed — treat as a pass to avoid infinite retry loop
-                        agents[priority_player.index()]
-                            .notify("Card play failed (insufficient mana)");
+                        crate::agent::notify_all_agents(
+                            agents,
+                            crate::agent::GameLogEvent::warning(
+                                "Card play failed (insufficient mana)",
+                            )
+                            .with_player(priority_player),
+                        );
                         passed_count += 1;
                         priority_player = game.next_player(priority_player);
                         self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
@@ -179,8 +195,13 @@ impl GameLoop {
                         &self.describe_priority_action(game, action, None),
                     );
                     if !tappable_lands.contains(&land_id) {
-                        agents[priority_player.index()]
-                            .notify("Illegal action ignored: land can't tap for mana");
+                        crate::agent::notify_all_agents(
+                            agents,
+                            crate::agent::GameLogEvent::warning(
+                                "Illegal action ignored: land can't tap for mana",
+                            )
+                            .with_player(priority_player),
+                        );
                         passed_count += 1;
                         priority_player = game.next_player(priority_player);
                         self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
@@ -245,8 +266,12 @@ impl GameLoop {
                         &self.describe_priority_action(game, action, None),
                     );
                     if !untappable_lands.contains(&land_id) {
-                        agents[priority_player.index()].notify(
-                            "Illegal action ignored: land can't be untapped for mana rollback",
+                        crate::agent::notify_all_agents(
+                            agents,
+                            crate::agent::GameLogEvent::warning(
+                                "Illegal action ignored: land can't be untapped for mana rollback",
+                            )
+                            .with_player(priority_player),
                         );
                         passed_count += 1;
                         priority_player = game.next_player(priority_player);
@@ -301,8 +326,13 @@ impl GameLoop {
                         &self.describe_priority_action(game, action, Some(ability_idx)),
                     );
                     if !activatable.contains(&(card_id, ability_idx)) {
-                        agents[priority_player.index()]
-                            .notify("Illegal action ignored: ability not activatable");
+                        crate::agent::notify_all_agents(
+                            agents,
+                            crate::agent::GameLogEvent::warning(
+                                "Illegal action ignored: ability not activatable",
+                            )
+                            .with_player(priority_player),
+                        );
                         passed_count += 1;
                         priority_player = game.next_player(priority_player);
                         self.with_shared_state_mutation(game, agents, |_this, game, _agents| {

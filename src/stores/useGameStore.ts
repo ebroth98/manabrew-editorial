@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type { GameView, Card, ActivatableAbilityInfo } from '@/types/xmage';
 import { getFormat } from '@/lib/formats';
+import { normalizeGameLogPayload, type GameLogEntry } from '@/types/gameLog';
+import { normalizeSnapshotPayload, type GameSnapshotEntry } from '@/types/gameSnapshot';
 
 interface DisplayEvent {
   kind: string;
@@ -112,7 +114,8 @@ interface DeferredSnapshot {
 interface GameState {
   gameView: GameView | null;
   currentPrompt: AgentPrompt | null;
-  gameLog: string[];
+  gameLog: GameLogEntry[];
+  snapshots: GameSnapshotEntry[];
   isGameActive: boolean;
   debugInfo: string;
   /** Queue of deferred snapshots waiting for flash animation. */
@@ -169,6 +172,7 @@ interface GameState {
   concede: () => void;
   endGame: () => Promise<void>;
   setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
+  restoreSnapshot: (checkpointId: number) => Promise<void>;
   setupListeners: () => Promise<() => void>;
 }
 
@@ -213,6 +217,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameView: null,
   currentPrompt: null,
   gameLog: [],
+  snapshots: [],
   isGameActive: false,
   debugInfo: '',
   deferredQueue: [],
@@ -240,7 +245,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         commanderName: commanderName ?? null,
       });
       // Clear old game state so stale gameView/prompts don't bleed into new game
-      set({ isGameActive: true, gameLog: [], gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, debugInfo: `Game started: ${result}. Polling...` });
+      set({ isGameActive: true, gameLog: [], snapshots: [], gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, debugInfo: `Game started: ${result}. Polling...` });
     } catch (e) {
       set({ debugInfo: `Start failed: ${e}` });
       console.error('[store] Failed to start game:', e);
@@ -263,6 +268,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         isHost: localIsHost,
         myPlayerSlot: `player-${enginePlayerIndex}`,
         gameLog: [],
+        snapshots: [],
         gameView: null,
         currentPrompt: null,
         deferredQueue: [],
@@ -420,7 +426,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   endGame: async () => {
     try {
       await invoke('end_game');
-      set({ isGameActive: false, gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, isMultiplayer: false, isHost: false, myPlayerSlot: null });
+      set({ isGameActive: false, gameView: null, currentPrompt: null, gameLog: [], snapshots: [], deferredQueue: [], isFlashing: false, isWaitingForResponse: false, isMultiplayer: false, isHost: false, myPlayerSlot: null });
     } catch (e) {
       console.error('Failed to end game:', e);
     }
@@ -428,6 +434,22 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setMultiplayerState: (isMultiplayer, isHost, myPlayerSlot) => {
     set({ isMultiplayer, isHost, myPlayerSlot });
+  },
+
+  restoreSnapshot: async (checkpointId) => {
+    const { isMultiplayer, isHost } = get();
+    if (isMultiplayer && !isHost) return;
+    const promptType = get().currentPrompt?.type;
+    const safePrompt =
+      promptType === 'chooseAction' ||
+      promptType === 'chooseAttackers' ||
+      promptType === 'chooseBlockers';
+    if (!safePrompt) {
+      set({ debugInfo: 'Snapshot restore is only available during priority/combat declaration prompts.' });
+      return;
+    }
+    await invoke('restore_snapshot', { checkpointId });
+    set({ debugInfo: `Requested snapshot restore: #${checkpointId}` });
   },
 
   setupListeners: async () => {
@@ -443,12 +465,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
       unlisteners.push(unlisten1);
 
-      const unlisten2 = await listen<string>('game:log', (event) => {
+      const unlisten2 = await listen<unknown>('game:log', (event) => {
+        const entry = normalizeGameLogPayload(event.payload);
         set((state) => ({
-          gameLog: [...state.gameLog.slice(-99), event.payload],
+          gameLog: [...state.gameLog.slice(-199), entry],
         }));
       });
       unlisteners.push(unlisten2);
+
+      const unlistenSnapshot = await listen<unknown>('game:snapshot', (event) => {
+        const snapshot = normalizeSnapshotPayload(event.payload);
+        if (!snapshot.gameView) return;
+        set((state) => ({
+          snapshots: [...state.snapshots.filter((s) => s.checkpointId !== snapshot.checkpointId).slice(-199), snapshot],
+        }));
+      });
+      unlisteners.push(unlistenSnapshot);
 
       // Remote prompt listener: receives prompts relayed via the server for non-host players
       const unlisten3 = await listen<{ kind: string; forPlayer: string; prompt: AgentPrompt }>('game:remote_prompt', (event) => {
@@ -495,6 +527,7 @@ export const useGameStore = create<GameState>((set, get) => ({
           isMultiplayer: false,
           isHost: false,
           myPlayerSlot: null,
+          snapshots: [],
           debugInfo: `Game ended: ${message}`,
         });
       });

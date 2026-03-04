@@ -405,6 +405,9 @@ impl GameLoop {
             );
             let agent = &mut agents[active.index()];
             let mut picked = agent.choose_attackers(active, &available_attackers, &possible_defenders);
+            if self.apply_pending_snapshot_restore(game, agents) {
+                return;
+            }
             self.game_log.log(
                 GameLogEntryType::PriorityResponse,
                 2,
@@ -601,6 +604,30 @@ impl GameLoop {
             chosen_attackers.retain(|(id, _)| !cost_failures.contains(id));
         }
 
+        if !chosen_attackers.is_empty() {
+            crate::agent::notify_all_agents(
+                agents,
+                crate::agent::GameLogEvent::action("Combat phase begins").with_player(active),
+            );
+            let attackers_msg = chosen_attackers
+                .iter()
+                .map(|(attacker_id, defender)| {
+                    let attacker_name = game.card(*attacker_id).card_name.clone();
+                    let defender_name = match defender {
+                        combat::DefenderId::Player(pid) => game.player(*pid).name.clone(),
+                        combat::DefenderId::Permanent(cid) => game.card(*cid).card_name.clone(),
+                    };
+                    format!("{attacker_name} -> {defender_name}")
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            crate::agent::notify_all_agents(
+                agents,
+                crate::agent::GameLogEvent::action(format!("Attackers: {attackers_msg}"))
+                    .with_player(active),
+            );
+        }
+
         // Tap attackers (Vigilance skips tapping)
         let num_attackers = chosen_attackers.len() as i32;
         for &(attacker_id, defender) in &chosen_attackers {
@@ -673,7 +700,6 @@ impl GameLoop {
                         game.player(defending).name
                     ),
                 );
-                let def_agent = &mut agents[defending.index()];
                 // Build blocker choices sequentially (Java-style) so deterministic
                 // parity agents consume blocker RNG in lockstep with the Java harness.
                 let max_blockers_for_defender =
@@ -701,9 +727,14 @@ impl GameLoop {
                     {
                         continue;
                     }
-                    if let Some(attacker) =
+                    let chosen = {
+                        let def_agent = &mut agents[defending.index()];
                         def_agent.choose_blocker_for(defending, &ordered_attackers, blocker)
-                    {
+                    };
+                    if let Some(attacker) = chosen {
+                        if self.apply_pending_snapshot_restore(game, agents) {
+                            return;
+                        }
                         chosen_blockers.push((blocker, attacker));
                     }
                 }
@@ -807,6 +838,25 @@ impl GameLoop {
 
                 // Publish finalized blocker assignments for UI snapshots in this combat.
                 game.turn.combat_block_assignments = self.combat.blockers.clone();
+
+                if !self.combat.blockers.is_empty() {
+                    let blockers_msg = self
+                        .combat
+                        .blockers
+                        .iter()
+                        .map(|(blocker_id, attacker_id)| {
+                            let blocker_name = game.card(*blocker_id).card_name.clone();
+                            let attacker_name = game.card(*attacker_id).card_name.clone();
+                            format!("{blocker_name} -> {attacker_name}")
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    crate::agent::notify_all_agents(
+                        agents,
+                        crate::agent::GameLogEvent::action(format!("Blockers: {blockers_msg}"))
+                            .with_player(defending),
+                    );
+                }
             }
         }
 
@@ -1305,7 +1355,15 @@ impl GameLoop {
                 game.stack.push(entry);
                 self.log_stack_push(&card_name, &game.player(active).name);
                 game.move_card(card_id, ZoneType::Stack, active);
-                agents[active.index()].notify(&format!("Suspend: casting {} for free!", card_name));
+                crate::agent::notify_all_agents(
+                    agents,
+                    crate::agent::GameLogEvent::stack(format!(
+                        "Suspend: casting {} for free!",
+                        card_name
+                    ))
+                    .with_player(active)
+                    .with_card(card_id),
+                );
 
                 // Grant haste if creature (suspend creatures get haste)
                 if is_creature {

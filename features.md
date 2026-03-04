@@ -991,7 +991,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 
 | Category | Java Files | Fully Implemented | Partially Implemented | Not Implemented |
 |----------|:----------:|:-----------------:|:---------------------:|:---------------:|
-| Core Game | 37 | 3 | 9 | 25 |
+| Core Game | 37 | 3 | 10 | 24 |
 | Ability System | 10 | 2 | 2 | 6 |
 | Ability Effects | 204 | 85 | 9 | 110 |
 | Card System | 28 | 4 | 4 | 20 |
@@ -1012,9 +1012,9 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Static Abilities | 61 | 2 | 4 | 55 |
 | Triggers | 139 | 70 | 1 | 68 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **769** | **195** | **62** | **512** |
+| **TOTAL** | **769** | **195** | **63** | **511** |
 
-> **Coverage: ~33.4% implemented or partially implemented** (257 of 769 features have some Rust counterpart).
+> **Coverage: ~33.6% implemented or partially implemented** (258 of 769 features have some Rust counterpart).
 >
 > The Rust engine has **~115 implementation files** (150+ total incl. tests/tools) across 6 crates. **85 effect handlers**, **68 trigger types**, **47 keyword abilities**, **7 static ability modes**, **14 replacement event types**, and **5 cost types** are functional. The architecture is solid — game loop, phase system, combat, mana pool, stack, triggers, replacement effects, static ability layer system all work.
 >
@@ -1274,8 +1274,8 @@ ReplaceAttached, ReplaceBeginPhase, ReplaceBeginTurn, ReplaceExplore, ReplaceLea
 
 | System | Status | Java Files | Notes |
 |--------|--------|-----------|-------|
-| Game Logging | 0% | `GameLog.java`, `GameLogEntry.java`, `GameLogEntryType.java`, `GameLogFormatter.java` | Needed for debugging, replay, UI log |
-| Game Snapshots | 0% | `GameSnapshot.java` | State save/restore (Karn Liberated, subgames) |
+| Game Logging | Partial | `GameLog.java`, `GameLogEntry.java`, `GameLogEntryType.java`, `GameLogFormatter.java` | Rust has `game_log.rs`/`game_log_entry*.rs` + formatter + loop call sites; Tauri emits structured log DTOs and UI renders typed entries with timestamps, turn separators, and source/target chips. Added explicit combat logs (`Combat phase begins`, `Attackers: ...`, `Blockers: ...`) and UI name resolution for players/cards in log metadata. Missing Java parity: in-memory observable log store, event-visitor formatter pipeline, and full entry-type coverage. |
+| Game Snapshots | Partial | `GameSnapshot.java` | Rust now has engine snapshot primitives: `game_snapshot.rs` + `GameLoop::{make_snapshot,restore_snapshot,stash_game_state,restore_game_state}` (captures `GameState`, `mana_pools`, `combat`, `trigger_handler`; optional stack inclusion). Not yet wired to Karn/subgame effect handlers or UI rewind timeline. |
 | Format/Rules Config | 0% | `GameRules.java`, `GameFormat.java`, `GameType.java` | Format enforcement, banned lists |
 | Match Management | 0% | `Match.java` | Best-of-3, sideboarding |
 | Event Visitor System | 0% | `IGameEventVisitor.java` + 60+ event classes | TriggerType enum works but less extensible |

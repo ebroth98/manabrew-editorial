@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
+use crate::agent::GameLogEvent;
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `RevealEffect.java`.
@@ -33,7 +34,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for agent in ctx.agents.iter_mut() {
         for &id in revealed {
             let name = ctx.game.card(id).card_name.clone();
-            agent.notify(&format!("Revealed: {}", name));
+            agent.notify_event(GameLogEvent::rule(format!("Revealed: {}", name)).with_card(id));
         }
     }
 }

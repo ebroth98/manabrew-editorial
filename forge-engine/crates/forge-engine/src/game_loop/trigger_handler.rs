@@ -77,7 +77,15 @@ impl GameLoop {
                     trigger_mode, trigger_api, source_name, pt.description
                 )
             };
-            agents[pt.entry.spell_ability.activating_player.index()].notify(&trigger_msg);
+            let mut event = crate::agent::GameLogEvent::stack(trigger_msg)
+                .with_player(pt.entry.spell_ability.activating_player);
+            if let Some(source_id) = pt.entry.spell_ability.source {
+                event = event.with_source_card(source_id);
+            }
+            if let Some(target_id) = pt.entry.spell_ability.target_chosen.target_card {
+                event = event.with_target_card(target_id);
+            }
+            crate::agent::notify_all_agents(agents, event);
             game.stack.push(pt.entry);
             self.log_stack_push(&source_name, &player_name);
         }

@@ -14,9 +14,13 @@ use tauri::{AppHandle, Emitter};
 
 use crate::ai_agent::spawn_ai_prompt_responder;
 use crate::card_db::{card_rules_to_instance, get_token_db};
+use crate::game_log_event::GameLogEntryDto;
+use crate::game_snapshot_event::GameSnapshotEventDto;
 use crate::game_view_dto::GameViewDto;
+use crate::ids_codec::player_slot;
 use crate::multiplayer_controller::{
     parse_remote_response, spawn_engine_prompt_forwarder, spawn_notify_forwarder,
+    spawn_snapshot_forwarder,
     spawn_remote_prompt_forwarder,
 };
 use crate::preset_decks::{
@@ -38,6 +42,7 @@ pub struct GameSession {
     pub remote_response_txs: HashMap<usize, mpsc::Sender<PlayerAction>>,
     pub thread_handle: Option<thread::JoinHandle<()>>,
     pub is_multiplayer: bool,
+    pub is_host: bool,
 }
 
 impl GameManager {
@@ -78,12 +83,14 @@ impl GameManager {
         // Channels
         let (prompt_tx, prompt_rx) = mpsc::channel::<AgentPrompt>();
         let (response_tx, response_rx) = mpsc::channel::<PlayerAction>();
-        let (notify_tx, notify_rx) = mpsc::channel::<String>();
+        let (notify_tx, notify_rx) = mpsc::channel::<GameLogEntryDto>();
+        let (snapshot_tx, snapshot_rx) = mpsc::channel::<GameSnapshotEventDto>();
 
         let response_tx_clone = response_tx.clone();
 
         spawn_engine_prompt_forwarder(app.clone(), self.latest_prompt.clone(), prompt_rx);
-        spawn_notify_forwarder(app.clone(), notify_rx);
+        spawn_notify_forwarder(app.clone(), notify_rx, None);
+        spawn_snapshot_forwarder(app.clone(), snapshot_rx, None);
 
         // Game thread
         let handle = thread::spawn(move || {
@@ -100,6 +107,7 @@ impl GameManager {
                     prompt_tx,
                     response_rx,
                     notify_tx,
+                    snapshot_tx,
                 );
             }));
             match result {
@@ -123,6 +131,7 @@ impl GameManager {
             remote_response_txs: HashMap::new(),
             thread_handle: Some(handle),
             is_multiplayer: false,
+            is_host: true,
         });
 
         Ok(game_id)
@@ -234,7 +243,8 @@ impl GameManager {
         // Engine-local player channels (TauriAgent)
         let (engine_prompt_tx, engine_prompt_rx) = mpsc::channel::<AgentPrompt>();
         let (engine_response_tx, engine_response_rx) = mpsc::channel::<PlayerAction>();
-        let (engine_notify_tx, notify_rx) = mpsc::channel::<String>();
+        let (engine_notify_tx, notify_rx) = mpsc::channel::<GameLogEntryDto>();
+        let (engine_snapshot_tx, snapshot_rx) = mpsc::channel::<GameSnapshotEventDto>();
 
         let engine_response_tx_clone = engine_response_tx.clone();
 
@@ -260,7 +270,16 @@ impl GameManager {
         drop(remote_prompt_tx);
 
         spawn_engine_prompt_forwarder(app.clone(), self.latest_prompt.clone(), engine_prompt_rx);
-        spawn_notify_forwarder(app.clone(), notify_rx);
+        spawn_notify_forwarder(
+            app.clone(),
+            notify_rx,
+            Some(player_slot(engine_player_index)),
+        );
+        spawn_snapshot_forwarder(
+            app.clone(),
+            snapshot_rx,
+            Some(player_slot(engine_player_index)),
+        );
         spawn_remote_prompt_forwarder(app.clone(), remote_prompt_rx);
 
         // Game thread
@@ -281,6 +300,7 @@ impl GameManager {
                     game_engine_prompt_tx,
                     engine_response_rx,
                     engine_notify_tx,
+                    engine_snapshot_tx,
                     game_remote_prompt_tx,
                     remote_response_rxs,
                 );
@@ -306,6 +326,7 @@ impl GameManager {
             remote_response_txs,
             thread_handle: Some(handle),
             is_multiplayer: true,
+            is_host: local_is_host,
         });
 
         Ok(game_id)
@@ -336,6 +357,22 @@ impl GameManager {
             }
         }
     }
+
+    pub fn restore_snapshot(&self, checkpoint_id: u64) -> Result<(), String> {
+        let session_guard = self.session.lock().map_err(|e| e.to_string())?;
+        if let Some(session) = session_guard.as_ref() {
+            if session.is_multiplayer && !session.is_host {
+                return Err("Only the host can restore snapshots".into());
+            }
+            session
+                .response_tx
+                .send(PlayerAction::RestoreSnapshot { checkpoint_id })
+                .map_err(|e| format!("Game thread not responding: {}", e))?;
+            Ok(())
+        } else {
+            Err("No active game session".into())
+        }
+    }
 }
 
 fn uuid_simple() -> String {
@@ -351,7 +388,8 @@ fn run_game(
     commander_name: Option<String>,
     prompt_tx: mpsc::Sender<AgentPrompt>,
     response_rx: mpsc::Receiver<PlayerAction>,
-    notify_tx: mpsc::Sender<String>,
+    notify_tx: mpsc::Sender<GameLogEntryDto>,
+    snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
 ) {
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
@@ -388,6 +426,7 @@ fn run_game(
         prompt_tx.clone(),
         response_rx,
         notify_tx,
+        snapshot_tx,
     );
 
     let (ai_prompt_tx, ai_prompt_rx) = mpsc::channel::<AgentPrompt>();
@@ -400,6 +439,8 @@ fn run_game(
     if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
         game_loop.game_log.set_enabled(true);
     }
+    game_loop.experimental_restore_snapshot =
+        std::env::var("FORGE_ENGINE_RESTORE_SNAPSHOT").is_ok();
 
     // Register token templates so the engine can instantiate tokens by script name.
     // Uses a placeholder owner (p0); the actual owner/controller is set at creation time.
@@ -433,7 +474,8 @@ fn run_multiplayer_game(
     starting_life: i32,
     engine_prompt_tx: mpsc::Sender<AgentPrompt>,
     engine_response_rx: mpsc::Receiver<PlayerAction>,
-    engine_notify_tx: mpsc::Sender<String>,
+    engine_notify_tx: mpsc::Sender<GameLogEntryDto>,
+    engine_snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
     remote_prompt_tx: mpsc::Sender<(usize, AgentPrompt)>,
     remote_response_rxs: Vec<(usize, mpsc::Receiver<PlayerAction>)>,
 ) {
@@ -449,6 +491,7 @@ fn run_multiplayer_game(
         engine_prompt_tx.clone(),
         engine_response_rx,
         engine_notify_tx,
+        engine_snapshot_tx,
     )));
 
     let mut remote_rx_map: HashMap<usize, mpsc::Receiver<PlayerAction>> =
@@ -483,6 +526,8 @@ fn run_multiplayer_game(
     if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
         game_loop.game_log.set_enabled(true);
     }
+    game_loop.experimental_restore_snapshot =
+        std::env::var("FORGE_ENGINE_RESTORE_SNAPSHOT").is_ok();
 
     let p0 = PlayerId(0);
     let token_db = get_token_db();

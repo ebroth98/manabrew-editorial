@@ -1186,6 +1186,7 @@ impl GameLoop {
 
         // Push to stack
         let card_name = game.card(card_id).card_name.clone();
+        let target_card = sa.target_chosen.target_card;
         let entry = StackEntry {
             id: 0,
             spell_ability: sa,
@@ -1200,10 +1201,16 @@ impl GameLoop {
             .get("AB")
             .cloned()
             .unwrap_or_else(|| "Unknown".to_string());
-        agents[player.index()].notify(&format!(
+        let mut event = crate::agent::GameLogEvent::action(format!(
             "Activated ability: {} | source={}",
             ability_kind, card_name
-        ));
+        ))
+        .with_player(player)
+        .with_source_card(card_id);
+        if let Some(target_id) = target_card {
+            event = event.with_target_card(target_id);
+        }
+        crate::agent::notify_all_agents(agents, event);
 
         // Fire AbilityActivated trigger
         self.trigger_handler.run_trigger(

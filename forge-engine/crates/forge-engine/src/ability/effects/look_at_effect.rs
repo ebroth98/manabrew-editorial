@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, parse_zone_type, resolve_defined_player, EffectContext};
+use crate::agent::GameLogEvent;
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `LookAtEffect.java`.
@@ -45,5 +46,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         names.join(", ")
     );
     // Only the activating player can see these.
-    ctx.agents[sa.activating_player.index()].notify(&msg);
+    ctx.agents[sa.activating_player.index()]
+        .notify_event(GameLogEvent::info(msg).with_player(sa.activating_player));
 }

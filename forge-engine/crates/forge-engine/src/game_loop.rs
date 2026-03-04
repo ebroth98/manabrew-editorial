@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::hash::{DefaultHasher, Hasher};
 
 use forge_foundation::{PhaseType, ZoneType};
@@ -13,6 +13,7 @@ use crate::game::GameState;
 use crate::game_log::GameLog;
 use crate::game_log_entry_type::GameLogEntryType;
 use crate::game_rng::{GameRng, ThreadRngAdapter};
+use crate::game_snapshot::GameSnapshot;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::{
     self, basic_land_mana_atom, capitalize_color, color_name_to_mana_atom, mana_atom_from_produced,
@@ -39,6 +40,13 @@ pub struct GameLoop {
     /// Default: ThreadRngAdapter (non-deterministic). For parity testing,
     /// replace with a JavaRandom-backed implementation.
     pub game_rng: Box<dyn GameRng>,
+    /// Enables Java-parity snapshot rollback support (`stash_game_state` / `restore_game_state`).
+    pub experimental_restore_snapshot: bool,
+    /// Last stashed snapshot used by rollback flows.
+    previous_game_state: Option<GameSnapshot>,
+    /// Rolling checkpoint history for UI rewind/debug.
+    checkpoints: VecDeque<(u64, String, GameSnapshot)>,
+    next_checkpoint_id: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,6 +87,10 @@ impl GameLoop {
             game_log: GameLog::new(),
             token_templates: HashMap::new(),
             game_rng: Box::new(ThreadRngAdapter),
+            experimental_restore_snapshot: false,
+            previous_game_state: None,
+            checkpoints: VecDeque::new(),
+            next_checkpoint_id: 1,
         }
     }
 
@@ -94,6 +106,99 @@ impl GameLoop {
 
     pub fn pool_mut(&mut self, pid: PlayerId) -> &mut ManaPool {
         &mut self.mana_pools[pid.index()]
+    }
+
+    /// Create a game snapshot. Set `include_stack` false for copy-without-stack flows.
+    pub fn make_snapshot(&self, game: &GameState, include_stack: bool) -> GameSnapshot {
+        GameSnapshot::capture(
+            game,
+            &self.mana_pools,
+            &self.combat,
+            &self.trigger_handler,
+            include_stack,
+        )
+    }
+
+    /// Restore a previously captured snapshot.
+    pub fn restore_snapshot(&mut self, game: &mut GameState, snapshot: &GameSnapshot) {
+        snapshot.restore_game_state(
+            game,
+            &mut self.mana_pools,
+            &mut self.combat,
+            &mut self.trigger_handler,
+        );
+    }
+
+    /// Stash the current state if snapshot rollback is enabled.
+    pub fn stash_game_state(&mut self, game: &GameState) {
+        if self.experimental_restore_snapshot {
+            self.previous_game_state = Some(self.make_snapshot(game, true));
+        }
+    }
+
+    /// Restore from the previously stashed state if available and enabled.
+    pub fn restore_game_state(&mut self, game: &mut GameState) -> bool {
+        if !self.experimental_restore_snapshot {
+            return false;
+        }
+        let Some(snapshot) = self.previous_game_state.clone() else {
+            return false;
+        };
+        self.restore_snapshot(game, &snapshot);
+        true
+    }
+
+    pub fn restore_checkpoint(&mut self, game: &mut GameState, checkpoint_id: u64) -> bool {
+        let Some((_, _, snapshot)) = self
+            .checkpoints
+            .iter()
+            .find(|(id, _, _)| *id == checkpoint_id)
+            .cloned()
+        else {
+            return false;
+        };
+        self.restore_snapshot(game, &snapshot);
+        true
+    }
+
+    fn record_checkpoint(
+        &mut self,
+        game: &GameState,
+        include_stack: bool,
+    ) -> (u64, String) {
+        let checkpoint_id = self.next_checkpoint_id;
+        self.next_checkpoint_id += 1;
+        let label = format!("Turn {} {}", game.turn.turn_number, game.turn.phase.script_name());
+        let snap = self.make_snapshot(game, include_stack);
+        self.checkpoints.push_back((checkpoint_id, label.clone(), snap));
+        while self.checkpoints.len() > 256 {
+            self.checkpoints.pop_front();
+        }
+        (checkpoint_id, label)
+    }
+
+    pub(crate) fn apply_pending_snapshot_restore(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) -> bool {
+        let mut requested = None;
+        for agent in agents.iter_mut() {
+            if let Some(id) = agent.take_restore_request() {
+                requested = Some(id);
+            }
+        }
+        let Some(checkpoint_id) = requested else {
+            return false;
+        };
+        let restored = self.restore_checkpoint(game, checkpoint_id);
+        if restored {
+            for agent in agents.iter_mut() {
+                agent.snapshot_state(game, &self.mana_pools);
+                agent.notify_state_changed();
+            }
+        }
+        restored
     }
 
     /// Get untapped lands on the battlefield for a player.
@@ -197,6 +302,10 @@ impl GameLoop {
         let turn_number = game.turn.turn_number;
         for agent in agents.iter_mut() {
             agent.snapshot_state(game, &self.mana_pools);
+        }
+        let (checkpoint_id, label) = self.record_checkpoint(game, true);
+        for agent in agents.iter_mut() {
+            agent.notify_snapshot_created(checkpoint_id, &label);
         }
         for agent in agents.iter_mut() {
             agent.notify_turn_changed(active, turn_number);

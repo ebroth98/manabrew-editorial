@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use crate::game_log_event::GameLogEntryDto;
+use crate::game_snapshot_event::GameSnapshotEventDto;
 use crate::ids_codec::parse_player_slot;
 use crate::prompt::{AgentPrompt, PlayerAction};
 
@@ -11,6 +13,14 @@ pub enum RelayEnvelope {
     Response {
         from_player: String,
         action: PlayerAction,
+    },
+    Log {
+        from_player: String,
+        entry: GameLogEntryDto,
+    },
+    Snapshot {
+        from_player: String,
+        entry: GameSnapshotEventDto,
     },
 }
 
@@ -32,6 +42,16 @@ pub fn encode_relay_envelope(envelope: RelayEnvelope) -> Result<Value, String> {
                 "action": action_value,
             }))
         }
+        RelayEnvelope::Log { from_player, entry } => Ok(serde_json::json!({
+            "kind": "log",
+            "fromPlayer": from_player,
+            "entry": entry,
+        })),
+        RelayEnvelope::Snapshot { from_player, entry } => Ok(serde_json::json!({
+            "kind": "snapshot",
+            "fromPlayer": from_player,
+            "entry": entry,
+        })),
     }
 }
 

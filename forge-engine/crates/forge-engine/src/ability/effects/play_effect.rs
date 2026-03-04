@@ -8,6 +8,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::agent::GameLogEvent;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
@@ -43,6 +44,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Choose targets if the spell needs them
     spell_sa.setup_targets(ctx.game, ctx.agents, ctx.mana_pools);
+    let chosen_target = spell_sa.target_chosen.target_card;
 
     let is_creature = ctx.game.card(card_id).is_creature();
     let is_permanent = ctx.game.card(card_id).is_permanent();
@@ -77,5 +79,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         false,
     );
 
-    ctx.agents[controller.index()].notify(&format!("Rebound: cast {}", card_name));
+    let mut event = GameLogEvent::stack(format!("Rebound: cast {}", card_name))
+        .with_player(controller)
+        .with_source_card(card_id);
+    if let Some(target_id) = chosen_target {
+        event = event.with_target_card(target_id);
+    }
+    crate::agent::notify_all_agents(ctx.agents, event);
 }

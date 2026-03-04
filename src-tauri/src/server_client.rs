@@ -178,6 +178,16 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
             } else if kind == "prompt" {
                 let _ = app.emit("game:remote_prompt", state);
                 return;
+            } else if kind == "log" {
+                if let Some(entry) = state.get("entry") {
+                    let _ = app.emit("game:log", entry);
+                }
+                return;
+            } else if kind == "snapshot" {
+                if let Some(entry) = state.get("entry") {
+                    let _ = app.emit("game:snapshot", entry);
+                }
+                return;
             }
         }
     }
