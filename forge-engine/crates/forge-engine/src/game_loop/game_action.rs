@@ -204,6 +204,32 @@ impl GameLoop {
             }
         }
 
+        // Check graveyard for abilities with ActivationZone$ Graveyard (e.g. Scavenge, Unearth)
+        let graveyard = game.cards_in_zone(ZoneType::Graveyard, player).to_vec();
+        for card_id in graveyard {
+            let card = game.card(card_id);
+            for ab in &card.activated_abilities {
+                if ab.params.get("ActivationZone").map_or(false, |z| z == "Graveyard") {
+                    if can_activate(card_id, ab) {
+                        result.push((card_id, ab.ability_index));
+                    }
+                }
+            }
+        }
+
+        // Check exile for abilities with ActivationZone$ Exile
+        let exile = game.cards_in_zone(ZoneType::Exile, player).to_vec();
+        for card_id in exile {
+            let card = game.card(card_id);
+            for ab in &card.activated_abilities {
+                if ab.params.get("ActivationZone").map_or(false, |z| z == "Exile") {
+                    if can_activate(card_id, ab) {
+                        result.push((card_id, ab.ability_index));
+                    }
+                }
+            }
+        }
+
         result
     }
 

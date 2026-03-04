@@ -94,6 +94,23 @@ pub trait PlayerAgent {
         available_blockers: &[CardId],
     ) -> Vec<(CardId, CardId)>;
 
+    /// Choose one attacker for a specific blocker during sequential declaration.
+    ///
+    /// Return `Some(attacker_id)` to assign this blocker, or `None` to leave it
+    /// unassigned. Default behavior maps through `choose_blockers` for the single
+    /// blocker, preserving existing agent behavior when not overridden.
+    fn choose_blocker_for(
+        &mut self,
+        player: PlayerId,
+        attackers: &[CardId],
+        blocker: CardId,
+    ) -> Option<CardId> {
+        let pairs = self.choose_blockers(player, attackers, &[blocker]);
+        pairs
+            .into_iter()
+            .find_map(|(b, a)| if b == blocker { Some(a) } else { None })
+    }
+
     /// Choose the order in which an attacker assigns damage to its blockers.
     /// The attacker must assign lethal damage to each blocker in order before
     /// assigning damage to the next one.

@@ -674,8 +674,39 @@ impl GameLoop {
                     ),
                 );
                 let def_agent = &mut agents[defending.index()];
-                let chosen_blockers =
-                    def_agent.choose_blockers(defending, &attacker_card_ids, &legal_blockers);
+                // Build blocker choices sequentially (Java-style) so deterministic
+                // parity agents consume blocker RNG in lockstep with the Java harness.
+                let max_blockers_for_defender =
+                    crate::staticability::static_ability_block_restrict::block_restrict_num(
+                        &game.cards, defending,
+                    );
+                let mut chosen_blockers: Vec<(CardId, CardId)> = Vec::new();
+                let mut ordered_attackers = attacker_card_ids.clone();
+                ordered_attackers.sort_by_key(|&cid| game.card(cid).card_name.clone());
+                let mut ordered_blockers = legal_blockers.clone();
+                ordered_blockers.sort_by_key(|&cid| game.card(cid).card_name.clone());
+
+                for blocker in ordered_blockers {
+                    if max_blockers_for_defender != i32::MAX
+                        && (chosen_blockers.len() as i32) >= max_blockers_for_defender.max(0)
+                    {
+                        break;
+                    }
+                    if !game.card(blocker).can_block() {
+                        continue;
+                    }
+                    if !ordered_attackers
+                        .iter()
+                        .any(|&attacker| combat::can_creature_block(game, blocker, attacker))
+                    {
+                        continue;
+                    }
+                    if let Some(attacker) =
+                        def_agent.choose_blocker_for(defending, &ordered_attackers, blocker)
+                    {
+                        chosen_blockers.push((blocker, attacker));
+                    }
+                }
                 self.game_log.log(
                     GameLogEntryType::PriorityResponse,
                     2,
@@ -686,10 +717,6 @@ impl GameLoop {
                     ),
                 );
 
-                let max_blockers_for_defender =
-                    crate::staticability::static_ability_block_restrict::block_restrict_num(
-                        &game.cards, defending,
-                    );
                 for (idx, (blocker, attacker)) in chosen_blockers.into_iter().enumerate() {
                     if max_blockers_for_defender != i32::MAX
                         && idx >= max_blockers_for_defender.max(0) as usize

@@ -291,7 +291,7 @@ impl GameLoop {
             }
         }
 
-        // Check graveyard for Escape cards
+        // Check graveyard for Escape and Flashback cards
         let graveyard: Vec<CardId> = game.cards_in_zone(ZoneType::Graveyard, player).to_vec();
         for card_id in graveyard {
             let card = game.card(card_id);
@@ -315,6 +315,18 @@ impl GameLoop {
                     if other_gy_count >= exile_count {
                         playable.push(card_id);
                     }
+                }
+            } else if let Some(fb_cost_str) = card.get_flashback_cost() {
+                if must_be_instant && !has_flash_permission(card_id) {
+                    continue;
+                }
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                // Flashback can encode non-mana costs (e.g. "Sac<1/Mountain>").
+                // Use full cost parsing/payability, not just ManaCost parsing.
+                let fb_cost = parse_cost(&fb_cost_str);
+                if cost::can_pay(&fb_cost, game, &available_mana, card_id, player) {
+                    playable.push(card_id);
                 }
             }
         }
@@ -352,6 +364,23 @@ impl GameLoop {
                     {
                         playable.push(card_id);
                     }
+                }
+            }
+        }
+
+        // Check Command zone for commanders (with commander tax)
+        let command_zone: Vec<CardId> = game.cards_in_zone(ZoneType::Command, player).to_vec();
+        for card_id in command_zone {
+            let card = game.card(card_id);
+            if card.is_commander {
+                if must_be_instant && !has_flash_permission(card_id) {
+                    continue;
+                }
+                let tax = card.commander_cast_count as i32 * 2;
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                if available_mana.can_pay_with_extra_generic(&card.mana_cost, tax) {
+                    playable.push(card_id);
                 }
             }
         }
@@ -803,14 +832,35 @@ impl GameLoop {
                 }
             }
 
+            // Parse flashback total cost once (can include non-mana parts like Sac<...>).
+            let flashback_total_cost = if is_flashback {
+                let fb_cost_str = game.card(card_id).get_flashback_cost().unwrap();
+                Some(parse_cost(&fb_cost_str))
+            } else {
+                None
+            };
+
+            let flashback_mana_cost = flashback_total_cost.as_ref().map(|fb_cost| {
+                fb_cost
+                    .parts
+                    .iter()
+                    .filter_map(|part| {
+                        if let CostPart::Mana(mc) = part {
+                            Some(mc.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .fold(forge_foundation::ManaCost::zero(), |acc, mc| acc.add(&mc))
+            });
+
             // Determine the mana cost to use
             let mana_cost = if is_foretell {
                 let foretell_cost_str = game.card(card_id).get_foretell_cost().unwrap();
                 game.card_mut(card_id).face_down = false; // reveal it
                 forge_foundation::ManaCost::parse(&foretell_cost_str)
             } else if is_flashback {
-                let fb_cost_str = game.card(card_id).get_flashback_cost().unwrap();
-                forge_foundation::ManaCost::parse(&fb_cost_str)
+                flashback_mana_cost.unwrap_or_else(forge_foundation::ManaCost::zero)
             } else if is_madness {
                 let madness_cost_str = game.card(card_id).get_madness_cost().unwrap();
                 // Remove the MadnessExiled marker
@@ -1247,6 +1297,12 @@ impl GameLoop {
                 self.pay_additional_costs(game, agents, player, card_id, sc);
             }
 
+            // Pay additional non-mana costs from Flashback keyword cost
+            // (e.g. Lava Dart: Flashback—Sacrifice a Mountain).
+            if let Some(ref fb_cost) = flashback_total_cost {
+                self.pay_additional_costs(game, agents, player, card_id, fb_cost);
+            }
+
             // Pay Escape exile cost: exile N other graveyard cards
             if is_escape {
                 if let Some((_, exile_count)) = game.card(card_id).get_escape_cost() {
@@ -1375,7 +1431,14 @@ impl GameLoop {
 
             game.stack.push(entry.clone());
             self.log_stack_push(&card_name, &game.player(player).name);
-            agents[player.index()].notify(&format!("Cast: {}", card_name));
+            if is_flashback {
+                agents[player.index()].notify(&format!(
+                    "Cast: {} [Flashback from Graveyard]",
+                    card_name
+                ));
+            } else {
+                agents[player.index()].notify(&format!("Cast: {}", card_name));
+            }
 
             // Move spell to stack zone
             game.move_card(card_id, ZoneType::Stack, player);

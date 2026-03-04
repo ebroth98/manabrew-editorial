@@ -318,24 +318,7 @@ fn matches_valid_player(
 }
 
 fn matches_valid_card(valid: &str, card: &CardInstance, source: &CardInstance) -> bool {
-    if valid.eq_ignore_ascii_case("Card") || valid.eq_ignore_ascii_case("Permanent") {
-        return true;
-    }
-    if valid.eq_ignore_ascii_case("Card.Self") {
-        return card.id == source.id;
-    }
-    if valid.eq_ignore_ascii_case("Creature") {
-        return card.is_creature();
-    }
-    if valid.eq_ignore_ascii_case("Creature.YouCtrl") || valid.eq_ignore_ascii_case("Creature.YouControl")
-    {
-        return card.is_creature() && card.controller == source.controller;
-    }
-    if valid.eq_ignore_ascii_case("Creature.OppCtrl") || valid.eq_ignore_ascii_case("Creature.OpponentCtrl")
-    {
-        return card.is_creature() && card.controller != source.controller;
-    }
-    true
+    matches_any_valid_card_token(valid, card, source.controller, Some(source.id))
 }
 
 fn matches_valid_card_for_controller(
@@ -343,19 +326,71 @@ fn matches_valid_card_for_controller(
     card: &CardInstance,
     source_controller: crate::ids::PlayerId,
 ) -> bool {
-    if valid.eq_ignore_ascii_case("Card") || valid.eq_ignore_ascii_case("Permanent") {
+    matches_any_valid_card_token(valid, card, source_controller, None)
+}
+
+fn matches_any_valid_card_token(
+    valid: &str,
+    card: &CardInstance,
+    source_controller: crate::ids::PlayerId,
+    source_id: Option<CardId>,
+) -> bool {
+    valid
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .any(|token| matches_valid_card_token(token, card, source_controller, source_id))
+}
+
+fn matches_valid_card_token(
+    token: &str,
+    card: &CardInstance,
+    source_controller: crate::ids::PlayerId,
+    source_id: Option<CardId>,
+) -> bool {
+    if token.eq_ignore_ascii_case("Any") {
         return true;
     }
-    if valid.eq_ignore_ascii_case("Creature") {
-        return card.is_creature();
+    if token.eq_ignore_ascii_case("Card.Self") {
+        return source_id == Some(card.id);
     }
-    if valid.eq_ignore_ascii_case("Creature.YouCtrl") || valid.eq_ignore_ascii_case("Creature.YouControl")
-    {
-        return card.is_creature() && card.controller == source_controller;
+
+    let mut parts = token.split('.');
+    let kind = parts.next().unwrap_or_default();
+    let kind_ok = match kind.to_ascii_lowercase().as_str() {
+        "card" | "permanent" => true,
+        "creature" => card.is_creature(),
+        "artifact" => card.type_line.is_artifact(),
+        "enchantment" => card.type_line.is_enchantment(),
+        "land" => card.is_land(),
+        "planeswalker" => card.type_line.is_planeswalker(),
+        "nonland" => !card.is_land(),
+        "noncreature" => !card.is_creature(),
+        _ => false,
+    };
+    if !kind_ok {
+        return false;
     }
-    if valid.eq_ignore_ascii_case("Creature.OppCtrl") || valid.eq_ignore_ascii_case("Creature.OpponentCtrl")
-    {
-        return card.is_creature() && card.controller != source_controller;
+
+    for qualifier in parts {
+        match qualifier.to_ascii_lowercase().as_str() {
+            "you" | "youctrl" | "youcontrol" => {
+                if card.controller != source_controller {
+                    return false;
+                }
+            }
+            "opponent" | "oppctrl" | "opponentctrl" => {
+                if card.controller == source_controller {
+                    return false;
+                }
+            }
+            "self" => {
+                if source_id != Some(card.id) {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
     }
     true
 }

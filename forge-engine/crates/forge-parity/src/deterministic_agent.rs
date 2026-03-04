@@ -397,6 +397,39 @@ impl PlayerAgent for DeterministicAgent {
         pairs
     }
 
+    fn choose_blocker_for(
+        &mut self,
+        _player: PlayerId,
+        attackers: &[CardId],
+        blocker: CardId,
+    ) -> Option<CardId> {
+        if attackers.is_empty() {
+            if self.verbose {
+                self.log_decision("Blockers: NONE");
+            }
+            return None;
+        }
+
+        let sorted_attackers = self.sort_by_name(attackers);
+        let choice = self.rng.borrow_mut().next_int((sorted_attackers.len() + 1) as i32) as usize;
+        if choice == 0 || choice > sorted_attackers.len() {
+            if self.verbose {
+                self.log_decision("Blockers: NONE (random)");
+            }
+            return None;
+        }
+
+        let attacker = sorted_attackers[choice - 1];
+        if self.verbose {
+            self.log_decision(&format!(
+                "Blockers: {} → {}",
+                self.card_name(blocker),
+                self.card_name(attacker)
+            ));
+        }
+        Some(attacker)
+    }
+
     fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
         if valid.is_empty() {
             return None;
@@ -502,7 +535,18 @@ impl PlayerAgent for DeterministicAgent {
             return None;
         }
         let sorted = self.sort_by_name(valid);
-        Some(sorted[0])
+        // Java side sorts by name; for duplicate names, observed behavior in parity
+        // aligns better with selecting the last equivalent candidate.
+        let first_name = self.card_name(sorted[0]);
+        let mut chosen = sorted[0];
+        for &cid in &sorted {
+            if self.card_name(cid) == first_name {
+                chosen = cid;
+            } else {
+                break;
+            }
+        }
+        Some(chosen)
     }
 
     fn choose_discard(&mut self, _player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {

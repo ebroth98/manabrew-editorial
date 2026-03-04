@@ -1,0 +1,22 @@
+{
+  "label": "Flashback Test",
+  "desc": "Self-mill + flashback spells to test graveyard casting parity",
+  "color": "text-purple-500",
+  "opponent": "red_burn",
+  "ai_eligible": true,
+  "order": 32,
+  "cards": [
+    { "name": "Mountain", "count": 8, "set": "isd" },
+    { "name": "Plains", "count": 5, "set": "isd" },
+    { "name": "Island", "count": 5, "set": "isd" },
+    { "name": "Thought Scour", "count": 4, "set": "dka" },
+    { "name": "Faithless Looting", "count": 4, "set": "dka" },
+    { "name": "Think Twice", "count": 4, "set": "isd" },
+    { "name": "Lingering Souls", "count": 4, "set": "dka" },
+    { "name": "Firebolt", "count": 4, "set": "ody" },
+    { "name": "Lava Dart", "count": 4, "set": "jud" },
+    { "name": "Savannah Lions", "count": 4, "set": "9ed" },
+    { "name": "Grizzly Bears", "count": 4, "set": "9ed" },
+    { "name": "Lightning Bolt", "count": 4, "set": "m11" }
+  ]
+}

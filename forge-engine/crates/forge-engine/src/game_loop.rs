@@ -6,7 +6,7 @@ use forge_foundation::{PhaseType, ZoneType};
 use crate::ability::effects::{self, EffectContext};
 use crate::agent::{CombatCostAction, MainPhaseAction, PlayerAgent};
 use crate::card::CardInstance;
-use crate::combat::{self, CombatState, DefenderId};
+use crate::combat::{self, CombatState};
 use crate::cost::{self, can_pay, parse_cost, CostPart};
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
@@ -330,7 +330,12 @@ mod tests {
             MainPhaseAction::Play(CardId(u32::MAX))
         }
 
-        fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId], _possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _player: PlayerId,
+            _available: &[CardId],
+            _possible_defenders: &[crate::combat::DefenderId],
+        ) -> Vec<(CardId, crate::combat::DefenderId)> {
             Vec::new()
         }
 
@@ -418,7 +423,12 @@ mod tests {
             MainPhaseAction::Pass
         }
 
-        fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId], _possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _player: PlayerId,
+            _available: &[CardId],
+            _possible_defenders: &[crate::combat::DefenderId],
+        ) -> Vec<(CardId, crate::combat::DefenderId)> {
             Vec::new()
         }
 

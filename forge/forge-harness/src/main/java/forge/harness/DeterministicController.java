@@ -176,6 +176,96 @@ public class DeterministicController extends PlayerControllerAi {
                 }
             }
         }
+
+        // 3. Graveyard: Flashback, Escape, and graveyard-activated abilities.
+        CardCollectionView graveyard = player.getCardsIn(ZoneType.Graveyard);
+        for (Card c : graveyard) {
+            for (SpellAbility sa : c.getAllPossibleAbilities(player, true)) {
+                sa.setActivatingPlayer(player);
+                if (sa.isManaAbility()) {
+                    continue;
+                }
+                if (sa.isSpell()) {
+                    if (!hasDeterministicMana(sa)) {
+                        continue;
+                    }
+                    if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
+                        continue;
+                    }
+                    spellPlays.add(sa);
+                } else if (sa.isAbility()) {
+                    if (sa.isEquip()) {
+                        continue;
+                    }
+                    if (!hasDeterministicMana(sa)) {
+                        continue;
+                    }
+                    if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
+                        continue;
+                    }
+                    activatable.add(sa);
+                }
+            }
+        }
+
+        // 4. Exile: Foretell, Madness, and exile-activated abilities.
+        CardCollectionView exile = player.getCardsIn(ZoneType.Exile);
+        for (Card c : exile) {
+            for (SpellAbility sa : c.getAllPossibleAbilities(player, true)) {
+                sa.setActivatingPlayer(player);
+                if (sa.isManaAbility()) {
+                    continue;
+                }
+                if (sa.isSpell()) {
+                    if (!hasDeterministicMana(sa)) {
+                        continue;
+                    }
+                    if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
+                        continue;
+                    }
+                    spellPlays.add(sa);
+                } else if (sa.isAbility()) {
+                    if (sa.isEquip()) {
+                        continue;
+                    }
+                    if (!hasDeterministicMana(sa)) {
+                        continue;
+                    }
+                    if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
+                        continue;
+                    }
+                    activatable.add(sa);
+                }
+            }
+        }
+
+        // 5. Command zone: commanders.
+        CardCollectionView command = player.getCardsIn(ZoneType.Command);
+        for (Card c : command) {
+            for (SpellAbility sa : c.getAllPossibleAbilities(player, true)) {
+                sa.setActivatingPlayer(player);
+                if (sa.isManaAbility()) {
+                    continue;
+                }
+                if (sa.isSpell()) {
+                    if (!hasDeterministicMana(sa)) {
+                        continue;
+                    }
+                    if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
+                        continue;
+                    }
+                    spellPlays.add(sa);
+                }
+            }
+        }
+
+        // Re-sort since graveyard/exile/command spells were added after initial sort
+        spellPlays.sort(Comparator.comparing(sa -> sa.getHostCard().getName()));
+
+        // Rebuild combined list with updated spellPlays
+        all.clear();
+        all.addAll(landPlays);
+        all.addAll(spellPlays);
         activatable.sort(Comparator
             .comparing((SpellAbility sa) -> sa.getHostCard().getName())
             .thenComparing(sa -> Objects.toString(sa.getApi(), ""))
@@ -208,7 +298,8 @@ public class DeterministicController extends PlayerControllerAi {
             List<String> opts = new ArrayList<>();
             for (SpellAbility sa : all) {
                 String kind = sa.isLandAbility() ? "LAND" : (sa.isSpell() ? "SPELL" : "AB");
-                opts.add(kind + ":" + sa.getHostCard().getName());
+                String fbTag = sa.isFlashback() ? "[FB]" : "";
+                opts.add(kind + ":" + sa.getHostCard().getName() + fbTag);
             }
             System.err.printf("[det-java p%d t%d] options=%s idx=%d/%d%n", player.getId(),
                     getGame().getPhaseHandler().getTurn(), opts, idx, all.size());
@@ -310,8 +401,26 @@ public class DeterministicController extends PlayerControllerAi {
 
         if (attackers.isEmpty()) return;
 
+        // Parity with Rust deterministic agent:
+        // consume blocker RNG only for blockers that are legal *at this moment*
+        // and can block at least one current attacker. This must be evaluated
+        // incrementally because combat state (e.g. block caps) can change after
+        // each accepted blocker assignment.
         for (Card blocker : blockers) {
-            if (!CombatUtil.canBlock(blocker, combat)) continue;
+            if (!CombatUtil.canBlock(blocker, combat)) {
+                continue;
+            }
+            boolean canBlockAny = false;
+            for (Card attacker : attackers) {
+                if (CombatUtil.canBlock(attacker, blocker, combat)) {
+                    canBlockAny = true;
+                    break;
+                }
+            }
+            if (!canBlockAny) {
+                continue;
+            }
+
             int choice = rng.nextInt(attackers.size() + 1);
             if (DEBUG_ACTIONS) {
                 System.err.printf("[det-java p%d t%d] blk roll %s -> %d/%d%n",
