@@ -424,6 +424,22 @@ pub trait PlayerAgent {
         false
     }
 
+    /// Pay an attack cost for a creature (Propaganda, Ghostly Prison).
+    /// Called in a loop: tap lands to build mana, then Pay or Decline.
+    /// Default: always decline (matches Java AI for non-free costs).
+    fn pay_combat_cost(
+        &mut self,
+        _player: PlayerId,
+        _attacker: CardId,
+        _cost: i32,
+        _description: &str,
+        _tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+        _mana_pool_total: i32,
+    ) -> CombatCostAction {
+        CombatCostAction::Decline
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;
@@ -453,6 +469,19 @@ pub trait PlayerAgent {
     /// Display-only notification: authoritative game state changed without
     /// necessarily changing turn/phase (e.g. stack item resolved).
     fn notify_state_changed(&mut self) {}
+}
+
+/// The action a player takes when asked to pay an attack cost (Propaganda, Ghostly Prison).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CombatCostAction {
+    /// Tap an untapped land to add mana to the pool.
+    TapLand(CardId),
+    /// Untap a tapped land and remove its mana from the pool (undo).
+    UntapLand(CardId),
+    /// Pay the cost from the mana pool.
+    Pay,
+    /// Decline to pay — remove this attacker.
+    Decline,
 }
 
 /// A simple agent that always passes priority and makes no choices.

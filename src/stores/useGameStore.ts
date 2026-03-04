@@ -88,6 +88,12 @@ export interface AgentPrompt {
   blockerIds?: string[];
   /** chooseDamageAssignmentOrder: blocker CardDto info */
   blockerCards?: Card[];
+  /** payCombatCost: attacker card ID */
+  attackerIdForCost?: string;
+  /** payCombatCost: attacker display name */
+  attackerName?: string;
+  /** payCombatCost: mana pool total available */
+  manaPoolTotal?: number;
 }
 
 interface GameConfig {
@@ -158,6 +164,8 @@ interface GameState {
   typeDecision: (chosenType: string | null) => void;
   numberDecision: (chosenNumber: number | null) => void;
   cardNameDecision: (chosenName: string | null) => void;
+  payCombatCost: () => void;
+  declineCombatCost: () => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
@@ -395,6 +403,14 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   cardNameDecision: (chosenName) => {
     get().respond({ type: 'cardNameDecision', chosenName });
+  },
+
+  payCombatCost: () => {
+    get().respond({ type: 'payCombatCost' });
+  },
+
+  declineCombatCost: () => {
+    get().respond({ type: 'declineCombatCost' });
   },
 
   concede: () => {

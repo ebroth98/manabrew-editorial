@@ -156,6 +156,7 @@ export function PromptActionController({
     case "surveil":
     case "dig":
     case "chooseDiscard":
+    case "payCombatCost":
       return <p className={PROMPT_HINT}>Decision modal is open. Complete the prompt there.</p>;
 
     default:

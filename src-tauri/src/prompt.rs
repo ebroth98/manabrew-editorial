@@ -309,6 +309,23 @@ pub enum AgentPromptInner {
         #[serde(rename = "blockerCards")]
         blocker_cards: Vec<CardDto>,
     },
+    /// Pay an attack cost (Propaganda, Ghostly Prison).
+    PayCombatCost {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "attackerId")]
+        attacker_id: String,
+        #[serde(rename = "attackerName")]
+        attacker_name: String,
+        cost: i32,
+        description: String,
+        #[serde(rename = "tappableLandIds")]
+        tappable_land_ids: Vec<String>,
+        #[serde(rename = "untappableLandIds")]
+        untappable_land_ids: Vec<String>,
+        #[serde(rename = "manaPoolTotal")]
+        mana_pool_total: i32,
+    },
     /// Choose card(s) for an effect (ChooseCardEffect, CloneEffect).
     ChooseCardsForEffect {
         #[serde(rename = "gameView")]
@@ -357,7 +374,8 @@ impl AgentPromptInner {
             | AgentPromptInner::ChooseNumber { game_view, .. }
             | AgentPromptInner::ChooseCardName { game_view, .. }
             | AgentPromptInner::ChooseDamageAssignmentOrder { game_view, .. }
-            | AgentPromptInner::ChooseCardsForEffect { game_view, .. } => game_view,
+            | AgentPromptInner::ChooseCardsForEffect { game_view, .. }
+            | AgentPromptInner::PayCombatCost { game_view, .. } => game_view,
         }
     }
 }
@@ -507,6 +525,10 @@ pub enum PlayerAction {
         #[serde(rename = "chosenCardIds")]
         chosen_card_ids: Vec<String>,
     },
+    /// Pay the attack cost from the mana pool.
+    PayCombatCost,
+    /// Decline to pay the attack cost (remove attacker).
+    DeclineCombatCost,
     Concede,
 }
 

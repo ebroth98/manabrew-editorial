@@ -22,6 +22,7 @@ export type PromptActionType =
   | "surveil"
   | "dig"
   | "chooseDiscard"
+  | "payCombatCost"
   | "gameOver"
   | string;
 

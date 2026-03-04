@@ -696,7 +696,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: Control (2, `GainControl$` incl. aura `Card.EnchantedBy`), Ability/keyword-grant (6), SetPT (7b), ModifyPT (7c) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped via static abilities, `R:Event$ Moved | ReplaceWith$ ETBTapped` replacement effects, AND `ReplaceWith$ DBTap` shock land pattern with `UnlessCost$ PayLife<N>` player prompt; missing: type/color layers, dependency resolution) |
 | `StaticAbilityCantAttack.java` | Prevents attacking | **Implemented** (`layer.rs`: `Mode$ CantAttack` sets `cant_attack_static` flag; `card.rs` `can_attack()` respects it) |
 | `StaticAbilityCantBlock.java` | Prevents blocking | **Implemented** (`layer.rs`: `Mode$ CantBlock` sets `cant_block_static` flag; `card.rs` `can_block()` respects it) |
-| `StaticAbilityCantAttackUnless.java` | Attack cost (Propaganda, Ghostly Prison) | **Implemented** — `combat/attack_cost.rs`: `get_attack_cost()` scans `CantAttackUnless` statics; auto-pay in phase_handler |
+| `StaticAbilityCantAttackUnless.java` | Attack cost (Propaganda, Ghostly Prison) | **Implemented** — `combat/attack_cost.rs`: `get_attack_cost()` scans `CantAttackUnless` statics; `pay_combat_cost` agent loop in phase_handler with full UI (PayCombatCostModal) |
 | `StaticAbilityCantBlockUnless.java` | Block cost (War Cadence) | **Implemented** — `combat/block_cost.rs`: `get_block_cost()` scans `CantBlockUnless` statics; auto-pay in phase_handler |
 | `StaticAbilityCantBeSacrificed.java` | Prevents sacrifice | Not implemented |
 | `StaticAbilityCantCast.java` | Prevents casting | Not implemented |

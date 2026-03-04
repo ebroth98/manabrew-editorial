@@ -65,6 +65,8 @@ export default function Game() {
     numberDecision,
     cardNameDecision,
     respond,
+    payCombatCost,
+    declineCombatCost,
     concede,
     endGame,
     setupListeners,
@@ -435,7 +437,7 @@ export default function Game() {
                             : undefined
                       }
                       tappableLandIds={
-                        promptType === "chooseAction"
+                        promptType === "chooseAction" || promptType === "payCombatCost"
                           ? (currentPrompt?.tappableLandIds ?? [])
                           : undefined
                       }
@@ -456,15 +458,17 @@ export default function Game() {
                                 tapLand(card.id);
                               }
                             }
-                          : undefined
+                          : promptType === "payCombatCost"
+                            ? (card) => tapLand(card.id)
+                            : undefined
                       }
                       untappableLandIds={
-                        promptType === "chooseAction"
+                        promptType === "chooseAction" || promptType === "payCombatCost"
                           ? (currentPrompt?.untappableLandIds ?? [])
                           : undefined
                       }
                       onUntapLand={
-                        promptType === "chooseAction"
+                        promptType === "chooseAction" || promptType === "payCombatCost"
                           ? (card) => untapLand(card.id)
                           : undefined
                       }
@@ -582,6 +586,8 @@ export default function Game() {
         onNumberDecision={numberDecision}
         onCardNameDecision={cardNameDecision}
         onDamageOrderDecision={(orderedBlockerIds) => respond({ type: "damageAssignmentOrderDecision", orderedBlockerIds })}
+        onPayCombatCost={payCombatCost}
+        onDeclineCombatCost={declineCombatCost}
       />
 
       {/* ── Card-play flash overlay ───────────────────────── */}

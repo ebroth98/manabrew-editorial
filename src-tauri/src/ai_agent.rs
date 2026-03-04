@@ -171,6 +171,22 @@ pub fn spawn_ai_prompt_responder(
                         ordered_blocker_ids: blocker_ids,
                     })
                 }
+                AgentPromptInner::PayCombatCost {
+                    tappable_land_ids,
+                    mana_pool_total,
+                    cost,
+                    ..
+                } => {
+                    if mana_pool_total >= cost {
+                        Some(PlayerAction::PayCombatCost)
+                    } else if !tappable_land_ids.is_empty() {
+                        Some(PlayerAction::TapLand {
+                            card_id: tappable_land_ids[0].clone(),
+                        })
+                    } else {
+                        Some(PlayerAction::DeclineCombatCost)
+                    }
+                }
                 AgentPromptInner::StateUpdate { .. } | AgentPromptInner::GameOver { .. } => None,
             };
 

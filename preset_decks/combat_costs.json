@@ -1,16 +1,14 @@
 {
   "label": "Combat Costs & Lure",
-  "desc": "Tests attack costs (Propaganda, Ghostly Prison), block costs, must-block, and lure effects",
+  "desc": "Tests attack costs (Propaganda, Ghostly Prison) — opponent has Propaganda so human must pay to attack",
   "color": "text-blue-400",
-  "opponent": "green_stompy",
+  "opponent": "propaganda_defense",
   "order": 50,
   "cards": [
-    { "name": "Propaganda", "count": 4 },
-    { "name": "Ghostly Prison", "count": 4 },
-    { "name": "Island", "count": 10 },
-    { "name": "Plains", "count": 10 },
-    { "name": "Wall of Omens", "count": 4 },
-    { "name": "Fog Bank", "count": 4 },
-    { "name": "Court Hussar", "count": 4 }
+    { "name": "Grizzly Bears", "count": 4 },
+    { "name": "Llanowar Elves", "count": 4 },
+    { "name": "Elvish Mystic", "count": 4 },
+    { "name": "Giant Growth", "count": 4 },
+    { "name": "Forest", "count": 24 }
   ]
 }

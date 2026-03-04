@@ -59,6 +59,7 @@ export const PROMPT_LABELS: Record<string, string> = {
   surveil: "Surveil: choose cards to send to graveyard",
   dig: "Dig: choose cards to take",
   chooseDiscard: "Discard cards",
+  payCombatCost: "Pay attack cost",
   gameOver: "Game Over",
 };
 

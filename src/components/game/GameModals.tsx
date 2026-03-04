@@ -11,6 +11,7 @@ import { ChooseTypeModal } from "@/components/game/ChooseTypeModal";
 import { ChooseNumberModal } from "@/components/game/ChooseNumberModal";
 import { ChooseCardNameModal } from "@/components/game/ChooseCardNameModal";
 import { DamageOrderModal } from "@/components/game/DamageOrderModal";
+import { PayCombatCostModal } from "@/components/game/PayCombatCostModal";
 import { AbilityPickerModal } from "@/components/game/AbilityPickerModal";
 import { MulliganModal } from "@/components/game/MulliganModal";
 import { MulliganBottomModal } from "@/components/game/MulliganBottomModal";
@@ -59,6 +60,9 @@ interface GameModalsProps {
   onNumberDecision: (chosenNumber: number | null) => void;
   onCardNameDecision: (chosenName: string | null) => void;
   onDamageOrderDecision: (orderedBlockerIds: string[]) => void;
+  // Pay combat cost
+  onPayCombatCost: () => void;
+  onDeclineCombatCost: () => void;
 }
 
 export function GameModals({
@@ -96,6 +100,8 @@ export function GameModals({
   onNumberDecision,
   onCardNameDecision,
   onDamageOrderDecision,
+  onPayCombatCost,
+  onDeclineCombatCost,
 }: GameModalsProps) {
   return (
     <>
@@ -265,6 +271,16 @@ export function GameModals({
           validNames={currentPrompt.validNames}
           cardName={currentPrompt.sourceCardName}
           onConfirm={onCardNameDecision}
+        />
+      )}
+      {promptType === "payCombatCost" && currentPrompt?.description != null && (
+        <PayCombatCostModal
+          attackerName={currentPrompt.attackerName ?? "Creature"}
+          cost={currentPrompt.cost != null ? Number(currentPrompt.cost) : 0}
+          description={currentPrompt.description}
+          manaPoolTotal={currentPrompt.manaPoolTotal ?? 0}
+          onPay={onPayCombatCost}
+          onDecline={onDeclineCombatCost}
         />
       )}
       {promptType === "chooseDamageAssignmentOrder" && currentPrompt?.blockerIds != null && (

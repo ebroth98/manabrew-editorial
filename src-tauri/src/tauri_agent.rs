@@ -1,7 +1,7 @@
 use std::sync::mpsc;
 use std::time::Duration;
 
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{CombatCostAction, MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::game::GameState;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
@@ -911,6 +911,52 @@ impl PlayerAgent for TauriAgent {
         match self.recv_action() {
             PlayerAction::NumberDecision { chosen_number } => chosen_number,
             _ => Some(min),
+        }
+    }
+
+    fn pay_combat_cost(
+        &mut self,
+        _player: PlayerId,
+        attacker: CardId,
+        cost: i32,
+        description: &str,
+        tappable_lands: &[CardId],
+        untappable_lands: &[CardId],
+        mana_pool_total: i32,
+    ) -> CombatCostAction {
+        let attacker_id = card_id_str(attacker);
+        let attacker_name = self
+            .latest_view
+            .as_ref()
+            .and_then(|v| v.battlefield.iter().find(|c| c.id == attacker_id))
+            .map(|c| c.name.clone())
+            .unwrap_or_default();
+        let tappable_land_ids = Self::card_ids(tappable_lands);
+        let untappable_land_ids = Self::card_ids(untappable_lands);
+
+        self.send_prompt(AgentPromptInner::PayCombatCost {
+            game_view: self.view(),
+            attacker_id,
+            attacker_name,
+            cost,
+            description: description.to_string(),
+            tappable_land_ids,
+            untappable_land_ids,
+            mana_pool_total,
+        });
+        match self.recv_action() {
+            PlayerAction::TapLand { card_id } => {
+                parse_card_id(&card_id)
+                    .map(CombatCostAction::TapLand)
+                    .unwrap_or(CombatCostAction::Decline)
+            }
+            PlayerAction::UntapLand { card_id } => {
+                parse_card_id(&card_id)
+                    .map(CombatCostAction::UntapLand)
+                    .unwrap_or(CombatCostAction::Decline)
+            }
+            PlayerAction::PayCombatCost => CombatCostAction::Pay,
+            _ => CombatCostAction::Decline,
         }
     }
 

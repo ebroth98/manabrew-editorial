@@ -4,7 +4,7 @@ use std::hash::{DefaultHasher, Hasher};
 use forge_foundation::{PhaseType, ZoneType};
 
 use crate::ability::effects::{self, EffectContext};
-use crate::agent::{MainPhaseAction, PlayerAgent};
+use crate::agent::{CombatCostAction, MainPhaseAction, PlayerAgent};
 use crate::card::CardInstance;
 use crate::combat::{self, CombatState, DefenderId};
 use crate::cost::{self, can_pay, parse_cost, CostPart};
@@ -94,6 +94,40 @@ impl GameLoop {
 
     pub fn pool_mut(&mut self, pid: PlayerId) -> &mut ManaPool {
         &mut self.mana_pools[pid.index()]
+    }
+
+    /// Get untapped lands on the battlefield for a player.
+    pub fn get_tappable_lands(&self, game: &GameState, player: PlayerId) -> Vec<CardId> {
+        game.cards_in_zone(ZoneType::Battlefield, player)
+            .to_vec()
+            .into_iter()
+            .filter(|&cid| {
+                let c = game.card(cid);
+                c.is_land() && !c.tapped
+            })
+            .collect()
+    }
+
+    /// Get tapped lands whose mana is still in the pool (can be untapped to undo).
+    pub fn get_untappable_lands(&self, game: &GameState, player: PlayerId, pool_snapshot: &ManaPool) -> Vec<CardId> {
+        game.cards_in_zone(ZoneType::Battlefield, player)
+            .to_vec()
+            .into_iter()
+            .filter(|&cid| {
+                let c = game.card(cid);
+                if !c.is_land() || !c.tapped {
+                    return false;
+                }
+                let atoms = mana::land_mana_atoms(c);
+                if !atoms.is_empty() {
+                    atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
+                } else if let Some(atom) = basic_land_mana_atom(c) {
+                    pool_snapshot.has_atom(atom, 1)
+                } else {
+                    false
+                }
+            })
+            .collect()
     }
 
     /// Set up the game: shuffle libraries, draw opening hands, run mulligans.

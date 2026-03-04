@@ -471,13 +471,130 @@ impl GameLoop {
                 );
                 if cost > 0 {
                     let controller = game.card(attacker_id).controller;
-                    // Try to auto-pay from mana pool
-                    let pool = &mut self.mana_pools[controller.index()];
-                    if pool.total() >= cost {
-                        pool.spend_generic(cost);
-                    } else {
-                        // Can't pay — remove attacker
-                        cost_failures.push(attacker_id);
+                    let attacker_name = game.card(attacker_id).card_name.clone();
+                    let description = format!("Pay {{{}}} to attack with {}", cost, attacker_name);
+
+                    // Loop: let the agent tap lands / pay / decline
+                    loop {
+                        let tappable_lands = self.get_tappable_lands(game, controller);
+                        let pool_snapshot = self.pool(controller).clone();
+                        let untappable_lands = self.get_untappable_lands(game, controller, &pool_snapshot);
+                        let pool_total = self.pool(controller).total();
+
+                        agents[controller.index()].snapshot_state(game, &self.mana_pools);
+                        let action = agents[controller.index()].pay_combat_cost(
+                            controller,
+                            attacker_id,
+                            cost,
+                            &description,
+                            &tappable_lands,
+                            &untappable_lands,
+                            pool_total,
+                        );
+
+                        match action {
+                            CombatCostAction::TapLand(land_id) => {
+                                if !tappable_lands.contains(&land_id) {
+                                    continue;
+                                }
+                                // Use actual mana ability when available
+                                let mana_ab = {
+                                    let c = game.card(land_id);
+                                    c.activated_abilities
+                                        .iter()
+                                        .find(|ab| ab.is_mana_ability)
+                                        .cloned()
+                                };
+                                if let Some(ab) = mana_ab {
+                                    self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                                        this.resolve_mana_ability(game, agents, controller, land_id, &ab);
+                                    });
+                                } else {
+                                    let atom_opt = {
+                                        let c = game.card(land_id);
+                                        if c.is_land() && !c.tapped {
+                                            basic_land_mana_atom(c)
+                                        } else {
+                                            None
+                                        }
+                                    };
+                                    if let Some(atom) = atom_opt {
+                                        game.tap(land_id);
+                                        self.pool_mut(controller).add(atom, 1);
+                                        self.trigger_handler.run_trigger(
+                                            TriggerType::Taps,
+                                            RunParams {
+                                                card: Some(land_id),
+                                                player: Some(controller),
+                                                ..Default::default()
+                                            },
+                                            false,
+                                        );
+                                        self.trigger_handler.run_trigger(
+                                            TriggerType::TapsForMana,
+                                            RunParams {
+                                                card: Some(land_id),
+                                                player: Some(controller),
+                                                ..Default::default()
+                                            },
+                                            false,
+                                        );
+                                    }
+                                }
+                            }
+                            CombatCostAction::UntapLand(land_id) => {
+                                if !untappable_lands.contains(&land_id) {
+                                    continue;
+                                }
+                                let atoms = {
+                                    let c = game.card(land_id);
+                                    if c.is_land() && c.tapped {
+                                        let a = mana::land_mana_atoms(c);
+                                        if a.is_empty() {
+                                            basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
+                                        } else {
+                                            a
+                                        }
+                                    } else {
+                                        vec![]
+                                    }
+                                };
+                                if !atoms.is_empty() {
+                                    game.untap(land_id);
+                                    let pool = self.pool_mut(controller);
+                                    for &atom in &atoms {
+                                        if pool.has_atom(atom, 1) {
+                                            pool.remove(atom, 1);
+                                            break;
+                                        }
+                                    }
+                                    self.trigger_handler.run_trigger(
+                                        TriggerType::Untaps,
+                                        RunParams {
+                                            card: Some(land_id),
+                                            player: Some(controller),
+                                            ..Default::default()
+                                        },
+                                        false,
+                                    );
+                                }
+                            }
+                            CombatCostAction::Pay => {
+                                let pool = &mut self.mana_pools[controller.index()];
+                                if pool.total() >= cost {
+                                    pool.spend_generic(cost);
+                                    // Successfully paid
+                                } else {
+                                    // Not enough mana — treat as decline
+                                    cost_failures.push(attacker_id);
+                                }
+                                break;
+                            }
+                            CombatCostAction::Decline => {
+                                cost_failures.push(attacker_id);
+                                break;
+                            }
+                        }
                     }
                 }
             }
