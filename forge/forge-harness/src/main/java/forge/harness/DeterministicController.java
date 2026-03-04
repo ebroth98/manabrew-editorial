@@ -702,6 +702,21 @@ public class DeterministicController extends PlayerControllerAi {
             if (card.isTapped()) {
                 continue;
             }
+            // Summoning-sick creatures cannot activate {T} abilities (including mana).
+            // Must match Rust's calculate_available_mana() check so castability probes
+            // agree with actual payment and neither engine wastes RNG on uncastable spells.
+            if (card.isSick()) {
+                boolean allNeedTap = true;
+                for (SpellAbility manaSa : card.getManaAbilities()) {
+                    if (!manaSa.getPayCosts().hasTapCost()) {
+                        allNeedTap = false;
+                        break;
+                    }
+                }
+                if (allNeedTap) {
+                    continue;
+                }
+            }
             if (excludesSource && card.getId() == sourceId) {
                 continue;
             }

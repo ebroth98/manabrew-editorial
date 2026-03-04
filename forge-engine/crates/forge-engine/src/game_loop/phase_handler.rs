@@ -563,26 +563,13 @@ impl GameLoop {
                         }
                     }
                 }
-                // MustBlock: add missing mandatory blockers if possible.
-                let assigned_blockers: Vec<CardId> =
-                    self.combat.blockers.iter().map(|(b, _)| *b).collect();
-                for &blocker in &legal_blockers {
-                    if assigned_blockers.contains(&blocker) {
-                        continue;
-                    }
-                    if !crate::staticability::static_ability_must_block::blocks_each_combat_if_able(
-                        &game.cards,
-                        game.card(blocker),
-                    ) {
-                        continue;
-                    }
-                    if let Some(&attacker) = chosen_attackers
-                        .iter()
-                        .find(|&&a| combat::can_creature_block(game, blocker, a))
-                    {
-                        self.combat.declare_blocker(blocker, attacker);
-                    }
-                }
+                // NOTE: MustBlock enforcement is NOT done at the engine level.
+                // In Java Forge, PhaseHandler.declareBlockersTurnBasedAction()
+                // trusts the controller/agent to handle MustBlock; only the
+                // human UI (InputBlock.onOk) re-prompts until satisfied.
+                // AI controllers (including DeterministicController) may or
+                // may not respect MustBlock — the engine never overrides them.
+                // For parity, we mirror Java and leave MustBlock to the agent.
 
                 // Publish finalized blocker assignments for UI snapshots in this combat.
                 game.turn.combat_block_assignments = self.combat.blockers.clone();

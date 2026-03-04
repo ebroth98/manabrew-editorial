@@ -206,16 +206,23 @@ pub trait PlayerAgent {
     }
 
     /// Choose whether to put a revealed nonland card into the graveyard during Explore.
-    /// `revealed_cmc` is the mana value of the revealed card.
-    /// `lands_on_battlefield` and `lands_in_hand` are the player's current land counts.
+    /// Mirrors Java's `ExploreAi.shouldPutInGraveyard()`.
+    ///
+    /// `revealed_cmc` — mana value of the revealed card.
+    /// `mana_producing_lands` — count of ALL mana-producing lands on battlefield
+    ///   (tapped + untapped), matching Java's `landsOTB` (used for "need more lands" check).
+    /// `predicted_mana` — count of UNTAPPED mana sources (lands + mana dorks),
+    ///   matching Java's `ComputerUtilMana.getAvailableManaSources()` (used for "too expensive" check).
+    /// `lands_in_hand` — count of mana-producing lands in hand.
+    ///
     /// Returns true to put in graveyard, false to keep on top of library.
-    /// Default: use Java's ExploreAi.shouldPutInGraveyard() heuristic.
     fn choose_explore_put_in_graveyard(
         &mut self,
         _player: PlayerId,
         _revealed_card_name: &str,
         revealed_cmc: i32,
-        lands_on_battlefield: usize,
+        mana_producing_lands: usize,
+        predicted_mana: usize,
         lands_in_hand: usize,
     ) -> bool {
         // Mirrors Java's ExploreAi.shouldPutInGraveyard() with default AI profile values:
@@ -224,13 +231,15 @@ pub trait PlayerAgent {
         const MAX_CMC_DIFF: i32 = 2;
         const NUM_LANDS_TO_STILL_NEED_MORE: usize = 2;
 
-        if lands_in_hand == 0 && lands_on_battlefield <= NUM_LANDS_TO_STILL_NEED_MORE {
-            return true; // Need more lands, discard nonland
+        // Condition 1: we need more lands (Java uses landsOTB = all mana-producing lands)
+        if lands_in_hand == 0 && mana_producing_lands <= NUM_LANDS_TO_STILL_NEED_MORE {
+            return true;
         }
-        if revealed_cmc - MAX_CMC_DIFF >= lands_on_battlefield as i32 {
-            return true; // Too expensive to cast soon
+        // Condition 2: too expensive (Java uses predictedMana = untapped mana sources)
+        if revealed_cmc - MAX_CMC_DIFF >= predicted_mana as i32 {
+            return true;
         }
-        false // Keep on top
+        false
     }
 
     /// Choose whether an optional triggered ability fires.
