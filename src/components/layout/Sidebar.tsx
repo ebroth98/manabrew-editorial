@@ -11,11 +11,14 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import iconSvg from "@/assets/icon.svg";
+import { useTheme } from "next-themes";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export function Sidebar({ className }: SidebarProps) {
   const isGameActive = useGameStore((s) => s.isGameActive);
+  const { theme } = useTheme();
+  const isLight = theme === "light";
 
   return (
     <div
@@ -27,7 +30,11 @@ export function Sidebar({ className }: SidebarProps) {
       <div className="flex-1 space-y-4 py-4">
         <div className="px-3 py-2">
           <div className="mb-2 px-4 flex items-center gap-2">
-            <img src={iconSvg} alt="Logo" className="h-12 w-12 dark:invert" />
+            <img
+              src={iconSvg}
+              alt="Logo"
+              className={"h-12 w-12 " + (isLight ? "" : "dark:invert")}
+            />
             <h2 className="text-lg font-semibold tracking-tight">
               Bardidina Magica
             </h2>
