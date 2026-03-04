@@ -381,20 +381,18 @@ impl GameLoop {
         // Declare Attackers
         self.set_phase(game, agents, PhaseType::CombatDeclareAttackers);
         let available_attackers = combat::get_available_attackers(game, active);
+        let possible_defenders = combat::get_possible_defenders(game, active);
 
-        let mut chosen_attackers = if available_attackers.is_empty() {
+        let mut chosen_attackers: Vec<(CardId, combat::DefenderId)> = if available_attackers.is_empty() {
             Vec::new()
         } else {
-            let must_attackers: Vec<CardId> = available_attackers
-                .iter()
-                .copied()
-                .filter(|&attacker_id| {
-                    crate::staticability::static_ability_must_attack::must_attack(
-                        &game.cards,
-                        game.card(attacker_id),
-                    )
-                })
-                .collect();
+            // Compute attack requirements (must-attack from statics + goad)
+            let requirements = combat::attack_requirement::compute_attack_requirements(
+                &game.cards,
+                &available_attackers,
+                defending,
+            );
+            let must_attackers = combat::attack_requirement::must_attack_ids(&requirements);
 
             agents[active.index()].snapshot_state(game, &self.mana_pools);
             self.game_log.log(
@@ -406,7 +404,7 @@ impl GameLoop {
                 ),
             );
             let agent = &mut agents[active.index()];
-            let mut picked = agent.choose_attackers(active, &available_attackers);
+            let mut picked = agent.choose_attackers(active, &available_attackers, &possible_defenders);
             self.game_log.log(
                 GameLogEntryType::PriorityResponse,
                 2,
@@ -420,22 +418,35 @@ impl GameLoop {
             // Mirror Java's validateAttackers + getLegalAttackers fallback:
             // if must-attack creatures were not included by the agent, add them
             // directly without re-calling the agent (no extra RNG consumption).
+            let default_defender = possible_defenders
+                .first()
+                .copied()
+                .unwrap_or(combat::DefenderId::Player(defending));
             for &must in &must_attackers {
-                if !picked.contains(&must) {
-                    picked.push(must);
+                if !picked.iter().any(|(a, _)| *a == must) {
+                    picked.push((must, default_defender));
                 }
             }
             picked
         };
+
+        // Validate attack restrictions (OnlyAlone, NotAlone, NeedGreaterPower, etc.)
+        let attacker_ids: Vec<CardId> = chosen_attackers.iter().map(|(a, _)| *a).collect();
+        let illegal =
+            combat::attack_restriction::validate_attack_restrictions(&attacker_ids, &game.cards);
+        if !illegal.is_empty() {
+            chosen_attackers.retain(|(id, _)| !illegal.contains(id));
+        }
+
         // AttackRestrict: enforce global maximum attackers.
+        // Java's DeterministicController validates the declaration and, when
+        // invalid, falls back to AttackConstraints.getLegalAttackers() which
+        // (with no must-attack requirements) returns the empty set.  Mirror
+        // that by clearing all attackers when the limit is exceeded.
         if let Some(max_attackers) =
             crate::staticability::static_ability_attack_restrict::global_attack_restrict(&game.cards)
         {
             if chosen_attackers.len() > max_attackers as usize {
-                // Java deterministic controller validates attacker declarations and,
-                // when invalid, falls back to Combat's legal-attacker map. With no
-                // mandatory attackers this usually becomes empty rather than
-                // truncating to an arbitrary subset.
                 chosen_attackers.clear();
             }
         }
@@ -449,14 +460,46 @@ impl GameLoop {
             }
         }
 
+        // Check attack costs (Propaganda, Ghostly Prison effects)
+        {
+            let mut cost_failures = Vec::new();
+            for &(attacker_id, defender) in &chosen_attackers {
+                let cost = combat::attack_cost::get_attack_cost(
+                    &game.cards,
+                    game.card(attacker_id),
+                    defender,
+                );
+                if cost > 0 {
+                    let controller = game.card(attacker_id).controller;
+                    // Try to auto-pay from mana pool
+                    let pool = &mut self.mana_pools[controller.index()];
+                    if pool.total() >= cost {
+                        pool.spend_generic(cost);
+                    } else {
+                        // Can't pay — remove attacker
+                        cost_failures.push(attacker_id);
+                    }
+                }
+            }
+            chosen_attackers.retain(|(id, _)| !cost_failures.contains(id));
+        }
+
         // Tap attackers (Vigilance skips tapping)
-        for &attacker_id in &chosen_attackers {
+        let num_attackers = chosen_attackers.len() as i32;
+        for &(attacker_id, defender) in &chosen_attackers {
             if !game.card(attacker_id).has_vigilance() {
                 game.tap(attacker_id);
             }
             game.card_mut(attacker_id).attacked_this_turn = true;
-            game.card_mut(attacker_id).attacking_player = Some(defending);
-            self.combat.declare_attacker(attacker_id, defending);
+            // Set attacking_player to the controlling player of the defender
+            let def_player = defender.controlling_player(game);
+            game.card_mut(attacker_id).attacking_player = Some(def_player);
+            self.combat.declare_attacker(attacker_id, defender);
+
+            // Record attack in damage history
+            game.card_mut(attacker_id)
+                .damage_history
+                .record_attack(num_attackers - 1);
 
             // Fire Attacks trigger for each attacker
             self.trigger_handler.run_trigger(
@@ -464,7 +507,7 @@ impl GameLoop {
                 RunParams {
                     attacker: Some(attacker_id),
                     card: Some(attacker_id),
-                    defending_player: Some(defending),
+                    defending_player: Some(def_player),
                     ..Default::default()
                 },
                 false,
@@ -472,11 +515,12 @@ impl GameLoop {
         }
         // Fire AttackersDeclared batch trigger
         if !chosen_attackers.is_empty() {
+            let attacker_ids: Vec<CardId> = chosen_attackers.iter().map(|(a, _)| *a).collect();
             self.trigger_handler.run_trigger(
                 TriggerType::AttackersDeclared,
                 RunParams {
                     player: Some(game.active_player()),
-                    attacker_ids: Some(chosen_attackers.clone()),
+                    attacker_ids: Some(attacker_ids),
                     ..Default::default()
                 },
                 false,
@@ -495,11 +539,12 @@ impl GameLoop {
         // Declare Blockers
         self.set_phase(game, agents, PhaseType::CombatDeclareBlockers);
         let available_blockers = combat::get_available_blockers(game, defending);
+        let attacker_card_ids: Vec<CardId> = chosen_attackers.iter().map(|(a, _)| *a).collect();
 
         if !available_blockers.is_empty() {
             // Filter out illegal blocks (flying can only be blocked by flying/reach)
             let legal_blockers =
-                combat::filter_legal_blockers(game, &chosen_attackers, &available_blockers);
+                combat::filter_legal_blockers(game, &attacker_card_ids, &available_blockers);
 
             if !legal_blockers.is_empty() {
                 agents[defending.index()].snapshot_state(game, &self.mana_pools);
@@ -513,7 +558,7 @@ impl GameLoop {
                 );
                 let def_agent = &mut agents[defending.index()];
                 let chosen_blockers =
-                    def_agent.choose_blockers(defending, &chosen_attackers, &legal_blockers);
+                    def_agent.choose_blockers(defending, &attacker_card_ids, &legal_blockers);
                 self.game_log.log(
                     GameLogEntryType::PriorityResponse,
                     2,
@@ -553,28 +598,96 @@ impl GameLoop {
                     );
                 }
 
-                // Menace: attacker with Menace must be blocked by 2+ creatures or 0
-                for &(attacker_id, _) in &self.combat.attackers {
-                    if game.card(attacker_id).has_menace() {
-                        let num_blockers = self.combat.get_blockers_for(attacker_id).len();
-                        if num_blockers == 1 {
-                            // Remove the single blocker — illegal under Menace
-                            self.combat.blockers.retain(|(_, a)| *a != attacker_id);
+                // Block cost checking (War Cadence effects)
+                {
+                    let mut block_cost_failures = Vec::new();
+                    for &(blocker_id, attacker_id) in &self.combat.blockers {
+                        let cost = combat::block_cost::get_block_cost(
+                            &game.cards,
+                            game.card(blocker_id),
+                            game.card(attacker_id),
+                        );
+                        if cost > 0 {
+                            let controller = game.card(blocker_id).controller;
+                            let pool = &mut self.mana_pools[controller.index()];
+                            if pool.total() >= cost {
+                                pool.spend_generic(cost);
+                            } else {
+                                block_cost_failures.push(blocker_id);
+                            }
+                        }
+                    }
+                    self.combat
+                        .blockers
+                        .retain(|(b, _)| !block_cost_failures.contains(b));
+                }
+
+                // Block validation (Menace, can't block alone)
+                let invalid_blocks = combat::validate_blocks(game, &self.combat);
+                for (blocker_id, attacker_id) in &invalid_blocks {
+                    self.combat
+                        .blockers
+                        .retain(|(b, a)| !(b == blocker_id && a == attacker_id));
+                }
+
+                // Must-block enforcement: auto-assign blockers to required targets
+                let all_legal_blockers: Vec<CardId> = legal_blockers.clone();
+                for &blocker_id in &all_legal_blockers {
+                    let must_targets =
+                        combat::compute_must_block_targets(game, &self.combat, blocker_id);
+                    if must_targets.is_empty() {
+                        continue;
+                    }
+                    let currently_blocking: Vec<CardId> = self
+                        .combat
+                        .blockers
+                        .iter()
+                        .filter(|(b, _)| *b == blocker_id)
+                        .map(|(_, a)| *a)
+                        .collect();
+                    if !must_targets.iter().any(|t| currently_blocking.contains(t)) {
+                        // Not blocking any required target — force-assign first
+                        if combat::can_creature_block(game, blocker_id, must_targets[0]) {
+                            self.combat.declare_blocker(blocker_id, must_targets[0]);
                         }
                     }
                 }
-                // NOTE: MustBlock enforcement is NOT done at the engine level.
-                // In Java Forge, PhaseHandler.declareBlockersTurnBasedAction()
-                // trusts the controller/agent to handle MustBlock; only the
-                // human UI (InputBlock.onOk) re-prompts until satisfied.
-                // AI controllers (including DeterministicController) may or
-                // may not respect MustBlock — the engine never overrides them.
-                // For parity, we mirror Java and leave MustBlock to the agent.
+
+                // Record damage history for blockers
+                for &(blocker_id, attacker_id) in &self.combat.blockers {
+                    game.card_mut(blocker_id).damage_history.record_block();
+                    game.card_mut(attacker_id)
+                        .damage_history
+                        .record_got_blocked();
+                }
 
                 // Publish finalized blocker assignments for UI snapshots in this combat.
                 game.turn.combat_block_assignments = self.combat.blockers.clone();
             }
         }
+
+        // Prompt for damage assignment order on multi-blocked attackers
+        for &(attacker_id, _) in &self.combat.attackers.clone() {
+            let blockers_for = self.combat.get_blockers_for(attacker_id);
+            if blockers_for.len() > 1 {
+                let controller = game.card(attacker_id).controller;
+                agents[controller.index()].snapshot_state(game, &self.mana_pools);
+                let ordered = agents[controller.index()]
+                    .choose_damage_assignment_order(controller, attacker_id, &blockers_for);
+                // Validate: must be a permutation of the blockers
+                if ordered.len() == blockers_for.len()
+                    && blockers_for.iter().all(|b| ordered.contains(b))
+                {
+                    self.combat.damage_order.insert(attacker_id, ordered);
+                } else {
+                    // Invalid order — use default
+                    self.combat
+                        .damage_order
+                        .insert(attacker_id, blockers_for);
+                }
+            }
+        }
+
         self.step_with_priority(game, agents, false);
         if game.game_over {
             self.combat.clear_with_cards(&mut game.cards);
@@ -614,6 +727,15 @@ impl GameLoop {
             }
         }
 
+        // Pre-populate LKI cache for all combat participants so that if a
+        // creature dies during damage, its combat role is already recorded.
+        for &(attacker_id, _) in &self.combat.attackers.clone() {
+            self.combat.save_lki(attacker_id);
+        }
+        for &(blocker_id, _) in &self.combat.blockers.clone() {
+            self.combat.save_lki(blocker_id);
+        }
+
         // Determine if we need first strike damage step
         let has_first_strikers = self.combat.has_first_strikers(game);
 
@@ -625,6 +747,14 @@ impl GameLoop {
             let fs_events = self
                 .combat
                 .resolve_damage_step(game, true, &fs_unblocked_choices);
+            // Record damage in source damage history for player-targeted combat damage
+            for event in &fs_events {
+                if event.target_player.is_some() && event.amount > 0 {
+                    game.card_mut(event.source)
+                        .damage_history
+                        .record_damage(event.amount, true);
+                }
+            }
             self.fire_combat_damage_triggers(&fs_events);
             // Flush triggers before SBA so that triggers from creatures about
             // to die (e.g. enrage) are matched while still on the battlefield.
@@ -636,6 +766,7 @@ impl GameLoop {
                     break;
                 }
             }
+            self.combat.remove_absent_combatants(&game.cards);
             if game.game_over {
                 self.set_phase(game, agents, PhaseType::CombatEnd);
                 self.combat.clear_with_cards(&mut game.cards);
@@ -656,6 +787,14 @@ impl GameLoop {
         let dmg_events = self
             .combat
             .resolve_damage_step(game, false, &unblocked_choices);
+        // Record damage in source damage history for player-targeted combat damage
+        for event in &dmg_events {
+            if event.target_player.is_some() && event.amount > 0 {
+                game.card_mut(event.source)
+                    .damage_history
+                    .record_damage(event.amount, true);
+            }
+        }
         self.fire_combat_damage_triggers(&dmg_events);
         // Flush triggers before SBA so that triggers from creatures about
         // to die (e.g. enrage) are matched while still on the battlefield.
@@ -667,6 +806,7 @@ impl GameLoop {
                 break;
             }
         }
+        self.combat.remove_absent_combatants(&game.cards);
         self.step_with_priority(game, agents, false);
         if game.game_over {
             self.combat.clear_with_cards(&mut game.cards);
@@ -678,6 +818,16 @@ impl GameLoop {
         self.set_phase(game, agents, PhaseType::CombatEnd);
         self.emit_phase_trigger(game, PhaseType::CombatEnd);
         self.step_with_priority(game, agents, false);
+
+        // End-of-combat damage history reset and must_block cleanup
+        for card in game.cards.iter_mut() {
+            if card.zone == ZoneType::Battlefield && card.is_creature() {
+                card.damage_history.end_combat();
+                card.must_block = false;
+                card.must_block_cards.clear();
+            }
+        }
+
         self.combat.clear_with_cards(&mut game.cards);
         game.turn.combat_block_assignments.clear();
         // Recompute continuous effects after combat ends so that stale
@@ -868,6 +1018,8 @@ impl GameLoop {
                     game.cards[i].has_deathtouch_damage = false;
                     // Reset regeneration shields at end of turn (issue #22).
                     game.cards[i].regeneration_shields = 0;
+                    // Reset per-turn damage history.
+                    game.cards[i].damage_history.new_turn();
                 }
             }
         }

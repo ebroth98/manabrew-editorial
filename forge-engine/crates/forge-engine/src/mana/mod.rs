@@ -74,6 +74,32 @@ impl ManaPool {
         available >= amount
     }
 
+    /// Spend generic mana from the pool, consuming colorless first then any color.
+    /// Returns the amount actually spent.
+    pub fn spend_generic(&mut self, mut amount: i32) -> i32 {
+        let spent = amount.min(self.total());
+        // Consume colorless first
+        let from_colorless = amount.min(self.colorless);
+        self.colorless -= from_colorless;
+        amount -= from_colorless;
+        // Then consume from colors in WUBRG order
+        for pool in [
+            &mut self.white,
+            &mut self.blue,
+            &mut self.black,
+            &mut self.red,
+            &mut self.green,
+        ] {
+            if amount <= 0 {
+                break;
+            }
+            let take = amount.min(*pool);
+            *pool -= take;
+            amount -= take;
+        }
+        spent
+    }
+
     pub fn empty(&mut self) {
         self.white = 0;
         self.blue = 0;

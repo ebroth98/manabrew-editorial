@@ -80,6 +80,14 @@ export interface AgentPrompt {
   mulliganCount?: number;
   /** mulliganPutBack: how many cards must be put on the bottom */
   count?: number;
+  /** chooseAttackers: possible defenders (players and planeswalkers) */
+  possibleDefenderIds?: { id: string; label: string }[];
+  /** chooseDamageAssignmentOrder: the attacker card ID */
+  attackerId?: string;
+  /** chooseDamageAssignmentOrder: blocker IDs to order */
+  blockerIds?: string[];
+  /** chooseDamageAssignmentOrder: blocker CardDto info */
+  blockerCards?: Card[];
 }
 
 interface GameConfig {
@@ -128,7 +136,7 @@ interface GameState {
   respond: (action: Record<string, unknown>) => Promise<void>;
   castSpell: (cardId: string) => void;
   passPriority: () => void;
-  declareAttackers: (attackerIds: string[]) => void;
+  declareAttackers: (attackerIds: string[], defenderId?: string) => void;
   declareBlockers: (assignments: { blockerId: string; attackerId: string }[]) => void;
   targetPlayer: (playerId: string | null) => void;
   targetCard: (cardId: string | null) => void;
@@ -284,7 +292,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().respond({ type: 'playCard', cardId: null });
         break;
       case 'chooseAttackers':
-        get().respond({ type: 'declareAttackers', attackerIds: [] });
+        get().respond({ type: 'declareAttackers', assignments: [] });
         break;
       case 'chooseBlockers':
         get().respond({ type: 'declareBlockers', assignments: [] });
@@ -294,8 +302,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  declareAttackers: (attackerIds) => {
-    get().respond({ type: 'declareAttackers', attackerIds });
+  declareAttackers: (attackerIds, defenderId) => {
+    const prompt = get().currentPrompt;
+    // Default to first possible defender (the opponent player)
+    const defaultDefender = prompt?.possibleDefenderIds?.[0]?.id ?? 'player-1';
+    const assignments = attackerIds.map(id => ({
+      attackerId: id,
+      defenderId: defenderId ?? defaultDefender,
+    }));
+    get().respond({ type: 'declareAttackers', assignments });
   },
 
   declareBlockers: (assignments) => {

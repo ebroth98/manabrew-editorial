@@ -1,3 +1,4 @@
+use crate::combat::DefenderId;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
@@ -75,9 +76,15 @@ pub trait PlayerAgent {
         activatable: &[(CardId, usize)],
     ) -> MainPhaseAction;
 
-    /// Choose attackers from available creatures.
-    /// Returns the set of creature CardIds to declare as attackers.
-    fn choose_attackers(&mut self, player: PlayerId, available: &[CardId]) -> Vec<CardId>;
+    /// Choose attackers from available creatures, assigning each to a defender.
+    /// `possible_defenders` lists valid attack targets (opponent players + their planeswalkers).
+    /// Returns (attacker, defender) pairs.
+    fn choose_attackers(
+        &mut self,
+        player: PlayerId,
+        available: &[CardId],
+        possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)>;
 
     /// Choose blockers. Returns pairs of (blocker, attacker).
     fn choose_blockers(
@@ -86,6 +93,20 @@ pub trait PlayerAgent {
         attackers: &[CardId],
         available_blockers: &[CardId],
     ) -> Vec<(CardId, CardId)>;
+
+    /// Choose the order in which an attacker assigns damage to its blockers.
+    /// The attacker must assign lethal damage to each blocker in order before
+    /// assigning damage to the next one.
+    /// Returns a permutation of `blockers` in the desired assignment order.
+    /// Default: return blockers as-is (no reordering).
+    fn choose_damage_assignment_order(
+        &mut self,
+        _player: PlayerId,
+        _attacker: CardId,
+        blockers: &[CardId],
+    ) -> Vec<CardId> {
+        blockers.to_vec()
+    }
 
     /// Choose a target player (e.g. for Lightning Bolt targeting a player).
     fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId>;
@@ -454,7 +475,12 @@ impl PlayerAgent for PassAgent {
         MainPhaseAction::Pass
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId]) -> Vec<CardId> {
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        _available: &[CardId],
+        _possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
         Vec::new() // no attackers
     }
 

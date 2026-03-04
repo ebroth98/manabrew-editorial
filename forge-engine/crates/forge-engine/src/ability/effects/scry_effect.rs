@@ -78,6 +78,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::{PassAgent, PlayerAgent};
+    use crate::combat::DefenderId;
     use crate::card::CardInstance;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
@@ -118,7 +119,7 @@ mod tests {
         ) -> crate::agent::MainPhaseAction {
             crate::agent::MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
             vec![]
         }
         fn choose_blockers(

@@ -225,6 +225,9 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                 }
             }
 
+            // CantAttackUnless / CantBlockUnless: checked at combat time, not continuously.
+            StaticMode::CantAttackUnless | StaticMode::CantBlockUnless => {}
+
             // ETBTapped is a one-time effect applied at zone-change time
             // (see `apply_etb_tapped`), not a continuous effect.
             _ => {}

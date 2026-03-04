@@ -1,0 +1,16 @@
+{
+  "label": "Combat Costs & Lure",
+  "desc": "Tests attack costs (Propaganda, Ghostly Prison), block costs, must-block, and lure effects",
+  "color": "text-blue-400",
+  "opponent": "green_stompy",
+  "order": 50,
+  "cards": [
+    { "name": "Propaganda", "count": 4 },
+    { "name": "Ghostly Prison", "count": 4 },
+    { "name": "Island", "count": 10 },
+    { "name": "Plains", "count": 10 },
+    { "name": "Wall of Omens", "count": 4 },
+    { "name": "Fog Bank", "count": 4 },
+    { "name": "Court Hussar", "count": 4 }
+  ]
+}

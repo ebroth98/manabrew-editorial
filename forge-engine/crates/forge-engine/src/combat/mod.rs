@@ -1,10 +1,49 @@
-use std::collections::HashSet;
+pub mod attack_cost;
+pub mod attack_requirement;
+pub mod attack_restriction;
+pub mod block_cost;
+
+use std::collections::{HashMap, HashSet};
 
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+
+/// Identifies the target of an attack: a player or a permanent (planeswalker/battle).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DefenderId {
+    Player(PlayerId),
+    Permanent(CardId),
+}
+
+impl DefenderId {
+    /// Returns the PlayerId if this is a player defender, or the controller
+    /// of the permanent if it's a planeswalker/battle.
+    pub fn controlling_player(&self, game: &GameState) -> PlayerId {
+        match self {
+            DefenderId::Player(pid) => *pid,
+            DefenderId::Permanent(cid) => game.card(*cid).controller,
+        }
+    }
+
+    /// Returns the PlayerId if this is a player defender.
+    pub fn as_player(&self) -> Option<PlayerId> {
+        match self {
+            DefenderId::Player(pid) => Some(*pid),
+            DefenderId::Permanent(_) => None,
+        }
+    }
+}
+
+/// Last-known-information snapshot for a creature that left combat.
+#[derive(Debug, Clone)]
+pub struct CombatLki {
+    pub is_attacker: bool,
+    pub defender: Option<DefenderId>,
+    pub blocked_attackers: Vec<CardId>,
+}
 
 /// A combat damage event returned from resolve_damage_step.
 /// Used to fire DamageDone and LifeGained triggers from game_loop.rs.
@@ -26,10 +65,19 @@ pub struct CombatState {
     pub attacking_player: Option<PlayerId>,
     /// Defending player.
     pub defending_player: Option<PlayerId>,
-    /// (attacker CardId, defending player)
-    pub attackers: Vec<(CardId, PlayerId)>,
+    /// (attacker CardId, defender — player or permanent)
+    pub attackers: Vec<(CardId, DefenderId)>,
     /// (blocker CardId, attacker CardId)
     pub blockers: Vec<(CardId, CardId)>,
+    /// Damage assignment order: attacker → ordered list of blockers.
+    /// The attacker must assign lethal to each blocker in order before
+    /// moving to the next. Set after blocker declaration.
+    #[serde(default)]
+    pub damage_order: HashMap<CardId, Vec<CardId>>,
+    /// Last-known-information cache: snapshots of creatures that left combat.
+    /// Persists until combat ends (cleared in `clear()`).
+    #[serde(skip)]
+    pub lki_cache: HashMap<CardId, CombatLki>,
 }
 
 impl CombatState {
@@ -42,6 +90,8 @@ impl CombatState {
         self.defending_player = None;
         self.attackers.clear();
         self.blockers.clear();
+        self.damage_order.clear();
+        self.lki_cache.clear();
     }
 
     /// Clear combat state, including the `attacking_player` flag on each attacker card.
@@ -49,10 +99,13 @@ impl CombatState {
         for &(attacker_id, _) in &self.attackers {
             cards[attacker_id.index()].attacking_player = None;
         }
+        // Preserve lki_cache across clear_with_cards (persists until end of combat)
+        let lki = std::mem::take(&mut self.lki_cache);
         self.clear();
+        self.lki_cache = lki;
     }
 
-    pub fn declare_attacker(&mut self, attacker: CardId, defending: PlayerId) {
+    pub fn declare_attacker(&mut self, attacker: CardId, defending: DefenderId) {
         self.attackers.push((attacker, defending));
     }
 
@@ -78,6 +131,91 @@ impl CombatState {
 
     pub fn has_attackers(&self) -> bool {
         !self.attackers.is_empty()
+    }
+
+    /// Snapshot a creature's combat role before it leaves the battlefield.
+    pub fn save_lki(&mut self, card_id: CardId) -> Option<CombatLki> {
+        // Check if attacker
+        if let Some((_, defender)) = self.attackers.iter().find(|(a, _)| *a == card_id) {
+            let lki = CombatLki {
+                is_attacker: true,
+                defender: Some(*defender),
+                blocked_attackers: vec![],
+            };
+            self.lki_cache.insert(card_id, lki.clone());
+            return Some(lki);
+        }
+        // Check if blocker
+        let blocked: Vec<CardId> = self
+            .blockers
+            .iter()
+            .filter(|(b, _)| *b == card_id)
+            .map(|(_, a)| *a)
+            .collect();
+        if !blocked.is_empty() {
+            let lki = CombatLki {
+                is_attacker: false,
+                defender: None,
+                blocked_attackers: blocked,
+            };
+            self.lki_cache.insert(card_id, lki.clone());
+            return Some(lki);
+        }
+        None
+    }
+
+    /// Get LKI for a creature that left combat.
+    pub fn get_combat_lki(&self, card_id: CardId) -> Option<&CombatLki> {
+        self.lki_cache.get(&card_id)
+    }
+
+    /// Check if a creature was (or is) attacking in this combat.
+    pub fn was_attacking(&self, card_id: CardId) -> bool {
+        self.attackers.iter().any(|(a, _)| *a == card_id)
+            || self
+                .lki_cache
+                .get(&card_id)
+                .map_or(false, |l| l.is_attacker)
+    }
+
+    /// Check if a creature was (or is) blocking in this combat.
+    pub fn was_blocking(&self, card_id: CardId) -> bool {
+        self.blockers.iter().any(|(b, _)| *b == card_id)
+            || self
+                .lki_cache
+                .get(&card_id)
+                .map_or(false, |l| !l.is_attacker)
+    }
+
+    /// Remove attackers/blockers that are no longer on the battlefield or are
+    /// no longer creatures. Also cleans up damage_order keys. Returns `true`
+    /// if any combatant was removed.
+    ///
+    /// Mirrors Java Forge's `Combat.removeAbsentCombatants()`.
+    pub fn remove_absent_combatants(&mut self, cards: &[crate::card::CardInstance]) -> bool {
+        let before_attackers = self.attackers.len();
+        let before_blockers = self.blockers.len();
+
+        self.attackers.retain(|&(id, _)| {
+            let card = &cards[id.index()];
+            card.zone == ZoneType::Battlefield && card.is_creature()
+        });
+        self.blockers.retain(|&(id, _)| {
+            let card = &cards[id.index()];
+            card.zone == ZoneType::Battlefield && card.is_creature()
+        });
+
+        // Clean damage_order keys for removed attackers
+        let attacker_ids: HashSet<CardId> = self.attackers.iter().map(|(a, _)| *a).collect();
+        self.damage_order.retain(|k, _| attacker_ids.contains(k));
+
+        // Also remove dead blockers from damage_order values
+        let blocker_ids: HashSet<CardId> = self.blockers.iter().map(|(b, _)| *b).collect();
+        for order in self.damage_order.values_mut() {
+            order.retain(|b| blocker_ids.contains(b));
+        }
+
+        self.attackers.len() != before_attackers || self.blockers.len() != before_blockers
     }
 
     /// Check if any creature in combat has first strike or double strike.
@@ -120,7 +258,7 @@ impl CombatState {
 
         let mut events = Vec::new();
 
-        for (attacker_id, defending_player) in self.attackers.clone() {
+        for (attacker_id, defender) in self.attackers.clone() {
             // Check attacker is still alive
             if game.card(attacker_id).zone != ZoneType::Battlefield {
                 continue;
@@ -138,6 +276,7 @@ impl CombatState {
             let _attacker_has_trample = attacker.has_trample();
             let attacker_has_deathtouch = attacker.has_deathtouch();
             let attacker_has_lifelink = attacker.has_lifelink();
+            let defending_player = defender.controlling_player(game);
             let attacker_has_infect = attacker.has_infect()
                 || crate::staticability::static_ability_infect_damage::is_infect_damage(
                     game,
@@ -184,48 +323,85 @@ impl CombatState {
 
             let blockers = if assign_as_unblocked {
                 Vec::new()
+            } else if let Some(ordered) = self.damage_order.get(&attacker_id) {
+                // Use player-chosen damage assignment order
+                ordered.clone()
             } else {
                 self.get_blockers_for(attacker_id)
             };
 
             if blockers.is_empty() {
-                // Unblocked — damage goes to defending player
+                // Unblocked — damage goes to defender (player or permanent)
                 if !attacker_deals_damage || attacker_power <= 0 {
                     continue;
                 }
-                deal_combat_damage_to_player(
-                    game,
-                    defending_player,
-                    attacker_power,
-                    attacker_has_lifelink,
-                    attacker_controller,
-                    attacker_has_infect,
-                    attacker_toxic_count,
-                );
-                events.push(CombatDamageEvent {
-                    source: attacker_id,
-                    target_player: Some(defending_player),
-                    target_card: None,
-                    amount: attacker_power,
-                    is_combat: true,
-                    lifelink_player: if attacker_has_lifelink {
-                        Some(attacker_controller)
-                    } else {
-                        None
-                    },
-                    lifelink_amount: if attacker_has_lifelink {
-                        attacker_power
-                    } else {
-                        0
-                    },
-                });
-                // Track commander damage
-                if game.card(attacker_id).is_commander {
-                    *game
-                        .player_mut(defending_player)
-                        .commander_damage_received
-                        .entry(attacker_id.0)
-                        .or_insert(0) += attacker_power;
+                match defender {
+                    DefenderId::Player(defending_player) => {
+                        deal_combat_damage_to_player(
+                            game,
+                            defending_player,
+                            attacker_power,
+                            attacker_has_lifelink,
+                            attacker_controller,
+                            attacker_has_infect,
+                            attacker_toxic_count,
+                        );
+                        events.push(CombatDamageEvent {
+                            source: attacker_id,
+                            target_player: Some(defending_player),
+                            target_card: None,
+                            amount: attacker_power,
+                            is_combat: true,
+                            lifelink_player: if attacker_has_lifelink {
+                                Some(attacker_controller)
+                            } else {
+                                None
+                            },
+                            lifelink_amount: if attacker_has_lifelink {
+                                attacker_power
+                            } else {
+                                0
+                            },
+                        });
+                        // Track commander damage
+                        if game.card(attacker_id).is_commander {
+                            *game
+                                .player_mut(defending_player)
+                                .commander_damage_received
+                                .entry(attacker_id.0)
+                                .or_insert(0) += attacker_power;
+                        }
+                    }
+                    DefenderId::Permanent(target_id) => {
+                        // Damage to planeswalker/battle
+                        deal_combat_damage_to_card(
+                            game,
+                            attacker_id,
+                            target_id,
+                            attacker_power,
+                            attacker_has_deathtouch,
+                            attacker_has_lifelink,
+                            attacker_controller,
+                            attacker_has_wither || attacker_has_infect,
+                        );
+                        events.push(CombatDamageEvent {
+                            source: attacker_id,
+                            target_player: None,
+                            target_card: Some(target_id),
+                            amount: attacker_power,
+                            is_combat: true,
+                            lifelink_player: if attacker_has_lifelink {
+                                Some(attacker_controller)
+                            } else {
+                                None
+                            },
+                            lifelink_amount: if attacker_has_lifelink {
+                                attacker_power
+                            } else {
+                                0
+                            },
+                        });
+                    }
                 }
             } else {
                 // Blocked — mutual damage.
@@ -439,6 +615,26 @@ pub fn get_available_attackers(game: &GameState, player: PlayerId) -> Vec<CardId
         .collect()
 }
 
+/// Get all possible defenders for the attacking player: opponent players
+/// and planeswalkers controlled by opponents.
+pub fn get_possible_defenders(game: &GameState, attacking_player: PlayerId) -> Vec<DefenderId> {
+    let mut defenders = Vec::new();
+    for pid in game.alive_players() {
+        if pid == attacking_player {
+            continue;
+        }
+        defenders.push(DefenderId::Player(pid));
+        // Planeswalkers controlled by this opponent
+        for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
+            let card = game.card(cid);
+            if card.type_line.is_planeswalker() {
+                defenders.push(DefenderId::Permanent(cid));
+            }
+        }
+    }
+    defenders
+}
+
 /// Get available blockers: untapped creatures that can block.
 pub fn get_available_blockers(game: &GameState, player: PlayerId) -> Vec<CardId> {
     game.creatures_on_battlefield(player)
@@ -585,5 +781,129 @@ fn deal_combat_damage_to_card(
         if lifelink {
             game.player_mut(source_controller).gain_life(amount);
         }
+        // Record damage in source's damage history
+        game.card_mut(source).damage_history.record_damage(amount, true);
     }
+}
+
+// ── Lure / Must-Block helpers ─────────────────────────────────────────
+
+/// What kind of lure effect an attacker has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LureType {
+    /// No lure effect.
+    None,
+    /// "CARDNAME must be blocked if able." — at least 1 blocker required.
+    MustBeBlockedIfAble,
+    /// "All creatures able to block CARDNAME do so." — ALL legal blockers must block it.
+    AllMustBlock,
+}
+
+/// Determine the lure type of an attacker based on its keywords.
+pub fn get_lure_type(card: &crate::card::CardInstance) -> LureType {
+    for kw in card.keywords.iter()
+        .chain(card.granted_keywords.iter())
+        .chain(card.pump_keywords.iter())
+    {
+        let lower = kw.to_lowercase();
+        if lower.contains("all creatures able to block") && lower.contains("do so") {
+            return LureType::AllMustBlock;
+        }
+        if lower.contains("must be blocked if able") {
+            return LureType::MustBeBlockedIfAble;
+        }
+    }
+    LureType::None
+}
+
+/// Get attackers that `blocker_id` MUST block (if able).
+///
+/// Checks:
+/// 1. Attackers with Lure-type keywords where blocker can legally block
+/// 2. Explicit `must_block_cards` on the blocker
+/// 3. The `must_block` flag (generic must-block from statics/effects)
+///
+/// Returns the list of attacker CardIds that the blocker is required to block.
+pub fn compute_must_block_targets(
+    game: &GameState,
+    combat: &CombatState,
+    blocker_id: CardId,
+) -> Vec<CardId> {
+    let mut targets = Vec::new();
+    let blocker = game.card(blocker_id);
+
+    // Check all current attackers for lure keywords
+    for &(attacker_id, _) in &combat.attackers {
+        let attacker = game.card(attacker_id);
+        let lure = get_lure_type(attacker);
+        match lure {
+            LureType::AllMustBlock => {
+                if can_creature_block(game, blocker_id, attacker_id) {
+                    targets.push(attacker_id);
+                }
+            }
+            LureType::MustBeBlockedIfAble => {
+                if can_creature_block(game, blocker_id, attacker_id) {
+                    targets.push(attacker_id);
+                }
+            }
+            LureType::None => {}
+        }
+    }
+
+    // Check explicit must_block_cards on the blocker
+    for &attacker_id in &blocker.must_block_cards {
+        if combat.is_attacking(attacker_id)
+            && can_creature_block(game, blocker_id, attacker_id)
+            && !targets.contains(&attacker_id)
+        {
+            targets.push(attacker_id);
+        }
+    }
+
+    targets
+}
+
+/// Validate blocker assignments and return invalid (blocker, attacker) pairs to remove.
+///
+/// Checks:
+/// 1. Menace: attacker with Menace must be blocked by 2+ creatures or 0
+/// 2. Can't block alone: blocker has keyword and is only blocker on its attacker
+///
+/// Called after blocker declaration to clean up illegal blocks.
+pub fn validate_blocks(
+    game: &GameState,
+    combat: &CombatState,
+) -> Vec<(CardId, CardId)> {
+    let mut invalid = Vec::new();
+
+    for &(attacker_id, _) in &combat.attackers {
+        let blockers_for = combat.get_blockers_for(attacker_id);
+        let num_blockers = blockers_for.len();
+
+        if num_blockers == 0 {
+            continue;
+        }
+
+        // Menace: must be blocked by 2+ creatures
+        if game.card(attacker_id).has_menace() && num_blockers == 1 {
+            invalid.push((blockers_for[0], attacker_id));
+            continue;
+        }
+
+        // Check blockers with "can't block alone" keyword
+        for &blocker_id in &blockers_for {
+            let blocker = game.card(blocker_id);
+            let cant_block_alone = blocker.keywords.iter()
+                .chain(blocker.granted_keywords.iter())
+                .chain(blocker.pump_keywords.iter())
+                .any(|kw| kw.to_lowercase().contains("can't block alone"));
+
+            if cant_block_alone && num_blockers == 1 {
+                invalid.push((blocker_id, attacker_id));
+            }
+        }
+    }
+
+    invalid
 }

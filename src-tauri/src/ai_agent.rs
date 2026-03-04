@@ -29,10 +29,23 @@ pub fn spawn_ai_prompt_responder(
                 }),
                 AgentPromptInner::ChooseAttackers {
                     available_attacker_ids,
+                    possible_defender_ids,
                     ..
-                } => Some(PlayerAction::DeclareAttackers {
-                    attacker_ids: available_attacker_ids,
-                }),
+                } => {
+                    let default_defender = possible_defender_ids
+                        .first()
+                        .map(|d| d.id.clone())
+                        .unwrap_or_else(|| "player-1".to_string());
+                    Some(PlayerAction::DeclareAttackers {
+                        assignments: available_attacker_ids
+                            .into_iter()
+                            .map(|id| crate::prompt::AttackAssignment {
+                                attacker_id: id,
+                                defender_id: default_defender.clone(),
+                            })
+                            .collect(),
+                    })
+                }
                 AgentPromptInner::ChooseBlockers {
                     attacker_ids,
                     available_blocker_ids,
@@ -153,6 +166,11 @@ pub fn spawn_ai_prompt_responder(
                 } => Some(PlayerAction::ChooseCardsDecision {
                     chosen_card_ids: valid_card_ids.into_iter().take(max_choices).collect(),
                 }),
+                AgentPromptInner::ChooseDamageAssignmentOrder { blocker_ids, .. } => {
+                    Some(PlayerAction::DamageAssignmentOrderDecision {
+                        ordered_blocker_ids: blocker_ids,
+                    })
+                }
                 AgentPromptInner::StateUpdate { .. } | AgentPromptInner::GameOver { .. } => None,
             };
 

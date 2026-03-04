@@ -79,6 +79,10 @@ pub enum StaticMode {
     ColorlessDamageSource,
     CountersRemain,
     MaxCounter,
+    /// `Mode$ CantAttackUnless` — attacker must pay a cost to attack (Propaganda, Ghostly Prison).
+    CantAttackUnless,
+    /// `Mode$ CantBlockUnless` — blocker must pay a cost to block (War Cadence).
+    CantBlockUnless,
 
     /// Any mode not yet recognised — stored but not applied.
     Other(String),
@@ -352,6 +356,8 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("ColorlessDamageSource") => StaticMode::ColorlessDamageSource,
         Some("CountersRemain") => StaticMode::CountersRemain,
         Some("MaxCounter") => StaticMode::MaxCounter,
+        Some("CantAttackUnless") => StaticMode::CantAttackUnless,
+        Some("CantBlockUnless") => StaticMode::CantBlockUnless,
         Some("CantGainLife") => StaticMode::Other("CantGainLife".to_string()),
         Some("CantLoseLife") => StaticMode::Other("CantLoseLife".to_string()),
         Some("CantChangeLife") => StaticMode::Other("CantChangeLife".to_string()),

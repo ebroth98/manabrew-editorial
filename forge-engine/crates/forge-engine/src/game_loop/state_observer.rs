@@ -108,9 +108,12 @@ impl GameLoop {
                 .map(|p| p.0)
                 .unwrap_or(u32::MAX),
         );
-        for (attacker, defending_player) in &self.combat.attackers {
+        for (attacker, defender) in &self.combat.attackers {
             hasher.write_u32(attacker.0);
-            hasher.write_u32(defending_player.0);
+            match defender {
+                crate::combat::DefenderId::Player(pid) => hasher.write_u32(pid.0),
+                crate::combat::DefenderId::Permanent(cid) => hasher.write_u32(cid.0),
+            }
         }
         for (blocker, attacker) in &self.combat.blockers {
             hasher.write_u32(blocker.0);
