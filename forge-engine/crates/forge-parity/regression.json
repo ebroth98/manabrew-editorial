@@ -1,6 +1,6 @@
 [
   {
-    "name": "staticability",
-    "args": "--deck1 staticability_test --deck2 staticability_test --max-turns 30 --seed 42"
+    "name": "3-seed matrix (7 decks)",
+    "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,comprehensive_test,trigger_expanded,staticability_test --max-turns 10"
   }
 ]

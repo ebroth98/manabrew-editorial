@@ -581,6 +581,7 @@ export default function Game() {
         onTypeDecision={typeDecision}
         onNumberDecision={numberDecision}
         onCardNameDecision={cardNameDecision}
+        onDamageOrderDecision={(orderedBlockerIds) => respond({ type: "damageAssignmentOrderDecision", orderedBlockerIds })}
       />
 
       {/* ── Card-play flash overlay ───────────────────────── */}

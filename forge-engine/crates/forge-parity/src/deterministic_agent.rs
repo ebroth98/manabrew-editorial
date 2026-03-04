@@ -23,6 +23,7 @@ use std::rc::Rc;
 
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::game::GameState;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_foundation::PhaseType;
@@ -344,17 +345,17 @@ impl PlayerAgent for DeterministicAgent {
         }
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId]) -> Vec<CardId> {
+    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
         // Sort eligible creatures alphabetically, then per-creature coin flip
         let sorted = self.sort_by_name(available);
         let mut attackers = Vec::new();
         for &id in &sorted {
             if self.rng.borrow_mut().next_int(2) == 1 {
-                attackers.push(id);
+                attackers.push((id, possible_defenders[0]));
             }
         }
         if self.verbose && !attackers.is_empty() {
-            let names: Vec<String> = attackers.iter().map(|&id| self.card_name(id)).collect();
+            let names: Vec<String> = attackers.iter().map(|&(id, _)| self.card_name(id)).collect();
             self.log_decision(&format!("Attackers: {}", names.join(", ")));
         } else if self.verbose {
             self.log_decision("Attackers: NONE (random)");

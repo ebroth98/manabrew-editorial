@@ -11,6 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use forge_carddb::{CardDatabase, CardRules};
 use forge_engine_core::agent::PlayerAgent;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::card::{CardInstance, CardOtherPart};
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
@@ -430,8 +431,8 @@ impl PlayerAgent for CapturingAgent {
         )
     }
 
-    fn choose_attackers(&mut self, player: PlayerId, available: &[CardId]) -> Vec<CardId> {
-        self.inner.choose_attackers(player, available)
+    fn choose_attackers(&mut self, player: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        self.inner.choose_attackers(player, available, possible_defenders)
     }
 
     fn choose_blockers(

@@ -1,4 +1,5 @@
 pub mod card_property;
+pub mod damage_history;
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -218,6 +219,12 @@ pub struct CardInstance {
     /// Cards that dealt damage to this creature this turn (for DamagedBy trigger filters).
     /// Mirrors Java `CardDamageHistory.getDamageReceivedThisTurn()`.
     pub damage_sources_this_turn: Vec<CardId>,
+    /// Damage history tracking (attacks, blocks, damage dealt).
+    /// Mirrors Java `CardDamageHistory`.
+    #[serde(skip)]
+    pub damage_history: damage_history::DamageHistory,
+    /// Specific cards this creature must block (set by effects like Lure variants).
+    pub must_block_cards: Vec<CardId>,
 }
 
 impl CardInstance {
@@ -325,6 +332,8 @@ impl CardInstance {
             must_block: false,
             encoded_cards: Vec::new(),
             damage_sources_this_turn: Vec::new(),
+            damage_history: damage_history::DamageHistory::default(),
+            must_block_cards: Vec::new(),
         };
 
         // Generate keyword-derived activated abilities (mirrors Java CardFactoryUtil.setupKeywordedAbilities)

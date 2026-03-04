@@ -74,6 +74,32 @@ impl ManaPool {
         available >= amount
     }
 
+    /// Spend generic mana from the pool, consuming colorless first then any color.
+    /// Returns the amount actually spent.
+    pub fn spend_generic(&mut self, mut amount: i32) -> i32 {
+        let spent = amount.min(self.total());
+        // Consume colorless first
+        let from_colorless = amount.min(self.colorless);
+        self.colorless -= from_colorless;
+        amount -= from_colorless;
+        // Then consume from colors in WUBRG order
+        for pool in [
+            &mut self.white,
+            &mut self.blue,
+            &mut self.black,
+            &mut self.red,
+            &mut self.green,
+        ] {
+            if amount <= 0 {
+                break;
+            }
+            let take = amount.min(*pool);
+            *pool -= take;
+            amount -= take;
+        }
+        spent
+    }
+
     pub fn empty(&mut self) {
         self.white = 0;
         self.blue = 0;
@@ -171,7 +197,7 @@ impl ManaPool {
         // First, pay colored shards
         for shard in cost.shards() {
             if shard.is_x() {
-                continue; // X = 0 for now
+                continue; // X shards are pre-resolved into generic mana before payment
             }
 
             let atoms = shard.shard();
@@ -220,11 +246,13 @@ impl ManaPool {
                     return false;
                 }
             } else if shard.is_phyrexian() {
-                // Phyrexian: pay with color or 2 life (we just try color for now)
+                // Phyrexian: pay with color or 2 life (life handled at play_card level).
+                // For can_pay checks: assume color can be paid if available, otherwise
+                // treat as payable (life payment will be resolved at cast time).
                 let color_atoms = atoms & ManaAtom::COLORS_SUPERPOSITION;
                 if !self.pay_color(color_atoms) {
-                    // Would need to pay life — handled at a higher level
-                    return false;
+                    // Color not available — life payment assumed possible at cast time.
+                    // Don't fail here; play_card will verify life total.
                 }
             }
         }
@@ -615,12 +643,22 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
             continue;
         }
 
+        // Summoning-sick creatures cannot activate {T} abilities (including mana).
+        // Must match Java's DeterministicController.hasDeterministicMana() check so
+        // castability probes agree with actual payment and neither engine wastes RNG
+        // on uncastable spells.
+        if card.is_creature() && card.summoning_sick && !card.has_haste() {
+            let all_need_tap = card
+                .activated_abilities
+                .iter()
+                .filter(|ab| ab.is_mana_ability)
+                .all(|ab| ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)));
+            if all_need_tap {
+                continue;
+            }
+        }
+
         // Check for mana abilities on this permanent.
-        // Java parity: DeterministicController.hasDeterministicMana() does NOT check
-        // summoning sickness or other cost payability — it only checks isTapped() and
-        // then iterates getManaAbilities() for produced colors. So we skip
-        // can_pay_ignoring_mana here (which checks summoning sickness) and only filter
-        // on is_mana_ability + no mana cost part.
         let mana_abilities: Vec<_> = card
             .activated_abilities
             .iter()

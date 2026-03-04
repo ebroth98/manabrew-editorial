@@ -77,6 +77,9 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         #[serde(rename = "availableAttackerIds")]
         available_attacker_ids: Vec<String>,
+        /// Possible defenders: opponent players and their planeswalkers.
+        #[serde(rename = "possibleDefenderIds")]
+        possible_defender_ids: Vec<DefenderIdDto>,
     },
     ChooseBlockers {
         #[serde(rename = "gameView")]
@@ -292,6 +295,20 @@ pub enum AgentPromptInner {
         #[serde(rename = "sourceCardName")]
         source_card_name: Option<String>,
     },
+    /// Choose damage assignment order for a multi-blocked attacker.
+    ChooseDamageAssignmentOrder {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// The attacker card ID.
+        #[serde(rename = "attackerId")]
+        attacker_id: String,
+        /// The blocker card IDs (to be ordered by the player).
+        #[serde(rename = "blockerIds")]
+        blocker_ids: Vec<String>,
+        /// CardDto info for blockers (so frontend can display them).
+        #[serde(rename = "blockerCards")]
+        blocker_cards: Vec<CardDto>,
+    },
     /// Choose card(s) for an effect (ChooseCardEffect, CloneEffect).
     ChooseCardsForEffect {
         #[serde(rename = "gameView")]
@@ -339,6 +356,7 @@ impl AgentPromptInner {
             | AgentPromptInner::ChooseType { game_view, .. }
             | AgentPromptInner::ChooseNumber { game_view, .. }
             | AgentPromptInner::ChooseCardName { game_view, .. }
+            | AgentPromptInner::ChooseDamageAssignmentOrder { game_view, .. }
             | AgentPromptInner::ChooseCardsForEffect { game_view, .. } => game_view,
         }
     }
@@ -371,8 +389,8 @@ pub enum PlayerAction {
         card_id: Option<String>,
     },
     DeclareAttackers {
-        #[serde(rename = "attackerIds")]
-        attacker_ids: Vec<String>,
+        /// Attack assignments: each attacker paired with its defender.
+        assignments: Vec<AttackAssignment>,
     },
     DeclareBlockers {
         assignments: Vec<BlockAssignment>,
@@ -479,6 +497,11 @@ pub enum PlayerAction {
         #[serde(rename = "chosenName")]
         chosen_name: Option<String>,
     },
+    /// Response to ChooseDamageAssignmentOrder: ordered blocker IDs.
+    DamageAssignmentOrderDecision {
+        #[serde(rename = "orderedBlockerIds")]
+        ordered_blocker_ids: Vec<String>,
+    },
     /// Response to ChooseCardsForEffect prompt: IDs of chosen cards.
     ChooseCardsDecision {
         #[serde(rename = "chosenCardIds")]
@@ -492,6 +515,25 @@ pub enum PlayerAction {
 pub struct BlockAssignment {
     pub blocker_id: String,
     pub attacker_id: String,
+}
+
+/// An attack assignment: attacker paired with its defender.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AttackAssignment {
+    pub attacker_id: String,
+    pub defender_id: String,
+}
+
+/// A defender identifier sent to/from the frontend.
+/// Format: "player-{index}" for players, "card-{index}" for permanents.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DefenderIdDto {
+    /// Serialized ID: "player-0", "card-42", etc.
+    pub id: String,
+    /// Human-readable label for display.
+    pub label: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -6,6 +6,7 @@ use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -236,8 +237,8 @@ impl PlayerAgent for VerboseAgent {
             .map(MainPhaseAction::Play)
             .unwrap_or(MainPhaseAction::Pass)
     }
-    fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {
-        available.to_vec()
+    fn choose_attackers(&mut self, _: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        available.iter().map(|&a| (a, possible_defenders[0])).collect()
     }
     fn choose_blockers(
         &mut self,

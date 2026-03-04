@@ -5,6 +5,7 @@ use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -429,7 +430,7 @@ impl PlayerAgent for InteractiveAgent {
             .unwrap_or(MainPhaseAction::Pass)
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId]) -> Vec<CardId> {
+    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
         if available.is_empty() {
             return Vec::new();
         }
@@ -456,7 +457,7 @@ impl PlayerAgent for InteractiveAgent {
         );
 
         let indices = read_numbers(&format!("{}Attack> {}", CYAN, RESET), available.len());
-        indices.into_iter().map(|i| available[i]).collect()
+        indices.into_iter().map(|i| (available[i], possible_defenders[0])).collect()
     }
 
     fn choose_blockers(
@@ -649,8 +650,8 @@ impl PlayerAgent for SimpleAiAgent {
             .unwrap_or(MainPhaseAction::Pass)
     }
 
-    fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {
-        available.to_vec()
+    fn choose_attackers(&mut self, _: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        available.iter().map(|&a| (a, possible_defenders[0])).collect()
     }
 
     fn choose_blockers(

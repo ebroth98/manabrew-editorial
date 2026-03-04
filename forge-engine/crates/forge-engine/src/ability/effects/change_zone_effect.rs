@@ -34,15 +34,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         parse_zone_type(destination_str),
         parse_zone_type(origin_str),
     ) {
-        // Determine which card(s) to move
-        let cards_to_move: Vec<_> = if let Some(cid) = sa.target_chosen.target_card {
-            // Targeted effect: move if it's in the expected origin zone
-            if ctx.game.card(cid).zone == origin_zone {
-                vec![cid]
-            } else {
-                Vec::new()
-            }
-        } else if defined.eq_ignore_ascii_case("TriggeredNewCardLKICopy")
+        // Determine which card(s) to move.
+        // Only use target_chosen if the SA actually declares targeting (has ValidTgts$).
+        // Trigger-inherited targets (e.g. damage_target_card) should NOT be used for
+        // library searches — mirrors Java's isHidden()/changeHiddenOriginResolve split.
+        let cards_to_move: Vec<_> =
+            if sa.uses_targeting() {
+                if let Some(cid) = sa.target_chosen.target_card {
+                    if ctx.game.card(cid).zone == origin_zone {
+                        vec![cid]
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                }
+            } else if defined.eq_ignore_ascii_case("TriggeredNewCardLKICopy")
             || defined.eq_ignore_ascii_case("TriggeredCard")
         {
             // Trigger context card (LKI/new card copy in Forge terms).

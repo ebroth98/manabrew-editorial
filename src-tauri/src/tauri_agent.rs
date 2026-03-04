@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::game::GameState;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_foundation::{PhaseType, ZoneType};
@@ -154,6 +155,40 @@ impl TauriAgent {
 
     fn player_ids(players: &[PlayerId]) -> Vec<String> {
         players.iter().map(|&p| player_id_str(p)).collect()
+    }
+
+    fn defender_ids_to_dtos(defenders: &[DefenderId]) -> Vec<crate::prompt::DefenderIdDto> {
+        defenders
+            .iter()
+            .map(|d| match d {
+                DefenderId::Player(pid) => crate::prompt::DefenderIdDto {
+                    id: format!("player-{}", pid.0),
+                    label: format!("Player {}", pid.0),
+                },
+                DefenderId::Permanent(cid) => crate::prompt::DefenderIdDto {
+                    id: format!("card-{}", cid.0),
+                    label: format!("Permanent {}", cid.0),
+                },
+            })
+            .collect()
+    }
+
+    fn parse_defender_id(id: &str, possible: &[DefenderId]) -> Option<DefenderId> {
+        if let Some(rest) = id.strip_prefix("player-") {
+            let idx: u32 = rest.parse().ok()?;
+            possible
+                .iter()
+                .find(|d| matches!(d, DefenderId::Player(p) if p.0 == idx))
+                .copied()
+        } else if let Some(rest) = id.strip_prefix("card-") {
+            let idx: u32 = rest.parse().ok()?;
+            possible
+                .iter()
+                .find(|d| matches!(d, DefenderId::Permanent(c) if c.0 == idx))
+                .copied()
+        } else {
+            None
+        }
     }
 
     fn mark_battlefield_choosable(view: &mut GameViewDto, valid_card_ids: &[String]) {
@@ -347,18 +382,29 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId]) -> Vec<CardId> {
+    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
         let available_attacker_ids = Self::card_ids(available);
+        let possible_defender_dtos = Self::defender_ids_to_dtos(possible_defenders);
         let mut view = self.view();
         Self::mark_battlefield_choosable(&mut view, &available_attacker_ids);
         self.send_prompt(AgentPromptInner::ChooseAttackers {
             game_view: view,
             available_attacker_ids,
+            possible_defender_ids: possible_defender_dtos,
         });
+        let default_defender = possible_defenders
+            .first()
+            .copied()
+            .unwrap_or(DefenderId::Player(PlayerId(1)));
         match self.recv_action() {
-            PlayerAction::DeclareAttackers { attacker_ids } => attacker_ids
+            PlayerAction::DeclareAttackers { assignments } => assignments
                 .iter()
-                .filter_map(|id| parse_card_id(id))
+                .filter_map(|a| {
+                    let attacker = parse_card_id(&a.attacker_id)?;
+                    let defender = Self::parse_defender_id(&a.defender_id, possible_defenders)
+                        .unwrap_or(default_defender);
+                    Some((attacker, defender))
+                })
                 .collect(),
             _ => Vec::new(),
         }
@@ -394,6 +440,43 @@ impl PlayerAgent for TauriAgent {
                 )
                 .collect(),
             _ => Vec::new(),
+        }
+    }
+
+    fn choose_damage_assignment_order(
+        &mut self,
+        _player: PlayerId,
+        attacker: CardId,
+        blockers: &[CardId],
+    ) -> Vec<CardId> {
+        let attacker_id = crate::ids_codec::card_id_str(attacker);
+        let blocker_ids: Vec<String> = blockers
+            .iter()
+            .map(|&b| crate::ids_codec::card_id_str(b))
+            .collect();
+        let blocker_cards: Vec<CardDto> = Vec::new(); // Blocker info available from gameView
+        let view = self.view();
+        self.send_prompt(AgentPromptInner::ChooseDamageAssignmentOrder {
+            game_view: view,
+            attacker_id,
+            blocker_ids,
+            blocker_cards,
+        });
+        match self.recv_action() {
+            PlayerAction::DamageAssignmentOrderDecision {
+                ordered_blocker_ids,
+            } => {
+                let parsed: Vec<CardId> = ordered_blocker_ids
+                    .iter()
+                    .filter_map(|s| parse_card_id(s))
+                    .collect();
+                if parsed.len() == blockers.len() {
+                    parsed
+                } else {
+                    blockers.to_vec()
+                }
+            }
+            _ => blockers.to_vec(),
         }
     }
 

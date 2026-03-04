@@ -9,6 +9,7 @@ use forge_engine_core::ability::effects::{resolve_effect, EffectContext};
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -32,7 +33,7 @@ impl PlayerAgent for PassAgent {
         MainPhaseAction::Pass
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId]) -> Vec<CardId> {
+    fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId], _possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
         Vec::new()
     }
 

@@ -551,6 +551,18 @@ pub fn resolve_numeric_svar(
         }
     }
 
+    // Check if it's the X mana cost value directly
+    if val_str.trim() == "X" {
+        // First check if there's an SVar named "X" on the source card
+        if let Some(source_id) = sa.source {
+            if let Some(svar_expr) = game.card(source_id).svars.get("X") {
+                return evaluate_svar(svar_expr, sa);
+            }
+        }
+        // Otherwise use x_mana_cost_paid directly
+        return sa.x_mana_cost_paid as i32;
+    }
+
     // It's an SVar reference — look it up on the source card
     if let Some(source_id) = sa.source {
         if let Some(svar_expr) = game.card(source_id).svars.get(val_str.trim()) {
@@ -565,6 +577,10 @@ pub fn resolve_numeric_svar(
 /// Supports `Count$Kicked.A.B` (returns A if kicked, B otherwise)
 /// and `Count$KickedCount` (returns the multikicker count).
 pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
+    // X mana cost — return the value of X paid when casting
+    if expr == "Count$xPaid" || expr == "Count$XPaid" {
+        return sa.x_mana_cost_paid as i32;
+    }
     if expr == "Count$TriggerRememberAmount" {
         return sa.trigger_remembered_amount;
     }

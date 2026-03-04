@@ -1,3 +1,4 @@
+use crate::combat::DefenderId;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
@@ -75,9 +76,15 @@ pub trait PlayerAgent {
         activatable: &[(CardId, usize)],
     ) -> MainPhaseAction;
 
-    /// Choose attackers from available creatures.
-    /// Returns the set of creature CardIds to declare as attackers.
-    fn choose_attackers(&mut self, player: PlayerId, available: &[CardId]) -> Vec<CardId>;
+    /// Choose attackers from available creatures, assigning each to a defender.
+    /// `possible_defenders` lists valid attack targets (opponent players + their planeswalkers).
+    /// Returns (attacker, defender) pairs.
+    fn choose_attackers(
+        &mut self,
+        player: PlayerId,
+        available: &[CardId],
+        possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)>;
 
     /// Choose blockers. Returns pairs of (blocker, attacker).
     fn choose_blockers(
@@ -86,6 +93,20 @@ pub trait PlayerAgent {
         attackers: &[CardId],
         available_blockers: &[CardId],
     ) -> Vec<(CardId, CardId)>;
+
+    /// Choose the order in which an attacker assigns damage to its blockers.
+    /// The attacker must assign lethal damage to each blocker in order before
+    /// assigning damage to the next one.
+    /// Returns a permutation of `blockers` in the desired assignment order.
+    /// Default: return blockers as-is (no reordering).
+    fn choose_damage_assignment_order(
+        &mut self,
+        _player: PlayerId,
+        _attacker: CardId,
+        blockers: &[CardId],
+    ) -> Vec<CardId> {
+        blockers.to_vec()
+    }
 
     /// Choose a target player (e.g. for Lightning Bolt targeting a player).
     fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId>;
@@ -206,16 +227,23 @@ pub trait PlayerAgent {
     }
 
     /// Choose whether to put a revealed nonland card into the graveyard during Explore.
-    /// `revealed_cmc` is the mana value of the revealed card.
-    /// `lands_on_battlefield` and `lands_in_hand` are the player's current land counts.
+    /// Mirrors Java's `ExploreAi.shouldPutInGraveyard()`.
+    ///
+    /// `revealed_cmc` — mana value of the revealed card.
+    /// `mana_producing_lands` — count of ALL mana-producing lands on battlefield
+    ///   (tapped + untapped), matching Java's `landsOTB` (used for "need more lands" check).
+    /// `predicted_mana` — count of UNTAPPED mana sources (lands + mana dorks),
+    ///   matching Java's `ComputerUtilMana.getAvailableManaSources()` (used for "too expensive" check).
+    /// `lands_in_hand` — count of mana-producing lands in hand.
+    ///
     /// Returns true to put in graveyard, false to keep on top of library.
-    /// Default: use Java's ExploreAi.shouldPutInGraveyard() heuristic.
     fn choose_explore_put_in_graveyard(
         &mut self,
         _player: PlayerId,
         _revealed_card_name: &str,
         revealed_cmc: i32,
-        lands_on_battlefield: usize,
+        mana_producing_lands: usize,
+        predicted_mana: usize,
         lands_in_hand: usize,
     ) -> bool {
         // Mirrors Java's ExploreAi.shouldPutInGraveyard() with default AI profile values:
@@ -224,13 +252,15 @@ pub trait PlayerAgent {
         const MAX_CMC_DIFF: i32 = 2;
         const NUM_LANDS_TO_STILL_NEED_MORE: usize = 2;
 
-        if lands_in_hand == 0 && lands_on_battlefield <= NUM_LANDS_TO_STILL_NEED_MORE {
-            return true; // Need more lands, discard nonland
+        // Condition 1: we need more lands (Java uses landsOTB = all mana-producing lands)
+        if lands_in_hand == 0 && mana_producing_lands <= NUM_LANDS_TO_STILL_NEED_MORE {
+            return true;
         }
-        if revealed_cmc - MAX_CMC_DIFF >= lands_on_battlefield as i32 {
-            return true; // Too expensive to cast soon
+        // Condition 2: too expensive (Java uses predictedMana = untapped mana sources)
+        if revealed_cmc - MAX_CMC_DIFF >= predicted_mana as i32 {
+            return true;
         }
-        false // Keep on top
+        false
     }
 
     /// Choose whether an optional triggered ability fires.
@@ -369,6 +399,31 @@ pub trait PlayerAgent {
         true
     }
 
+    /// Choose the value of X for an X-cost spell.
+    /// `max_x` is the maximum affordable value.
+    /// Returns the chosen X value (0 to max_x).
+    /// Default: spend all available mana (max_x).
+    fn choose_x_value(
+        &mut self,
+        _player: PlayerId,
+        max_x: u32,
+        _card_name: Option<&str>,
+    ) -> u32 {
+        max_x
+    }
+
+    /// Choose whether to pay life instead of mana for a Phyrexian mana shard.
+    /// Returns true to pay 2 life, false to pay the color.
+    /// Default: always pay color (never pay life).
+    fn choose_phyrexian_pay_life(
+        &mut self,
+        _player: PlayerId,
+        _color: &str,
+        _card_name: Option<&str>,
+    ) -> bool {
+        false
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;
@@ -420,7 +475,12 @@ impl PlayerAgent for PassAgent {
         MainPhaseAction::Pass
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId]) -> Vec<CardId> {
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        _available: &[CardId],
+        _possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
         Vec::new() // no attackers
     }
 

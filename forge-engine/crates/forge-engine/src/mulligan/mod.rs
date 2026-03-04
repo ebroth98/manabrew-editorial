@@ -133,6 +133,7 @@ fn mulligan_order(player_order: &[PlayerId], first_player: PlayerId) -> Vec<Play
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::combat::DefenderId;
     use crate::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
     use crate::card::CardInstance;
     use crate::game::GameState;
@@ -196,7 +197,7 @@ mod tests {
             MainPhaseAction::Pass
         }
 
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
             vec![]
         }
 

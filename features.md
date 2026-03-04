@@ -223,7 +223,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `CardCollection.java` | Mutable card collection | **Implemented** (Vec<CardId> in zones) |
 | `CardCollectionView.java` | Immutable card collection view | Not implemented (no view layer) |
 | `CardCopyService.java` | Card copying: tokens, clones, cross-game | Not implemented |
-| `CardDamageHistory.java` | Damage history: attacks, blocks, damage per phase | Not implemented |
+| `CardDamageHistory.java` | Damage history: attacks, blocks, damage per phase | **Implemented** — `card/damage_history.rs`: DamageHistory struct with record_attack/block/damage, end_combat/new_turn; wired in phase_handler.rs |
 | `CardDamageMap.java` | Damage source→target mapping with trigger integration | Not implemented |
 | `CardFaceView.java` | Card face display record | Not implemented |
 | `CardLists.java` | Static filter utilities for card collections | Not implemented |
@@ -281,16 +281,16 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `Combat.java` | Combat state: attackers, blockers, damage assignment | **Implemented** (`combat.rs` CombatState) |
-| `CombatUtil.java` | Combat utility methods | **Partial** (basic attack/block checks in `card.rs`) |
+| `Combat.java` | Combat state: attackers, blockers, damage assignment | **Implemented** (`combat/mod.rs` CombatState with DefenderId multi-defender support, `remove_absent_combatants()`, LKI cache) |
+| `CombatUtil.java` | Combat utility methods | **Partial** — attack/block checks, `get_possible_defenders()`, attack costs (`attack_cost.rs`), block costs (`block_cost.rs`), lure/must-block (`compute_must_block_targets`), block validation (`validate_blocks`) |
 | `CombatView.java` | Combat view for UI | Not implemented |
-| `CombatLki.java` | Last-known-information during combat | Not implemented |
-| `AttackConstraints.java` | Attack requirement/restriction aggregation | Not implemented |
-| `AttackRequirement.java` | "Must attack" requirements | Not implemented |
-| `AttackRestriction.java` | "Can't attack" restrictions | Not implemented |
-| `AttackRestrictionType.java` | Attack restriction type enum | Not implemented |
+| `CombatLki.java` | Last-known-information during combat | **Implemented** (`combat/mod.rs` CombatLki struct, save_lki/was_attacking/was_blocking/get_combat_lki) |
+| `AttackConstraints.java` | Attack requirement/restriction aggregation | **Partial** — `attack_requirement.rs` + `attack_restriction.rs` handle goad, must-attack, OnlyAlone, NotAlone, NeedGreaterPower, NeedTwoOthers, Never |
+| `AttackRequirement.java` | "Must attack" requirements | **Implemented** — `combat/attack_requirement.rs`: computes requirements from statics + goad |
+| `AttackRestriction.java` | "Can't attack" restrictions | **Implemented** — `combat/attack_restriction.rs`: validates restrictions after attacker declaration |
+| `AttackRestrictionType.java` | Attack restriction type enum | **Implemented** — `combat/attack_restriction.rs`: OnlyAlone, NotAlone, NeedGreaterPower, NeedTwoOthers, Never |
 | `AttackingBand.java` | Banding attack groups | Not implemented |
-| `GlobalAttackRestrictions.java` | Global attack limits | Not implemented |
+| `GlobalAttackRestrictions.java` | Global attack limits | **Implemented** — `static_ability_attack_restrict.rs` + phase_handler prioritizes must-attackers when limit exceeded |
 
 ---
 
@@ -338,7 +338,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `CostPutCardToLib.java` | Put card to library as cost | Not implemented |
 | `CostAddMana.java` | Add mana to pool as cost | Not implemented |
 | `CostUnattach.java` | Unattach as cost | **Implemented** (`CostPart::Unattach`, `Unattach<>` token; calls `game.detach()`) |
-| `CostAdjustment.java` | Cost increase/decrease logic | Not implemented |
+| `CostAdjustment.java` | Cost increase/decrease logic | **Partial** (`ReduceCost`/`RaiseCost`/`SetCost` statics via `static_ability_cost_change.rs`; supports `Color$`, `IgnoreGeneric$`, `IsPresent$`/`PresentZone$`, `EffectZone$`, `MinMana$`, `Activator$`, `ValidCard$`, `CheckSVar$`/`SVarCompare$`, `OnlyFirstSpell$`, `Relative$`, `UpTo$`, `RaiseTo$` (Trinisphere); `ValidTarget$`/`ValidSpell$` conservatively skipped) |
 | `CostBlight.java` | Blight as cost | Not implemented |
 | `CostBehold.java` | Behold as cost | Not implemented |
 | `CostBeholdExile.java` | Behold exile variant | Not implemented |
@@ -696,6 +696,8 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: Control (2, `GainControl$` incl. aura `Card.EnchantedBy`), Ability/keyword-grant (6), SetPT (7b), ModifyPT (7c) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped via static abilities, `R:Event$ Moved | ReplaceWith$ ETBTapped` replacement effects, AND `ReplaceWith$ DBTap` shock land pattern with `UnlessCost$ PayLife<N>` player prompt; missing: type/color layers, dependency resolution) |
 | `StaticAbilityCantAttack.java` | Prevents attacking | **Implemented** (`layer.rs`: `Mode$ CantAttack` sets `cant_attack_static` flag; `card.rs` `can_attack()` respects it) |
 | `StaticAbilityCantBlock.java` | Prevents blocking | **Implemented** (`layer.rs`: `Mode$ CantBlock` sets `cant_block_static` flag; `card.rs` `can_block()` respects it) |
+| `StaticAbilityCantAttackUnless.java` | Attack cost (Propaganda, Ghostly Prison) | **Implemented** — `combat/attack_cost.rs`: `get_attack_cost()` scans `CantAttackUnless` statics; auto-pay in phase_handler |
+| `StaticAbilityCantBlockUnless.java` | Block cost (War Cadence) | **Implemented** — `combat/block_cost.rs`: `get_block_cost()` scans `CantBlockUnless` statics; auto-pay in phase_handler |
 | `StaticAbilityCantBeSacrificed.java` | Prevents sacrifice | Not implemented |
 | `StaticAbilityCantCast.java` | Prevents casting | Not implemented |
 | `StaticAbilityCantTarget.java` | Grants hexproof/shroud | **Partial** (`static_ability_cant_target.rs` + `target_restrictions.rs` integration) |
@@ -713,7 +715,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `StaticAbilityCantGainLosePayLife.java` | Prevents life gain/loss/payment | **Partial** (`static_ability_cant_gain_lose_pay_life.rs` integrated in life effects, damage-to-player, and PayLife costs) |
 | `StaticAbilityCastWithFlash.java` | Grants flash to spells | **Partial** (`static_ability_cast_with_flash.rs` + playable-card instant-speed checks) |
 | `StaticAbilityMustAttack.java` | Forces creatures to attack | **Partial** (`static_ability_must_attack.rs` + combat declaration auto-include) |
-| `StaticAbilityMustBlock.java` | Forces creatures to block | **Partial** (`static_ability_must_block.rs` + combat declaration fallback assignment) |
+| `StaticAbilityMustBlock.java` | Forces creatures to block | **Implemented** — `static_ability_must_block.rs` + `combat::compute_must_block_targets()` auto-assigns in phase_handler; Lure/AllMustBlock keyword detection |
 | `StaticAbilityMustTarget.java` | Forces targeting restrictions | **Partial** (`static_ability_must_target.rs` scaffold; full target-choice enforcement pending) |
 | `StaticAbilityAdapt.java` | Adapt mechanic interactions | Not implemented |
 | `StaticAbilityPanharmonicon.java` | Double trigger effects | **Partial** (`static_ability_panharmonicon.rs` + trigger duplication hook in `trigger/handler.rs`) |
@@ -995,7 +997,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Card System | 28 | 4 | 4 | 20 |
 | Perpetual Effects | 9 | 0 | 0 | 9 |
 | Tokens | 1 | 1 | 0 | 0 |
-| Combat | 10 | 1 | 1 | 8 |
+| Combat | 10 | 6 | 1 | 3 |
 | Costs | 51 | 2 | 3 | 46 |
 | Events | 62 | 0 | 4 | 58 |
 | Extra Hands | 1 | 0 | 0 | 1 |
@@ -1027,7 +1029,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 > - **Costs**: 45 types not implemented (7 critical, 12 high)
 > - **Replacement Effects**: 32 types not implemented (2 critical, 12 high)
 > - **Mana**: X costs, phyrexian life payment, conversion matrix
-> - **Combat**: Attack requirements/restrictions, damage assignment order
+> - **Combat**: Banding, ninjutsu block replacement
 > - **Infrastructure**: Game logging, snapshots, format configuration
 
 ---
@@ -1058,10 +1060,10 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | 1 | Core Game | 37 | 6 | ~30% | Logging, snapshots, rules config, formats |
 | 2 | Ability System | 10 | 2 | ~20% | Factory partial, API type dispatch partial |
 | 3 | **Ability Effects** | 204 | 61 | **30%** | 143 effects missing (7 critical, 25 high) |
-| 4 | Card System | 38 | 2 | ~25% | Factory, views, damage history, clone states |
+| 4 | Card System | 38 | 3 | ~27% | Factory, views, clone states |
 | 5 | Perpetual | 9 | 0 | 0% | Arena-specific (low priority) |
 | 6 | Tokens | 1 | — | ~80% | Token creation works via TokenEffect |
-| 7 | **Combat** | 10 | 1 | ~40% | Attack requirements/restrictions, banding |
+| 7 | **Combat** | 10 | 6 | ~70% | Banding, ninjutsu block replacement |
 | 8 | **Costs** | 51 | 1 | ~10% | 46 cost types missing (7 critical) |
 | 9 | Events | 62 | 1 | ~10% | 60+ event types, visitor pattern |
 | 10 | Extra Hands | 1 | 0 | 0% | Niche (Conspiracy format) |
@@ -1073,7 +1075,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | 16 | Player Actions | 10 | — | — | Handled in Tauri layer (prompt.rs) |
 | 17 | **Replacement** | 46 | 3 | ~17% | 38 types missing (8 critical) |
 | 18 | Spell Abilities | 23 | 3 | ~25% | Conditions, restrictions, views |
-| 19 | **Static Abilities** | 61 | 3 | ~11% | 54 modes missing (11 critical) |
+| 19 | **Static Abilities** | 61 | 5 | ~13% | 52 modes missing (11 critical) |
 | 20 | **Triggers** | 139 | 3 | ~51% | 68 types missing (0 critical) |
 | 21 | Zones | 8 | 1 | ~35% | MagicStack in game_loop, CostPaymentStack |
 
@@ -1201,7 +1203,7 @@ Ninjutsu, Champion, Devour, Hideaway, Companion, Mutate, Boast, Forage, Landwalk
 |------|-----------|-------------|
 | CantTarget | `StaticAbilityCantTarget.java` | **Partial** — target legality hook added |
 | CantAttach | `StaticAbilityCantAttach.java` | **Partial** — attach effect gate added |
-| MustAttack | `StaticAbilityMustAttack.java` | **Partial** — combat declaration auto-include |
+| MustAttack | `StaticAbilityMustAttack.java` | **Implemented** — `static_ability_must_attack.rs` + `combat/attack_requirement.rs` (goad integration, prioritization with global limits) |
 | MustBlock | `StaticAbilityMustBlock.java` | **Partial** — combat declaration fallback assignment |
 | Panharmonicon | `StaticAbilityPanharmonicon.java` | **Partial** — trigger duplication hook |
 | CantGainLosePayLife | `StaticAbilityCantGainLosePayLife.java` | **Partial** — gain/lose/pay-life gates wired |
@@ -1246,15 +1248,10 @@ ReplaceAttached, ReplaceBeginPhase, ReplaceBeginTurn, ReplaceExplore, ReplaceLea
 
 ### 23.9 Combat System — Gaps
 
-**Implemented:** Basic attack/block declaration, full damage resolution (first/double strike, trample, deathtouch, lifelink, infect, toxic, wither), Fog, blocking legality (flying/reach, fear, intimidate, shadow, horsemanship, skulk, menace, protection), commander damage tracking.
+**Implemented:** Basic attack/block declaration, full damage resolution (first/double strike, trample, deathtouch, lifelink, infect, toxic, wither), Fog, blocking legality (flying/reach, fear, intimidate, shadow, horsemanship, skulk, menace, protection), commander damage tracking, attack restrictions (OnlyAlone, NotAlone, NeedGreaterPower, NeedTwoOthers, Never), attack requirements (must-attack statics + goad integration), global attack limit prioritization (must-attackers kept when limit exceeded), damage assignment order (player chooses order for multi-blocked attackers, UI modal), multi-defender support (DefenderId enum for player/planeswalker targets, get_possible_defenders, damage routing to permanents), combat last-known-information (CombatLki struct, pre-populated before damage, was_attacking/was_blocking queries).
 
 | Missing Feature | Java File(s) | Priority |
 |----------------|-------------|----------|
-| "Must attack" requirements | `AttackRequirement.java`, `AttackConstraints.java` | High |
-| "Can't attack" restrictions | `AttackRestriction.java`, `AttackRestrictionType.java`, `GlobalAttackRestrictions.java` | High |
-| Damage assignment order | Part of `Combat.java` | Medium |
-| Multi-defender (multiplayer) | Part of `Combat.java` | Medium |
-| Last-known-information | `CombatLki.java` | Medium |
 | Ninjutsu block replacement | — | Medium |
 | Banding | `AttackingBand.java` | Low |
 
@@ -1264,10 +1261,10 @@ ReplaceAttached, ReplaceBeginPhase, ReplaceBeginTurn, ReplaceExplore, ReplaceLea
 
 | Missing Feature | Java File(s) | Priority |
 |----------------|-------------|----------|
-| X mana costs | Part of `ManaCostBeingPaid.java` | Critical |
-| Phyrexian mana (life payment) | Part of `Mana.java` | High |
+| ~~X mana costs~~ | ~~Part of `ManaCostBeingPaid.java`~~ | **Implemented** — `spellability/mod.rs` (`x_mana_cost_paid`), `game_action_util.rs` (X prompt + cost resolution), `effects/mod.rs` (`Count$xPaid` SVar), `agent.rs` (`choose_x_value`) |
+| ~~Phyrexian mana (life payment)~~ | ~~Part of `Mana.java`~~ | **Implemented** — `game_action_util.rs` (pre-payment: pay color if available, else 2 life), `mana/mod.rs` (Phyrexian shards pass `can_pay` for playability), `agent.rs` (`choose_phyrexian_pay_life`) |
 | Mana conversion matrix | `ManaConversionMatrix.java` | High |
-| Cost reduction/increase (static) | Part of static abilities | High |
+| ~~Cost reduction/increase (static)~~ | ~~Part of static abilities~~ | **Implemented** — `static_ability_cost_change.rs`: full parameter support (`CheckSVar$`, `Relative$`, `OnlyFirstSpell$`, `UpTo$`, `RaiseTo$/SetCost`, `Color$`, `MinMana$`, etc.); `ValidTarget$`/`ValidSpell$` conservatively skipped at cost-check time |
 | Active cost payment tracking | `ManaCostBeingPaid.java` | Medium |
 | Mana refund on interruption | `ManaRefundService.java` | Medium |
 | Mana restrictions ("spend only on…") | Part of `Mana.java` | Medium |

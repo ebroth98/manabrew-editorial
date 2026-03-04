@@ -21,13 +21,16 @@ import forge.game.combat.CombatUtil;
 import forge.game.player.*;
 import forge.game.spellability.*;
 import forge.game.ability.ApiType;
+import forge.card.ICardFace;
 import forge.game.keyword.KeywordInterface;
+import forge.game.trigger.WrappedAbility;
 import forge.game.zone.ZoneType;
 import forge.util.collect.FCollectionView;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 
 import java.util.*;
+import java.util.function.Predicate;
 
 /**
  * A hybrid deterministic PlayerController for cross-engine parity testing.
@@ -219,6 +222,18 @@ public class DeterministicController extends PlayerControllerAi {
 
     @Override
     public boolean playChosenSpellAbility(SpellAbility sa) {
+        // Force X to max available mana — matches Rust's choose_x_value default.
+        Cost payCosts = sa.getPayCosts();
+        if (payCosts != null) {
+            ManaCost mana = payCosts.getTotalMana();
+            if (mana != null && mana.countX() > 0) {
+                int maxX = ComputerUtilCost.getMaxXValue(sa, player, sa.isTrigger());
+                if (maxX > 0) {
+                    sa.setXManaCostPaid(maxX);
+                }
+            }
+        }
+
         // Always provide a chooseTargets callback that walks the entire ability
         // chain (including Charm sub-abilities chained by CharmEffect.makeChoices).
         // Previously, Charm spells fell through to super.playChosenSpellAbility()
@@ -384,6 +399,27 @@ public class DeterministicController extends PlayerControllerAi {
         return new CardCollection(sorted.subList(0, count));
     }
 
+    // ── Sacrifice / Destroy ────────────────────────────────────────────
+    // Rust's choose_sacrifice sorts alphabetically by name, picks first.
+
+    @Override
+    public CardCollectionView choosePermanentsToSacrifice(SpellAbility sa, int min, int max,
+            CardCollectionView validTargets, String message) {
+        CardCollection sorted = new CardCollection(validTargets);
+        sorted.sort(Comparator.comparing(Card::getName));
+        int count = Math.min(Math.max(min, 1), sorted.size());
+        return new CardCollection(sorted.subList(0, count));
+    }
+
+    @Override
+    public CardCollectionView choosePermanentsToDestroy(SpellAbility sa, int min, int max,
+            CardCollectionView validTargets, String message) {
+        CardCollection sorted = new CardCollection(validTargets);
+        sorted.sort(Comparator.comparing(Card::getName));
+        int count = Math.min(Math.max(min, 1), sorted.size());
+        return new CardCollection(sorted.subList(0, count));
+    }
+
     // ── Zone Change (Search/Tutor) ──────────────────────────────────
 
     @Override
@@ -429,6 +465,12 @@ public class DeterministicController extends PlayerControllerAi {
     }
 
     @Override
+    public ImmutablePair<CardCollection, CardCollection> arrangeForSurveil(CardCollection topN) {
+        // Fixed: keep all on top, nothing to graveyard — matches Rust's choose_surveil default.
+        return ImmutablePair.of(topN, new CardCollection());
+    }
+
+    @Override
     public CardCollectionView orderMoveToZoneList(CardCollectionView cards, ZoneType destinationZone,
             SpellAbility source) {
         // Fixed: keep original order (no RNG consumed)
@@ -447,15 +489,26 @@ public class DeterministicController extends PlayerControllerAi {
     }
 
     // ── Confirmations ─────────────────────────────────────────────────
-    // NOTE: confirmAction and confirmTrigger are intentionally NOT overridden.
+    // NOTE: confirmAction is intentionally NOT fully overridden.
     // The parent PlayerControllerAi delegates to the AI brain (getAi()) which
-    // has smart logic to decline optional triggers and actions that could cause
+    // has smart logic to decline optional actions that could cause
     // infinite loops. Blindly returning true for all confirmations caused the
     // Java engine to get stuck in infinite trigger/priority loops (e.g. when
     // Standard Bearer's Flagbearer ability interacted with certain board states).
     //
-    // The only exception is confirmAction for RearrangeTopOfLibrary (Ponder),
-    // where we must decline the shuffle to keep library order synchronized.
+    // confirmAction exception: RearrangeTopOfLibrary (Ponder) must decline shuffle.
+    // confirmTrigger: matches Rust's choose_optional_trigger (decline Pump/PumpAll).
+
+    @Override
+    public boolean confirmTrigger(WrappedAbility sa) {
+        // Match Rust's choose_optional_trigger: decline Pump/PumpAll to avoid
+        // infinite loops from repeated +0/+0 triggers, accept everything else.
+        ApiType api = sa.getApi();
+        if (api == ApiType.Pump || api == ApiType.PumpAll) {
+            return false;
+        }
+        return true;
+    }
 
     @Override
     public boolean confirmAction(SpellAbility sa, PlayerActionConfirmMode mode, String message,
@@ -491,6 +544,18 @@ public class DeterministicController extends PlayerControllerAi {
         return 0;
     }
 
+    // ── X-Cost ────────────────────────────────────────────────────────
+    // Rust default choose_x_value returns max_x (spend all available mana).
+
+    @Override
+    public Integer announceRequirements(SpellAbility ability, String announce) {
+        if ("X".equals(announce)) {
+            int maxX = ComputerUtilCost.getMaxXValue(ability, player, ability.isTrigger());
+            return Math.max(maxX, 0);
+        }
+        return super.announceRequirements(ability, announce);
+    }
+
     // ── Numbers & Colors ──────────────────────────────────────────────
 
     @Override
@@ -509,6 +574,66 @@ public class DeterministicController extends PlayerControllerAi {
         for (Color color : colors) colorList.add(color.getColorMask());
         if (colorList.isEmpty()) return Color.COLORLESS.getColorMask();
         return colorList.get(0);
+    }
+
+    // ── Type / Card Name / Number Selection ────────────────────────────
+    // Rust defaults: first valid type, first valid name, min value.
+
+    @Override
+    public String chooseSomeType(String kindOfType, SpellAbility sa, Collection<String> validTypes, boolean isOptional) {
+        if (validTypes == null || validTypes.isEmpty()) return "";
+        List<String> sorted = new ArrayList<>(validTypes);
+        Collections.sort(sorted);
+        return sorted.get(0);
+    }
+
+    @Override
+    public String chooseCardName(SpellAbility sa, Predicate<ICardFace> cpp, String valid, String message) {
+        // Delegate to parent AI — no simple "first" since candidates come from full card DB.
+        return super.chooseCardName(sa, cpp, valid, message);
+    }
+
+    @Override
+    public String chooseCardName(SpellAbility sa, List<ICardFace> faces, String message) {
+        if (faces == null || faces.isEmpty()) return "";
+        List<ICardFace> sorted = new ArrayList<>(faces);
+        sorted.sort(Comparator.comparing(ICardFace::getName));
+        return sorted.get(0).getName();
+    }
+
+    @Override
+    public int chooseNumber(SpellAbility sa, String title, int min, int max) {
+        return min;
+    }
+
+    @Override
+    public int chooseNumber(SpellAbility sa, String title, List<Integer> values, Player relatedPlayer) {
+        if (values == null || values.isEmpty()) return 0;
+        return Collections.min(values);
+    }
+
+    @Override
+    public int chooseNumberForCostReduction(final SpellAbility sa, final int min, final int max) {
+        return min;
+    }
+
+    // ── Coin Flip ─────────────────────────────────────────────────────
+    // Rust default flip_coin_call returns true (always call heads).
+
+    @Override
+    public boolean chooseFlipResult(SpellAbility sa, Player flipper, boolean[] results, boolean call) {
+        return true; // always call heads
+    }
+
+    // ── Mulligan Bottom Selection ────────────────────────────────────
+    // Rust default choose_cards_to_bottom returns first N cards.
+
+    @Override
+    public CardCollectionView tuckCardsViaMulligan(Player mulliganingPlayer, int cardsToReturn) {
+        CardCollectionView hand = mulliganingPlayer.getCardsIn(ZoneType.Hand);
+        CardCollection sorted = new CardCollection(hand);
+        sorted.sort(Comparator.comparing(Card::getName));
+        return new CardCollection(sorted.subList(0, Math.min(cardsToReturn, sorted.size())));
     }
 
     // ── Misc ──────────────────────────────────────────────────────────
@@ -576,6 +701,21 @@ public class DeterministicController extends PlayerControllerAi {
         for (Card card : player.getCardsIn(ZoneType.Battlefield)) {
             if (card.isTapped()) {
                 continue;
+            }
+            // Summoning-sick creatures cannot activate {T} abilities (including mana).
+            // Must match Rust's calculate_available_mana() check so castability probes
+            // agree with actual payment and neither engine wastes RNG on uncastable spells.
+            if (card.isSick()) {
+                boolean allNeedTap = true;
+                for (SpellAbility manaSa : card.getManaAbilities()) {
+                    if (!manaSa.getPayCosts().hasTapCost()) {
+                        allNeedTap = false;
+                        break;
+                    }
+                }
+                if (allNeedTap) {
+                    continue;
+                }
             }
             if (excludesSource && card.getId() == sourceId) {
                 continue;
@@ -647,7 +787,22 @@ public class DeterministicController extends PlayerControllerAi {
     private void setupDeterministicTargets(SpellAbility sa) {
         sa.resetTargets();
 
-        // Build unified candidate list: players first (by name), then cards (by name)
+        // 1. Check for spell targets on the stack (counterspells, redirects, etc.)
+        //    Rust's choose_target_spell returns the first (topmost) valid spell.
+        List<SpellAbility> spellCandidates = new ArrayList<>();
+        for (SpellAbilityStackInstance si : getGame().getStack()) {
+            SpellAbility abilityOnStack = si.getSpellAbility();
+            if (sa.canTargetSpellAbility(abilityOnStack)) {
+                spellCandidates.add(abilityOnStack);
+            }
+        }
+        if (!spellCandidates.isEmpty()) {
+            // Pick the first (topmost) targetable spell — matches Rust default.
+            sa.getTargets().add(spellCandidates.get(0));
+            return;
+        }
+
+        // 2. Build unified candidate list: players first (by name), then cards (by name)
         List<GameEntity> candidates = new ArrayList<>();
         for (Player p : getGame().getPlayers()) {
             if (sa.canTarget(p)) {

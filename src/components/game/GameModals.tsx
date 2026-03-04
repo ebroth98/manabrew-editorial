@@ -10,6 +10,7 @@ import { ChooseCardsModal } from "@/components/game/ChooseCardsModal";
 import { ChooseTypeModal } from "@/components/game/ChooseTypeModal";
 import { ChooseNumberModal } from "@/components/game/ChooseNumberModal";
 import { ChooseCardNameModal } from "@/components/game/ChooseCardNameModal";
+import { DamageOrderModal } from "@/components/game/DamageOrderModal";
 import { AbilityPickerModal } from "@/components/game/AbilityPickerModal";
 import { MulliganModal } from "@/components/game/MulliganModal";
 import { MulliganBottomModal } from "@/components/game/MulliganBottomModal";
@@ -57,6 +58,7 @@ interface GameModalsProps {
   onTypeDecision: (chosenType: string | null) => void;
   onNumberDecision: (chosenNumber: number | null) => void;
   onCardNameDecision: (chosenName: string | null) => void;
+  onDamageOrderDecision: (orderedBlockerIds: string[]) => void;
 }
 
 export function GameModals({
@@ -93,6 +95,7 @@ export function GameModals({
   onTypeDecision,
   onNumberDecision,
   onCardNameDecision,
+  onDamageOrderDecision,
 }: GameModalsProps) {
   return (
     <>
@@ -262,6 +265,15 @@ export function GameModals({
           validNames={currentPrompt.validNames}
           cardName={currentPrompt.sourceCardName}
           onConfirm={onCardNameDecision}
+        />
+      )}
+      {promptType === "chooseDamageAssignmentOrder" && currentPrompt?.blockerIds != null && (
+        <DamageOrderModal
+          attackerId={currentPrompt.attackerId}
+          blockerIds={currentPrompt.blockerIds}
+          blockerCards={currentPrompt.blockerCards ?? []}
+          gameViewCards={currentPrompt.gameView?.battlefield}
+          onConfirm={onDamageOrderDecision}
         />
       )}
     </>

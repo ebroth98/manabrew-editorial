@@ -199,6 +199,16 @@ fn resolve_damage_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
         _ => return 0,
     };
 
+    // Check if var_name is "X" — use x_mana_cost_paid
+    if var_name == "X" {
+        if let Some(source_id) = sa.source {
+            if let Some(svar_expr) = ctx.game.card(source_id).svars.get("X") {
+                return evaluate_svar_expr(ctx, sa, svar_expr);
+            }
+        }
+        return sa.x_mana_cost_paid as i32;
+    }
+
     if let Some(source_id) = sa.source {
         let svar_val = ctx.game.card(source_id).svars.get(var_name).cloned();
         if let Some(expr) = svar_val {
@@ -217,6 +227,8 @@ fn evaluate_svar_expr(ctx: &EffectContext, sa: &SpellAbility, expr: &str) -> i32
         return super::evaluate_svar(expr, sa);
     }
     match expr {
+        // X mana cost paid value
+        "Count$xPaid" | "Count$XPaid" => sa.x_mana_cost_paid as i32,
         // Power / toughness of the parent SA's chosen target card.
         // Used by Ram Through: SVar:X:ParentTargeted$CardPower
         "ParentTargeted$CardPower" => ctx

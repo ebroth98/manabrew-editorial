@@ -40,6 +40,8 @@ export interface Card {
   flashbackCost?: string;
   /** Kicker cost string if the card has kicker (e.g. "W"). */
   kickerCost?: string;
+  /** Effective mana cost after static ability reductions/increases. Only set when different from manaCost. */
+  effectiveManaCost?: string;
 }
 
 export interface Deck {

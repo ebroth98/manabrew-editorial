@@ -1,0 +1,20 @@
+{
+  "label": "Cost Reduction Test",
+  "desc": "Goblin Electromancer + Baral + cheap instants/sorceries",
+  "color": "text-blue-300",
+  "opponent": "red_burn",
+  "ai_eligible": false,
+  "order": 25,
+  "cards": [
+    { "name": "Island", "count": 10, "set": "akh" },
+    { "name": "Mountain", "count": 8, "set": "akh" },
+    { "name": "Goblin Electromancer", "count": 4, "set": "rtr" },
+    { "name": "Baral, Chief of Compliance", "count": 4, "set": "aer" },
+    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
+    { "name": "Shock", "count": 4, "set": "m21" },
+    { "name": "Divination", "count": 4, "set": "m19" },
+    { "name": "Cancel", "count": 4, "set": "m19" },
+    { "name": "Opt", "count": 4, "set": "xln" },
+    { "name": "Unsummon", "count": 4, "set": "m12" }
+  ]
+}
