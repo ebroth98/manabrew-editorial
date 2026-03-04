@@ -111,7 +111,18 @@ export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: Card
               <div className="flex justify-between items-start">
                 <span className="font-bold text-sm leading-tight">{currentCardName}</span>
                 {!hasDoubleFace && (
-                  <ManaSymbols cost={card.manaCost} size="md" />
+                  card.effectiveManaCost ? (
+                    <div className="flex flex-col items-end">
+                      <span className="line-through opacity-50">
+                        <ManaSymbols cost={card.manaCost} size="md" />
+                      </span>
+                      <span className="bg-green-500/20 rounded px-0.5">
+                        <ManaSymbols cost={card.effectiveManaCost} size="md" />
+                      </span>
+                    </div>
+                  ) : (
+                    <ManaSymbols cost={card.manaCost} size="md" />
+                  )
                 )}
               </div>
               {!hasDoubleFace && (

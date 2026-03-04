@@ -12,6 +12,7 @@ pub mod static_ability_cant_sacrifice;
 pub mod static_ability_cant_target;
 pub mod static_ability_can_attack_defender;
 pub mod static_ability_cast_with_flash;
+pub mod static_ability_cost_change;
 pub mod static_ability_colorless_damage_source;
 pub mod static_ability_combat_damage_toughness;
 pub mod static_ability_counters_remain;

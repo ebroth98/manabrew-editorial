@@ -65,9 +65,16 @@ impl GameLoop {
                     continue;
                 }
                 let tax = card.commander_cast_count as i32 * 2;
+                let cost_adj = crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                    game,
+                    card,
+                    player,
+                    ZoneType::Command,
+                );
+                let adjusted_cost = cost_adj.apply(&card.mana_cost);
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
-                if available_mana.can_pay_with_extra_generic(&card.mana_cost, tax) {
+                if available_mana.can_pay_with_extra_generic(&adjusted_cost, tax) {
                     playable.push(card_id);
                 }
             }
@@ -88,9 +95,13 @@ impl GameLoop {
                     continue;
                 }
                 let madness_mc = forge_foundation::ManaCost::parse(&madness_cost_str);
+                let cost_adj = crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                    game, card, player, ZoneType::Exile,
+                );
+                let adjusted = cost_adj.apply(&madness_mc);
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
-                if available_mana.can_pay(&madness_mc) {
+                if available_mana.can_pay(&adjusted) {
                     playable.push(card_id);
                 }
             }
@@ -111,48 +122,68 @@ impl GameLoop {
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
 
+                // Apply cost reduction/increase from static abilities
+                let cost_adj = crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                    game,
+                    card,
+                    player,
+                    ZoneType::Hand,
+                );
+
                 // Check normal cost OR any alternative costs
-                let normal_ok = available_mana.can_pay(&card.mana_cost);
+                // For X-cost spells, check only the non-X portion (X=0 is valid)
+                let normal_ok = if card.mana_cost.count_x() > 0 {
+                    let adjusted = cost_adj.apply(&card.mana_cost.without_x());
+                    available_mana.can_pay(&adjusted)
+                } else {
+                    let adjusted = cost_adj.apply(&card.mana_cost);
+                    available_mana.can_pay(&adjusted)
+                };
 
                 // Spectacle: alt cost if opponent lost life this turn
                 let spectacle_ok = if let Some(spec_cost_str) = card.get_spectacle_cost() {
                     let opp = game.opponent_of(player);
+                    let adjusted = cost_adj.apply(&forge_foundation::ManaCost::parse(&spec_cost_str));
                     game.player(opp).life_lost_this_turn > 0
-                        && available_mana
-                            .can_pay(&forge_foundation::ManaCost::parse(&spec_cost_str))
+                        && available_mana.can_pay(&adjusted)
                 } else {
                     false
                 };
 
                 // Evoke: alt cost for creatures
                 let evoke_ok = if let Some(evoke_cost_str) = card.get_evoke_cost() {
-                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&evoke_cost_str))
+                    let adjusted = cost_adj.apply(&forge_foundation::ManaCost::parse(&evoke_cost_str));
+                    available_mana.can_pay(&adjusted)
                 } else {
                     false
                 };
 
                 // Dash: alt cost
                 let dash_ok = if let Some(dash_cost_str) = card.get_dash_cost() {
-                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&dash_cost_str))
+                    let adjusted = cost_adj.apply(&forge_foundation::ManaCost::parse(&dash_cost_str));
+                    available_mana.can_pay(&adjusted)
                 } else {
                     false
                 };
 
                 // Blitz: alt cost
                 let blitz_ok = if let Some(blitz_cost_str) = card.get_blitz_cost() {
-                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&blitz_cost_str))
+                    let adjusted = cost_adj.apply(&forge_foundation::ManaCost::parse(&blitz_cost_str));
+                    available_mana.can_pay(&adjusted)
                 } else {
                     false
                 };
 
                 // Overload: alt cost
                 let overload_ok = if let Some(ovl_cost_str) = card.get_overload_cost() {
-                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&ovl_cost_str))
+                    let adjusted = cost_adj.apply(&forge_foundation::ManaCost::parse(&ovl_cost_str));
+                    available_mana.can_pay(&adjusted)
                 } else {
                     false
                 };
 
                 // Suspend: special action, pay suspend cost to exile with time counters
+                // (Suspend is not a spell cast — cost reduction doesn't apply)
                 let suspend_ok = if let Some((suspend_cost_str, _counters)) =
                     card.get_suspend_cost()
                 {
@@ -162,6 +193,7 @@ impl GameLoop {
                 };
 
                 // Foretell: pay {2} to exile face-down from hand
+                // (This is a special action, not a cast — always costs {2})
                 let foretell_exile_ok = if card.get_foretell_cost().is_some() {
                     available_mana.can_pay(&forge_foundation::ManaCost::generic(2))
                 } else {
@@ -181,7 +213,8 @@ impl GameLoop {
                 let emerge_ok = if let Some(emerge_cost_str) = card.get_emerge_cost() {
                     // Simplified: check if emerge base cost is affordable
                     // (actual cost reduction from sac'd creature computed at cast time)
-                    available_mana.can_pay(&forge_foundation::ManaCost::parse(&emerge_cost_str))
+                    let adjusted = cost_adj.apply(&forge_foundation::ManaCost::parse(&emerge_cost_str));
+                    available_mana.can_pay(&adjusted)
                         || {
                             // Even if base emerge cost isn't payable, if we have creatures to sac
                             // the reduction might make it payable — approximate check
@@ -268,7 +301,12 @@ impl GameLoop {
                 }
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
-                if available_mana.can_pay(&forge_foundation::ManaCost::parse(&escape_mana)) {
+                let escape_mc = forge_foundation::ManaCost::parse(&escape_mana);
+                let cost_adj = crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                    game, card, player, ZoneType::Graveyard,
+                );
+                let adjusted = cost_adj.apply(&escape_mc);
+                if available_mana.can_pay(&adjusted) {
                     let other_gy_count = game
                         .cards_in_zone(ZoneType::Graveyard, player)
                         .iter()
@@ -293,9 +331,12 @@ impl GameLoop {
                     }
                     let available_mana =
                         mana::calculate_available_mana(self.pool(player), game, player);
-                    if available_mana
-                        .can_pay(&forge_foundation::ManaCost::parse(&foretell_cost_str))
-                    {
+                    let foretell_mc = forge_foundation::ManaCost::parse(&foretell_cost_str);
+                    let cost_adj = crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                        game, card, player, ZoneType::Exile,
+                    );
+                    let adjusted = cost_adj.apply(&foretell_mc);
+                    if available_mana.can_pay(&adjusted) {
                         playable.push(card_id);
                     }
                 }
@@ -848,6 +889,16 @@ impl GameLoop {
                 mana_cost
             };
 
+            // ── Cost reduction / increase from static abilities ──────────
+            let cast_zone = game.card(card_id).zone;
+            let cost_adj = crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                game,
+                game.card(card_id),
+                player,
+                cast_zone,
+            );
+            let mana_cost = cost_adj.apply(&mana_cost);
+
             // ── Additional cost checks (Kicker, Buyback, Multikicker, Replicate) ──
             // Check Kicker: offer to pay additional kicker cost
             let kicked = if let Some(kicker_cost_str) = game.card(card_id).get_kicker_cost() {
@@ -1074,6 +1125,88 @@ impl GameLoop {
                 0
             };
 
+            // ── X mana cost handling ──────────────────────────────────
+            let x_count = mana_cost.count_x();
+            let x_value;
+            let mana_cost = if x_count > 0 {
+                // Compute max X: available mana minus non-X cost minus commander tax
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                let non_x_cost = mana_cost.without_x();
+                let mut test_pool = available_mana.clone();
+                let non_x_affordable = test_pool.try_pay(&non_x_cost);
+                let remaining_after_non_x = if non_x_affordable {
+                    (test_pool.total() - commander_tax).max(0) as u32
+                } else {
+                    0
+                };
+                // Each X shard costs 1 generic per unit of X
+                let max_x = if x_count > 0 {
+                    remaining_after_non_x / x_count as u32
+                } else {
+                    0
+                };
+                let name = game.card(card_id).card_name.clone();
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                let chosen_x = agents[player.index()].choose_x_value(player, max_x, Some(&name));
+                x_value = chosen_x.min(max_x);
+                // Build effective cost: non-X shards + (X * x_count) generic
+                let extra_generic = (x_value as i32) * (x_count as i32);
+                let mut effective = non_x_cost;
+                if extra_generic > 0 {
+                    effective = effective.add(&forge_foundation::ManaCost::generic(extra_generic));
+                }
+                effective
+            } else {
+                x_value = 0;
+                mana_cost
+            };
+
+            // ── Phyrexian mana: pay color or 2 life per shard ──────
+            let mut phyrexian_life_paid = 0i32;
+            let mana_cost = if mana_cost.has_phyrexian() {
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                let mut remaining_shards: Vec<forge_foundation::ManaCostShard> = Vec::new();
+                let generic_cost = mana_cost.generic_cost();
+                for &shard in mana_cost.shards() {
+                    if shard.is_phyrexian() {
+                        let color_atoms =
+                            shard.shard() & forge_foundation::mana::ManaAtom::COLORS_SUPERPOSITION;
+                        // Check if color is available in pool
+                        let has_color = available_mana.has_atom(color_atoms, 1);
+                        if has_color {
+                            // AI/Deterministic: always pay color
+                            remaining_shards.push(shard);
+                        } else if game.player(player).life >= 2 {
+                            // Must pay life (no color available)
+                            phyrexian_life_paid += 2;
+                        } else {
+                            // Can't pay either way — keep the shard (will fail at try_pay)
+                            remaining_shards.push(shard);
+                        }
+                    } else {
+                        remaining_shards.push(shard);
+                    }
+                }
+                // Apply life payment
+                if phyrexian_life_paid > 0 {
+                    game.player_mut(player).lose_life(phyrexian_life_paid);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::LifeLost,
+                        RunParams {
+                            player: Some(player),
+                            life_amount: Some(phyrexian_life_paid),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                forge_foundation::ManaCost::from_parts(remaining_shards, generic_cost)
+            } else {
+                mana_cost
+            };
+
             // Auto-tap lands to pay the effective cost
             let tapped = mana::auto_tap_lands(
                 game,
@@ -1200,6 +1333,7 @@ impl GameLoop {
             sa.buyback_paid = buyback_paid;
             sa.kick_count = kick_count;
             sa.replicate_count = replicate_count;
+            sa.x_mana_cost_paid = x_value;
 
             // Overloaded spells replace "target" with "each" -- skip targeting.
             if !sa.overloaded {

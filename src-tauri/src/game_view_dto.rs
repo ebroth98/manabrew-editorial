@@ -135,6 +135,10 @@ pub struct CardDto {
     /// Kicker cost string, if the card has kicker (e.g. "W").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kicker_cost: Option<String>,
+    /// Effective mana cost after static ability reductions/increases.
+    /// Only set when different from `mana_cost` and the card is playable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_mana_cost: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -272,6 +276,26 @@ pub fn card_to_dto(
         is_transformed: card.is_transformed,
         phased_out: card.phased_out,
         exerted: card.exerted,
+        effective_mana_cost: {
+            if playable_ids.contains(&cid) && !card.is_land() {
+                let cost_adj = forge_engine_core::staticability::static_ability_cost_change::compute_cost_adjustment(
+                    game, card, card.controller, card.zone,
+                );
+                if !cost_adj.is_empty() {
+                    let adjusted = cost_adj.apply(&card.mana_cost);
+                    let adjusted_str = adjusted.to_string();
+                    if adjusted_str != card.mana_cost.to_string() {
+                        Some(adjusted_str)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        },
     }
 }
 

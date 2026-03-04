@@ -1,0 +1,17 @@
+{
+  "label": "X Cost & Phyrexian",
+  "desc": "Test deck for X mana costs and Phyrexian life payment",
+  "color": "text-purple-500",
+  "opponent": "green_stompy",
+  "ai_eligible": false,
+  "order": 99,
+  "cards": [
+    { "name": "Mountain", "count": 12, "set": "akh" },
+    { "name": "Swamp", "count": 5, "set": "akh" },
+    { "name": "Blaze", "count": 4, "set": "bbd" },
+    { "name": "Fireball", "count": 2, "set": "m12" },
+    { "name": "Gut Shot", "count": 4, "set": "nph" },
+    { "name": "Dismember", "count": 4, "set": "nph" },
+    { "name": "Lightning Bolt", "count": 4, "set": "m11" }
+  ]
+}

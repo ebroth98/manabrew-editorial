@@ -378,6 +378,31 @@ pub trait PlayerAgent {
         true
     }
 
+    /// Choose the value of X for an X-cost spell.
+    /// `max_x` is the maximum affordable value.
+    /// Returns the chosen X value (0 to max_x).
+    /// Default: spend all available mana (max_x).
+    fn choose_x_value(
+        &mut self,
+        _player: PlayerId,
+        max_x: u32,
+        _card_name: Option<&str>,
+    ) -> u32 {
+        max_x
+    }
+
+    /// Choose whether to pay life instead of mana for a Phyrexian mana shard.
+    /// Returns true to pay 2 life, false to pay the color.
+    /// Default: always pay color (never pay life).
+    fn choose_phyrexian_pay_life(
+        &mut self,
+        _player: PlayerId,
+        _color: &str,
+        _card_name: Option<&str>,
+    ) -> bool {
+        false
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;

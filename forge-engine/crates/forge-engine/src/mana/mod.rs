@@ -171,7 +171,7 @@ impl ManaPool {
         // First, pay colored shards
         for shard in cost.shards() {
             if shard.is_x() {
-                continue; // X = 0 for now
+                continue; // X shards are pre-resolved into generic mana before payment
             }
 
             let atoms = shard.shard();
@@ -220,11 +220,13 @@ impl ManaPool {
                     return false;
                 }
             } else if shard.is_phyrexian() {
-                // Phyrexian: pay with color or 2 life (we just try color for now)
+                // Phyrexian: pay with color or 2 life (life handled at play_card level).
+                // For can_pay checks: assume color can be paid if available, otherwise
+                // treat as payable (life payment will be resolved at cast time).
                 let color_atoms = atoms & ManaAtom::COLORS_SUPERPOSITION;
                 if !self.pay_color(color_atoms) {
-                    // Would need to pay life — handled at a higher level
-                    return false;
+                    // Color not available — life payment assumed possible at cast time.
+                    // Don't fail here; play_card will verify life total.
                 }
             }
         }

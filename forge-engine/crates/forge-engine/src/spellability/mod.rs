@@ -92,6 +92,9 @@ pub struct SpellAbility {
     /// Sum of integer values remembered on the trigger that spawned this
     /// ability (Java: TriggerRememberAmount / sa.getTriggerRemembered()).
     pub trigger_remembered_amount: i32,
+    /// The value chosen for X in the mana cost (e.g. Fireball X=5 means 5 damage).
+    /// Mirrors Java's `SpellAbility.getXManaCostPaid()`.
+    pub x_mana_cost_paid: u32,
 }
 
 impl SpellAbility {
@@ -194,6 +197,7 @@ impl SpellAbility {
             kick_count: 0,
             replicate_count: 0,
             trigger_remembered_amount: 0,
+            x_mana_cost_paid: 0,
         }
     }
 }
@@ -252,6 +256,7 @@ pub fn build_spell_ability(
         kick_count: 0,
         replicate_count: 0,
         trigger_remembered_amount: 0,
+        x_mana_cost_paid: 0,
     }
 }
 

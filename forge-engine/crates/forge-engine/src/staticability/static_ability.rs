@@ -48,6 +48,9 @@ pub enum StaticMode {
 
     /// `Mode$ IncreaseCost` — increase the mana cost of matching spells.
     IncreaseCost,
+
+    /// `Mode$ SetCost` — raise cost to a minimum (Trinisphere). Used with `RaiseTo$`.
+    SetCost,
     CantTarget,
     CantAttach,
     MustAttack,
@@ -319,7 +322,8 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("ETBTapped") => StaticMode::ETBTapped,
         Some("CantBeCast") => StaticMode::CantBeCast,
         Some("ReduceCost") => StaticMode::ReduceCost,
-        Some("IncreaseCost") => StaticMode::IncreaseCost,
+        Some("IncreaseCost") | Some("RaiseCost") => StaticMode::IncreaseCost,
+        Some("SetCost") => StaticMode::SetCost,
         Some("CantTarget") => StaticMode::CantTarget,
         Some("CantAttach") => StaticMode::CantAttach,
         Some("MustAttack") => StaticMode::MustAttack,

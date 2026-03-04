@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::color::ColorSet;
+use crate::color::{Color, ColorSet};
 
 /// Bitmask constants for mana atoms, matching Java `ManaAtom`.
 /// Each bit represents a property of a mana symbol.
@@ -519,6 +519,25 @@ impl ManaCost {
         self.shards.iter().any(|s| s.is_phyrexian())
     }
 
+    /// Build a ManaCost from explicit shards and generic cost.
+    pub fn from_parts(shards: Vec<ManaCostShard>, generic_cost: i32) -> ManaCost {
+        ManaCost {
+            shards,
+            generic_cost,
+            has_no_cost: false,
+        }
+    }
+
+    /// Return a copy of this cost with all X shards removed.
+    /// Used to compute the non-X portion for affordability checks.
+    pub fn without_x(&self) -> ManaCost {
+        ManaCost {
+            shards: self.shards.iter().filter(|s| !s.is_x()).copied().collect(),
+            generic_cost: self.generic_cost,
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
     pub fn shard_count(&self, which: ManaCostShard) -> usize {
         if which == ManaCostShard::Generic {
             return self.generic_cost as usize;
@@ -537,6 +556,41 @@ impl ManaCost {
         ManaCost {
             shards: self.shards.clone(),
             generic_cost: (self.generic_cost - amount).max(0),
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
+    /// Remove up to `count` colored shards matching `color` from this cost.
+    /// If `ignore_generic` is true, only removes colored shards (never converts to generic reduction).
+    /// If `ignore_generic` is false and fewer matching shards exist than `count`, the remainder
+    /// reduces the generic portion instead.
+    pub fn reduce_color(&self, color: Color, count: i32, ignore_generic: bool) -> ManaCost {
+        let mut shards = self.shards.clone();
+        let mut remaining = count;
+        let color_mask = color.mask() as u16;
+
+        // Remove matching mono-color shards
+        let mut i = 0;
+        while i < shards.len() && remaining > 0 {
+            let shard_colors = shards[i].shard() & ManaAtom::COLORS_SUPERPOSITION;
+            // Match mono-color shards of this exact color (not hybrid/phyrexian)
+            if shard_colors == color_mask && shards[i].is_mono_color() && !shards[i].is_phyrexian() {
+                shards.remove(i);
+                remaining -= 1;
+            } else {
+                i += 1;
+            }
+        }
+
+        let generic_cost = if !ignore_generic && remaining > 0 {
+            (self.generic_cost - remaining).max(0)
+        } else {
+            self.generic_cost
+        };
+
+        ManaCost {
+            shards,
+            generic_cost,
             has_no_cost: self.has_no_cost,
         }
     }

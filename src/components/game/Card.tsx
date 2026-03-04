@@ -136,7 +136,18 @@ export function Card({
                   {card.isTransformed ? "TRANSFORMED" : "TOKEN"}
                 </span>
               )}
-              <ManaSymbols cost={card.manaCost} size="sm" />
+              {card.effectiveManaCost ? (
+                <div className="flex flex-col items-end">
+                  <span className="line-through opacity-50">
+                    <ManaSymbols cost={card.manaCost} size="sm" />
+                  </span>
+                  <span className="bg-green-500/20 rounded px-0.5">
+                    <ManaSymbols cost={card.effectiveManaCost} size="sm" />
+                  </span>
+                </div>
+              ) : (
+                <ManaSymbols cost={card.manaCost} size="sm" />
+              )}
             </div>
           </div>
           <div className="flex-1 flex items-center justify-center px-1">

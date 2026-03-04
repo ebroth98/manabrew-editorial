@@ -338,7 +338,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `CostPutCardToLib.java` | Put card to library as cost | Not implemented |
 | `CostAddMana.java` | Add mana to pool as cost | Not implemented |
 | `CostUnattach.java` | Unattach as cost | **Implemented** (`CostPart::Unattach`, `Unattach<>` token; calls `game.detach()`) |
-| `CostAdjustment.java` | Cost increase/decrease logic | Not implemented |
+| `CostAdjustment.java` | Cost increase/decrease logic | **Partial** (`ReduceCost`/`RaiseCost`/`SetCost` statics via `static_ability_cost_change.rs`; supports `Color$`, `IgnoreGeneric$`, `IsPresent$`/`PresentZone$`, `EffectZone$`, `MinMana$`, `Activator$`, `ValidCard$`, `CheckSVar$`/`SVarCompare$`, `OnlyFirstSpell$`, `Relative$`, `UpTo$`, `RaiseTo$` (Trinisphere); `ValidTarget$`/`ValidSpell$` conservatively skipped) |
 | `CostBlight.java` | Blight as cost | Not implemented |
 | `CostBehold.java` | Behold as cost | Not implemented |
 | `CostBeholdExile.java` | Behold exile variant | Not implemented |
@@ -1264,10 +1264,10 @@ ReplaceAttached, ReplaceBeginPhase, ReplaceBeginTurn, ReplaceExplore, ReplaceLea
 
 | Missing Feature | Java File(s) | Priority |
 |----------------|-------------|----------|
-| X mana costs | Part of `ManaCostBeingPaid.java` | Critical |
-| Phyrexian mana (life payment) | Part of `Mana.java` | High |
+| ~~X mana costs~~ | ~~Part of `ManaCostBeingPaid.java`~~ | **Implemented** — `spellability/mod.rs` (`x_mana_cost_paid`), `game_action_util.rs` (X prompt + cost resolution), `effects/mod.rs` (`Count$xPaid` SVar), `agent.rs` (`choose_x_value`) |
+| ~~Phyrexian mana (life payment)~~ | ~~Part of `Mana.java`~~ | **Implemented** — `game_action_util.rs` (pre-payment: pay color if available, else 2 life), `mana/mod.rs` (Phyrexian shards pass `can_pay` for playability), `agent.rs` (`choose_phyrexian_pay_life`) |
 | Mana conversion matrix | `ManaConversionMatrix.java` | High |
-| Cost reduction/increase (static) | Part of static abilities | High |
+| ~~Cost reduction/increase (static)~~ | ~~Part of static abilities~~ | **Implemented** — `static_ability_cost_change.rs`: full parameter support (`CheckSVar$`, `Relative$`, `OnlyFirstSpell$`, `UpTo$`, `RaiseTo$/SetCost`, `Color$`, `MinMana$`, etc.); `ValidTarget$`/`ValidSpell$` conservatively skipped at cost-check time |
 | Active cost payment tracking | `ManaCostBeingPaid.java` | Medium |
 | Mana refund on interruption | `ManaRefundService.java` | Medium |
 | Mana restrictions ("spend only on…") | Part of `Mana.java` | Medium |
