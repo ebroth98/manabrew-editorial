@@ -271,6 +271,14 @@ fn choose_targets_for(
 
     let player = sa.activating_player;
 
+    // Spells with TargetMin$ 0 (e.g. Fireball) can be cast with zero targets.
+    // Java's DeterministicController skips setupDeterministicTargets when
+    // isTargetNumberValid() is already true (min=0, 0 targets), consuming no RNG.
+    // We must match by returning early without calling any agent choose method.
+    if tr.min_targets <= 0 {
+        return true;
+    }
+
     if !tr.has_candidates(game, player, sa.source) {
         return false;
     }
