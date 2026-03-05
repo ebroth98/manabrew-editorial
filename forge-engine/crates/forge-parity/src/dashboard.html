@@ -16,10 +16,66 @@
     background: var(--bg); color: var(--text); line-height: 1.5; }
   .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
   header { display: flex; align-items: center; justify-content: space-between;
-    padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 24px; }
+    padding: 16px 0; border-bottom: 1px solid var(--border); margin-bottom: 0; }
   header h1 { font-size: 20px; font-weight: 600; }
   header .status { font-size: 14px; color: var(--text-muted); }
 
+  /* ── Control Panel ───────────────────────────────────── */
+  .control-panel {
+    display: flex; align-items: center; gap: 20px; flex-wrap: wrap;
+    padding: 12px 16px; margin: 12px 0;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px;
+  }
+  .control-group { display: flex; align-items: center; gap: 8px; }
+  .control-group label { color: var(--text-muted); font-size: 11px; text-transform: uppercase;
+    letter-spacing: 0.5px; white-space: nowrap; }
+
+  /* Segmented buttons */
+  .seg-btns { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .seg-btns button { background: var(--bg); color: var(--text-muted); border: none;
+    padding: 4px 12px; font-size: 12px; cursor: pointer; border-right: 1px solid var(--border); }
+  .seg-btns button:last-child { border-right: none; }
+  .seg-btns button.active { background: var(--accent); color: #fff; }
+  .seg-btns button:hover:not(.active) { background: var(--surface); color: var(--text); }
+
+  /* Toggle switch */
+  .toggle { position: relative; display: inline-block; width: 36px; height: 20px; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
+    background: var(--border); border-radius: 10px; transition: 0.2s; }
+  .toggle .slider::before { content: ''; position: absolute; height: 14px; width: 14px;
+    left: 3px; bottom: 3px; background: var(--text-muted); border-radius: 50%; transition: 0.2s; }
+  .toggle input:checked + .slider { background: var(--accent); }
+  .toggle input:checked + .slider::before { transform: translateX(16px); background: #fff; }
+
+  /* Text input */
+  .ctrl-input { background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text); padding: 4px 8px; font-size: 12px; width: 120px;
+    font-family: 'SF Mono', 'Menlo', monospace; }
+  .ctrl-input:focus { outline: none; border-color: var(--accent); }
+
+  .btn-sm { background: var(--accent); color: #fff; border: none; border-radius: 4px;
+    padding: 4px 10px; font-size: 11px; cursor: pointer; font-weight: 600; }
+  .btn-sm:hover { opacity: 0.9; }
+  .btn-sm.danger { background: var(--red); }
+  .btn-sm.success { background: var(--green); }
+
+  /* ── Tabs ─────────────────────────────────────────────── */
+  .tab-nav {
+    display: flex; gap: 0; border-bottom: 1px solid var(--border); margin: 16px 0 0 0;
+  }
+  .tab-btn {
+    background: none; border: none; color: var(--text-muted); padding: 10px 20px;
+    font-size: 14px; cursor: pointer; border-bottom: 2px solid transparent;
+    font-weight: 500; transition: color 0.15s, border-color 0.15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--accent); border-bottom-color: var(--accent); }
+  .tab-content { display: none; padding-top: 20px; }
+  .tab-content.active { display: block; }
+
+  /* ── Stats ───────────────────────────────────────────── */
   .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
     gap: 16px; margin-bottom: 24px; }
   .stat-card { background: var(--surface); border: 1px solid var(--border);
@@ -58,6 +114,12 @@
   .mono { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; }
   .refresh-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
 
+  /* ── Failures tab filter ──────────────────────────────── */
+  .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .filter-bar select { background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
+    color: var(--text); padding: 4px 8px; font-size: 12px; }
+
+  /* ── Cluster cards ───────────────────────────────────── */
   .cluster-cards { display: grid; gap: 12px; }
   .cluster-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
   .cluster-card .cluster-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -73,6 +135,37 @@
   .severity-badge.high { background: rgba(248,81,73,0.2); color: var(--red); }
   .severity-badge.medium { background: rgba(210,153,34,0.2); color: var(--yellow); }
   .severity-badge.low { background: rgba(63,185,80,0.2); color: var(--green); }
+
+  /* ── Logs tab ─────────────────────────────────────────── */
+  .log-controls { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .log-container {
+    background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+    padding: 12px; max-height: 600px; overflow-y: auto; font-family: 'SF Mono', 'Menlo', 'Consolas', monospace;
+    font-size: 11px; line-height: 1.7;
+  }
+  .log-container.follow { /* JS sets scroll to bottom */ }
+  .log-line { white-space: pre-wrap; word-break: break-all; }
+  .log-line .log-ts { color: var(--text-muted); }
+  .log-line .log-level { font-weight: 700; display: inline-block; width: 5ch; }
+  .log-line .log-level.ERROR { color: var(--red); }
+  .log-line .log-level.WARN { color: var(--yellow); }
+  .log-line .log-level.INFO { color: var(--green); }
+  .log-line .log-level.DEBUG { color: var(--accent); }
+  .log-line .log-level.TRACE { color: var(--text-muted); }
+  .log-line .log-target { color: var(--text-muted); }
+  .log-line .log-msg { color: var(--text); }
+
+  /* ── Analysis controls ───────────────────────────────── */
+  .analysis-controls {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+    padding: 12px 16px; margin-bottom: 16px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    font-size: 13px;
+  }
+  .analysis-controls .status-dot { display: inline-block; width: 8px; height: 8px;
+    border-radius: 50%; margin-right: 4px; }
+  .analysis-controls .status-dot.on { background: var(--green); }
+  .analysis-controls .status-dot.off { background: var(--text-muted); }
 </style>
 </head>
 <body>
@@ -82,43 +175,161 @@
     <div class="status" id="uptime">Loading...</div>
   </header>
 
-  <div class="stats-grid" id="stats-grid"></div>
-
-  <div class="chart-container">
-    <h2>Pass Rate Trend (Hourly)</h2>
-    <canvas id="trend-chart"></canvas>
+  <!-- Control Panel -->
+  <div class="control-panel" id="control-panel">
+    <div class="control-group">
+      <label>Games/Matchup</label>
+      <div class="seg-btns" id="games-seg">
+        <button data-val="1">1</button>
+        <button data-val="5">5</button>
+        <button data-val="10" class="active">10</button>
+        <button data-val="30">30</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Fuzz Decks</label>
+      <label class="toggle"><input type="checkbox" id="fuzz-toggle"><span class="slider"></span></label>
+    </div>
+    <div class="control-group">
+      <label>Self-matchups</label>
+      <label class="toggle"><input type="checkbox" id="self-matchup-toggle" checked><span class="slider"></span></label>
+    </div>
   </div>
 
-  <div class="section">
-    <h2>Deck Pair Matrix</h2>
-    <div id="matrix-container"></div>
+  <!-- Tab Navigation -->
+  <nav class="tab-nav">
+    <button class="tab-btn active" data-tab="games">Games</button>
+    <button class="tab-btn" data-tab="failures">Failures</button>
+    <button class="tab-btn" data-tab="analysis">Analysis</button>
+    <button class="tab-btn" data-tab="traces">Traces</button>
+    <button class="tab-btn" data-tab="logs">Logs</button>
+  </nav>
+
+  <!-- ═══ Games Tab ═══ -->
+  <div class="tab-content active" id="tab-games">
+    <div class="stats-grid" id="stats-grid"></div>
+
+    <div class="chart-container">
+      <h2>Pass Rate Trend (Hourly)</h2>
+      <canvas id="trend-chart"></canvas>
+    </div>
+
+    <div class="section">
+      <h2>Deck Pair Matrix <span id="fuzz-badge" style="display:none;background:rgba(210,153,34,0.2);color:var(--yellow);padding:2px 8px;border-radius:12px;font-size:11px;font-weight:600;margin-left:8px;vertical-align:middle">FUZZ ENABLED</span></h2>
+      <div id="matrix-container"></div>
+    </div>
   </div>
 
-  <div class="section" id="clusters-section" style="display:none">
-    <h2>AI Failure Analysis</h2>
-    <div id="clusters-analyzed"></div>
-    <details id="clusters-pending-details" style="margin-top:16px;display:none">
-      <summary style="cursor:pointer;color:var(--text-muted);font-size:13px;user-select:none" id="clusters-pending-summary">Pending analysis (0)</summary>
-      <div id="clusters-pending" style="margin-top:10px"></div>
-    </details>
+  <!-- ═══ Failures Tab ═══ -->
+  <div class="tab-content" id="tab-failures">
+    <div class="filter-bar">
+      <label style="color:var(--text-muted);font-size:12px">Filter by deck pair:</label>
+      <select id="failure-deck-filter"><option value="">All</option></select>
+    </div>
+    <div class="section" style="margin-bottom:0">
+      <h2>Recent Failures</h2>
+      <table id="failures-table">
+        <colgroup>
+          <col style="width:50px"><col style="width:50px"><col style="width:15%"><col style="width:15%">
+          <col style="width:70px"><col style="width:60px"><col style="width:auto"><col style="width:140px">
+        </colgroup>
+        <thead><tr><th>ID</th><th>Batch</th><th>Deck 1</th><th>Deck 2</th><th>Seed</th><th>Status</th><th>Divergence</th><th>Time</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
   </div>
 
-  <div class="section">
-    <h2>Recent Failures</h2>
-    <table id="failures-table">
-      <colgroup>
-        <col style="width:50px"><col style="width:50px"><col style="width:15%"><col style="width:15%">
-        <col style="width:70px"><col style="width:60px"><col style="width:auto"><col style="width:140px">
-      </colgroup>
-      <thead><tr><th>ID</th><th>Batch</th><th>Deck 1</th><th>Deck 2</th><th>Seed</th><th>Status</th><th>Divergence</th><th>Time</th></tr></thead>
-      <tbody></tbody>
-    </table>
+  <!-- ═══ Analysis Tab ═══ -->
+  <div class="tab-content" id="tab-analysis">
+    <div class="analysis-controls">
+      <div class="control-group">
+        <span id="analysis-status-indicator"><span class="status-dot off"></span> Paused</span>
+        <button class="btn-sm" id="analysis-toggle-btn">Start</button>
+      </div>
+      <div class="control-group" style="margin-left:auto">
+        <label>Backend</label>
+        <span class="mono" id="analysis-backend" style="color:var(--text-muted)">detecting...</span>
+      </div>
+      <div class="control-group">
+        <label>Model</label>
+        <select class="ctrl-input" id="llm-model-select" style="width:180px"></select>
+      </div>
+    </div>
+
+    <div id="clusters-section">
+      <div class="section">
+        <h2>AI Failure Analysis</h2>
+        <div id="clusters-analyzed"></div>
+        <details id="clusters-pending-details" style="margin-top:16px;display:none">
+          <summary style="cursor:pointer;color:var(--text-muted);font-size:13px;user-select:none" id="clusters-pending-summary">Pending analysis (0)</summary>
+          <div id="clusters-pending" style="margin-top:10px"></div>
+        </details>
+      </div>
+    </div>
   </div>
+
+  <!-- ═══ Traces Tab ═══ -->
+  <div class="tab-content" id="tab-traces">
+    <div class="filter-bar" style="gap:12px">
+      <label style="color:var(--text-muted);font-size:12px">Select a failed game to view its traces:</label>
+      <select class="ctrl-input" id="trace-run-select" style="width:400px">
+        <option value="">-- select a failed run --</option>
+      </select>
+      <button class="btn-sm" id="trace-load-btn">Load</button>
+    </div>
+    <div id="trace-viewer" style="display:none">
+      <div class="trace-header" id="trace-meta" style="padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;font-size:13px;color:var(--text-muted)"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <div>
+          <h3 style="font-size:14px;margin-bottom:6px;color:var(--green)">Rust Trace</h3>
+          <pre class="trace-pre" id="trace-rust" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:11px;max-height:600px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--text)"></pre>
+        </div>
+        <div>
+          <h3 style="font-size:14px;margin-bottom:6px;color:var(--accent)">Java Trace</h3>
+          <pre class="trace-pre" id="trace-java" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:12px;font-size:11px;max-height:600px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:var(--text)"></pre>
+        </div>
+      </div>
+    </div>
+    <div id="trace-empty" style="color:var(--text-muted);font-size:13px;margin-top:12px">
+      Select a failed run above to view the Rust and Java game traces side by side.
+    </div>
+  </div>
+
+  <!-- ═══ Logs Tab ═══ -->
+  <div class="tab-content" id="tab-logs">
+    <div class="log-controls">
+      <div class="control-group">
+        <label>Level</label>
+        <select class="ctrl-input" id="log-level-filter" style="width:90px">
+          <option value="">All</option>
+          <option value="ERROR">ERROR</option>
+          <option value="WARN">WARN</option>
+          <option value="INFO" selected>INFO</option>
+          <option value="DEBUG">DEBUG</option>
+          <option value="TRACE">TRACE</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Search</label>
+        <input type="text" class="ctrl-input" id="log-search" placeholder="filter..." style="width:200px">
+      </div>
+      <div class="control-group">
+        <label>Auto-scroll</label>
+        <label class="toggle"><input type="checkbox" id="log-follow" checked><span class="slider"></span></label>
+      </div>
+      <button class="btn-sm" id="log-clear" style="margin-left:auto">Clear</button>
+    </div>
+    <div class="section" style="padding:0;margin-bottom:0">
+      <div class="log-container" id="log-container"></div>
+    </div>
+  </div>
+
   <p class="refresh-note">Auto-refreshes every 10 seconds</p>
 </div>
 
 <script>
 let trendChart = null;
+let allFailures = []; // cached for filtering
 
 function fmt(n) { return n.toLocaleString(); }
 function pct(n) { return (n * 100).toFixed(1) + '%'; }
@@ -139,6 +350,123 @@ async function fetchJson(url) {
   const r = await fetch(url);
   if (!r.ok) throw new Error(r.statusText);
   return r.json();
+}
+
+async function postJson(url, body) {
+  const r = await fetch(url, {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  });
+  if (!r.ok) throw new Error(r.statusText);
+  return r.json();
+}
+
+// ── Tabs ──────────────────────────────────────────────────
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    btn.classList.add('active');
+    document.getElementById('tab-' + btn.dataset.tab).classList.add('active');
+  });
+});
+
+// ── Control Panel ─────────────────────────────────────────
+// Games per matchup segmented buttons
+document.querySelectorAll('#games-seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#games-seg button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    postJson('/api/config', { games_per_matchup: parseInt(btn.dataset.val) });
+  });
+});
+
+// Fuzz toggle
+document.getElementById('fuzz-toggle').addEventListener('change', function() {
+  postJson('/api/config', { fuzz_enabled: this.checked });
+  document.getElementById('fuzz-badge').style.display = this.checked ? 'inline' : 'none';
+});
+
+// Self-matchups toggle
+document.getElementById('self-matchup-toggle').addEventListener('change', function() {
+  postJson('/api/config', { self_matchups: this.checked });
+});
+
+// LLM model selector
+document.getElementById('llm-model-select').addEventListener('change', function() {
+  if (this.value) postJson('/api/config', { llm_model: this.value });
+});
+
+// Analysis toggle
+document.getElementById('analysis-toggle-btn').addEventListener('click', async () => {
+  const result = await postJson('/api/analysis/toggle', {});
+  updateAnalysisUI(result.running);
+});
+
+function updateAnalysisUI(running) {
+  const indicator = document.getElementById('analysis-status-indicator');
+  const btn = document.getElementById('analysis-toggle-btn');
+  if (running) {
+    indicator.innerHTML = '<span class="status-dot on"></span> Running';
+    btn.textContent = 'Stop';
+    btn.className = 'btn-sm danger';
+  } else {
+    indicator.innerHTML = '<span class="status-dot off"></span> Paused';
+    btn.textContent = 'Start';
+    btn.className = 'btn-sm success';
+  }
+}
+
+// ── Data refresh ──────────────────────────────────────────
+async function updateModels() {
+  try {
+    const data = await fetchJson('/api/models');
+    const sel = document.getElementById('llm-model-select');
+    const curVal = sel.value;
+    if (data.models && data.models.length > 0) {
+      sel.innerHTML = data.models.map(m =>
+        `<option value="${m}"${m === curVal ? ' selected' : ''}>${m}</option>`
+      ).join('');
+      // If current config model isn't in the list, prepend it
+      if (curVal && !data.models.includes(curVal)) {
+        sel.insertAdjacentHTML('afterbegin', `<option value="${curVal}" selected>${curVal}</option>`);
+      }
+    }
+  } catch(e) {
+    // LLM provider not reachable — leave dropdown as-is
+    console.warn('Models fetch failed:', e);
+  }
+}
+
+async function updateConfig() {
+  try {
+    const cfg = await fetchJson('/api/config');
+    // Sync segmented buttons
+    document.querySelectorAll('#games-seg button').forEach(b => {
+      b.classList.toggle('active', parseInt(b.dataset.val) === cfg.games_per_matchup);
+    });
+    document.getElementById('fuzz-toggle').checked = cfg.fuzz_enabled;
+    document.getElementById('self-matchup-toggle').checked = cfg.self_matchups;
+    // Show/hide fuzz badge
+    document.getElementById('fuzz-badge').style.display = cfg.fuzz_enabled ? 'inline' : 'none';
+    // Sync model dropdown
+    const sel = document.getElementById('llm-model-select');
+    if (sel.querySelector(`option[value="${cfg.llm_model}"]`)) {
+      sel.value = cfg.llm_model;
+    } else {
+      // Model not yet in dropdown — add it
+      sel.insertAdjacentHTML('afterbegin', `<option value="${cfg.llm_model}" selected>${cfg.llm_model}</option>`);
+    }
+    updateAnalysisUI(cfg.analysis_running);
+  } catch(e) { console.error('Config error:', e); }
+}
+
+async function updateAnalysisStatus() {
+  try {
+    const s = await fetchJson('/api/analysis/status');
+    document.getElementById('analysis-backend').textContent = s.backend;
+    updateAnalysisUI(s.running);
+  } catch(e) { console.error('Analysis status error:', e); }
 }
 
 async function updateStats() {
@@ -200,7 +528,6 @@ async function updateMatrix() {
     const decks = [...new Set(data.flatMap(d => [d.deck1, d.deck2]))].sort();
     const lookup = {};
     data.forEach(d => { lookup[d.deck1 + '|' + d.deck2] = d; });
-    const cols = decks.length + 1;
     let html = `<div class="heatmap-wrapper"><div class="heatmap" style="grid-template-columns: 110px repeat(${decks.length}, minmax(48px, 1fr));">`;
     html += '<div></div>';
     decks.forEach(d => { html += `<div class="heatmap-cell" style="font-weight:500;color:var(--text-muted)">${d.length > 10 ? d.slice(0,10) + '...' : d}</div>`; });
@@ -208,7 +535,7 @@ async function updateMatrix() {
       html += `<div class="heatmap-cell" style="font-weight:500;color:var(--text-muted);text-align:right">${d1.length > 10 ? d1.slice(0,10) + '...' : d1}</div>`;
       decks.forEach(d2 => {
         const entry = lookup[d1 + '|' + d2];
-        if (d1 === d2) {
+        if (d1 === d2 && !entry) {
           html += '<div class="heatmap-cell" style="background:#161b22">-</div>';
         } else if (entry) {
           html += `<div class="heatmap-cell" style="background:${passColor(entry.pass_rate)}" title="${entry.total} games">${pct(entry.pass_rate)}</div>`;
@@ -224,24 +551,41 @@ async function updateMatrix() {
 
 async function updateFailures() {
   try {
-    const data = await fetchJson('/api/failures?limit=20');
-    const tbody = document.querySelector('#failures-table tbody');
-    if (data.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted);text-align:center">No failures yet</td></tr>';
-      return;
-    }
-    tbody.innerHTML = data.map(r => `<tr>
-      <td class="mono">${r.id}</td>
-      <td>${r.batch_id}</td>
-      <td>${r.deck1}</td>
-      <td>${r.deck2}</td>
-      <td class="mono">${r.seed}</td>
-      <td><span class="badge ${r.status === 'pass' ? 'pass' : r.status === 'fail' ? 'fail' : 'error'}">${r.status}</span></td>
-      <td class="mono">${r.first_divergence_field || r.error_message || '-'}</td>
-      <td style="color:var(--text-muted)">${r.timestamp.replace('T', ' ').slice(0, 19)}</td>
-    </tr>`).join('');
+    const data = await fetchJson('/api/failures?limit=50');
+    allFailures = data;
+    // Populate deck pair filter dropdown
+    const pairs = [...new Set(data.map(r => r.deck1 + ' vs ' + r.deck2))].sort();
+    const sel = document.getElementById('failure-deck-filter');
+    const curVal = sel.value;
+    sel.innerHTML = '<option value="">All</option>' + pairs.map(p => `<option value="${p}">${p}</option>`).join('');
+    sel.value = curVal; // restore selection
+    renderFailures();
   } catch(e) { console.error('Failures error:', e); }
 }
+
+function renderFailures() {
+  const filter = document.getElementById('failure-deck-filter').value;
+  const filtered = filter
+    ? allFailures.filter(r => (r.deck1 + ' vs ' + r.deck2) === filter)
+    : allFailures;
+  const tbody = document.querySelector('#failures-table tbody');
+  if (filtered.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted);text-align:center">No failures</td></tr>';
+    return;
+  }
+  tbody.innerHTML = filtered.map(r => `<tr>
+    <td class="mono">${r.id}</td>
+    <td>${r.batch_id}</td>
+    <td>${r.deck1}</td>
+    <td>${r.deck2}</td>
+    <td class="mono">${r.seed}</td>
+    <td><span class="badge ${r.status === 'pass' ? 'pass' : r.status === 'fail' ? 'fail' : 'error'}">${r.status}</span></td>
+    <td class="mono">${r.first_divergence_field || r.error_message || '-'}</td>
+    <td style="color:var(--text-muted)">${r.timestamp.replace('T', ' ').slice(0, 19)}</td>
+  </tr>`).join('');
+}
+
+document.getElementById('failure-deck-filter').addEventListener('change', renderFailures);
 
 function renderAnalyzedCard(c) {
   try {
@@ -278,10 +622,6 @@ function renderPendingCard(c) {
 async function updateClusters() {
   try {
     const data = await fetchJson('/api/clusters');
-    const section = document.getElementById('clusters-section');
-    if (data.length === 0) { section.style.display = 'none'; return; }
-    section.style.display = '';
-
     const analyzed = data.filter(c => c.llm_analysis);
     const pending = data.filter(c => !c.llm_analysis);
 
@@ -289,7 +629,7 @@ async function updateClusters() {
     if (analyzed.length > 0) {
       analyzedEl.innerHTML = '<div class="cluster-cards">' + analyzed.map(renderAnalyzedCard).join('') + '</div>';
     } else {
-      analyzedEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No fields analyzed yet — waiting for AI...</p>';
+      analyzedEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No fields analyzed yet — start analysis or wait for AI...</p>';
     }
 
     const pendingDetails = document.getElementById('clusters-pending-details');
@@ -305,12 +645,128 @@ async function updateClusters() {
   } catch(e) { console.error('Clusters error:', e); }
 }
 
-async function refresh() {
-  await Promise.all([updateStats(), updateTrend(), updateMatrix(), updateFailures(), updateClusters()]);
+// ── Logs ──────────────────────────────────────────────────
+let logHighWatermark = 0;
+const LOG_LEVELS = ['ERROR', 'WARN', 'INFO', 'DEBUG', 'TRACE'];
+
+function logLevelPriority(level) {
+  const idx = LOG_LEVELS.indexOf(level);
+  return idx === -1 ? 99 : idx;
 }
+
+function renderLogLine(entry) {
+  const ts = entry.ts.replace('T', ' ').slice(11, 23);
+  const target = entry.target.length > 30 ? '...' + entry.target.slice(-27) : entry.target;
+  return `<div class="log-line"><span class="log-ts">${ts}</span> <span class="log-level ${entry.level}">${entry.level.padEnd(5)}</span> <span class="log-target">${target}</span> <span class="log-msg">${escapeHtml(entry.message)}</span></div>`;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+async function updateLogs() {
+  try {
+    const data = await fetchJson(`/api/logs?since=${logHighWatermark}&limit=500`);
+    if (!data || data.length === 0) return;
+
+    const filterLevel = document.getElementById('log-level-filter').value;
+    const filterMinPriority = filterLevel ? logLevelPriority(filterLevel) : 99;
+    const searchText = document.getElementById('log-search').value.toLowerCase();
+
+    const container = document.getElementById('log-container');
+    let html = '';
+    for (const entry of data) {
+      logHighWatermark = Math.max(logHighWatermark, entry.id);
+      // Filter by level
+      if (logLevelPriority(entry.level) > filterMinPriority) continue;
+      // Filter by search text
+      if (searchText && !entry.message.toLowerCase().includes(searchText) && !entry.target.toLowerCase().includes(searchText)) continue;
+      html += renderLogLine(entry);
+    }
+
+    if (html) {
+      container.insertAdjacentHTML('beforeend', html);
+      // Cap DOM size: remove oldest lines if > 2000
+      while (container.children.length > 2000) {
+        container.removeChild(container.firstChild);
+      }
+      // Auto-scroll if follow enabled
+      if (document.getElementById('log-follow').checked) {
+        container.scrollTop = container.scrollHeight;
+      }
+    }
+  } catch(e) { console.error('Logs error:', e); }
+}
+
+document.getElementById('log-clear').addEventListener('click', () => {
+  document.getElementById('log-container').innerHTML = '';
+});
+
+// Re-fetch all logs when filters change (reset watermark to refetch with new filter)
+document.getElementById('log-level-filter').addEventListener('change', () => {
+  document.getElementById('log-container').innerHTML = '';
+  logHighWatermark = 0;
+  updateLogs();
+});
+document.getElementById('log-search').addEventListener('input', () => {
+  document.getElementById('log-container').innerHTML = '';
+  logHighWatermark = 0;
+  updateLogs();
+});
+
+// ── Traces ────────────────────────────────────────────────
+async function updateTraceDropdown() {
+  try {
+    const data = await fetchJson('/api/failures?limit=100');
+    const sel = document.getElementById('trace-run-select');
+    const curVal = sel.value;
+    sel.innerHTML = '<option value="">-- select a failed run --</option>' +
+      data.map(r => `<option value="${r.id}">#${r.id} ${r.deck1} vs ${r.deck2} (seed ${r.seed}) — ${r.first_divergence_field || r.error_message || '?'}</option>`).join('');
+    if (curVal) sel.value = curVal;
+  } catch(e) { console.error('Trace dropdown error:', e); }
+}
+
+document.getElementById('trace-load-btn').addEventListener('click', async () => {
+  const id = document.getElementById('trace-run-select').value;
+  if (!id) return;
+  try {
+    const run = await fetchJson(`/api/run/${id}`);
+    const viewer = document.getElementById('trace-viewer');
+    const empty = document.getElementById('trace-empty');
+
+    const meta = document.getElementById('trace-meta');
+    meta.innerHTML = `<strong>#${run.id}</strong> &middot; ${run.deck1} vs ${run.deck2} &middot; seed ${run.seed} &middot; <span class="badge ${run.status}">${run.status}</span>` +
+      (run.first_divergence_field ? ` &middot; divergence: <code>${run.first_divergence_field}</code> (Rust: <code>${run.first_divergence_rust}</code>, Java: <code>${run.first_divergence_java}</code>)` : '') +
+      (run.error_message ? ` &middot; error: <code>${escapeHtml(run.error_message)}</code>` : '');
+
+    document.getElementById('trace-rust').textContent = run.rust_trace || '(no Rust trace available)';
+    document.getElementById('trace-java').textContent = run.java_trace || '(no Java trace available)';
+
+    viewer.style.display = '';
+    empty.style.display = 'none';
+  } catch(e) {
+    console.error('Trace load error:', e);
+    alert('Failed to load run: ' + e.message);
+  }
+});
+
+async function refresh() {
+  await Promise.all([
+    updateStats(), updateTrend(), updateMatrix(),
+    updateFailures(), updateClusters(),
+    updateConfig(), updateAnalysisStatus(),
+    updateLogs(), updateTraceDropdown()
+  ]);
+}
+
+// Fetch model list on startup and every 60s (model list changes rarely)
+updateModels();
+setInterval(updateModels, 60000);
 
 refresh();
 setInterval(refresh, 10000);
+// Poll logs more frequently for near-real-time feel
+setInterval(updateLogs, 2000);
 </script>
 </body>
 </html>

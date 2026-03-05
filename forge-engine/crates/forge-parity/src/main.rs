@@ -1655,7 +1655,7 @@ fn run_continuous_mode(cli: &Cli) {
     } else {
         None
     };
-    let mut scheduler = Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db);
+    let mut scheduler = Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db, false, 1);
 
     // Spawn Java server
     let server_config = JavaServerConfig {
@@ -1796,16 +1796,35 @@ fn short_deck(spec: &str) -> &str {
 
 #[cfg(feature = "serve")]
 fn run_serve_mode(cli: &Cli) {
+    use forge_parity::log_buffer::{BufferLayer, LogBuffer};
     use forge_parity::scheduler::Scheduler;
     use forge_parity::storage::Storage;
-    use forge_parity::web;
+    use forge_parity::web::{self, DashboardConfig};
+    use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::time::Instant;
+    use tracing_subscriber::layer::SubscriberExt;
+    use tracing_subscriber::util::SubscriberInitExt;
+
+    // Init tracing with ring-buffer layer + stderr output
+    let log_buffer = LogBuffer::new();
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_target(true)
+                .with_writer(std::io::stderr),
+        )
+        .with(BufferLayer::new(log_buffer.clone()))
+        .with(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .init();
 
     let jar_path = match &cli.java_jar {
         Some(p) => p.clone(),
         None => {
-            eprintln!("[parity] --serve requires --java-jar");
+            tracing::error!("--serve requires --java-jar");
             std::process::exit(1);
         }
     };
@@ -1813,19 +1832,19 @@ fn run_serve_mode(cli: &Cli) {
     let max_games = cli.max_games; // None = unlimited
     let port = cli.port;
 
-    eprintln!(
-        "[parity] Serve mode: port={}, max_games={}, threshold={:.1}%, db={}",
+    tracing::info!(
         port,
-        max_games.map(|n| n.to_string()).unwrap_or_else(|| "unlimited".into()),
-        cli.threshold * 100.0,
-        cli.db_path
+        max_games = max_games.map(|n| n as i64).unwrap_or(-1),
+        threshold = cli.threshold * 100.0,
+        db = %cli.db_path,
+        "Serve mode starting"
     );
 
     // Open database
     let db = match Storage::open(&cli.db_path) {
         Ok(db) => db,
         Err(e) => {
-            eprintln!("[parity] Failed to open database: {}", e);
+            tracing::error!(%e, "Failed to open database");
             std::process::exit(1);
         }
     };
@@ -1834,7 +1853,7 @@ fn run_serve_mode(cli: &Cli) {
     let data = match runner::load_data(cli.cards_dir.as_deref(), cli.verbose) {
         Ok(d) => d,
         Err(e) => {
-            eprintln!("[parity] Load error: {}", e);
+            tracing::error!(%e, "Failed to load card data");
             std::process::exit(1);
         }
     };
@@ -1847,17 +1866,37 @@ fn run_serve_mode(cli: &Cli) {
     };
 
     if deck_names.is_empty() {
-        eprintln!("[parity] No preset decks found in {}", dd);
+        tracing::error!(dir = dd, "No preset decks found");
         std::process::exit(1);
     }
-    eprintln!("[parity] Using {} preset decks: {:?}", deck_names.len(), deck_names);
+    tracing::info!(count = deck_names.len(), decks = ?deck_names, "Preset decks loaded");
 
-    let fuzz_db = if cli.fuzz_per_batch > 0 {
+    // Create shared dashboard config
+    let dashboard_config = Arc::new(DashboardConfig::new());
+    dashboard_config
+        .fuzz_enabled
+        .store(cli.fuzz_per_batch > 0, Ordering::Relaxed);
+    if cli.analyze {
+        dashboard_config
+            .analysis_running
+            .store(true, Ordering::Relaxed);
+    }
+
+    let initial_fuzz = cli.fuzz_per_batch > 0;
+    let fuzz_db = if initial_fuzz {
         Some(&data.db)
     } else {
         None
     };
-    let mut scheduler = Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db);
+    let initial_fuzz_per_batch = if initial_fuzz { cli.fuzz_per_batch } else { 0 };
+    let mut scheduler = Scheduler::new(
+        &deck_names,
+        cli.seed,
+        initial_fuzz_per_batch,
+        fuzz_db,
+        dashboard_config.self_matchups.load(Ordering::Relaxed),
+        dashboard_config.games_per_matchup.load(Ordering::Relaxed),
+    );
 
     // Spawn Java server
     let server_config = JavaServerConfig {
@@ -1869,7 +1908,7 @@ fn run_serve_mode(cli: &Cli) {
     let mut java_server = match JavaServer::spawn(&server_config) {
         Ok(s) => s,
         Err(e) => {
-            eprintln!("[parity] Failed to spawn Java server: {}", e);
+            tracing::error!(%e, "Failed to spawn Java server");
             std::process::exit(1);
         }
     };
@@ -1880,6 +1919,8 @@ fn run_serve_mode(cli: &Cli) {
         storage: std::sync::Mutex::new(db),
         start_time: start,
         start_time_iso: now_iso,
+        config: Arc::clone(&dashboard_config),
+        logs: log_buffer,
     });
 
     // Build tokio runtime
@@ -1892,40 +1933,44 @@ fn run_serve_mode(cli: &Cli) {
         let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
             .await
             .expect("failed to bind port");
-        eprintln!("[parity] Dashboard: http://localhost:{}", port);
+        tracing::info!(port, "Dashboard available at http://localhost:{}", port);
         axum::serve(listener, router).await.expect("server error");
     });
 
-    // Spawn analysis daemon if --analyze
+    // Always spawn analysis daemon (paused by default, toggle via dashboard)
     #[cfg(feature = "analyze")]
-    if cli.analyze {
+    {
         use forge_parity::analyzer::{self, AnalyzerConfig};
 
         let analyzer_db = match Storage::open(&cli.db_path) {
             Ok(db) => db,
             Err(e) => {
-                eprintln!("[parity] Failed to open analyzer database: {}", e);
+                tracing::error!(%e, "Failed to open analyzer database");
                 std::process::exit(1);
             }
         };
         let analyzer_storage = Arc::new(std::sync::Mutex::new(analyzer_db));
+        let analysis_running = Arc::clone(&dashboard_config.analysis_running);
         let analyzer_config = AnalyzerConfig {
             poll_interval: std::time::Duration::from_secs(cli.poll_interval),
             summary_interval: std::time::Duration::from_secs(cli.summary_interval),
             issue_threshold: cli.issue_threshold,
             github_repo: cli.github_repo.clone(),
             dashboard_url: Some(format!("http://localhost:{}", port)),
+            java_jar: cli.java_jar.as_ref().map(|p| p.to_string_lossy().to_string()),
+            cards_dir: cli.cards_dir.clone(),
+            project_root: std::env::current_dir()
+                .map(|p| p.to_string_lossy().to_string())
+                .unwrap_or_else(|_| ".".to_string()),
         };
 
         rt.spawn(async move {
-            analyzer::run(analyzer_storage, analyzer_config).await;
+            analyzer::run(analyzer_storage, analyzer_config, analysis_running).await;
         });
-        eprintln!("[parity] Analysis daemon started");
-    }
-    #[cfg(not(feature = "analyze"))]
-    if cli.analyze {
-        eprintln!("[parity] --analyze requires the 'analyze' feature. Build with: cargo build --features analyze");
-        std::process::exit(1);
+        tracing::info!(
+            running = cli.analyze,
+            "Analysis daemon spawned"
+        );
     }
 
     // Run game loop on main thread (blocking)
@@ -1934,13 +1979,51 @@ fn run_serve_mode(cli: &Cli) {
     let cli_decks_dir = cli.decks_dir.clone();
     let cli_verbose = cli.verbose;
     let cli_prefer_actions = cli.prefer_actions;
+    let cfg = Arc::clone(&dashboard_config);
 
     let mut completed = 0usize;
+    // Track config values to detect changes and rebuild scheduler
+    let mut prev_games_per_matchup = cfg.games_per_matchup.load(Ordering::Relaxed);
+    let mut prev_fuzz_enabled = cfg.fuzz_enabled.load(Ordering::Relaxed);
+    let mut prev_self_matchups = cfg.self_matchups.load(Ordering::Relaxed);
+
     loop {
         if let Some(max) = max_games {
             if completed >= max {
                 break;
             }
+        }
+
+        // Read live config from dashboard UI
+        let games_per_matchup = cfg.games_per_matchup.load(Ordering::Relaxed);
+        let fuzz_enabled = cfg.fuzz_enabled.load(Ordering::Relaxed);
+        let self_matchups = cfg.self_matchups.load(Ordering::Relaxed);
+
+        // Rebuild scheduler if config changed
+        if games_per_matchup != prev_games_per_matchup
+            || fuzz_enabled != prev_fuzz_enabled
+            || self_matchups != prev_self_matchups
+        {
+            let fuzz_per = if fuzz_enabled { cli.fuzz_per_batch.max(5) } else { 0 };
+            let fdb = if fuzz_enabled { Some(&data.db) } else { None };
+            scheduler = Scheduler::new(
+                &deck_names,
+                cli.seed + completed as u64,
+                fuzz_per,
+                fdb,
+                self_matchups,
+                games_per_matchup,
+            );
+            tracing::info!(
+                games_per_matchup,
+                fuzz_enabled,
+                self_matchups,
+                pairs = scheduler.preset_pairs_count(),
+                "Config changed — scheduler rebuilt"
+            );
+            prev_games_per_matchup = games_per_matchup;
+            prev_fuzz_enabled = fuzz_enabled;
+            prev_self_matchups = self_matchups;
         }
 
         let job = scheduler.next_job();
@@ -1960,11 +2043,11 @@ fn run_serve_mode(cli: &Cli) {
 
         // Respawn server if dead
         if !java_server.is_alive() {
-            eprintln!("[parity] Java server died, respawning...");
+            tracing::warn!("Java server died, respawning...");
             java_server = match JavaServer::spawn(&server_config) {
                 Ok(s) => s,
                 Err(e) => {
-                    eprintln!("[parity] Failed to respawn: {}", e);
+                    tracing::error!(%e, "Failed to respawn Java server");
                     std::thread::sleep(std::time::Duration::from_secs(5));
                     continue;
                 }
@@ -1976,32 +2059,51 @@ fn run_serve_mode(cli: &Cli) {
 
         completed += 1;
 
-        let status_char = match result.status {
-            MatchupStatus::Pass => "\x1b[32mPASS\x1b[0m",
-            MatchupStatus::Fail => "\x1b[31mFAIL\x1b[0m",
-            MatchupStatus::Error => "\x1b[33mERROR\x1b[0m",
-        };
-        eprintln!(
-            "[parity] [{}] {} vs {} seed={} {} ({}ms)",
-            completed,
-            short_deck(&job.deck1),
-            short_deck(&job.deck2),
-            job.seed,
-            status_char,
-            duration_ms
-        );
+        match result.status {
+            MatchupStatus::Pass => {
+                tracing::info!(
+                    game = completed,
+                    deck1 = %short_deck(&job.deck1),
+                    deck2 = %short_deck(&job.deck2),
+                    seed = job.seed,
+                    ms = duration_ms,
+                    "PASS"
+                );
+            }
+            MatchupStatus::Fail => {
+                tracing::warn!(
+                    game = completed,
+                    deck1 = %short_deck(&job.deck1),
+                    deck2 = %short_deck(&job.deck2),
+                    seed = job.seed,
+                    ms = duration_ms,
+                    field = result.first_divergence.as_ref().map(|d| d.field.as_str()).unwrap_or("-"),
+                    "FAIL"
+                );
+            }
+            MatchupStatus::Error => {
+                tracing::error!(
+                    game = completed,
+                    deck1 = %short_deck(&job.deck1),
+                    deck2 = %short_deck(&job.deck2),
+                    seed = job.seed,
+                    ms = duration_ms,
+                    "ERROR"
+                );
+            }
+        }
 
         // Write to storage under lock
         {
             let storage = app_state.storage.lock().unwrap();
             if let Err(e) = storage.insert_run(job.batch_id, &result, duration_ms) {
-                eprintln!("[parity] DB insert error: {}", e);
+                tracing::error!(%e, "DB insert error");
             }
         }
     }
 
     java_server.shutdown();
-    eprintln!("[parity] Serve mode complete ({} games)", completed);
+    tracing::info!(games = completed, "Serve mode complete");
 }
 
 // ── Analyze-only Mode ──────────────────────────────────────────────
@@ -2010,6 +2112,7 @@ fn run_serve_mode(cli: &Cli) {
 fn run_analyze_only(cli: &Cli) {
     use forge_parity::analyzer::{self, AnalyzerConfig};
     use forge_parity::storage::Storage;
+    use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
     eprintln!(
@@ -2026,16 +2129,23 @@ fn run_analyze_only(cli: &Cli) {
     };
 
     let storage = Arc::new(std::sync::Mutex::new(db));
+    // In analyze-only mode, always running
+    let running = Arc::new(AtomicBool::new(true));
     let config = AnalyzerConfig {
         poll_interval: std::time::Duration::from_secs(cli.poll_interval),
         summary_interval: std::time::Duration::from_secs(cli.summary_interval),
         issue_threshold: cli.issue_threshold,
         github_repo: cli.github_repo.clone(),
         dashboard_url: Some(format!("http://localhost:{}", cli.port)),
+        java_jar: cli.java_jar.as_ref().map(|p| p.to_string_lossy().to_string()),
+        cards_dir: cli.cards_dir.clone(),
+        project_root: std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".to_string()),
     };
 
     let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
     rt.block_on(async {
-        analyzer::run(storage, config).await;
+        analyzer::run(storage, config, running).await;
     });
 }

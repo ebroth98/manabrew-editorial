@@ -10,8 +10,8 @@ path = "src/main.rs"
 [features]
 default = []
 storage = ["rusqlite", "chrono"]
-serve = ["storage", "tokio", "axum", "tower-http"]
-analyze = ["serve", "reqwest"]
+serve = ["storage", "tokio", "axum", "tower-http", "tracing", "tracing-subscriber"]
+analyze = ["serve", "reqwest", "futures", "glob"]
 
 [dependencies]
 forge-foundation = { path = "../forge-foundation" }
@@ -29,4 +29,8 @@ chrono = { version = "0.4", optional = true }
 tokio = { version = "1", features = ["full"], optional = true }
 axum = { version = "0.7", optional = true }
 tower-http = { version = "0.5", features = ["cors"], optional = true }
+tracing = { version = "0.1", optional = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optional = true }
 reqwest = { version = "0.12", features = ["json"], optional = true }
+futures = { version = "0.3", optional = true }
+glob = { version = "0.3", optional = true }

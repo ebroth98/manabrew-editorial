@@ -48,17 +48,24 @@ impl Scheduler {
     /// - `start_seed`: Initial seed counter.
     /// - `fuzz_per_batch`: Number of fuzz games per batch (0 to disable fuzz).
     /// - `db`: Card database (needed for fuzz pool discovery; None if fuzz disabled).
+    /// - `include_self_matchups`: If true, include d1==d2 pairs.
+    /// - `games_per_matchup`: How many games to play per pair per batch (repeats with different seeds).
     pub fn new(
         decks: &[String],
         start_seed: u64,
         fuzz_per_batch: usize,
         db: Option<&CardDatabase>,
+        include_self_matchups: bool,
+        games_per_matchup: usize,
     ) -> Self {
         let mut preset_pairs = Vec::new();
+        let games_per = games_per_matchup.max(1);
         for (i, d1) in decks.iter().enumerate() {
             for (j, d2) in decks.iter().enumerate() {
-                if i != j {
-                    preset_pairs.push((d1.clone(), d2.clone()));
+                if i != j || include_self_matchups {
+                    for _ in 0..games_per {
+                        preset_pairs.push((d1.clone(), d2.clone()));
+                    }
                 }
             }
         }
@@ -175,7 +182,7 @@ mod tests {
     #[test]
     fn round_robin_cycling() {
         let decks = vec!["a".into(), "b".into(), "c".into()];
-        let mut sched = Scheduler::new(&decks, 100, 0, None);
+        let mut sched = Scheduler::new(&decks, 100, 0, None, false, 1);
 
         // 3 decks → 6 pairs (a-b, a-c, b-a, b-c, c-a, c-b)
         assert_eq!(sched.preset_pairs_count(), 6);
@@ -190,6 +197,33 @@ mod tests {
         assert!(jobs[6..12].iter().all(|j| j.batch_id == 2));
 
         // Seeds should be incrementing
+        for (i, job) in jobs.iter().enumerate() {
+            assert_eq!(job.seed, 100 + i as u64);
+        }
+    }
+
+    #[test]
+    fn self_matchups_included() {
+        let decks = vec!["a".into(), "b".into()];
+        let sched = Scheduler::new(&decks, 100, 0, None, true, 1);
+        // 2 decks with self-matchups → 4 pairs (a-a, a-b, b-a, b-b)
+        assert_eq!(sched.preset_pairs_count(), 4);
+    }
+
+    #[test]
+    fn games_per_matchup_repeats() {
+        let decks = vec!["a".into(), "b".into()];
+        let mut sched = Scheduler::new(&decks, 100, 0, None, false, 3);
+        // 2 decks, no self → 2 pairs, 3 games each → 6 jobs per batch
+        assert_eq!(sched.preset_pairs_count(), 6);
+
+        let mut jobs = Vec::new();
+        for _ in 0..6 {
+            jobs.push(sched.next_job());
+        }
+        // All should be batch 1
+        assert!(jobs.iter().all(|j| j.batch_id == 1));
+        // Seeds should increment
         for (i, job) in jobs.iter().enumerate() {
             assert_eq!(job.seed, 100 + i as u64);
         }

@@ -4,9 +4,11 @@
 //! calls an LLM for root cause analysis, posts alerts to Discord, and opens GitHub issues.
 
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+use crate::agent_loop::{self, AgentConfig};
 use crate::discord::{DiscordClient, FailureAlert, PeriodSummary};
 use crate::github_issues::{DeckPairRow, GitHubIssues, IssueData};
 use crate::llm::{ClusterContext, LlmClient};
@@ -20,6 +22,9 @@ pub struct AnalyzerConfig {
     pub issue_threshold: i64,
     pub github_repo: Option<String>,
     pub dashboard_url: Option<String>,
+    pub java_jar: Option<String>,
+    pub cards_dir: Option<String>,
+    pub project_root: String,
 }
 
 impl Default for AnalyzerConfig {
@@ -30,6 +35,9 @@ impl Default for AnalyzerConfig {
             issue_threshold: 5,
             github_repo: None,
             dashboard_url: None,
+            java_jar: None,
+            cards_dir: None,
+            project_root: ".".to_string(),
         }
     }
 }
@@ -105,13 +113,15 @@ fn cluster_failures(records: &[RunRecord]) -> HashMap<String, FailureCluster> {
 }
 
 /// Run the analysis daemon loop. Intended to be spawned as a tokio task.
-pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
-    eprintln!("[analyzer] Starting analysis daemon");
-    eprintln!(
-        "[analyzer] Poll interval: {}s, Summary interval: {}s, Issue threshold: {}",
-        config.poll_interval.as_secs(),
-        config.summary_interval.as_secs(),
-        config.issue_threshold,
+///
+/// The `running` flag controls pause/resume — when false the loop sleeps without processing.
+pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: Arc<AtomicBool>) {
+    tracing::info!(
+        paused = !running.load(Ordering::Relaxed),
+        poll_interval_s = config.poll_interval.as_secs(),
+        summary_interval_s = config.summary_interval.as_secs(),
+        issue_threshold = config.issue_threshold,
+        "Analyzer daemon starting"
     );
 
     let llm = LlmClient::from_env();
@@ -119,24 +129,30 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
     let github = GitHubIssues::new(config.github_repo.clone());
 
     if llm.is_some() {
-        eprintln!("[analyzer] LLM backend configured");
+        tracing::info!("LLM backend configured");
     } else {
-        eprintln!("[analyzer] No LLM API key found, skipping AI analysis");
+        tracing::warn!("No LLM API key found, skipping AI analysis");
     }
     if discord.is_some() {
-        eprintln!("[analyzer] Discord webhook configured");
+        tracing::info!("Discord webhook configured");
     } else {
-        eprintln!("[analyzer] No DISCORD_WEBHOOK_URL, skipping Discord alerts");
+        tracing::info!("No DISCORD_WEBHOOK_URL, skipping Discord alerts");
     }
     if github.is_available() {
-        eprintln!("[analyzer] GitHub CLI authenticated");
+        tracing::info!("GitHub CLI authenticated");
     } else {
-        eprintln!("[analyzer] gh CLI not authenticated, skipping issue creation");
+        tracing::info!("gh CLI not authenticated, skipping issue creation");
     }
 
     let mut last_summary = Instant::now();
 
     loop {
+        // Pause check: if not running, sleep and retry
+        if !running.load(Ordering::Relaxed) {
+            tokio::time::sleep(config.poll_interval).await;
+            continue;
+        }
+
         // 1. Read watermark
         let watermark = {
             let db = storage.lock().unwrap();
@@ -156,9 +172,11 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
 
         let max_id = new_failures.iter().map(|r| r.id).max().unwrap_or(watermark);
         let failure_count = new_failures.len();
-        eprintln!(
-            "[analyzer] Processing {} new failures (id {} -> {})",
-            failure_count, watermark, max_id
+        tracing::info!(
+            count = failure_count,
+            from_id = watermark,
+            to_id = max_id,
+            "Processing new failures"
         );
 
         // 3. Cluster failures by (field, deck_pair)
@@ -172,7 +190,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
         for (key, cluster) in &clusters {
             let db = storage.lock().unwrap();
             if let Err(e) = db.upsert_cluster(key, cluster.count as i64, &now_iso) {
-                eprintln!("[analyzer] Cluster upsert error: {e}");
+                tracing::error!(%e, "Cluster upsert error");
             }
         }
 
@@ -193,10 +211,10 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
             count_b.cmp(&count_a)
         });
 
-        eprintln!(
-            "[analyzer] {} unique divergence fields from {} clusters",
-            sorted_fields.len(),
-            clusters.len()
+        tracing::info!(
+            fields = sorted_fields.len(),
+            clusters = clusters.len(),
+            "Unique divergence fields"
         );
 
         for (field, field_clusters) in &sorted_fields {
@@ -253,12 +271,53 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
                     sample_seeds: all_seeds.join(", "),
                 };
 
-                eprintln!(
-                    "[analyzer] Analyzing field '{}' ({} failures across {} deck pairs)",
-                    field, total_count, all_deck_pairs.len()
+                tracing::info!(
+                    field = %field,
+                    failures = total_count,
+                    deck_pairs = all_deck_pairs.len(),
+                    "Analyzing divergence field"
                 );
 
-                match llm_client.analyze_cluster(&ctx).await {
+                // Try agentic analysis first, fall back to single-shot
+                let agent_config = AgentConfig {
+                    project_root: std::path::PathBuf::from(&config.project_root),
+                    java_jar: config.java_jar.clone(),
+                    cards_dir: config.cards_dir.clone(),
+                };
+
+                let analysis_result = if llm_client.supports_tool_calling() {
+                    match agent_loop::run_agent_analysis(
+                        llm_client,
+                        &ctx,
+                        &agent_config,
+                        llm_client.context_size(),
+                    )
+                    .await
+                    {
+                        Ok(r) => {
+                            tracing::info!(
+                                field = %field,
+                                duration_s = r.duration.as_secs(),
+                                rounds = r.rounds_used,
+                                tools = r.tools_called,
+                                "Agent analysis complete"
+                            );
+                            Ok(r.analysis)
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                field = %field,
+                                %e,
+                                "Agent failed, single-shot fallback"
+                            );
+                            llm_client.analyze_cluster(&ctx).await
+                        }
+                    }
+                } else {
+                    llm_client.analyze_cluster(&ctx).await
+                };
+
+                match analysis_result {
                     Ok(result) => {
                         // Cache analysis on ALL clusters sharing this field
                         if let Ok(json) = serde_json::to_string(&result) {
@@ -269,7 +328,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
                                 }
                             }
                         }
-                        eprintln!("[analyzer] Analysis complete for '{}': {}", field, result.mechanic);
+                        tracing::info!(field = %field, mechanic = %result.mechanic, "Analysis complete");
 
                         // Discord alert for this field
                         if let Some(ref mut discord_client) = discord {
@@ -283,7 +342,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
                                 analysis: Some(result.clone()),
                             };
                             if let Err(e) = discord_client.post_failure_alert(&alert).await {
-                                eprintln!("[analyzer] Discord alert failed: {e}");
+                                tracing::error!(%e, "Discord alert failed");
                             }
                         }
 
@@ -331,18 +390,18 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
 
                             if let Some(issue_num) = existing {
                                 if let Err(e) = github.add_comment(issue_num, &issue_data) {
-                                    eprintln!("[analyzer] GitHub comment failed: {e}");
+                                    tracing::error!(%e, "GitHub comment failed");
                                 }
                             } else {
                                 match github.create_issue(&issue_data) {
-                                    Ok(num) => eprintln!("[analyzer] Created GitHub issue #{num}"),
-                                    Err(e) => eprintln!("[analyzer] GitHub issue creation failed: {e}"),
+                                    Ok(num) => tracing::info!(issue = num, "Created GitHub issue"),
+                                    Err(e) => tracing::error!(%e, "GitHub issue creation failed"),
                                 }
                             }
                         }
                     }
                     Err(e) => {
-                        eprintln!("[analyzer] LLM analysis failed for '{}': {e}", field);
+                        tracing::error!(field = %field, %e, "LLM analysis failed");
                     }
                 }
             }
@@ -352,7 +411,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
         {
             let db = storage.lock().unwrap();
             if let Err(e) = db.set_analysis_watermark(max_id) {
-                eprintln!("[analyzer] Failed to update watermark: {e}");
+                tracing::error!(%e, "Failed to update watermark");
             }
         }
 
@@ -365,7 +424,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
                 };
                 if let Some(summary) = summary {
                     if let Err(e) = discord_client.post_summary(&summary).await {
-                        eprintln!("[analyzer] Discord summary failed: {e}");
+                        tracing::error!(%e, "Discord summary failed");
                     }
                 }
             }
@@ -431,6 +490,8 @@ mod tests {
             covered_cards: vec!["Lightning Bolt".to_string()],
             duration_ms: 100,
             error_message: None,
+            rust_trace: None,
+            java_trace: None,
             timestamp: "2026-03-05T10:00:00Z".to_string(),
         }
     }

@@ -36,6 +36,9 @@ COPY --from=java-builder /build/forge/forge-harness/target/forge-harness-jar-wit
 COPY forge/forge-gui/res/ /app/forge-gui/res/
 COPY preset_decks/ /app/preset_decks/
 
+# Download MTG Comprehensive Rules for agent analysis
+RUN curl -fsSL -o /app/mtg_rules.txt "https://media.wizards.com/2026/downloads/MagicCompRules%2020260227.txt" || true
+
 VOLUME /app/data
 
 EXPOSE 8080

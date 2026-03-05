@@ -30,7 +30,11 @@ pub mod scheduler;
 #[cfg(feature = "storage")]
 pub mod storage;
 #[cfg(feature = "serve")]
+pub mod log_buffer;
+#[cfg(feature = "serve")]
 pub mod web;
+#[cfg(feature = "analyze")]
+pub mod agent_loop;
 #[cfg(feature = "analyze")]
 pub mod analyzer;
 #[cfg(feature = "analyze")]
@@ -39,3 +43,5 @@ pub mod discord;
 pub mod github_issues;
 #[cfg(feature = "analyze")]
 pub mod llm;
+#[cfg(feature = "analyze")]
+pub mod tools;

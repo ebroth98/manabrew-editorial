@@ -30,6 +30,8 @@ services:
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
       OPENAI_API_BASE: "${OPENAI_API_BASE:-}"
       OPENAI_MODEL: "${OPENAI_MODEL:-}"
+      OPENAI_CTX_SIZE: "${OPENAI_CTX_SIZE:-4096}"
+      MTG_RULES_PATH: "/app/mtg_rules.txt"
       POLL_INTERVAL: "${POLL_INTERVAL:-}"
       ISSUE_THRESHOLD: "${ISSUE_THRESHOLD:-}"
     volumes:

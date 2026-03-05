@@ -76,6 +76,8 @@ impl Storage {
                 covered_cards         TEXT NOT NULL DEFAULT '[]',
                 duration_ms           INTEGER NOT NULL,
                 error_message         TEXT,
+                rust_trace            TEXT,
+                java_trace            TEXT,
                 timestamp             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             );
 
@@ -101,6 +103,11 @@ impl Storage {
             );
             ",
         )?;
+        // Migrate: add trace columns if they don't exist (for existing DBs)
+        let _ = self.conn.execute_batch(
+            "ALTER TABLE runs ADD COLUMN rust_trace TEXT;
+             ALTER TABLE runs ADD COLUMN java_trace TEXT;",
+        );
         Ok(())
     }
 
@@ -131,8 +138,9 @@ impl Storage {
         self.conn.execute(
             "INSERT INTO runs (batch_id, deck1, deck2, seed, status, snapshots_compared,
              divergence_count, first_divergence_field, first_divergence_rust,
-             first_divergence_java, covered_cards, duration_ms, error_message)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+             first_divergence_java, covered_cards, duration_ms, error_message,
+             rust_trace, java_trace)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             params![
                 batch_id,
                 result.deck1,
@@ -147,6 +155,8 @@ impl Storage {
                 covered_json,
                 duration_ms as i64,
                 result.error_message,
+                result.trace,
+                result.java_trace,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -262,7 +272,8 @@ impl Storage {
         let mut stmt = self.conn.prepare(
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
-                    first_divergence_java, covered_cards, duration_ms, error_message, timestamp
+                    first_divergence_java, covered_cards, duration_ms, error_message,
+                    rust_trace, java_trace, timestamp
              FROM runs
              WHERE status IN ('fail', 'error')
              ORDER BY id DESC
@@ -278,7 +289,8 @@ impl Storage {
         self.conn.query_row(
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
-                    first_divergence_java, covered_cards, duration_ms, error_message, timestamp
+                    first_divergence_java, covered_cards, duration_ms, error_message,
+                    rust_trace, java_trace, timestamp
              FROM runs WHERE id = ?1",
             params![id],
             |row| Self::row_to_record(row),
@@ -366,7 +378,8 @@ impl Storage {
         let mut stmt = self.conn.prepare(
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
-                    first_divergence_java, covered_cards, duration_ms, error_message, timestamp
+                    first_divergence_java, covered_cards, duration_ms, error_message,
+                    rust_trace, java_trace, timestamp
              FROM runs
              WHERE id > ?1 AND status IN ('fail', 'error')
              ORDER BY id ASC",
@@ -549,7 +562,9 @@ impl Storage {
             covered_cards,
             duration_ms: row.get::<_, i64>(12)? as u64,
             error_message: row.get(13)?,
-            timestamp: row.get(14)?,
+            rust_trace: row.get(14)?,
+            java_trace: row.get(15)?,
+            timestamp: row.get(16)?,
         })
     }
 }

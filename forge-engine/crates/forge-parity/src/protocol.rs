@@ -265,6 +265,8 @@ pub struct RunRecord {
     pub covered_cards: Vec<String>,
     pub duration_ms: u64,
     pub error_message: Option<String>,
+    pub rust_trace: Option<String>,
+    pub java_trace: Option<String>,
     pub timestamp: String,
 }
 

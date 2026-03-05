@@ -4,6 +4,7 @@
 //! Backend is selected by environment variable: `ANTHROPIC_API_KEY` or `OPENAI_API_KEY`.
 
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Parsed LLM analysis of a failure cluster.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -196,6 +197,335 @@ impl LlmClient {
             .map(|s| s.to_string())
             .ok_or_else(|| format!("Unexpected OpenAI response shape: {json}"))
     }
+
+    /// Send a chat completions request with tool definitions.
+    ///
+    /// Returns the raw response JSON (choices[0].message).
+    /// Works with OpenAI and Anthropic backends. ClaudeCode is not supported.
+    pub async fn chat_completions(
+        &self,
+        messages: &[Value],
+        tools: &Value,
+    ) -> Result<Value, String> {
+        match &self.backend {
+            Backend::OpenAi { api_key, base_url, model } => {
+                self.openai_chat_completions(api_key, base_url, model, messages, Some(tools))
+                    .await
+            }
+            Backend::Anthropic { api_key } => {
+                self.anthropic_chat_completions(api_key, messages, Some(tools))
+                    .await
+            }
+            Backend::ClaudeCode { .. } => {
+                Err("ClaudeCode backend does not support tool-calling".to_string())
+            }
+        }
+    }
+
+    /// Send a chat completions request without tools (for final nudge).
+    pub async fn chat_completions_no_tools(
+        &self,
+        messages: &[Value],
+    ) -> Result<Value, String> {
+        match &self.backend {
+            Backend::OpenAi { api_key, base_url, model } => {
+                self.openai_chat_completions(api_key, base_url, model, messages, None)
+                    .await
+            }
+            Backend::Anthropic { api_key } => {
+                self.anthropic_chat_completions(api_key, messages, None).await
+            }
+            Backend::ClaudeCode { .. } => {
+                Err("ClaudeCode backend does not support tool-calling".to_string())
+            }
+        }
+    }
+
+    /// Whether this backend supports multi-round tool calling.
+    pub fn supports_tool_calling(&self) -> bool {
+        !matches!(self.backend, Backend::ClaudeCode { .. })
+    }
+
+    /// Get the context window size for this backend.
+    ///
+    /// Reads `OPENAI_CTX_SIZE` env var, defaulting to 4096 for OpenAI-compatible
+    /// and 200_000 for Anthropic.
+    pub fn context_size(&self) -> usize {
+        if let Ok(val) = std::env::var("OPENAI_CTX_SIZE") {
+            if let Ok(n) = val.parse::<usize>() {
+                return n;
+            }
+        }
+        match &self.backend {
+            Backend::Anthropic { .. } => 200_000,
+            Backend::OpenAi { .. } => 4096,
+            Backend::ClaudeCode { .. } => 8192,
+        }
+    }
+
+    /// Get a reference to the reqwest client (for tools that need HTTP).
+    pub fn http_client(&self) -> &reqwest::Client {
+        &self.client
+    }
+
+    /// Change the model used for OpenAI-compatible backends.
+    ///
+    /// No-op for Anthropic and ClaudeCode backends (model is fixed).
+    pub fn set_model(&mut self, model: &str) {
+        if let Backend::OpenAi { model: ref mut m, .. } = self.backend {
+            *m = model.to_string();
+        }
+    }
+
+    /// Return the backend name (e.g. "anthropic", "openai", "claude-code").
+    pub fn backend_name(&self) -> &str {
+        match &self.backend {
+            Backend::Anthropic { .. } => "anthropic",
+            Backend::OpenAi { .. } => "openai",
+            Backend::ClaudeCode { .. } => "claude-code",
+        }
+    }
+
+    /// Return the current model name.
+    pub fn model_name(&self) -> String {
+        match &self.backend {
+            Backend::Anthropic { .. } => "claude-sonnet-4-20250514".to_string(),
+            Backend::OpenAi { model, .. } => model.clone(),
+            Backend::ClaudeCode { .. } => "claude-code".to_string(),
+        }
+    }
+
+    // --- Internal: OpenAI-compatible chat completions ---
+
+    async fn openai_chat_completions(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        model: &str,
+        messages: &[Value],
+        tools: Option<&Value>,
+    ) -> Result<Value, String> {
+        let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
+        let mut body = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "max_tokens": 2048
+        });
+        if let Some(tools) = tools {
+            body["tools"] = tools.clone();
+        }
+
+        let resp = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {api_key}"))
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("OpenAI request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(format!("OpenAI API error {status}: {text}"));
+        }
+
+        let json: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("OpenAI response parse error: {e}"))?;
+
+        let msg = json["choices"][0]["message"].clone();
+        if msg.is_null() {
+            return Err(format!("Unexpected OpenAI response shape: {json}"));
+        }
+        Ok(msg)
+    }
+
+    // --- Internal: Anthropic chat completions with tool support ---
+
+    async fn anthropic_chat_completions(
+        &self,
+        api_key: &str,
+        messages: &[Value],
+        tools: Option<&Value>,
+    ) -> Result<Value, String> {
+        // Convert OpenAI-format messages to Anthropic format
+        let (system, anthropic_messages) = convert_to_anthropic_messages(messages);
+
+        let mut body = serde_json::json!({
+            "model": "claude-sonnet-4-20250514",
+            "max_tokens": 2048,
+            "messages": anthropic_messages
+        });
+        if !system.is_empty() {
+            body["system"] = Value::String(system);
+        }
+        if let Some(tools) = tools {
+            // Convert OpenAI tool format to Anthropic tool format
+            if let Some(tool_arr) = tools.as_array() {
+                let anthropic_tools: Vec<Value> = tool_arr
+                    .iter()
+                    .filter_map(|t| {
+                        let func = &t["function"];
+                        Some(serde_json::json!({
+                            "name": func["name"],
+                            "description": func["description"],
+                            "input_schema": func["parameters"]
+                        }))
+                    })
+                    .collect();
+                body["tools"] = Value::Array(anthropic_tools);
+            }
+        }
+
+        let resp = self
+            .client
+            .post("https://api.anthropic.com/v1/messages")
+            .header("x-api-key", api_key)
+            .header("anthropic-version", "2023-06-01")
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("Anthropic request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(format!("Anthropic API error {status}: {text}"));
+        }
+
+        let json: Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Anthropic response parse error: {e}"))?;
+
+        // Convert Anthropic response to OpenAI-compatible format
+        convert_anthropic_response_to_openai(&json)
+    }
+}
+
+/// Convert OpenAI-format messages to Anthropic format.
+///
+/// Extracts system prompt (first system message) and converts remaining messages.
+/// Handles tool_calls (assistant) and tool results.
+fn convert_to_anthropic_messages(messages: &[Value]) -> (String, Vec<Value>) {
+    let mut system = String::new();
+    let mut result = Vec::new();
+
+    for msg in messages {
+        let role = msg["role"].as_str().unwrap_or("");
+        match role {
+            "system" => {
+                if let Some(content) = msg["content"].as_str() {
+                    system = content.to_string();
+                }
+            }
+            "user" => {
+                result.push(serde_json::json!({
+                    "role": "user",
+                    "content": msg["content"]
+                }));
+            }
+            "assistant" => {
+                let mut content_blocks: Vec<Value> = Vec::new();
+
+                // Text content
+                if let Some(text) = msg["content"].as_str() {
+                    if !text.is_empty() {
+                        content_blocks.push(serde_json::json!({
+                            "type": "text",
+                            "text": text
+                        }));
+                    }
+                }
+
+                // Tool use blocks
+                if let Some(tool_calls) = msg["tool_calls"].as_array() {
+                    for tc in tool_calls {
+                        let args_str = tc["function"]["arguments"]
+                            .as_str()
+                            .unwrap_or("{}");
+                        let input: Value = serde_json::from_str(args_str)
+                            .unwrap_or(serde_json::json!({}));
+                        content_blocks.push(serde_json::json!({
+                            "type": "tool_use",
+                            "id": tc["id"],
+                            "name": tc["function"]["name"],
+                            "input": input
+                        }));
+                    }
+                }
+
+                if !content_blocks.is_empty() {
+                    result.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": content_blocks
+                    }));
+                }
+            }
+            "tool" => {
+                // Anthropic expects tool results as user messages with tool_result content
+                result.push(serde_json::json!({
+                    "role": "user",
+                    "content": [{
+                        "type": "tool_result",
+                        "tool_use_id": msg["tool_call_id"],
+                        "content": msg["content"]
+                    }]
+                }));
+            }
+            _ => {}
+        }
+    }
+
+    (system, result)
+}
+
+/// Convert Anthropic response to OpenAI-compatible message format.
+fn convert_anthropic_response_to_openai(resp: &Value) -> Result<Value, String> {
+    let content_blocks = resp["content"]
+        .as_array()
+        .ok_or_else(|| format!("Unexpected Anthropic response: {resp}"))?;
+
+    let mut text_parts = Vec::new();
+    let mut tool_calls: Vec<Value> = Vec::new();
+
+    for (i, block) in content_blocks.iter().enumerate() {
+        match block["type"].as_str() {
+            Some("text") => {
+                if let Some(text) = block["text"].as_str() {
+                    text_parts.push(text.to_string());
+                }
+            }
+            Some("tool_use") => {
+                let args = serde_json::to_string(&block["input"]).unwrap_or_default();
+                tool_calls.push(serde_json::json!({
+                    "index": i,
+                    "id": block["id"],
+                    "type": "function",
+                    "function": {
+                        "name": block["name"],
+                        "arguments": args
+                    }
+                }));
+            }
+            _ => {}
+        }
+    }
+
+    let mut msg = serde_json::json!({
+        "role": "assistant",
+        "content": if text_parts.is_empty() { Value::Null } else { Value::String(text_parts.join("\n")) }
+    });
+
+    if !tool_calls.is_empty() {
+        msg["tool_calls"] = Value::Array(tool_calls);
+    }
+
+    Ok(msg)
 }
 
 fn build_prompt(ctx: &ClusterContext) -> String {
