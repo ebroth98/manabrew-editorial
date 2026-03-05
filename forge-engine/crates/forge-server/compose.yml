@@ -24,9 +24,14 @@ services:
       FUZZ_PER_BATCH: "0"
       # MAX_GAMES: ""          # omit for unlimited
       # DECKS: ""              # omit for all presets
+      ANALYZE: "${ANALYZE:-}"
       DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL:-}"
       ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
       OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
+      OPENAI_API_BASE: "${OPENAI_API_BASE:-}"
+      OPENAI_MODEL: "${OPENAI_MODEL:-}"
+      POLL_INTERVAL: "${POLL_INTERVAL:-}"
+      ISSUE_THRESHOLD: "${ISSUE_THRESHOLD:-}"
     volumes:
       - parity-data:/app/data
     restart: unless-stopped
