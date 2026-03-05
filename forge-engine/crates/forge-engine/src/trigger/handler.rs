@@ -430,6 +430,7 @@ impl TriggerHandler {
             TriggerMode::AttackerBlockedOnce { .. } => TriggerType::AttackerBlocked,
             TriggerMode::AttackerBlockedByCreature { .. } => TriggerType::AttackerBlocked,
             TriggerMode::AttackerUnblockedOnce { .. } => TriggerType::AttackerUnblocked,
+            TriggerMode::ManaExpend { .. } => TriggerType::ManaExpend,
         };
 
         if trigger_type != *mode {

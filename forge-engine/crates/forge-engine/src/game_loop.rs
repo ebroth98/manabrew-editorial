@@ -4,7 +4,7 @@ use std::hash::{DefaultHasher, Hasher};
 use forge_foundation::{PhaseType, ZoneType};
 
 use crate::ability::effects::{self, EffectContext};
-use crate::agent::{CombatCostAction, MainPhaseAction, PlayerAgent};
+use crate::agent::{CombatCostAction, ManaCostAction, MainPhaseAction, PlayerAgent};
 use crate::card::CardInstance;
 use crate::combat::{self, CombatState};
 use crate::cost::{self, can_pay, parse_cost, CostPart};

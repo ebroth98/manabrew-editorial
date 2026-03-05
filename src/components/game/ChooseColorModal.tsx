@@ -13,7 +13,8 @@ const COLOR_INFO: Record<string, { symbol: string; bg: string; hoverRing: string
   Blue:  { symbol: "U", bg: "bg-blue-100 dark:bg-blue-200", hoverRing: "hover:ring-blue-400", text: "text-blue-900" },
   Black: { symbol: "B", bg: "bg-gray-300 dark:bg-gray-400", hoverRing: "hover:ring-gray-600", text: "text-gray-900" },
   Red:   { symbol: "R", bg: "bg-red-100 dark:bg-red-200", hoverRing: "hover:ring-red-400", text: "text-red-900" },
-  Green: { symbol: "G", bg: "bg-green-100 dark:bg-green-200", hoverRing: "hover:ring-green-500", text: "text-green-900" },
+  Green:     { symbol: "G", bg: "bg-green-100 dark:bg-green-200", hoverRing: "hover:ring-green-500", text: "text-green-900" },
+  Colorless: { symbol: "C", bg: "bg-zinc-200 dark:bg-zinc-300", hoverRing: "hover:ring-zinc-400", text: "text-zinc-800" },
 };
 
 function manaSymbolUrl(symbol: string): string {

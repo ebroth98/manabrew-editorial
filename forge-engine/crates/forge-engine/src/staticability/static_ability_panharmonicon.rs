@@ -121,6 +121,7 @@ fn trigger_mode_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::LifeGainedAll { .. } => "LifeGainedAll",
         crate::trigger::TriggerMode::CounterRemovedOnce { .. } => "CounterRemovedOnce",
         crate::trigger::TriggerMode::Exerted { .. } => "Exerted",
+        crate::trigger::TriggerMode::ManaExpend { .. } => "ManaExpend",
     }
 }
 

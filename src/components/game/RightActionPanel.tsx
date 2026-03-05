@@ -235,7 +235,10 @@ export function RightActionPanel({
                 {visibleLog.slice(-200).reverse().map((entry, i) => (
                   <div
                     key={i}
-                    className="py-1 border-b border-border/40 last:border-b-0"
+                    className={cn(
+                      "py-1 border-b border-border/40 last:border-b-0",
+                      entry.entryType === "warning" && "text-red-400 font-semibold",
+                    )}
                     onMouseEnter={(e) => onHoverLogCard(entry.cardId ?? null, e)}
                     onMouseLeave={() => onHoverLogCard(null)}
                   >
@@ -287,7 +290,7 @@ export function RightActionPanel({
                         )}
                       </div>
                     )}
-                    <div>{entry.message}</div>
+                    <div className={entry.entryType === "warning" ? "whitespace-pre-wrap break-all" : undefined}>{entry.message}</div>
                   </div>
                 ))}
               </div>

@@ -133,6 +133,7 @@ fn trigger_mode_to_type(mode: &TriggerMode) -> Option<TriggerType> {
         TriggerMode::LifeGainedAll { .. } => TriggerType::LifeGained,
         TriggerMode::CounterRemovedOnce { .. } => TriggerType::CounterRemoved,
         TriggerMode::Exerted { .. } => TriggerType::Exerted,
+        TriggerMode::ManaExpend { .. } => TriggerType::ManaExpend,
     })
 }
 

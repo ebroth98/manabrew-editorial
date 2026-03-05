@@ -259,6 +259,18 @@ pub struct CardInstance {
     pub damage_history: damage_history::DamageHistory,
     /// Specific cards this creature must block (set by effects like Lure variants).
     pub must_block_cards: Vec<CardId>,
+    /// +1/+1 counters to add on ETB (from mana that adds counters, e.g. Guildmages' Forum).
+    pub etb_counters_p1p1: i32,
+    /// Bitmask of colors of mana spent to cast this spell (for Sunburst/Converge).
+    /// Uses ManaAtom bit flags (W=1, U=2, B=4, R=8, G=16).
+    pub colors_spent_to_cast: u16,
+    /// Pre-selected charm/mode indices (for Spree — modes chosen before payment).
+    /// If `Some`, charm_effect should use these instead of asking the player again.
+    pub chosen_modes: Option<Vec<usize>>,
+    /// Number of extra targets paid for via Strive (0 = no extra targets).
+    pub strive_extra_targets: u32,
+    /// Per-ability activation count this game (for PowerUp once-per-game restriction).
+    pub activations_this_game: std::collections::BTreeMap<usize, u32>,
 }
 
 impl CardInstance {
@@ -368,6 +380,11 @@ impl CardInstance {
             damage_sources_this_turn: Vec::new(),
             damage_history: damage_history::DamageHistory::default(),
             must_block_cards: Vec::new(),
+            etb_counters_p1p1: 0,
+            colors_spent_to_cast: 0,
+            chosen_modes: None,
+            strive_extra_targets: 0,
+            activations_this_game: std::collections::BTreeMap::new(),
         };
 
         // Generate intrinsic abilities from card properties (mirrors Java CardFactoryUtil)
@@ -613,6 +630,18 @@ impl CardInstance {
 
     /// Check whether this card has a keyword — intrinsically, granted by a
     /// continuous static effect (Layer 6), or temporarily from a pump effect.
+    /// Count distinct colors of mana spent to cast this spell (for Sunburst/Converge).
+    pub fn sunburst_count(&self) -> i32 {
+        use forge_foundation::mana::ManaAtom;
+        let mut count = 0;
+        for &bit in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
+            if (self.colors_spent_to_cast & bit) != 0 {
+                count += 1;
+            }
+        }
+        count
+    }
+
     pub fn has_keyword(&self, kw: &str) -> bool {
         self.keywords.iter().any(|k| k.eq_ignore_ascii_case(kw))
             || self
@@ -834,6 +863,11 @@ impl CardInstance {
     /// Get emerge cost (e.g. "Emerge:5 U U" → Some("5 U U")).
     pub fn get_emerge_cost(&self) -> Option<String> {
         self.get_keyword_cost("Emerge")
+    }
+
+    /// Get offering type (e.g. "Offering:Snake" → Some("Snake")).
+    pub fn get_offering_type(&self) -> Option<String> {
+        self.get_keyword_cost("Offering")
     }
 
     /// Generic keyword cost parser — looks for "Keyword:cost" in keywords vec.

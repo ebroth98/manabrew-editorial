@@ -52,6 +52,8 @@ export interface AgentPrompt {
   maxChoices?: number;
   /** chooseOptionalTrigger: trigger description text */
   description?: string;
+  /** choosePhyrexian: the phyrexian shard string (e.g. "W/P") */
+  phyrexianColor?: string;
   /** chooseKicker: the kicker cost string */
   kickerCost?: string;
   /** Source card name for displaying card image in modals */
@@ -90,12 +92,26 @@ export interface AgentPrompt {
   blockerIds?: string[];
   /** chooseDamageAssignmentOrder: blocker CardDto info */
   blockerCards?: Card[];
+  /** payManaCost: the card being cast */
+  cardId?: string;
+  /** payManaCost: card display name */
+  cardName?: string;
+  /** payManaCost: mana cost string (e.g. "{2}{R}") */
+  manaCost?: string;
+  /** chooseDelve/chooseConvoke: remaining cost string */
+  remainingCost?: string;
+  /** chooseDelve: max cards to exile */
+  maxCards?: number;
   /** payCombatCost: attacker card ID */
   attackerIdForCost?: string;
   /** payCombatCost: attacker display name */
   attackerName?: string;
   /** payCombatCost: mana pool total available */
   manaPoolTotal?: number;
+  /** specifyManaCombo: available color letters */
+  availableColors?: string[];
+  /** specifyManaCombo: total mana to distribute */
+  amount?: number;
 }
 
 interface GameConfig {
@@ -169,12 +185,58 @@ interface GameState {
   cardNameDecision: (chosenName: string | null) => void;
   payCombatCost: () => void;
   declineCombatCost: () => void;
+  payManaCost: () => void;
+  cancelManaCost: () => void;
+  delveDecision: (chosenCardIds: string[]) => void;
+  convokeDecision: (chosenCardIds: string[]) => void;
+  improviseDecision: (chosenCardIds: string[]) => void;
+  manaComboDecision: (chosenColors: string[]) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
   restoreSnapshot: (checkpointId: number) => Promise<void>;
   setupListeners: () => Promise<() => void>;
 }
+
+/** Prompt types the UI knows how to render a modal/interaction for. */
+const HANDLED_PROMPT_TYPES = new Set([
+  "stateUpdate",
+  "gameOver",
+  "mulligan",
+  "mulliganPutBack",
+  "chooseAction",
+  "chooseAttackers",
+  "chooseBlockers",
+  "chooseTargetCard",
+  "chooseTargetCardFromZone",
+  "chooseTargetPlayer",
+  "chooseTargetAny",
+  "chooseTargetSpell",
+  "chooseMode",
+  "chooseOptionalTrigger",
+  "choosePhyrexian",
+  "chooseKicker",
+  "chooseBuyback",
+  "chooseMultikicker",
+  "chooseReplicate",
+  "chooseAlternativeCost",
+  "chooseColor",
+  "chooseCardsForEffect",
+  "chooseType",
+  "chooseNumber",
+  "chooseCardName",
+  "chooseDiscard",
+  "chooseDamageAssignmentOrder",
+  "payCombatCost",
+  "payManaCost",
+  "chooseDelve",
+  "chooseConvoke",
+  "chooseImprovise",
+  "specifyManaCombo",
+  "scry",
+  "surveil",
+  "dig",
+]);
 
 function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial<GameState>) => void, get: () => GameState) {
   const displayEvents = [...(prompt.displayEvents ?? [])];
@@ -185,6 +247,20 @@ function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial
   // stateUpdate prompts only carry a gameView + display events — they should
   // NOT replace the currentPrompt (the active player decision).
   const isStateUpdate = prompt.type === "stateUpdate";
+
+  // DEV warning: detect prompt types the UI doesn't handle (engine takes a default/arbitrary action)
+  if (!isStateUpdate && !HANDLED_PROMPT_TYPES.has(prompt.type)) {
+    const cardName = prompt.sourceCardName ?? prompt.cardName ?? prompt.attackerName ?? "unknown";
+    const details = JSON.stringify(prompt, null, 2);
+    const devMsg = `[DEV] Unhandled prompt "${prompt.type}" for card "${cardName}" — engine takes default action\n${details}`;
+    console.warn(devMsg, prompt);
+    const devEntry: import("@/types/gameLog").GameLogEntry = {
+      message: devMsg,
+      entryType: "warning",
+      timestampMs: Date.now(),
+    };
+    set({ gameLog: [...get().gameLog.slice(-99), devEntry] });
+  }
 
   if (displayEvents.length > 0 && currentGameView !== null) {
     // Enqueue this snapshot — the flash processor will play the events then apply the state.
@@ -417,6 +493,30 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   declineCombatCost: () => {
     get().respond({ type: 'declineCombatCost' });
+  },
+
+  payManaCost: () => {
+    get().respond({ type: 'payManaCost' });
+  },
+
+  cancelManaCost: () => {
+    get().respond({ type: 'cancelManaCost' });
+  },
+
+  delveDecision: (chosenCardIds) => {
+    get().respond({ type: 'delveDecision', chosenCardIds });
+  },
+
+  convokeDecision: (chosenCardIds) => {
+    get().respond({ type: 'convokeDecision', chosenCardIds });
+  },
+
+  improviseDecision: (chosenCardIds) => {
+    get().respond({ type: 'improviseDecision', chosenCardIds });
+  },
+
+  manaComboDecision: (chosenColors) => {
+    get().respond({ type: 'manaComboDecision', chosenColors });
   },
 
   concede: () => {

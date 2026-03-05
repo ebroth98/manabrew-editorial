@@ -62,6 +62,7 @@ pub mod life_lose_effect;
 pub mod life_set_effect;
 pub mod look_at_effect;
 pub mod mana_effect;
+pub mod mana_reflected_effect;
 pub mod mill_effect;
 pub mod move_counter_effect;
 pub mod must_block_effect;
@@ -153,6 +154,7 @@ effect_dispatch! {
     "CopyPermanent" => copy_permanent_effect::resolve,
     "Token" => token_effect::resolve,
     "Mana" => mana_effect::resolve,
+    "ManaReflected" => mana_reflected_effect::resolve,
     "Mill" => mill_effect::resolve,
     "Scry" => scry_effect::resolve,
     "Surveil" => surveil_effect::resolve,
@@ -271,11 +273,124 @@ fn check_condition(sa: &SpellAbility) -> bool {
     true
 }
 
+/// Check ConditionPresent$ / ConditionZone$ / ConditionCompare$ against game state.
+/// Returns true if the condition is met (or if no condition params exist).
+fn check_condition_present(
+    game: &GameState,
+    sa: &SpellAbility,
+    player: PlayerId,
+    source_id: CardId,
+) -> bool {
+    let condition = match sa.params.get("ConditionPresent") {
+        Some(c) => c.clone(),
+        None => return true, // No condition — always passes
+    };
+
+    let zone_str = sa
+        .params
+        .get("ConditionZone")
+        .map(String::as_str)
+        .unwrap_or("Battlefield");
+
+    let zone = match zone_str.to_ascii_lowercase().as_str() {
+        "graveyard" => ZoneType::Graveyard,
+        "hand" => ZoneType::Hand,
+        "exile" => ZoneType::Exile,
+        "library" => ZoneType::Library,
+        _ => ZoneType::Battlefield,
+    };
+
+    // Parse condition alternatives (comma-separated)
+    let alternatives: Vec<&str> = condition.split(',').map(|s| s.trim()).collect();
+
+    // Count matching cards
+    let cards = game.cards_in_zone(zone, player);
+    let count = cards
+        .iter()
+        .filter(|&&cid| {
+            if cid == source_id {
+                return false; // Don't count self
+            }
+            let card = game.card(cid);
+            alternatives.iter().any(|alt| {
+                let (base, qualifier) = if let Some((b, q)) = alt.split_once('.') {
+                    (b, Some(q))
+                } else {
+                    (*alt, None)
+                };
+                let type_ok = match base.to_ascii_lowercase().as_str() {
+                    "card" => true,
+                    "creature" => card.is_creature(),
+                    "instant" => card.type_line.is_instant(),
+                    "sorcery" => card.type_line.is_sorcery(),
+                    "artifact" => card.type_line.is_artifact(),
+                    "enchantment" => card.type_line.is_enchantment(),
+                    "land" => card.is_land(),
+                    "planeswalker" => card.type_line.is_planeswalker(),
+                    _ => card.type_line.has_subtype(base),
+                };
+                if !type_ok {
+                    return false;
+                }
+                // Check qualifier
+                if let Some(q) = qualifier {
+                    match q.to_ascii_lowercase().as_str() {
+                        "youctrl" | "youown" => card.controller == player,
+                        "oppctrl" => card.controller != player,
+                        _ => true,
+                    }
+                } else {
+                    true
+                }
+            })
+        })
+        .count() as i32;
+
+    // Check ConditionCompare$ (e.g. "GE2", "EQ0")
+    if let Some(compare) = sa.params.get("ConditionCompare") {
+        compare_condition(count, compare)
+    } else {
+        count > 0
+    }
+}
+
+/// Compare a value against a condition string (e.g. "GE2", "EQ0", "LE3").
+fn compare_condition(value: i32, compare: &str) -> bool {
+    if let Some(n) = compare.strip_prefix("GE").and_then(|s| s.parse::<i32>().ok()) {
+        return value >= n;
+    }
+    if let Some(n) = compare.strip_prefix("GT").and_then(|s| s.parse::<i32>().ok()) {
+        return value > n;
+    }
+    if let Some(n) = compare.strip_prefix("LE").and_then(|s| s.parse::<i32>().ok()) {
+        return value <= n;
+    }
+    if let Some(n) = compare.strip_prefix("LT").and_then(|s| s.parse::<i32>().ok()) {
+        return value < n;
+    }
+    if let Some(n) = compare.strip_prefix("EQ").and_then(|s| s.parse::<i32>().ok()) {
+        return value == n;
+    }
+    if let Some(n) = compare.strip_prefix("NE").and_then(|s| s.parse::<i32>().ok()) {
+        return value != n;
+    }
+    true
+}
+
 /// Resolve a single SpellAbility node's effect by dispatching on its API type.
 /// Mirrors Java's `AbilityUtils.resolveApiAbility(sa)`.
 pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Check condition gate (e.g. Kicked) — skip this effect if condition not met
     if !check_condition(sa) {
+        return;
+    }
+
+    // Check ConditionPresent$ / ConditionZone$ / ConditionCompare$ conditions
+    let source_id = match sa.source {
+        Some(id) => id,
+        None => return, // No source card — skip condition check
+    };
+    if !check_condition_present(ctx.game, sa, sa.activating_player, source_id) {
         return;
     }
 
@@ -331,6 +446,8 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "Token"
     } else if ability.contains("DrainMana") {
         "DrainMana"
+    } else if ability.contains("ManaReflected") {
+        "ManaReflected"
     } else if ability.contains("Mana") {
         "Mana"
     } else if ability.contains("Mill") {
@@ -566,6 +683,10 @@ pub fn resolve_numeric_svar(
     // It's an SVar reference — look it up on the source card
     if let Some(source_id) = sa.source {
         if let Some(svar_expr) = game.card(source_id).svars.get(val_str.trim()) {
+            // Game-aware SVar resolution for patterns that need GameState
+            if svar_expr == "Count$Converge" || svar_expr == "Count$Sunburst" {
+                return game.card(source_id).sunburst_count();
+            }
             return evaluate_svar(svar_expr, sa);
         }
     }
@@ -580,6 +701,10 @@ pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
     // X mana cost — return the value of X paid when casting
     if expr == "Count$xPaid" || expr == "Count$XPaid" {
         return sa.x_mana_cost_paid as i32;
+    }
+    // Converge/Sunburst — handled in resolve_numeric_svar (needs GameState)
+    if expr == "Count$Converge" || expr == "Count$Sunburst" {
+        return 0; // Fallback; game-aware path in resolve_numeric_svar handles this
     }
     if expr == "Count$TriggerRememberAmount" {
         return sa.trigger_remembered_amount;
@@ -604,6 +729,100 @@ pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
     }
     // Fallback: try parsing as integer
     expr.parse::<i32>().unwrap_or(0)
+}
+
+/// Resolve a Count$ SVar expression that requires game state access.
+/// Handles patterns like `Count$Valid Forest.YouCtrl`, `Count$Converge`,
+/// `Count$CardPower`, etc.
+/// Mirrors Java's `AbilityUtils.calculateAmount()` for Count$ expressions.
+pub fn resolve_count_svar(
+    expr: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+) -> i32 {
+    use forge_foundation::ZoneType;
+
+    if expr == "Count$Converge" || expr == "Count$Sunburst" {
+        return game.card(source_id).sunburst_count();
+    }
+
+    // Count$Valid TYPE.QUALIFIERS — count permanents matching filter
+    if let Some(filter_str) = expr.strip_prefix("Count$Valid ") {
+        let battlefield = game.cards_in_zone(ZoneType::Battlefield, controller);
+        // Also check opponent's battlefield for non-YouCtrl filters
+        let opp = game.opponent_of(controller);
+        let opp_battlefield = game.cards_in_zone(ZoneType::Battlefield, opp);
+
+        let has_you_ctrl = filter_str.contains("YouCtrl") || filter_str.contains("YouControl");
+
+        let mut count = 0;
+        let cards_to_check: Vec<CardId> = if has_you_ctrl {
+            battlefield.to_vec()
+        } else {
+            battlefield.iter().chain(opp_battlefield.iter()).copied().collect()
+        };
+
+        for &cid in &cards_to_check {
+            let card = game.card(cid);
+            if valid_card_matches(filter_str, card, controller) {
+                count += 1;
+            }
+        }
+        return count;
+    }
+
+    // Count$CardPower — power of the source card
+    if expr == "Count$CardPower" {
+        return game.card(source_id).power();
+    }
+    // Count$CardToughness
+    if expr == "Count$CardToughness" {
+        return game.card(source_id).toughness();
+    }
+    // Count$CardCounters.TYPE
+    if let Some(counter_type) = expr.strip_prefix("Count$CardCounters.") {
+        let ct = crate::ability::effects::parse_counter_type(counter_type);
+        return *game.card(source_id).counters.get(&ct).unwrap_or(&0);
+    }
+
+    // Fallback
+    expr.parse::<i32>().unwrap_or(1)
+}
+
+/// Check if a card matches a validity filter string like "Forest.YouCtrl".
+fn valid_card_matches(filter: &str, card: &crate::card::CardInstance, controller: PlayerId) -> bool {
+    let parts: Vec<&str> = filter.split('.').collect();
+    let base_type = parts.first().copied().unwrap_or("");
+
+    // Check base type
+    let type_ok = match base_type {
+        "Creature" => card.is_creature(),
+        "Land" => card.is_land(),
+        "Artifact" => card.type_line.is_artifact(),
+        "Enchantment" => card.type_line.is_enchantment(),
+        "Planeswalker" => card.type_line.is_planeswalker(),
+        "Permanent" | "Card" => true,
+        // Subtypes (Forest, Island, Goblin, etc.)
+        _ => card.type_line.has_subtype(base_type),
+    };
+    if !type_ok {
+        return false;
+    }
+
+    // Check qualifiers
+    for &qual in &parts[1..] {
+        match qual {
+            "YouCtrl" | "YouControl" => {
+                if card.controller != controller {
+                    return false;
+                }
+            }
+            "Other" => {} // handled by caller if needed
+            _ => {} // ignore unknown qualifiers
+        }
+    }
+    true
 }
 
 /// Resolve a Defined$ parameter to a player ID.

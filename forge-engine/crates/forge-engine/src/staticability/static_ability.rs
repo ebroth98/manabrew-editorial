@@ -83,6 +83,12 @@ pub enum StaticMode {
     CantAttackUnless,
     /// `Mode$ CantBlockUnless` — blocker must pay a cost to block (War Cadence).
     CantBlockUnless,
+    /// `Mode$ ManaConvert` — spend mana as though it were mana of any color/type.
+    ManaConvert,
+    /// `Mode$ UnspentMana` — mana of specified type doesn't empty from pool.
+    UnspentMana,
+    /// `Mode$ ManaBurn` — losing unspent mana causes life loss (Yurlok of Scorch Thrash).
+    ManaBurn,
 
     /// Any mode not yet recognised — stored but not applied.
     Other(String),
@@ -374,6 +380,9 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("MaxCounter") => StaticMode::MaxCounter,
         Some("CantAttackUnless") => StaticMode::CantAttackUnless,
         Some("CantBlockUnless") => StaticMode::CantBlockUnless,
+        Some("ManaConvert") => StaticMode::ManaConvert,
+        Some("UnspentMana") => StaticMode::UnspentMana,
+        Some("ManaBurn") => StaticMode::ManaBurn,
         Some("CantGainLife") => StaticMode::Other("CantGainLife".to_string()),
         Some("CantLoseLife") => StaticMode::Other("CantLoseLife".to_string()),
         Some("CantChangeLife") => StaticMode::Other("CantChangeLife".to_string()),

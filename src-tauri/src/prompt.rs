@@ -206,6 +206,17 @@ pub enum AgentPromptInner {
         #[serde(rename = "sourceCardName")]
         source_card_name: Option<String>,
     },
+    /// Choose whether to pay 2 life instead of mana for a Phyrexian mana shard.
+    ChoosePhyrexian {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// The phyrexian shard string (e.g. "W/P", "U/P").
+        #[serde(rename = "phyrexianColor")]
+        phyrexian_color: String,
+        /// Name of the source card.
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
     /// Choose whether to pay a kicker cost.
     ChooseKicker {
         #[serde(rename = "gameView")]
@@ -326,6 +337,70 @@ pub enum AgentPromptInner {
         #[serde(rename = "manaPoolTotal")]
         mana_pool_total: i32,
     },
+    /// Choose graveyard cards to exile for Delve.
+    ChooseDelve {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "validCardIds")]
+        valid_card_ids: Vec<String>,
+        #[serde(rename = "zoneCards")]
+        zone_cards: Vec<CardDto>,
+        #[serde(rename = "maxCards")]
+        max_cards: usize,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose creatures to tap for Convoke.
+    ChooseConvoke {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "validCardIds")]
+        valid_card_ids: Vec<String>,
+        #[serde(rename = "remainingCost")]
+        remaining_cost: String,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Choose artifacts to tap for Improvise.
+    ChooseImprovise {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "validCardIds")]
+        valid_card_ids: Vec<String>,
+        #[serde(rename = "remainingCost")]
+        remaining_cost: String,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Pay a mana cost interactively (for spells/abilities).
+    PayManaCost {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "cardId")]
+        card_id: String,
+        #[serde(rename = "cardName")]
+        card_name: String,
+        #[serde(rename = "manaCost")]
+        mana_cost: String,
+        #[serde(rename = "tappableLandIds")]
+        tappable_land_ids: Vec<String>,
+        #[serde(rename = "untappableLandIds")]
+        untappable_land_ids: Vec<String>,
+        #[serde(rename = "manaPoolTotal")]
+        mana_pool_total: i32,
+    },
+    /// Specify mana color distribution for combo/any mana production.
+    SpecifyManaCombo {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// Available color letters (e.g. ["W", "U", "B", "R", "G"]).
+        #[serde(rename = "availableColors")]
+        available_colors: Vec<String>,
+        /// Total amount of mana to distribute.
+        amount: usize,
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
     /// Choose card(s) for an effect (ChooseCardEffect, CloneEffect).
     ChooseCardsForEffect {
         #[serde(rename = "gameView")]
@@ -364,6 +439,7 @@ impl AgentPromptInner {
             | AgentPromptInner::ChooseTargetSpell { game_view, .. }
             | AgentPromptInner::ChooseMode { game_view, .. }
             | AgentPromptInner::ChooseOptionalTrigger { game_view, .. }
+            | AgentPromptInner::ChoosePhyrexian { game_view, .. }
             | AgentPromptInner::ChooseKicker { game_view, .. }
             | AgentPromptInner::ChooseBuyback { game_view, .. }
             | AgentPromptInner::ChooseMultikicker { game_view, .. }
@@ -375,7 +451,12 @@ impl AgentPromptInner {
             | AgentPromptInner::ChooseCardName { game_view, .. }
             | AgentPromptInner::ChooseDamageAssignmentOrder { game_view, .. }
             | AgentPromptInner::ChooseCardsForEffect { game_view, .. }
-            | AgentPromptInner::PayCombatCost { game_view, .. } => game_view,
+            | AgentPromptInner::PayCombatCost { game_view, .. }
+            | AgentPromptInner::PayManaCost { game_view, .. }
+            | AgentPromptInner::ChooseDelve { game_view, .. }
+            | AgentPromptInner::ChooseConvoke { game_view, .. }
+            | AgentPromptInner::ChooseImprovise { game_view, .. }
+            | AgentPromptInner::SpecifyManaCombo { game_view, .. } => game_view,
         }
     }
 }
@@ -472,6 +553,11 @@ pub enum PlayerAction {
         #[serde(rename = "chosenIndices")]
         chosen_indices: Vec<usize>,
     },
+    /// Response to ChoosePhyrexian prompt: whether to pay 2 life.
+    PhyrexianDecision {
+        #[serde(rename = "payLife")]
+        pay_life: bool,
+    },
     /// Response to ChooseKicker prompt: whether the player pays the kicker.
     KickerDecision {
         kicked: bool,
@@ -534,6 +620,31 @@ pub enum PlayerAction {
         #[serde(rename = "checkpointId")]
         checkpoint_id: u64,
     },
+    /// Response to ChooseDelve: IDs of graveyard cards to exile.
+    DelveDecision {
+        #[serde(rename = "chosenCardIds")]
+        chosen_card_ids: Vec<String>,
+    },
+    /// Response to ChooseConvoke: IDs of creatures to tap.
+    ConvokeDecision {
+        #[serde(rename = "chosenCardIds")]
+        chosen_card_ids: Vec<String>,
+    },
+    /// Response to ChooseImprovise: IDs of artifacts to tap.
+    ImproviseDecision {
+        #[serde(rename = "chosenCardIds")]
+        chosen_card_ids: Vec<String>,
+    },
+    /// Response to SpecifyManaCombo: list of color letters chosen.
+    ManaComboDecision {
+        /// Color letters, e.g. ["W", "W", "U"], totaling the requested amount.
+        #[serde(rename = "chosenColors")]
+        chosen_colors: Vec<String>,
+    },
+    /// Confirm mana cost payment from the mana pool.
+    PayManaCost,
+    /// Cancel casting the spell (mana cost payment).
+    CancelManaCost,
     Concede,
 }
 

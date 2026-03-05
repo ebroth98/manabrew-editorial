@@ -6,12 +6,21 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Default)]
 struct ShardCount {
     total_count: i32,
+    /// How many of these shards are the X portion (for xManaCostPaidByColor tracking).
+    x_count: i32,
 }
 
 /// Rust mirror of Java `forge.game.mana.ManaCostBeingPaid` focused on AI auto-pay needs.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ManaCostBeingPaid {
     unpaid_shards: HashMap<ManaCostShard, ShardCount>,
+    /// Tracks which colors were used to pay X costs (for colored X restrictions).
+    /// Maps color short string ("W","U","B","R","G") to count paid.
+    pub(crate) x_mana_cost_paid_by_color: HashMap<String, i32>,
+    /// Bitmask of all colors paid (for Sunburst/Converge).
+    pub(crate) sunburst_map: u16,
+    /// Number of X shards in the original cost.
+    cnt_x: i32,
 }
 
 impl ManaCostBeingPaid {
@@ -19,12 +28,39 @@ impl ManaCostBeingPaid {
         let mut out = Self::default();
         for &shard in cost.shards() {
             if shard.is_x() {
+                out.cnt_x += 1;
                 continue;
             }
             out.increase_shard(shard, 1);
         }
         out.increase_generic_mana(cost.generic_cost());
         out
+    }
+
+    /// Set the X mana payment — converts X shards into concrete shards.
+    /// Mirrors Java `ManaCostBeingPaid.setXManaCostPaid()`.
+    pub(crate) fn set_x_mana_cost_paid(&mut self, x_paid: i32, x_color: &str) {
+        let x_cost = x_paid * self.cnt_x;
+        self.cnt_x = 0;
+        let shard = match x_color {
+            "W" => ManaCostShard::White,
+            "U" => ManaCostShard::Blue,
+            "B" => ManaCostShard::Black,
+            "R" => ManaCostShard::Red,
+            "G" => ManaCostShard::Green,
+            "C" => ManaCostShard::Colorless,
+            _ => ManaCostShard::Generic,
+        };
+        self.increase_shard_with_x(shard, x_cost);
+    }
+
+    fn increase_shard_with_x(&mut self, shard: ManaCostShard, amount: i32) {
+        if amount <= 0 {
+            return;
+        }
+        let entry = self.unpaid_shards.entry(shard).or_default();
+        entry.total_count += amount;
+        entry.x_count += amount;
     }
 
     pub(crate) fn is_paid(&self) -> bool {
@@ -149,6 +185,18 @@ impl ManaCostBeingPaid {
             .collect();
 
         let chosen = self.get_shard_to_pay_by_priority(&payable, possible_uses)?;
+
+        // Track X color payment before decreasing
+        if let Some(sc) = self.unpaid_shards.get_mut(&chosen) {
+            if sc.x_count > 0 {
+                sc.x_count -= 1;
+                let color_str = color_mask_to_short(color_mask);
+                if !color_str.is_empty() {
+                    *self.x_mana_cost_paid_by_color.entry(color_str).or_insert(0) += 1;
+                }
+            }
+        }
+
         self.decrease_shard(chosen, 1);
 
         // Java behavior for 2/C: if paid using the generic route, add 1 generic back.
@@ -156,8 +204,20 @@ impl ManaCostBeingPaid {
             self.increase_generic_mana(1);
         }
 
+        // Track sunburst
+        self.sunburst_map |= color_mask;
+
         Some(chosen)
     }
+}
+
+fn color_mask_to_short(mask: u16) -> String {
+    if (mask & ManaAtom::WHITE) != 0 { return "W".into(); }
+    if (mask & ManaAtom::BLUE) != 0 { return "U".into(); }
+    if (mask & ManaAtom::BLACK) != 0 { return "B".into(); }
+    if (mask & ManaAtom::RED) != 0 { return "R".into(); }
+    if (mask & ManaAtom::GREEN) != 0 { return "G".into(); }
+    String::new()
 }
 
 pub(crate) fn can_pay_for_shard_with_color(shard: ManaCostShard, color: u16) -> bool {

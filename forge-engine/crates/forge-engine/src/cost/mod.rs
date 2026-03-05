@@ -68,6 +68,12 @@ pub enum CostPart {
     Unattach,
     /// Move cards from exile to graveyard as cost. Mirrors CostExiledMoveToGrave.
     ExiledMoveToGrave { amount: i32, type_filter: String },
+    /// Add mana to the pool as a cost (AddMana<amount/type>). Mirrors CostAddMana.
+    /// Always payable. Payment adds the specified mana to the activating player's pool.
+    AddMana { amount: i32, mana_type: String },
+    /// Waterbend cost (Waterbend<N>). Mirrors CostWaterbend.
+    /// Pay N generic mana, but you can tap your artifacts and creatures to help (each tapped = {1}).
+    Waterbend { amount: i32 },
 }
 
 impl CostPart {
@@ -98,6 +104,8 @@ impl CostPart {
             CostPart::RemoveAnyCounter { .. } => 8,
             CostPart::Unattach => 10,
             CostPart::ExiledMoveToGrave { .. } => 15,
+            CostPart::AddMana { .. } => 5,
+            CostPart::Waterbend { .. } => 0,
             CostPart::Exert => 20,
         }
     }
@@ -385,6 +393,18 @@ pub fn parse_cost(raw: &str) -> Cost {
         } else if token.starts_with("Unattach<") {
             // Unattach<type[/desc]> — unattach the source equipment from its host
             parts.push(CostPart::Unattach);
+        } else if token.starts_with("Waterbend<") {
+            // Waterbend<N> — pay N generic mana, can tap artifacts/creatures to help
+            if let Some(inner) = token.strip_prefix("Waterbend<").and_then(|s| s.strip_suffix('>')) {
+                let amount = inner.parse::<i32>().unwrap_or(0);
+                parts.push(CostPart::Waterbend { amount });
+            }
+        } else if token.starts_with("AddMana<") {
+            // AddMana<amount/type> — add mana to pool as cost
+            if let Some(inner) = token.strip_prefix("AddMana<").and_then(|s| s.strip_suffix('>')) {
+                let (amount, mana_type) = parse_amount_filter(inner);
+                parts.push(CostPart::AddMana { amount, mana_type });
+            }
         } else if token.starts_with("ExiledMoveToGrave<") {
             // ExiledMoveToGrave<amount/filter[/desc]>
             if let Some(inner) = token
@@ -810,6 +830,24 @@ fn can_pay_inner(
                 // Count cards in exile across all players matching the filter
                 let exiled = get_exiled_targets(game, type_filter).len() as i32;
                 if exiled < *amount {
+                    return false;
+                }
+            }
+            CostPart::AddMana { .. } => {
+                // Adding mana to pool is always payable (mirrors Java CostAddMana.canPay)
+            }
+            CostPart::Waterbend { amount } => {
+                // Payable if available mana + tappable artifacts/creatures >= amount
+                let pool_total = available_mana.map_or(0, |p| p.total());
+                let tappable_count = game
+                    .cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .filter(|&&cid| {
+                        let c = game.card(cid);
+                        !c.tapped && cid != source && (c.is_creature() || c.type_line.is_artifact())
+                    })
+                    .count() as i32;
+                if pool_total + tappable_count < *amount {
                     return false;
                 }
             }

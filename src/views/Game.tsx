@@ -68,6 +68,12 @@ export default function Game() {
     respond,
     payCombatCost,
     declineCombatCost,
+    payManaCost,
+    cancelManaCost,
+    delveDecision,
+    convokeDecision,
+    improviseDecision,
+    manaComboDecision,
     concede,
     endGame,
     restoreSnapshot,
@@ -505,7 +511,7 @@ export default function Game() {
                             : undefined
                       }
                       tappableLandIds={
-                        promptType === "chooseAction" || promptType === "payCombatCost"
+                        promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
                           ? (currentPrompt?.tappableLandIds ?? [])
                           : undefined
                       }
@@ -526,17 +532,17 @@ export default function Game() {
                                 tapLand(card.id);
                               }
                             }
-                          : promptType === "payCombatCost"
+                          : promptType === "payCombatCost" || promptType === "payManaCost"
                             ? (card) => tapLand(card.id)
                             : undefined
                       }
                       untappableLandIds={
-                        promptType === "chooseAction" || promptType === "payCombatCost"
+                        promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
                           ? (currentPrompt?.untappableLandIds ?? [])
                           : undefined
                       }
                       onUntapLand={
-                        promptType === "chooseAction" || promptType === "payCombatCost"
+                        promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
                           ? (card) => untapLand(card.id)
                           : undefined
                       }
@@ -653,6 +659,7 @@ export default function Game() {
         myHand={gameView.myHand}
         onModeDecision={modeDecision}
         onOptionalTriggerDecision={optionalTriggerDecision}
+        onPhyrexianDecision={(payLife) => respond({ type: "phyrexianDecision", payLife })}
         onKickerDecision={(kicked) => respond({ type: "kickerDecision", kicked })}
         onBuybackDecision={(paid) => respond({ type: "buybackDecision", buybackPaid: paid })}
         onMultikickerDecision={(kickCount) => respond({ type: "multikickerDecision", kickCount })}
@@ -666,6 +673,12 @@ export default function Game() {
         onDamageOrderDecision={(orderedBlockerIds) => respond({ type: "damageAssignmentOrderDecision", orderedBlockerIds })}
         onPayCombatCost={payCombatCost}
         onDeclineCombatCost={declineCombatCost}
+        onPayManaCost={payManaCost}
+        onCancelManaCost={cancelManaCost}
+        onDelveDecision={delveDecision}
+        onConvokeDecision={convokeDecision}
+        onImproviseDecision={improviseDecision}
+        onManaComboDecision={manaComboDecision}
       />
 
       {/* ── Card-play flash overlay ───────────────────────── */}
@@ -723,7 +736,7 @@ export default function Game() {
 
       {/* ── Hover card preview ────────────────────────────── */}
       {hoveredCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && !spellStackModalOpen &&
-       promptType !== "chooseKicker" && promptType !== "chooseBuyback" &&
+       promptType !== "choosePhyrexian" && promptType !== "chooseKicker" && promptType !== "chooseBuyback" &&
        promptType !== "chooseMultikicker" && promptType !== "chooseReplicate" &&
        promptType !== "chooseAlternativeCost" && promptType !== "chooseMode" &&
        promptType !== "chooseOptionalTrigger" &&

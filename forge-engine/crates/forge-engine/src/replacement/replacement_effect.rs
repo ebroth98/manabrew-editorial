@@ -64,6 +64,9 @@ pub enum ReplacementType {
     /// `Event$ Counter` — countering a spell.
     Counter,
 
+    /// `Event$ ProduceMana` — mana being produced (for doublers like Mirari's Wake).
+    ProduceMana,
+
     /// Any event type not yet recognised — stored but not applied.
     Other(String),
 }
@@ -282,6 +285,33 @@ impl ReplacementEffect {
         true
     }
 
+    /// Returns `true` if this effect can replace a `ProduceMana` event (mana doublers).
+    pub fn can_replace_produce_mana(
+        &self,
+        source: &CardInstance,
+        activator: PlayerId,
+        host: &CardInstance,
+    ) -> bool {
+        if self.event != ReplacementType::ProduceMana {
+            return false;
+        }
+        // ValidCard$ — which permanent is producing mana
+        if let Some(valid) = self.params.get("ValidCard") {
+            if valid != "Permanent" && valid != "Card" {
+                if !matches_valid_card(valid, source, host) {
+                    return false;
+                }
+            }
+        }
+        // ValidActivator$ / ValidPlayer$ — who controls the producing permanent
+        if let Some(valid_player) = self.params.get("ValidActivator").or(self.params.get("ValidPlayer")) {
+            if !matches_valid_player(valid_player, activator, host) {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Returns `true` if this effect can replace a `Moved` (zone change) event.
     ///
     /// Checks `Destination$`, `Origin$`, and `ValidCard$` parameters.
@@ -430,6 +460,7 @@ pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
         Some("GameWin") => ReplacementType::GameWin,
         Some("CreateToken") => ReplacementType::CreateToken,
         Some("Counter") => ReplacementType::Counter,
+        Some("ProduceMana") => ReplacementType::ProduceMana,
         Some(other) => ReplacementType::Other(other.to_string()),
         None => return None,
     };

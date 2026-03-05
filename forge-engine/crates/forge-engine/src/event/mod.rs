@@ -148,6 +148,8 @@ pub enum TriggerType {
     CounterRemovedOnce,
     /// A creature was exerted.
     Exerted,
+    /// Mana was expended (cumulative per-turn tracking for Expend mechanic).
+    ManaExpend,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.
@@ -195,4 +197,6 @@ pub struct RunParams {
     pub blocker_ids: Option<Vec<CardId>>,
     /// Original controller before a control change.
     pub original_controller: Option<PlayerId>,
+    /// Cumulative mana expend amount (for ManaExpend trigger).
+    pub mana_expend_amount: Option<i32>,
 }

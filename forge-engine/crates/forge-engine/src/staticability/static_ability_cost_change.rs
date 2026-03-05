@@ -113,6 +113,17 @@ pub fn compute_cost_adjustment(
     caster: PlayerId,
     cast_zone: ZoneType,
 ) -> CostAdjustment {
+    compute_cost_adjustment_with_targets(game, spell_card, caster, cast_zone, &[])
+}
+
+/// Like `compute_cost_adjustment`, but also checks ValidTarget$ against chosen targets.
+pub fn compute_cost_adjustment_with_targets(
+    game: &GameState,
+    spell_card: &CardInstance,
+    caster: PlayerId,
+    cast_zone: ZoneType,
+    targets: &[crate::ids::CardId],
+) -> CostAdjustment {
     let mut adj = CostAdjustment::default();
 
     for source in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
@@ -221,19 +232,114 @@ pub fn compute_cost_adjustment(
                 }
             }
 
+            // ── Condition$ ────────────────────────────────────────────
+            if let Some(condition) = st_ab.params.get("Condition") {
+                let met = match condition.as_str() {
+                    "PlayerTurn" => game.active_player() == source.controller,
+                    "NotPlayerTurn" => game.active_player() != source.controller,
+                    "Metalcraft" => {
+                        game.cards_in_zone(ZoneType::Battlefield, source.controller)
+                            .iter()
+                            .filter(|&&cid| game.card(cid).type_line.is_artifact())
+                            .count() >= 3
+                    }
+                    "Delirium" => {
+                        let gy = game.cards_in_zone(ZoneType::Graveyard, source.controller);
+                        let mut types = std::collections::HashSet::new();
+                        for &cid in gy {
+                            let c = game.card(cid);
+                            if c.is_creature() { types.insert("creature"); }
+                            if c.type_line.is_instant() { types.insert("instant"); }
+                            if c.type_line.is_sorcery() { types.insert("sorcery"); }
+                            if c.type_line.is_artifact() { types.insert("artifact"); }
+                            if c.type_line.is_enchantment() { types.insert("enchantment"); }
+                            if c.is_land() { types.insert("land"); }
+                            if c.type_line.is_planeswalker() { types.insert("planeswalker"); }
+                        }
+                        types.len() >= 4
+                    }
+                    _ => true, // Unknown conditions pass conservatively
+                };
+                if !met {
+                    continue;
+                }
+            }
+
             // ── ValidTarget$ ──────────────────────────────────────────
-            // Target-dependent cost reduction: at playability-check time we don't
-            // know the targets yet, so we conservatively skip this ability.
-            // The reduction will still appear once the spell is on the stack with
-            // targets chosen (future enhancement).
-            if st_ab.params.contains_key("ValidTarget") {
-                continue;
+            // Check if any target (or potential target) matches.
+            // If `targets` is empty (playability check), scan the battlefield
+            // for any card that matches — optimistic: assume we'll target it.
+            if let Some(valid_target) = st_ab.params.get("ValidTarget") {
+                let target_valid = if targets.is_empty() {
+                    // Playability: check if any valid target exists
+                    game.cards.iter().any(|c| {
+                        c.zone == ZoneType::Battlefield
+                            && matches_valid_card(valid_target, c, source)
+                    })
+                } else {
+                    targets.iter().any(|&tid| {
+                        let target = game.card(tid);
+                        matches_valid_card(valid_target, target, source)
+                    })
+                };
+                let unless = st_ab.params.get("UnlessValidTarget")
+                    .map(|v| v.eq_ignore_ascii_case("True"))
+                    .unwrap_or(false);
+                if unless {
+                    if target_valid { continue; }
+                } else if !target_valid {
+                    continue;
+                }
             }
 
             // ── ValidSpell$ ───────────────────────────────────────────
-            // Spell-attribute filtering (e.g. Bargain, Kicked, MayPlaySource).
-            // At cost-check time we don't know these attributes, so skip.
-            if st_ab.params.contains_key("ValidSpell") {
+            // Filters by spell/ability attributes (e.g. Spell.Bargain, Activated.Equip).
+            if let Some(valid_spell) = st_ab.params.get("ValidSpell") {
+                // Split comma-separated options — any match passes
+                let any_match = valid_spell.split(',').any(|option| {
+                    let parts: Vec<&str> = option.trim().split('.').collect();
+                    let category = parts.first().copied().unwrap_or("");
+                    match category {
+                        "Spell" => {
+                            // We're casting a spell, check sub-attributes
+                            parts.iter().skip(1).all(|attr| {
+                                match attr.to_lowercase().as_str() {
+                                    "bargain" => spell_card.has_keyword("Bargain"),
+                                    _ => true, // unknown attributes pass
+                                }
+                            })
+                        }
+                        "Activated" | "Static" => {
+                            // These are for ability cost changes, not spell casting
+                            false
+                        }
+                        _ => true,
+                    }
+                });
+                if !any_match {
+                    continue;
+                }
+            }
+
+            // ── ForEachShard$ — count matching color shards in spell's mana cost ──
+            if let Some(shard_color) = st_ab.params.get("ForEachShard") {
+                let atom = forge_foundation::mana::ManaAtom::from_name(
+                    &shard_color.to_ascii_lowercase(),
+                );
+                let count = spell_card
+                    .mana_cost
+                    .shards()
+                    .iter()
+                    .filter(|s| (s.shard() & atom) != 0)
+                    .count() as i32;
+                if count == 0 {
+                    continue;
+                }
+                if is_reduce {
+                    adj.generic -= count;
+                } else {
+                    adj.generic += count;
+                }
                 continue;
             }
 
@@ -477,31 +583,70 @@ fn matches_valid_card(valid: &str, spell: &CardInstance, source: &CardInstance) 
 }
 
 fn matches_single_valid(token: &str, spell: &CardInstance, source: &CardInstance) -> bool {
-    if let Some((base, qualifier)) = token.split_once('.') {
+    if let Some((base, qualifiers_str)) = token.split_once('.') {
         let base_lower = base.to_ascii_lowercase();
-        let qual_lower = qualifier.to_ascii_lowercase();
 
-        match qual_lower.as_str() {
-            "self" => return spell.id == source.id,
-            "noncreature" => return !spell.is_creature(),
-            "nonland" => return !spell.is_land(),
-            "multicolor" => return spell.color.is_multicolor(),
-            _ => {}
-        }
-
-        // Color qualifiers on Card base
-        if base_lower == "card" {
-            if let Some(color) = Color::from_name(&qual_lower) {
-                return spell.color.has_color(color);
-            }
-            if qual_lower == "colorless" {
-                return spell.color.is_colorless();
-            }
-        }
-
-        // Base type + qualifier (fallback)
+        // Check base type first
         if !matches_base_type(&base_lower, spell) {
             return false;
+        }
+
+        // Split qualifiers by '+' for multiple conditions (e.g. "YouCtrl+counters_GE1_P1P1")
+        let qualifiers: Vec<&str> = qualifiers_str.split('+').collect();
+        for qual in qualifiers {
+            let qual_lower = qual.to_ascii_lowercase();
+            match qual_lower.as_str() {
+                "self" => {
+                    if spell.id != source.id { return false; }
+                }
+                "noncreature" => {
+                    if spell.is_creature() { return false; }
+                }
+                "nonland" => {
+                    if spell.is_land() { return false; }
+                }
+                "multicolor" => {
+                    if !spell.color.is_multicolor() { return false; }
+                }
+                "colorless" => {
+                    if !spell.color.is_colorless() { return false; }
+                }
+                "tapped" => {
+                    if !spell.tapped { return false; }
+                }
+                "untapped" => {
+                    if spell.tapped { return false; }
+                }
+                "youctrl" => {
+                    if spell.controller != source.controller { return false; }
+                }
+                "enchantedby" => {
+                    // Check if source is attached to spell
+                    if source.attached_to != Some(spell.id) { return false; }
+                }
+                q => {
+                    // CMC comparisons: cmcEQ1, cmcLE3, cmcGE5
+                    if let Some(rest) = q.strip_prefix("cmc") {
+                        let cmc = spell.mana_cost.cmc() as i32;
+                        if rest.starts_with("eq") {
+                            if let Ok(n) = rest[2..].parse::<i32>() {
+                                if cmc != n { return false; }
+                            }
+                        } else if rest.starts_with("le") {
+                            if let Ok(n) = rest[2..].parse::<i32>() {
+                                if cmc > n { return false; }
+                            }
+                        } else if rest.starts_with("ge") {
+                            if let Ok(n) = rest[2..].parse::<i32>() {
+                                if cmc < n { return false; }
+                            }
+                        }
+                    } else if let Some(color) = Color::from_name(q) {
+                        if !spell.color.has_color(color) { return false; }
+                    }
+                    // Unknown qualifiers pass (conservative)
+                }
+            }
         }
         true
     } else {

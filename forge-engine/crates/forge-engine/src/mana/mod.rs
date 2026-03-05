@@ -1,5 +1,5 @@
 use forge_foundation::mana::ManaAtom;
-use forge_foundation::ZoneType;
+use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::card::CardInstance;
@@ -11,16 +11,130 @@ pub mod computer_util_mana;
 pub(crate) mod mana_cost_being_paid;
 pub use computer_util_mana::{auto_tap_lands, auto_tap_lands_generic};
 
+/// An individual mana object in the pool, tracking source and properties.
+#[derive(Debug, Clone)]
+pub struct Mana {
+    pub color: u16,
+    pub source_card: Option<CardId>,
+    pub is_snow: bool,
+    /// Mana that persists across all phase transitions (Omnath, Kruphix).
+    pub is_persistent: bool,
+    /// Mana that persists through combat phases but empties at end of combat.
+    pub is_combat_mana: bool,
+    /// Restriction on what this mana can be spent on (from RestrictValid$).
+    /// e.g. "Spell.Creature", "Spell.Artifact", "Activated", "nonSpell".
+    pub restriction: Option<String>,
+    /// If true, spells paid with this mana can't be countered (Cavern of Souls).
+    pub adds_no_counter: bool,
+    /// Keywords to add to spells cast with this mana (e.g. "Haste" from Generator Servant).
+    /// Format: "Keyword" with optional valid filter "Keyword|ValidFilter" (e.g. "Haste|Spell.Creature").
+    pub adds_keywords: Option<String>,
+    /// Valid filter for which spells get the keywords (e.g. "Spell.Creature").
+    pub adds_keywords_valid: Option<String>,
+    /// Counter spec to add to permanents cast with this mana (e.g. "P1P1" from Guildmages' Forum).
+    pub adds_counters: Option<String>,
+    /// Valid filter for which cards get the counters.
+    pub adds_counters_valid: Option<String>,
+    /// SVar name of a trigger to fire when this mana is spent to cast a spell.
+    /// The SVar lives on the source card (identified by `source_card`).
+    pub triggers_when_spent: Option<String>,
+}
+
+impl Mana {
+    pub fn simple(color: u16) -> Self {
+        Self {
+            color,
+            source_card: None,
+            is_snow: false,
+            is_persistent: false,
+            is_combat_mana: false,
+            restriction: None,
+            adds_no_counter: false,
+            adds_keywords: None,
+            adds_keywords_valid: None,
+            adds_counters: None,
+            adds_counters_valid: None,
+            triggers_when_spent: None,
+        }
+    }
+}
+
+/// Context about what a mana payment is for, used to check restrictions.
+#[derive(Debug, Clone, Default)]
+pub struct ManaPaymentContext {
+    /// True if paying for a spell (not an ability).
+    pub is_spell: bool,
+    /// Card type line of the spell being cast (for type checks).
+    pub type_line: Option<forge_foundation::CardTypeLine>,
+    /// Subtypes of the spell being cast.
+    pub card_name: Option<String>,
+}
+
+/// Check if a mana with the given restriction can be spent in the given context.
+pub fn mana_meets_restriction(restriction: &str, ctx: &ManaPaymentContext) -> bool {
+    // Multiple comma-separated restrictions: any match is OK (OR logic)
+    for part in restriction.split(',') {
+        let part = part.trim();
+        if part.is_empty() {
+            continue;
+        }
+        if check_single_restriction(part, ctx) {
+            return true;
+        }
+    }
+    false
+}
+
+fn check_single_restriction(restriction: &str, ctx: &ManaPaymentContext) -> bool {
+    match restriction {
+        "nonSpell" => !ctx.is_spell,
+        "Activated" => !ctx.is_spell,
+        _ if restriction.starts_with("Spell.") => {
+            if !ctx.is_spell {
+                return false;
+            }
+            let type_check = &restriction[6..]; // After "Spell."
+            if let Some(ref tl) = ctx.type_line {
+                match type_check {
+                    "Creature" => tl.is_creature(),
+                    "Artifact" => tl.is_artifact(),
+                    "Enchantment" => tl.is_enchantment(),
+                    "Instant" => tl.is_instant(),
+                    "Sorcery" => tl.is_sorcery(),
+                    "Planeswalker" => tl.is_planeswalker(),
+                    "Land" => tl.is_land(),
+                    other => {
+                        // Check subtype (e.g. "Spell.Dragon", "Spell.Lesson")
+                        // Handle compound checks with + (e.g. "Creature+Dragon")
+                        if let Some((base, sub)) = other.split_once('+') {
+                            let base_ok = match base {
+                                "Creature" => tl.is_creature(),
+                                "Artifact" => tl.is_artifact(),
+                                _ => tl.has_subtype(base),
+                            };
+                            base_ok && tl.has_subtype(sub)
+                        } else {
+                            tl.has_subtype(other)
+                        }
+                    }
+                }
+            } else {
+                false
+            }
+        }
+        _ if restriction.starts_with("Activated.") => !ctx.is_spell,
+        _ if restriction.starts_with("CantPayGenericCosts") => true, // handled separately in payment
+        _ if restriction.starts_with("CantCast") => true, // zone restrictions handled elsewhere
+        _ => true, // Unknown restriction — be permissive
+    }
+}
+
 /// Tracks available mana for a player during a turn.
-/// Simplified model: tracks count of each color + colorless + generic.
+/// Uses individual Mana objects to support source tracking, snow, and future restrictions.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ManaPool {
-    pub white: i32,
-    pub blue: i32,
-    pub black: i32,
-    pub red: i32,
-    pub green: i32,
-    pub colorless: i32,
+    #[serde(skip)]
+    mana: Vec<Mana>,
     /// When set, caps total producible mana for playability checks.
     /// Used by `calculate_available_mana` to prevent multi-color sources
     /// (dual lands, Command Tower) from being counted as multiple mana.
@@ -40,44 +154,124 @@ impl ManaPool {
     }
 
     pub fn add(&mut self, atom: u16, amount: i32) {
-        match atom {
-            ManaAtom::WHITE => self.white += amount,
-            ManaAtom::BLUE => self.blue += amount,
-            ManaAtom::BLACK => self.black += amount,
-            ManaAtom::RED => self.red += amount,
-            ManaAtom::GREEN => self.green += amount,
-            ManaAtom::COLORLESS => self.colorless += amount,
-            _ => self.colorless += amount,
+        for _ in 0..amount {
+            self.mana.push(Mana::simple(atom));
         }
+    }
+
+    /// Add mana with snow flag set (from a snow permanent source).
+    pub fn add_snow(&mut self, atom: u16, amount: i32) {
+        for _ in 0..amount {
+            let mut m = Mana::simple(atom);
+            m.is_snow = true;
+            self.mana.push(m);
+        }
+    }
+
+    /// Add mana with a restriction (from RestrictValid$).
+    pub fn add_restricted(&mut self, atom: u16, restriction: String) {
+        let mut m = Mana::simple(atom);
+        m.restriction = Some(restriction);
+        self.mana.push(m);
+    }
+
+    /// Count mana in pool that has the "can't be countered" flag.
+    pub fn count_uncounterable(&self) -> i32 {
+        self.mana.iter().filter(|m| m.adds_no_counter).count() as i32
+    }
+
+    /// Collect keywords that should be added to a spell based on consumed mana.
+    /// Call this before and after payment to diff.
+    pub fn collect_keyword_mana(&self) -> Vec<(String, Option<String>)> {
+        self.mana
+            .iter()
+            .filter_map(|m| {
+                m.adds_keywords.as_ref().map(|kw| {
+                    (kw.clone(), m.adds_keywords_valid.clone())
+                })
+            })
+            .collect()
+    }
+
+    /// Collect counter specs from mana that should be applied to permanents cast with it.
+    pub fn collect_counter_mana(&self) -> Vec<(String, Option<String>)> {
+        self.mana
+            .iter()
+            .filter_map(|m| {
+                m.adds_counters.as_ref().map(|cs| {
+                    (cs.clone(), m.adds_counters_valid.clone())
+                })
+            })
+            .collect()
+    }
+
+    /// Collect trigger SVars from mana that should fire when spent.
+    /// Returns (svar_name, source_card_id) pairs.
+    pub fn collect_trigger_mana(&self) -> Vec<(String, CardId)> {
+        self.mana
+            .iter()
+            .filter_map(|m| {
+                m.triggers_when_spent.as_ref().and_then(|svar| {
+                    m.source_card.map(|src| (svar.clone(), src))
+                })
+            })
+            .collect()
+    }
+
+    /// Get the color of each mana in the pool (for tracking consumed colors).
+    pub fn mana_colors(&self) -> Vec<u16> {
+        self.mana.iter().map(|m| m.color).collect()
+    }
+
+    /// Get a bitmask of all colors present in the pool.
+    pub fn colors_present(&self) -> u16 {
+        let mut mask = 0u16;
+        for m in &self.mana {
+            mask |= m.color;
+        }
+        mask
+    }
+
+    /// Count snow mana in the pool (any color).
+    pub fn count_snow(&self) -> i32 {
+        self.mana.iter().filter(|m| m.is_snow).count() as i32
+    }
+
+    pub fn add_mana(&mut self, m: Mana) {
+        self.mana.push(m);
     }
 
     pub fn total(&self) -> i32 {
-        self.white + self.blue + self.black + self.red + self.green + self.colorless
+        self.mana.len() as i32
     }
+
+    pub fn count_color(&self, atom: u16) -> i32 {
+        self.mana.iter().filter(|m| m.color == atom).count() as i32
+    }
+
+    pub fn white(&self) -> i32 { self.count_color(ManaAtom::WHITE) }
+    pub fn blue(&self) -> i32 { self.count_color(ManaAtom::BLUE) }
+    pub fn black(&self) -> i32 { self.count_color(ManaAtom::BLACK) }
+    pub fn red(&self) -> i32 { self.count_color(ManaAtom::RED) }
+    pub fn green(&self) -> i32 { self.count_color(ManaAtom::GREEN) }
+    pub fn colorless(&self) -> i32 { self.count_color(ManaAtom::COLORLESS) }
 
     /// Remove `amount` of a given mana atom from the pool, saturating at 0.
     pub fn remove(&mut self, atom: u16, amount: i32) {
-        match atom {
-            ManaAtom::WHITE => self.white = (self.white - amount).max(0),
-            ManaAtom::BLUE => self.blue = (self.blue - amount).max(0),
-            ManaAtom::BLACK => self.black = (self.black - amount).max(0),
-            ManaAtom::RED => self.red = (self.red - amount).max(0),
-            ManaAtom::GREEN => self.green = (self.green - amount).max(0),
-            _ => self.colorless = (self.colorless - amount).max(0),
-        }
+        let mut remaining = amount;
+        self.mana.retain(|m| {
+            if remaining > 0 && m.color == atom {
+                remaining -= 1;
+                false
+            } else {
+                true
+            }
+        });
     }
 
     /// Returns true if the pool contains at least `amount` of the given atom.
     pub fn has_atom(&self, atom: u16, amount: i32) -> bool {
-        let available = match atom {
-            ManaAtom::WHITE => self.white,
-            ManaAtom::BLUE => self.blue,
-            ManaAtom::BLACK => self.black,
-            ManaAtom::RED => self.red,
-            ManaAtom::GREEN => self.green,
-            _ => self.colorless,
-        };
-        available >= amount
+        self.count_color(atom) >= amount
     }
 
     /// Spend generic mana from the pool, consuming colorless first then any color.
@@ -85,34 +279,53 @@ impl ManaPool {
     pub fn spend_generic(&mut self, mut amount: i32) -> i32 {
         let spent = amount.min(self.total());
         // Consume colorless first
-        let from_colorless = amount.min(self.colorless);
-        self.colorless -= from_colorless;
+        let colorless_count = self.colorless();
+        let from_colorless = amount.min(colorless_count);
+        self.remove(ManaAtom::COLORLESS, from_colorless);
         amount -= from_colorless;
         // Then consume from colors in WUBRG order
-        for pool in [
-            &mut self.white,
-            &mut self.blue,
-            &mut self.black,
-            &mut self.red,
-            &mut self.green,
-        ] {
+        for &color in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
             if amount <= 0 {
                 break;
             }
-            let take = amount.min(*pool);
-            *pool -= take;
+            let available = self.count_color(color);
+            let take = amount.min(available);
+            self.remove(color, take);
             amount -= take;
         }
         spent
     }
 
     pub fn empty(&mut self) {
-        self.white = 0;
-        self.blue = 0;
-        self.black = 0;
-        self.red = 0;
-        self.green = 0;
-        self.colorless = 0;
+        self.mana.clear();
+    }
+
+    /// Clear mana pool at phase transitions, retaining persistent and combat mana.
+    /// Mirrors Java's PhaseHandler.onPhaseEnd() → clearPool(true) (MTG rule 500.4).
+    pub fn clear_pool(&mut self, phase: PhaseType) -> usize {
+        self.clear_pool_with_keep(phase, 0)
+    }
+
+    /// Clear the mana pool, retaining persistent mana, combat mana (if in combat),
+    /// and mana of colors specified by `keep_colors` bitmask (from UnspentMana statics).
+    /// Returns the number of mana cleared (for mana burn calculation).
+    pub fn clear_pool_with_keep(&mut self, phase: PhaseType, keep_colors: u16) -> usize {
+        let before = self.mana.len();
+        let in_combat = matches!(
+            phase,
+            PhaseType::CombatBegin
+                | PhaseType::CombatDeclareAttackers
+                | PhaseType::CombatDeclareBlockers
+                | PhaseType::CombatFirstStrikeDamage
+                | PhaseType::CombatDamage
+                | PhaseType::CombatEnd
+        );
+        self.mana.retain(|m| {
+            m.is_persistent
+                || (m.is_combat_mana && in_combat)
+                || (keep_colors != 0 && (m.color & keep_colors) != 0)
+        });
+        before - self.mana.len()
     }
 
     /// Try to pay a mana cost. Returns true if successful and deducts the mana.
@@ -154,18 +367,97 @@ impl ManaPool {
                 required[5] += 1;
             }
         }
-        if self.white < required[0]
-            || self.blue < required[1]
-            || self.black < required[2]
-            || self.red < required[3]
-            || self.green < required[4]
-            || self.colorless < required[5]
+        if self.white() < required[0]
+            || self.blue() < required[1]
+            || self.black() < required[2]
+            || self.red() < required[3]
+            || self.green() < required[4]
+            || self.colorless() < required[5]
         {
             return false;
         }
 
         let mut pool = self.clone();
         pool.try_pay(cost)
+    }
+
+    /// Check if the pool can pay a cost with any-color conversion active.
+    pub fn can_pay_any_color(&self, cost: &forge_foundation::ManaCost) -> bool {
+        if let Some(max) = self.total_sources {
+            if cost.cmc() > max {
+                return false;
+            }
+        }
+        let mut pool = self.clone();
+        pool.try_pay_any_color(cost)
+    }
+
+    /// Create a clone with restricted mana filtered out based on context.
+    fn filtered_for_context(&self, ctx: &ManaPaymentContext) -> ManaPool {
+        let mut pool = self.clone();
+        pool.mana.retain(|m| {
+            match &m.restriction {
+                None => true,
+                Some(r) => mana_meets_restriction(r, ctx),
+            }
+        });
+        pool
+    }
+
+    /// Check if pool can pay a cost, respecting mana restrictions for the given spell context.
+    pub fn can_pay_for_spell(&self, cost: &forge_foundation::ManaCost, ctx: &ManaPaymentContext) -> bool {
+        let filtered = self.filtered_for_context(ctx);
+        filtered.can_pay(cost)
+    }
+
+    /// Pay a cost, skipping restricted mana that doesn't match the context.
+    /// Returns true if successful and deducts the mana from the ORIGINAL pool.
+    pub fn try_pay_for_spell(&mut self, cost: &forge_foundation::ManaCost, ctx: &ManaPaymentContext) -> bool {
+        // Temporarily remove ineligible mana, try to pay, then restore unused ones
+        let mut ineligible: Vec<Mana> = Vec::new();
+        let mut eligible: Vec<Mana> = Vec::new();
+        for m in self.mana.drain(..) {
+            if let Some(ref r) = m.restriction {
+                if !mana_meets_restriction(r, ctx) {
+                    ineligible.push(m);
+                    continue;
+                }
+            }
+            eligible.push(m);
+        }
+        self.mana = eligible;
+        let result = self.try_pay(cost);
+        // Restore ineligible mana
+        self.mana.extend(ineligible);
+        result
+    }
+
+    /// Pay a cost with restriction filtering and optional any-color conversion.
+    pub fn try_pay_for_spell_converted(
+        &mut self,
+        cost: &forge_foundation::ManaCost,
+        ctx: &ManaPaymentContext,
+        any_color: bool,
+    ) -> bool {
+        let mut ineligible: Vec<Mana> = Vec::new();
+        let mut eligible: Vec<Mana> = Vec::new();
+        for m in self.mana.drain(..) {
+            if let Some(ref r) = m.restriction {
+                if !mana_meets_restriction(r, ctx) {
+                    ineligible.push(m);
+                    continue;
+                }
+            }
+            eligible.push(m);
+        }
+        self.mana = eligible;
+        let result = if any_color {
+            self.try_pay_any_color(cost)
+        } else {
+            self.try_pay(cost)
+        };
+        self.mana.extend(ineligible);
+        result
     }
 
     /// Returns true if the pool can pay `cost` plus `extra_generic` additional generic mana.
@@ -285,6 +577,16 @@ impl ManaPool {
 
             let atoms = shard.shard();
 
+            // Snow shard ({S}) — pay with any snow mana
+            if shard.is_snow() {
+                if let Some(idx) = self.mana.iter().position(|m| m.is_snow) {
+                    self.mana.remove(idx);
+                    continue;
+                } else {
+                    return false;
+                }
+            }
+
             // Pure color shards
             if shard.is_mono_color() && !shard.is_phyrexian() && !shard.is_or_2_generic() {
                 let paid = self.pay_color(atoms);
@@ -305,14 +607,8 @@ impl ManaPool {
                 // Hybrid mana — try each color
                 let color_atoms = atoms & ManaAtom::COLORS_SUPERPOSITION;
                 let mut paid = false;
-                for &(bit, pool_ref) in &[
-                    (ManaAtom::WHITE, self.white),
-                    (ManaAtom::BLUE, self.blue),
-                    (ManaAtom::BLACK, self.black),
-                    (ManaAtom::RED, self.red),
-                    (ManaAtom::GREEN, self.green),
-                ] {
-                    if (color_atoms & bit) != 0 && pool_ref > 0 {
+                for &bit in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
+                    if (color_atoms & bit) != 0 && self.count_color(bit) > 0 {
                         self.pay_color(bit);
                         paid = true;
                         break;
@@ -323,8 +619,8 @@ impl ManaPool {
                 }
             } else if shard.is_colorless() && !shard.is_multi_color() {
                 // Pure colorless (C)
-                if self.colorless > 0 {
-                    self.colorless -= 1;
+                if self.colorless() > 0 {
+                    self.remove(ManaAtom::COLORLESS, 1);
                 } else {
                     return false;
                 }
@@ -352,47 +648,86 @@ impl ManaPool {
         true
     }
 
-    pub fn pay_color(&mut self, atoms: u16) -> bool {
-        if (atoms & ManaAtom::WHITE) != 0 && self.white > 0 {
-            self.white -= 1;
-            return true;
+    /// Try to pay a mana cost with any-color conversion active.
+    /// All colored mana can pay for any colored shard.
+    pub fn try_pay_any_color(&mut self, cost: &forge_foundation::ManaCost) -> bool {
+        for shard in cost.shards() {
+            if shard.is_x() {
+                continue;
+            }
+            let atoms = shard.shard();
+            if shard.is_snow() {
+                if let Some(idx) = self.mana.iter().position(|m| m.is_snow) {
+                    self.mana.remove(idx);
+                    continue;
+                } else {
+                    return false;
+                }
+            }
+            if shard.is_colorless() && !shard.is_multi_color() {
+                // Pure colorless (C) — must be paid with colorless
+                if self.colorless() > 0 {
+                    self.remove(ManaAtom::COLORLESS, 1);
+                } else {
+                    return false;
+                }
+            } else if shard.is_phyrexian() {
+                // Phyrexian: any color can pay (with conversion active, even easier)
+                let color_atoms = atoms & ManaAtom::COLORS_SUPERPOSITION;
+                if color_atoms != 0 {
+                    // Try to pay with any colored mana
+                    if !self.pay_any_colored() {
+                        // Life payment assumed possible
+                    }
+                }
+            } else if shard.is_mono_color() || shard.is_multi_color() || shard.is_or_2_generic() {
+                // With any-color conversion, any colored mana can pay any colored shard
+                if !self.pay_any_colored() {
+                    return false;
+                }
+            }
         }
-        if (atoms & ManaAtom::BLUE) != 0 && self.blue > 0 {
-            self.blue -= 1;
-            return true;
+        let generic = cost.generic_cost();
+        if generic > 0 {
+            if self.total() < generic {
+                return false;
+            }
+            self.pay_generic(generic);
         }
-        if (atoms & ManaAtom::BLACK) != 0 && self.black > 0 {
-            self.black -= 1;
-            return true;
-        }
-        if (atoms & ManaAtom::RED) != 0 && self.red > 0 {
-            self.red -= 1;
-            return true;
-        }
-        if (atoms & ManaAtom::GREEN) != 0 && self.green > 0 {
-            self.green -= 1;
-            return true;
+        true
+    }
+
+    /// Pay one mana of any color from the pool.
+    fn pay_any_colored(&mut self) -> bool {
+        for &color in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN, ManaAtom::COLORLESS] {
+            if self.count_color(color) > 0 {
+                self.remove(color, 1);
+                return true;
+            }
         }
         false
     }
 
-    fn pay_generic(&mut self, mut amount: i32) {
+    pub fn pay_color(&mut self, atoms: u16) -> bool {
+        for &color in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
+            if (atoms & color) != 0 && self.count_color(color) > 0 {
+                self.remove(color, 1);
+                return true;
+            }
+        }
+        false
+    }
+
+    pub fn pay_generic(&mut self, mut amount: i32) {
         // Pay with colorless first, then colors (WUBRG order)
-        let pools = [
-            &mut self.colorless,
-            &mut self.white,
-            &mut self.blue,
-            &mut self.black,
-            &mut self.red,
-            &mut self.green,
-        ];
-        for pool in pools {
-            let take = amount.min(*pool);
-            *pool -= take;
-            amount -= take;
-            if amount == 0 {
+        for &color in &[ManaAtom::COLORLESS, ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
+            if amount <= 0 {
                 break;
             }
+            let available = self.count_color(color);
+            let take = amount.min(available);
+            self.remove(color, take);
+            amount -= take;
         }
     }
 }
@@ -637,12 +972,17 @@ pub(crate) fn tap_land_for_mana(
     tapped_lands: &mut Vec<CardId>,
 ) {
     let pain = land_pain_damage(game.card(land_id), atom);
+    let is_snow = game.card(land_id).type_line.is_snow();
     // Only tap if not already tapped — tapped cards with non-tap mana abilities
     // (e.g. Rasputin Dreamweaver's SubCounter ability) are valid sources.
     if !game.card(land_id).tapped {
         game.tap(land_id);
     }
-    pool.add(atom, 1);
+    if is_snow {
+        pool.add_snow(atom, 1);
+    } else {
+        pool.add(atom, 1);
+    }
     if pain > 0 {
         game.player_mut(player).lose_life(pain);
     }
@@ -727,28 +1067,40 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
     // Per-source color bitmasks for source-level matching in can_pay.
     // Start with floating mana from the existing pool.
     let mut source_colors: Vec<u16> = Vec::new();
-    for _ in 0..pool.white {
+    for _ in 0..pool.white() {
         source_colors.push(ManaAtom::WHITE);
     }
-    for _ in 0..pool.blue {
+    for _ in 0..pool.blue() {
         source_colors.push(ManaAtom::BLUE);
     }
-    for _ in 0..pool.black {
+    for _ in 0..pool.black() {
         source_colors.push(ManaAtom::BLACK);
     }
-    for _ in 0..pool.red {
+    for _ in 0..pool.red() {
         source_colors.push(ManaAtom::RED);
     }
-    for _ in 0..pool.green {
+    for _ in 0..pool.green() {
         source_colors.push(ManaAtom::GREEN);
     }
-    for _ in 0..pool.colorless {
+    for _ in 0..pool.colorless() {
         source_colors.push(0); // colorless can only pay generic
+    }
+
+    // Helper: add mana to availability pool, marking as snow if source is snow.
+    macro_rules! avail_add {
+        ($avail:expr, $is_snow:expr, $atom:expr) => {
+            if $is_snow {
+                $avail.add_snow($atom, 1);
+            } else {
+                $avail.add($atom, 1);
+            }
+        };
     }
 
     for &card_id in battlefield {
         let card = game.card(card_id);
         let is_tapped = card.tapped;
+        let card_is_snow = card.type_line.is_snow();
 
         // Summoning-sick creatures cannot activate {T} abilities (including mana).
         // Must match Java's ComputerUtilMana.canPayManaCost() behavior so
@@ -795,13 +1147,13 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
                 if !subtype_atoms.is_empty() {
                     let mut src_mask: u16 = 0;
                     for atom in subtype_atoms {
-                        available.add(atom, 1);
+                        avail_add!(available, card_is_snow, atom);
                         src_mask |= atom;
                     }
                     source_count += 1;
                     source_colors.push(src_mask);
                 } else if let Some(atom) = basic_land_mana_atom(card) {
-                    available.add(atom, 1);
+                    avail_add!(available, card_is_snow, atom);
                     source_count += 1;
                     source_colors.push(atom);
                 }
@@ -838,7 +1190,7 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
                     }) {
                         for atom in chosen_colors_to_atoms(&colors) {
                             if !added_atoms.contains(&atom) {
-                                available.add(atom, 1);
+                                avail_add!(available, card_is_snow, atom);
                                 added_atoms.push(atom);
                                 src_mask |= atom;
                             }
@@ -848,7 +1200,7 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
                 } else {
                     for atom in produced_to_atoms(produced, &card.chosen_colors) {
                         if !added_atoms.contains(&atom) {
-                            available.add(atom, 1);
+                            avail_add!(available, card_is_snow, atom);
                             added_atoms.push(atom);
                             src_mask |= atom;
                             added_any = true;
@@ -866,7 +1218,7 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
             if !subtype_atoms.is_empty() {
                 for atom in subtype_atoms {
                     if !added_atoms.contains(&atom) {
-                        available.add(atom, 1);
+                        avail_add!(available, card_is_snow, atom);
                         added_atoms.push(atom);
                         src_mask |= atom;
                         added_any = true;
@@ -874,7 +1226,7 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
                 }
             } else if let Some(atom) = basic_land_mana_atom(card) {
                 // Name-based fallback for basic lands named "Forest" etc.
-                available.add(atom, 1);
+                avail_add!(available, card_is_snow, atom);
                 src_mask |= atom;
                 added_any = true;
             }
@@ -974,29 +1326,29 @@ mod tests {
     #[test]
     fn pay_simple_cost() {
         let mut pool = ManaPool::new();
-        pool.red = 1;
+        pool.add(ManaAtom::RED, 1);
 
         let cost = ManaCost::parse("R");
         assert!(pool.can_pay(&cost));
         assert!(pool.try_pay(&cost));
-        assert_eq!(pool.red, 0);
+        assert_eq!(pool.red(), 0);
     }
 
     #[test]
     fn pay_generic_and_colored() {
         let mut pool = ManaPool::new();
-        pool.green = 2;
+        pool.add(ManaAtom::GREEN, 2);
 
         let cost = ManaCost::parse("1 G");
         assert!(pool.can_pay(&cost));
         assert!(pool.try_pay(&cost));
-        assert_eq!(pool.green, 0); // 1 for G, 1 for generic
+        assert_eq!(pool.green(), 0); // 1 for G, 1 for generic
     }
 
     #[test]
     fn insufficient_mana() {
         let mut pool = ManaPool::new();
-        pool.red = 1;
+        pool.add(ManaAtom::RED, 1);
 
         let cost = ManaCost::parse("1 R R");
         assert!(!pool.can_pay(&cost));
@@ -1005,7 +1357,7 @@ mod tests {
     #[test]
     fn empty_pool() {
         let mut pool = ManaPool::new();
-        pool.white = 3;
+        pool.add(ManaAtom::WHITE, 3);
         pool.empty();
         assert_eq!(pool.total(), 0);
     }

@@ -126,6 +126,9 @@ pub fn spawn_ai_prompt_responder(
                 AgentPromptInner::ChooseOptionalTrigger { .. } => {
                     Some(PlayerAction::OptionalTriggerDecision { accept: true })
                 }
+                AgentPromptInner::ChoosePhyrexian { .. } => {
+                    Some(PlayerAction::PhyrexianDecision { pay_life: false })
+                }
                 AgentPromptInner::ChooseKicker { .. } => {
                     Some(PlayerAction::KickerDecision { kicked: false })
                 }
@@ -186,6 +189,29 @@ pub fn spawn_ai_prompt_responder(
                     } else {
                         Some(PlayerAction::DeclineCombatCost)
                     }
+                }
+                AgentPromptInner::PayManaCost { .. } => {
+                    // AI never gets this prompt (uses auto-tap); cancel if somehow received
+                    Some(PlayerAction::CancelManaCost)
+                }
+                AgentPromptInner::ChooseDelve { ref valid_card_ids, max_cards, .. } => {
+                    // AI: delve max cards
+                    Some(PlayerAction::DelveDecision {
+                        chosen_card_ids: valid_card_ids.iter().take(max_cards).cloned().collect(),
+                    })
+                }
+                AgentPromptInner::ChooseConvoke { .. } => {
+                    // AI: don't convoke (auto-tap handles mana)
+                    Some(PlayerAction::ConvokeDecision { chosen_card_ids: vec![] })
+                }
+                AgentPromptInner::ChooseImprovise { .. } => {
+                    // AI: don't improvise (auto-tap handles mana)
+                    Some(PlayerAction::ImproviseDecision { chosen_card_ids: vec![] })
+                }
+                AgentPromptInner::SpecifyManaCombo { available_colors, amount, .. } => {
+                    // AI: pick first available color for all
+                    let color = available_colors.first().cloned().unwrap_or_else(|| "C".to_string());
+                    Some(PlayerAction::ManaComboDecision { chosen_colors: vec![color; amount] })
                 }
                 AgentPromptInner::StateUpdate { .. } | AgentPromptInner::GameOver { .. } => None,
             };

@@ -412,6 +412,17 @@ pub trait PlayerAgent {
         false
     }
 
+    /// Assist: another player asks if we'll help pay generic mana.
+    /// Returns how much generic mana to pay (0 = decline). Default: decline.
+    fn help_pay_assist(
+        &mut self,
+        _player: PlayerId,
+        _card_name: &str,
+        _max_generic: u32,
+    ) -> u32 {
+        0
+    }
+
     /// Choose whether to pay the buyback cost for a spell.
     /// Returns true to pay buyback, false to cast normally.
     /// Default: don't pay buyback.
@@ -559,6 +570,87 @@ pub trait PlayerAgent {
         CombatCostAction::Decline
     }
 
+    /// Choose graveyard cards to exile for Delve (reduces generic cost).
+    /// `valid` lists graveyard card IDs, `max` is the maximum that can be exiled.
+    /// Default: exile max cards (AI default — maximize cost reduction).
+    fn choose_delve(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        max: usize,
+        _card_name: Option<&str>,
+    ) -> Vec<CardId> {
+        valid.iter().copied().take(max).collect()
+    }
+
+    /// Choose artifacts to tap for Improvise (each pays {1} generic).
+    /// `untapped_artifacts` lists available artifacts to tap.
+    /// Default: don't improvise (AI default — auto-tap handles mana).
+    fn choose_improvise(
+        &mut self,
+        _player: PlayerId,
+        _untapped_artifacts: &[CardId],
+        _remaining_cost: &forge_foundation::ManaCost,
+        _card_name: Option<&str>,
+    ) -> Vec<CardId> {
+        vec![]
+    }
+
+    /// Choose creatures to tap for Convoke (each pays {1} or a matching colored mana).
+    /// `untapped_creatures` lists available creatures to tap.
+    /// Default: don't convoke (AI default — auto-tap handles mana).
+    fn choose_convoke(
+        &mut self,
+        _player: PlayerId,
+        _untapped_creatures: &[CardId],
+        _remaining_cost: &forge_foundation::ManaCost,
+        _card_name: Option<&str>,
+    ) -> Vec<CardId> {
+        vec![]
+    }
+
+    /// Pay a mana cost interactively (human players only).
+    /// Called in a loop: tap lands to build mana, then Pay or Cancel.
+    /// Default: always cancel (AI agents use auto-tap instead).
+    fn pay_mana_cost(
+        &mut self,
+        _player: PlayerId,
+        _card_id: CardId,
+        _card_name: &str,
+        _mana_cost: &str,
+        _tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+        _mana_pool: &ManaPool,
+    ) -> ManaCostAction {
+        ManaCostAction::Cancel
+    }
+
+    /// Returns true if this agent represents a human player (interactive UI).
+    /// Human players get interactive mana payment instead of auto-tap.
+    fn is_human(&self) -> bool {
+        false
+    }
+
+    /// Specify mana color distribution for combo/any mana production.
+    /// `available_colors` lists which colors can be produced.
+    /// `amount` is the total mana to distribute across colors.
+    /// Returns a list of color letters (e.g. ["W", "W", "U"]) totaling `amount`.
+    /// Default: picks the color with least mana in pool for each unit (AI heuristic).
+    fn specify_mana_combo(
+        &mut self,
+        _player: PlayerId,
+        available_colors: &[String],
+        amount: usize,
+        _card_name: Option<&str>,
+    ) -> Vec<String> {
+        // Default AI: pick first available color for all
+        if let Some(first) = available_colors.first() {
+            vec![first.clone(); amount]
+        } else {
+            vec!["C".to_string(); amount]
+        }
+    }
+
     /// Choose whether to play a land or cast a spell when both are possible.
     /// Returns true for land, false for spell, None to pass.
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool>;
@@ -607,6 +699,19 @@ pub enum CombatCostAction {
     Pay,
     /// Decline to pay — remove this attacker.
     Decline,
+}
+
+/// The action a player takes when interactively paying a mana cost for a spell.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ManaCostAction {
+    /// Tap an untapped land to add mana to the pool.
+    TapLand(CardId),
+    /// Untap a tapped land and remove its mana from the pool (undo).
+    UntapLand(CardId),
+    /// Confirm payment from the mana pool.
+    Pay,
+    /// Cancel casting this spell.
+    Cancel,
 }
 
 /// A simple agent that always passes priority and makes no choices.

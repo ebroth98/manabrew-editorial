@@ -1,0 +1,20 @@
+{
+  "label": "Phyrexian Mana Test",
+  "desc": "Phyrexian mana cards - pay life or mana",
+  "color": "text-purple-300",
+  "opponent": "green_stompy",
+  "ai_eligible": false,
+  "order": 25,
+  "cards": [
+    { "name": "Swamp", "count": 8, "set": "nph" },
+    { "name": "Mountain", "count": 4, "set": "nph" },
+    { "name": "Forest", "count": 4, "set": "nph" },
+    { "name": "Dismember", "count": 4, "set": "nph" },
+    { "name": "Gut Shot", "count": 4, "set": "nph" },
+    { "name": "Mutagenic Growth", "count": 4, "set": "nph" },
+    { "name": "Act of Aggression", "count": 3, "set": "nph" },
+    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
+    { "name": "Shock", "count": 4, "set": "m21" },
+    { "name": "Raging Goblin", "count": 4, "set": "m10" }
+  ]
+}

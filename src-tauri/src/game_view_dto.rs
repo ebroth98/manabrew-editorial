@@ -152,12 +152,12 @@ pub struct StackObjectDto {
 
 fn mana_pool_to_map(pool: &ManaPool) -> HashMap<String, i32> {
     let mut m = HashMap::new();
-    m.insert("W".into(), pool.white);
-    m.insert("U".into(), pool.blue);
-    m.insert("B".into(), pool.black);
-    m.insert("R".into(), pool.red);
-    m.insert("G".into(), pool.green);
-    m.insert("C".into(), pool.colorless);
+    m.insert("W".into(), pool.white());
+    m.insert("U".into(), pool.blue());
+    m.insert("B".into(), pool.black());
+    m.insert("R".into(), pool.red());
+    m.insert("G".into(), pool.green());
+    m.insert("C".into(), pool.colorless());
     m
 }
 

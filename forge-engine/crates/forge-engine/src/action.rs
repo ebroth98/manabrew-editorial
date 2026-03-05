@@ -108,6 +108,35 @@ impl GameState {
                         self.cards[card_id.index()].add_counter(&ct, amount);
                     }
                 }
+                // Apply +1/+1 counters from mana that adds counters (Guildmages' Forum, Opal Palace)
+                let etb_p1p1 = self.cards[card_id.index()].etb_counters_p1p1;
+                if etb_p1p1 > 0 {
+                    let ct = crate::card::CounterType::P1P1;
+                    if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                        &self.cards,
+                        &self.cards[card_id.index()],
+                        &ct,
+                    ) {
+                        self.cards[card_id.index()].add_counter(&ct, etb_p1p1);
+                    }
+                    self.cards[card_id.index()].etb_counters_p1p1 = 0;
+                }
+                // Sunburst: add counters based on colors of mana spent
+                let sunburst = self.cards[card_id.index()].sunburst_count();
+                if sunburst > 0 && self.cards[card_id.index()].has_keyword("Sunburst") {
+                    let ct = if self.cards[card_id.index()].is_creature() {
+                        crate::card::CounterType::P1P1
+                    } else {
+                        crate::card::CounterType::Charge
+                    };
+                    if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                        &self.cards,
+                        &self.cards[card_id.index()],
+                        &ct,
+                    ) {
+                        self.cards[card_id.index()].add_counter(&ct, sunburst);
+                    }
+                }
                 return;
             }
             ZoneType::Graveyard | ZoneType::Hand | ZoneType::Exile | ZoneType::Library => {
@@ -330,16 +359,21 @@ impl GameState {
             .collect();
 
         for cid in battlefield_cards {
-            let card = &self.cards[cid.index()];
-            if card.is_creature() {
+            let (is_creature, zero_toughness, lethal, should_die, owner) = {
+                let card = &self.cards[cid.index()];
+                let is_creature = card.is_creature();
                 let zero_toughness = card.toughness() <= 0;
-                // Deathtouch kills on ANY damage, including wither/infect
-                // (which applies -1/-1 counters instead of marking card.damage).
                 let lethal =
                     card.lethal_damage() || card.has_deathtouch_damage;
                 let should_die = zero_toughness || lethal;
+                (is_creature, zero_toughness, lethal, should_die, card.owner)
+            };
+            if is_creature {
                 if should_die {
-                    let owner = card.owner;
+                    // Clear deathtouch flag regardless of outcome (mirrors Java
+                    // GameAction.java line 1491: c.setHasBeenDealtDeathtouchDamage(false)).
+                    self.cards[cid.index()].has_deathtouch_damage = false;
+                    let owner = owner;
                     // CR 702.12: Indestructible prevents death from lethal damage and
                     // "destroy" effects, but NOT from toughness ≤ 0 (CR 704.5f vs 704.5g).
                     // This covers K:Indestructible from Forge card scripts (e.g. Darksteel Myr).

@@ -51,6 +51,9 @@ pub struct PlayerState {
 
     // Energy counters (Kaladesh block). Persistent resource like mana.
     pub energy_counters: i32,
+
+    // Mana expend tracking: cumulative mana spent on spells this turn (for Expend triggers).
+    pub mana_expended_this_turn: i32,
 }
 
 impl PlayerState {
@@ -78,6 +81,7 @@ impl PlayerState {
             skip_next_untap: false,
             damage_prevention: 0,
             energy_counters: 0,
+            mana_expended_this_turn: 0,
         }
     }
 
@@ -125,6 +129,7 @@ impl PlayerState {
         self.life_gained_this_turn = 0;
         self.life_lost_this_turn = 0;
         self.drawn_this_turn = 0;
+        self.mana_expended_this_turn = 0;
     }
 }
 

@@ -107,7 +107,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Ask the activating player to choose mode(s)
     let card_name = ctx.game.card(source_id).card_name.clone();
-    let chosen_indices: Vec<usize> = if entwine_paid || (has_entwine && sa.kicked) {
+    // Check if modes were pre-selected (Spree — chosen during casting before payment)
+    let pre_selected = ctx.game.card_mut(source_id).chosen_modes.take();
+    let chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
+        // Spree: modes already chosen before payment
+        pre
+    } else if entwine_paid || (has_entwine && sa.kicked) {
         // Entwine: all valid modes (mapped back to original indices)
         valid_mode_indices.clone()
     } else {

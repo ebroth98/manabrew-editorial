@@ -45,12 +45,12 @@ impl GameLoop {
         }
 
         for pool in &self.mana_pools {
-            hasher.write_i32(pool.white);
-            hasher.write_i32(pool.blue);
-            hasher.write_i32(pool.black);
-            hasher.write_i32(pool.red);
-            hasher.write_i32(pool.green);
-            hasher.write_i32(pool.colorless);
+            hasher.write_i32(pool.white());
+            hasher.write_i32(pool.blue());
+            hasher.write_i32(pool.black());
+            hasher.write_i32(pool.red());
+            hasher.write_i32(pool.green());
+            hasher.write_i32(pool.colorless());
         }
 
         for c in &game.cards {
@@ -144,14 +144,87 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         phase: PhaseType,
     ) {
-        // Empty all players' mana pools at each phase/step transition.
-        // Mirrors Java's PhaseHandler.onPhaseEnd() which calls clearPool(true)
-        // for every player whenever a phase ends (MTG rule 500.4).
-        for pool in self.mana_pools.iter_mut() {
-            pool.empty();
+        // Clear mana pools at each phase/step transition, retaining persistent,
+        // combat mana, and UnspentMana static colors (MTG rule 500.4).
+        // Scan for UnspentMana statics (Omnath, Leyline Tyrant, Upwelling, etc.)
+        let num_players = self.mana_pools.len();
+        for pidx in 0..num_players {
+            let player_id = crate::ids::PlayerId(pidx as u32);
+            let keep_colors = compute_unspent_mana_colors(game, player_id);
+            let cleared = self.mana_pools[pidx].clear_pool_with_keep(phase, keep_colors);
+            // Mana burn: if player has ManaBurn static, lose life equal to cleared mana
+            if cleared > 0 && has_mana_burn(game, player_id) {
+                game.player_mut(player_id).life -= cleared as i32;
+            }
         }
         game.turn.phase = phase;
         self.log_phase_begin(phase);
         self.notify_phase_changed(game, agents);
     }
+}
+
+/// Scan battlefield for UnspentMana statics and return a bitmask of mana colors
+/// that the given player should keep. Mirrors Java's `StaticAbilityUnspentMana.getManaToKeep()`.
+fn compute_unspent_mana_colors(game: &GameState, player: crate::ids::PlayerId) -> u16 {
+    use crate::staticability::StaticMode;
+    use forge_foundation::mana::ManaAtom;
+
+    let mut keep: u16 = 0;
+    for card in game.cards.iter().filter(|c| c.zone == forge_foundation::ZoneType::Battlefield) {
+        for st_ab in &card.static_abilities {
+            if st_ab.mode != StaticMode::UnspentMana {
+                continue;
+            }
+            // ValidPlayer$ — check if this affects the given player
+            if let Some(valid_player) = st_ab.params.get("ValidPlayer") {
+                match valid_player.to_ascii_lowercase().as_str() {
+                    "you" => {
+                        if card.controller != player { continue; }
+                    }
+                    "opponent" => {
+                        if card.controller == player { continue; }
+                    }
+                    _ => {} // "Player" or unknown → applies to all
+                }
+            } else if card.controller != player {
+                continue; // Default: controller only
+            }
+            // ManaType$ — specific color, or all if absent
+            if let Some(mana_type) = st_ab.params.get("ManaType") {
+                keep |= ManaAtom::from_name(&mana_type.to_ascii_lowercase());
+            } else {
+                // All mana types
+                keep |= ManaAtom::WHITE | ManaAtom::BLUE | ManaAtom::BLACK
+                    | ManaAtom::RED | ManaAtom::GREEN | ManaAtom::COLORLESS;
+            }
+        }
+    }
+    keep
+}
+
+/// Check if a player has mana burn (from ManaBurn static ability like Yurlok of Scorch Thrash).
+/// Mirrors Java's `StaticAbilityUnspentMana.hasManaBurn()`.
+fn has_mana_burn(game: &GameState, player: crate::ids::PlayerId) -> bool {
+    use crate::staticability::StaticMode;
+
+    for card in game.cards.iter().filter(|c| c.zone == forge_foundation::ZoneType::Battlefield) {
+        for st_ab in &card.static_abilities {
+            if st_ab.mode != StaticMode::ManaBurn {
+                continue;
+            }
+            if let Some(valid_player) = st_ab.params.get("ValidPlayer") {
+                match valid_player.to_ascii_lowercase().as_str() {
+                    "you" => {
+                        if card.controller != player { continue; }
+                    }
+                    "opponent" => {
+                        if card.controller == player { continue; }
+                    }
+                    _ => return true, // "Player" or unspecified → applies to all
+                }
+            }
+            return true;
+        }
+    }
+    false
 }

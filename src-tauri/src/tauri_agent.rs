@@ -2,10 +2,10 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use forge_engine_core::agent::{
-    CombatCostAction, GameLogEvent, MainPhaseAction, PlayerAgent, TargetChoice,
+    CombatCostAction, GameLogEvent, MainPhaseAction, ManaCostAction, PlayerAgent, TargetChoice,
 };
-use forge_engine_core::game::GameState;
 use forge_engine_core::combat::DefenderId;
+use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_foundation::{PhaseType, ZoneType};
@@ -263,7 +263,12 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn mulligan_decision(&mut self, _player: PlayerId, hand: &[CardId], mulligan_count: u32) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        mulligan_count: u32,
+    ) -> bool {
         let hand_card_ids = Self::card_ids(hand);
         self.send_prompt(AgentPromptInner::Mulligan {
             game_view: self.view(),
@@ -276,13 +281,21 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_cards_to_bottom(&mut self, _player: PlayerId, hand: &[CardId], count: usize) -> Vec<CardId> {
+    fn choose_cards_to_bottom(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        count: usize,
+    ) -> Vec<CardId> {
         let view = self.view();
         let hand_card_ids = Self::card_ids(hand);
-        let cards: Vec<CardDto> = hand.iter().filter_map(|&cid| {
-            let id_str = card_id_str(cid);
-            view.my_hand.iter().find(|c| c.id == id_str).cloned()
-        }).collect();
+        let cards: Vec<CardDto> = hand
+            .iter()
+            .filter_map(|&cid| {
+                let id_str = card_id_str(cid);
+                view.my_hand.iter().find(|c| c.id == id_str).cloned()
+            })
+            .collect();
         self.send_prompt(AgentPromptInner::MulliganPutBack {
             game_view: view,
             hand_card_ids,
@@ -399,7 +412,12 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        available: &[CardId],
+        possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
         let available_attacker_ids = Self::card_ids(available);
         let possible_defender_dtos = Self::defender_ids_to_dtos(possible_defenders);
         let mut view = self.view();
@@ -749,6 +767,23 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
+    fn choose_phyrexian_pay_life(
+        &mut self,
+        _player: PlayerId,
+        color: &str,
+        card_name: Option<&str>,
+    ) -> bool {
+        self.send_prompt(AgentPromptInner::ChoosePhyrexian {
+            game_view: self.view(),
+            phyrexian_color: color.to_string(),
+            source_card_name: card_name.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::PhyrexianDecision { pay_life } => pay_life,
+            _ => false,
+        }
+    }
+
     fn choose_kicker(
         &mut self,
         _player: PlayerId,
@@ -926,6 +961,26 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
+    fn choose_x_value(
+        &mut self,
+        _player: PlayerId,
+        max_x: u32,
+        card_name: Option<&str>,
+    ) -> u32 {
+        self.send_prompt(AgentPromptInner::ChooseNumber {
+            game_view: self.view(),
+            min: 0,
+            max: max_x as i32,
+            source_card_name: card_name.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::NumberDecision { chosen_number } => {
+                chosen_number.unwrap_or(max_x as i32).max(0) as u32
+            }
+            _ => max_x,
+        }
+    }
+
     fn choose_number(&mut self, _player: PlayerId, min: i32, max: i32) -> Option<i32> {
         self.send_prompt(AgentPromptInner::ChooseNumber {
             game_view: self.view(),
@@ -970,18 +1025,180 @@ impl PlayerAgent for TauriAgent {
             mana_pool_total,
         });
         match self.recv_action() {
-            PlayerAction::TapLand { card_id } => {
-                parse_card_id(&card_id)
-                    .map(CombatCostAction::TapLand)
-                    .unwrap_or(CombatCostAction::Decline)
-            }
-            PlayerAction::UntapLand { card_id } => {
-                parse_card_id(&card_id)
-                    .map(CombatCostAction::UntapLand)
-                    .unwrap_or(CombatCostAction::Decline)
-            }
+            PlayerAction::TapLand { card_id } => parse_card_id(&card_id)
+                .map(CombatCostAction::TapLand)
+                .unwrap_or(CombatCostAction::Decline),
+            PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)
+                .map(CombatCostAction::UntapLand)
+                .unwrap_or(CombatCostAction::Decline),
             PlayerAction::PayCombatCost => CombatCostAction::Pay,
             _ => CombatCostAction::Decline,
+        }
+    }
+
+    fn choose_delve(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        max: usize,
+        card_name: Option<&str>,
+    ) -> Vec<CardId> {
+        let valid_ids = Self::card_ids(valid);
+        // Build CardDtos for the graveyard cards
+        let zone_cards: Vec<_> = valid.iter().filter_map(|&cid| {
+            self.latest_view.as_ref().and_then(|v| {
+                v.graveyard.iter()
+                    .chain(v.opponent_graveyard.iter())
+                    .find(|c| c.id == card_id_str(cid))
+                    .cloned()
+            })
+        }).collect();
+
+        self.send_prompt(AgentPromptInner::ChooseDelve {
+            game_view: self.view(),
+            valid_card_ids: valid_ids,
+            zone_cards,
+            max_cards: max,
+            source_card_name: card_name.map(|s| s.to_string()),
+        });
+        match self.recv_action() {
+            PlayerAction::DelveDecision { chosen_card_ids } => {
+                chosen_card_ids
+                    .iter()
+                    .filter_map(|id| parse_card_id(id))
+                    .filter(|cid| valid.contains(cid))
+                    .take(max)
+                    .collect()
+            }
+            _ => vec![],
+        }
+    }
+
+    fn choose_improvise(
+        &mut self,
+        _player: PlayerId,
+        untapped_artifacts: &[CardId],
+        remaining_cost: &forge_foundation::ManaCost,
+        card_name: Option<&str>,
+    ) -> Vec<CardId> {
+        let valid_ids = Self::card_ids(untapped_artifacts);
+
+        self.send_prompt(AgentPromptInner::ChooseImprovise {
+            game_view: self.view(),
+            valid_card_ids: valid_ids,
+            remaining_cost: remaining_cost.to_string(),
+            source_card_name: card_name.map(|s| s.to_string()),
+        });
+        match self.recv_action() {
+            PlayerAction::ImproviseDecision { chosen_card_ids } => {
+                chosen_card_ids
+                    .iter()
+                    .filter_map(|id| parse_card_id(id))
+                    .filter(|cid| untapped_artifacts.contains(cid))
+                    .collect()
+            }
+            _ => vec![],
+        }
+    }
+
+    fn choose_convoke(
+        &mut self,
+        _player: PlayerId,
+        untapped_creatures: &[CardId],
+        remaining_cost: &forge_foundation::ManaCost,
+        card_name: Option<&str>,
+    ) -> Vec<CardId> {
+        let valid_ids = Self::card_ids(untapped_creatures);
+
+        self.send_prompt(AgentPromptInner::ChooseConvoke {
+            game_view: self.view(),
+            valid_card_ids: valid_ids,
+            remaining_cost: remaining_cost.to_string(),
+            source_card_name: card_name.map(|s| s.to_string()),
+        });
+        match self.recv_action() {
+            PlayerAction::ConvokeDecision { chosen_card_ids } => {
+                chosen_card_ids
+                    .iter()
+                    .filter_map(|id| parse_card_id(id))
+                    .filter(|cid| untapped_creatures.contains(cid))
+                    .collect()
+            }
+            _ => vec![],
+        }
+    }
+
+    fn pay_mana_cost(
+        &mut self,
+        _player: PlayerId,
+        card_id: CardId,
+        card_name: &str,
+        mana_cost: &str,
+        tappable_lands: &[CardId],
+        untappable_lands: &[CardId],
+        mana_pool: &ManaPool,
+    ) -> ManaCostAction {
+        let card_id_s = card_id_str(card_id);
+        let tappable_land_ids = Self::card_ids(tappable_lands);
+        let untappable_land_ids = Self::card_ids(untappable_lands);
+
+        self.send_prompt(AgentPromptInner::PayManaCost {
+            game_view: self.view(),
+            card_id: card_id_s,
+            card_name: card_name.to_string(),
+            mana_cost: mana_cost.to_string(),
+            tappable_land_ids,
+            untappable_land_ids,
+            mana_pool_total: mana_pool.total(),
+        });
+        match self.recv_action() {
+            PlayerAction::TapLand { card_id } => parse_card_id(&card_id)
+                .map(ManaCostAction::TapLand)
+                .unwrap_or(ManaCostAction::Cancel),
+            PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)
+                .map(ManaCostAction::UntapLand)
+                .unwrap_or(ManaCostAction::Cancel),
+            PlayerAction::PayManaCost => ManaCostAction::Pay,
+            _ => ManaCostAction::Cancel,
+        }
+    }
+
+    fn is_human(&self) -> bool {
+        true
+    }
+
+    fn specify_mana_combo(
+        &mut self,
+        _player: PlayerId,
+        available_colors: &[String],
+        amount: usize,
+        card_name: Option<&str>,
+    ) -> Vec<String> {
+        self.send_prompt(AgentPromptInner::SpecifyManaCombo {
+            game_view: self.view(),
+            available_colors: available_colors.to_vec(),
+            amount,
+            source_card_name: card_name.map(String::from),
+        });
+        let action = self.recv_action();
+        match action {
+            PlayerAction::ManaComboDecision { chosen_colors } => {
+                // Validate: only return valid colors, pad/truncate to amount
+                let mut result: Vec<String> = chosen_colors
+                    .into_iter()
+                    .filter(|c| available_colors.contains(c))
+                    .collect();
+                // Pad with first available color if needed
+                while result.len() < amount {
+                    result.push(available_colors.first().cloned().unwrap_or("C".to_string()));
+                }
+                result.truncate(amount);
+                result
+            }
+            _ => {
+                // Default: all first color
+                vec![available_colors.first().cloned().unwrap_or("C".to_string()); amount]
+            }
         }
     }
 
@@ -1003,7 +1220,11 @@ impl PlayerAgent for TauriAgent {
 
     fn notify_snapshot_created(&mut self, checkpoint_id: u64, label: &str) {
         if let (Some(tx), Some(view)) = (&self.snapshot_tx, self.latest_view.clone()) {
-            let _ = tx.send(GameSnapshotEventDto::new(checkpoint_id, label.to_string(), view));
+            let _ = tx.send(GameSnapshotEventDto::new(
+                checkpoint_id,
+                label.to_string(),
+                view,
+            ));
         }
     }
 

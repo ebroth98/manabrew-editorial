@@ -4,7 +4,7 @@ import { LibraryPeekModal, type LibraryPeekMode } from "@/components/game/Librar
 import { SpellStackModal } from "@/components/game/SpellStackModal";
 import { ChooseModeModal } from "@/components/game/ChooseModeModal";
 import { ChooseOptionalTriggerModal } from "@/components/game/ChooseOptionalTriggerModal";
-import { KickerModal, BuybackModal, MultikickerModal, ReplicateModal, AlternativeCostModal } from "@/components/game/cost-modals";
+import { KickerModal, BuybackModal, MultikickerModal, ReplicateModal, AlternativeCostModal, PhyrexianModal } from "@/components/game/cost-modals";
 import { ChooseColorModal } from "@/components/game/ChooseColorModal";
 import { ChooseCardsModal } from "@/components/game/ChooseCardsModal";
 import { ChooseTypeModal } from "@/components/game/ChooseTypeModal";
@@ -12,7 +12,9 @@ import { ChooseNumberModal } from "@/components/game/ChooseNumberModal";
 import { ChooseCardNameModal } from "@/components/game/ChooseCardNameModal";
 import { DamageOrderModal } from "@/components/game/DamageOrderModal";
 import { PayCombatCostModal } from "@/components/game/PayCombatCostModal";
+import { PayManaCostModal } from "@/components/game/PayManaCostModal";
 import { AbilityPickerModal } from "@/components/game/AbilityPickerModal";
+import { SpecifyManaComboModal } from "@/components/game/SpecifyManaComboModal";
 import { MulliganModal } from "@/components/game/MulliganModal";
 import { MulliganBottomModal } from "@/components/game/MulliganBottomModal";
 import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/xmage";
@@ -49,6 +51,7 @@ interface GameModalsProps {
   // Decision callbacks
   onModeDecision: (indices: number[]) => void;
   onOptionalTriggerDecision: (accept: boolean) => void;
+  onPhyrexianDecision: (payLife: boolean) => void;
   onKickerDecision: (kicked: boolean) => void;
   onBuybackDecision: (paid: boolean) => void;
   onMultikickerDecision: (kickCount: number) => void;
@@ -63,6 +66,15 @@ interface GameModalsProps {
   // Pay combat cost
   onPayCombatCost: () => void;
   onDeclineCombatCost: () => void;
+  // Pay mana cost
+  onPayManaCost: () => void;
+  onCancelManaCost: () => void;
+  // Delve / Convoke
+  onDelveDecision: (cardIds: string[]) => void;
+  onConvokeDecision: (cardIds: string[]) => void;
+  onImproviseDecision: (cardIds: string[]) => void;
+  // Specify mana combo
+  onManaComboDecision: (chosenColors: string[]) => void;
 }
 
 export function GameModals({
@@ -89,6 +101,7 @@ export function GameModals({
   myHand,
   onModeDecision,
   onOptionalTriggerDecision,
+  onPhyrexianDecision,
   onKickerDecision,
   onBuybackDecision,
   onMultikickerDecision,
@@ -102,6 +115,12 @@ export function GameModals({
   onDamageOrderDecision,
   onPayCombatCost,
   onDeclineCombatCost,
+  onPayManaCost,
+  onCancelManaCost,
+  onDelveDecision,
+  onConvokeDecision,
+  onImproviseDecision,
+  onManaComboDecision,
 }: GameModalsProps) {
   return (
     <>
@@ -185,6 +204,14 @@ export function GameModals({
           description={currentPrompt.description}
           cardName={currentPrompt.sourceCardName}
           onConfirm={onOptionalTriggerDecision}
+        />
+      )}
+
+      {promptType === "choosePhyrexian" && currentPrompt?.phyrexianColor != null && (
+        <PhyrexianModal
+          phyrexianColor={currentPrompt.phyrexianColor}
+          sourceCardName={currentPrompt.sourceCardName}
+          onDecide={onPhyrexianDecision}
         />
       )}
 
@@ -278,9 +305,62 @@ export function GameModals({
           attackerName={currentPrompt.attackerName ?? "Creature"}
           cost={currentPrompt.cost != null ? Number(currentPrompt.cost) : 0}
           description={currentPrompt.description}
-          manaPoolTotal={currentPrompt.manaPoolTotal ?? 0}
+          manaPool={currentPrompt.gameView?.players?.[0]?.manaPool ?? {}}
           onPay={onPayCombatCost}
           onDecline={onDeclineCombatCost}
+        />
+      )}
+      {promptType === "chooseDelve" && currentPrompt?.zoneCards != null && (
+        <ChooseCardsModal
+          cards={currentPrompt.zoneCards}
+          minChoices={0}
+          maxChoices={currentPrompt.maxCards ?? 0}
+          sourceCardName={currentPrompt.sourceCardName}
+          onConfirm={onDelveDecision}
+        />
+      )}
+
+      {promptType === "chooseConvoke" && currentPrompt?.validCardIds != null && (
+        <ChooseCardsModal
+          cards={currentPrompt.gameView?.battlefield?.filter(
+            (c) => currentPrompt.validCardIds?.includes(c.id)
+          ) ?? []}
+          minChoices={0}
+          maxChoices={currentPrompt.validCardIds?.length ?? 0}
+          sourceCardName={currentPrompt.sourceCardName}
+          description={currentPrompt.remainingCost ? `Remaining cost: ${currentPrompt.remainingCost}` : undefined}
+          onConfirm={onConvokeDecision}
+        />
+      )}
+
+      {promptType === "chooseImprovise" && currentPrompt?.validCardIds != null && (
+        <ChooseCardsModal
+          cards={currentPrompt.gameView?.battlefield?.filter(
+            (c) => currentPrompt.validCardIds?.includes(c.id)
+          ) ?? []}
+          minChoices={0}
+          maxChoices={currentPrompt.validCardIds?.length ?? 0}
+          sourceCardName={currentPrompt.sourceCardName}
+          description={currentPrompt.remainingCost ? `Remaining cost: ${currentPrompt.remainingCost}` : undefined}
+          onConfirm={onImproviseDecision}
+        />
+      )}
+
+      {promptType === "payManaCost" && currentPrompt?.manaCost != null && (
+        <PayManaCostModal
+          cardName={currentPrompt.cardName ?? "Spell"}
+          manaCost={currentPrompt.manaCost}
+          manaPool={currentPrompt.gameView?.players?.[0]?.manaPool ?? {}}
+          onPay={onPayManaCost}
+          onCancel={onCancelManaCost}
+        />
+      )}
+      {promptType === "specifyManaCombo" && currentPrompt?.availableColors != null && currentPrompt?.amount != null && (
+        <SpecifyManaComboModal
+          availableColors={currentPrompt.availableColors}
+          amount={currentPrompt.amount}
+          sourceCardName={currentPrompt.sourceCardName}
+          onConfirm={onManaComboDecision}
         />
       )}
       {promptType === "chooseDamageAssignmentOrder" && currentPrompt?.blockerIds != null && (

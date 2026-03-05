@@ -133,12 +133,12 @@ pub fn auto_tap_lands(
 
 fn pay_cost_from_pool(unpaid: &mut ManaCostBeingPaid, pool: &ManaPool) {
     let colors = [
-        (ManaAtom::WHITE, pool.white),
-        (ManaAtom::BLUE, pool.blue),
-        (ManaAtom::BLACK, pool.black),
-        (ManaAtom::RED, pool.red),
-        (ManaAtom::GREEN, pool.green),
-        (ManaAtom::COLORLESS, pool.colorless),
+        (ManaAtom::WHITE, pool.white()),
+        (ManaAtom::BLUE, pool.blue()),
+        (ManaAtom::BLACK, pool.black()),
+        (ManaAtom::RED, pool.red()),
+        (ManaAtom::GREEN, pool.green()),
+        (ManaAtom::COLORLESS, pool.colorless()),
     ];
 
     for (atom, count) in colors {

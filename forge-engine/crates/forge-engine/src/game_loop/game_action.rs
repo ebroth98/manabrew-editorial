@@ -127,22 +127,22 @@ impl GameLoop {
                     if can_w || can_u || can_b || can_r || can_g || can_c {
                         source_count += 1;
                         if can_w {
-                            probe.white += 1;
+                            probe.add(ManaAtom::WHITE, 1);
                         }
                         if can_u {
-                            probe.blue += 1;
+                            probe.add(ManaAtom::BLUE, 1);
                         }
                         if can_b {
-                            probe.black += 1;
+                            probe.add(ManaAtom::BLACK, 1);
                         }
                         if can_r {
-                            probe.red += 1;
+                            probe.add(ManaAtom::RED, 1);
                         }
                         if can_g {
-                            probe.green += 1;
+                            probe.add(ManaAtom::GREEN, 1);
                         }
                         if can_c {
-                            probe.colorless += 1;
+                            probe.add(ManaAtom::COLORLESS, 1);
                         }
                     }
                 }
@@ -156,6 +156,13 @@ impl GameLoop {
             // do not expose pure mana abilities as standalone random actions.
             if ab.is_mana_ability {
                 return false;
+            }
+            // PowerUp: once-per-game restriction
+            if ab.params.get("PowerUp").map_or(false, |v| v == "True") {
+                let card = game.card(card_id);
+                if card.activations_this_game.get(&ab.ability_index).copied().unwrap_or(0) > 0 {
+                    return false;
+                }
             }
             if !can_pay(&ab.cost, game, &available_mana, card_id, player) {
                 return false;
@@ -540,6 +547,26 @@ impl GameLoop {
                 CostPart::ExiledMoveToGrave { amount, type_filter } => {
                     self.pay_exiled_move_to_grave_cost(game, agents, player, type_filter, *amount);
                 }
+                CostPart::AddMana { amount, mana_type } => {
+                    use forge_foundation::mana::ManaAtom;
+                    let atom = match mana_type.to_uppercase().as_str() {
+                        "W" | "WHITE" => ManaAtom::WHITE,
+                        "U" | "BLUE" => ManaAtom::BLUE,
+                        "B" | "BLACK" => ManaAtom::BLACK,
+                        "R" | "RED" => ManaAtom::RED,
+                        "G" | "GREEN" => ManaAtom::GREEN,
+                        "C" | "COLORLESS" => ManaAtom::COLORLESS,
+                        _ => ManaAtom::COLORLESS,
+                    };
+                    for _ in 0..*amount {
+                        let mut m = crate::mana::Mana::simple(atom);
+                        m.source_card = Some(card_id);
+                        self.mana_pools[player.index()].add_mana(m);
+                    }
+                }
+                CostPart::Waterbend { amount } => {
+                    self.pay_waterbend_cost(game, agents, player, card_id, *amount);
+                }
             }
         }
     }
@@ -698,7 +725,86 @@ impl GameLoop {
                 CostPart::ExiledMoveToGrave { amount, type_filter } => {
                     self.pay_exiled_move_to_grave_cost(game, agents, player, type_filter, *amount);
                 }
+                CostPart::AddMana { amount, mana_type } => {
+                    use forge_foundation::mana::ManaAtom;
+                    let atom = match mana_type.to_uppercase().as_str() {
+                        "W" | "WHITE" => ManaAtom::WHITE,
+                        "U" | "BLUE" => ManaAtom::BLUE,
+                        "B" | "BLACK" => ManaAtom::BLACK,
+                        "R" | "RED" => ManaAtom::RED,
+                        "G" | "GREEN" => ManaAtom::GREEN,
+                        "C" | "COLORLESS" => ManaAtom::COLORLESS,
+                        _ => ManaAtom::COLORLESS,
+                    };
+                    for _ in 0..*amount {
+                        let mut m = crate::mana::Mana::simple(atom);
+                        m.source_card = Some(card_id);
+                        self.mana_pools[player.index()].add_mana(m);
+                    }
+                }
+                CostPart::Waterbend { amount } => {
+                    self.pay_waterbend_cost(game, agents, player, card_id, *amount);
+                }
             }
+        }
+    }
+
+    /// Pay a Waterbend cost: pay `amount` generic mana, but the player can tap
+    /// artifacts and/or creatures to help (each tapped pays {1}).
+    /// Mirrors Java's CostWaterbend + adjustCostByWaterbend.
+    pub(crate) fn pay_waterbend_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        card_id: CardId,
+        amount: i32,
+    ) {
+        if amount <= 0 {
+            return;
+        }
+        // Gather tappable artifacts/creatures (excluding the source card)
+        let untapped: Vec<CardId> = game
+            .cards_in_zone(ZoneType::Battlefield, player)
+            .iter()
+            .filter(|&&cid| {
+                let c = game.card(cid);
+                !c.tapped && cid != card_id && (c.is_creature() || c.type_line.is_artifact())
+            })
+            .copied()
+            .collect();
+
+        let mut remaining = amount;
+
+        if !untapped.is_empty() && remaining > 0 {
+            // Reuse the convoke agent method — waterbend is convoke+improvise combined
+            let card_name = game.card(card_id).card_name.clone();
+            let generic_cost = forge_foundation::ManaCost::generic(remaining);
+            agents[player.index()].snapshot_state(game, &self.mana_pools);
+            let to_tap = agents[player.index()].choose_convoke(
+                player,
+                &untapped,
+                &generic_cost,
+                Some(&card_name),
+            );
+            let max_tap = remaining as usize;
+            let mut count = 0usize;
+            for &cid in &to_tap {
+                if count >= max_tap {
+                    break;
+                }
+                if !untapped.contains(&cid) {
+                    continue;
+                }
+                game.tap(cid);
+                remaining -= 1;
+                count += 1;
+            }
+        }
+
+        // Pay remaining from mana pool as generic
+        if remaining > 0 {
+            self.mana_pools[player.index()].pay_generic(remaining);
         }
     }
 
@@ -1055,10 +1161,105 @@ impl GameLoop {
     ) {
         self.pay_ability_cost(game, agents, player, card_id, &ab.cost);
 
-        // Produce mana
+        // If this is a ManaReflected ability, delegate to the effect resolver
+        if ab.params.get("AB").map_or(false, |v| v == "ManaReflected") {
+            let sa = SpellAbility::new_simple(Some(card_id), player, &ab.ability_text);
+            self.resolve_single_effect(game, agents, &sa, None);
+            // Fire triggers
+            self.trigger_handler.run_trigger(
+                TriggerType::TapsForMana,
+                RunParams {
+                    card: Some(card_id),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+            self.trigger_handler.run_trigger(
+                TriggerType::ManaAdded,
+                RunParams {
+                    card: Some(card_id),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+            return;
+        }
+
+        // Check if source permanent is snow (snow mana tracking)
+        let source_is_snow = game.card(card_id).type_line.is_snow();
+        // Check for mana restrictions (RestrictValid$) and uncounterability (AddsNoCounter$)
+        let mana_restriction = ab.params.get("RestrictValid").cloned();
+        let adds_no_counter = ab.params.get("AddsNoCounter").map_or(false, |v| v == "True");
+        let adds_keywords = ab.params.get("AddsKeywords").cloned();
+        let adds_keywords_valid = ab.params.get("AddsKeywordsValid").cloned();
+        let adds_counters = ab.params.get("AddsCounters").cloned();
+        let adds_counters_valid = ab.params.get("AddsCountersValid").cloned();
+        let triggers_when_spent = ab.params.get("TriggersWhenSpent").cloned();
+
+        // Helper: convert a ManaAtom to its short letter for mana strings.
+        fn atom_to_letter(atom: u16) -> &'static str {
+            match atom {
+                ManaAtom::WHITE => "W",
+                ManaAtom::BLUE => "U",
+                ManaAtom::BLACK => "B",
+                ManaAtom::RED => "R",
+                ManaAtom::GREEN => "G",
+                ManaAtom::COLORLESS => "C",
+                _ => "C",
+            }
+        }
+
+        // Determine the final mana string to produce
+        let mut mana_string: Option<String> = None;
+
         if let Some(produced) = ab.params.get("Produced") {
-            if produced == "Combo ColorIdentity" {
-                // Commander mana: look up the commander's color identity.
+            if produced.starts_with("Special") {
+                // Delegate to the special mana handler in mana_effect
+                let special = produced.strip_prefix("Special ").unwrap_or("");
+                let sa = SpellAbility::new_simple(Some(card_id), player, &ab.ability_text);
+                let mut effect_ctx = crate::ability::effects::EffectContext {
+                    game,
+                    agents,
+                    trigger_handler: &mut self.trigger_handler,
+                    token_templates: &self.token_templates,
+                    mana_pools: &mut self.mana_pools,
+                    parent_target_card: None,
+                    rng: &mut *self.game_rng,
+                };
+                let tokens = crate::ability::effects::mana_effect::resolve_special_mana(
+                    &mut effect_ctx, &sa, card_id, player, special,
+                );
+                // Add produced mana with metadata
+                for tok in &tokens {
+                    if let Some(atom) = mana_atom_from_produced(tok) {
+                        let mut m = crate::mana::Mana::simple(atom);
+                        m.is_snow = source_is_snow;
+                        m.restriction = mana_restriction.clone();
+                        m.adds_no_counter = adds_no_counter;
+                        m.adds_keywords = adds_keywords.clone();
+                        m.adds_keywords_valid = adds_keywords_valid.clone();
+                        m.adds_counters = adds_counters.clone();
+                        m.adds_counters_valid = adds_counters_valid.clone();
+                        m.triggers_when_spent = triggers_when_spent.clone();
+                        m.source_card = Some(card_id);
+                        self.pool_mut(player).add_mana(m);
+                    }
+                }
+                // Fire triggers and return
+                self.trigger_handler.run_trigger(
+                    TriggerType::TapsForMana,
+                    RunParams { card: Some(card_id), player: Some(player), ..Default::default() },
+                    false,
+                );
+                self.trigger_handler.run_trigger(
+                    TriggerType::ManaAdded,
+                    RunParams { card: Some(card_id), player: Some(player), ..Default::default() },
+                    false,
+                );
+                return;
+            } else if produced == "Combo ColorIdentity" {
                 let command_cards = game.cards_in_zone(ZoneType::Command, player).to_vec();
                 let colors: Vec<String> = command_cards
                     .iter()
@@ -1070,23 +1271,17 @@ impl GameLoop {
                                 .iter()
                                 .map(|col| capitalize_color(col.long_name()))
                                 .collect();
-                            if cols.is_empty() {
-                                None
-                            } else {
-                                Some(cols)
-                            }
+                            if cols.is_empty() { None } else { Some(cols) }
                         } else {
                             None
                         }
                     })
                     .unwrap_or_default();
 
-                // Java parity: in non-commander games ColorIdentity may be empty;
-                // in that case no mana is produced.
                 if !colors.is_empty() {
                     if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
                         if let Some(atom) = color_name_to_mana_atom(&chosen) {
-                            self.pool_mut(player).add(atom, 1);
+                            mana_string = Some(atom_to_letter(atom).to_string());
                         }
                     }
                 }
@@ -1094,27 +1289,102 @@ impl GameLoop {
                 let chosen_colors = game.card(card_id).chosen_colors.clone();
                 let colors = produced_to_color_names(produced, &chosen_colors);
                 if colors.len() > 1 {
-                    // Variable-color production (Any / Combo / multi-choice Chosen)
                     if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
                         if let Some(atom) = color_name_to_mana_atom(&chosen) {
-                            self.pool_mut(player).add(atom, 1);
+                            mana_string = Some(atom_to_letter(atom).to_string());
                         }
                     }
                 } else if let Some(single) = colors.first() {
-                    // Deterministic selected color (e.g. Produced$ Chosen with one chosen color)
                     if let Some(atom) = color_name_to_mana_atom(single) {
-                        self.pool_mut(player).add(atom, 1);
+                        mana_string = Some(atom_to_letter(atom).to_string());
                     }
-                } else if let Some(atom) = mana_atom_from_produced(produced) {
-                    // Backward-compatible single-token fallback
-                    self.pool_mut(player).add(atom, 1);
                 } else {
-                    // Handle raw multi-token fixed outputs like "C C"
-                    for tok in produced.split_whitespace() {
-                        if let Some(atom) = mana_atom_from_produced(tok) {
-                            self.pool_mut(player).add(atom, 1);
+                    // Raw produced string (single or multi-token like "C C")
+                    mana_string = Some(produced.to_string());
+                }
+            }
+        }
+
+        // Apply Amount$ multiplier (e.g. Rofellos produces mana equal to Forests)
+        if let Some(ref mut ms) = mana_string {
+            if let Some(amount_str) = ab.params.get("Amount") {
+                let amount = if let Ok(n) = amount_str.parse::<i32>() {
+                    n
+                } else {
+                    // Try to resolve as SVar on the source card
+                    if let Some(svar_expr) = game.card(card_id).svars.get(amount_str.as_str()).cloned() {
+                        crate::ability::effects::resolve_count_svar(&svar_expr, game, card_id, player)
+                    } else {
+                        1
+                    }
+                };
+                if amount > 1 {
+                    // Check if this is combo/any mana (multiple color choices)
+                    let produced = ab.params.get("Produced").map(String::as_str).unwrap_or("");
+                    let is_combo = produced.contains("Any") || produced.starts_with("Combo") || produced.contains(',');
+                    if is_combo {
+                        // Multi-amount combo: let agent choose color distribution
+                        let available: Vec<String> = if produced.contains("Any") {
+                            vec!["W", "U", "B", "R", "G"].into_iter().map(String::from).collect()
+                        } else {
+                            let chosen_colors = game.card(card_id).chosen_colors.clone();
+                            let names = produced_to_color_names(produced, &chosen_colors);
+                            names.iter().filter_map(|name| {
+                                color_name_to_mana_atom(name).map(|a| atom_to_letter(a).to_string())
+                            }).collect()
+                        };
+                        let card_name = game.card(card_id).card_name.clone();
+                        let chosen = agents[player.index()].specify_mana_combo(
+                            player,
+                            &available,
+                            amount as usize,
+                            Some(&card_name),
+                        );
+                        *ms = chosen.join(" ");
+                    } else {
+                        let base = ms.clone();
+                        for _ in 1..amount {
+                            ms.push(' ');
+                            ms.push_str(&base);
                         }
                     }
+                } else if amount <= 0 {
+                    mana_string = None;
+                }
+            }
+        }
+
+        // Apply ProduceMana replacement effects (mana doublers like Mirari's Wake)
+        if let Some(ref mut ms) = mana_string {
+            use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+            let mut event = ReplacementEvent::ProduceMana {
+                source: card_id,
+                activator: player,
+                mana: ms.clone(),
+            };
+            let result = apply_replacements(game, &mut event);
+            if result == crate::replacement::ReplacementResult::Updated {
+                if let ReplacementEvent::ProduceMana { mana: new_mana, .. } = event {
+                    *ms = new_mana;
+                }
+            }
+        }
+
+        // Add the (possibly multiplied) mana to the pool
+        if let Some(ref ms) = mana_string {
+            for tok in ms.split_whitespace() {
+                if let Some(atom) = mana_atom_from_produced(tok) {
+                    let mut m = crate::mana::Mana::simple(atom);
+                    m.is_snow = source_is_snow;
+                    m.restriction = mana_restriction.clone();
+                    m.adds_no_counter = adds_no_counter;
+                    m.adds_keywords = adds_keywords.clone();
+                    m.adds_keywords_valid = adds_keywords_valid.clone();
+                    m.adds_counters = adds_counters.clone();
+                    m.adds_counters_valid = adds_counters_valid.clone();
+                    m.triggers_when_spent = triggers_when_spent.clone();
+                    m.source_card = Some(card_id);
+                    self.pool_mut(player).add_mana(m);
                 }
             }
         }
@@ -1181,8 +1451,33 @@ impl GameLoop {
             );
         }
 
+        // PowerUp: reduce cost by card's mana cost if it entered the battlefield this turn
+        let adjusted_cost = if ab.params.get("PowerUp").map_or(false, |v| v == "True")
+            && game.card(card_id).entered_battlefield_this_turn
+        {
+            let mut cost = ab.cost.clone();
+            // Subtract the card's mana cost from the ability's mana cost
+            let card_mc = game.card(card_id).mana_cost.clone();
+            for part in &mut cost.parts {
+                if let crate::cost::CostPart::Mana(ref mut mc) = part {
+                    *mc = mc.reduce_generic(card_mc.cmc() as i32);
+                    break;
+                }
+            }
+            cost
+        } else {
+            ab.cost.clone()
+        };
+
         // Pay costs
-        self.pay_ability_cost(game, agents, player, card_id, &ab.cost);
+        self.pay_ability_cost(game, agents, player, card_id, &adjusted_cost);
+
+        // Track activation count (for PowerUp once-per-game)
+        game.card_mut(card_id)
+            .activations_this_game
+            .entry(ab.ability_index)
+            .and_modify(|c| *c += 1)
+            .or_insert(1);
 
         // Push to stack
         let card_name = game.card(card_id).card_name.clone();

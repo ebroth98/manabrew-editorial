@@ -13,6 +13,8 @@ interface ChooseCardsModalProps {
   minChoices: number;
   maxChoices: number;
   sourceCardName?: string;
+  /** Optional description shown below the card name (e.g. remaining cost for Convoke/Improvise). */
+  description?: string;
   onConfirm: (chosenCardIds: string[]) => void;
 }
 
@@ -21,6 +23,7 @@ export function ChooseCardsModal({
   minChoices,
   maxChoices,
   sourceCardName,
+  description,
   onConfirm,
 }: ChooseCardsModalProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -80,6 +83,9 @@ export function ChooseCardsModal({
               <h2 className="font-semibold text-base">Choose Cards</h2>
               {sourceCardName && (
                 <p className="text-xs text-muted-foreground font-medium">{sourceCardName}</p>
+              )}
+              {description && (
+                <p className="text-xs text-muted-foreground">{description}</p>
               )}
               <p className="text-xs text-muted-foreground">{subtitle}</p>
             </div>

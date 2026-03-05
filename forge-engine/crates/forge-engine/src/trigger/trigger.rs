@@ -301,6 +301,11 @@ pub enum TriggerMode {
     Exerted {
         valid_card: Option<String>,
     },
+    /// Mana was expended (Expend N mechanic). Fires when cumulative mana spent reaches Amount.
+    ManaExpend {
+        valid_player: Option<String>,
+        amount: i32,
+    },
 }
 
 /// Check an optional ValidCard$ filter against a card from RunParams.
@@ -582,6 +587,15 @@ impl TriggerMode {
             | TriggerMode::DamagePreventedOnce { valid_card }
             | TriggerMode::Exerted { valid_card } => {
                 check_card_filter(valid_card, run_params.card, host_card, host_controller, game)
+            }
+
+            // ── ManaExpend (check player + amount) ──
+            TriggerMode::ManaExpend { valid_player, amount } => {
+                if !check_player_filter(valid_player, run_params.player, host_controller) {
+                    return false;
+                }
+                // Amount must exactly match the cumulative expend amount
+                run_params.mana_expend_amount == Some(*amount)
             }
 
             // ── Player-only triggers (check run_params.player) ──
@@ -1283,6 +1297,11 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Exerted" => {
             let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Exerted { valid_card }
+        }
+        "ManaExpend" => {
+            let valid_player = params.get("Player").cloned();
+            let amount = params.get("Amount").and_then(|s| s.parse().ok()).unwrap_or(1);
+            TriggerMode::ManaExpend { valid_player, amount }
         }
         _ => return None,
     };

@@ -20,6 +20,7 @@ pub mod static_ability_disable_triggers;
 pub mod static_ability_ignore_hexproof_shroud;
 pub mod static_ability_ignore_legend_rule;
 pub mod static_ability_infect_damage;
+pub mod static_ability_mana_convert;
 pub mod static_ability_max_counter;
 pub mod static_ability_must_attack;
 pub mod static_ability_must_block;
