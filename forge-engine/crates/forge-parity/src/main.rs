@@ -168,12 +168,33 @@ struct Cli {
     summary_interval: u64,
 
     /// Minimum failures in a cluster before opening a GitHub issue (default: 5)
-    #[arg(long, env = "ISSUE_THRESHOLD", default_value_t = 5)]
+    #[arg(long, default_value_t = 5)]
     issue_threshold: i64,
 
     /// GitHub repo for issues in owner/repo format
-    #[arg(long, env = "GITHUB_REPO")]
+    #[arg(long)]
     github_repo: Option<String>,
+}
+
+/// Resolve issue_threshold: CLI flag > env var > default (5)
+fn resolve_issue_threshold(cli_val: i64) -> i64 {
+    if cli_val != 5 {
+        return cli_val;
+    }
+    std::env::var("ISSUE_THRESHOLD")
+        .ok()
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(cli_val)
+}
+
+/// Resolve github_repo: CLI flag > env var
+fn resolve_github_repo(cli_val: Option<String>) -> Option<String> {
+    cli_val.or_else(|| {
+        std::env::var("GITHUB_REPO")
+            .ok()
+            .filter(|s| !s.is_empty())
+    })
 }
 
 fn main() {
@@ -1961,8 +1982,8 @@ fn run_serve_mode(cli: &Cli) {
         let analyzer_config = AnalyzerConfig {
             poll_interval: std::time::Duration::from_secs(cli.poll_interval),
             summary_interval: std::time::Duration::from_secs(cli.summary_interval),
-            issue_threshold: cli.issue_threshold,
-            github_repo: cli.github_repo.clone(),
+            issue_threshold: resolve_issue_threshold(cli.issue_threshold),
+            github_repo: resolve_github_repo(cli.github_repo.clone()),
             dashboard_url: Some(format!("http://localhost:{}", port)),
             java_jar: cli.java_jar.as_ref().map(|p| p.to_string_lossy().to_string()),
             cards_dir: cli.cards_dir.clone(),
