@@ -1717,7 +1717,7 @@ fn run_continuous_mode(cli: &Cli) {
         }
         completed += 1;
 
-        if let Err(e) = db.insert_run(job.batch_id, &result, duration_ms) {
+        if let Err(e) = db.insert_run(job.batch_id, &result, duration_ms, job.is_fuzz) {
             eprintln!("[parity] DB insert error: {}", e);
         }
 
@@ -2096,7 +2096,7 @@ fn run_serve_mode(cli: &Cli) {
         // Write to storage under lock
         {
             let storage = app_state.storage.lock().unwrap();
-            if let Err(e) = storage.insert_run(job.batch_id, &result, duration_ms) {
+            if let Err(e) = storage.insert_run(job.batch_id, &result, duration_ms, job.is_fuzz) {
                 tracing::error!(%e, "DB insert error");
             }
         }

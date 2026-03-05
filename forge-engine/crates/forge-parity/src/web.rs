@@ -134,7 +134,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/config", get(config_get_handler).post(config_post_handler))
         .route("/api/analysis/toggle", post(analysis_toggle_handler))
         .route("/api/analysis/status", get(analysis_status_handler))
-        .route("/api/logs", get(logs_handler));
+        .route("/api/logs", get(logs_handler))
+        .route("/api/fuzz/recent", get(fuzz_recent_handler));
 
     #[cfg(feature = "analyze")]
     let router = router.route("/api/models", get(models_handler));
@@ -219,6 +220,16 @@ async fn logs_handler(
         state.logs.recent(params.limit)
     };
     Json(entries)
+}
+
+// ── Fuzz endpoint ─────────────────────────────────────────────────
+
+async fn fuzz_recent_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let storage = state.storage.lock().unwrap();
+    match storage.recent_fuzz_games(20) {
+        Ok(games) => Json(games).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
 }
 
 // ── Config endpoints ──────────────────────────────────────────────

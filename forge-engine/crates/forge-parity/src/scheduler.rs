@@ -16,10 +16,11 @@ pub struct Job {
     pub deck2: String,
     pub seed: u64,
     pub batch_id: i64,
+    pub is_fuzz: bool,
 }
 
 /// Generates game jobs in a round-robin pattern across preset deck pairs,
-/// optionally interleaving fuzz-generated random decks.
+/// interleaving fuzz-generated random decks throughout the batch.
 pub struct Scheduler {
     /// All deck pair combinations (d1, d2) where d1 != d2.
     preset_pairs: Vec<(String, String)>,
@@ -29,16 +30,16 @@ pub struct Scheduler {
     seed: u64,
     /// Current batch ID (incremented per full cycle).
     batch_id: i64,
-    /// Number of fuzz games to generate after each preset batch.
+    /// Number of fuzz games to interleave per batch.
     fuzz_per_batch: usize,
-    /// How many fuzz games remain in the current fuzz phase.
-    fuzz_remaining: usize,
     /// Master RNG for fuzz deck generation.
     fuzz_rng: JavaRandom,
     /// Card pool for fuzz generation (None if fuzz disabled).
     pool: Option<CardPool>,
-    /// Whether we're in the fuzz phase of the current batch.
-    in_fuzz_phase: bool,
+    /// Preset games between each fuzz game (0 = no fuzz).
+    fuzz_interval: usize,
+    /// Counter: preset games since last fuzz game.
+    presets_since_fuzz: usize,
 }
 
 impl Scheduler {
@@ -84,22 +85,35 @@ impl Scheduler {
             None
         };
 
+        // Interleave: insert 1 fuzz game every N preset games (capped at 50
+        // so fuzz appears quickly even with large deck pools).
+        let fuzz_interval = if fuzz_per_batch > 0 && !preset_pairs.is_empty() {
+            (preset_pairs.len() / fuzz_per_batch).max(1).min(50)
+        } else {
+            0
+        };
+
         Self {
             preset_pairs,
             pair_index: 0,
             seed: start_seed,
             batch_id: 1,
             fuzz_per_batch,
-            fuzz_remaining: 0,
             fuzz_rng: JavaRandom::new(start_seed as i64),
             pool,
-            in_fuzz_phase: false,
+            fuzz_interval,
+            presets_since_fuzz: 0,
         }
     }
 
     /// Generate the next game job.
     pub fn next_job(&mut self) -> Job {
-        if self.in_fuzz_phase && self.fuzz_remaining > 0 {
+        // Interleave: after every `fuzz_interval` preset games, insert a fuzz game
+        if self.fuzz_interval > 0
+            && self.pool.is_some()
+            && self.presets_since_fuzz >= self.fuzz_interval
+        {
+            self.presets_since_fuzz = 0;
             return self.next_fuzz_job();
         }
 
@@ -110,21 +124,17 @@ impl Scheduler {
             deck2: d2,
             seed: self.seed,
             batch_id: self.batch_id,
+            is_fuzz: false,
         };
 
         self.seed += 1;
         self.pair_index += 1;
+        self.presets_since_fuzz += 1;
 
         // Check if we've completed a full cycle of preset pairs
         if self.pair_index >= self.preset_pairs.len() {
             self.pair_index = 0;
-
-            if self.fuzz_per_batch > 0 && self.pool.is_some() {
-                self.in_fuzz_phase = true;
-                self.fuzz_remaining = self.fuzz_per_batch;
-            } else {
-                self.batch_id += 1;
-            }
+            self.batch_id += 1;
         }
 
         job
@@ -143,16 +153,10 @@ impl Scheduler {
             deck2: format!("inline:{deck2_spec}"),
             seed: self.seed,
             batch_id: self.batch_id,
+            is_fuzz: true,
         };
 
         self.seed += 1;
-        self.fuzz_remaining -= 1;
-
-        if self.fuzz_remaining == 0 {
-            self.in_fuzz_phase = false;
-            self.batch_id += 1;
-        }
-
         job
     }
 

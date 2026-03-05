@@ -267,6 +267,7 @@ pub struct RunRecord {
     pub error_message: Option<String>,
     pub rust_trace: Option<String>,
     pub java_trace: Option<String>,
+    pub is_fuzz: bool,
     pub timestamp: String,
 }
 
@@ -281,6 +282,10 @@ pub struct ContinuousStats {
     pub games_per_minute: f64,
     pub uptime_seconds: u64,
     pub current_batch: i64,
+    pub fuzz_total: usize,
+    pub fuzz_passed: usize,
+    pub fuzz_failed: usize,
+    pub fuzz_pass_rate: f64,
 }
 
 /// A single point in a time-series trend.

@@ -492,6 +492,7 @@ mod tests {
             error_message: None,
             rust_trace: None,
             java_trace: None,
+            is_fuzz: false,
             timestamp: "2026-03-05T10:00:00Z".to_string(),
         }
     }

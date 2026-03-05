@@ -78,6 +78,7 @@ impl Storage {
                 error_message         TEXT,
                 rust_trace            TEXT,
                 java_trace            TEXT,
+                is_fuzz               INTEGER NOT NULL DEFAULT 0,
                 timestamp             TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
             );
 
@@ -103,10 +104,13 @@ impl Storage {
             );
             ",
         )?;
-        // Migrate: add trace columns if they don't exist (for existing DBs)
+        // Migrate: add columns if they don't exist (for existing DBs)
         let _ = self.conn.execute_batch(
             "ALTER TABLE runs ADD COLUMN rust_trace TEXT;
              ALTER TABLE runs ADD COLUMN java_trace TEXT;",
+        );
+        let _ = self.conn.execute_batch(
+            "ALTER TABLE runs ADD COLUMN is_fuzz INTEGER NOT NULL DEFAULT 0;",
         );
         Ok(())
     }
@@ -117,6 +121,7 @@ impl Storage {
         batch_id: i64,
         result: &MatchupResult,
         duration_ms: u64,
+        is_fuzz: bool,
     ) -> SqlResult<i64> {
         let status_str = match result.status {
             MatchupStatus::Pass => "pass",
@@ -139,8 +144,8 @@ impl Storage {
             "INSERT INTO runs (batch_id, deck1, deck2, seed, status, snapshots_compared,
              divergence_count, first_divergence_field, first_divergence_rust,
              first_divergence_java, covered_cards, duration_ms, error_message,
-             rust_trace, java_trace)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+             rust_trace, java_trace, is_fuzz)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
             params![
                 batch_id,
                 result.deck1,
@@ -157,6 +162,7 @@ impl Storage {
                 result.error_message,
                 result.trace,
                 result.java_trace,
+                is_fuzz as i64,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -167,21 +173,22 @@ impl Storage {
     /// `start_time_iso` filters `games_per_minute` to only count games from
     /// the current session, while totals/pass_rate reflect all historical data.
     pub fn stats(&self, uptime_seconds: u64, start_time_iso: &str) -> SqlResult<ContinuousStats> {
+        // Preset-only stats (is_fuzz = 0)
         let total: usize = self
             .conn
-            .query_row("SELECT COUNT(*) FROM runs", [], |r| r.get(0))?;
+            .query_row("SELECT COUNT(*) FROM runs WHERE is_fuzz = 0", [], |r| r.get(0))?;
         let passed: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status = 'pass'",
+            "SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 0",
             [],
             |r| r.get(0),
         )?;
         let failed: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status = 'fail'",
+            "SELECT COUNT(*) FROM runs WHERE status = 'fail' AND is_fuzz = 0",
             [],
             |r| r.get(0),
         )?;
         let errors: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status = 'error'",
+            "SELECT COUNT(*) FROM runs WHERE status = 'error' AND is_fuzz = 0",
             [],
             |r| r.get(0),
         )?;
@@ -192,9 +199,9 @@ impl Storage {
             0.0
         };
 
-        // Only count games from the current session for games/minute
+        // Only count preset games from the current session for games/minute
         let session_games: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE timestamp >= ?1",
+            "SELECT COUNT(*) FROM runs WHERE timestamp >= ?1 AND is_fuzz = 0",
             params![start_time_iso],
             |r| r.get(0),
         )?;
@@ -211,6 +218,26 @@ impl Storage {
             |r| r.get(0),
         )?;
 
+        // Fuzz-only stats
+        let fuzz_total: usize = self
+            .conn
+            .query_row("SELECT COUNT(*) FROM runs WHERE is_fuzz = 1", [], |r| r.get(0))?;
+        let fuzz_passed: usize = self.conn.query_row(
+            "SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 1",
+            [],
+            |r| r.get(0),
+        )?;
+        let fuzz_failed: usize = self.conn.query_row(
+            "SELECT COUNT(*) FROM runs WHERE status IN ('fail', 'error') AND is_fuzz = 1",
+            [],
+            |r| r.get(0),
+        )?;
+        let fuzz_pass_rate = if fuzz_passed + fuzz_failed > 0 {
+            fuzz_passed as f64 / (fuzz_passed + fuzz_failed) as f64
+        } else {
+            0.0
+        };
+
         Ok(ContinuousStats {
             total_games: total,
             passed,
@@ -220,6 +247,10 @@ impl Storage {
             games_per_minute,
             uptime_seconds,
             current_batch,
+            fuzz_total,
+            fuzz_passed,
+            fuzz_failed,
+            fuzz_pass_rate,
         })
     }
 
@@ -238,6 +269,7 @@ impl Storage {
                 SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) as failed,
                 SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
              FROM runs
+             WHERE is_fuzz = 0
              GROUP BY bucket
              ORDER BY bucket DESC
              LIMIT ?1"
@@ -273,7 +305,7 @@ impl Storage {
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
-                    rust_trace, java_trace, timestamp
+                    rust_trace, java_trace, is_fuzz, timestamp
              FROM runs
              WHERE status IN ('fail', 'error')
              ORDER BY id DESC
@@ -290,7 +322,7 @@ impl Storage {
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
-                    rust_trace, java_trace, timestamp
+                    rust_trace, java_trace, is_fuzz, timestamp
              FROM runs WHERE id = ?1",
             params![id],
             |row| Self::row_to_record(row),
@@ -303,7 +335,7 @@ impl Storage {
             "SELECT deck1, deck2, COUNT(*) as total,
                     SUM(CASE WHEN status = 'pass' THEN 1 ELSE 0 END) as passed
              FROM runs
-             WHERE status != 'error'
+             WHERE status != 'error' AND is_fuzz = 0
              GROUP BY deck1, deck2
              ORDER BY deck1, deck2",
         )?;
@@ -331,12 +363,12 @@ impl Storage {
     /// Compute the current pass rate (excluding errors).
     pub fn pass_rate(&self) -> SqlResult<f64> {
         let passed: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status = 'pass'",
+            "SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 0",
             [],
             |r| r.get(0),
         )?;
         let failed: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status = 'fail'",
+            "SELECT COUNT(*) FROM runs WHERE status = 'fail' AND is_fuzz = 0",
             [],
             |r| r.get(0),
         )?;
@@ -344,6 +376,22 @@ impl Storage {
             return Ok(0.0);
         }
         Ok(passed as f64 / (passed + failed) as f64)
+    }
+
+    /// Get recent fuzz game results.
+    pub fn recent_fuzz_games(&self, limit: usize) -> SqlResult<Vec<RunRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
+                    divergence_count, first_divergence_field, first_divergence_rust,
+                    first_divergence_java, covered_cards, duration_ms, error_message,
+                    rust_trace, java_trace, is_fuzz, timestamp
+             FROM runs
+             WHERE is_fuzz = 1
+             ORDER BY id DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![limit as i64], |row| Self::row_to_record(row))?;
+        rows.collect()
     }
 
     // ── Analysis Daemon Queries ──────────────────────────────────────
@@ -379,7 +427,7 @@ impl Storage {
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
-                    rust_trace, java_trace, timestamp
+                    rust_trace, java_trace, is_fuzz, timestamp
              FROM runs
              WHERE id > ?1 AND status IN ('fail', 'error')
              ORDER BY id ASC",
@@ -564,7 +612,8 @@ impl Storage {
             error_message: row.get(13)?,
             rust_trace: row.get(14)?,
             java_trace: row.get(15)?,
-            timestamp: row.get(16)?,
+            is_fuzz: row.get::<_, i64>(16)? != 0,
+            timestamp: row.get(17)?,
         })
     }
 }
@@ -616,11 +665,11 @@ mod tests {
     #[test]
     fn insert_and_query_stats() {
         let db = Storage::open_memory().unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Pass), 100)
+        db.insert_run(1, &make_result(MatchupStatus::Pass), 100, false)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Pass), 150)
+        db.insert_run(1, &make_result(MatchupStatus::Pass), 150, false)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Fail), 200)
+        db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false)
             .unwrap();
 
         let stats = db.stats(60, "2024-01-01T00:00:00Z").unwrap();
@@ -633,11 +682,11 @@ mod tests {
     #[test]
     fn recent_failures_query() {
         let db = Storage::open_memory().unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Pass), 100)
+        db.insert_run(1, &make_result(MatchupStatus::Pass), 100, false)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Fail), 200)
+        db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Error), 50)
+        db.insert_run(1, &make_result(MatchupStatus::Error), 50, false)
             .unwrap();
 
         let failures = db.recent_failures(10).unwrap();
@@ -650,7 +699,7 @@ mod tests {
     fn get_run_by_id() {
         let db = Storage::open_memory().unwrap();
         let id = db
-            .insert_run(1, &make_result(MatchupStatus::Pass), 100)
+            .insert_run(1, &make_result(MatchupStatus::Pass), 100, false)
             .unwrap();
 
         let record = db.get_run(id).unwrap();
@@ -661,9 +710,9 @@ mod tests {
     #[test]
     fn deck_pair_matrix_query() {
         let db = Storage::open_memory().unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Pass), 100)
+        db.insert_run(1, &make_result(MatchupStatus::Pass), 100, false)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Fail), 200)
+        db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false)
             .unwrap();
 
         let matrix = db.deck_pair_matrix().unwrap();
