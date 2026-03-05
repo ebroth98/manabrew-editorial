@@ -56,6 +56,7 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/failures", get(failures_handler))
         .route("/api/matrix", get(matrix_handler))
         .route("/api/run/{id}", get(run_handler))
+        .route("/api/clusters", get(clusters_handler))
         .with_state(state)
 }
 
@@ -110,5 +111,13 @@ async fn run_handler(
     match storage.get_run(id) {
         Ok(record) => Json(record).into_response(),
         Err(e) => (StatusCode::NOT_FOUND, e.to_string()).into_response(),
+    }
+}
+
+async fn clusters_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let storage = state.storage.lock().unwrap();
+    match storage.get_clusters_by_field() {
+        Ok(clusters) => Json(clusters).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }

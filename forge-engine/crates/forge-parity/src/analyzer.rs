@@ -1,0 +1,490 @@
+//! Analysis daemon for parity failures.
+//!
+//! Polls the SQLite DB for new failures, clusters them by divergence field + deck pair,
+//! calls an LLM for root cause analysis, posts alerts to Discord, and opens GitHub issues.
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use crate::discord::{DiscordClient, FailureAlert, PeriodSummary};
+use crate::github_issues::{DeckPairRow, GitHubIssues, IssueData};
+use crate::llm::{ClusterContext, LlmClient};
+use crate::protocol::RunRecord;
+use crate::storage::Storage;
+
+/// Configuration for the analysis daemon.
+pub struct AnalyzerConfig {
+    pub poll_interval: Duration,
+    pub summary_interval: Duration,
+    pub issue_threshold: i64,
+    pub github_repo: Option<String>,
+    pub dashboard_url: Option<String>,
+}
+
+impl Default for AnalyzerConfig {
+    fn default() -> Self {
+        Self {
+            poll_interval: Duration::from_secs(60),
+            summary_interval: Duration::from_secs(3600),
+            issue_threshold: 5,
+            github_repo: None,
+            dashboard_url: None,
+        }
+    }
+}
+
+/// A group of failures sharing the same cluster key.
+struct FailureCluster {
+    divergence_field: String,
+    rust_value: String,
+    java_value: String,
+    deck_pairs: HashMap<(String, String), Vec<u64>>, // (deck1, deck2) -> seeds
+    covered_cards: Vec<String>,
+    count: usize,
+}
+
+/// Build a cluster key from a run record.
+fn cluster_key(record: &RunRecord) -> String {
+    let field_part = match &record.first_divergence_field {
+        Some(f) => f.clone(),
+        None => match &record.error_message {
+            Some(msg) => format!("error:{}", &msg[..msg.len().min(50)]),
+            None => "unknown".to_string(),
+        },
+    };
+
+    let mut decks = [record.deck1.clone(), record.deck2.clone()];
+    decks.sort();
+    format!("{}|{}+{}", field_part, decks[0], decks[1])
+}
+
+/// Group failure records into clusters.
+fn cluster_failures(records: &[RunRecord]) -> HashMap<String, FailureCluster> {
+    let mut clusters: HashMap<String, FailureCluster> = HashMap::new();
+
+    for record in records {
+        let key = cluster_key(record);
+
+        let cluster = clusters.entry(key).or_insert_with(|| FailureCluster {
+            divergence_field: record
+                .first_divergence_field
+                .clone()
+                .unwrap_or_else(|| "error".to_string()),
+            rust_value: record
+                .first_divergence_rust
+                .clone()
+                .unwrap_or_default(),
+            java_value: record
+                .first_divergence_java
+                .clone()
+                .unwrap_or_default(),
+            deck_pairs: HashMap::new(),
+            covered_cards: Vec::new(),
+            count: 0,
+        });
+
+        cluster.count += 1;
+
+        let pair = (record.deck1.clone(), record.deck2.clone());
+        cluster
+            .deck_pairs
+            .entry(pair)
+            .or_default()
+            .push(record.seed);
+
+        // Merge covered cards (deduplicated later)
+        for card in &record.covered_cards {
+            if !cluster.covered_cards.contains(card) {
+                cluster.covered_cards.push(card.clone());
+            }
+        }
+    }
+
+    clusters
+}
+
+/// Run the analysis daemon loop. Intended to be spawned as a tokio task.
+pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig) {
+    eprintln!("[analyzer] Starting analysis daemon");
+    eprintln!(
+        "[analyzer] Poll interval: {}s, Summary interval: {}s, Issue threshold: {}",
+        config.poll_interval.as_secs(),
+        config.summary_interval.as_secs(),
+        config.issue_threshold,
+    );
+
+    let llm = LlmClient::from_env();
+    let mut discord = DiscordClient::from_env();
+    let github = GitHubIssues::new(config.github_repo.clone());
+
+    if llm.is_some() {
+        eprintln!("[analyzer] LLM backend configured");
+    } else {
+        eprintln!("[analyzer] No LLM API key found, skipping AI analysis");
+    }
+    if discord.is_some() {
+        eprintln!("[analyzer] Discord webhook configured");
+    } else {
+        eprintln!("[analyzer] No DISCORD_WEBHOOK_URL, skipping Discord alerts");
+    }
+    if github.is_available() {
+        eprintln!("[analyzer] GitHub CLI authenticated");
+    } else {
+        eprintln!("[analyzer] gh CLI not authenticated, skipping issue creation");
+    }
+
+    let mut last_summary = Instant::now();
+
+    loop {
+        // 1. Read watermark
+        let watermark = {
+            let db = storage.lock().unwrap();
+            db.get_analysis_watermark().unwrap_or(0)
+        };
+
+        // 2. Query new failures
+        let new_failures = {
+            let db = storage.lock().unwrap();
+            db.failures_since(watermark).unwrap_or_default()
+        };
+
+        if new_failures.is_empty() {
+            tokio::time::sleep(config.poll_interval).await;
+            continue;
+        }
+
+        let max_id = new_failures.iter().map(|r| r.id).max().unwrap_or(watermark);
+        let failure_count = new_failures.len();
+        eprintln!(
+            "[analyzer] Processing {} new failures (id {} -> {})",
+            failure_count, watermark, max_id
+        );
+
+        // 3. Cluster failures by (field, deck_pair)
+        let clusters = cluster_failures(&new_failures);
+
+        // 4. Upsert all clusters in DB (cheap, no LLM calls)
+        let now_iso = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%SZ")
+            .to_string();
+
+        for (key, cluster) in &clusters {
+            let db = storage.lock().unwrap();
+            if let Err(e) = db.upsert_cluster(key, cluster.count as i64, &now_iso) {
+                eprintln!("[analyzer] Cluster upsert error: {e}");
+            }
+        }
+
+        // 5. Aggregate by divergence field for LLM analysis (1 call per field, not per cluster)
+        let mut field_groups: HashMap<String, Vec<&FailureCluster>> = HashMap::new();
+        for cluster in clusters.values() {
+            field_groups
+                .entry(cluster.divergence_field.clone())
+                .or_default()
+                .push(cluster);
+        }
+
+        // Sort fields by total failure count descending — analyze most impactful first
+        let mut sorted_fields: Vec<_> = field_groups.iter().collect();
+        sorted_fields.sort_by(|a, b| {
+            let count_a: usize = a.1.iter().map(|c| c.count).sum();
+            let count_b: usize = b.1.iter().map(|c| c.count).sum();
+            count_b.cmp(&count_a)
+        });
+
+        eprintln!(
+            "[analyzer] {} unique divergence fields from {} clusters",
+            sorted_fields.len(),
+            clusters.len()
+        );
+
+        for (field, field_clusters) in &sorted_fields {
+            let total_count: usize = field_clusters.iter().map(|c| c.count).sum();
+
+            // Skip if this field already has LLM analysis cached
+            let already_analyzed = {
+                let db = storage.lock().unwrap();
+                db.get_clusters_by_field().ok().map(|fields| {
+                    fields.iter().any(|fc| fc.field == **field && fc.llm_analysis.is_some())
+                }).unwrap_or(false)
+            };
+
+            if already_analyzed {
+                continue;
+            }
+
+            if let Some(ref llm_client) = llm {
+                // Aggregate all deck pairs and seeds across clusters for this field
+                let mut all_deck_pairs: Vec<String> = Vec::new();
+                let mut all_seeds: Vec<String> = Vec::new();
+                let mut all_cards: Vec<String> = Vec::new();
+                let mut sample_rust = String::new();
+                let mut sample_java = String::new();
+
+                for c in *field_clusters {
+                    if sample_rust.is_empty() {
+                        sample_rust = c.rust_value.clone();
+                        sample_java = c.java_value.clone();
+                    }
+                    for ((d1, d2), seeds) in &c.deck_pairs {
+                        all_deck_pairs.push(format!("{d1} vs {d2}"));
+                        for s in seeds.iter().take(2) {
+                            all_seeds.push(s.to_string());
+                        }
+                    }
+                    for card in &c.covered_cards {
+                        if !all_cards.contains(card) {
+                            all_cards.push(card.clone());
+                        }
+                    }
+                }
+                all_deck_pairs.truncate(10);
+                all_seeds.truncate(5);
+                all_cards.truncate(20);
+
+                let ctx = ClusterContext {
+                    count: total_count,
+                    divergence_field: field.to_string(),
+                    rust_value: sample_rust,
+                    java_value: sample_java,
+                    deck_pairs: all_deck_pairs.join(", "),
+                    covered_cards: all_cards.join(", "),
+                    sample_seeds: all_seeds.join(", "),
+                };
+
+                eprintln!(
+                    "[analyzer] Analyzing field '{}' ({} failures across {} deck pairs)",
+                    field, total_count, all_deck_pairs.len()
+                );
+
+                match llm_client.analyze_cluster(&ctx).await {
+                    Ok(result) => {
+                        // Cache analysis on ALL clusters sharing this field
+                        if let Ok(json) = serde_json::to_string(&result) {
+                            let db = storage.lock().unwrap();
+                            for key in clusters.keys() {
+                                if key.starts_with(&format!("{}|", field)) {
+                                    let _ = db.set_cluster_llm_analysis(key, &json);
+                                }
+                            }
+                        }
+                        eprintln!("[analyzer] Analysis complete for '{}': {}", field, result.mechanic);
+
+                        // Discord alert for this field
+                        if let Some(ref mut discord_client) = discord {
+                            let alert = FailureAlert {
+                                field: field.to_string(),
+                                rust_value: ctx.rust_value.clone(),
+                                java_value: ctx.java_value.clone(),
+                                deck_pairs: ctx.deck_pairs.clone(),
+                                occurrences: total_count as i64,
+                                sample_seeds: ctx.sample_seeds.clone(),
+                                analysis: Some(result.clone()),
+                            };
+                            if let Err(e) = discord_client.post_failure_alert(&alert).await {
+                                eprintln!("[analyzer] Discord alert failed: {e}");
+                            }
+                        }
+
+                        // GitHub issue if total failures exceed threshold
+                        if total_count as i64 >= config.issue_threshold && github.is_available() {
+                            let existing = github.find_existing_issue(field);
+                            let first_cluster = &field_clusters[0];
+                            let deck_pair_rows: Vec<DeckPairRow> = field_clusters
+                                .iter()
+                                .flat_map(|c| c.deck_pairs.iter())
+                                .take(10)
+                                .map(|((d1, d2), seeds)| DeckPairRow {
+                                    deck1: d1.clone(),
+                                    deck2: d2.clone(),
+                                    failures: seeds.len(),
+                                    sample_seed: seeds.first().copied().unwrap_or(0),
+                                })
+                                .collect();
+
+                            let first_seed = all_seeds.first()
+                                .and_then(|s| s.parse().ok())
+                                .unwrap_or(42u64);
+                            let repro = all_deck_pairs.first()
+                                .map(|dp| {
+                                    let parts: Vec<&str> = dp.split(" vs ").collect();
+                                    format!(
+                                        "cargo run -p forge-parity -- --deck1 {} --deck2 {} --seed {} --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar",
+                                        parts.first().unwrap_or(&""), parts.get(1).unwrap_or(&""), first_seed
+                                    )
+                                })
+                                .unwrap_or_default();
+
+                            let issue_data = IssueData {
+                                divergence_field: field.to_string(),
+                                rust_value: first_cluster.rust_value.clone(),
+                                java_value: first_cluster.java_value.clone(),
+                                total_failures: total_count as i64,
+                                first_seen: now_iso.clone(),
+                                last_seen: now_iso.clone(),
+                                deck_pair_table: deck_pair_rows,
+                                covered_cards: all_cards.join(", "),
+                                analysis: Some(result),
+                                repro_command: repro,
+                            };
+
+                            if let Some(issue_num) = existing {
+                                if let Err(e) = github.add_comment(issue_num, &issue_data) {
+                                    eprintln!("[analyzer] GitHub comment failed: {e}");
+                                }
+                            } else {
+                                match github.create_issue(&issue_data) {
+                                    Ok(num) => eprintln!("[analyzer] Created GitHub issue #{num}"),
+                                    Err(e) => eprintln!("[analyzer] GitHub issue creation failed: {e}"),
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("[analyzer] LLM analysis failed for '{}': {e}", field);
+                    }
+                }
+            }
+        }
+
+        // 5. Update watermark
+        {
+            let db = storage.lock().unwrap();
+            if let Err(e) = db.set_analysis_watermark(max_id) {
+                eprintln!("[analyzer] Failed to update watermark: {e}");
+            }
+        }
+
+        // 6. Periodic summary
+        if last_summary.elapsed() >= config.summary_interval {
+            if let Some(ref mut discord_client) = discord {
+                let summary = {
+                    let db = storage.lock().unwrap();
+                    build_summary(&db, &config)
+                };
+                if let Some(summary) = summary {
+                    if let Err(e) = discord_client.post_summary(&summary).await {
+                        eprintln!("[analyzer] Discord summary failed: {e}");
+                    }
+                }
+            }
+            last_summary = Instant::now();
+        }
+
+        tokio::time::sleep(config.poll_interval).await;
+    }
+}
+
+/// Check if a cluster grew significantly (doubled or more since last analysis).
+fn grew_significantly(cluster: &crate::storage::KnownCluster) -> bool {
+    // Consider significant if total count is at a power-of-2 boundary
+    let count = cluster.failure_count;
+    count > 0 && (count & (count - 1)) == 0
+}
+
+fn build_summary(db: &Storage, config: &AnalyzerConfig) -> Option<PeriodSummary> {
+    let stats = db.stats(config.summary_interval.as_secs(), "1970-01-01T00:00:00Z").ok()?;
+
+    // Get top failure fields
+    let failures = db.recent_failures(100).ok()?;
+    let mut field_counts: HashMap<String, usize> = HashMap::new();
+    for f in &failures {
+        if let Some(ref field) = f.first_divergence_field {
+            *field_counts.entry(field.clone()).or_default() += 1;
+        }
+    }
+    let mut top: Vec<_> = field_counts.into_iter().collect();
+    top.sort_by(|a, b| b.1.cmp(&a.1));
+    top.truncate(5);
+
+    Some(PeriodSummary {
+        period: format!("last {}h", config.summary_interval.as_secs() / 3600),
+        total_games: stats.total_games,
+        passed: stats.passed,
+        failed: stats.failed,
+        errors: stats.errors,
+        pass_rate: stats.pass_rate,
+        top_failures: top,
+        dashboard_url: config.dashboard_url.clone(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::protocol::{MatchupStatus, RunRecord};
+
+    fn make_record(field: &str, deck1: &str, deck2: &str, seed: u64) -> RunRecord {
+        RunRecord {
+            id: 0,
+            batch_id: 1,
+            deck1: deck1.to_string(),
+            deck2: deck2.to_string(),
+            seed,
+            status: MatchupStatus::Fail,
+            snapshots_compared: 10,
+            divergence_count: 1,
+            first_divergence_field: Some(field.to_string()),
+            first_divergence_rust: Some("18".to_string()),
+            first_divergence_java: Some("20".to_string()),
+            covered_cards: vec!["Lightning Bolt".to_string()],
+            duration_ms: 100,
+            error_message: None,
+            timestamp: "2026-03-05T10:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn cluster_key_sorts_decks() {
+        let r1 = make_record("players[0].life", "green_stompy", "red_burn", 42);
+        let r2 = make_record("players[0].life", "red_burn", "green_stompy", 43);
+        assert_eq!(cluster_key(&r1), cluster_key(&r2));
+    }
+
+    #[test]
+    fn cluster_key_different_fields() {
+        let r1 = make_record("players[0].life", "red_burn", "green_stompy", 42);
+        let r2 = make_record("players[1].life", "red_burn", "green_stompy", 42);
+        assert_ne!(cluster_key(&r1), cluster_key(&r2));
+    }
+
+    #[test]
+    fn cluster_failures_groups_correctly() {
+        let records = vec![
+            make_record("players[0].life", "red_burn", "green_stompy", 42),
+            make_record("players[0].life", "red_burn", "green_stompy", 43),
+            make_record("players[1].life", "red_burn", "green_stompy", 44),
+        ];
+        let clusters = cluster_failures(&records);
+        assert_eq!(clusters.len(), 2);
+
+        let key = cluster_key(&records[0]);
+        let cluster = &clusters[&key];
+        assert_eq!(cluster.count, 2);
+    }
+
+    #[test]
+    fn grew_significantly_powers_of_two() {
+        use crate::storage::KnownCluster;
+
+        let make = |count: i64| KnownCluster {
+            id: 1,
+            cluster_key: "test".into(),
+            failure_count: count,
+            first_seen: String::new(),
+            last_seen: String::new(),
+            github_issue: None,
+            last_discord_ts: None,
+            llm_analysis: None,
+        };
+
+        assert!(grew_significantly(&make(1)));
+        assert!(grew_significantly(&make(2)));
+        assert!(!grew_significantly(&make(3)));
+        assert!(grew_significantly(&make(4)));
+        assert!(!grew_significantly(&make(5)));
+        assert!(grew_significantly(&make(8)));
+        assert!(grew_significantly(&make(16)));
+    }
+}

@@ -24,6 +24,9 @@ services:
       FUZZ_PER_BATCH: "0"
       # MAX_GAMES: ""          # omit for unlimited
       # DECKS: ""              # omit for all presets
+      DISCORD_WEBHOOK_URL: "${DISCORD_WEBHOOK_URL:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
     volumes:
       - parity-data:/app/data
     restart: unless-stopped

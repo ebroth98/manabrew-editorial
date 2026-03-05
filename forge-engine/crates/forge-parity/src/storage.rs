@@ -9,6 +9,32 @@ use crate::protocol::{
     ContinuousStats, DeckPairStats, MatchupResult, MatchupStatus, RunRecord, TrendPoint,
 };
 
+/// A tracked failure cluster from the analysis daemon.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct KnownCluster {
+    pub id: i64,
+    pub cluster_key: String,
+    pub failure_count: i64,
+    pub first_seen: String,
+    pub last_seen: String,
+    pub github_issue: Option<i64>,
+    pub last_discord_ts: Option<String>,
+    pub llm_analysis: Option<String>,
+}
+
+/// Clusters aggregated by divergence field (for the UI).
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct FieldCluster {
+    pub field: String,
+    pub total_failures: i64,
+    pub num_deck_pairs: i64,
+    pub first_seen: String,
+    pub last_seen: String,
+    pub github_issue: Option<i64>,
+    pub llm_analysis: Option<String>,
+    pub deck_pairs: Option<String>,
+}
+
 /// SQLite-backed storage for parity run records.
 pub struct Storage {
     conn: Connection,
@@ -57,6 +83,22 @@ impl Storage {
             CREATE INDEX IF NOT EXISTS idx_runs_status ON runs(status);
             CREATE INDEX IF NOT EXISTS idx_runs_batch ON runs(batch_id);
             CREATE INDEX IF NOT EXISTS idx_runs_deck_pair ON runs(deck1, deck2);
+
+            CREATE TABLE IF NOT EXISTS analysis_state (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS known_clusters (
+                id              INTEGER PRIMARY KEY AUTOINCREMENT,
+                cluster_key     TEXT NOT NULL UNIQUE,
+                failure_count   INTEGER NOT NULL DEFAULT 0,
+                first_seen      TEXT NOT NULL,
+                last_seen       TEXT NOT NULL,
+                github_issue    INTEGER,
+                last_discord_ts TEXT,
+                llm_analysis    TEXT
+            );
             ",
         )?;
         Ok(())
@@ -290,6 +332,194 @@ impl Storage {
             return Ok(0.0);
         }
         Ok(passed as f64 / (passed + failed) as f64)
+    }
+
+    // ── Analysis Daemon Queries ──────────────────────────────────────
+
+    /// Get the last analyzed run ID (watermark).
+    pub fn get_analysis_watermark(&self) -> SqlResult<i64> {
+        let result: Option<String> = self
+            .conn
+            .query_row(
+                "SELECT value FROM analysis_state WHERE key = 'last_analyzed_id'",
+                [],
+                |r| r.get(0),
+            )
+            .ok();
+        Ok(result
+            .and_then(|v| v.parse::<i64>().ok())
+            .unwrap_or(0))
+    }
+
+    /// Update the watermark to the given run ID.
+    pub fn set_analysis_watermark(&self, id: i64) -> SqlResult<()> {
+        self.conn.execute(
+            "INSERT INTO analysis_state (key, value) VALUES ('last_analyzed_id', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            params![id.to_string()],
+        )?;
+        Ok(())
+    }
+
+    /// Fetch failures with id > watermark.
+    pub fn failures_since(&self, after_id: i64) -> SqlResult<Vec<RunRecord>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
+                    divergence_count, first_divergence_field, first_divergence_rust,
+                    first_divergence_java, covered_cards, duration_ms, error_message, timestamp
+             FROM runs
+             WHERE id > ?1 AND status IN ('fail', 'error')
+             ORDER BY id ASC",
+        )?;
+        let rows = stmt.query_map(params![after_id], |row| Self::row_to_record(row))?;
+        rows.collect()
+    }
+
+    /// Upsert a known cluster; returns (is_new, updated_row).
+    pub fn upsert_cluster(
+        &self,
+        cluster_key: &str,
+        additional_failures: i64,
+        now_iso: &str,
+    ) -> SqlResult<(bool, KnownCluster)> {
+        // Try to find existing
+        let existing: Option<KnownCluster> = self
+            .conn
+            .query_row(
+                "SELECT id, cluster_key, failure_count, first_seen, last_seen,
+                        github_issue, last_discord_ts, llm_analysis
+                 FROM known_clusters WHERE cluster_key = ?1",
+                params![cluster_key],
+                |row| {
+                    Ok(KnownCluster {
+                        id: row.get(0)?,
+                        cluster_key: row.get(1)?,
+                        failure_count: row.get(2)?,
+                        first_seen: row.get(3)?,
+                        last_seen: row.get(4)?,
+                        github_issue: row.get(5)?,
+                        last_discord_ts: row.get(6)?,
+                        llm_analysis: row.get(7)?,
+                    })
+                },
+            )
+            .ok();
+
+        if let Some(mut cluster) = existing {
+            self.conn.execute(
+                "UPDATE known_clusters SET failure_count = failure_count + ?1, last_seen = ?2
+                 WHERE cluster_key = ?3",
+                params![additional_failures, now_iso, cluster_key],
+            )?;
+            cluster.failure_count += additional_failures;
+            cluster.last_seen = now_iso.to_string();
+            Ok((false, cluster))
+        } else {
+            self.conn.execute(
+                "INSERT INTO known_clusters (cluster_key, failure_count, first_seen, last_seen)
+                 VALUES (?1, ?2, ?3, ?3)",
+                params![cluster_key, additional_failures, now_iso],
+            )?;
+            let id = self.conn.last_insert_rowid();
+            Ok((
+                true,
+                KnownCluster {
+                    id,
+                    cluster_key: cluster_key.to_string(),
+                    failure_count: additional_failures,
+                    first_seen: now_iso.to_string(),
+                    last_seen: now_iso.to_string(),
+                    github_issue: None,
+                    last_discord_ts: None,
+                    llm_analysis: None,
+                },
+            ))
+        }
+    }
+
+    /// Update a cluster's LLM analysis cache.
+    pub fn set_cluster_llm_analysis(&self, cluster_key: &str, analysis: &str) -> SqlResult<()> {
+        self.conn.execute(
+            "UPDATE known_clusters SET llm_analysis = ?1 WHERE cluster_key = ?2",
+            params![analysis, cluster_key],
+        )?;
+        Ok(())
+    }
+
+    /// Record that a GitHub issue was opened for this cluster.
+    pub fn set_cluster_github_issue(&self, cluster_key: &str, issue_number: i64) -> SqlResult<()> {
+        self.conn.execute(
+            "UPDATE known_clusters SET github_issue = ?1 WHERE cluster_key = ?2",
+            params![issue_number, cluster_key],
+        )?;
+        Ok(())
+    }
+
+    /// Record the last Discord post timestamp for this cluster.
+    pub fn set_cluster_discord_ts(&self, cluster_key: &str, ts: &str) -> SqlResult<()> {
+        self.conn.execute(
+            "UPDATE known_clusters SET last_discord_ts = ?1 WHERE cluster_key = ?2",
+            params![ts, cluster_key],
+        )?;
+        Ok(())
+    }
+
+    /// Get all known clusters, ordered by failure count descending.
+    pub fn get_clusters(&self) -> SqlResult<Vec<KnownCluster>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT id, cluster_key, failure_count, first_seen, last_seen,
+                    github_issue, last_discord_ts, llm_analysis
+             FROM known_clusters
+             ORDER BY failure_count DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(KnownCluster {
+                id: row.get(0)?,
+                cluster_key: row.get(1)?,
+                failure_count: row.get(2)?,
+                first_seen: row.get(3)?,
+                last_seen: row.get(4)?,
+                github_issue: row.get(5)?,
+                last_discord_ts: row.get(6)?,
+                llm_analysis: row.get(7)?,
+            })
+        })?;
+        rows.collect()
+    }
+
+    /// Get clusters aggregated by divergence field, with total failures and analysis.
+    /// Returns one entry per unique field, picking the first non-null LLM analysis found.
+    pub fn get_clusters_by_field(&self) -> SqlResult<Vec<FieldCluster>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT
+                substr(cluster_key, 1, instr(cluster_key, '|') - 1) as field,
+                SUM(failure_count) as total_failures,
+                COUNT(*) as num_deck_pairs,
+                MIN(first_seen) as first_seen,
+                MAX(last_seen) as last_seen,
+                MAX(github_issue) as github_issue,
+                (SELECT kc2.llm_analysis FROM known_clusters kc2
+                 WHERE substr(kc2.cluster_key, 1, instr(kc2.cluster_key, '|') - 1)
+                       = substr(known_clusters.cluster_key, 1, instr(known_clusters.cluster_key, '|') - 1)
+                 AND kc2.llm_analysis IS NOT NULL LIMIT 1) as llm_analysis,
+                GROUP_CONCAT(DISTINCT replace(substr(cluster_key, instr(cluster_key, '|') + 1), '+', ' vs ')) as deck_pairs
+             FROM known_clusters
+             GROUP BY field
+             ORDER BY total_failures DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(FieldCluster {
+                field: row.get(0)?,
+                total_failures: row.get(1)?,
+                num_deck_pairs: row.get(2)?,
+                first_seen: row.get(3)?,
+                last_seen: row.get(4)?,
+                github_issue: row.get(5)?,
+                llm_analysis: row.get(6)?,
+                deck_pairs: row.get(7)?,
+            })
+        })?;
+        rows.collect()
     }
 
     fn row_to_record(row: &rusqlite::Row<'_>) -> rusqlite::Result<RunRecord> {

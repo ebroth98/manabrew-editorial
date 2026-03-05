@@ -16,12 +16,17 @@ COPY forge-engine/ forge-engine/
 COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
 RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs
 
-RUN cargo build -p forge-parity --features serve --release
+RUN cargo build -p forge-parity --features analyze --release
 
 # ── Stage 3: Runtime ────────────────────────────────────────────────
 FROM eclipse-temurin:17-jre-jammy
 
-RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 \
+RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 curl \
+    && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+       | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+       > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -46,5 +51,10 @@ ENTRYPOINT ["/bin/sh", "-c", "\
     --max-turns ${MAX_TURNS:-10}\"; \
     if [ -n \"${MAX_GAMES}\" ]; then ARGS=\"${ARGS} --max-games ${MAX_GAMES}\"; fi; \
     if [ -n \"${DECKS}\" ]; then ARGS=\"${ARGS} --decks ${DECKS}\"; fi; \
+    if [ -n \"${ANALYZE}\" ]; then ARGS=\"${ARGS} --analyze\"; fi; \
+    if [ -n \"${POLL_INTERVAL}\" ]; then ARGS=\"${ARGS} --poll-interval ${POLL_INTERVAL}\"; fi; \
+    if [ -n \"${SUMMARY_INTERVAL}\" ]; then ARGS=\"${ARGS} --summary-interval ${SUMMARY_INTERVAL}\"; fi; \
+    if [ -n \"${ISSUE_THRESHOLD}\" ]; then ARGS=\"${ARGS} --issue-threshold ${ISSUE_THRESHOLD}\"; fi; \
+    if [ -n \"${GITHUB_REPO}\" ]; then ARGS=\"${ARGS} --github-repo ${GITHUB_REPO}\"; fi; \
     if [ -n \"${EXTRA_ARGS}\" ]; then ARGS=\"${ARGS} ${EXTRA_ARGS}\"; fi; \
     exec /app/forge-parity ${ARGS}"]

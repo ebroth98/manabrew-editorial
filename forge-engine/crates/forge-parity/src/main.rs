@@ -150,12 +150,45 @@ struct Cli {
     /// Number of fuzz games per batch in continuous mode (0 to disable)
     #[arg(long, default_value_t = 0)]
     fuzz_per_batch: usize,
+
+    /// Enable the analysis daemon (clusters failures, LLM analysis, Discord/GitHub)
+    #[arg(long)]
+    analyze: bool,
+
+    /// Seconds between analysis DB checks (default: 60)
+    #[arg(long, default_value_t = 60)]
+    poll_interval: u64,
+
+    /// Seconds between Discord summary posts (default: 3600)
+    #[arg(long, default_value_t = 3600)]
+    summary_interval: u64,
+
+    /// Minimum failures in a cluster before opening a GitHub issue (default: 5)
+    #[arg(long, default_value_t = 5)]
+    issue_threshold: i64,
+
+    /// GitHub repo for issues (default: auto-detect from git remote)
+    #[arg(long)]
+    github_repo: Option<String>,
 }
 
 fn main() {
     let cli = Cli::parse();
     let games_flag_present = std::env::args()
         .any(|arg| arg == "--games" || arg.starts_with("--games="));
+
+    if cli.analyze && !cli.serve {
+        #[cfg(feature = "analyze")]
+        {
+            run_analyze_only(&cli);
+        }
+        #[cfg(not(feature = "analyze"))]
+        {
+            eprintln!("[parity] --analyze requires the 'analyze' feature. Build with: cargo build --features analyze");
+            std::process::exit(1);
+        }
+        return;
+    }
 
     if cli.serve {
         #[cfg(feature = "serve")]
@@ -1863,6 +1896,38 @@ fn run_serve_mode(cli: &Cli) {
         axum::serve(listener, router).await.expect("server error");
     });
 
+    // Spawn analysis daemon if --analyze
+    #[cfg(feature = "analyze")]
+    if cli.analyze {
+        use forge_parity::analyzer::{self, AnalyzerConfig};
+
+        let analyzer_db = match Storage::open(&cli.db_path) {
+            Ok(db) => db,
+            Err(e) => {
+                eprintln!("[parity] Failed to open analyzer database: {}", e);
+                std::process::exit(1);
+            }
+        };
+        let analyzer_storage = Arc::new(std::sync::Mutex::new(analyzer_db));
+        let analyzer_config = AnalyzerConfig {
+            poll_interval: std::time::Duration::from_secs(cli.poll_interval),
+            summary_interval: std::time::Duration::from_secs(cli.summary_interval),
+            issue_threshold: cli.issue_threshold,
+            github_repo: cli.github_repo.clone(),
+            dashboard_url: Some(format!("http://localhost:{}", port)),
+        };
+
+        rt.spawn(async move {
+            analyzer::run(analyzer_storage, analyzer_config).await;
+        });
+        eprintln!("[parity] Analysis daemon started");
+    }
+    #[cfg(not(feature = "analyze"))]
+    if cli.analyze {
+        eprintln!("[parity] --analyze requires the 'analyze' feature. Build with: cargo build --features analyze");
+        std::process::exit(1);
+    }
+
     // Run game loop on main thread (blocking)
     let cli_max_turns = cli.max_turns;
     let cli_cards_dir = cli.cards_dir.clone();
@@ -1937,4 +2002,40 @@ fn run_serve_mode(cli: &Cli) {
 
     java_server.shutdown();
     eprintln!("[parity] Serve mode complete ({} games)", completed);
+}
+
+// ── Analyze-only Mode ──────────────────────────────────────────────
+
+#[cfg(feature = "analyze")]
+fn run_analyze_only(cli: &Cli) {
+    use forge_parity::analyzer::{self, AnalyzerConfig};
+    use forge_parity::storage::Storage;
+    use std::sync::Arc;
+
+    eprintln!(
+        "[parity] Analyze-only mode: db={}, poll={}s, summary={}s, threshold={}",
+        cli.db_path, cli.poll_interval, cli.summary_interval, cli.issue_threshold
+    );
+
+    let db = match Storage::open(&cli.db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("[parity] Failed to open database: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let storage = Arc::new(std::sync::Mutex::new(db));
+    let config = AnalyzerConfig {
+        poll_interval: std::time::Duration::from_secs(cli.poll_interval),
+        summary_interval: std::time::Duration::from_secs(cli.summary_interval),
+        issue_threshold: cli.issue_threshold,
+        github_repo: cli.github_repo.clone(),
+        dashboard_url: Some(format!("http://localhost:{}", cli.port)),
+    };
+
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+    rt.block_on(async {
+        analyzer::run(storage, config).await;
+    });
 }

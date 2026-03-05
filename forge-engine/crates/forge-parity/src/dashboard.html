@@ -57,6 +57,22 @@
 
   .mono { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; }
   .refresh-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+
+  .cluster-cards { display: grid; gap: 12px; }
+  .cluster-card { background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 14px; }
+  .cluster-card .cluster-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .cluster-card .cluster-field { font-family: 'SF Mono', 'Menlo', monospace; font-size: 13px; color: var(--accent); }
+  .cluster-card .cluster-count { font-size: 12px; font-weight: 600; color: var(--red); }
+  .cluster-card .cluster-meta { font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+  .cluster-card .cluster-analysis { font-size: 12px; line-height: 1.6; color: var(--text); }
+  .cluster-card .cluster-analysis strong { color: var(--accent); }
+  .cluster-card .cluster-files { font-family: 'SF Mono', 'Menlo', monospace; font-size: 11px;
+    color: var(--text-muted); margin-top: 6px; }
+  .cluster-card .severity-badge { display: inline-block; padding: 1px 6px; border-radius: 8px;
+    font-size: 10px; font-weight: 600; text-transform: uppercase; margin-left: 8px; }
+  .severity-badge.high { background: rgba(248,81,73,0.2); color: var(--red); }
+  .severity-badge.medium { background: rgba(210,153,34,0.2); color: var(--yellow); }
+  .severity-badge.low { background: rgba(63,185,80,0.2); color: var(--green); }
 </style>
 </head>
 <body>
@@ -76,6 +92,15 @@
   <div class="section">
     <h2>Deck Pair Matrix</h2>
     <div id="matrix-container"></div>
+  </div>
+
+  <div class="section" id="clusters-section" style="display:none">
+    <h2>AI Failure Analysis</h2>
+    <div id="clusters-analyzed"></div>
+    <details id="clusters-pending-details" style="margin-top:16px;display:none">
+      <summary style="cursor:pointer;color:var(--text-muted);font-size:13px;user-select:none" id="clusters-pending-summary">Pending analysis (0)</summary>
+      <div id="clusters-pending" style="margin-top:10px"></div>
+    </details>
   </div>
 
   <div class="section">
@@ -218,8 +243,70 @@ async function updateFailures() {
   } catch(e) { console.error('Failures error:', e); }
 }
 
+function renderAnalyzedCard(c) {
+  try {
+    const a = JSON.parse(c.llm_analysis);
+    const sev = a.severity || 'medium';
+    const decks = c.deck_pairs ? c.deck_pairs.split(',').slice(0, 5).join(', ') : '';
+    return `<div class="cluster-card">
+      <div class="cluster-header">
+        <span class="cluster-field">${c.field}</span>
+        <span><span class="cluster-count">${c.total_failures} failures</span><span class="severity-badge ${sev}">${sev}</span></span>
+      </div>
+      <div class="cluster-meta">${c.num_deck_pairs} deck pairs &middot; ${decks}${c.github_issue ? ' &middot; <a href="#" style="color:var(--accent)">issue #' + c.github_issue + '</a>' : ''}</div>
+      <div class="cluster-analysis">
+        <strong>Mechanic:</strong> ${a.mechanic}<br>
+        <strong>Root cause:</strong> ${a.root_cause}
+        <div class="cluster-files">Files: ${a.files_to_check.join(', ')}</div>
+        <div class="cluster-files">Repro: <code>${a.repro_command}</code></div>
+      </div>
+    </div>`;
+  } catch(e) { return ''; }
+}
+
+function renderPendingCard(c) {
+  const decks = c.deck_pairs ? c.deck_pairs.split(',').slice(0, 3).join(', ') : '';
+  return `<div class="cluster-card" style="border-color:var(--border);opacity:0.7">
+    <div class="cluster-header">
+      <span class="cluster-field">${c.field}</span>
+      <span class="cluster-count">${c.total_failures} failures</span>
+    </div>
+    <div class="cluster-meta">${c.num_deck_pairs} deck pairs &middot; ${decks}</div>
+  </div>`;
+}
+
+async function updateClusters() {
+  try {
+    const data = await fetchJson('/api/clusters');
+    const section = document.getElementById('clusters-section');
+    if (data.length === 0) { section.style.display = 'none'; return; }
+    section.style.display = '';
+
+    const analyzed = data.filter(c => c.llm_analysis);
+    const pending = data.filter(c => !c.llm_analysis);
+
+    const analyzedEl = document.getElementById('clusters-analyzed');
+    if (analyzed.length > 0) {
+      analyzedEl.innerHTML = '<div class="cluster-cards">' + analyzed.map(renderAnalyzedCard).join('') + '</div>';
+    } else {
+      analyzedEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No fields analyzed yet — waiting for AI...</p>';
+    }
+
+    const pendingDetails = document.getElementById('clusters-pending-details');
+    const pendingSummary = document.getElementById('clusters-pending-summary');
+    const pendingEl = document.getElementById('clusters-pending');
+    if (pending.length > 0) {
+      pendingDetails.style.display = '';
+      pendingSummary.textContent = `Pending analysis (${pending.length} divergence fields, ${pending.reduce((s,c) => s + c.total_failures, 0)} total failures)`;
+      pendingEl.innerHTML = '<div class="cluster-cards">' + pending.map(renderPendingCard).join('') + '</div>';
+    } else {
+      pendingDetails.style.display = 'none';
+    }
+  } catch(e) { console.error('Clusters error:', e); }
+}
+
 async function refresh() {
-  await Promise.all([updateStats(), updateTrend(), updateMatrix(), updateFailures()]);
+  await Promise.all([updateStats(), updateTrend(), updateMatrix(), updateFailures(), updateClusters()]);
 }
 
 refresh();
