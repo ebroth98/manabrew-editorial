@@ -12,6 +12,20 @@ LOG_PREFIX="[deploy]"
 
 log() { echo "$LOG_PREFIX $*"; }
 
+# ── Load .env (for GITHUB_TOKEN) ────────────────────────────────────
+if [ -f "$REPO_DIR/.env" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$REPO_DIR/.env"
+    set +a
+fi
+
+# ── Configure git to use PAT instead of SSH ─────────────────────────
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+    git remote set-url origin "https://x-access-token:${GITHUB_TOKEN}@github.com/fedepoi/bardidinaXmageUI.git"
+    log "Using GITHUB_TOKEN for git pull"
+fi
+
 # ── Pull latest changes ──────────────────────────────────────────────
 PREV=$(git rev-parse HEAD)
 git pull origin main --ff-only
