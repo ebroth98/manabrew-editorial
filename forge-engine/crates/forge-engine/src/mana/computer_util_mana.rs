@@ -288,7 +288,14 @@ fn sort_mana_abilities(
             .map(|(i, a)| ((a.card_id, a.ability_index), i))
             .collect();
 
-        new_abilities.sort_by(|a, b| {
+        // Use binary insertion sort to match Java's TimSort behaviour for small
+        // arrays.  Java's TimSort delegates to binary insertion sort for runs
+        // shorter than ~32 elements.  Because the comparator is non-transitive,
+        // different sort algorithms can (and do) produce different orderings.
+        // Rust's `slice::sort_by` uses a merge-sort variant that disagrees with
+        // Java on certain inputs, so we replicate the exact insertion-sort loop
+        // that Java executes.
+        let cmp = |a: &ManaAbilityRef, b: &ManaAbilityRef| -> std::cmp::Ordering {
             let idx_a = ordered_cards.iter().position(|&c| c == a.card_id).unwrap_or(usize::MAX);
             let idx_b = ordered_cards.iter().position(|&c| c == b.card_id).unwrap_or(usize::MAX);
             let mut pre_order = (idx_a as isize) - (idx_b as isize);
@@ -335,7 +342,32 @@ fn sort_mana_abilities(
             a.ability_index
                 .cmp(&b.ability_index)
                 .then(a.source_order.cmp(&b.source_order))
-        });
+        };
+        // Java-compatible binary insertion sort (mirrors TimSort's binarySort).
+        // For each element at position `i`, binary-search the sorted prefix
+        // [0..i) to find where it belongs, then shift elements right and insert.
+        for i in 1..new_abilities.len() {
+            let pivot = new_abilities[i].clone();
+            // Binary search: find leftmost position where pivot should go.
+            let mut lo = 0usize;
+            let mut hi = i;
+            while lo < hi {
+                let mid = (lo + hi) / 2;
+                // Java: if (c.compare(pivot, a[mid]) < 0) hi = mid; else lo = mid+1;
+                if cmp(&pivot, &new_abilities[mid]).is_lt() {
+                    hi = mid;
+                } else {
+                    lo = mid + 1;
+                }
+            }
+            // Shift [lo..i) right by one, then place pivot at lo.
+            if lo < i {
+                for j in (lo..i).rev() {
+                    new_abilities.swap(j, j + 1);
+                }
+                new_abilities[lo] = pivot;
+            }
+        }
 
         // Java excludes same-host payment in chooseManaAbility, keep list intact here.
         let _ = current_spell;

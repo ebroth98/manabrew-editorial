@@ -333,8 +333,10 @@ impl GameState {
             let card = &self.cards[cid.index()];
             if card.is_creature() {
                 let zero_toughness = card.toughness() <= 0;
+                // Deathtouch kills on ANY damage, including wither/infect
+                // (which applies -1/-1 counters instead of marking card.damage).
                 let lethal =
-                    card.lethal_damage() || (card.damage > 0 && card.has_deathtouch_damage);
+                    card.lethal_damage() || card.has_deathtouch_damage;
                 let should_die = zero_toughness || lethal;
                 if should_die {
                     let owner = card.owner;
