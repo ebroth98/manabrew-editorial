@@ -1,9 +1,37 @@
+# syntax=docker/dockerfile:1
 # ── Stage 1: Build Java harness JAR ─────────────────────────────────
 FROM maven:3.9-eclipse-temurin-17 AS java-builder
 
-WORKDIR /build
-COPY forge/ forge/
-RUN cd forge && mvn -pl forge-harness -am -DskipTests package -q
+WORKDIR /build/forge
+
+# Copy only POMs first so dependency download is cached separately.
+# Modules needed by `mvn -pl forge-harness -am`: parent + core, game, ai, gui, harness.
+COPY forge/pom.xml                   pom.xml
+COPY forge/forge-core/pom.xml        forge-core/pom.xml
+COPY forge/forge-game/pom.xml        forge-game/pom.xml
+COPY forge/forge-ai/pom.xml          forge-ai/pom.xml
+COPY forge/forge-gui/pom.xml         forge-gui/pom.xml
+COPY forge/forge-harness/pom.xml     forge-harness/pom.xml
+
+# Create stub source dirs so Maven resolves modules without error
+RUN for m in forge-core forge-game forge-ai forge-gui forge-harness; do \
+      mkdir -p "$m/src/main/java"; \
+    done
+
+# Download all dependencies (cached until a pom.xml changes)
+RUN --mount=type=cache,target=/root/.m2/repository \
+    mvn -pl forge-harness -am dependency:go-offline -q || true
+
+# Now copy the real source code
+COPY forge/forge-core/    forge-core/
+COPY forge/forge-game/    forge-game/
+COPY forge/forge-ai/      forge-ai/
+COPY forge/forge-gui/     forge-gui/
+COPY forge/forge-harness/ forge-harness/
+
+# Build the fat JAR (deps already cached in .m2)
+RUN --mount=type=cache,target=/root/.m2/repository \
+    mvn -pl forge-harness -am -DskipTests package -q
 
 # ── Stage 2: Build Rust binary ──────────────────────────────────────
 FROM rust:1.88-bookworm AS rust-builder
@@ -16,7 +44,12 @@ COPY forge-engine/ forge-engine/
 COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
 RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs && touch src-tauri/src/lib.rs
 
-RUN cargo build -p forge-parity --features analyze --release
+# Build with BuildKit cache mounts for cargo registry + target dir
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/build/target \
+    cargo build -p forge-parity --features analyze --release \
+    && cp /build/target/release/forge-parity /usr/local/bin/forge-parity
 
 # ── Stage 3: Runtime ────────────────────────────────────────────────
 FROM eclipse-temurin:17-jre-jammy
@@ -31,7 +64,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends sqlite3 curl \
 
 WORKDIR /app
 
-COPY --from=rust-builder /build/target/release/forge-parity /app/forge-parity
+COPY --from=rust-builder /usr/local/bin/forge-parity /app/forge-parity
 COPY --from=java-builder /build/forge/forge-harness/target/forge-harness-jar-with-dependencies.jar /app/forge-harness.jar
 COPY forge/forge-gui/res/ /app/forge-gui/res/
 COPY preset_decks/ /app/preset_decks/
