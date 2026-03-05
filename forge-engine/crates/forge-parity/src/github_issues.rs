@@ -1,9 +1,8 @@
-//! GitHub issue creation and dedup via the `gh` CLI.
+//! GitHub issue creation and dedup via the GitHub REST API.
 //!
 //! Creates issues for significant parity failure clusters, and adds comments
 //! to existing issues rather than creating duplicates.
-
-use std::process::Command;
+//! Uses `reqwest` + `GITHUB_TOKEN` env var instead of the `gh` CLI.
 
 use crate::llm::LlmAnalysis;
 
@@ -29,49 +28,60 @@ pub struct DeckPairRow {
     pub sample_seed: u64,
 }
 
-/// GitHub issue manager.
+/// GitHub issue manager using the REST API.
 pub struct GitHubIssues {
     repo: String,
+    token: Option<String>,
+    client: reqwest::Client,
 }
 
 impl GitHubIssues {
     /// Create a new issue manager.
-    /// If `repo` is `None`, `gh` will auto-detect from the git remote.
+    /// `repo` should be in `owner/repo` format.
+    /// Reads `GITHUB_TOKEN` from the environment.
     pub fn new(repo: Option<String>) -> Self {
+        let token = std::env::var("GITHUB_TOKEN").ok();
         Self {
             repo: repo.unwrap_or_default(),
+            token,
+            client: reqwest::Client::new(),
         }
     }
 
-    /// Check if `gh` CLI is authenticated. Returns false if not available.
+    /// Check if the GitHub API is available (token + repo configured).
     pub fn is_available(&self) -> bool {
-        Command::new("gh")
-            .args(["auth", "status"])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(false)
+        self.token.is_some() && !self.repo.is_empty()
+    }
+
+    fn api_url(&self, path: &str) -> String {
+        format!("https://api.github.com/repos/{}{}", self.repo, path)
     }
 
     /// Search for an existing open issue matching this cluster.
     /// Returns the issue number if found.
-    pub fn find_existing_issue(&self, divergence_field: &str) -> Option<i64> {
-        let mut cmd = Command::new("gh");
-        cmd.args(["issue", "list", "--label", "parity-failure"]);
-        cmd.args(["--search", divergence_field]);
-        cmd.args(["--state", "open", "--json", "number", "--limit", "1"]);
+    pub async fn find_existing_issue(&self, divergence_field: &str) -> Option<i64> {
+        let token = self.token.as_ref()?;
+        let query = format!(
+            "repo:{} is:issue is:open label:parity-failure {} in:title",
+            self.repo, divergence_field
+        );
+        let resp = self
+            .client
+            .get("https://api.github.com/search/issues")
+            .query(&[("q", &query), ("per_page", &"1".to_string())])
+            .header("Authorization", format!("Bearer {token}"))
+            .header("User-Agent", "forge-parity")
+            .header("Accept", "application/vnd.github+json")
+            .send()
+            .await
+            .ok()?;
 
-        if !self.repo.is_empty() {
-            cmd.args(["--repo", &self.repo]);
-        }
-
-        let output = cmd.output().ok()?;
-        if !output.status.success() {
+        if !resp.status().is_success() {
             return None;
         }
 
-        let text = String::from_utf8_lossy(&output.stdout);
-        let parsed: serde_json::Value = serde_json::from_str(text.trim()).ok()?;
-        parsed
+        let body: serde_json::Value = resp.json().await.ok()?;
+        body.get("items")?
             .as_array()?
             .first()?
             .get("number")?
@@ -79,39 +89,51 @@ impl GitHubIssues {
     }
 
     /// Create a new GitHub issue. Returns the issue number.
-    pub fn create_issue(&self, data: &IssueData) -> Result<i64, String> {
+    pub async fn create_issue(&self, data: &IssueData) -> Result<i64, String> {
+        let token = self.token.as_ref().ok_or("GITHUB_TOKEN not set")?;
         let title = format!(
             "Parity divergence: {} ({} failures)",
             data.divergence_field, data.total_failures
         );
-
         let body = build_issue_body(data);
 
-        let mut cmd = Command::new("gh");
-        cmd.args(["issue", "create"]);
-        cmd.args(["--title", &title]);
-        cmd.args(["--label", "parity-failure,automated"]);
-        cmd.args(["--body", &body]);
+        let payload = serde_json::json!({
+            "title": title,
+            "body": body,
+            "labels": ["parity-failure", "automated"],
+        });
 
-        if !self.repo.is_empty() {
-            cmd.args(["--repo", &self.repo]);
+        let resp = self
+            .client
+            .post(self.api_url("/issues"))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("User-Agent", "forge-parity")
+            .header("Accept", "application/vnd.github+json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("GitHub API request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(format!("GitHub API {status}: {text}"));
         }
 
-        let output = cmd.output().map_err(|e| format!("Failed to run gh: {e}"))?;
+        let result: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse response: {e}"))?;
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("gh issue create failed: {stderr}"));
-        }
-
-        // gh outputs the issue URL, extract the number from it
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        extract_issue_number(&stdout)
-            .ok_or_else(|| format!("Could not parse issue number from: {stdout}"))
+        result
+            .get("number")
+            .and_then(|n| n.as_i64())
+            .ok_or_else(|| "No issue number in response".to_string())
     }
 
     /// Add a comment to an existing issue with updated stats.
-    pub fn add_comment(&self, issue_number: i64, data: &IssueData) -> Result<(), String> {
+    pub async fn add_comment(&self, issue_number: i64, data: &IssueData) -> Result<(), String> {
+        let token = self.token.as_ref().ok_or("GITHUB_TOKEN not set")?;
         let body = format!(
             "## Updated Parity Stats\n\n\
              **Total failures:** {}\n\
@@ -120,24 +142,25 @@ impl GitHubIssues {
             data.total_failures, data.last_seen
         );
 
-        let mut cmd = Command::new("gh");
-        cmd.args([
-            "issue",
-            "comment",
-            &issue_number.to_string(),
-            "--body",
-            &body,
-        ]);
+        let payload = serde_json::json!({ "body": body });
 
-        if !self.repo.is_empty() {
-            cmd.args(["--repo", &self.repo]);
+        let resp = self
+            .client
+            .post(self.api_url(&format!("/issues/{issue_number}/comments")))
+            .header("Authorization", format!("Bearer {token}"))
+            .header("User-Agent", "forge-parity")
+            .header("Accept", "application/vnd.github+json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("GitHub API request failed: {e}"))?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(format!("GitHub API {status}: {text}"));
         }
 
-        let output = cmd.output().map_err(|e| format!("Failed to run gh: {e}"))?;
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("gh issue comment failed: {stderr}"));
-        }
         Ok(())
     }
 }
@@ -189,29 +212,31 @@ fn build_issue_body(data: &IssueData) -> String {
     body
 }
 
-fn extract_issue_number(url: &str) -> Option<i64> {
-    // gh outputs URLs like "https://github.com/owner/repo/issues/123"
-    url.trim()
-        .rsplit('/')
-        .next()?
-        .parse::<i64>()
-        .ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn extract_number_from_url() {
-        assert_eq!(
-            extract_issue_number("https://github.com/foo/bar/issues/42\n"),
-            Some(42)
-        );
-    }
+    fn is_available_requires_token_and_repo() {
+        let gh = GitHubIssues {
+            repo: String::new(),
+            token: Some("tok".into()),
+            client: reqwest::Client::new(),
+        };
+        assert!(!gh.is_available());
 
-    #[test]
-    fn extract_number_missing() {
-        assert_eq!(extract_issue_number("no url here"), None);
+        let gh = GitHubIssues {
+            repo: "owner/repo".into(),
+            token: None,
+            client: reqwest::Client::new(),
+        };
+        assert!(!gh.is_available());
+
+        let gh = GitHubIssues {
+            repo: "owner/repo".into(),
+            token: Some("tok".into()),
+            client: reqwest::Client::new(),
+        };
+        assert!(gh.is_available());
     }
 }

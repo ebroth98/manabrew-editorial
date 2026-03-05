@@ -139,9 +139,9 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
         tracing::info!("No DISCORD_WEBHOOK_URL, skipping Discord alerts");
     }
     if github.is_available() {
-        tracing::info!("GitHub CLI authenticated");
+        tracing::info!("GitHub API configured");
     } else {
-        tracing::info!("gh CLI not authenticated, skipping issue creation");
+        tracing::info!("GITHUB_TOKEN or repo not configured, skipping issue creation");
     }
 
     let mut last_summary = Instant::now();
@@ -348,7 +348,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
 
                         // GitHub issue if total failures exceed threshold
                         if total_count as i64 >= config.issue_threshold && github.is_available() {
-                            let existing = github.find_existing_issue(field);
+                            let existing = github.find_existing_issue(field).await;
                             let first_cluster = &field_clusters[0];
                             let deck_pair_rows: Vec<DeckPairRow> = field_clusters
                                 .iter()
@@ -389,11 +389,11 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                             };
 
                             if let Some(issue_num) = existing {
-                                if let Err(e) = github.add_comment(issue_num, &issue_data) {
+                                if let Err(e) = github.add_comment(issue_num, &issue_data).await {
                                     tracing::error!(%e, "GitHub comment failed");
                                 }
                             } else {
-                                match github.create_issue(&issue_data) {
+                                match github.create_issue(&issue_data).await {
                                     Ok(num) => tracing::info!(issue = num, "Created GitHub issue"),
                                     Err(e) => tracing::error!(%e, "GitHub issue creation failed"),
                                 }
