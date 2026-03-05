@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # deploy.sh — Smart rebuild: only rebuilds what changed since last deploy.
 # Triggered automatically via n8n webhook on push to main.
+# See DEPLOY.md for setup instructions.
 # Docker BuildKit layer caching handles unchanged layers within each build.
 set -euo pipefail
 
