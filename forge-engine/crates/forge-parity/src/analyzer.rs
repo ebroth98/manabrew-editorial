@@ -348,7 +348,29 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
 
                         // GitHub issue if total failures exceed threshold
                         if total_count as i64 >= config.issue_threshold && github.is_available() {
-                            let existing = github.find_existing_issue(field).await;
+                            // Check local DB first for a known issue number
+                            let local_issue = {
+                                let db = storage.lock().unwrap();
+                                db.get_clusters_by_field().ok().and_then(|fields| {
+                                    fields.iter()
+                                        .find(|fc| fc.field == **field)
+                                        .and_then(|fc| fc.github_issue)
+                                })
+                            };
+
+                            // Fall back to GitHub API search if no local record
+                            let existing_issue = if let Some(num) = local_issue {
+                                Some(num)
+                            } else {
+                                match github.find_existing_issue(field).await {
+                                    Ok(found) => found,
+                                    Err(e) => {
+                                        tracing::error!(%e, "GitHub issue search failed");
+                                        None
+                                    }
+                                }
+                            };
+
                             let first_cluster = &field_clusters[0];
                             let deck_pair_rows: Vec<DeckPairRow> = field_clusters
                                 .iter()
@@ -388,13 +410,22 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                                 repro_command: repro,
                             };
 
-                            if let Some(issue_num) = existing {
+                            if let Some(issue_num) = existing_issue {
                                 if let Err(e) = github.add_comment(issue_num, &issue_data).await {
                                     tracing::error!(%e, "GitHub comment failed");
                                 }
                             } else {
                                 match github.create_issue(&issue_data).await {
-                                    Ok(num) => tracing::info!(issue = num, "Created GitHub issue"),
+                                    Ok(num) => {
+                                        tracing::info!(issue = num, "Created GitHub issue");
+                                        // Save issue number to DB for all clusters sharing this field
+                                        let db = storage.lock().unwrap();
+                                        for key in clusters.keys() {
+                                            if key.starts_with(&format!("{}|", field)) {
+                                                let _ = db.set_cluster_github_issue(key, num);
+                                            }
+                                        }
+                                    }
                                     Err(e) => tracing::error!(%e, "GitHub issue creation failed"),
                                 }
                             }

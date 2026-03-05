@@ -58,9 +58,9 @@ impl GitHubIssues {
     }
 
     /// Search for an existing open issue matching this cluster.
-    /// Returns the issue number if found.
-    pub async fn find_existing_issue(&self, divergence_field: &str) -> Option<i64> {
-        let token = self.token.as_ref()?;
+    /// Returns `Ok(Some(number))` if found, `Ok(None)` if no match, `Err` on API failure.
+    pub async fn find_existing_issue(&self, divergence_field: &str) -> Result<Option<i64>, String> {
+        let token = self.token.as_ref().ok_or("GITHUB_TOKEN not set")?;
         let query = format!(
             "repo:{} is:issue is:open label:parity-failure {} in:title",
             self.repo, divergence_field
@@ -74,18 +74,25 @@ impl GitHubIssues {
             .header("Accept", "application/vnd.github+json")
             .send()
             .await
-            .ok()?;
+            .map_err(|e| format!("GitHub search request failed: {e}"))?;
 
         if !resp.status().is_success() {
-            return None;
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(format!("GitHub search API {status}: {text}"));
         }
 
-        let body: serde_json::Value = resp.json().await.ok()?;
-        body.get("items")?
-            .as_array()?
-            .first()?
-            .get("number")?
-            .as_i64()
+        let body: serde_json::Value = resp
+            .json()
+            .await
+            .map_err(|e| format!("Failed to parse search response: {e}"))?;
+
+        Ok(body
+            .get("items")
+            .and_then(|v| v.as_array())
+            .and_then(|arr| arr.first())
+            .and_then(|item| item.get("number"))
+            .and_then(|n| n.as_i64()))
     }
 
     /// Create a new GitHub issue. Returns the issue number.

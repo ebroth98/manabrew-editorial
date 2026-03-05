@@ -32,7 +32,7 @@ ANTHROPIC_API_KEY=sk-ant-...
 # OPENAI_MODEL=qwen3-14b
 # OPENAI_API_KEY=not-needed
 DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-GITHUB_TOKEN=ghp_...          # for gh CLI inside container
+GITHUB_TOKEN=ghp_...          # PAT with `repo` scope — used by the GitHub REST API to create parity issues
 GITHUB_REPO=fedepoi/bardidinaXmageUI
 ```
 
