@@ -33,7 +33,7 @@ WORKDIR /app
 
 COPY --from=rust-builder /build/target/release/forge-parity /app/forge-parity
 COPY --from=java-builder /build/forge/forge-harness/target/forge-harness-jar-with-dependencies.jar /app/forge-harness.jar
-COPY forge/forge-gui/res/cardsfolder /app/cardsfolder
+COPY forge/forge-gui/res/cardsfolder /app/forge-gui/res/cardsfolder
 COPY preset_decks/ /app/preset_decks/
 
 VOLUME /app/data
@@ -44,7 +44,7 @@ ENTRYPOINT ["/bin/sh", "-c", "\
     ARGS=\"--serve --port ${PORT:-8080} \
     --db-path /app/data/parity.db \
     --java-jar /app/forge-harness.jar \
-    --cards-dir /app/cardsfolder \
+    --cards-dir /app/forge-gui/res/cardsfolder \
     --decks-dir /app/preset_decks \
     --threshold ${THRESHOLD:-0.90} \
     --fuzz-per-batch ${FUZZ_PER_BATCH:-0} \
