@@ -489,9 +489,8 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                 };
 
                 if let Some(issue_num) = existing_issue {
-                    if let Err(e) = github.add_comment(issue_num, &issue_data).await {
-                        tracing::error!(%e, "GitHub comment failed");
-                    }
+                    // Skip commenting on existing issues to avoid spamming subscribers
+                    tracing::debug!(issue = issue_num, field = %field, "Existing issue found, skipping comment");
                 } else {
                     match github.create_issue(&issue_data).await {
                         Ok(num) => {
