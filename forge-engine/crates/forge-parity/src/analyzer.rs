@@ -144,54 +144,60 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
         tracing::info!("GITHUB_TOKEN or repo not configured, skipping issue creation");
     }
 
-    // Backfill: file GitHub issues for existing clusters that are above threshold but have no issue yet
+    // Backfill: file GitHub issues for existing clusters in the background
     if github.is_available() {
-        let backfill_fields = {
-            let db = storage.lock().unwrap();
-            db.get_clusters_by_field().unwrap_or_default()
-        };
-        let backfill_count = backfill_fields.iter()
-            .filter(|fc| fc.total_failures >= config.issue_threshold && fc.github_issue.is_none())
-            .count();
-        if backfill_count > 0 {
-            tracing::info!(count = backfill_count, "Backfill: filing GitHub issues for existing clusters");
-        }
-        for fc in &backfill_fields {
-            if fc.total_failures >= config.issue_threshold && fc.github_issue.is_none() {
-                let analysis: Option<LlmAnalysis> = fc.llm_analysis.as_ref()
-                    .and_then(|j| serde_json::from_str(j).ok());
+        let backfill_storage = Arc::clone(&storage);
+        let backfill_threshold = config.issue_threshold;
+        let backfill_github = GitHubIssues::new(config.github_repo.clone());
+        tokio::spawn(async move {
+            let backfill_fields = {
+                let db = backfill_storage.lock().unwrap();
+                db.get_clusters_by_field().unwrap_or_default()
+            };
+            let backfill_count = backfill_fields.iter()
+                .filter(|fc| fc.total_failures >= backfill_threshold && fc.github_issue.is_none())
+                .count();
+            if backfill_count == 0 {
+                return;
+            }
+            tracing::info!(count = backfill_count, "Backfill: filing GitHub issues in background");
+            for fc in &backfill_fields {
+                if fc.total_failures >= backfill_threshold && fc.github_issue.is_none() {
+                    let analysis: Option<LlmAnalysis> = fc.llm_analysis.as_ref()
+                        .and_then(|j| serde_json::from_str(j).ok());
 
-                let issue_data = IssueData {
-                    divergence_field: fc.field.clone(),
-                    rust_value: String::new(),
-                    java_value: String::new(),
-                    total_failures: fc.total_failures,
-                    first_seen: fc.first_seen.clone(),
-                    last_seen: fc.last_seen.clone(),
-                    deck_pair_table: vec![],
-                    covered_cards: String::new(),
-                    analysis,
-                    repro_command: String::new(),
-                };
+                    let issue_data = IssueData {
+                        divergence_field: fc.field.clone(),
+                        rust_value: String::new(),
+                        java_value: String::new(),
+                        total_failures: fc.total_failures,
+                        first_seen: fc.first_seen.clone(),
+                        last_seen: fc.last_seen.clone(),
+                        deck_pair_table: vec![],
+                        covered_cards: String::new(),
+                        analysis,
+                        repro_command: String::new(),
+                    };
 
-                match github.create_issue(&issue_data).await {
-                    Ok(num) => {
-                        tracing::info!(issue = num, field = %fc.field, "Backfill: created GitHub issue");
-                        let db = storage.lock().unwrap();
-                        if let Ok(all_clusters) = db.get_clusters() {
-                            for kc in &all_clusters {
-                                if kc.cluster_key.starts_with(&format!("{}|", fc.field)) {
-                                    let _ = db.set_cluster_github_issue(&kc.cluster_key, num);
+                    match backfill_github.create_issue(&issue_data).await {
+                        Ok(num) => {
+                            tracing::info!(issue = num, field = %fc.field, "Backfill: created GitHub issue");
+                            let db = backfill_storage.lock().unwrap();
+                            if let Ok(all_clusters) = db.get_clusters() {
+                                for kc in &all_clusters {
+                                    if kc.cluster_key.starts_with(&format!("{}|", fc.field)) {
+                                        let _ = db.set_cluster_github_issue(&kc.cluster_key, num);
+                                    }
                                 }
                             }
                         }
+                        Err(e) => tracing::error!(%e, field = %fc.field, "Backfill: GitHub issue creation failed"),
                     }
-                    Err(e) => tracing::error!(%e, field = %fc.field, "Backfill: GitHub issue creation failed"),
+                    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
-                // Rate-limit: avoid hammering GitHub API
-                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
-        }
+            tracing::info!("Backfill complete");
+        });
     }
 
     let mut last_summary = Instant::now();
