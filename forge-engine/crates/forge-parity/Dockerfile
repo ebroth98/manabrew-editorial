@@ -33,7 +33,7 @@ WORKDIR /app
 
 COPY --from=rust-builder /build/target/release/forge-parity /app/forge-parity
 COPY --from=java-builder /build/forge/forge-harness/target/forge-harness-jar-with-dependencies.jar /app/forge-harness.jar
-COPY forge/forge-gui/res/cardsfolder /app/forge-gui/res/cardsfolder
+COPY forge/forge-gui/res/ /app/forge-gui/res/
 COPY preset_decks/ /app/preset_decks/
 
 VOLUME /app/data
