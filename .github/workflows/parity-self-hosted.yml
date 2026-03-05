@@ -15,37 +15,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  prepare-matrix:
-    runs-on: self-hosted
-    outputs:
-      matrix: ${{ steps.load.outputs.matrix }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Load regression matrix from JSON
-        id: load
-        run: |
-          MATRIX_FILE="forge-engine/crates/forge-parity/regression.json"
-          if [ ! -s "$MATRIX_FILE" ]; then
-            echo "Matrix file missing or empty: $MATRIX_FILE" >&2
-            exit 1
-          fi
-          {
-            echo "matrix<<EOF"
-            cat "$MATRIX_FILE"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
-
-  parity:
-    needs: prepare-matrix
+  parity-regression:
     runs-on: self-hosted
     timeout-minutes: 90
-    strategy:
-      fail-fast: false
-      matrix:
-        include: ${{ fromJson(needs.prepare-matrix.outputs.matrix) }}
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -54,9 +26,68 @@ jobs:
         working-directory: forge
         run: mvn -pl forge-harness -am -DskipTests package
 
-      - name: Run parity regression (${{ matrix.name }})
+      - name: Build forge-parity (serve + CI client)
+        run: cargo build -p forge-parity --features serve --release
+
+      - name: Start parity server
         run: |
-          timeout --signal=TERM --kill-after=30s 10m \
-            cargo run -p forge-parity -- \
-              ${{ matrix.args }} \
-              --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar
+          ./target/release/forge-parity \
+            --ci --serve --port 8080 --verbose \
+            --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar \
+            --db-path parity-ci.db \
+            > parity-server.log 2>&1 &
+          echo $! > server.pid
+          echo "Server PID: $(cat server.pid)"
+
+      - name: Wait for server health
+        run: ./target/release/parity-ci health --server http://localhost:8080
+
+      - name: Submit regression jobs
+        id: submit
+        run: |
+          BATCH_ID=$(./target/release/parity-ci submit \
+            --server http://localhost:8080 \
+            --file forge-engine/crates/forge-parity/regression.json)
+          echo "batch_id=$BATCH_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Poll for results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./target/release/parity-ci poll \
+            --server http://localhost:8080 \
+            --batch-id ${{ steps.submit.outputs.batch_id }} \
+            --repo ${{ github.repository }} \
+            --pr ${{ github.event.pull_request.number || '0' }}
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            PID=$(cat server.pid)
+            echo "Stopping server (PID $PID)"
+            kill $PID 2>/dev/null || true
+            sleep 2
+            kill -9 $PID 2>/dev/null || true
+            rm -f server.pid
+          fi
+          echo "=== Server log (last 50 lines) ==="
+          tail -50 parity-server.log 2>/dev/null || true
+
+      - name: Upload parity database
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-ci-db
+          path: parity-ci.db
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-server-log
+          path: parity-server.log
+          if-no-files-found: ignore
+          retention-days: 7

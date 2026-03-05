@@ -2,7 +2,8 @@
 //!
 //! Provides REST API endpoints and an embedded single-page dashboard.
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::collections::{HashMap, VecDeque};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::{
@@ -52,6 +53,7 @@ pub struct AppState {
     pub start_time_iso: String,
     pub config: Arc<DashboardConfig>,
     pub logs: LogBuffer,
+    pub job_queue: Arc<JobQueue>,
 }
 
 #[derive(serde::Deserialize)]
@@ -121,6 +123,203 @@ struct AnalysisStatusResponse {
     model: String,
 }
 
+// ── CI Job Queue ─────────────────────────────────────────────────
+
+/// A single matchup to execute via the job queue.
+pub struct QueuedJob {
+    pub batch_id: u64,
+    pub regression_name: String,
+    pub deck1: String,
+    pub deck2: String,
+    pub seed: u64,
+    pub max_turns: u32,
+}
+
+/// Per-matchup result within a batch.
+#[derive(serde::Serialize, Clone)]
+pub struct JobResult {
+    pub deck1: String,
+    pub deck2: String,
+    pub seed: u64,
+    pub status: String,
+    pub error: Option<String>,
+    /// Divergence field name (e.g. "p1.life", "battlefield.count")
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub divergence_field: Option<String>,
+    /// Rust engine value at divergence
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rust_value: Option<String>,
+    /// Java engine value at divergence
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub java_value: Option<String>,
+    /// Turn/phase where divergence occurred
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub divergence_location: Option<String>,
+    /// Full Rust engine trace (for diff output)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rust_trace: Option<String>,
+    /// Full Java engine trace (for diff output)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub java_trace: Option<String>,
+}
+
+/// Tracks progress of a submitted batch.
+#[derive(serde::Serialize, Clone)]
+pub struct BatchStatus {
+    pub name: String,
+    pub total: usize,
+    pub completed: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub errors: usize,
+    pub done: bool,
+    pub results: Vec<JobResult>,
+}
+
+/// Thread-safe job queue shared between web handlers and game loop.
+pub struct JobQueue {
+    pub queue: Mutex<VecDeque<QueuedJob>>,
+    pub batches: Mutex<HashMap<u64, BatchStatus>>,
+    pub next_batch_id: AtomicU64,
+}
+
+impl JobQueue {
+    pub fn new() -> Self {
+        Self {
+            queue: Mutex::new(VecDeque::new()),
+            batches: Mutex::new(HashMap::new()),
+            next_batch_id: AtomicU64::new(1),
+        }
+    }
+}
+
+/// JSON shape for a regression entry (matches regression.json format).
+#[derive(serde::Deserialize)]
+struct RegressionEntry {
+    name: String,
+    args: String,
+}
+
+/// Expand a regression entry's args string into individual (deck1, deck2, seed, max_turns) matchups.
+fn expand_regression_entry(
+    args: &str,
+    default_max_turns: u32,
+) -> Vec<(String, String, u64, u32)> {
+    let tokens: Vec<&str> = args.split_whitespace().collect();
+
+    let mut matrix = false;
+    let mut seeds: Vec<u64> = Vec::new();
+    let mut decks: Vec<String> = Vec::new();
+    let mut deck1: Option<String> = None;
+    let mut deck2: Option<String> = None;
+    let mut max_turns = default_max_turns;
+    let mut games: usize = 1;
+    let mut seed_start: u64 = 42;
+
+    let mut i = 0;
+    while i < tokens.len() {
+        match tokens[i] {
+            "--matrix" => matrix = true,
+            "--seeds" => {
+                if i + 1 < tokens.len() {
+                    i += 1;
+                    seeds = tokens[i]
+                        .split(',')
+                        .filter_map(|s| s.parse().ok())
+                        .collect();
+                }
+            }
+            "--decks" => {
+                if i + 1 < tokens.len() {
+                    i += 1;
+                    decks = tokens[i].split(',').map(|s| s.to_string()).collect();
+                }
+            }
+            "--deck1" => {
+                if i + 1 < tokens.len() {
+                    i += 1;
+                    deck1 = Some(tokens[i].to_string());
+                }
+            }
+            "--deck2" => {
+                if i + 1 < tokens.len() {
+                    i += 1;
+                    deck2 = Some(tokens[i].to_string());
+                }
+            }
+            "--seed" => {
+                if i + 1 < tokens.len() {
+                    i += 1;
+                    if let Ok(s) = tokens[i].parse() {
+                        seed_start = s;
+                        if seeds.is_empty() {
+                            seeds.push(s);
+                        }
+                    }
+                }
+            }
+            "--max-turns" => {
+                if i + 1 < tokens.len() {
+                    i += 1;
+                    if let Ok(t) = tokens[i].parse() {
+                        max_turns = t;
+                    }
+                }
+            }
+            "--games" => {
+                if i + 1 < tokens.len() {
+                    i += 1;
+                    if let Ok(g) = tokens[i].parse() {
+                        games = g;
+                    }
+                }
+            }
+            _ => {} // ignore unknown flags
+        }
+        i += 1;
+    }
+
+    let mut matchups = Vec::new();
+
+    if matrix {
+        // Matrix mode: all ordered deck pairs × all seeds
+        if seeds.is_empty() {
+            seeds = vec![42, 100, 999];
+        }
+        for d1 in &decks {
+            for d2 in &decks {
+                if d1 != d2 {
+                    for &s in &seeds {
+                        matchups.push((d1.clone(), d2.clone(), s, max_turns));
+                    }
+                }
+            }
+        }
+    } else if let (Some(d1), Some(d2)) = (deck1.clone(), deck2.clone()) {
+        // Specific deck pair mode
+        if seeds.is_empty() {
+            // Use --games to generate seed range from seed_start
+            for g in 0..games {
+                matchups.push((d1.clone(), d2.clone(), seed_start + g as u64, max_turns));
+            }
+        } else {
+            for &s in &seeds {
+                matchups.push((d1.clone(), d2.clone(), s, max_turns));
+            }
+        }
+    } else if !decks.is_empty() && decks.len() == 2 {
+        // Two decks specified via --decks but not --matrix
+        if seeds.is_empty() {
+            seeds = vec![42];
+        }
+        for &s in &seeds {
+            matchups.push((decks[0].clone(), decks[1].clone(), s, max_turns));
+        }
+    }
+
+    matchups
+}
+
 /// Build the Axum router with all API routes and the dashboard.
 pub fn build_router(state: Arc<AppState>) -> Router {
     let router = Router::new()
@@ -135,7 +334,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/analysis/toggle", post(analysis_toggle_handler))
         .route("/api/analysis/status", get(analysis_status_handler))
         .route("/api/logs", get(logs_handler))
-        .route("/api/fuzz/recent", get(fuzz_recent_handler));
+        .route("/api/fuzz/recent", get(fuzz_recent_handler))
+        .route("/api/health", get(health_handler))
+        .route("/api/jobs", post(submit_jobs_handler))
+        .route("/api/jobs/:batch_id", get(batch_status_handler));
 
     #[cfg(feature = "analyze")]
     let router = router.route("/api/models", get(models_handler));
@@ -309,6 +511,76 @@ async fn analysis_status_handler(State(state): State<Arc<AppState>>) -> impl Int
         backend,
         model,
     })
+}
+
+// ── CI Job Queue endpoints ────────────────────────────────────────
+
+async fn health_handler() -> impl IntoResponse {
+    Json(serde_json::json!({ "status": "ok" }))
+}
+
+#[derive(serde::Serialize)]
+struct SubmitResponse {
+    batch_id: u64,
+    total_jobs: usize,
+}
+
+async fn submit_jobs_handler(
+    State(state): State<Arc<AppState>>,
+    Json(entries): Json<Vec<RegressionEntry>>,
+) -> impl IntoResponse {
+    let jq = &state.job_queue;
+    let batch_id = jq.next_batch_id.fetch_add(1, Ordering::Relaxed);
+
+    let mut total_jobs = 0usize;
+    let mut all_names: Vec<String> = Vec::new();
+
+    for entry in &entries {
+        all_names.push(entry.name.clone());
+        let matchups = expand_regression_entry(&entry.args, 10);
+        let mut queue = jq.queue.lock().unwrap();
+        for (d1, d2, seed, mt) in matchups {
+            queue.push_back(QueuedJob {
+                batch_id,
+                regression_name: entry.name.clone(),
+                deck1: d1,
+                deck2: d2,
+                seed,
+                max_turns: mt,
+            });
+            total_jobs += 1;
+        }
+    }
+
+    let batch_name = all_names.join(", ");
+    let batch = BatchStatus {
+        name: batch_name,
+        total: total_jobs,
+        completed: 0,
+        passed: 0,
+        failed: 0,
+        errors: 0,
+        done: total_jobs == 0,
+        results: Vec::new(),
+    };
+
+    jq.batches.lock().unwrap().insert(batch_id, batch);
+
+    Json(SubmitResponse {
+        batch_id,
+        total_jobs,
+    })
+}
+
+async fn batch_status_handler(
+    State(state): State<Arc<AppState>>,
+    Path(batch_id): Path<u64>,
+) -> impl IntoResponse {
+    let batches = state.job_queue.batches.lock().unwrap();
+    match batches.get(&batch_id) {
+        Some(batch) => Json(serde_json::to_value(batch).unwrap()).into_response(),
+        None => (StatusCode::NOT_FOUND, format!("Batch {} not found", batch_id)).into_response(),
+    }
 }
 
 // ── Models proxy (LiteLLM / OpenAI-compatible) ────────────────────

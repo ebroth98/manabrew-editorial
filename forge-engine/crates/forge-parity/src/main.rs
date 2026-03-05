@@ -131,6 +131,10 @@ struct Cli {
     #[arg(long)]
     serve: bool,
 
+    /// CI regression mode: process only queued jobs from API, exit when batch completes
+    #[arg(long)]
+    ci: bool,
+
     /// Maximum number of games for continuous mode (default: unlimited for serve, 100 for continuous)
     #[arg(long)]
     max_games: Option<usize>,
@@ -190,7 +194,7 @@ fn main() {
         return;
     }
 
-    if cli.serve {
+    if cli.serve || cli.ci {
         #[cfg(feature = "serve")]
         {
             run_serve_mode(&cli);
@@ -1913,6 +1917,8 @@ fn run_serve_mode(cli: &Cli) {
         }
     };
 
+    let job_queue = Arc::new(web::JobQueue::new());
+
     let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let start = Instant::now();
     let app_state = Arc::new(web::AppState {
@@ -1921,6 +1927,7 @@ fn run_serve_mode(cli: &Cli) {
         start_time_iso: now_iso,
         config: Arc::clone(&dashboard_config),
         logs: log_buffer,
+        job_queue: Arc::clone(&job_queue),
     });
 
     // Build tokio runtime
@@ -1974,6 +1981,7 @@ fn run_serve_mode(cli: &Cli) {
     }
 
     // Run game loop on main thread (blocking)
+    let ci_mode = cli.ci;
     let cli_max_turns = cli.max_turns;
     let cli_cards_dir = cli.cards_dir.clone();
     let cli_decks_dir = cli.decks_dir.clone();
@@ -1988,6 +1996,160 @@ fn run_serve_mode(cli: &Cli) {
     let mut prev_self_matchups = cfg.self_matchups.load(Ordering::Relaxed);
 
     loop {
+        // 1. Check job queue first (priority over scheduler)
+        let queued = job_queue.queue.lock().unwrap().pop_front();
+        if let Some(queued_job) = queued {
+            let config = RunConfig {
+                deck1: queued_job.deck1.clone(),
+                deck2: queued_job.deck2.clone(),
+                seed: queued_job.seed,
+                max_turns: queued_job.max_turns,
+                cards_dir: cli_cards_dir.clone(),
+                decks_dir: cli_decks_dir.clone(),
+                verbose: cli_verbose,
+                prefer_actions: cli_prefer_actions,
+            };
+
+            let game_start = Instant::now();
+
+            // Respawn server if dead
+            if !java_server.is_alive() {
+                tracing::warn!("Java server died, respawning...");
+                java_server = match JavaServer::spawn(&server_config) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::error!(%e, "Failed to respawn Java server");
+                        // Record error for batch
+                        let mut batches = job_queue.batches.lock().unwrap();
+                        if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
+                            batch.completed += 1;
+                            batch.errors += 1;
+                            batch.results.push(web::JobResult {
+                                deck1: queued_job.deck1.clone(),
+                                deck2: queued_job.deck2.clone(),
+                                seed: queued_job.seed,
+                                status: "error".into(),
+                                error: Some(format!("Java server respawn failed: {}", e)),
+                                divergence_field: None,
+                                rust_value: None,
+                                java_value: None,
+                                divergence_location: None,
+                                rust_trace: None,
+                                java_trace: None,
+                            });
+                            if batch.completed >= batch.total {
+                                batch.done = true;
+                            }
+                        }
+                        std::thread::sleep(std::time::Duration::from_secs(5));
+                        continue;
+                    }
+                };
+            }
+
+            let result = run_single_matchup_server(&config, &data, &mut java_server);
+            let duration_ms = game_start.elapsed().as_millis() as u64;
+
+            let status_str = match result.status {
+                MatchupStatus::Pass => "pass",
+                MatchupStatus::Fail => "fail",
+                MatchupStatus::Error => "error",
+            };
+
+            tracing::info!(
+                batch = queued_job.batch_id,
+                regression = %queued_job.regression_name,
+                deck1 = %short_deck(&queued_job.deck1),
+                deck2 = %short_deck(&queued_job.deck2),
+                seed = queued_job.seed,
+                ms = duration_ms,
+                status = status_str,
+                "CI job"
+            );
+
+            // Update batch status
+            {
+                let mut batches = job_queue.batches.lock().unwrap();
+                if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
+                    batch.completed += 1;
+                    match result.status {
+                        MatchupStatus::Pass => batch.passed += 1,
+                        MatchupStatus::Fail => batch.failed += 1,
+                        MatchupStatus::Error => batch.errors += 1,
+                    }
+                    let (div_field, rust_val, java_val, div_loc) =
+                        if let Some(ref div) = result.first_divergence {
+                            (
+                                Some(div.field.clone()),
+                                Some(div.rust_value.clone()),
+                                Some(div.java_value.clone()),
+                                Some(format!("turn {} {}", div.turn, div.phase)),
+                            )
+                        } else {
+                            (None, None, None, None)
+                        };
+                    batch.results.push(web::JobResult {
+                        deck1: queued_job.deck1.clone(),
+                        deck2: queued_job.deck2.clone(),
+                        seed: queued_job.seed,
+                        status: status_str.to_string(),
+                        error: result.error_message.clone(),
+                        divergence_field: div_field,
+                        rust_value: rust_val,
+                        java_value: java_val,
+                        divergence_location: div_loc,
+                        rust_trace: result.trace.clone(),
+                        java_trace: result.java_trace.clone(),
+                    });
+                    if batch.completed >= batch.total {
+                        batch.done = true;
+                    }
+                }
+            }
+
+            // Store in DB
+            {
+                let storage = app_state.storage.lock().unwrap();
+                if let Err(e) = storage.insert_run(0, &result, duration_ms, false) {
+                    tracing::error!(%e, "DB insert error");
+                }
+            }
+
+            completed += 1;
+            continue;
+        }
+
+        // 2. CI mode: if queue is empty, check if we should exit
+        if ci_mode {
+            let batches = job_queue.batches.lock().unwrap();
+            if batches.is_empty() {
+                // No batch submitted yet — idle-wait
+                drop(batches);
+                std::thread::sleep(std::time::Duration::from_millis(100));
+                continue;
+            }
+            let all_done = batches.values().all(|b| b.done);
+            if all_done {
+                // Log summary but keep server alive for CI to poll results
+                for (id, batch) in batches.iter() {
+                    tracing::info!(
+                        batch_id = id,
+                        name = %batch.name,
+                        total = batch.total,
+                        passed = batch.passed,
+                        failed = batch.failed,
+                        errors = batch.errors,
+                        "Batch complete — waiting for CI to poll results"
+                    );
+                }
+            }
+            drop(batches);
+            // Keep server alive — CI will kill via server.pid after reading results
+            std::thread::sleep(std::time::Duration::from_millis(100));
+            continue;
+        }
+
+        // 3. Normal scheduler path (non-CI mode)
         if let Some(max) = max_games {
             if completed >= max {
                 break;
