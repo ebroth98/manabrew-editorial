@@ -125,9 +125,7 @@ impl JavaBridge {
             if let Some(stderr) = stderr {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().flatten() {
-                    if verbose {
-                        eprintln!("[java] {}", line);
-                    }
+                    eprintln!("[java] {}", line);
                 }
             }
         });
@@ -315,9 +313,7 @@ impl JavaServer {
             if let Some(stderr) = stderr {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().flatten() {
-                    if verbose {
-                        eprintln!("[java] {}", line);
-                    }
+                    eprintln!("[java] {}", line);
                 }
             }
         });
