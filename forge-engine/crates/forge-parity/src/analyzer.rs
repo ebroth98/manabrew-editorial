@@ -420,12 +420,13 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
 
             // GitHub issue creation — runs independently of LLM analysis
             if total_count as i64 >= config.issue_threshold && github.is_available() {
-                // Check local DB first for a known issue number
+                let normalized_field = crate::github_issues::normalize_field(field);
+                // Check local DB first for a known issue number (match by normalized field)
                 let local_issue = {
                     let db = storage.lock().unwrap();
                     db.get_clusters_by_field().ok().and_then(|fields| {
                         fields.iter()
-                            .find(|fc| fc.field == **field)
+                            .find(|fc| crate::github_issues::normalize_field(&fc.field) == normalized_field)
                             .and_then(|fc| fc.github_issue)
                     })
                 };

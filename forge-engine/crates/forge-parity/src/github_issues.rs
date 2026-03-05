@@ -6,6 +6,29 @@
 
 use crate::llm::LlmAnalysis;
 
+/// Normalize a divergence field by replacing array indices with `[*]`.
+/// e.g. `players[0].battlefield[3].power` → `players[*].battlefield[*].power`
+pub fn normalize_field(field: &str) -> String {
+    let mut result = String::with_capacity(field.len());
+    let mut chars = field.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '[' {
+            result.push('[');
+            // Skip digits until ']'
+            while let Some(&next) = chars.peek() {
+                if next == ']' {
+                    break;
+                }
+                chars.next();
+            }
+            result.push('*');
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 /// Data for a parity failure issue.
 pub struct IssueData {
     pub divergence_field: String,
@@ -61,9 +84,10 @@ impl GitHubIssues {
     /// Returns `Ok(Some(number))` if found, `Ok(None)` if no match, `Err` on API failure.
     pub async fn find_existing_issue(&self, divergence_field: &str) -> Result<Option<i64>, String> {
         let token = self.token.as_ref().ok_or("GITHUB_TOKEN not set")?;
+        let normalized = normalize_field(divergence_field);
         let query = format!(
             "repo:{} is:issue label:parity-failure {} in:title",
-            self.repo, divergence_field
+            self.repo, normalized
         );
         let resp = self
             .client
@@ -98,9 +122,10 @@ impl GitHubIssues {
     /// Create a new GitHub issue. Returns the issue number.
     pub async fn create_issue(&self, data: &IssueData) -> Result<i64, String> {
         let token = self.token.as_ref().ok_or("GITHUB_TOKEN not set")?;
+        let normalized = normalize_field(&data.divergence_field);
         let title = format!(
             "Parity divergence: {} ({} failures)",
-            data.divergence_field, data.total_failures
+            normalized, data.total_failures
         );
         let body = build_issue_body(data);
 
@@ -222,6 +247,20 @@ fn build_issue_body(data: &IssueData) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalize_strips_indices() {
+        assert_eq!(
+            normalize_field("players[0].battlefield[3].power"),
+            "players[*].battlefield[*].power"
+        );
+        assert_eq!(normalize_field("players[1].life"), "players[*].life");
+        assert_eq!(normalize_field("active_player"), "active_player");
+        assert_eq!(
+            normalize_field("players[0].battlefield.count"),
+            "players[*].battlefield.count"
+        );
+    }
 
     #[test]
     fn is_available_requires_token_and_repo() {
