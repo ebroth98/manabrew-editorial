@@ -2150,6 +2150,13 @@ fn run_serve_mode(cli: &Cli) {
         }
 
         // 3. Normal scheduler path (non-CI mode)
+
+        // Pause check: if games are paused, sleep and retry
+        if cfg.games_paused.load(Ordering::Relaxed) {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            continue;
+        }
+
         if let Some(max) = max_games {
             if completed >= max {
                 break;
@@ -2261,6 +2268,12 @@ fn run_serve_mode(cli: &Cli) {
             if let Err(e) = storage.insert_run(job.batch_id, &result, duration_ms, job.is_fuzz) {
                 tracing::error!(%e, "DB insert error");
             }
+        }
+
+        // Throttle: sleep between games to avoid pegging CPU
+        let delay = cfg.game_delay_ms.load(Ordering::Relaxed);
+        if delay > 0 {
+            std::thread::sleep(std::time::Duration::from_millis(delay as u64));
         }
     }
 

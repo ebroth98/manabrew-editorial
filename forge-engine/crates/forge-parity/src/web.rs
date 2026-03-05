@@ -29,6 +29,10 @@ pub struct DashboardConfig {
     pub llm_model: Mutex<String>,
     /// Whether the analysis daemon is running (shared with analyzer).
     pub analysis_running: Arc<AtomicBool>,
+    /// Whether the game runner is paused (queue jobs still run).
+    pub games_paused: AtomicBool,
+    /// Delay in ms between games (0 = no delay).
+    pub game_delay_ms: AtomicUsize,
 }
 
 impl DashboardConfig {
@@ -42,6 +46,8 @@ impl DashboardConfig {
                 std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".into()),
             ),
             analysis_running: Arc::new(AtomicBool::new(false)),
+            games_paused: AtomicBool::new(false),
+            game_delay_ms: AtomicUsize::new(500),
         }
     }
 }
@@ -103,6 +109,8 @@ struct ConfigUpdate {
     fuzz_enabled: Option<bool>,
     self_matchups: Option<bool>,
     llm_model: Option<String>,
+    games_paused: Option<bool>,
+    game_delay_ms: Option<usize>,
 }
 
 /// JSON shape returned by GET /api/config.
@@ -113,6 +121,8 @@ struct ConfigResponse {
     self_matchups: bool,
     llm_model: String,
     analysis_running: bool,
+    games_paused: bool,
+    game_delay_ms: usize,
 }
 
 /// JSON shape returned by GET /api/analysis/status.
@@ -445,6 +455,8 @@ async fn config_get_handler(State(state): State<Arc<AppState>>) -> impl IntoResp
         self_matchups: cfg.self_matchups.load(Ordering::Relaxed),
         llm_model: model,
         analysis_running: cfg.analysis_running.load(Ordering::Relaxed),
+        games_paused: cfg.games_paused.load(Ordering::Relaxed),
+        game_delay_ms: cfg.game_delay_ms.load(Ordering::Relaxed),
     })
 }
 
@@ -468,6 +480,13 @@ async fn config_post_handler(
             *cfg.llm_model.lock().unwrap() = model;
         }
     }
+    if let Some(v) = update.games_paused {
+        cfg.games_paused.store(v, Ordering::Relaxed);
+    }
+    if let Some(ms) = update.game_delay_ms {
+        let ms = ms.clamp(0, 60_000);
+        cfg.game_delay_ms.store(ms, Ordering::Relaxed);
+    }
 
     // Return current config
     let model = cfg.llm_model.lock().unwrap().clone();
@@ -477,6 +496,8 @@ async fn config_post_handler(
         self_matchups: cfg.self_matchups.load(Ordering::Relaxed),
         llm_model: model,
         analysis_running: cfg.analysis_running.load(Ordering::Relaxed),
+        games_paused: cfg.games_paused.load(Ordering::Relaxed),
+        game_delay_ms: cfg.game_delay_ms.load(Ordering::Relaxed),
     })
 }
 
