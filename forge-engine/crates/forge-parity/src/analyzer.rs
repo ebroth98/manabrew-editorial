@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 use crate::agent_loop::{self, AgentConfig};
 use crate::discord::{DiscordClient, FailureAlert, PeriodSummary};
 use crate::github_issues::{DeckPairRow, GitHubIssues, IssueData};
-use crate::llm::{ClusterContext, LlmClient};
+use crate::llm::{ClusterContext, LlmAnalysis, LlmClient};
 use crate::protocol::RunRecord;
 use crate::storage::Storage;
 
@@ -228,44 +228,56 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                 }).unwrap_or(false)
             };
 
-            if already_analyzed {
-                continue;
-            }
+            // Aggregate all deck pairs and seeds across clusters for this field
+            let mut all_deck_pairs: Vec<String> = Vec::new();
+            let mut all_seeds: Vec<String> = Vec::new();
+            let mut all_cards: Vec<String> = Vec::new();
+            let mut sample_rust = String::new();
+            let mut sample_java = String::new();
 
-            if let Some(ref llm_client) = llm {
-                // Aggregate all deck pairs and seeds across clusters for this field
-                let mut all_deck_pairs: Vec<String> = Vec::new();
-                let mut all_seeds: Vec<String> = Vec::new();
-                let mut all_cards: Vec<String> = Vec::new();
-                let mut sample_rust = String::new();
-                let mut sample_java = String::new();
-
-                for c in *field_clusters {
-                    if sample_rust.is_empty() {
-                        sample_rust = c.rust_value.clone();
-                        sample_java = c.java_value.clone();
-                    }
-                    for ((d1, d2), seeds) in &c.deck_pairs {
-                        all_deck_pairs.push(format!("{d1} vs {d2}"));
-                        for s in seeds.iter().take(2) {
-                            all_seeds.push(s.to_string());
-                        }
-                    }
-                    for card in &c.covered_cards {
-                        if !all_cards.contains(card) {
-                            all_cards.push(card.clone());
-                        }
+            for c in *field_clusters {
+                if sample_rust.is_empty() {
+                    sample_rust = c.rust_value.clone();
+                    sample_java = c.java_value.clone();
+                }
+                for ((d1, d2), seeds) in &c.deck_pairs {
+                    all_deck_pairs.push(format!("{d1} vs {d2}"));
+                    for s in seeds.iter().take(2) {
+                        all_seeds.push(s.to_string());
                     }
                 }
-                all_deck_pairs.truncate(10);
-                all_seeds.truncate(5);
-                all_cards.truncate(20);
+                for card in &c.covered_cards {
+                    if !all_cards.contains(card) {
+                        all_cards.push(card.clone());
+                    }
+                }
+            }
+            all_deck_pairs.truncate(10);
+            all_seeds.truncate(5);
+            all_cards.truncate(20);
 
+            // LLM analysis (skip if already cached)
+            let cached_analysis = if already_analyzed {
+                let db = storage.lock().unwrap();
+                db.get_clusters_by_field().ok().and_then(|fields| {
+                    fields.iter()
+                        .find(|fc| fc.field == **field)
+                        .and_then(|fc| fc.llm_analysis.as_ref().and_then(|j| serde_json::from_str(j).ok()))
+                })
+            } else {
+                None
+            };
+
+            // Run or retrieve LLM analysis
+            let analysis: Option<LlmAnalysis> = if let Some(cached) = cached_analysis {
+                tracing::debug!(field = %field, "Using cached LLM analysis");
+                Some(cached)
+            } else if let Some(ref llm_client) = llm {
                 let ctx = ClusterContext {
                     count: total_count,
                     divergence_field: field.to_string(),
-                    rust_value: sample_rust,
-                    java_value: sample_java,
+                    rust_value: sample_rust.clone(),
+                    java_value: sample_java.clone(),
                     deck_pairs: all_deck_pairs.join(", "),
                     covered_cards: all_cards.join(", "),
                     sample_seeds: all_seeds.join(", "),
@@ -278,7 +290,6 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                     "Analyzing divergence field"
                 );
 
-                // Try agentic analysis first, fall back to single-shot
                 let agent_config = AgentConfig {
                     project_root: std::path::PathBuf::from(&config.project_root),
                     java_jar: config.java_jar.clone(),
@@ -305,11 +316,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                             Ok(r.analysis)
                         }
                         Err(e) => {
-                            tracing::warn!(
-                                field = %field,
-                                %e,
-                                "Agent failed, single-shot fallback"
-                            );
+                            tracing::warn!(field = %field, %e, "Agent failed, single-shot fallback");
                             llm_client.analyze_cluster(&ctx).await
                         }
                     }
@@ -319,7 +326,6 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
 
                 match analysis_result {
                     Ok(result) => {
-                        // Cache analysis on ALL clusters sharing this field
                         if let Ok(json) = serde_json::to_string(&result) {
                             let db = storage.lock().unwrap();
                             for key in clusters.keys() {
@@ -330,7 +336,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                         }
                         tracing::info!(field = %field, mechanic = %result.mechanic, "Analysis complete");
 
-                        // Discord alert for this field
+                        // Discord alert
                         if let Some(ref mut discord_client) = discord {
                             let alert = FailureAlert {
                                 field: field.to_string(),
@@ -345,96 +351,100 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                                 tracing::error!(%e, "Discord alert failed");
                             }
                         }
-
-                        // GitHub issue if total failures exceed threshold
-                        if total_count as i64 >= config.issue_threshold && github.is_available() {
-                            // Check local DB first for a known issue number
-                            let local_issue = {
-                                let db = storage.lock().unwrap();
-                                db.get_clusters_by_field().ok().and_then(|fields| {
-                                    fields.iter()
-                                        .find(|fc| fc.field == **field)
-                                        .and_then(|fc| fc.github_issue)
-                                })
-                            };
-
-                            // Fall back to GitHub API search if no local record
-                            let existing_issue = if let Some(num) = local_issue {
-                                Some(num)
-                            } else {
-                                match github.find_existing_issue(field).await {
-                                    Ok(found) => found,
-                                    Err(e) => {
-                                        tracing::error!(%e, "GitHub issue search failed");
-                                        None
-                                    }
-                                }
-                            };
-
-                            let first_cluster = &field_clusters[0];
-                            let deck_pair_rows: Vec<DeckPairRow> = field_clusters
-                                .iter()
-                                .flat_map(|c| c.deck_pairs.iter())
-                                .take(10)
-                                .map(|((d1, d2), seeds)| DeckPairRow {
-                                    deck1: d1.clone(),
-                                    deck2: d2.clone(),
-                                    failures: seeds.len(),
-                                    sample_seed: seeds.first().copied().unwrap_or(0),
-                                })
-                                .collect();
-
-                            let first_seed = all_seeds.first()
-                                .and_then(|s| s.parse().ok())
-                                .unwrap_or(42u64);
-                            let repro = all_deck_pairs.first()
-                                .map(|dp| {
-                                    let parts: Vec<&str> = dp.split(" vs ").collect();
-                                    format!(
-                                        "cargo run -p forge-parity -- --deck1 {} --deck2 {} --seed {} --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar",
-                                        parts.first().unwrap_or(&""), parts.get(1).unwrap_or(&""), first_seed
-                                    )
-                                })
-                                .unwrap_or_default();
-
-                            let issue_data = IssueData {
-                                divergence_field: field.to_string(),
-                                rust_value: first_cluster.rust_value.clone(),
-                                java_value: first_cluster.java_value.clone(),
-                                total_failures: total_count as i64,
-                                first_seen: now_iso.clone(),
-                                last_seen: now_iso.clone(),
-                                deck_pair_table: deck_pair_rows,
-                                covered_cards: all_cards.join(", "),
-                                analysis: Some(result),
-                                repro_command: repro,
-                            };
-
-                            if let Some(issue_num) = existing_issue {
-                                if let Err(e) = github.add_comment(issue_num, &issue_data).await {
-                                    tracing::error!(%e, "GitHub comment failed");
-                                }
-                            } else {
-                                match github.create_issue(&issue_data).await {
-                                    Ok(num) => {
-                                        tracing::info!(issue = num, "Created GitHub issue");
-                                        // Save issue number to DB for all clusters sharing this field
-                                        let db = storage.lock().unwrap();
-                                        for key in clusters.keys() {
-                                            if key.starts_with(&format!("{}|", field)) {
-                                                let _ = db.set_cluster_github_issue(key, num);
-                                            }
-                                        }
-                                    }
-                                    Err(e) => tracing::error!(%e, "GitHub issue creation failed"),
-                                }
-                            }
-                        }
+                        Some(result)
                     }
                     Err(e) => {
                         tracing::error!(field = %field, %e, "LLM analysis failed");
+                        None
                     }
                 }
+            } else {
+                None
+            };
+
+            // GitHub issue creation — runs independently of LLM analysis
+            if total_count as i64 >= config.issue_threshold && github.is_available() {
+                // Check local DB first for a known issue number
+                let local_issue = {
+                    let db = storage.lock().unwrap();
+                    db.get_clusters_by_field().ok().and_then(|fields| {
+                        fields.iter()
+                            .find(|fc| fc.field == **field)
+                            .and_then(|fc| fc.github_issue)
+                    })
+                };
+
+                let existing_issue = if let Some(num) = local_issue {
+                    Some(num)
+                } else {
+                    match github.find_existing_issue(field).await {
+                        Ok(found) => found,
+                        Err(e) => {
+                            tracing::error!(%e, "GitHub issue search failed");
+                            None
+                        }
+                    }
+                };
+
+                let first_cluster = &field_clusters[0];
+                let deck_pair_rows: Vec<DeckPairRow> = field_clusters
+                    .iter()
+                    .flat_map(|c| c.deck_pairs.iter())
+                    .take(10)
+                    .map(|((d1, d2), seeds)| DeckPairRow {
+                        deck1: d1.clone(),
+                        deck2: d2.clone(),
+                        failures: seeds.len(),
+                        sample_seed: seeds.first().copied().unwrap_or(0),
+                    })
+                    .collect();
+
+                let first_seed = all_seeds.first()
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(42u64);
+                let repro = all_deck_pairs.first()
+                    .map(|dp| {
+                        let parts: Vec<&str> = dp.split(" vs ").collect();
+                        format!(
+                            "cargo run -p forge-parity -- --deck1 {} --deck2 {} --seed {} --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar",
+                            parts.first().unwrap_or(&""), parts.get(1).unwrap_or(&""), first_seed
+                        )
+                    })
+                    .unwrap_or_default();
+
+                let issue_data = IssueData {
+                    divergence_field: field.to_string(),
+                    rust_value: first_cluster.rust_value.clone(),
+                    java_value: first_cluster.java_value.clone(),
+                    total_failures: total_count as i64,
+                    first_seen: now_iso.clone(),
+                    last_seen: now_iso.clone(),
+                    deck_pair_table: deck_pair_rows,
+                    covered_cards: all_cards.join(", "),
+                    analysis,
+                    repro_command: repro,
+                };
+
+                if let Some(issue_num) = existing_issue {
+                    if let Err(e) = github.add_comment(issue_num, &issue_data).await {
+                        tracing::error!(%e, "GitHub comment failed");
+                    }
+                } else {
+                    match github.create_issue(&issue_data).await {
+                        Ok(num) => {
+                            tracing::info!(issue = num, "Created GitHub issue");
+                            let db = storage.lock().unwrap();
+                            for key in clusters.keys() {
+                                if key.starts_with(&format!("{}|", field)) {
+                                    let _ = db.set_cluster_github_issue(key, num);
+                                }
+                            }
+                        }
+                        Err(e) => tracing::error!(%e, "GitHub issue creation failed"),
+                    }
+                }
+            } else if total_count as i64 >= config.issue_threshold {
+                tracing::debug!(field = %field, "Skipping GitHub issue: not configured");
             }
         }
 
