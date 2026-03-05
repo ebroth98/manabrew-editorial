@@ -150,10 +150,14 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
             let db = storage.lock().unwrap();
             db.get_clusters_by_field().unwrap_or_default()
         };
+        let backfill_count = backfill_fields.iter()
+            .filter(|fc| fc.total_failures >= config.issue_threshold && fc.github_issue.is_none())
+            .count();
+        if backfill_count > 0 {
+            tracing::info!(count = backfill_count, "Backfill: filing GitHub issues for existing clusters");
+        }
         for fc in &backfill_fields {
             if fc.total_failures >= config.issue_threshold && fc.github_issue.is_none() {
-                tracing::info!(field = %fc.field, failures = fc.total_failures, "Backfill: filing GitHub issue for existing cluster");
-
                 let analysis: Option<LlmAnalysis> = fc.llm_analysis.as_ref()
                     .and_then(|j| serde_json::from_str(j).ok());
 
@@ -174,7 +178,6 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                     Ok(num) => {
                         tracing::info!(issue = num, field = %fc.field, "Backfill: created GitHub issue");
                         let db = storage.lock().unwrap();
-                        // Update all clusters for this field
                         if let Ok(all_clusters) = db.get_clusters() {
                             for kc in &all_clusters {
                                 if kc.cluster_key.starts_with(&format!("{}|", fc.field)) {
@@ -185,6 +188,8 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                     }
                     Err(e) => tracing::error!(%e, field = %fc.field, "Backfill: GitHub issue creation failed"),
                 }
+                // Rate-limit: avoid hammering GitHub API
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             }
         }
     }
