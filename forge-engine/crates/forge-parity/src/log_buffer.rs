@@ -45,12 +45,22 @@ impl LogBuffer {
         }
     }
 
+    /// Maximum message length kept per entry (longer messages are truncated).
+    const MAX_MESSAGE_LEN: usize = 4096;
+
     /// Push a new entry into the ring buffer.
     fn push(&self, level: Level, target: &str, message: String) {
         let id = self.next_id.fetch_add(1, Ordering::Relaxed);
         let ts = chrono::Utc::now()
             .format("%Y-%m-%dT%H:%M:%S%.3fZ")
             .to_string();
+        let message = if message.len() > Self::MAX_MESSAGE_LEN {
+            let mut truncated = message[..Self::MAX_MESSAGE_LEN].to_string();
+            truncated.push_str("...(truncated)");
+            truncated
+        } else {
+            message
+        };
         let entry = LogEntry {
             id,
             ts,

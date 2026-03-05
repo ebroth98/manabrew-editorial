@@ -186,6 +186,24 @@ pub struct BatchStatus {
     pub results: Vec<JobResult>,
 }
 
+impl BatchStatus {
+    /// Maximum number of results kept in memory per batch.
+    const MAX_RESULTS: usize = 500;
+
+    /// Push a result, evicting the oldest passing results if over capacity.
+    pub fn push_result(&mut self, result: JobResult) {
+        self.results.push(result);
+        if self.results.len() > Self::MAX_RESULTS {
+            // Remove oldest passing results first to keep failures visible
+            if let Some(pos) = self.results.iter().position(|r| r.status == "pass") {
+                self.results.remove(pos);
+            } else {
+                self.results.remove(0);
+            }
+        }
+    }
+}
+
 /// Thread-safe job queue shared between web handlers and game loop.
 pub struct JobQueue {
     pub queue: Mutex<VecDeque<QueuedJob>>,
@@ -200,6 +218,18 @@ impl JobQueue {
             batches: Mutex::new(HashMap::new()),
             next_batch_id: AtomicU64::new(1),
         }
+    }
+
+    /// Remove completed batches older than `max_age`.
+    pub fn cleanup_done_batches(&self, max_age: std::time::Duration) {
+        // No timestamps on batches, so just remove all completed ones
+        // when the map exceeds a size threshold.
+        let _ = max_age;
+        let mut batches = self.batches.lock().unwrap();
+        if batches.len() <= 50 {
+            return;
+        }
+        batches.retain(|_id, b| !b.done);
     }
 }
 
@@ -413,7 +443,6 @@ async fn run_handler(
 }
 
 /// Normalize a divergence field by replacing array indices with `[*]`.
-/// e.g. `players[0].battlefield[3].power` → `players[*].battlefield[*].power`
 fn normalize_field(field: &str) -> String {
     let mut result = String::with_capacity(field.len());
     let mut chars = field.chars().peekable();
@@ -653,6 +682,9 @@ async fn submit_jobs_handler(
 
     jq.batches.lock().unwrap().insert(batch_id, batch);
 
+    // Purge old completed batches to prevent unbounded memory growth
+    jq.cleanup_done_batches(std::time::Duration::from_secs(3600));
+
     Json(SubmitResponse {
         batch_id,
         total_jobs,
@@ -684,7 +716,9 @@ async fn models_handler() -> impl IntoResponse {
         .unwrap_or_else(|_| "https://api.openai.com".into());
     let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
 
-    let client = reqwest::Client::new();
+    use std::sync::OnceLock;
+    static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    let client = HTTP_CLIENT.get_or_init(reqwest::Client::new);
     let mut req = client.get(&url);
     if !api_key.is_empty() {
         req = req.header("Authorization", format!("Bearer {api_key}"));

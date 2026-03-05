@@ -444,7 +444,7 @@ impl JavaServer {
         matches!(self.child.try_wait(), Ok(None))
     }
 
-    /// Send quit command and wait for the server to exit.
+    /// Send quit command and wait for the server to exit (with timeout).
     pub fn shutdown(mut self) {
         if self.verbose {
             eprintln!("[parity] Shutting down Java server...");
@@ -453,16 +453,30 @@ impl JavaServer {
         let _ = self.stdin.write_all(quit.as_bytes());
         let _ = self.stdin.flush();
 
-        // Wait for the process to exit (with a timeout via drop)
-        match self.child.wait() {
-            Ok(status) => {
-                if self.verbose {
-                    eprintln!("[parity] Java server exited: {}", status);
+        // Wait with a 5-second timeout — kill if the process hangs
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        loop {
+            match self.child.try_wait() {
+                Ok(Some(status)) => {
+                    if self.verbose {
+                        eprintln!("[parity] Java server exited: {}", status);
+                    }
+                    return;
                 }
-            }
-            Err(e) => {
-                if self.verbose {
-                    eprintln!("[parity] Error waiting for Java server: {}", e);
+                Ok(None) => {
+                    if std::time::Instant::now() >= deadline {
+                        eprintln!("[parity] Java server did not exit in time, killing...");
+                        let _ = self.child.kill();
+                        let _ = self.child.wait();
+                        return;
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(100));
+                }
+                Err(e) => {
+                    if self.verbose {
+                        eprintln!("[parity] Error waiting for Java server: {}", e);
+                    }
+                    return;
                 }
             }
         }

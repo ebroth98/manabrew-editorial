@@ -80,6 +80,60 @@ impl GitHubIssues {
         format!("https://api.github.com/repos/{}{}", self.repo, path)
     }
 
+    /// Execute a request with rate-limit-aware retry (up to 2 retries with exponential backoff).
+    async fn send_with_retry(&self, request: reqwest::RequestBuilder) -> Result<reqwest::Response, String> {
+        let mut delay = std::time::Duration::from_secs(2);
+        for attempt in 0..3u32 {
+            // Clone the request builder for retry (reqwest builders are not Clone,
+            // so we use try_clone on the built request).
+            let resp = request
+                .try_clone()
+                .ok_or("Request cannot be retried")?
+                .send()
+                .await
+                .map_err(|e| format!("GitHub API request failed: {e}"))?;
+
+            let status = resp.status();
+            if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+                // Check Retry-After or X-RateLimit-Reset header
+                let retry_secs = resp.headers()
+                    .get("retry-after")
+                    .or_else(|| resp.headers().get("x-ratelimit-reset"))
+                    .and_then(|v| v.to_str().ok())
+                    .and_then(|v| v.parse::<u64>().ok())
+                    .map(|secs| {
+                        // x-ratelimit-reset is a Unix timestamp
+                        if secs > 1_000_000_000 {
+                            let now = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs();
+                            secs.saturating_sub(now).min(120)
+                        } else {
+                            secs.min(120)
+                        }
+                    })
+                    .unwrap_or(delay.as_secs());
+
+                if attempt < 2 {
+                    tracing::warn!(
+                        attempt,
+                        retry_in_secs = retry_secs,
+                        "GitHub rate limited, backing off"
+                    );
+                    tokio::time::sleep(std::time::Duration::from_secs(retry_secs)).await;
+                    delay *= 2;
+                    continue;
+                }
+                let text = resp.text().await.unwrap_or_default();
+                return Err(format!("GitHub rate limited after retries: {status} {text}"));
+            }
+
+            return Ok(resp);
+        }
+        Err("GitHub API: max retries exceeded".to_string())
+    }
+
     /// Search for an existing open issue matching this cluster.
     /// Returns `Ok(Some(number))` if found, `Ok(None)` if no match, `Err` on API failure.
     pub async fn find_existing_issue(&self, divergence_field: &str) -> Result<Option<i64>, String> {
@@ -89,16 +143,14 @@ impl GitHubIssues {
             "repo:{} is:issue label:parity-failure {} in:title",
             self.repo, normalized
         );
-        let resp = self
-            .client
-            .get("https://api.github.com/search/issues")
-            .query(&[("q", &query), ("per_page", &"1".to_string())])
-            .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "forge-parity")
-            .header("Accept", "application/vnd.github+json")
-            .send()
-            .await
-            .map_err(|e| format!("GitHub search request failed: {e}"))?;
+        let resp = self.send_with_retry(
+            self.client
+                .get("https://api.github.com/search/issues")
+                .query(&[("q", &query), ("per_page", &"1".to_string())])
+                .header("Authorization", format!("Bearer {token}"))
+                .header("User-Agent", "forge-parity")
+                .header("Accept", "application/vnd.github+json")
+        ).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -135,16 +187,14 @@ impl GitHubIssues {
             "labels": ["parity-failure", "automated"],
         });
 
-        let resp = self
-            .client
-            .post(self.api_url("/issues"))
-            .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "forge-parity")
-            .header("Accept", "application/vnd.github+json")
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| format!("GitHub API request failed: {e}"))?;
+        let resp = self.send_with_retry(
+            self.client
+                .post(self.api_url("/issues"))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("User-Agent", "forge-parity")
+                .header("Accept", "application/vnd.github+json")
+                .json(&payload)
+        ).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -176,16 +226,14 @@ impl GitHubIssues {
 
         let payload = serde_json::json!({ "body": body });
 
-        let resp = self
-            .client
-            .post(self.api_url(&format!("/issues/{issue_number}/comments")))
-            .header("Authorization", format!("Bearer {token}"))
-            .header("User-Agent", "forge-parity")
-            .header("Accept", "application/vnd.github+json")
-            .json(&payload)
-            .send()
-            .await
-            .map_err(|e| format!("GitHub API request failed: {e}"))?;
+        let resp = self.send_with_retry(
+            self.client
+                .post(self.api_url(&format!("/issues/{issue_number}/comments")))
+                .header("Authorization", format!("Bearer {token}"))
+                .header("User-Agent", "forge-parity")
+                .header("Accept", "application/vnd.github+json")
+                .json(&payload)
+        ).await?;
 
         if !resp.status().is_success() {
             let status = resp.status();

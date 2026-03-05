@@ -41,6 +41,19 @@ use forge_parity::protocol::{
 use forge_parity::report;
 use forge_parity::runner::{self, available_presets, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
 
+/// Truncate a trace string to at most `max_lines` lines to limit memory usage.
+fn truncate_trace(trace: &str, max_lines: usize) -> String {
+    let lines: Vec<&str> = trace.lines().collect();
+    if lines.len() <= max_lines {
+        return trace.to_string();
+    }
+    let half = max_lines / 2;
+    let mut result = lines[..half].join("\n");
+    result.push_str(&format!("\n... ({} lines omitted) ...\n", lines.len() - max_lines));
+    result.push_str(&lines[lines.len() - half..].join("\n"));
+    result
+}
+
 #[derive(Parser, Debug)]
 #[command(
     name = "forge-parity",
@@ -896,12 +909,20 @@ impl ServerPool {
         server.run_matchup(deck1, deck2, seed, max_turns, prefer_actions)
     }
 
-    /// Shutdown all servers.
+    /// Shutdown all servers in parallel.
     fn shutdown(self) {
-        for server_mutex in self.servers {
-            if let Ok(server) = server_mutex.into_inner() {
-                server.shutdown();
-            }
+        let handles: Vec<_> = self.servers
+            .into_iter()
+            .map(|server_mutex| {
+                std::thread::spawn(move || {
+                    if let Ok(server) = server_mutex.into_inner() {
+                        server.shutdown();
+                    }
+                })
+            })
+            .collect();
+        for h in handles {
+            let _ = h.join();
         }
     }
 }
@@ -2045,7 +2066,7 @@ fn run_serve_mode(cli: &Cli) {
                         if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
                             batch.completed += 1;
                             batch.errors += 1;
-                            batch.results.push(web::JobResult {
+                            batch.push_result(web::JobResult {
                                 deck1: queued_job.deck1.clone(),
                                 deck2: queued_job.deck2.clone(),
                                 seed: queued_job.seed,
@@ -2109,7 +2130,7 @@ fn run_serve_mode(cli: &Cli) {
                         } else {
                             (None, None, None, None)
                         };
-                    batch.results.push(web::JobResult {
+                    batch.push_result(web::JobResult {
                         deck1: queued_job.deck1.clone(),
                         deck2: queued_job.deck2.clone(),
                         seed: queued_job.seed,
@@ -2119,8 +2140,8 @@ fn run_serve_mode(cli: &Cli) {
                         rust_value: rust_val,
                         java_value: java_val,
                         divergence_location: div_loc,
-                        rust_trace: result.trace.clone(),
-                        java_trace: result.java_trace.clone(),
+                        rust_trace: result.trace.as_ref().map(|t| truncate_trace(t, 200)),
+                        java_trace: result.java_trace.as_ref().map(|t| truncate_trace(t, 200)),
                     });
                     if batch.completed >= batch.total {
                         batch.done = true;

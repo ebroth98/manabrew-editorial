@@ -70,11 +70,12 @@ fn cluster_key(record: &RunRecord) -> String {
 /// Group failure records into clusters.
 fn cluster_failures(records: &[RunRecord]) -> HashMap<String, FailureCluster> {
     let mut clusters: HashMap<String, FailureCluster> = HashMap::new();
+    let mut covered_sets: HashMap<String, std::collections::HashSet<String>> = HashMap::new();
 
     for record in records {
         let key = cluster_key(record);
 
-        let cluster = clusters.entry(key).or_insert_with(|| FailureCluster {
+        let cluster = clusters.entry(key.clone()).or_insert_with(|| FailureCluster {
             divergence_field: record
                 .first_divergence_field
                 .clone()
@@ -101,9 +102,10 @@ fn cluster_failures(records: &[RunRecord]) -> HashMap<String, FailureCluster> {
             .or_default()
             .push(record.seed);
 
-        // Merge covered cards (deduplicated later)
+        // Merge covered cards using HashSet for O(1) dedup
+        let set = covered_sets.entry(key).or_default();
         for card in &record.covered_cards {
-            if !cluster.covered_cards.contains(card) {
+            if set.insert(card.clone()) {
                 cluster.covered_cards.push(card.clone());
             }
         }
@@ -273,16 +275,18 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
             "Unique divergence fields"
         );
 
+        // Cache field clusters to avoid repeated DB queries in the loop
+        let cached_field_clusters = {
+            let db = storage.lock().unwrap();
+            db.get_clusters_by_field().unwrap_or_default()
+        };
+
         for (field, field_clusters) in &sorted_fields {
             let total_count: usize = field_clusters.iter().map(|c| c.count).sum();
 
             // Skip if this field already has LLM analysis cached
-            let already_analyzed = {
-                let db = storage.lock().unwrap();
-                db.get_clusters_by_field().ok().map(|fields| {
-                    fields.iter().any(|fc| fc.field == **field && fc.llm_analysis.is_some())
-                }).unwrap_or(false)
-            };
+            let already_analyzed = cached_field_clusters.iter()
+                .any(|fc| fc.field == **field && fc.llm_analysis.is_some());
 
             // Aggregate all deck pairs and seeds across clusters for this field
             let mut all_deck_pairs: Vec<String> = Vec::new();
@@ -297,29 +301,31 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                     sample_java = c.java_value.clone();
                 }
                 for ((d1, d2), seeds) in &c.deck_pairs {
-                    all_deck_pairs.push(format!("{d1} vs {d2}"));
-                    for s in seeds.iter().take(2) {
-                        all_seeds.push(s.to_string());
+                    if all_deck_pairs.len() < 10 {
+                        all_deck_pairs.push(format!("{d1} vs {d2}"));
+                    }
+                    if all_seeds.len() < 5 {
+                        for s in seeds.iter().take(2) {
+                            if all_seeds.len() < 5 {
+                                all_seeds.push(s.to_string());
+                            }
+                        }
                     }
                 }
-                for card in &c.covered_cards {
-                    if !all_cards.contains(card) {
-                        all_cards.push(card.clone());
+                if all_cards.len() < 20 {
+                    for card in &c.covered_cards {
+                        if all_cards.len() < 20 && !all_cards.contains(card) {
+                            all_cards.push(card.clone());
+                        }
                     }
                 }
             }
-            all_deck_pairs.truncate(10);
-            all_seeds.truncate(5);
-            all_cards.truncate(20);
 
             // LLM analysis (skip if already cached)
-            let cached_analysis = if already_analyzed {
-                let db = storage.lock().unwrap();
-                db.get_clusters_by_field().ok().and_then(|fields| {
-                    fields.iter()
-                        .find(|fc| fc.field == **field)
-                        .and_then(|fc| fc.llm_analysis.as_ref().and_then(|j| serde_json::from_str(j).ok()))
-                })
+            let cached_analysis: Option<LlmAnalysis> = if already_analyzed {
+                cached_field_clusters.iter()
+                    .find(|fc| fc.field == **field)
+                    .and_then(|fc| fc.llm_analysis.as_ref().and_then(|j| serde_json::from_str(j).ok()))
             } else {
                 None
             };

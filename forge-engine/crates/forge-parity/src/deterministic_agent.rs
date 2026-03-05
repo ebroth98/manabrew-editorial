@@ -601,6 +601,9 @@ impl PlayerAgent for DeterministicAgent {
     }
 
     fn notify(&mut self, message: &str) {
+        if self.log.len() >= 500 {
+            self.log.remove(0);
+        }
         self.log.push(message.to_string());
         if self.verbose {
             let styled = if message.starts_with("Played land:")
