@@ -246,6 +246,62 @@ pub struct MatrixReport {
     pub results: Vec<MatchupResult>,
 }
 
+// ── Continuous Parity Types ──────────────────────────────────────
+
+/// A single run record stored in the database.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunRecord {
+    pub id: i64,
+    pub batch_id: i64,
+    pub deck1: String,
+    pub deck2: String,
+    pub seed: u64,
+    pub status: MatchupStatus,
+    pub snapshots_compared: usize,
+    pub divergence_count: usize,
+    pub first_divergence_field: Option<String>,
+    pub first_divergence_rust: Option<String>,
+    pub first_divergence_java: Option<String>,
+    pub covered_cards: Vec<String>,
+    pub duration_ms: u64,
+    pub error_message: Option<String>,
+    pub timestamp: String,
+}
+
+/// Aggregate statistics for the continuous parity server.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContinuousStats {
+    pub total_games: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub errors: usize,
+    pub pass_rate: f64,
+    pub games_per_minute: f64,
+    pub uptime_seconds: u64,
+    pub current_batch: i64,
+}
+
+/// A single point in a time-series trend.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TrendPoint {
+    pub bucket: String,
+    pub total: usize,
+    pub passed: usize,
+    pub failed: usize,
+    pub errors: usize,
+    pub pass_rate: f64,
+}
+
+/// Deck pair heatmap entry.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DeckPairStats {
+    pub deck1: String,
+    pub deck2: String,
+    pub total: usize,
+    pub passed: usize,
+    pub pass_rate: f64,
+}
+
 // ── Fuzz Mode Types ──────────────────────────────────────────────
 
 /// Result of a single fuzz iteration.

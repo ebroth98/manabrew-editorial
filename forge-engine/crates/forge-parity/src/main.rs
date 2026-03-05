@@ -122,6 +122,34 @@ struct Cli {
     /// Number of Java server worker processes (default: 1 for fuzz/single, num_cpus for matrix)
     #[arg(long)]
     java_workers: Option<usize>,
+
+    /// Run continuous parity testing: execute games, store in SQLite, exit with threshold check
+    #[arg(long)]
+    continuous: bool,
+
+    /// Start continuous parity server with web dashboard
+    #[arg(long)]
+    serve: bool,
+
+    /// Maximum number of games for continuous mode (default: unlimited for serve, 100 for continuous)
+    #[arg(long)]
+    max_games: Option<usize>,
+
+    /// Pass rate threshold (0.0-1.0); exit 1 if below (continuous mode only, default: 0.90)
+    #[arg(long, default_value_t = 0.90)]
+    threshold: f64,
+
+    /// SQLite database path for continuous mode (default: parity.db)
+    #[arg(long, default_value = "parity.db")]
+    db_path: String,
+
+    /// HTTP port for serve mode (default: 8080)
+    #[arg(long, default_value_t = 8080)]
+    port: u16,
+
+    /// Number of fuzz games per batch in continuous mode (0 to disable)
+    #[arg(long, default_value_t = 0)]
+    fuzz_per_batch: usize,
 }
 
 fn main() {
@@ -129,7 +157,27 @@ fn main() {
     let games_flag_present = std::env::args()
         .any(|arg| arg == "--games" || arg.starts_with("--games="));
 
-    if cli.fuzz {
+    if cli.serve {
+        #[cfg(feature = "serve")]
+        {
+            run_serve_mode(&cli);
+        }
+        #[cfg(not(feature = "serve"))]
+        {
+            eprintln!("[parity] --serve requires the 'serve' feature. Build with: cargo build --features serve");
+            std::process::exit(1);
+        }
+    } else if cli.continuous {
+        #[cfg(feature = "storage")]
+        {
+            run_continuous_mode(&cli);
+        }
+        #[cfg(not(feature = "storage"))]
+        {
+            eprintln!("[parity] --continuous requires the 'storage' feature. Build with: cargo build --features storage");
+            std::process::exit(1);
+        }
+    } else if cli.fuzz {
         run_fuzz_mode(&cli);
     } else if cli.matrix {
         run_matrix_mode(&cli);
@@ -1511,4 +1559,382 @@ fn num_cpus() -> usize {
         .map(|n| n.get())
         .unwrap_or(4)
         .min(8)
+}
+
+// ── Continuous Parity Mode ──────────────────────────────────────────
+
+#[cfg(feature = "storage")]
+fn run_continuous_mode(cli: &Cli) {
+    use forge_parity::scheduler::Scheduler;
+    use forge_parity::storage::Storage;
+    use std::time::Instant;
+
+    let jar_path = match &cli.java_jar {
+        Some(p) => p.clone(),
+        None => {
+            eprintln!("[parity] --continuous requires --java-jar");
+            std::process::exit(1);
+        }
+    };
+
+    let max_games = cli.max_games.unwrap_or(100);
+    eprintln!(
+        "[parity] Continuous mode: max_games={}, threshold={:.1}%, db={}",
+        max_games,
+        cli.threshold * 100.0,
+        cli.db_path
+    );
+
+    // Open database
+    let db = match Storage::open(&cli.db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("[parity] Failed to open database: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Load card database
+    let data = match runner::load_data(cli.cards_dir.as_deref(), cli.verbose) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[parity] Load error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Discover preset decks
+    let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+    let deck_names: Vec<String> = match &cli.decks {
+        Some(d) => d.clone(),
+        None => available_presets(dd),
+    };
+
+    if deck_names.is_empty() {
+        eprintln!("[parity] No preset decks found in {}", dd);
+        std::process::exit(1);
+    }
+    eprintln!("[parity] Using {} preset decks: {:?}", deck_names.len(), deck_names);
+
+    // Initialize scheduler
+    let fuzz_db = if cli.fuzz_per_batch > 0 {
+        Some(&data.db)
+    } else {
+        None
+    };
+    let mut scheduler = Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db);
+
+    // Spawn Java server
+    let server_config = JavaServerConfig {
+        jar_path: jar_path.clone(),
+        forge_home: None,
+        decks_dir: cli.decks_dir.clone(),
+        verbose: cli.verbose,
+    };
+    let mut server = match JavaServer::spawn(&server_config) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[parity] Failed to spawn Java server: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let start = Instant::now();
+    let mut completed = 0usize;
+    let mut passed = 0usize;
+    let mut failed = 0usize;
+    let mut errors = 0usize;
+
+    // Main loop
+    while completed < max_games {
+        let job = scheduler.next_job();
+
+        let config = RunConfig {
+            deck1: job.deck1.clone(),
+            deck2: job.deck2.clone(),
+            seed: job.seed,
+            max_turns: cli.max_turns,
+            cards_dir: cli.cards_dir.clone(),
+            decks_dir: cli.decks_dir.clone(),
+            verbose: cli.verbose,
+            prefer_actions: cli.prefer_actions,
+        };
+
+        let game_start = Instant::now();
+
+        // Respawn server if dead
+        if !server.is_alive() {
+            eprintln!("[parity] Java server died, respawning...");
+            server = match JavaServer::spawn(&server_config) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[parity] Failed to respawn Java server: {}", e);
+                    break;
+                }
+            };
+        }
+
+        let result = run_single_matchup_server(&config, &data, &mut server);
+        let duration_ms = game_start.elapsed().as_millis() as u64;
+
+        match result.status {
+            MatchupStatus::Pass => passed += 1,
+            MatchupStatus::Fail => failed += 1,
+            MatchupStatus::Error => errors += 1,
+        }
+        completed += 1;
+
+        if let Err(e) = db.insert_run(job.batch_id, &result, duration_ms) {
+            eprintln!("[parity] DB insert error: {}", e);
+        }
+
+        // Progress logging
+        let status_char = match result.status {
+            MatchupStatus::Pass => "\x1b[32mPASS\x1b[0m",
+            MatchupStatus::Fail => "\x1b[31mFAIL\x1b[0m",
+            MatchupStatus::Error => "\x1b[33mERROR\x1b[0m",
+        };
+        let current_rate = if passed + failed > 0 {
+            passed as f64 / (passed + failed) as f64
+        } else {
+            0.0
+        };
+        eprintln!(
+            "[parity] [{}/{}] {} vs {} seed={} {} (rate={:.1}%, {}ms)",
+            completed,
+            max_games,
+            short_deck(&job.deck1),
+            short_deck(&job.deck2),
+            job.seed,
+            status_char,
+            current_rate * 100.0,
+            duration_ms
+        );
+    }
+
+    server.shutdown();
+
+    let elapsed = start.elapsed();
+    let pass_rate = if passed + failed > 0 {
+        passed as f64 / (passed + failed) as f64
+    } else {
+        0.0
+    };
+    let gpm = if elapsed.as_secs() > 0 {
+        completed as f64 / (elapsed.as_secs() as f64 / 60.0)
+    } else {
+        0.0
+    };
+
+    eprintln!();
+    eprintln!("=== Continuous Parity Summary ===");
+    eprintln!("  Total games:    {}", completed);
+    eprintln!("  Passed:         {} ({:.1}%)", passed, if completed > 0 { passed as f64 / completed as f64 * 100.0 } else { 0.0 });
+    eprintln!("  Failed:         {}", failed);
+    eprintln!("  Errors:         {}", errors);
+    eprintln!("  Pass rate:      {:.1}% (threshold: {:.1}%)", pass_rate * 100.0, cli.threshold * 100.0);
+    eprintln!("  Duration:       {:.1}s ({:.1} games/min)", elapsed.as_secs_f64(), gpm);
+    eprintln!("  Database:       {}", cli.db_path);
+    eprintln!();
+
+    if pass_rate >= cli.threshold {
+        eprintln!("\x1b[32mPASSED\x1b[0m — pass rate {:.1}% >= threshold {:.1}%", pass_rate * 100.0, cli.threshold * 100.0);
+        std::process::exit(0);
+    } else {
+        eprintln!("\x1b[31mFAILED\x1b[0m — pass rate {:.1}% < threshold {:.1}%", pass_rate * 100.0, cli.threshold * 100.0);
+        std::process::exit(1);
+    }
+}
+
+/// Shorten an inline deck spec for display.
+#[cfg(feature = "storage")]
+fn short_deck(spec: &str) -> &str {
+    if let Some(rest) = spec.strip_prefix("inline:") {
+        let first_pipe = rest.find('|').unwrap_or(rest.len());
+        &spec[..("inline:".len() + first_pipe).min(spec.len()).min(30)]
+    } else if spec.len() > 20 {
+        &spec[..20]
+    } else {
+        spec
+    }
+}
+
+// ── Serve Mode ──────────────────────────────────────────────────────
+
+#[cfg(feature = "serve")]
+fn run_serve_mode(cli: &Cli) {
+    use forge_parity::scheduler::Scheduler;
+    use forge_parity::storage::Storage;
+    use forge_parity::web;
+    use std::sync::Arc;
+    use std::time::Instant;
+
+    let jar_path = match &cli.java_jar {
+        Some(p) => p.clone(),
+        None => {
+            eprintln!("[parity] --serve requires --java-jar");
+            std::process::exit(1);
+        }
+    };
+
+    let max_games = cli.max_games; // None = unlimited
+    let port = cli.port;
+
+    eprintln!(
+        "[parity] Serve mode: port={}, max_games={}, threshold={:.1}%, db={}",
+        port,
+        max_games.map(|n| n.to_string()).unwrap_or_else(|| "unlimited".into()),
+        cli.threshold * 100.0,
+        cli.db_path
+    );
+
+    // Open database
+    let db = match Storage::open(&cli.db_path) {
+        Ok(db) => db,
+        Err(e) => {
+            eprintln!("[parity] Failed to open database: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Load card database
+    let data = match runner::load_data(cli.cards_dir.as_deref(), cli.verbose) {
+        Ok(d) => d,
+        Err(e) => {
+            eprintln!("[parity] Load error: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Discover preset decks
+    let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+    let deck_names: Vec<String> = match &cli.decks {
+        Some(d) => d.clone(),
+        None => available_presets(dd),
+    };
+
+    if deck_names.is_empty() {
+        eprintln!("[parity] No preset decks found in {}", dd);
+        std::process::exit(1);
+    }
+    eprintln!("[parity] Using {} preset decks: {:?}", deck_names.len(), deck_names);
+
+    let fuzz_db = if cli.fuzz_per_batch > 0 {
+        Some(&data.db)
+    } else {
+        None
+    };
+    let mut scheduler = Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db);
+
+    // Spawn Java server
+    let server_config = JavaServerConfig {
+        jar_path: jar_path.clone(),
+        forge_home: None,
+        decks_dir: cli.decks_dir.clone(),
+        verbose: cli.verbose,
+    };
+    let mut java_server = match JavaServer::spawn(&server_config) {
+        Ok(s) => s,
+        Err(e) => {
+            eprintln!("[parity] Failed to spawn Java server: {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let start = Instant::now();
+    let app_state = Arc::new(web::AppState {
+        storage: std::sync::Mutex::new(db),
+        start_time: start,
+        start_time_iso: now_iso,
+    });
+
+    // Build tokio runtime
+    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
+
+    // Spawn web server in background
+    let app_state_web = Arc::clone(&app_state);
+    rt.spawn(async move {
+        let router = web::build_router(app_state_web);
+        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
+            .await
+            .expect("failed to bind port");
+        eprintln!("[parity] Dashboard: http://localhost:{}", port);
+        axum::serve(listener, router).await.expect("server error");
+    });
+
+    // Run game loop on main thread (blocking)
+    let cli_max_turns = cli.max_turns;
+    let cli_cards_dir = cli.cards_dir.clone();
+    let cli_decks_dir = cli.decks_dir.clone();
+    let cli_verbose = cli.verbose;
+    let cli_prefer_actions = cli.prefer_actions;
+
+    let mut completed = 0usize;
+    loop {
+        if let Some(max) = max_games {
+            if completed >= max {
+                break;
+            }
+        }
+
+        let job = scheduler.next_job();
+
+        let config = RunConfig {
+            deck1: job.deck1.clone(),
+            deck2: job.deck2.clone(),
+            seed: job.seed,
+            max_turns: cli_max_turns,
+            cards_dir: cli_cards_dir.clone(),
+            decks_dir: cli_decks_dir.clone(),
+            verbose: cli_verbose,
+            prefer_actions: cli_prefer_actions,
+        };
+
+        let game_start = Instant::now();
+
+        // Respawn server if dead
+        if !java_server.is_alive() {
+            eprintln!("[parity] Java server died, respawning...");
+            java_server = match JavaServer::spawn(&server_config) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!("[parity] Failed to respawn: {}", e);
+                    std::thread::sleep(std::time::Duration::from_secs(5));
+                    continue;
+                }
+            };
+        }
+
+        let result = run_single_matchup_server(&config, &data, &mut java_server);
+        let duration_ms = game_start.elapsed().as_millis() as u64;
+
+        completed += 1;
+
+        let status_char = match result.status {
+            MatchupStatus::Pass => "\x1b[32mPASS\x1b[0m",
+            MatchupStatus::Fail => "\x1b[31mFAIL\x1b[0m",
+            MatchupStatus::Error => "\x1b[33mERROR\x1b[0m",
+        };
+        eprintln!(
+            "[parity] [{}] {} vs {} seed={} {} ({}ms)",
+            completed,
+            short_deck(&job.deck1),
+            short_deck(&job.deck2),
+            job.seed,
+            status_char,
+            duration_ms
+        );
+
+        // Write to storage under lock
+        {
+            let storage = app_state.storage.lock().unwrap();
+            if let Err(e) = storage.insert_run(job.batch_id, &result, duration_ms) {
+                eprintln!("[parity] DB insert error: {}", e);
+            }
+        }
+    }
+
+    java_server.shutdown();
+    eprintln!("[parity] Serve mode complete ({} games)", completed);
 }

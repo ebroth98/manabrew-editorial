@@ -10,3 +10,23 @@ services:
       FORGE_SERVER_KEY: "forge"
       RUST_LOG: "forge_server=info"
     restart: unless-stopped
+
+  parity-dashboard:
+    build:
+      context: ../../..        # repo root (needs Cargo workspace + forge/ + preset_decks/)
+      dockerfile: forge-engine/crates/forge-parity/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      THRESHOLD: "0.90"
+      MAX_TURNS: "10"
+      FUZZ_PER_BATCH: "0"
+      # MAX_GAMES: ""          # omit for unlimited
+      # DECKS: ""              # omit for all presets
+    volumes:
+      - parity-data:/app/data
+    restart: unless-stopped
+
+volumes:
+  parity-data:

@@ -7,6 +7,11 @@ edition = "2021"
 name = "forge-parity"
 path = "src/main.rs"
 
+[features]
+default = []
+storage = ["rusqlite", "chrono"]
+serve = ["storage", "tokio", "axum", "tower-http"]
+
 [dependencies]
 forge-foundation = { path = "../forge-foundation" }
 forge-engine-core = { path = "../forge-engine" }
@@ -16,3 +21,10 @@ serde_json = { workspace = true }
 rand = "0.8"
 clap = { version = "4", features = ["derive"] }
 rayon = "1.10"
+
+# Continuous parity (behind feature flags)
+rusqlite = { version = "0.31", features = ["bundled"], optional = true }
+chrono = { version = "0.4", optional = true }
+tokio = { version = "1", features = ["full"], optional = true }
+axum = { version = "0.7", optional = true }
+tower-http = { version = "0.5", features = ["cors"], optional = true }

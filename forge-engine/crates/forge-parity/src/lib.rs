@@ -24,3 +24,10 @@ pub mod protocol;
 pub mod report;
 pub mod runner;
 pub mod snapshot;
+
+#[cfg(feature = "storage")]
+pub mod scheduler;
+#[cfg(feature = "storage")]
+pub mod storage;
+#[cfg(feature = "serve")]
+pub mod web;
