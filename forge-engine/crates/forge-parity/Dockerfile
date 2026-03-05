@@ -14,7 +14,7 @@ WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
 COPY forge-engine/ forge-engine/
 COPY src-tauri/Cargo.toml src-tauri/Cargo.toml
-RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs
+RUN mkdir -p src-tauri/src && echo "fn main() {}" > src-tauri/src/main.rs && touch src-tauri/src/lib.rs
 
 RUN cargo build -p forge-parity --features analyze --release
 
