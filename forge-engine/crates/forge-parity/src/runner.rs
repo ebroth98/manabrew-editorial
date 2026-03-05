@@ -9,17 +9,13 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
-use forge_carddb::{CardDatabase, CardRules};
+use forge_carddb::CardDatabase;
 use forge_engine_core::agent::PlayerAgent;
 use forge_engine_core::combat::DefenderId;
-use forge_engine_core::card::{CardInstance, CardOtherPart};
+use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
-use forge_engine_core::ability::activated::parse_activated_ability;
-use forge_engine_core::replacement::parse_replacement_effect;
-use forge_engine_core::staticability::parse_static_ability;
-use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::ZoneType;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -134,162 +130,6 @@ fn parse_deck_file(path: &str) -> Result<Vec<(String, usize)>, String> {
 }
 
 // ── Card Instance Builder ──────────────────────────────────────────
-// Replicates card_rules_to_instance from src-tauri/src/card_db.rs.
-// IMPORTANT: Keep in sync with card_db.rs when adding new keyword/trigger logic.
-
-/// Parse `Mode$ AlternativeCost | Cost$ GainLife<N/...> | IsPresent$ ...` from a
-/// static ability raw string and return `Some("AltCostGainLife:N:condition")` keyword.
-fn parse_gainlife_alt_cost_keyword(raw: &str) -> Option<String> {
-    if !raw.contains("AlternativeCost") {
-        return None;
-    }
-    let life_amount = raw.split('|').find_map(|part| {
-        let p = part.trim();
-        if let Some(rest) = p.strip_prefix("Cost$") {
-            let cost = rest.trim();
-            if let Some(inner) = cost.strip_prefix("GainLife<").and_then(|s| s.split('>').next()) {
-                let n = inner.split('/').next().and_then(|s| s.trim().parse::<i32>().ok())?;
-                return Some(n);
-            }
-        }
-        None
-    })?;
-    let condition = raw.split('|').find_map(|part| {
-        let p = part.trim();
-        p.strip_prefix("IsPresent$").map(|s| s.trim().to_string())
-    }).unwrap_or_default();
-    Some(format!("AltCostGainLife:{}:{}", life_amount, condition))
-}
-
-fn card_rules_to_instance(rules: &CardRules, owner: PlayerId) -> CardInstance {
-    let face = &rules.main_part;
-    let mut next_trigger_id = 0u32;
-
-    let mut triggers: Vec<_> = Vec::new();
-    let mut spell_cast_or_copy_raw: Vec<String> = Vec::new();
-    for raw in &face.triggers {
-        let result = parse_trigger(raw, &mut next_trigger_id);
-        if let Some(trig) = result {
-            triggers.push(trig);
-            if raw.contains("Mode$ SpellCastOrCopy") {
-                spell_cast_or_copy_raw.push(raw.clone());
-            }
-        }
-    }
-    for raw in &spell_cast_or_copy_raw {
-        let converted = raw.replace("Mode$ SpellCastOrCopy", "Mode$ SpellCopied");
-        if let Some(trig) = parse_trigger(&converted, &mut next_trigger_id) {
-            triggers.push(trig);
-        }
-    }
-
-    // Auto-generate keyword triggers (e.g. Prowess)
-    for kw in &face.keywords {
-        if kw == "Prowess" {
-            let raw = "Mode$ SpellCast | ValidCard$ Card.nonCreature | ValidActivatingPlayer$ You | Execute$ TrigProwess | TriggerZones$ Battlefield | TriggerDescription$ Prowess";
-            if let Some(mut trig) = parse_trigger(raw, &mut next_trigger_id) {
-                trig.execute = "TrigProwess".to_string();
-                triggers.push(trig);
-            }
-        }
-    }
-
-    let mut card = CardInstance::new(
-        CardId(0),
-        face.name.clone(),
-        owner,
-        face.type_line.clone(),
-        face.mana_cost.clone(),
-        face.resolved_color(),
-        face.int_power,
-        face.int_toughness,
-        face.keywords.clone(),
-        face.abilities.clone(),
-    );
-
-    // Auto-generate intrinsic mana abilities for basic land subtypes.
-    const SUBTYPE_MANA: &[(&str, &str, &str)] = &[
-        ("Plains", "W", "Add {W}."),
-        ("Island", "U", "Add {U}."),
-        ("Swamp", "B", "Add {B}."),
-        ("Mountain", "R", "Add {R}."),
-        ("Forest", "G", "Add {G}."),
-    ];
-    for &(subtype, letter, desc) in SUBTYPE_MANA {
-        if card.type_line.has_subtype(subtype) {
-            let already_produces = card.activated_abilities.iter().any(|ab| {
-                ab.is_mana_ability && ab.params.get("Produced").map_or(false, |p| p == letter)
-            });
-            if !already_produces {
-                let raw = format!(
-                    "AB$ Mana | Cost$ T | Produced$ {} | SpellDescription$ {}",
-                    letter, desc
-                );
-                let idx = card.abilities.len();
-                card.abilities.push(raw.clone());
-                if let Some(ab) = parse_activated_ability(&raw, idx) {
-                    card.activated_abilities.push(ab);
-                }
-            }
-        }
-    }
-
-    card.triggers = triggers;
-    card.svars = face.svars.clone();
-
-    // Inject Prowess SVar
-    if face.keywords.iter().any(|k| k == "Prowess") && !card.svars.contains_key("TrigProwess") {
-        card.svars.insert(
-            "TrigProwess".to_string(),
-            "DB$ Pump | Defined$ Self | NumAtt$ 1 | NumDef$ 1".to_string(),
-        );
-    }
-
-    for raw in &face.static_abilities {
-        // Convert Mode$ AlternativeCost | Cost$ GainLife<N> to keyword for runtime detection.
-        if let Some(kw) = parse_gainlife_alt_cost_keyword(raw) {
-            card.keywords.push(kw);
-        }
-        let prefixed = format!("S$ {}", raw);
-        if let Some(sa) = parse_static_ability(&prefixed) {
-            card.static_abilities.push(sa);
-        }
-    }
-
-    for raw in &face.replacements {
-        let prefixed = format!("R$ {}", raw);
-        if let Some(re) = parse_replacement_effect(&prefixed) {
-            card.replacement_effects.push(re);
-        }
-    }
-
-    // Double-faced cards
-    if rules.split_type.is_dual_faced() {
-        if let Some(ref back_face) = rules.other_part {
-            let mut back_trigger_id = 0u32;
-            let back_triggers: Vec<_> = back_face
-                .triggers
-                .iter()
-                .filter_map(|raw| parse_trigger(raw, &mut back_trigger_id))
-                .collect();
-
-            card.other_part = Some(CardOtherPart {
-                name: back_face.name.clone(),
-                type_line: back_face.type_line.clone(),
-                mana_cost: back_face.mana_cost.clone(),
-                color: back_face.resolved_color(),
-                base_power: back_face.int_power,
-                base_toughness: back_face.int_toughness,
-                keywords: back_face.keywords.clone(),
-                abilities: back_face.abilities.clone(),
-                triggers: back_triggers,
-                svars: back_face.svars.clone(),
-            });
-        }
-    }
-
-    card
-}
 
 /// Build a deck from a resolved spec. Used by inline/fuzz decks and presets.
 fn build_deck_from_spec(
@@ -302,7 +142,7 @@ fn build_deck_from_spec(
         match db.get_by_card_name(name) {
             Some(rules) => {
                 for _ in 0..*count {
-                    let card = card_rules_to_instance(rules, owner);
+                    let card = CardInstance::from_rules(rules, owner);
                     let id = game.create_card(card);
                     game.move_card(id, ZoneType::Library, owner);
                 }
@@ -635,7 +475,7 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
             );
         }
         for (script_name, rules) in token_db.iter() {
-            let template = card_rules_to_instance(rules, PlayerId(0));
+            let template = CardInstance::from_rules(rules, PlayerId(0));
             token_templates.push((script_name.clone(), template));
         }
     }
@@ -712,10 +552,13 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     }
 
     // Match Java's determineFirstTurnPlayer() "coin flip".
-    // Java calls Aggregates.random(game.getPlayers()) which does nextInt(numPlayers)
-    // on MyRandom to pick who goes first. The result is then overridden by
-    // DeterministicController.chooseStartingPlayer() which always returns player 0.
-    // We must consume the same RNG call to keep game_rng in sync, but ignore the result.
+    // Java calls Aggregates.random(game.getPlayers()) where game.getPlayers()
+    // returns a PlayerCollection (extends FCollection<Player> implements List<Player>).
+    // Since it implements List, Aggregates.random takes the List fast-path:
+    //   src.get(MyRandom.getRandom().nextInt(len))
+    // That's a single nextInt(numPlayers) call.
+    // The result is overridden by DeterministicController.chooseStartingPlayer()
+    // which always returns player 0 — we just need to consume the same RNG call.
     {
         let num_players = game.player_order.len() as i32;
         let _coin_flip = game_rng.borrow_mut().next_int(num_players);

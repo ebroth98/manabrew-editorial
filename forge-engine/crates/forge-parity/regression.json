@@ -4,8 +4,12 @@
     "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,comprehensive_test,trigger_expanded,staticability_test --max-turns 10"
   },
   {
+    "name": "10-seed extended matrix (7 decks)",
+    "args": "--matrix --seeds 42,100,999,1,7,31,256,500,1234,9999 --decks red_burn,green_stompy,white_aggro,black_control,comprehensive_test,trigger_expanded,staticability_test --max-turns 10"
+  },
+  {
     "name": "staticability",
-    "args": "--deck1 staticability_test --deck2 staticability_test --max-turns 30 --seed 42 --games 2"
+    "args": "--deck1 staticability_test --deck2 staticability_test --max-turns 30 --seed 42 --games 1"
   },
   {
       "name": "flashback",

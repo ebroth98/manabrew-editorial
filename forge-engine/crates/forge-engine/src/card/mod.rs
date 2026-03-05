@@ -3,6 +3,7 @@ pub mod damage_history;
 
 use std::collections::{BTreeMap, HashMap};
 
+use forge_carddb::CardRules;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
@@ -10,7 +11,40 @@ use crate::ability::activated::{parse_activated_ability, ActivatedAbility};
 use crate::ids::{CardId, PlayerId};
 use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::staticability::{parse_static_ability, StaticAbility};
-use crate::trigger::Trigger;
+use crate::trigger::{parse_trigger, Trigger};
+
+/// Parse `Mode$ AlternativeCost | Cost$ GainLife<N/...> | IsPresent$ ...` from a
+/// static ability raw string and return `Some("AltCostGainLife:N:condition")` keyword.
+fn parse_gainlife_alt_cost_keyword(raw: &str) -> Option<String> {
+    if !raw.contains("AlternativeCost") {
+        return None;
+    }
+    let life_amount = raw.split('|').find_map(|part| {
+        let p = part.trim();
+        if let Some(rest) = p.strip_prefix("Cost$") {
+            let cost = rest.trim();
+            if let Some(inner) = cost
+                .strip_prefix("GainLife<")
+                .and_then(|s| s.split('>').next())
+            {
+                let n = inner
+                    .split('/')
+                    .next()
+                    .and_then(|s| s.trim().parse::<i32>().ok())?;
+                return Some(n);
+            }
+        }
+        None
+    })?;
+    let condition = raw
+        .split('|')
+        .find_map(|part| {
+            let p = part.trim();
+            p.strip_prefix("IsPresent$").map(|s| s.trim().to_string())
+        })
+        .unwrap_or_default();
+    Some(format!("AltCostGainLife:{}:{}", life_amount, condition))
+}
 
 /// Stores alternate-face characteristics for double-faced cards (DFCs).
 /// The `transform()` method swaps `CardInstance` fields with these values.
@@ -336,9 +370,42 @@ impl CardInstance {
             must_block_cards: Vec::new(),
         };
 
-        // Generate keyword-derived activated abilities (mirrors Java CardFactoryUtil.setupKeywordedAbilities)
+        // Generate intrinsic abilities from card properties (mirrors Java CardFactoryUtil)
+        card.generate_basic_land_mana_abilities();
         card.generate_keyword_abilities();
+        card.generate_keyword_triggers();
         card
+    }
+
+    /// Generate intrinsic mana abilities for basic land subtypes (Plains → {W}, etc.).
+    /// Mirrors Java's `CardFactoryUtil.addIntrinsicAbilities()`.
+    fn generate_basic_land_mana_abilities(&mut self) {
+        const SUBTYPE_MANA: &[(&str, &str, &str)] = &[
+            ("Plains", "W", "Add {W}."),
+            ("Island", "U", "Add {U}."),
+            ("Swamp", "B", "Add {B}."),
+            ("Mountain", "R", "Add {R}."),
+            ("Forest", "G", "Add {G}."),
+        ];
+        for &(subtype, letter, desc) in SUBTYPE_MANA {
+            if self.type_line.has_subtype(subtype) {
+                let already_produces = self.activated_abilities.iter().any(|ab| {
+                    ab.is_mana_ability
+                        && ab.params.get("Produced").map_or(false, |p| p == letter)
+                });
+                if !already_produces {
+                    let raw = format!(
+                        "AB$ Mana | Cost$ T | Produced$ {} | SpellDescription$ {}",
+                        letter, desc
+                    );
+                    let idx = self.abilities.len();
+                    self.abilities.push(raw.clone());
+                    if let Some(ab) = parse_activated_ability(&raw, idx) {
+                        self.activated_abilities.push(ab);
+                    }
+                }
+            }
+        }
     }
 
     /// Generate activated abilities from keywords (e.g. Cycling → AB$ Draw).
@@ -355,6 +422,149 @@ impl CardInstance {
                 self.activated_abilities.push(ab);
             }
         }
+    }
+
+    /// Generate triggered abilities from keywords (e.g. Prowess, Bushido).
+    /// Mirrors Java's `CardFactoryUtil.setupKeywordedTriggers()`.
+    pub fn generate_keyword_triggers(&mut self) {
+        let mut next_id = self.triggers.len() as u32;
+
+        for kw in self.keywords.clone() {
+            // Prowess: +1/+1 when you cast a noncreature spell
+            if kw == "Prowess" {
+                let raw = "Mode$ SpellCast | ValidCard$ Card.nonCreature | ValidActivatingPlayer$ You | Execute$ TrigProwess | TriggerZones$ Battlefield | TriggerDescription$ Prowess";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigProwess".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars.entry("TrigProwess".to_string()).or_insert_with(|| {
+                    "DB$ Pump | Defined$ Self | NumAtt$ 1 | NumDef$ 1".to_string()
+                });
+            }
+
+            // Bushido N: +N/+N when blocking or becoming blocked
+            if let Some(n_str) = kw.strip_prefix("Bushido:") {
+                if n_str.parse::<i32>().is_ok() {
+                    let raw1 = format!("Mode$ Blocks | ValidCard$ Card.Self | Execute$ TrigBushido | TriggerZones$ Battlefield | TriggerDescription$ Bushido {n_str}");
+                    if let Some(mut trig) = parse_trigger(&raw1, &mut next_id) {
+                        trig.execute = "TrigBushido".to_string();
+                        self.triggers.push(trig);
+                    }
+                    let raw2 = format!("Mode$ AttackerBlocked | ValidCard$ Card.Self | Execute$ TrigBushido | TriggerZones$ Battlefield | TriggerDescription$ Bushido {n_str}");
+                    if let Some(mut trig) = parse_trigger(&raw2, &mut next_id) {
+                        trig.execute = "TrigBushido".to_string();
+                        self.triggers.push(trig);
+                    }
+                    self.svars.entry("TrigBushido".to_string()).or_insert_with(|| {
+                        format!("DB$ Pump | Defined$ Self | NumAtt$ {n_str} | NumDef$ {n_str}")
+                    });
+                }
+            }
+        }
+    }
+
+    /// Construct a `CardInstance` from a `CardRules` definition.
+    /// This is the single entry point for creating game-ready cards from the
+    /// card database. Mirrors Java's `CardFactory.readCard()` + `CardFactoryUtil`.
+    ///
+    /// Handles:
+    /// - Base stats (name, mana cost, type line, color, P/T, keywords, abilities)
+    /// - Trigger parsing (T: lines) including SpellCastOrCopy → SpellCopied duplication
+    /// - Static ability parsing (S: lines) with alternative cost keyword conversion
+    /// - Replacement effect parsing (R: lines)
+    /// - SVars
+    /// - Double-faced card back face setup
+    /// - Intrinsic mana abilities (basic land subtypes)
+    /// - Keyword-generated abilities and triggers (Cycling, Prowess, Bushido)
+    pub fn from_rules(rules: &CardRules, owner: PlayerId) -> Self {
+        let face = &rules.main_part;
+        let mut next_trigger_id = 0u32;
+
+        // Parse triggers from T: lines
+        let mut triggers: Vec<Trigger> = Vec::new();
+        let mut spell_cast_or_copy_raw: Vec<String> = Vec::new();
+        for raw in &face.triggers {
+            if let Some(trig) = parse_trigger(raw, &mut next_trigger_id) {
+                triggers.push(trig);
+                if raw.contains("Mode$ SpellCastOrCopy") {
+                    spell_cast_or_copy_raw.push(raw.clone());
+                }
+            }
+        }
+        // Duplicate SpellCastOrCopy triggers as SpellCopied (for Magecraft)
+        for raw in &spell_cast_or_copy_raw {
+            let converted = raw.replace("Mode$ SpellCastOrCopy", "Mode$ SpellCopied");
+            if let Some(trig) = parse_trigger(&converted, &mut next_trigger_id) {
+                triggers.push(trig);
+            }
+        }
+
+        let mut card = CardInstance::new(
+            CardId(0),
+            face.name.clone(),
+            owner,
+            face.type_line.clone(),
+            face.mana_cost.clone(),
+            face.resolved_color(),
+            face.int_power,
+            face.int_toughness,
+            face.keywords.clone(),
+            face.abilities.clone(),
+        );
+
+        // Append card-text triggers to keyword-generated ones (from generate_keyword_triggers)
+        card.triggers.extend(triggers);
+        // Merge card-text SVars (keyword-generated SVars already set by constructor)
+        for (k, v) in &face.svars {
+            card.svars.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+
+        // Parse static abilities from S: lines
+        for raw in &face.static_abilities {
+            // Convert Mode$ AlternativeCost | Cost$ GainLife<N> to keyword for runtime detection
+            if let Some(kw) = parse_gainlife_alt_cost_keyword(raw) {
+                card.keywords.push(kw);
+            }
+            let prefixed = format!("S$ {}", raw);
+            if let Some(sa) = parse_static_ability(&prefixed) {
+                card.static_abilities.push(sa);
+            }
+        }
+
+        // Parse replacement effects from R: lines
+        for raw in &face.replacements {
+            let prefixed = format!("R$ {}", raw);
+            if let Some(re) = parse_replacement_effect(&prefixed) {
+                card.replacement_effects.push(re);
+            }
+        }
+
+        // Double-faced cards
+        if rules.split_type.is_dual_faced() {
+            if let Some(ref back_face) = rules.other_part {
+                let mut back_trigger_id = 0u32;
+                let back_triggers: Vec<_> = back_face
+                    .triggers
+                    .iter()
+                    .filter_map(|raw| parse_trigger(raw, &mut back_trigger_id))
+                    .collect();
+
+                card.other_part = Some(CardOtherPart {
+                    name: back_face.name.clone(),
+                    type_line: back_face.type_line.clone(),
+                    mana_cost: back_face.mana_cost.clone(),
+                    color: back_face.resolved_color(),
+                    base_power: back_face.int_power,
+                    base_toughness: back_face.int_toughness,
+                    keywords: back_face.keywords.clone(),
+                    abilities: back_face.abilities.clone(),
+                    triggers: back_triggers,
+                    svars: back_face.svars.clone(),
+                });
+            }
+        }
+
+        card
     }
 
     /// Effective power, accounting for all layer effects and counters.

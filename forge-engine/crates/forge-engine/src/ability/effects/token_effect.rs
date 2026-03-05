@@ -140,6 +140,14 @@ fn create_tokens(
     amount: usize,
     token_controller: crate::ids::PlayerId,
 ) {
+    // Java consumes 2 game-level RNG values when creating the token prototype:
+    //   1. Aggregates.random() in TokenDb.getToken() — selects token art variant
+    //   2. MyRandom.nextInt(artIndex) in PaperToken.getImageKey() — selects image
+    // Both advance the seed once (artIndex is typically 1). Rust doesn't have
+    // token art selection, but must consume the same RNG to stay in sync.
+    ctx.rng.next_int(1); // match Aggregates.random() in TokenDb.getToken()
+    ctx.rng.next_int(1); // match MyRandom.nextInt(artIndex) in PaperToken.getImageKey()
+
     for _ in 0..amount {
         let mut token = template.clone();
         token.owner = token_controller;

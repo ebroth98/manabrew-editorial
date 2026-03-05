@@ -95,13 +95,34 @@ pub fn auto_tap_lands(
             &mut tapped_lands,
         );
 
+        // Pay non-tap ability costs (e.g. SubCounter for Rasputin Dreamweaver).
+        // tap_land_for_mana handles tapping; here we handle other cost parts.
+        if let Some(ab_idx) = sa_payment.ability_index {
+            let cost_parts: Vec<_> = game
+                .card(sa_payment.card_id)
+                .activated_abilities[ab_idx]
+                .cost
+                .parts
+                .clone();
+            for part in &cost_parts {
+                if let CostPart::SubCounter {
+                    amount,
+                    counter_type,
+                } = part
+                {
+                    game.card_mut(sa_payment.card_id)
+                        .remove_counter(counter_type, *amount);
+                }
+            }
+        }
+
         let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
         for _ in 1..sa_payment.amount.max(1) {
             pool.add(chosen_atom, 1);
             let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
         }
 
-        // Lands can only be used once after tap; remove all entries from same host card.
+        // Sources can only be used once; remove all entries from same host card.
         for abilities in sources_for_shards.values_mut() {
             abilities.retain(|a| a.card_id != sa_payment.card_id);
         }
@@ -401,11 +422,15 @@ fn add_mana_ability_to_color_map(map: &mut IndexMap<i32, Vec<ManaAbilityRef>>, m
 }
 
 fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId> {
+    // Include ALL battlefield permanents — don't pre-filter by tapped state.
+    // Tapped cards with non-tap mana abilities (e.g. Rasputin Dreamweaver's
+    // "Remove a dream counter: Add {C}") are valid mana sources. The inner
+    // can_pay_ignoring_mana() check already excludes Tap-costed abilities from
+    // tapped cards.
     let battlefield: Vec<CardId> = game
         .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
         .iter()
         .copied()
-        .filter(|&cid| !game.card(cid).tapped)
         .collect();
 
     let mut other_sources: Vec<CardId> = Vec::new();
@@ -467,7 +492,8 @@ fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId>
         }
 
         if usable_mana_abilities == 0 {
-            if card.is_land() && !has_any_mana_ability {
+            // Implicit land mana (basic land subtypes) requires tapping, so skip tapped lands.
+            if card.is_land() && !has_any_mana_ability && !card.tapped {
                 unique_atoms = all_basic_subtype_atoms(card);
                 if unique_atoms.is_empty() {
                     if let Some(a) = basic_land_mana_atom(card) {

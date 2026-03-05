@@ -383,16 +383,21 @@ impl GameLoop {
         let available_attackers = combat::get_available_attackers(game, active);
         let possible_defenders = combat::get_possible_defenders(game, active);
 
-        let mut chosen_attackers: Vec<(CardId, combat::DefenderId)> = if available_attackers.is_empty() {
+        // Compute attack requirements (must-attack from statics + goad)
+        let must_attackers = if available_attackers.is_empty() {
             Vec::new()
         } else {
-            // Compute attack requirements (must-attack from statics + goad)
             let requirements = combat::attack_requirement::compute_attack_requirements(
                 &game.cards,
                 &available_attackers,
                 defending,
             );
-            let must_attackers = combat::attack_requirement::must_attack_ids(&requirements);
+            combat::attack_requirement::must_attack_ids(&requirements)
+        };
+
+        let mut chosen_attackers: Vec<(CardId, combat::DefenderId)> = if available_attackers.is_empty() {
+            Vec::new()
+        } else {
 
             agents[active.index()].snapshot_state(game, &self.mana_pools);
             self.game_log.log(
@@ -444,23 +449,54 @@ impl GameLoop {
         // AttackRestrict: enforce global maximum attackers.
         // Java's DeterministicController validates the declaration and, when
         // invalid, falls back to AttackConstraints.getLegalAttackers() which
-        // (with no must-attack requirements) returns the empty set.  Mirror
-        // that by clearing all attackers when the limit is exceeded.
+        // keeps must-attack creatures and drops the rest.  Mirror that by
+        // retaining must-attack creatures up to the limit.
+        let trim_to_limit = |attackers: &mut Vec<(CardId, combat::DefenderId)>,
+                              max: usize,
+                              must: &[CardId]| {
+            if attackers.len() <= max {
+                return;
+            }
+            if must.is_empty() {
+                // No must-attack requirements: Java's getLegalAttackers() returns
+                // the empty set (0 violations), so clear all.
+                attackers.clear();
+                return;
+            }
+            // Keep must-attack creatures, drop others
+            let mut kept: Vec<(CardId, combat::DefenderId)> = attackers
+                .iter()
+                .filter(|(id, _)| must.contains(id))
+                .copied()
+                .collect();
+            if kept.len() <= max {
+                // Fill remaining slots with non-must attackers
+                for &pair in attackers.iter() {
+                    if kept.len() >= max {
+                        break;
+                    }
+                    if !must.contains(&pair.0) {
+                        kept.push(pair);
+                    }
+                }
+                *attackers = kept;
+            } else {
+                // Even must-attackers exceed the limit — truncate
+                kept.truncate(max);
+                *attackers = kept;
+            }
+        };
         if let Some(max_attackers) =
             crate::staticability::static_ability_attack_restrict::global_attack_restrict(&game.cards)
         {
-            if chosen_attackers.len() > max_attackers as usize {
-                chosen_attackers.clear();
-            }
+            trim_to_limit(&mut chosen_attackers, max_attackers as usize, &must_attackers);
         }
         if let Some(max_vs_defender) =
             crate::staticability::static_ability_attack_restrict::attack_restrict_num_for_defender(
                 &game.cards, defending,
             )
         {
-            if chosen_attackers.len() > max_vs_defender as usize {
-                chosen_attackers.clear();
-            }
+            trim_to_limit(&mut chosen_attackers, max_vs_defender as usize, &must_attackers);
         }
 
         // Check attack costs (Propaganda, Ghostly Prison effects)

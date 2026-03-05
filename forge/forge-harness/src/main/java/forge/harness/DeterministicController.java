@@ -7,12 +7,12 @@ import forge.ai.ComputerUtil;
 import forge.ai.ComputerUtilAbility;
 import forge.ai.ComputerUtilCombat;
 import forge.ai.ComputerUtilCost;
+import forge.ai.ComputerUtilMana;
 import forge.ai.PlayerControllerAi;
 import forge.game.cost.Cost;
 import forge.game.cost.CostPayment;
 import forge.card.mana.ManaCost;
 import forge.card.ColorSet;
-import forge.card.MagicColor;
 import forge.card.MagicColor.Color;
 import forge.game.*;
 import forge.game.card.*;
@@ -126,7 +126,7 @@ public class DeterministicController extends PlayerControllerAi {
                 if (sa.isLandAbility()) {
                     landPlays.add(sa);
                 } else if (sa.isSpell()) {
-                    if (!hasDeterministicMana(sa)) {
+                    if (!ComputerUtilMana.canPayManaCost(sa, player, 0, false)) {
                         continue;
                     }
                     if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
@@ -140,7 +140,7 @@ public class DeterministicController extends PlayerControllerAi {
                     if (sa.isEquip()) {
                         continue;
                     }
-                    if (!hasDeterministicMana(sa)) {
+                    if (!ComputerUtilMana.canPayManaCost(sa, player, 0, false)) {
                         continue;
                     }
                     if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
@@ -166,7 +166,7 @@ public class DeterministicController extends PlayerControllerAi {
                     if (sa.isEquip()) {
                         continue;
                     }
-                    if (!hasDeterministicMana(sa)) {
+                    if (!ComputerUtilMana.canPayManaCost(sa, player, 0, false)) {
                         continue;
                     }
                     if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
@@ -186,7 +186,7 @@ public class DeterministicController extends PlayerControllerAi {
                     continue;
                 }
                 if (sa.isSpell()) {
-                    if (!hasDeterministicMana(sa)) {
+                    if (!ComputerUtilMana.canPayManaCost(sa, player, 0, false)) {
                         continue;
                     }
                     if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
@@ -197,7 +197,7 @@ public class DeterministicController extends PlayerControllerAi {
                     if (sa.isEquip()) {
                         continue;
                     }
-                    if (!hasDeterministicMana(sa)) {
+                    if (!ComputerUtilMana.canPayManaCost(sa, player, 0, false)) {
                         continue;
                     }
                     if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
@@ -217,7 +217,7 @@ public class DeterministicController extends PlayerControllerAi {
                     continue;
                 }
                 if (sa.isSpell()) {
-                    if (!hasDeterministicMana(sa)) {
+                    if (!ComputerUtilMana.canPayManaCost(sa, player, 0, false)) {
                         continue;
                     }
                     if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
@@ -228,7 +228,7 @@ public class DeterministicController extends PlayerControllerAi {
                     if (sa.isEquip()) {
                         continue;
                     }
-                    if (!hasDeterministicMana(sa)) {
+                    if (!ComputerUtilMana.canPayManaCost(sa, player, 0, false)) {
                         continue;
                     }
                     if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
@@ -248,7 +248,7 @@ public class DeterministicController extends PlayerControllerAi {
                     continue;
                 }
                 if (sa.isSpell()) {
-                    if (!hasDeterministicMana(sa)) {
+                    if (!ComputerUtilMana.canPayManaCost(sa, player, 0, false)) {
                         continue;
                     }
                     if (sa.usesTargeting() && !ComputerUtilAbility.isFullyTargetable(sa)) {
@@ -431,6 +431,18 @@ public class DeterministicController extends PlayerControllerAi {
                 Card attackerToBlock = attackers.get(choice - 1);
                 if (CombatUtil.canBlock(attackerToBlock, blocker, combat)) {
                     combat.addBlocker(attackerToBlock, blocker);
+                }
+            }
+        }
+
+        // Enforce menace: remove single blockers from menace creatures.
+        // Java's engine does not enforce this, but Rust's does (per MTG rules).
+        // Pre-validating here keeps both engines in lockstep.
+        for (Card attacker : attackers) {
+            if (attacker.hasKeyword("Menace")) {
+                CardCollection blks = combat.getBlockers(attacker);
+                if (blks.size() == 1) {
+                    combat.removeBlockAssignment(attacker, blks.getFirst());
                 }
             }
         }
@@ -781,112 +793,6 @@ public class DeterministicController extends PlayerControllerAi {
         }
         final CostPayment pay = new CostPayment(cost, sa);
         return pay.payComputerCosts(new AiCostDecision(player, sa, true));
-    }
-
-    /**
-     * Conservative, side-effect-free mana gate.
-     * Prevents selecting actions that are obviously unpayable with current untapped mana sources.
-     */
-    private boolean hasDeterministicMana(SpellAbility sa) {
-        final Cost costs = sa.getPayCosts();
-        if (costs == null || !costs.hasManaCost()) {
-            return true;
-        }
-
-        final ManaCost manaCost = costs.getCostMana().getManaCostFor(sa);
-        if (manaCost == null || manaCost.isNoCost()) {
-            return false;
-        }
-
-        // Conservative rule for deterministic probing:
-        // non-mana activations should not assume the source can also fund its own mana cost.
-        final boolean excludesSource = costs.hasTapCost()
-            || (sa.isAbility() && !sa.isManaAbility() && sa.getHostCard().isInPlay());
-        final Card source = sa.getHostCard();
-        final int sourceId = source.getId();
-        int totalSources = 0;
-        int w = 0, u = 0, b = 0, r = 0, g = 0, c = 0;
-
-        for (Card card : player.getCardsIn(ZoneType.Battlefield)) {
-            if (card.isTapped()) {
-                continue;
-            }
-            // Summoning-sick creatures cannot activate {T} abilities (including mana).
-            // Must match Rust's calculate_available_mana() check so castability probes
-            // agree with actual payment and neither engine wastes RNG on uncastable spells.
-            if (card.isSick()) {
-                boolean allNeedTap = true;
-                for (SpellAbility manaSa : card.getManaAbilities()) {
-                    if (!manaSa.getPayCosts().hasTapCost()) {
-                        allNeedTap = false;
-                        break;
-                    }
-                }
-                if (allNeedTap) {
-                    continue;
-                }
-            }
-            if (excludesSource && card.getId() == sourceId) {
-                continue;
-            }
-            boolean canProduceW = false;
-            boolean canProduceU = false;
-            boolean canProduceB = false;
-            boolean canProduceR = false;
-            boolean canProduceG = false;
-            boolean canProduceC = false;
-
-            for (SpellAbility manaSa : card.getManaAbilities()) {
-                if (manaSa.getManaPart() == null) {
-                    continue;
-                }
-                final String produced = Objects.toString(manaSa.getManaPart().getOrigProduced(), "");
-                final String upper = produced.toUpperCase(Locale.ROOT);
-                if (upper.contains("W")) canProduceW = true;
-                if (upper.contains("U")) canProduceU = true;
-                if (upper.contains("B")) canProduceB = true;
-                if (upper.contains("R")) canProduceR = true;
-                if (upper.contains("G")) canProduceG = true;
-                if (upper.contains("C")) canProduceC = true;
-                if (upper.contains("ANY")) {
-                    canProduceW = canProduceU = canProduceB = canProduceR = canProduceG = canProduceC = true;
-                }
-            }
-
-            if (canProduceW || canProduceU || canProduceB || canProduceR || canProduceG || canProduceC) {
-                totalSources++;
-                if (canProduceW) w++;
-                if (canProduceU) u++;
-                if (canProduceB) b++;
-                if (canProduceR) r++;
-                if (canProduceG) g++;
-                if (canProduceC) c++;
-            }
-        }
-
-        // Also count mana already floating in the pool (from rituals like Dark Ritual).
-        forge.game.mana.ManaPool pool = player.getManaPool();
-        if (!pool.isEmpty()) {
-            totalSources += pool.totalMana();
-            w += pool.getAmountOfColor(MagicColor.WHITE);
-            u += pool.getAmountOfColor(MagicColor.BLUE);
-            b += pool.getAmountOfColor(MagicColor.BLACK);
-            r += pool.getAmountOfColor(MagicColor.RED);
-            g += pool.getAmountOfColor(MagicColor.GREEN);
-            c += pool.getAmountOfColor((byte) 0); // colorless
-        }
-
-        if (totalSources < manaCost.getCMC()) {
-            return false;
-        }
-
-        final int[] required = manaCost.getColorShardCounts(); // W U B R G C
-        return w >= required[0]
-            && u >= required[1]
-            && b >= required[2]
-            && r >= required[3]
-            && g >= required[4]
-            && c >= required[5];
     }
 
     /**

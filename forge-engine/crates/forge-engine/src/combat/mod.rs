@@ -461,7 +461,81 @@ impl CombatState {
                     }
                 }
 
-                // Deal the pre-computed damage to each blocker in a single event.
+                // --- Pre-compute blocker → attacker damage BEFORE applying any damage ---
+                // Combat damage is simultaneous (rule 510.2). We must read blocker
+                // powers now, before wither/infect -1/-1 counters from attacker
+                // damage modify them.
+                struct BlockerDamageInfo {
+                    blocker_id: CardId,
+                    power: i32,
+                    has_deathtouch: bool,
+                    has_lifelink: bool,
+                    has_wither_or_infect: bool,
+                    controller: PlayerId,
+                }
+                let mut blocker_damage_infos: Vec<BlockerDamageInfo> = Vec::new();
+                for &blocker_id in &blockers {
+                    if game.card(blocker_id).zone != ZoneType::Battlefield {
+                        continue;
+                    }
+                    let blocker_card = game.card(blocker_id);
+                    if crate::staticability::static_ability_assign_no_combat_damage::assign_no_combat_damage(
+                        &game.cards,
+                        blocker_card,
+                    ) {
+                        continue;
+                    }
+                    let blocker_has_fs = blocker_card.has_first_strike();
+                    let blocker_has_ds = blocker_card.has_double_strike();
+                    let blocker_deals = if first_strike_only {
+                        blocker_has_fs || blocker_has_ds
+                    } else {
+                        !blocker_has_fs || blocker_has_ds
+                    };
+                    if !blocker_deals {
+                        continue;
+                    }
+                    if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+                        &game.cards,
+                        game.card(attacker_id),
+                        game.card(blocker_id),
+                    ) {
+                        continue;
+                    }
+                    let blocker_power = if crate::staticability::static_ability_combat_damage_toughness::combat_damage_uses_toughness(
+                        &game.cards,
+                        game.card(blocker_id),
+                    ) {
+                        game.card(blocker_id).toughness()
+                    } else {
+                        game.card(blocker_id).power()
+                    };
+                    if blocker_power > 0 {
+                        let blocker_has_infect = blocker_card.has_infect()
+                            || crate::staticability::static_ability_infect_damage::is_infect_damage(
+                                game,
+                                &game.cards,
+                                game.card(attacker_id).controller,
+                                blocker_card.controller,
+                            );
+                        let blocker_has_wither = blocker_card.has_wither()
+                            || crate::staticability::static_ability_wither_damage::is_wither_damage(
+                                &game.cards,
+                                blocker_card,
+                            );
+                        blocker_damage_infos.push(BlockerDamageInfo {
+                            blocker_id,
+                            power: blocker_power,
+                            has_deathtouch: blocker_card.has_deathtouch(),
+                            has_lifelink: blocker_card.has_lifelink(),
+                            has_wither_or_infect: blocker_has_wither || blocker_has_infect,
+                            controller: blocker_card.controller,
+                        });
+                    }
+                }
+
+                // Now apply all damage (attacker → blockers, then blockers → attacker)
+                // using pre-computed power values.
                 for &(blocker_id, damage_to_blocker) in &damage_assignments {
                     deal_combat_damage_to_card(
                         game,
@@ -492,92 +566,38 @@ impl CombatState {
                     });
                 }
 
-                for &blocker_id in &blockers {
-                    // Check blocker is still alive
-                    if game.card(blocker_id).zone != ZoneType::Battlefield {
+                for info in &blocker_damage_infos {
+                    // Blocker may have been removed by an SBA or replacement
+                    if game.card(info.blocker_id).zone != ZoneType::Battlefield {
                         continue;
                     }
-
-                    // --- Blocker damages attacker (independent of whether attacker deals damage) ---
-                    let blocker_card = game.card(blocker_id);
-                    if crate::staticability::static_ability_assign_no_combat_damage::assign_no_combat_damage(
-                        &game.cards,
-                        blocker_card,
-                    ) {
-                        continue;
-                    }
-                    let blocker_has_fs = blocker_card.has_first_strike();
-                    let blocker_has_ds = blocker_card.has_double_strike();
-                    let blocker_has_deathtouch = blocker_card.has_deathtouch();
-                    let blocker_has_lifelink = blocker_card.has_lifelink();
-                    let blocker_has_infect = blocker_card.has_infect()
-                        || crate::staticability::static_ability_infect_damage::is_infect_damage(
-                            game,
-                            &game.cards,
-                            game.card(attacker_id).controller,
-                            blocker_card.controller,
-                        );
-                    let blocker_has_wither = blocker_card.has_wither()
-                        || crate::staticability::static_ability_wither_damage::is_wither_damage(
-                            &game.cards,
-                            blocker_card,
-                        );
-                    let blocker_controller = blocker_card.controller;
-
-                    let blocker_deals = if first_strike_only {
-                        blocker_has_fs || blocker_has_ds
-                    } else {
-                        !blocker_has_fs || blocker_has_ds
-                    };
-
-                    if blocker_deals {
-                        // Protection damage prevention — see note above.
-                        if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
-                            &game.cards,
-                            game.card(attacker_id),
-                            game.card(blocker_id),
-                        ) {
-                            continue;
-                        }
-
-                        let blocker_power = if crate::staticability::static_ability_combat_damage_toughness::combat_damage_uses_toughness(
-                            &game.cards,
-                            game.card(blocker_id),
-                        ) {
-                            game.card(blocker_id).toughness()
+                    deal_combat_damage_to_card(
+                        game,
+                        info.blocker_id,
+                        attacker_id,
+                        info.power,
+                        info.has_deathtouch,
+                        info.has_lifelink,
+                        info.controller,
+                        info.has_wither_or_infect,
+                    );
+                    events.push(CombatDamageEvent {
+                        source: info.blocker_id,
+                        target_player: None,
+                        target_card: Some(attacker_id),
+                        amount: info.power,
+                        is_combat: true,
+                        lifelink_player: if info.has_lifelink {
+                            Some(info.controller)
                         } else {
-                            game.card(blocker_id).power()
-                        };
-                        if blocker_power > 0 {
-                            deal_combat_damage_to_card(
-                                game,
-                                blocker_id,
-                                attacker_id,
-                                blocker_power,
-                                blocker_has_deathtouch,
-                                blocker_has_lifelink,
-                                blocker_controller,
-                                blocker_has_wither || blocker_has_infect,
-                            );
-                            events.push(CombatDamageEvent {
-                                source: blocker_id,
-                                target_player: None,
-                                target_card: Some(attacker_id),
-                                amount: blocker_power,
-                                is_combat: true,
-                                lifelink_player: if blocker_has_lifelink {
-                                    Some(blocker_controller)
-                                } else {
-                                    None
-                                },
-                                lifelink_amount: if blocker_has_lifelink {
-                                    blocker_power
-                                } else {
-                                    0
-                                },
-                            });
-                        }
-                    }
+                            None
+                        },
+                        lifelink_amount: if info.has_lifelink {
+                            info.power
+                        } else {
+                            0
+                        },
+                    });
                 }
 
                 // Note: excess damage was already assigned to the last blocker
@@ -740,7 +760,12 @@ fn deal_combat_damage_to_player(
                 game.player_mut(target).poison_counters += toxic;
             }
         }
-        if lifelink {
+        if lifelink
+            && !crate::staticability::static_ability_cant_gain_lose_pay_life::cant_gain_life(
+                game,
+                source_controller,
+            )
+        {
             game.player_mut(source_controller).gain_life(amount);
         }
     }
@@ -778,7 +803,12 @@ fn deal_combat_damage_to_card(
         if deathtouch {
             game.card_mut(target).has_deathtouch_damage = true;
         }
-        if lifelink {
+        if lifelink
+            && !crate::staticability::static_ability_cant_gain_lose_pay_life::cant_gain_life(
+                game,
+                source_controller,
+            )
+        {
             game.player_mut(source_controller).gain_life(amount);
         }
         // Record damage in source's damage history

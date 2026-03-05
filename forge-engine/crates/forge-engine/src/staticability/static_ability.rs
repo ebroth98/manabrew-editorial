@@ -196,6 +196,10 @@ pub struct CardFilter {
     /// Only match creatures currently attacking the source's controller
     /// (`attackingYou` qualifier, e.g. Watchdog).
     pub attacking_you: bool,
+    /// Only match cards with this exact name (`named<CardName>` qualifier).
+    pub card_name: Option<String>,
+    /// Only match token permanents.
+    pub token_only: bool,
 }
 
 impl CardFilter {
@@ -234,6 +238,10 @@ impl CardFilter {
             "Green" => f.required_color = Some(ColorSet::GREEN),
             "Colorless" => f.colorless_only = true,
             "attackingYou" => f.attacking_you = true,
+            "token" | "Token" => f.token_only = true,
+            s if s.starts_with("named") => {
+                f.card_name = Some(s["named".len()..].to_string());
+            }
             s => {
                 // Unknown tokens are treated as subtype filters (e.g. "Goblin").
                 if f.subtype.is_none() {
@@ -275,6 +283,14 @@ impl CardFilter {
             return false;
         }
         if self.attacking_you && card.attacking_player != Some(source.controller) {
+            return false;
+        }
+        if let Some(ref name) = self.card_name {
+            if card.card_name != *name {
+                return false;
+            }
+        }
+        if self.token_only && !card.is_token {
             return false;
         }
         true

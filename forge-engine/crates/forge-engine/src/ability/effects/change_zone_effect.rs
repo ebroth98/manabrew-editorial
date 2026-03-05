@@ -84,11 +84,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 controller
             };
             let mut zone_cards = ctx.game.cards_in_zone(origin_zone, search_player).to_vec();
-            // Sort candidates alphabetically by name to match Java's fetchList.sort().
-            // Java sorts before selection so the DeterministicController always picks
-            // the first alphabetically, ensuring parity across engines.
+            // Sort candidates to match Java's fetchList.sort() + DeterministicController.
+            // Java sorts fetchList by Card.toString() which is "Zone Name (ID)",
+            // making same-name cards sort by ID. The DeterministicController then
+            // re-sorts by Card::getName (stable), picking index 0. The effective
+            // sort is: name ascending, then card ID ascending for tiebreaking.
             zone_cards.sort_by(|&a, &b| {
-                ctx.game.card(a).card_name.cmp(&ctx.game.card(b).card_name)
+                ctx.game
+                    .card(a)
+                    .card_name
+                    .cmp(&ctx.game.card(b).card_name)
+                    .then(a.0.cmp(&b.0))
             });
             if let Some(each_spec) = change_type.strip_prefix("EACH ") {
                 let mut out = Vec::new();

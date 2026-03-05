@@ -107,8 +107,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
 
         // IsPresent$ — conditional activation (e.g. "Card.Self+untapped").
         // If the condition is not met, skip this static ability entirely.
-        if let Some(is_present) = sa.params.get("IsPresent") {
-            if !check_is_present(game, *source_id, is_present) {
+        if let Some(_is_present) = sa.params.get("IsPresent") {
+            if !check_is_present(game, *source_id, sa) {
                 continue;
             }
         }
@@ -414,9 +414,16 @@ pub fn get_etb_unless_life_cost(card: &crate::card::CardInstance) -> Option<i32>
 /// - `"Card.Self+untapped"` — the source card must be untapped
 /// - `"Card.Self+tapped"` — the source card must be tapped
 /// - `"Card.Self"` — always true (source on battlefield is implied)
+/// - General forms (e.g. `"Permanent.namedBrothers Yamazaki"`) — count
+///   matching cards on the battlefield and compare against `PresentCompare$`.
 ///
 /// Mirrors Java `StaticAbility.checkConditions()` → `isPresent$` handling.
-fn check_is_present(game: &GameState, source_id: CardId, condition: &str) -> bool {
+fn check_is_present(game: &GameState, source_id: CardId, sa: &StaticAbility) -> bool {
+    let condition = match sa.params.get("IsPresent") {
+        Some(c) => c.as_str(),
+        None => return true,
+    };
+
     let parts: Vec<&str> = condition.split('+').collect();
     let base = parts.first().copied().unwrap_or("");
 
@@ -441,9 +448,30 @@ fn check_is_present(game: &GameState, source_id: CardId, condition: &str) -> boo
         return true;
     }
 
-    // For other IsPresent$ forms, check if any matching card exists on battlefield.
-    // This is a simplified version; extend as needed.
-    true
+    // General IsPresent$ — count matching cards on the battlefield using CardFilter
+    // and compare against PresentCompare$ (defaults to GE1).
+    let filter = CardFilter::parse(condition);
+    let source_card = game.card(source_id);
+    let count = game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield && filter.matches(c, source_card))
+        .count() as i32;
+
+    let cmp = sa
+        .params
+        .get("PresentCompare")
+        .map(String::as_str)
+        .unwrap_or("GE1");
+    match cmp {
+        "EQ0" => count == 0,
+        "EQ1" => count == 1,
+        "EQ2" => count == 2,
+        "GE1" => count >= 1,
+        "GE2" => count >= 2,
+        "LE1" => count <= 1,
+        _ => count >= 1,
+    }
 }
 
 /// Check if a card has a "enters tapped unless you reveal a <type> from hand" effect.

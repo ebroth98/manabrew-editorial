@@ -26,6 +26,12 @@ pub struct ManaPool {
     /// (dual lands, Command Tower) from being counted as multiple mana.
     #[serde(skip)]
     pub total_sources: Option<i32>,
+    /// Per-source color bitmasks for source-level matching in `can_pay`.
+    /// Each entry is a bitmask of ManaAtom colors that one mana source can produce.
+    /// Used by `calculate_available_mana` to prevent dual lands from satisfying
+    /// multiple colored requirements simultaneously.
+    #[serde(skip)]
+    pub source_colors: Option<Vec<u16>>,
 }
 
 impl ManaPool {
@@ -112,20 +118,20 @@ impl ManaPool {
     /// Try to pay a mana cost. Returns true if successful and deducts the mana.
     /// This is a simplified payment algorithm that handles colored and generic mana.
     pub fn can_pay(&self, cost: &forge_foundation::ManaCost) -> bool {
-        // If total_sources is set (availability estimate), check that total cost
-        // doesn't exceed real producible mana. This prevents dual lands from
-        // being counted as producing 2+ mana when they can only produce 1.
+        // When source_colors is available (from calculate_available_mana), use
+        // source-level matching to prevent dual lands from satisfying multiple
+        // colored requirements simultaneously.
+        if let Some(ref sources) = self.source_colors {
+            return Self::can_pay_source_matching(sources, cost, 0);
+        }
+
+        // Fallback for non-availability-estimate pools (actual mana during payment)
         if let Some(max) = self.total_sources {
             if cost.cmc() > max {
                 return false;
             }
         }
 
-        // Java parity: ManaCost.getColorShardCounts() iterates the string
-        // representation character-by-character. For a hybrid shard like {B/R},
-        // it counts both 'B' and 'R', effectively requiring the pool to have
-        // BOTH colors available (not just one). This is more conservative than
-        // correct game rules but matches Java's hasDeterministicMana() check.
         let mut required = [0i32; 6]; // W, U, B, R, G, C
         for shard in cost.shards() {
             let atoms = shard.shard();
@@ -169,6 +175,9 @@ impl ManaPool {
         cost: &forge_foundation::ManaCost,
         extra_generic: i32,
     ) -> bool {
+        if let Some(ref sources) = self.source_colors {
+            return Self::can_pay_source_matching(sources, cost, extra_generic);
+        }
         // Check total source cap for availability estimates
         if let Some(max) = self.total_sources {
             if cost.cmc() + extra_generic > max {
@@ -180,6 +189,80 @@ impl ManaPool {
             return false;
         }
         pool.total() >= extra_generic
+    }
+
+    /// Source-level matching for mana availability checks.
+    /// Prevents dual lands from satisfying multiple colored requirements simultaneously.
+    /// Each shard becomes one requirement: a source matches if it can produce any of
+    /// the shard's colors. Hybrid shards like {B/R} are a single requirement satisfied
+    /// by either B or R, matching Java's ComputerUtilMana.canPayManaCost().
+    fn can_pay_source_matching(
+        sources: &[u16],
+        cost: &forge_foundation::ManaCost,
+        extra_generic: i32,
+    ) -> bool {
+        // Build requirements: one per shard, using the shard's full color bitmask.
+        // A hybrid {B/R} becomes one requirement with (BLACK | RED) — any source
+        // producing B or R can satisfy it. Generic shards are handled separately.
+        let mut requirements: Vec<u16> = Vec::new();
+        for shard in cost.shards() {
+            if shard.is_x() {
+                continue;
+            }
+            let atoms = shard.shard();
+            // Only add colored requirements (skip generic, handled below)
+            let color_mask = atoms
+                & (ManaAtom::WHITE
+                    | ManaAtom::BLUE
+                    | ManaAtom::BLACK
+                    | ManaAtom::RED
+                    | ManaAtom::GREEN);
+            if color_mask != 0 {
+                requirements.push(color_mask);
+            }
+        }
+        let generic_count = cost.generic_cost() + extra_generic;
+
+        // Quick total check
+        if (sources.len() as i32) < (requirements.len() as i32) + generic_count {
+            return false;
+        }
+
+        // Sort requirements by number of matching sources (ascending = most constrained first),
+        // then by bitmask value (ascending) for determinism.
+        requirements.sort_by(|a, b| {
+            let count_a = sources.iter().filter(|&&s| (s & a) != 0).count();
+            let count_b = sources.iter().filter(|&&s| (s & b) != 0).count();
+            count_a.cmp(&count_b).then_with(|| a.cmp(b))
+        });
+
+        // Greedy matching: for each requirement, commit the most constrained source.
+        let mut committed = vec![false; sources.len()];
+        for req in &requirements {
+            let mut best_idx: Option<usize> = None;
+            let mut best_pop: u32 = u32::MAX;
+            let mut best_mask: u16 = u16::MAX;
+            for (i, &src) in sources.iter().enumerate() {
+                if committed[i] {
+                    continue;
+                }
+                if (src & req) != 0 {
+                    let pop = src.count_ones();
+                    if pop < best_pop || (pop == best_pop && src < best_mask) {
+                        best_idx = Some(i);
+                        best_pop = pop;
+                        best_mask = src;
+                    }
+                }
+            }
+            match best_idx {
+                Some(idx) => committed[idx] = true,
+                None => return false,
+            }
+        }
+
+        let remaining = committed.iter().filter(|&&c| !c).count() as i32;
+        remaining >= generic_count
     }
 
     /// Pay `extra_generic` additional generic mana from the pool.
@@ -554,7 +637,11 @@ pub(crate) fn tap_land_for_mana(
     tapped_lands: &mut Vec<CardId>,
 ) {
     let pain = land_pain_damage(game.card(land_id), atom);
-    game.tap(land_id);
+    // Only tap if not already tapped — tapped cards with non-tap mana abilities
+    // (e.g. Rasputin Dreamweaver's SubCounter ability) are valid sources.
+    if !game.card(land_id).tapped {
+        game.tap(land_id);
+    }
     pool.add(atom, 1);
     if pain > 0 {
         game.player_mut(player).lose_life(pain);
@@ -637,17 +724,38 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
     // Track actual number of mana sources (each can produce exactly 1 mana)
     let mut source_count: i32 = 0;
 
+    // Per-source color bitmasks for source-level matching in can_pay.
+    // Start with floating mana from the existing pool.
+    let mut source_colors: Vec<u16> = Vec::new();
+    for _ in 0..pool.white {
+        source_colors.push(ManaAtom::WHITE);
+    }
+    for _ in 0..pool.blue {
+        source_colors.push(ManaAtom::BLUE);
+    }
+    for _ in 0..pool.black {
+        source_colors.push(ManaAtom::BLACK);
+    }
+    for _ in 0..pool.red {
+        source_colors.push(ManaAtom::RED);
+    }
+    for _ in 0..pool.green {
+        source_colors.push(ManaAtom::GREEN);
+    }
+    for _ in 0..pool.colorless {
+        source_colors.push(0); // colorless can only pay generic
+    }
+
     for &card_id in battlefield {
         let card = game.card(card_id);
-        if card.tapped {
-            continue;
-        }
+        let is_tapped = card.tapped;
 
         // Summoning-sick creatures cannot activate {T} abilities (including mana).
-        // Must match Java's DeterministicController.hasDeterministicMana() check so
+        // Must match Java's ComputerUtilMana.canPayManaCost() behavior so
         // castability probes agree with actual payment and neither engine wastes RNG
         // on uncastable spells.
-        if card.is_creature() && card.summoning_sick && !card.has_haste() {
+        let summoning_sick = card.is_creature() && card.summoning_sick && !card.has_haste();
+        if summoning_sick {
             let all_need_tap = card
                 .activated_abilities
                 .iter()
@@ -659,12 +767,20 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
         }
 
         // Check for mana abilities on this permanent.
+        // If the card is tapped or summoning-sick, only include mana abilities that
+        // don't require tapping (e.g. Rasputin Dreamweaver's "Remove a dream counter:
+        // Add {C}"). This matches Java's ComputerUtilMana which checks individual
+        // ability playability rather than skipping tapped cards entirely.
         let mana_abilities: Vec<_> = card
             .activated_abilities
             .iter()
             .filter(|ab| {
                 ab.is_mana_ability
                     && !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_)))
+                    && (!is_tapped
+                        || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
+                    && (!summoning_sick
+                        || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
             })
             .collect();
 
@@ -673,18 +789,21 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
             // This handles non-basic lands with basic land subtypes (e.g. Breeding Pool
             // typed "Land Forest Island" — produces G or U from subtype, not AB$ Mana).
             // Also handles basic lands from the Forge CLI or other sources.
-            if card.is_land() {
+            // Tapped lands can't produce mana (implicit {T} cost), so skip them.
+            if card.is_land() && !is_tapped {
                 let subtype_atoms = all_basic_subtype_atoms(card);
                 if !subtype_atoms.is_empty() {
-                    // Multi-subtype dual lands: add all producing colors optimistically.
-                    // The total_sources cap prevents double-counting.
+                    let mut src_mask: u16 = 0;
                     for atom in subtype_atoms {
                         available.add(atom, 1);
+                        src_mask |= atom;
                     }
                     source_count += 1;
+                    source_colors.push(src_mask);
                 } else if let Some(atom) = basic_land_mana_atom(card) {
                     available.add(atom, 1);
                     source_count += 1;
+                    source_colors.push(atom);
                 }
             }
             continue;
@@ -694,6 +813,7 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
         // The total_sources cap ensures the total mana count stays correct.
         let mut added_any = false;
         let mut added_atoms: Vec<u16> = Vec::new();
+        let mut src_mask: u16 = 0;
         for ab in &mana_abilities {
             if let Some(produced) = ab.params.get("Produced") {
                 if produced == "Combo ColorIdentity" {
@@ -720,6 +840,7 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
                             if !added_atoms.contains(&atom) {
                                 available.add(atom, 1);
                                 added_atoms.push(atom);
+                                src_mask |= atom;
                             }
                         }
                         added_any = true;
@@ -729,6 +850,7 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
                         if !added_atoms.contains(&atom) {
                             available.add(atom, 1);
                             added_atoms.push(atom);
+                            src_mask |= atom;
                             added_any = true;
                         }
                     }
@@ -746,23 +868,27 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
                     if !added_atoms.contains(&atom) {
                         available.add(atom, 1);
                         added_atoms.push(atom);
+                        src_mask |= atom;
                         added_any = true;
                     }
                 }
             } else if let Some(atom) = basic_land_mana_atom(card) {
                 // Name-based fallback for basic lands named "Forest" etc.
                 available.add(atom, 1);
+                src_mask |= atom;
                 added_any = true;
             }
         }
         if added_any {
             // Each productive source contributes exactly 1 activation (tap = 1 mana)
             source_count += 1;
+            source_colors.push(src_mask);
         }
     }
 
     // Set total_sources so can_pay enforces the real total mana cap
     available.total_sources = Some(pool.total() + source_count);
+    available.source_colors = Some(source_colors);
 
     available
 }
