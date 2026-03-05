@@ -62,7 +62,7 @@ impl GitHubIssues {
     pub async fn find_existing_issue(&self, divergence_field: &str) -> Result<Option<i64>, String> {
         let token = self.token.as_ref().ok_or("GITHUB_TOKEN not set")?;
         let query = format!(
-            "repo:{} is:issue is:open label:parity-failure {} in:title",
+            "repo:{} is:issue label:parity-failure {} in:title",
             self.repo, divergence_field
         );
         let resp = self
