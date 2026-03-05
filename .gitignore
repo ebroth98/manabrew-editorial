@@ -30,6 +30,9 @@ dist-ssr
 forge-engine/target/
 src-tauri/target/
 
+# Secrets
+.env
+
 # Java / Maven
 forge/target/
 forge/**/target/
