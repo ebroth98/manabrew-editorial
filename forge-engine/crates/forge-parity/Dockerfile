@@ -7,6 +7,7 @@ WORKDIR /build/forge
 # Copy only POMs first so dependency download is cached separately.
 # Modules needed by `mvn -pl forge-harness -am`: parent + core, game, ai, gui, harness.
 COPY forge/pom.xml                   pom.xml
+COPY forge/checkstyle.xml            checkstyle.xml
 
 # Strip module declarations for modules excluded by .dockerignore
 # (Maven validates all <module> entries exist before -pl filtering)
