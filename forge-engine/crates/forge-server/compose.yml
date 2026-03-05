@@ -9,7 +9,7 @@ services:
       FORGE_MAX_ROOMS: "100"
       FORGE_SERVER_KEY: "forge"
       RUST_LOG: "forge_server=info"
-    restart: unless-stopped
+    restart: on-failure:5
 
   parity-dashboard:
     build:
@@ -38,7 +38,7 @@ services:
       GITHUB_REPO: "${GITHUB_REPO:-}"
     volumes:
       - parity-data:/app/data
-    restart: unless-stopped
+    restart: on-failure:5
 
 volumes:
   parity-data:
