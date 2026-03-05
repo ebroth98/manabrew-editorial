@@ -412,10 +412,76 @@ async fn run_handler(
     }
 }
 
+/// Normalize a divergence field by replacing array indices with `[*]`.
+/// e.g. `players[0].battlefield[3].power` → `players[*].battlefield[*].power`
+fn normalize_field(field: &str) -> String {
+    let mut result = String::with_capacity(field.len());
+    let mut chars = field.chars().peekable();
+    while let Some(c) = chars.next() {
+        if c == '[' {
+            result.push('[');
+            while let Some(&next) = chars.peek() {
+                if next == ']' {
+                    break;
+                }
+                chars.next();
+            }
+            result.push('*');
+        } else {
+            result.push(c);
+        }
+    }
+    result
+}
+
 async fn clusters_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    use crate::storage::FieldCluster;
+
     let storage = state.storage.lock().unwrap();
     match storage.get_clusters_by_field() {
-        Ok(clusters) => Json(clusters).into_response(),
+        Ok(clusters) => {
+            // Aggregate clusters by normalized field name (strip array indices)
+            let mut merged: std::collections::BTreeMap<String, FieldCluster> =
+                std::collections::BTreeMap::new();
+            for fc in clusters {
+                let key = normalize_field(&fc.field);
+                merged
+                    .entry(key.clone())
+                    .and_modify(|existing| {
+                        existing.total_failures += fc.total_failures;
+                        existing.num_deck_pairs += fc.num_deck_pairs;
+                        if fc.first_seen < existing.first_seen {
+                            existing.first_seen = fc.first_seen.clone();
+                        }
+                        if fc.last_seen > existing.last_seen {
+                            existing.last_seen = fc.last_seen.clone();
+                        }
+                        if existing.github_issue.is_none() {
+                            existing.github_issue = fc.github_issue;
+                        }
+                        if existing.llm_analysis.is_none() {
+                            existing.llm_analysis = fc.llm_analysis.clone();
+                        }
+                        // Merge deck_pairs
+                        if let Some(ref new_pairs) = fc.deck_pairs {
+                            if let Some(ref mut existing_pairs) = existing.deck_pairs {
+                                existing_pairs.push_str(", ");
+                                existing_pairs.push_str(new_pairs);
+                            } else {
+                                existing.deck_pairs = Some(new_pairs.clone());
+                            }
+                        }
+                    })
+                    .or_insert(FieldCluster {
+                        field: key,
+                        ..fc
+                    });
+            }
+            // Sort by total_failures descending
+            let mut result: Vec<FieldCluster> = merged.into_values().collect();
+            result.sort_by(|a, b| b.total_failures.cmp(&a.total_failures));
+            Json(result).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
