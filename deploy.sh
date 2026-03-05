@@ -63,6 +63,7 @@ done <<< "$CHANGED"
 
 # ── Build & deploy ───────────────────────────────────────────────────
 export DOCKER_BUILDKIT=1
+export BUILDKIT_PROGRESS=plain
 
 SERVICES_TO_RESTART=""
 BUILD_START=$(date +%s)
@@ -70,22 +71,22 @@ BUILD_START=$(date +%s)
 # -- parity-dashboard (Java + Rust) --
 if $INFRA_CHANGED; then
     echo "Building parity-dashboard (full)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build --no-cache parity-dashboard >> "$RAW_LOG" 2>&1
+    docker compose -f "$COMPOSE_FILE" build --progress=plain --no-cache parity-dashboard >> "$RAW_LOG" 2>&1
     SERVICES_TO_RESTART="parity-dashboard"
 elif $JAVA_CHANGED || $RUST_CHANGED; then
     echo "Building parity-dashboard (cached)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build parity-dashboard >> "$RAW_LOG" 2>&1
+    docker compose -f "$COMPOSE_FILE" build --progress=plain parity-dashboard >> "$RAW_LOG" 2>&1
     SERVICES_TO_RESTART="parity-dashboard"
 fi
 
 # -- forge-server (Rust only) --
 if $INFRA_CHANGED; then
     echo "Building forge-server (full)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build --no-cache forge-server >> "$RAW_LOG" 2>&1
+    docker compose -f "$COMPOSE_FILE" build --progress=plain --no-cache forge-server >> "$RAW_LOG" 2>&1
     SERVICES_TO_RESTART="$SERVICES_TO_RESTART forge-server"
 elif $RUST_CHANGED; then
     echo "Building forge-server (cached)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build forge-server >> "$RAW_LOG" 2>&1
+    docker compose -f "$COMPOSE_FILE" build --progress=plain forge-server >> "$RAW_LOG" 2>&1
     SERVICES_TO_RESTART="$SERVICES_TO_RESTART forge-server"
 fi
 
