@@ -2,6 +2,9 @@
 # ── Stage 1: Build Java harness JAR ─────────────────────────────────
 FROM maven:3.9-eclipse-temurin-17 AS java-builder
 
+# Cap JVM heap so Maven doesn't get OOM-killed when building alongside Rust
+ENV MAVEN_OPTS="-Xmx512m"
+
 WORKDIR /build/forge
 
 # Copy only POMs first so dependency download is cached separately.
@@ -33,7 +36,7 @@ RUN for m in forge-core forge-game forge-ai forge-gui forge-harness; do \
 
 # Download all dependencies (cached until a pom.xml changes)
 RUN --mount=type=cache,target=/root/.m2/repository \
-    mvn -pl forge-harness -am dependency:go-offline -q || true
+    mvn -pl forge-harness -am dependency:go-offline -Dcheckstyle.skip -q || true
 
 # Now copy the real source code
 COPY forge/forge-core/    forge-core/
@@ -44,7 +47,7 @@ COPY forge/forge-harness/ forge-harness/
 
 # Build the fat JAR (deps already cached in .m2)
 RUN --mount=type=cache,target=/root/.m2/repository \
-    mvn -pl forge-harness -am -DskipTests package -q
+    mvn -pl forge-harness -am -DskipTests -Dcheckstyle.skip package -q
 
 # ── Stage 2: Build Rust binary ──────────────────────────────────────
 FROM rust:1.88-bookworm AS rust-builder
