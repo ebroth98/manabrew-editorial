@@ -18,7 +18,7 @@ pub struct LlmAnalysis {
 /// Which LLM backend to use.
 enum Backend {
     Anthropic { api_key: String },
-    OpenAi { api_key: String },
+    OpenAi { api_key: String, base_url: String, model: String },
     ClaudeCode { binary: String },
 }
 
@@ -56,8 +56,12 @@ impl LlmClient {
         }
         if let Ok(key) = std::env::var("OPENAI_API_KEY") {
             if !key.is_empty() {
+                let base_url = std::env::var("OPENAI_API_BASE")
+                    .unwrap_or_else(|_| "https://api.openai.com".to_string());
+                let model = std::env::var("OPENAI_MODEL")
+                    .unwrap_or_else(|_| "gpt-4o-mini".to_string());
                 return Some(Self {
-                    backend: Backend::OpenAi { api_key: key },
+                    backend: Backend::OpenAi { api_key: key, base_url, model },
                     client,
                 });
             }
@@ -83,8 +87,8 @@ impl LlmClient {
             Backend::Anthropic { api_key } => {
                 self.call_anthropic(api_key, &prompt).await?
             }
-            Backend::OpenAi { api_key } => {
-                self.call_openai(api_key, &prompt).await?
+            Backend::OpenAi { api_key, base_url, model } => {
+                self.call_openai(api_key, base_url, model, &prompt).await?
             }
             Backend::ClaudeCode { binary } => {
                 self.call_claude_code(binary, &prompt).await?
@@ -156,9 +160,10 @@ impl LlmClient {
         .map_err(|e| format!("spawn_blocking failed: {e}"))?
     }
 
-    async fn call_openai(&self, api_key: &str, prompt: &str) -> Result<String, String> {
+    async fn call_openai(&self, api_key: &str, base_url: &str, model: &str, prompt: &str) -> Result<String, String> {
+        let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
         let body = serde_json::json!({
-            "model": "gpt-4o-mini",
+            "model": model,
             "messages": [
                 { "role": "user", "content": prompt }
             ],
@@ -167,7 +172,7 @@ impl LlmClient {
 
         let resp = self
             .client
-            .post("https://api.openai.com/v1/chat/completions")
+            .post(&url)
             .header("Authorization", format!("Bearer {api_key}"))
             .header("content-type", "application/json")
             .json(&body)
