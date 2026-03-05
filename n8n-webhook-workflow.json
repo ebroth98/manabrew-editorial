@@ -42,7 +42,7 @@
     },
     {
       "parameters": {
-        "command": "cd /opt/bardidinaXmageUI && ./deploy.sh 2>&1 | tee /tmp/deploy.log",
+        "command": "cd ~/bardidinaXmageUI && ./deploy.sh 2>&1 | tee /tmp/deploy.log",
         "options": { "timeout": 600 }
       },
       "id": "execute-deploy",

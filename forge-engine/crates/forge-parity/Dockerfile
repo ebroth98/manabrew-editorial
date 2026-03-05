@@ -7,6 +7,18 @@ WORKDIR /build/forge
 # Copy only POMs first so dependency download is cached separately.
 # Modules needed by `mvn -pl forge-harness -am`: parent + core, game, ai, gui, harness.
 COPY forge/pom.xml                   pom.xml
+
+# Strip module declarations for modules excluded by .dockerignore
+# (Maven validates all <module> entries exist before -pl filtering)
+RUN sed -i '/<module>forge-gui-mobile<\/module>/d; \
+            /<module>forge-gui-mobile-dev<\/module>/d; \
+            /<module>forge-gui-desktop<\/module>/d; \
+            /<module>forge-gui-ios<\/module>/d; \
+            /<module>forge-lda<\/module>/d; \
+            /<module>adventure-editor<\/module>/d; \
+            /<module>forge-gui-android<\/module>/d; \
+            /<module>forge-installer<\/module>/d' pom.xml
+
 COPY forge/forge-core/pom.xml        forge-core/pom.xml
 COPY forge/forge-game/pom.xml        forge-game/pom.xml
 COPY forge/forge-ai/pom.xml          forge-ai/pom.xml

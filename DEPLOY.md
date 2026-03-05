@@ -11,7 +11,7 @@
 ### 1. Clone the repo
 
 ```bash
-cd /opt
+cd ~
 git clone git@github.com:fedepoi/bardidinaXmageUI.git
 cd bardidinaXmageUI
 ```
@@ -62,7 +62,7 @@ Dashboard will be at `http://<server-ip>:8080`.
 3. Select `n8n-webhook-workflow.json` from the repo root
 4. **Edit the "Run deploy.sh" node** — update the `cd` path to match your server:
    ```
-   cd /opt/bardidinaXmageUI && ./deploy.sh 2>&1 | tee /tmp/deploy.log
+   cd ~/bardidinaXmageUI && ./deploy.sh 2>&1 | tee /tmp/deploy.log
    ```
 5. **Activate** the workflow
 
@@ -85,7 +85,7 @@ Push a commit to `main` and check:
 ## Manual Deploy
 
 ```bash
-cd /opt/bardidinaXmageUI
+cd ~/bardidinaXmageUI
 ./deploy.sh
 ```
 
