@@ -8,7 +8,6 @@ REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO_DIR"
 
 COMPOSE_FILE="forge-engine/crates/forge-server/compose.yml"
-SERVICE="parity-dashboard"
 LOG_PREFIX="[deploy]"
 
 log() { echo "$LOG_PREFIX $*"; }
@@ -46,18 +45,37 @@ done <<< "$CHANGED"
 # ── Build & deploy ───────────────────────────────────────────────────
 export DOCKER_BUILDKIT=1
 
+SERVICES_TO_RESTART=""
+
+# -- parity-dashboard (Java + Rust) --
 if $INFRA_CHANGED; then
-    log "Infrastructure changed — full rebuild"
-    docker compose -f "$COMPOSE_FILE" build --no-cache "$SERVICE"
+    log "Infrastructure changed — full rebuild of parity-dashboard"
+    docker compose -f "$COMPOSE_FILE" build --no-cache parity-dashboard
+    SERVICES_TO_RESTART="parity-dashboard"
 elif $JAVA_CHANGED || $RUST_CHANGED; then
-    log "Source changed (java=$JAVA_CHANGED rust=$RUST_CHANGED) — rebuilding with cache"
-    docker compose -f "$COMPOSE_FILE" build "$SERVICE"
-else
-    log "No Java/Rust/infra changes — skipping build"
+    log "Source changed (java=$JAVA_CHANGED rust=$RUST_CHANGED) — rebuilding parity-dashboard"
+    docker compose -f "$COMPOSE_FILE" build parity-dashboard
+    SERVICES_TO_RESTART="parity-dashboard"
 fi
 
-log "Restarting service..."
-docker compose -f "$COMPOSE_FILE" up -d "$SERVICE"
+# -- forge-server (Rust only) --
+if $INFRA_CHANGED; then
+    log "Infrastructure changed — full rebuild of forge-server"
+    docker compose -f "$COMPOSE_FILE" build --no-cache forge-server
+    SERVICES_TO_RESTART="$SERVICES_TO_RESTART forge-server"
+elif $RUST_CHANGED; then
+    log "Rust changed — rebuilding forge-server"
+    docker compose -f "$COMPOSE_FILE" build forge-server
+    SERVICES_TO_RESTART="$SERVICES_TO_RESTART forge-server"
+fi
+
+if [ -z "$SERVICES_TO_RESTART" ]; then
+    log "No Java/Rust/infra changes — skipping build"
+    exit 0
+fi
+
+log "Restarting: $SERVICES_TO_RESTART"
+docker compose -f "$COMPOSE_FILE" up -d $SERVICES_TO_RESTART
 
 log "Deploy complete. Container status:"
-docker compose -f "$COMPOSE_FILE" ps "$SERVICE"
+docker compose -f "$COMPOSE_FILE" ps
