@@ -8,6 +8,13 @@
 # Raw build output goes to /tmp/deploy-raw.log
 set -euo pipefail
 
+on_failure() {
+    echo "**Deploy FAILED** at $(date '+%H:%M:%S')"
+    echo "Check raw log: \`${RAW_LOG:-/tmp/deploy-raw.log}\`"
+    tail -20 "${RAW_LOG:-/tmp/deploy-raw.log}" 2>/dev/null | sed 's/^/> /'
+}
+trap on_failure ERR
+
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 cd "$REPO_DIR"
 
