@@ -120,5 +120,5 @@ cat <<EOF
 **Services rebuilt:**
 ${SERVICES_FMT}
 **Build time:** ${BUILD_DURATION}s
-**Raw log:** \`${RAW_LOG}\`
+**Log:** \`${RAW_LOG}\`
 EOF
