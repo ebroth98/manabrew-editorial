@@ -24,7 +24,7 @@ forge-carddb = { path = "../forge-carddb" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 rand = "0.8"
-clap = { version = "4", features = ["derive"] }
+clap = { version = "4", features = ["derive", "env"] }
 rayon = "1.10"
 
 # Continuous parity (behind feature flags)

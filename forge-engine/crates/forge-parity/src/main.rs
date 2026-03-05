@@ -168,11 +168,11 @@ struct Cli {
     summary_interval: u64,
 
     /// Minimum failures in a cluster before opening a GitHub issue (default: 5)
-    #[arg(long, default_value_t = 5)]
+    #[arg(long, env = "ISSUE_THRESHOLD", default_value_t = 5)]
     issue_threshold: i64,
 
-    /// GitHub repo for issues (default: auto-detect from git remote)
-    #[arg(long)]
+    /// GitHub repo for issues in owner/repo format
+    #[arg(long, env = "GITHUB_REPO")]
     github_repo: Option<String>,
 }
 
