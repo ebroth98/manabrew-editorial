@@ -513,27 +513,31 @@ async function updateTrend() {
     const data = await fetchJson('/api/trend?bucket=hour&limit=24');
     data.reverse();
     const labels = data.map(d => d.bucket.replace('T', ' ').replace(':00:00Z', 'h'));
+    const passed = data.map(d => d.passed);
+    const failed = data.map(d => d.failed);
+    const errors = data.map(d => d.errors);
     const rates = data.map(d => d.pass_rate * 100);
-    const totals = data.map(d => d.total);
     const ctx = document.getElementById('trend-chart').getContext('2d');
     if (trendChart) trendChart.destroy();
     trendChart = new Chart(ctx, {
-      type: 'line',
+      type: 'bar',
       data: {
         labels,
         datasets: [
-          { label: 'Pass Rate %', data: rates, borderColor: '#58a6ff', backgroundColor: 'rgba(88,166,255,0.1)',
-            fill: true, tension: 0.3, yAxisID: 'y' },
-          { label: 'Total Games', data: totals, borderColor: '#8b949e', borderDash: [4,4],
-            fill: false, tension: 0.3, yAxisID: 'y1' }
+          { label: 'Passed', data: passed, backgroundColor: '#238636', stack: 'games', yAxisID: 'y1', order: 2 },
+          { label: 'Failed', data: failed, backgroundColor: '#da3633', stack: 'games', yAxisID: 'y1', order: 2 },
+          { label: 'Errors', data: errors, backgroundColor: '#d29922', stack: 'games', yAxisID: 'y1', order: 2 },
+          { label: 'Pass Rate %', data: rates, borderColor: '#58a6ff', backgroundColor: 'transparent',
+            type: 'line', fill: false, tension: 0.3, yAxisID: 'y', order: 1, pointRadius: 2 }
         ]
       },
       options: {
         responsive: true, maintainAspectRatio: false,
         scales: {
-          y: { min: 0, max: 100, grid: { color: '#21262d' }, ticks: { color: '#8b949e', callback: v => v + '%' } },
-          y1: { position: 'right', grid: { display: false }, ticks: { color: '#8b949e' } },
-          x: { grid: { color: '#21262d' }, ticks: { color: '#8b949e', maxTicksLimit: 12 } }
+          y: { min: 0, max: 100, position: 'right', grid: { display: false }, ticks: { color: '#58a6ff', callback: v => v + '%' } },
+          y1: { stacked: true, position: 'left', grid: { color: '#21262d' }, ticks: { color: '#8b949e' },
+                title: { display: true, text: 'Games', color: '#8b949e' } },
+          x: { stacked: true, grid: { color: '#21262d' }, ticks: { color: '#8b949e', maxTicksLimit: 12 } }
         },
         plugins: { legend: { labels: { color: '#c9d1d9' } } }
       }
