@@ -29,158 +29,94 @@ impl GameLoop {
         &self,
         game: &GameState,
         player: PlayerId,
+        can_play_sorcery: bool,
     ) -> Vec<(CardId, usize)> {
         let mut result = Vec::new();
         let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
-        let deterministic_mana_probe =
-            |exclude_source: Option<CardId>| -> crate::mana::ManaPool {
-                let mut probe = crate::mana::ManaPool::new();
-                let mut source_count: i32 = 0;
-
-                for &cid in game.cards_in_zone(ZoneType::Battlefield, player) {
-                    if Some(cid) == exclude_source {
-                        continue;
-                    }
-                    let c = game.card(cid);
-                    if c.tapped {
-                        continue;
-                    }
-
-                    let mut can_w = false;
-                    let mut can_u = false;
-                    let mut can_b = false;
-                    let mut can_r = false;
-                    let mut can_g = false;
-                    let mut can_c = false;
-
-                    for mab in &c.activated_abilities {
-                        if !mab.is_mana_ability {
-                            continue;
-                        }
-                        if let Some(produced) = mab.params.get("Produced") {
-                            let upper = produced.to_ascii_uppercase();
-                            if upper.contains('W') {
-                                can_w = true;
-                            }
-                            if upper.contains('U') {
-                                can_u = true;
-                            }
-                            if upper.contains('B') {
-                                can_b = true;
-                            }
-                            if upper.contains('R') {
-                                can_r = true;
-                            }
-                            if upper.contains('G') {
-                                can_g = true;
-                            }
-                            if upper.contains('C') {
-                                can_c = true;
-                            }
-                            if upper.contains("ANY") {
-                                can_w = true;
-                                can_u = true;
-                                can_b = true;
-                                can_r = true;
-                                can_g = true;
-                                can_c = true;
-                            }
-                            for atom in mana::produced_to_atoms(produced, &c.chosen_colors) {
-                                match atom {
-                                    ManaAtom::WHITE => can_w = true,
-                                    ManaAtom::BLUE => can_u = true,
-                                    ManaAtom::BLACK => can_b = true,
-                                    ManaAtom::RED => can_r = true,
-                                    ManaAtom::GREEN => can_g = true,
-                                    ManaAtom::COLORLESS => can_c = true,
-                                    _ => {}
-                                }
-                            }
-                        }
-                    }
-
-                    if !can_w && !can_u && !can_b && !can_r && !can_g && !can_c && c.is_land() {
-                        for atom in mana::land_mana_atoms(c) {
-                            match atom {
-                                ManaAtom::WHITE => can_w = true,
-                                ManaAtom::BLUE => can_u = true,
-                                ManaAtom::BLACK => can_b = true,
-                                ManaAtom::RED => can_r = true,
-                                ManaAtom::GREEN => can_g = true,
-                                ManaAtom::COLORLESS => can_c = true,
-                                _ => {}
-                            }
-                        }
-                        if let Some(atom) = mana::basic_land_mana_atom(c) {
-                            match atom {
-                                ManaAtom::WHITE => can_w = true,
-                                ManaAtom::BLUE => can_u = true,
-                                ManaAtom::BLACK => can_b = true,
-                                ManaAtom::RED => can_r = true,
-                                ManaAtom::GREEN => can_g = true,
-                                ManaAtom::COLORLESS => can_c = true,
-                                _ => {}
-                            }
-                        }
-                    }
-
-                    if can_w || can_u || can_b || can_r || can_g || can_c {
-                        source_count += 1;
-                        if can_w {
-                            probe.add(ManaAtom::WHITE, 1);
-                        }
-                        if can_u {
-                            probe.add(ManaAtom::BLUE, 1);
-                        }
-                        if can_b {
-                            probe.add(ManaAtom::BLACK, 1);
-                        }
-                        if can_r {
-                            probe.add(ManaAtom::RED, 1);
-                        }
-                        if can_g {
-                            probe.add(ManaAtom::GREEN, 1);
-                        }
-                        if can_c {
-                            probe.add(ManaAtom::COLORLESS, 1);
-                        }
-                    }
-                }
-
-                probe.total_sources = Some(source_count);
-                probe
-            };
         let battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
         let can_activate = |card_id: CardId, ab: &crate::ability::ActivatedAbility| {
-            // Mirror Java deterministic controller action-space:
-            // do not expose pure mana abilities as standalone random actions.
-            if ab.is_mana_ability {
-                return false;
-            }
             // PowerUp: once-per-game restriction
             if ab.params.get("PowerUp").map_or(false, |v| v == "True") {
                 let card = game.card(card_id);
-                if card.activations_this_game.get(&ab.ability_index).copied().unwrap_or(0) > 0 {
+                if card
+                    .activations_this_game
+                    .get(&ab.ability_index)
+                    .copied()
+                    .unwrap_or(0)
+                    > 0
+                {
                     return false;
                 }
             }
-            if !can_pay(&ab.cost, game, &available_mana, card_id, player) {
+            if ab.params.get("SorcerySpeed").map_or(false, |v| v == "True")
+                && !can_play_sorcery
+            {
                 return false;
             }
-            // Java DeterministicController hasDeterministicMana parity:
-            // for non-mana activated abilities in play, do not assume the source can
-            // pay its own mana cost during deterministic probing (even without Tap cost).
-            // This keeps the action space aligned with Java chooseSpellAbilityToPlay().
-            let has_mana_cost = ab
+            // Equip/Attach-style abilities need at least one currently legal
+            // attachment target, including static CantAttach restrictions.
+            if ab.params.get("AB").map_or(false, |v| v == "Attach") {
+                let sa = crate::spellability::SpellAbility::new_simple(
+                    Some(card_id),
+                    player,
+                    &ab.ability_text,
+                );
+                let has_attach_target = sa
+                    .target_restrictions
+                    .as_ref()
+                    .map(|tr| {
+                        use crate::spellability::target_restrictions::{
+                            can_be_targeted_by_sa, get_all_battlefield_permanents_filtered,
+                            get_all_candidates_creature_filtered, get_valid_cards_in_zone, TargetKind,
+                        };
+
+                        let candidates: Vec<CardId> = match &tr.target_kind {
+                            TargetKind::Creature(filter) => {
+                                get_all_candidates_creature_filtered(game, filter.as_deref(), player)
+                            }
+                            TargetKind::Permanent(filter) => {
+                                get_all_battlefield_permanents_filtered(game, filter.as_deref(), player)
+                            }
+                            TargetKind::CardInZone { zone, filter } => {
+                                get_valid_cards_in_zone(game, *zone, player, filter.as_deref())
+                            }
+                            _ => Vec::new(),
+                        };
+
+                        candidates.into_iter().any(|target_id| {
+                            can_be_targeted_by_sa(game, target_id, player, &sa)
+                                && !crate::staticability::static_ability_cant_attach::cant_attach(
+                                    &game.cards,
+                                    game.card(card_id),
+                                    game.card(target_id),
+                                    false,
+                                )
+                        })
+                    })
+                    .unwrap_or(false);
+                if !has_attach_target {
+                    return false;
+                }
+            }
+            let needs_mana = ab
                 .cost
                 .parts
                 .iter()
-                .any(|p| matches!(p, CostPart::Mana(_)));
-            if has_mana_cost {
-                let available_without_source = deterministic_mana_probe(Some(card_id));
-                if !can_pay(&ab.cost, game, &available_without_source, card_id, player) {
-                    return false;
-                }
+                .any(|p| matches!(p, crate::cost::CostPart::Mana(_)));
+            let mana_for_check = if needs_mana {
+                // Mirror Java ComputerUtilMana: ability host cannot fund its own
+                // mana payment via its own mana abilities during legality checks.
+                mana::calculate_available_mana_excluding(
+                    self.pool(player),
+                    game,
+                    player,
+                    Some(card_id),
+                )
+            } else {
+                available_mana.clone()
+            };
+            if !can_pay(&ab.cost, game, &mana_for_check, card_id, player) {
+                return false;
             }
             true
         };
@@ -189,7 +125,11 @@ impl GameLoop {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
                 // Skip abilities with ActivationZone$ Hand — they're for hand, not battlefield
-                if ab.params.get("ActivationZone").map_or(false, |z| z == "Hand") {
+                if ab
+                    .params
+                    .get("ActivationZone")
+                    .map_or(false, |z| z == "Hand")
+                {
                     continue;
                 }
                 if can_activate(card_id, ab) {
@@ -203,7 +143,11 @@ impl GameLoop {
         for card_id in hand {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab.params.get("ActivationZone").map_or(false, |z| z == "Hand") {
+                if ab
+                    .params
+                    .get("ActivationZone")
+                    .map_or(false, |z| z == "Hand")
+                {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }
@@ -216,7 +160,11 @@ impl GameLoop {
         for card_id in graveyard {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab.params.get("ActivationZone").map_or(false, |z| z == "Graveyard") {
+                if ab
+                    .params
+                    .get("ActivationZone")
+                    .map_or(false, |z| z == "Graveyard")
+                {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }
@@ -229,7 +177,11 @@ impl GameLoop {
         for card_id in exile {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab.params.get("ActivationZone").map_or(false, |z| z == "Exile") {
+                if ab
+                    .params
+                    .get("ActivationZone")
+                    .map_or(false, |z| z == "Exile")
+                {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }
@@ -273,10 +225,7 @@ impl GameLoop {
     /// Pay life and fire the LifeLost trigger.
     fn pay_life_cost(&mut self, game: &mut GameState, player: PlayerId, amount: i32) {
         if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
-            game,
-            player,
-            true,
-            None,
+            game, player, true, None,
         ) {
             return;
         }
@@ -299,6 +248,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         type_filter: &str,
         amount: i32,
     ) {
@@ -314,7 +264,10 @@ impl GameLoop {
                 })
                 .collect()
         };
-        // Let the agent choose which cards to discard.
+        let eligible: Vec<CardId> = eligible
+            .into_iter()
+            .filter(|&cid| cid != source || game.card(source).owner != player)
+            .collect();
         let chosen = agents[player.index()].choose_discard(player, &eligible, amount as usize);
         for cid in chosen {
             let owner = game.card(cid).owner;
@@ -415,11 +368,20 @@ impl GameLoop {
                         );
                         game.move_card(card_id, ZoneType::Graveyard, owner);
                     } else {
-                        self.pay_discard_cost(game, agents, player, type_filter, *amount);
+                        self.pay_discard_cost(game, agents, player, card_id, type_filter, *amount);
                     }
                 }
-                CostPart::ExileFromAnyGrave { amount, type_filter } => {
+                CostPart::ExileFromAnyGrave {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_exile_from_any_grave_cost(game, agents, player, type_filter, *amount);
+                }
+                CostPart::ExileFromSameGrave {
+                    amount,
+                    type_filter,
+                } => {
+                    self.pay_exile_from_same_grave_cost(game, agents, player, type_filter, *amount);
                 }
                 CostPart::SubCounter {
                     amount,
@@ -433,14 +395,29 @@ impl GameLoop {
                 } => {
                     game.card_mut(card_id).add_counter(counter_type, *amount);
                 }
-                CostPart::Exile { amount, type_filter, from } => {
-                    if type_filter == "CARDNAME" {
+                CostPart::Exile {
+                    amount,
+                    type_filter,
+                    from,
+                } => {
+                    if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
                         game.move_card(card_id, ZoneType::Exile, game.card(card_id).owner);
                     } else {
-                        self.pay_exile_cost(game, agents, player, type_filter, *amount, *from);
+                        self.pay_exile_cost(
+                            game,
+                            agents,
+                            player,
+                            card_id,
+                            type_filter,
+                            *amount,
+                            *from,
+                        );
                     }
                 }
-                CostPart::Return { amount, type_filter } => {
+                CostPart::Return {
+                    amount,
+                    type_filter,
+                } => {
                     if type_filter == "CARDNAME" {
                         let owner = game.card(card_id).owner;
                         game.move_card(card_id, ZoneType::Hand, owner);
@@ -448,14 +425,27 @@ impl GameLoop {
                         self.pay_return_cost(game, agents, player, type_filter, *amount);
                     }
                 }
-                CostPart::TapType { amount, type_filter } => {
+                CostPart::TapType {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_tap_type_cost(game, agents, player, card_id, type_filter, *amount);
                 }
-                CostPart::UntapType { amount, type_filter } => {
+                CostPart::UntapType {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_untap_type_cost(game, agents, player, card_id, type_filter, *amount);
                 }
                 CostPart::PayEnergy(amount) => {
-                    game.player_mut(player).energy_counters -= amount;
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    game.player_mut(player).energy_counters -= resolved_amount;
+                }
+                CostPart::PayShards(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    game.player_mut(player).mana_shards -= resolved_amount;
                 }
                 CostPart::DamageYou(amount) => {
                     // Java CostDamage calls game.getAction().dealDamage() — use the
@@ -503,21 +493,36 @@ impl GameLoop {
                         }
                     }
                 }
-                CostPart::Reveal { .. } => {
-                    // Reveal is a visible-information cost — no hidden state change.
-                    // In a full implementation we'd notify all players. No-op here.
+                CostPart::Reveal {
+                    amount,
+                    type_filter,
+                    from,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_reveal_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        resolved_amount,
+                        from,
+                    );
                 }
-                CostPart::Exert => {
-                    // Exert: the creature doesn't untap during your next untap step.
-                    game.card_mut(card_id).exerted = true;
-                    self.trigger_handler.run_trigger(
-                        TriggerType::Exerted,
-                        RunParams {
-                            card: Some(card_id),
-                            player: Some(player),
-                            ..Default::default()
-                        },
-                        false,
+                CostPart::Exert {
+                    amount,
+                    type_filter,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_exert_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        resolved_amount,
                     );
                 }
                 CostPart::GainLife(amount) => {
@@ -525,11 +530,25 @@ impl GameLoop {
                     let opponent = game.opponent_of(player);
                     game.player_mut(opponent).gain_life(*amount);
                 }
-                CostPart::GainControl { amount, type_filter } => {
+                CostPart::GainControl {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_gain_control_cost(game, agents, player, type_filter, *amount);
                 }
-                CostPart::RemoveAnyCounter { amount, type_filter, counter_type } => {
-                    self.pay_remove_any_counter_cost(game, agents, player, type_filter, *amount, counter_type.as_ref());
+                CostPart::RemoveAnyCounter {
+                    amount,
+                    type_filter,
+                    counter_type,
+                } => {
+                    self.pay_remove_any_counter_cost(
+                        game,
+                        agents,
+                        player,
+                        type_filter,
+                        *amount,
+                        counter_type.as_ref(),
+                    );
                 }
                 CostPart::Unattach => {
                     // Detach the source equipment from whatever it is equipping
@@ -544,7 +563,10 @@ impl GameLoop {
                         false,
                     );
                 }
-                CostPart::ExiledMoveToGrave { amount, type_filter } => {
+                CostPart::ExiledMoveToGrave {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_exiled_move_to_grave_cost(game, agents, player, type_filter, *amount);
                 }
                 CostPart::AddMana { amount, mana_type } => {
@@ -566,6 +588,199 @@ impl GameLoop {
                 }
                 CostPart::Waterbend { amount } => {
                     self.pay_waterbend_cost(game, agents, player, card_id, *amount);
+                }
+                CostPart::ChooseColor(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    let valid_colors = vec![
+                        "White".to_string(),
+                        "Blue".to_string(),
+                        "Black".to_string(),
+                        "Red".to_string(),
+                        "Green".to_string(),
+                    ];
+                    game.card_mut(card_id).chosen_colors.clear();
+                    for _ in 0..resolved_amount {
+                        if let Some(color) =
+                            agents[player.index()].choose_color(player, &valid_colors)
+                        {
+                            game.card_mut(card_id).chosen_colors.push(color);
+                        }
+                    }
+                }
+                CostPart::ChooseCreatureType(_) => {
+                    let valid_types =
+                        crate::ability::effects::choose_type_effect::default_creature_types();
+                    if let Some(chosen) =
+                        agents[player.index()].choose_type(player, "Creature", &valid_types)
+                    {
+                        let source = game.card_mut(card_id);
+                        source.chosen_type = Some(chosen);
+                        source.chosen_type_controller = Some(player);
+                        source.chosen_type_revealed = false;
+                    }
+                }
+                CostPart::FlipCoin(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    for _ in 0..resolved_amount {
+                        let _ = agents[player.index()].flip_coin_call(player);
+                        let won = self.game_rng.next_int(2) == 0;
+                        self.trigger_handler.run_trigger(
+                            TriggerType::FlippedCoin,
+                            RunParams {
+                                player: Some(player),
+                                coin_flip_won: Some(won),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
+                }
+                CostPart::RollDice {
+                    amount,
+                    sides,
+                    result_svar,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    let mut last_result = 0;
+                    for _ in 0..resolved_amount {
+                        last_result = self.game_rng.next_int(*sides) + 1;
+                        self.trigger_handler.run_trigger(
+                            TriggerType::RolledDie,
+                            RunParams {
+                                player: Some(player),
+                                die_result: Some(last_result),
+                                die_sides: Some(*sides),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
+                    game.card_mut(card_id)
+                        .svars
+                        .insert(result_svar.clone(), last_result.to_string());
+                    self.trigger_handler.run_trigger(
+                        TriggerType::RolledDieOnce,
+                        RunParams {
+                            player: Some(player),
+                            die_result: Some(last_result),
+                            die_sides: Some(*sides),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                CostPart::ExileFromStack {
+                    amount,
+                    type_filter,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_exile_from_stack_cost(
+                        game,
+                        agents,
+                        player,
+                        type_filter,
+                        resolved_amount,
+                    );
+                }
+                CostPart::CollectEvidence(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_collect_evidence_cost(game, agents, player, resolved_amount);
+                }
+                CostPart::Forage => {
+                    self.pay_forage_cost(game, agents, player);
+                }
+                CostPart::PutCardToLib {
+                    amount,
+                    lib_pos,
+                    type_filter,
+                    from,
+                    same_zone,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_put_card_to_lib_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        resolved_amount,
+                        *lib_pos,
+                        *from,
+                        *same_zone,
+                    );
+                }
+                CostPart::Enlist {
+                    amount,
+                    type_filter,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_enlist_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        resolved_amount,
+                    );
+                }
+                CostPart::PromiseGift => {
+                    let opps: Vec<_> = game
+                        .alive_players()
+                        .into_iter()
+                        .filter(|&pid| pid != player)
+                        .collect();
+                    let chosen = agents[player.index()].choose_target_player(player, &opps);
+                    game.card_mut(card_id).promised_gift = chosen;
+                }
+                CostPart::RevealChosen { reveal_type } => {
+                    let source = game.card_mut(card_id);
+                    if reveal_type.eq_ignore_ascii_case("Player") {
+                        source.chosen_player_revealed = true;
+                    } else if reveal_type.eq_ignore_ascii_case("Type") {
+                        source.chosen_type_revealed = true;
+                    }
+                }
+                CostPart::Behold {
+                    amount,
+                    type_filter,
+                    exile,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_behold_cost(
+                        game,
+                        agents,
+                        player,
+                        type_filter,
+                        resolved_amount,
+                        *exile,
+                    );
+                }
+                CostPart::Blight(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_blight_cost(game, agents, player, resolved_amount);
+                }
+                CostPart::ExileCtrlOrGrave {
+                    amount,
+                    type_filter,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_exile_ctrl_or_grave_cost(
+                        game,
+                        agents,
+                        player,
+                        type_filter,
+                        resolved_amount,
+                    );
                 }
             }
         }
@@ -603,11 +818,20 @@ impl GameLoop {
                     amount,
                 } => {
                     if type_filter != "CARDNAME" {
-                        self.pay_discard_cost(game, agents, player, type_filter, *amount);
+                        self.pay_discard_cost(game, agents, player, card_id, type_filter, *amount);
                     }
                 }
-                CostPart::ExileFromAnyGrave { amount, type_filter } => {
+                CostPart::ExileFromAnyGrave {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_exile_from_any_grave_cost(game, agents, player, type_filter, *amount);
+                }
+                CostPart::ExileFromSameGrave {
+                    amount,
+                    type_filter,
+                } => {
+                    self.pay_exile_from_same_grave_cost(game, agents, player, type_filter, *amount);
                 }
                 CostPart::SubCounter {
                     amount,
@@ -617,29 +841,65 @@ impl GameLoop {
                         game.card_mut(card_id).remove_counter(counter_type, *amount);
                     }
                 }
-                CostPart::AddCounter { amount, counter_type } => {
+                CostPart::AddCounter {
+                    amount,
+                    counter_type,
+                } => {
                     if game.card(card_id).zone == ZoneType::Battlefield {
                         game.card_mut(card_id).add_counter(counter_type, *amount);
                     }
                 }
-                CostPart::Exile { amount, type_filter, from } => {
-                    if type_filter != "CARDNAME" {
-                        self.pay_exile_cost(game, agents, player, type_filter, *amount, *from);
+                CostPart::Exile {
+                    amount,
+                    type_filter,
+                    from,
+                } => {
+                    if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
+                        if game.card(card_id).zone == *from {
+                            let owner = game.card(card_id).owner;
+                            game.move_card(card_id, ZoneType::Exile, owner);
+                        }
+                    } else {
+                        self.pay_exile_cost(
+                            game,
+                            agents,
+                            player,
+                            card_id,
+                            type_filter,
+                            *amount,
+                            *from,
+                        );
                     }
                 }
-                CostPart::Return { amount, type_filter } => {
+                CostPart::Return {
+                    amount,
+                    type_filter,
+                } => {
                     if type_filter != "CARDNAME" {
                         self.pay_return_cost(game, agents, player, type_filter, *amount);
                     }
                 }
-                CostPart::TapType { amount, type_filter } => {
+                CostPart::TapType {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_tap_type_cost(game, agents, player, card_id, type_filter, *amount);
                 }
-                CostPart::UntapType { amount, type_filter } => {
+                CostPart::UntapType {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_untap_type_cost(game, agents, player, card_id, type_filter, *amount);
                 }
                 CostPart::PayEnergy(amount) => {
-                    game.player_mut(player).energy_counters -= amount;
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    game.player_mut(player).energy_counters -= resolved_amount;
+                }
+                CostPart::PayShards(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    game.player_mut(player).mana_shards -= resolved_amount;
                 }
                 CostPart::DamageYou(amount) => {
                     // Java CostDamage calls game.getAction().dealDamage() — use the
@@ -687,28 +947,61 @@ impl GameLoop {
                         }
                     }
                 }
-                CostPart::Reveal { .. } => {}
-                CostPart::Exert => {
-                    game.card_mut(card_id).exerted = true;
-                    self.trigger_handler.run_trigger(
-                        TriggerType::Exerted,
-                        RunParams {
-                            card: Some(card_id),
-                            player: Some(player),
-                            ..Default::default()
-                        },
-                        false,
+                CostPart::Reveal {
+                    amount,
+                    type_filter,
+                    from,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_reveal_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        resolved_amount,
+                        from,
+                    );
+                }
+                CostPart::Exert {
+                    amount,
+                    type_filter,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_exert_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        resolved_amount,
                     );
                 }
                 CostPart::GainLife(amount) => {
                     let opponent = game.opponent_of(player);
                     game.player_mut(opponent).gain_life(*amount);
                 }
-                CostPart::GainControl { amount, type_filter } => {
+                CostPart::GainControl {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_gain_control_cost(game, agents, player, type_filter, *amount);
                 }
-                CostPart::RemoveAnyCounter { amount, type_filter, counter_type } => {
-                    self.pay_remove_any_counter_cost(game, agents, player, type_filter, *amount, counter_type.as_ref());
+                CostPart::RemoveAnyCounter {
+                    amount,
+                    type_filter,
+                    counter_type,
+                } => {
+                    self.pay_remove_any_counter_cost(
+                        game,
+                        agents,
+                        player,
+                        type_filter,
+                        *amount,
+                        counter_type.as_ref(),
+                    );
                 }
                 CostPart::Unattach => {
                     game.detach(card_id);
@@ -722,7 +1015,10 @@ impl GameLoop {
                         false,
                     );
                 }
-                CostPart::ExiledMoveToGrave { amount, type_filter } => {
+                CostPart::ExiledMoveToGrave {
+                    amount,
+                    type_filter,
+                } => {
                     self.pay_exiled_move_to_grave_cost(game, agents, player, type_filter, *amount);
                 }
                 CostPart::AddMana { amount, mana_type } => {
@@ -744,6 +1040,199 @@ impl GameLoop {
                 }
                 CostPart::Waterbend { amount } => {
                     self.pay_waterbend_cost(game, agents, player, card_id, *amount);
+                }
+                CostPart::ChooseColor(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    let valid_colors = vec![
+                        "White".to_string(),
+                        "Blue".to_string(),
+                        "Black".to_string(),
+                        "Red".to_string(),
+                        "Green".to_string(),
+                    ];
+                    game.card_mut(card_id).chosen_colors.clear();
+                    for _ in 0..resolved_amount {
+                        if let Some(color) =
+                            agents[player.index()].choose_color(player, &valid_colors)
+                        {
+                            game.card_mut(card_id).chosen_colors.push(color);
+                        }
+                    }
+                }
+                CostPart::ChooseCreatureType(_) => {
+                    let valid_types =
+                        crate::ability::effects::choose_type_effect::default_creature_types();
+                    if let Some(chosen) =
+                        agents[player.index()].choose_type(player, "Creature", &valid_types)
+                    {
+                        let source = game.card_mut(card_id);
+                        source.chosen_type = Some(chosen);
+                        source.chosen_type_controller = Some(player);
+                        source.chosen_type_revealed = false;
+                    }
+                }
+                CostPart::FlipCoin(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    for _ in 0..resolved_amount {
+                        let _ = agents[player.index()].flip_coin_call(player);
+                        let won = self.game_rng.next_int(2) == 0;
+                        self.trigger_handler.run_trigger(
+                            TriggerType::FlippedCoin,
+                            RunParams {
+                                player: Some(player),
+                                coin_flip_won: Some(won),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
+                }
+                CostPart::RollDice {
+                    amount,
+                    sides,
+                    result_svar,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    let mut last_result = 0;
+                    for _ in 0..resolved_amount {
+                        last_result = self.game_rng.next_int(*sides) + 1;
+                        self.trigger_handler.run_trigger(
+                            TriggerType::RolledDie,
+                            RunParams {
+                                player: Some(player),
+                                die_result: Some(last_result),
+                                die_sides: Some(*sides),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
+                    game.card_mut(card_id)
+                        .svars
+                        .insert(result_svar.clone(), last_result.to_string());
+                    self.trigger_handler.run_trigger(
+                        TriggerType::RolledDieOnce,
+                        RunParams {
+                            player: Some(player),
+                            die_result: Some(last_result),
+                            die_sides: Some(*sides),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+                CostPart::ExileFromStack {
+                    amount,
+                    type_filter,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_exile_from_stack_cost(
+                        game,
+                        agents,
+                        player,
+                        type_filter,
+                        resolved_amount,
+                    );
+                }
+                CostPart::CollectEvidence(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_collect_evidence_cost(game, agents, player, resolved_amount);
+                }
+                CostPart::Forage => {
+                    self.pay_forage_cost(game, agents, player);
+                }
+                CostPart::PutCardToLib {
+                    amount,
+                    lib_pos,
+                    type_filter,
+                    from,
+                    same_zone,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_put_card_to_lib_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        resolved_amount,
+                        *lib_pos,
+                        *from,
+                        *same_zone,
+                    );
+                }
+                CostPart::Enlist {
+                    amount,
+                    type_filter,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_enlist_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        resolved_amount,
+                    );
+                }
+                CostPart::PromiseGift => {
+                    let opps: Vec<_> = game
+                        .alive_players()
+                        .into_iter()
+                        .filter(|&pid| pid != player)
+                        .collect();
+                    let chosen = agents[player.index()].choose_target_player(player, &opps);
+                    game.card_mut(card_id).promised_gift = chosen;
+                }
+                CostPart::RevealChosen { reveal_type } => {
+                    let source = game.card_mut(card_id);
+                    if reveal_type.eq_ignore_ascii_case("Player") {
+                        source.chosen_player_revealed = true;
+                    } else if reveal_type.eq_ignore_ascii_case("Type") {
+                        source.chosen_type_revealed = true;
+                    }
+                }
+                CostPart::Behold {
+                    amount,
+                    type_filter,
+                    exile,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_behold_cost(
+                        game,
+                        agents,
+                        player,
+                        type_filter,
+                        resolved_amount,
+                        *exile,
+                    );
+                }
+                CostPart::Blight(amount) => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_blight_cost(game, agents, player, resolved_amount);
+                }
+                CostPart::ExileCtrlOrGrave {
+                    amount,
+                    type_filter,
+                } => {
+                    let resolved_amount =
+                        crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    self.pay_exile_ctrl_or_grave_cost(
+                        game,
+                        agents,
+                        player,
+                        type_filter,
+                        resolved_amount,
+                    );
                 }
             }
         }
@@ -818,6 +1307,7 @@ impl GameLoop {
         type_filter: &str,
         amount: i32,
     ) {
+        let base_filter = crate::cost::normalize_exile_base_filter(type_filter);
         for _ in 0..amount {
             let valid: Vec<CardId> = game
                 .players
@@ -825,19 +1315,71 @@ impl GameLoop {
                 .map(|p| p.id)
                 .flat_map(|pid| game.cards_in_zone(ZoneType::Graveyard, pid).to_vec())
                 .filter(|&cid| {
-                    type_filter == "Card"
-                        || type_filter.is_empty()
+                    (base_filter == "Card"
+                        || base_filter.is_empty()
                         || crate::ability::effects::matches_change_type(
                             game.card(cid),
-                            type_filter,
+                            &base_filter,
                             &[],
-                        )
+                        ))
+                        && can_exile_for_cost(game, cid)
                 })
                 .collect();
             if valid.is_empty() {
                 break;
             }
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                let owner = game.card(chosen).owner;
+                game.move_card(chosen, ZoneType::Exile, owner);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    ZoneType::Graveyard,
+                    ZoneType::Exile,
+                );
+            }
+        }
+    }
+
+    /// Exile `amount` cards from the same graveyard matching `type_filter`.
+    /// Mirrors Java's CostExile zoneMode=0 (ExileSameGrave).
+    pub(crate) fn pay_exile_from_same_grave_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        let base_filter = crate::cost::normalize_exile_base_filter(type_filter);
+        let mut chosen_owner: Option<PlayerId> = None;
+        for _ in 0..amount {
+            let valid: Vec<CardId> = game
+                .players
+                .iter()
+                .map(|p| p.id)
+                .flat_map(|pid| game.cards_in_zone(ZoneType::Graveyard, pid).to_vec())
+                .filter(|&cid| {
+                    if let Some(owner) = chosen_owner {
+                        if game.card(cid).owner != owner {
+                            return false;
+                        }
+                    }
+                    (base_filter == "Card"
+                        || base_filter.is_empty()
+                        || crate::ability::effects::matches_change_type(
+                            game.card(cid),
+                            &base_filter,
+                            &[],
+                        ))
+                        && can_exile_for_cost(game, cid)
+                })
+                .collect();
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                chosen_owner = Some(game.card(chosen).owner);
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Exile, owner);
                 crate::ability::effects::emit_zone_trigger(
@@ -857,12 +1399,21 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         type_filter: &str,
         amount: i32,
         from: ZoneType,
     ) {
+        let base_filter = crate::cost::normalize_exile_base_filter(type_filter);
         for _ in 0..amount {
-            let valid = cost::get_zone_targets(game, player, from, type_filter);
+            let mut valid = cost::get_zone_targets(game, player, from, &base_filter);
+            valid.retain(|&cid| can_exile_for_cost(game, cid));
+            if from == ZoneType::Hand
+                && game.card(source).zone == ZoneType::Hand
+                && game.card(source).owner == player
+            {
+                valid.retain(|&cid| cid != source);
+            }
             if valid.is_empty() {
                 break;
             }
@@ -874,6 +1425,662 @@ impl GameLoop {
                     &mut self.trigger_handler,
                     chosen,
                     from,
+                    ZoneType::Exile,
+                );
+            }
+        }
+    }
+
+    /// Exile spell(s) from stack as a cost.
+    /// Mirrors Java CostExileFromStack.
+    pub(crate) fn pay_exile_from_stack_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            let valid_entries: Vec<u32> = game
+                .stack
+                .iter()
+                .filter(|e| e.spell_ability.is_spell)
+                .filter(|e| {
+                    e.spell_ability.source.is_some_and(|cid| {
+                        crate::cost::matches_exile_from_stack_filter(game, cid, player, type_filter)
+                    })
+                })
+                .map(|e| e.id)
+                .collect();
+            if valid_entries.is_empty() {
+                break;
+            }
+            let Some(chosen_entry) =
+                agents[player.index()].choose_target_spell(player, &valid_entries)
+            else {
+                break;
+            };
+            if let Some(entry) = game.stack.remove_by_id(chosen_entry) {
+                if let Some(chosen_card) = entry.spell_ability.source {
+                    let owner = game.card(chosen_card).owner;
+                    game.move_card(chosen_card, ZoneType::Exile, owner);
+                    crate::ability::effects::emit_zone_trigger(
+                        &mut self.trigger_handler,
+                        chosen_card,
+                        ZoneType::Stack,
+                        ZoneType::Exile,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Collect evidence N as a cost: exile cards from your graveyard with total MV >= N.
+    pub(crate) fn pay_collect_evidence_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        amount: i32,
+    ) {
+        if amount <= 0 {
+            return;
+        }
+        let mut remaining = amount;
+        while remaining > 0 {
+            let gy: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Graveyard, player)
+                .iter()
+                .copied()
+                .filter(|&cid| can_exile_for_cost(game, cid))
+                .collect();
+            if gy.is_empty() {
+                return;
+            }
+            let chosen = agents[player.index()]
+                .choose_sacrifice(player, &gy)
+                .unwrap_or(gy[0]);
+            let mv = game.card(chosen).mana_cost.cmc() as i32;
+            let owner = game.card(chosen).owner;
+            game.move_card(chosen, ZoneType::Exile, owner);
+            crate::ability::effects::emit_zone_trigger(
+                &mut self.trigger_handler,
+                chosen,
+                ZoneType::Graveyard,
+                ZoneType::Exile,
+            );
+            remaining -= mv;
+        }
+        if remaining > 0 {
+            return;
+        }
+        self.trigger_handler.run_trigger(
+            TriggerType::CollectEvidence,
+            RunParams {
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+
+    /// Forage as a cost: exile 3 from graveyard or sacrifice a Food.
+    pub(crate) fn pay_forage_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+    ) {
+        let battlefield_cards: Vec<_> = game
+            .players
+            .iter()
+            .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
+            .map(|&cid| game.card(cid).clone())
+            .collect();
+        let foods: Vec<CardId> = game
+            .cards_in_zone(ZoneType::Battlefield, player)
+            .iter()
+            .copied()
+            .filter(|&cid| game.card(cid).type_line.has_subtype("Food"))
+            .filter(|&cid| {
+                !crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
+                    &battlefield_cards,
+                    game.card(cid),
+                    None,
+                    true,
+                )
+            })
+            .collect();
+        let gy: Vec<CardId> = game
+            .cards_in_zone(ZoneType::Graveyard, player)
+            .iter()
+            .copied()
+            .filter(|&cid| can_exile_for_cost(game, cid))
+            .collect();
+
+        if !foods.is_empty() && gy.len() < 3 {
+            let chosen = agents[player.index()]
+                .choose_sacrifice(player, &foods)
+                .unwrap_or(foods[0]);
+            let owner = game.card(chosen).owner;
+            self.trigger_handler.run_trigger(
+                TriggerType::Sacrificed,
+                RunParams {
+                    card: Some(chosen),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+            game.move_card(chosen, ZoneType::Graveyard, owner);
+            crate::ability::effects::emit_zone_trigger(
+                &mut self.trigger_handler,
+                chosen,
+                ZoneType::Battlefield,
+                ZoneType::Graveyard,
+            );
+        } else if !foods.is_empty() {
+            // Let the chooser pick between food + graveyard cards. Food means sacrifice path.
+            let mut combined = foods.clone();
+            combined.extend(gy.iter().copied());
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &combined) {
+                if foods.contains(&chosen) {
+                    let owner = game.card(chosen).owner;
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Sacrificed,
+                        RunParams {
+                            card: Some(chosen),
+                            player: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                    game.move_card(chosen, ZoneType::Graveyard, owner);
+                    crate::ability::effects::emit_zone_trigger(
+                        &mut self.trigger_handler,
+                        chosen,
+                        ZoneType::Battlefield,
+                        ZoneType::Graveyard,
+                    );
+                } else {
+                    // Graveyard path: exile chosen + two more.
+                    let mut chosen_gy = vec![chosen];
+                    while chosen_gy.len() < 3 {
+                        let remaining: Vec<CardId> = game
+                            .cards_in_zone(ZoneType::Graveyard, player)
+                            .iter()
+                            .copied()
+                            .filter(|cid| !chosen_gy.contains(cid))
+                            .filter(|&cid| can_exile_for_cost(game, cid))
+                            .collect();
+                        if remaining.is_empty() {
+                            return;
+                        }
+                        let next = agents[player.index()]
+                            .choose_sacrifice(player, &remaining)
+                            .unwrap_or(remaining[0]);
+                        chosen_gy.push(next);
+                    }
+                    for cid in chosen_gy.into_iter().take(3) {
+                        let owner = game.card(cid).owner;
+                        game.move_card(cid, ZoneType::Exile, owner);
+                        crate::ability::effects::emit_zone_trigger(
+                            &mut self.trigger_handler,
+                            cid,
+                            ZoneType::Graveyard,
+                            ZoneType::Exile,
+                        );
+                    }
+                }
+            }
+        } else {
+            for _ in 0..3 {
+                let remaining: Vec<CardId> = game
+                    .cards_in_zone(ZoneType::Graveyard, player)
+                    .iter()
+                    .copied()
+                    .filter(|&cid| can_exile_for_cost(game, cid))
+                    .collect();
+                if remaining.is_empty() {
+                    return;
+                }
+                let chosen = agents[player.index()]
+                    .choose_sacrifice(player, &remaining)
+                    .unwrap_or(remaining[0]);
+                let owner = game.card(chosen).owner;
+                game.move_card(chosen, ZoneType::Exile, owner);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    ZoneType::Graveyard,
+                    ZoneType::Exile,
+                );
+            }
+        }
+
+        self.trigger_handler.run_trigger(
+            TriggerType::Forage,
+            RunParams {
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+
+    pub(crate) fn pay_reveal_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        source: CardId,
+        type_filter: &str,
+        amount: i32,
+        from: &crate::cost::RevealFrom,
+    ) {
+        if amount <= 0 {
+            return;
+        }
+
+        let mut candidates: Vec<CardId> = match from {
+            crate::cost::RevealFrom::Hand => game.cards_in_zone(ZoneType::Hand, player).to_vec(),
+            crate::cost::RevealFrom::Exile => game.cards_in_zone(ZoneType::Exile, player).to_vec(),
+            crate::cost::RevealFrom::HandOrBattlefield => {
+                let mut v = game.cards_in_zone(ZoneType::Hand, player).to_vec();
+                v.extend(
+                    game.cards_in_zone(ZoneType::Battlefield, player)
+                        .iter()
+                        .copied(),
+                );
+                v
+            }
+            crate::cost::RevealFrom::All => {
+                let mut v = game.cards_in_zone(ZoneType::Hand, player).to_vec();
+                v.extend(
+                    game.cards_in_zone(ZoneType::Battlefield, player)
+                        .iter()
+                        .copied(),
+                );
+                v.extend(
+                    game.cards_in_zone(ZoneType::Graveyard, player)
+                        .iter()
+                        .copied(),
+                );
+                v.extend(
+                    game.cards_in_zone(ZoneType::Library, player)
+                        .iter()
+                        .copied(),
+                );
+                v.extend(game.cards_in_zone(ZoneType::Exile, player).iter().copied());
+                v
+            }
+        };
+
+        if matches!(
+            from,
+            crate::cost::RevealFrom::Hand
+                | crate::cost::RevealFrom::HandOrBattlefield
+                | crate::cost::RevealFrom::All
+        ) && game.card(source).zone == ZoneType::Hand
+        {
+            candidates.retain(|&cid| cid != source);
+        }
+
+        let mut revealed: Vec<CardId> = Vec::new();
+        if type_filter == "Hand" {
+            revealed = candidates;
+        } else if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
+            revealed.push(source);
+        } else if type_filter == "SameColor" {
+            if let Some(first) = agents[player.index()].choose_sacrifice(player, &candidates) {
+                let color = game.card(first).color;
+                revealed.push(first);
+                while (revealed.len() as i32) < amount {
+                    let valid: Vec<CardId> = candidates
+                        .iter()
+                        .copied()
+                        .filter(|cid| !revealed.contains(cid))
+                        .filter(|&cid| game.card(cid).color.shares_color_with(color))
+                        .collect();
+                    if valid.is_empty() {
+                        break;
+                    }
+                    let next = agents[player.index()]
+                        .choose_sacrifice(player, &valid)
+                        .unwrap_or(valid[0]);
+                    revealed.push(next);
+                }
+            }
+        } else {
+            candidates.retain(|&cid| {
+                type_filter == "Card"
+                    || type_filter.is_empty()
+                    || crate::ability::effects::matches_change_type(
+                        game.card(cid),
+                        type_filter,
+                        &[],
+                    )
+            });
+            while (revealed.len() as i32) < amount && !candidates.is_empty() {
+                let next = agents[player.index()]
+                    .choose_sacrifice(player, &candidates)
+                    .unwrap_or(candidates[0]);
+                revealed.push(next);
+                candidates.retain(|&cid| cid != next);
+            }
+        }
+
+        if revealed.is_empty() {
+            return;
+        }
+
+        let names = revealed
+            .iter()
+            .map(|&cid| game.card(cid).card_name.clone())
+            .collect::<Vec<_>>()
+            .join(", ");
+        crate::agent::notify_all_agents(
+            agents,
+            crate::agent::GameLogEvent::action(format!(
+                "{} reveals {}",
+                game.player(player).name,
+                names
+            ))
+            .with_player(player),
+        );
+    }
+
+    /// Put selected cards to top/bottom of library as a cost.
+    pub(crate) fn pay_put_card_to_lib_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        source: CardId,
+        type_filter: &str,
+        amount: i32,
+        lib_pos: i32,
+        from: ZoneType,
+        same_zone: bool,
+    ) {
+        if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
+            // Self payment path: move the source card itself if it's in the expected zone.
+            if game.card(source).zone == from {
+                let owner = game.card(source).owner;
+                if lib_pos == 0 {
+                    game.move_card(source, ZoneType::Library, owner);
+                } else {
+                    game.put_on_bottom_of_library(source, owner);
+                }
+            }
+            return;
+        }
+        let mut chosen_controller: Option<PlayerId> = None;
+        for _ in 0..amount {
+            let valid: Vec<CardId> = if same_zone {
+                game.players
+                    .iter()
+                    .flat_map(|p| game.cards_in_zone(from, p.id).to_vec())
+                    .filter(|&cid| {
+                        if let Some(ctrl) = chosen_controller {
+                            if game.card(cid).controller != ctrl {
+                                return false;
+                            }
+                        }
+                        type_filter == "Card"
+                            || type_filter.is_empty()
+                            || crate::ability::effects::matches_change_type(
+                                game.card(cid),
+                                type_filter,
+                                &[],
+                            )
+                    })
+                    .collect()
+            } else {
+                crate::cost::get_zone_targets(game, player, from, type_filter)
+            };
+            if valid.is_empty() {
+                break;
+            }
+            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) else {
+                break;
+            };
+            if same_zone {
+                chosen_controller = Some(game.card(chosen).controller);
+            }
+            let origin = game.card(chosen).zone;
+            let owner = game.card(chosen).owner;
+            if lib_pos == 0 {
+                game.move_card(chosen, ZoneType::Library, owner);
+            } else {
+                game.put_on_bottom_of_library(chosen, owner);
+            }
+            crate::ability::effects::emit_zone_trigger(
+                &mut self.trigger_handler,
+                chosen,
+                origin,
+                ZoneType::Library,
+            );
+        }
+    }
+
+    pub(crate) fn pay_exert_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        source: CardId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        if amount <= 0 {
+            return;
+        }
+        if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
+            if game.card(source).zone == ZoneType::Battlefield {
+                game.card_mut(source).exerted = true;
+                self.trigger_handler.run_trigger(
+                    TriggerType::Exerted,
+                    RunParams {
+                        card: Some(source),
+                        player: Some(player),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+            return;
+        }
+        for _ in 0..amount {
+            let valid: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .copied()
+                .filter(|&cid| {
+                    crate::ability::effects::matches_change_type(game.card(cid), type_filter, &[])
+                })
+                .collect();
+            if valid.is_empty() {
+                break;
+            }
+            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) else {
+                break;
+            };
+            game.card_mut(chosen).exerted = true;
+            self.trigger_handler.run_trigger(
+                TriggerType::Exerted,
+                RunParams {
+                    card: Some(chosen),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+    }
+
+    /// Enlist as a cost.
+    pub(crate) fn pay_enlist_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        source: CardId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            let valid: Vec<CardId> = crate::cost::get_enlist_targets(game, player)
+                .into_iter()
+                .filter(|&cid| {
+                    type_filter == "Creature"
+                        || type_filter.is_empty()
+                        || crate::ability::effects::matches_change_type(
+                            game.card(cid),
+                            type_filter,
+                            &[],
+                        )
+                })
+                .collect();
+            if valid.is_empty() {
+                break;
+            }
+            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) else {
+                break;
+            };
+            game.tap(chosen);
+            game.card_mut(source).enlisted_this_combat = true;
+            self.trigger_handler.run_trigger(
+                TriggerType::TapAll,
+                RunParams {
+                    card: Some(chosen),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+            self.trigger_handler.run_trigger(
+                TriggerType::Enlisted,
+                RunParams {
+                    card: Some(source),
+                    enlisted: Some(chosen),
+                    player: Some(player),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+    }
+
+    /// Behold as a cost (optionally exile revealed cards).
+    pub(crate) fn pay_behold_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+        exile: bool,
+    ) {
+        let mut already_chosen: Vec<CardId> = Vec::new();
+        for _ in 0..amount {
+            let mut valid: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Hand, player)
+                .iter()
+                .chain(game.cards_in_zone(ZoneType::Battlefield, player).iter())
+                .copied()
+                .collect();
+            valid.retain(|&cid| {
+                (type_filter == "Card"
+                    || type_filter.is_empty()
+                    || crate::ability::effects::matches_change_type(
+                        game.card(cid),
+                        type_filter,
+                        &[],
+                    ))
+                    && !already_chosen.contains(&cid)
+            });
+            if type_filter.ends_with("ChosenType") && !already_chosen.is_empty() {
+                let first = already_chosen[0];
+                valid.retain(|&cid| shares_creature_type(game, first, cid));
+            }
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                already_chosen.push(chosen);
+                if exile {
+                    let origin = game.card(chosen).zone;
+                    let owner = game.card(chosen).owner;
+                    game.move_card(chosen, ZoneType::Exile, owner);
+                    crate::ability::effects::emit_zone_trigger(
+                        &mut self.trigger_handler,
+                        chosen,
+                        origin,
+                        ZoneType::Exile,
+                    );
+                }
+            }
+        }
+    }
+
+    /// Blight as a cost: put -1/-1 counters on creatures you control.
+    pub(crate) fn pay_blight_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        amount: i32,
+    ) {
+        for _ in 0..amount {
+            let valid: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .copied()
+                .filter(|&cid| game.card(cid).is_creature())
+                .collect();
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                game.card_mut(chosen)
+                    .add_counter(&crate::card::CounterType::M1M1, 1);
+            }
+        }
+    }
+
+    /// Exile cards from controller battlefield or graveyard (craft helper).
+    pub(crate) fn pay_exile_ctrl_or_grave_cost(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+    ) {
+        let base_filter = crate::cost::normalize_exile_base_filter(type_filter);
+        for _ in 0..amount {
+            let mut valid: Vec<CardId> =
+                crate::cost::get_zone_targets(game, player, ZoneType::Battlefield, &base_filter);
+            valid.extend(crate::cost::get_zone_targets(
+                game,
+                player,
+                ZoneType::Graveyard,
+                &base_filter,
+            ));
+            valid.retain(|&cid| can_exile_for_cost(game, cid));
+            if valid.is_empty() {
+                break;
+            }
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                let origin = game.card(chosen).zone;
+                let owner = game.card(chosen).owner;
+                game.move_card(chosen, ZoneType::Exile, owner);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    origin,
                     ZoneType::Exile,
                 );
             }
@@ -1191,7 +2398,10 @@ impl GameLoop {
         let source_is_snow = game.card(card_id).type_line.is_snow();
         // Check for mana restrictions (RestrictValid$) and uncounterability (AddsNoCounter$)
         let mana_restriction = ab.params.get("RestrictValid").cloned();
-        let adds_no_counter = ab.params.get("AddsNoCounter").map_or(false, |v| v == "True");
+        let adds_no_counter = ab
+            .params
+            .get("AddsNoCounter")
+            .map_or(false, |v| v == "True");
         let adds_keywords = ab.params.get("AddsKeywords").cloned();
         let adds_keywords_valid = ab.params.get("AddsKeywordsValid").cloned();
         let adds_counters = ab.params.get("AddsCounters").cloned();
@@ -1229,7 +2439,11 @@ impl GameLoop {
                     rng: &mut *self.game_rng,
                 };
                 let tokens = crate::ability::effects::mana_effect::resolve_special_mana(
-                    &mut effect_ctx, &sa, card_id, player, special,
+                    &mut effect_ctx,
+                    &sa,
+                    card_id,
+                    player,
+                    special,
                 );
                 // Add produced mana with metadata
                 for tok in &tokens {
@@ -1250,12 +2464,20 @@ impl GameLoop {
                 // Fire triggers and return
                 self.trigger_handler.run_trigger(
                     TriggerType::TapsForMana,
-                    RunParams { card: Some(card_id), player: Some(player), ..Default::default() },
+                    RunParams {
+                        card: Some(card_id),
+                        player: Some(player),
+                        ..Default::default()
+                    },
                     false,
                 );
                 self.trigger_handler.run_trigger(
                     TriggerType::ManaAdded,
-                    RunParams { card: Some(card_id), player: Some(player), ..Default::default() },
+                    RunParams {
+                        card: Some(card_id),
+                        player: Some(player),
+                        ..Default::default()
+                    },
                     false,
                 );
                 return;
@@ -1271,7 +2493,11 @@ impl GameLoop {
                                 .iter()
                                 .map(|col| capitalize_color(col.long_name()))
                                 .collect();
-                            if cols.is_empty() { None } else { Some(cols) }
+                            if cols.is_empty() {
+                                None
+                            } else {
+                                Some(cols)
+                            }
                         } else {
                             None
                         }
@@ -1312,8 +2538,12 @@ impl GameLoop {
                     n
                 } else {
                     // Try to resolve as SVar on the source card
-                    if let Some(svar_expr) = game.card(card_id).svars.get(amount_str.as_str()).cloned() {
-                        crate::ability::effects::resolve_count_svar(&svar_expr, game, card_id, player)
+                    if let Some(svar_expr) =
+                        game.card(card_id).svars.get(amount_str.as_str()).cloned()
+                    {
+                        crate::ability::effects::resolve_count_svar(
+                            &svar_expr, game, card_id, player,
+                        )
                     } else {
                         1
                     }
@@ -1321,17 +2551,26 @@ impl GameLoop {
                 if amount > 1 {
                     // Check if this is combo/any mana (multiple color choices)
                     let produced = ab.params.get("Produced").map(String::as_str).unwrap_or("");
-                    let is_combo = produced.contains("Any") || produced.starts_with("Combo") || produced.contains(',');
+                    let is_combo = produced.contains("Any")
+                        || produced.starts_with("Combo")
+                        || produced.contains(',');
                     if is_combo {
                         // Multi-amount combo: let agent choose color distribution
                         let available: Vec<String> = if produced.contains("Any") {
-                            vec!["W", "U", "B", "R", "G"].into_iter().map(String::from).collect()
+                            vec!["W", "U", "B", "R", "G"]
+                                .into_iter()
+                                .map(String::from)
+                                .collect()
                         } else {
                             let chosen_colors = game.card(card_id).chosen_colors.clone();
                             let names = produced_to_color_names(produced, &chosen_colors);
-                            names.iter().filter_map(|name| {
-                                color_name_to_mana_atom(name).map(|a| atom_to_letter(a).to_string())
-                            }).collect()
+                            names
+                                .iter()
+                                .filter_map(|name| {
+                                    color_name_to_mana_atom(name)
+                                        .map(|a| atom_to_letter(a).to_string())
+                                })
+                                .collect()
                         };
                         let card_name = game.card(card_id).card_name.clone();
                         let chosen = agents[player.index()].specify_mana_combo(
@@ -1518,4 +2757,31 @@ impl GameLoop {
             false,
         );
     }
+}
+
+fn shares_creature_type(game: &GameState, a: CardId, b: CardId) -> bool {
+    let ca = game.card(a);
+    let cb = game.card(b);
+    if !ca.is_creature() || !cb.is_creature() {
+        return false;
+    }
+    ca.type_line
+        .subtypes
+        .iter()
+        .any(|st| cb.type_line.has_subtype(st))
+}
+
+fn can_exile_for_cost(game: &GameState, card_id: CardId) -> bool {
+    let battlefield_cards: Vec<_> = game
+        .players
+        .iter()
+        .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
+        .map(|&cid| game.card(cid).clone())
+        .collect();
+    !crate::staticability::static_ability_cant_exile::cant_exile(
+        &battlefield_cards,
+        game.card(card_id),
+        None,
+        true,
+    )
 }

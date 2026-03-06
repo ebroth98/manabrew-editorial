@@ -2,9 +2,9 @@
 /// This should NOT happen - countered spells should never resolve
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -29,7 +29,12 @@ impl ShockTestAgent {
 }
 
 impl PlayerAgent for ShockTestAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        _player: PlayerId,
+        _hand: &[CardId],
+        _mulligan_count: u32,
+    ) -> bool {
         true
     }
 
@@ -88,7 +93,12 @@ impl PlayerAgent for ShockTestAgent {
         valid.iter().find(|&&p| p != _player).copied()
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId], _possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        _available: &[CardId],
+        _possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
         Vec::new()
     }
 

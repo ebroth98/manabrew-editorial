@@ -52,6 +52,14 @@ export interface AgentPrompt {
   maxChoices?: number;
   /** chooseOptionalTrigger: trigger description text */
   description?: string;
+  /** chooseOptionalTrigger: context tag (optional_trigger | confirm_action) */
+  promptKind?: string;
+  /** chooseOptionalTrigger: optional labels for decline/accept buttons */
+  optionLabels?: string[];
+  /** chooseOptionalTrigger/confirmAction: optional mode metadata */
+  mode?: string;
+  /** chooseOptionalTrigger/confirmAction: optional API metadata */
+  api?: string;
   /** choosePhyrexian: the phyrexian shard string (e.g. "W/P") */
   phyrexianColor?: string;
   /** chooseKicker: the kicker cost string */

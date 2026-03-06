@@ -126,7 +126,11 @@ pub fn compute_cost_adjustment_with_targets(
 ) -> CostAdjustment {
     let mut adj = CostAdjustment::default();
 
-    for source in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for source in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for st_ab in source.static_abilities.iter() {
             let is_reduce;
             let is_set_cost;
@@ -241,20 +245,35 @@ pub fn compute_cost_adjustment_with_targets(
                         game.cards_in_zone(ZoneType::Battlefield, source.controller)
                             .iter()
                             .filter(|&&cid| game.card(cid).type_line.is_artifact())
-                            .count() >= 3
+                            .count()
+                            >= 3
                     }
                     "Delirium" => {
                         let gy = game.cards_in_zone(ZoneType::Graveyard, source.controller);
                         let mut types = std::collections::HashSet::new();
                         for &cid in gy {
                             let c = game.card(cid);
-                            if c.is_creature() { types.insert("creature"); }
-                            if c.type_line.is_instant() { types.insert("instant"); }
-                            if c.type_line.is_sorcery() { types.insert("sorcery"); }
-                            if c.type_line.is_artifact() { types.insert("artifact"); }
-                            if c.type_line.is_enchantment() { types.insert("enchantment"); }
-                            if c.is_land() { types.insert("land"); }
-                            if c.type_line.is_planeswalker() { types.insert("planeswalker"); }
+                            if c.is_creature() {
+                                types.insert("creature");
+                            }
+                            if c.type_line.is_instant() {
+                                types.insert("instant");
+                            }
+                            if c.type_line.is_sorcery() {
+                                types.insert("sorcery");
+                            }
+                            if c.type_line.is_artifact() {
+                                types.insert("artifact");
+                            }
+                            if c.type_line.is_enchantment() {
+                                types.insert("enchantment");
+                            }
+                            if c.is_land() {
+                                types.insert("land");
+                            }
+                            if c.type_line.is_planeswalker() {
+                                types.insert("planeswalker");
+                            }
                         }
                         types.len() >= 4
                     }
@@ -282,11 +301,15 @@ pub fn compute_cost_adjustment_with_targets(
                         matches_valid_card(valid_target, target, source)
                     })
                 };
-                let unless = st_ab.params.get("UnlessValidTarget")
+                let unless = st_ab
+                    .params
+                    .get("UnlessValidTarget")
                     .map(|v| v.eq_ignore_ascii_case("True"))
                     .unwrap_or(false);
                 if unless {
-                    if target_valid { continue; }
+                    if target_valid {
+                        continue;
+                    }
                 } else if !target_valid {
                     continue;
                 }
@@ -323,9 +346,8 @@ pub fn compute_cost_adjustment_with_targets(
 
             // ── ForEachShard$ — count matching color shards in spell's mana cost ──
             if let Some(shard_color) = st_ab.params.get("ForEachShard") {
-                let atom = forge_foundation::mana::ManaAtom::from_name(
-                    &shard_color.to_ascii_lowercase(),
-                );
+                let atom =
+                    forge_foundation::mana::ManaAtom::from_name(&shard_color.to_ascii_lowercase());
                 let count = spell_card
                     .mana_cost
                     .shards()
@@ -351,7 +373,11 @@ pub fn compute_cost_adjustment_with_targets(
                 .unwrap_or(false)
             {
                 // Relative: Amount$ is an SVar name on the source card
-                let amount_str = st_ab.params.get("Amount").map(String::as_str).unwrap_or("1");
+                let amount_str = st_ab
+                    .params
+                    .get("Amount")
+                    .map(String::as_str)
+                    .unwrap_or("1");
                 resolve_svar_for_cost(game, source, amount_str, caster)
             } else {
                 st_ab
@@ -495,22 +521,40 @@ fn evaluate_count_expr(
 
 /// Compare a value against an SVarCompare$ string (e.g. "GE1", "EQ0", "LE3").
 fn compare_svar(value: i32, compare: &str) -> bool {
-    if let Some(n) = compare.strip_prefix("GE").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("GE")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value >= n;
     }
-    if let Some(n) = compare.strip_prefix("GT").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("GT")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value > n;
     }
-    if let Some(n) = compare.strip_prefix("LE").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("LE")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value <= n;
     }
-    if let Some(n) = compare.strip_prefix("LT").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("LT")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value < n;
     }
-    if let Some(n) = compare.strip_prefix("EQ").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("EQ")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value == n;
     }
-    if let Some(n) = compare.strip_prefix("NE").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("NE")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value != n;
     }
     true // unknown comparator → pass
@@ -597,32 +641,50 @@ fn matches_single_valid(token: &str, spell: &CardInstance, source: &CardInstance
             let qual_lower = qual.to_ascii_lowercase();
             match qual_lower.as_str() {
                 "self" => {
-                    if spell.id != source.id { return false; }
+                    if spell.id != source.id {
+                        return false;
+                    }
                 }
                 "noncreature" => {
-                    if spell.is_creature() { return false; }
+                    if spell.is_creature() {
+                        return false;
+                    }
                 }
                 "nonland" => {
-                    if spell.is_land() { return false; }
+                    if spell.is_land() {
+                        return false;
+                    }
                 }
                 "multicolor" => {
-                    if !spell.color.is_multicolor() { return false; }
+                    if !spell.color.is_multicolor() {
+                        return false;
+                    }
                 }
                 "colorless" => {
-                    if !spell.color.is_colorless() { return false; }
+                    if !spell.color.is_colorless() {
+                        return false;
+                    }
                 }
                 "tapped" => {
-                    if !spell.tapped { return false; }
+                    if !spell.tapped {
+                        return false;
+                    }
                 }
                 "untapped" => {
-                    if spell.tapped { return false; }
+                    if spell.tapped {
+                        return false;
+                    }
                 }
                 "youctrl" => {
-                    if spell.controller != source.controller { return false; }
+                    if spell.controller != source.controller {
+                        return false;
+                    }
                 }
                 "enchantedby" => {
                     // Check if source is attached to spell
-                    if source.attached_to != Some(spell.id) { return false; }
+                    if source.attached_to != Some(spell.id) {
+                        return false;
+                    }
                 }
                 q => {
                     // CMC comparisons: cmcEQ1, cmcLE3, cmcGE5
@@ -630,19 +692,27 @@ fn matches_single_valid(token: &str, spell: &CardInstance, source: &CardInstance
                         let cmc = spell.mana_cost.cmc() as i32;
                         if rest.starts_with("eq") {
                             if let Ok(n) = rest[2..].parse::<i32>() {
-                                if cmc != n { return false; }
+                                if cmc != n {
+                                    return false;
+                                }
                             }
                         } else if rest.starts_with("le") {
                             if let Ok(n) = rest[2..].parse::<i32>() {
-                                if cmc > n { return false; }
+                                if cmc > n {
+                                    return false;
+                                }
                             }
                         } else if rest.starts_with("ge") {
                             if let Ok(n) = rest[2..].parse::<i32>() {
-                                if cmc < n { return false; }
+                                if cmc < n {
+                                    return false;
+                                }
                             }
                         }
                     } else if let Some(color) = Color::from_name(q) {
-                        if !spell.color.has_color(color) { return false; }
+                        if !spell.color.has_color(color) {
+                            return false;
+                        }
                     }
                     // Unknown qualifiers pass (conservative)
                 }

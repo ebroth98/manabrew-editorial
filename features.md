@@ -229,7 +229,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `CardLists.java` | Static filter utilities for card collections | Not implemented |
 | `CardPlayOption.java` | Special play permissions from static abilities | Not implemented |
 | `CardPredicates.java` | Predicate factories for card filtering | **Partial** (ValidCard matching in trigger.rs) |
-| `CardProperty.java` | Evaluates card properties against string specs | **Partial** (trigger matching) |
+| `CardProperty.java` | Evaluates card properties against string specs | **Partial** (`card/card_property.rs`: dot/plus property matching used by targeting filters; includes Java-style inclusive type token checks like `Creature.YouCtrl`) |
 | `CardTraitChanges.java` | Record: trait modifications (abilities, triggers, statics) | Not implemented |
 | `CardChangedWords.java` | Word replacement tracking in card text | Not implemented |
 | `CardCloneStates.java` | Multi-state management for clone/copy | Not implemented |
@@ -282,7 +282,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `Combat.java` | Combat state: attackers, blockers, damage assignment | **Implemented** (`combat/mod.rs` CombatState with DefenderId multi-defender support, `remove_absent_combatants()`, LKI cache) |
-| `CombatUtil.java` | Combat utility methods | **Partial** — attack/block checks, `get_possible_defenders()`, attack costs (`attack_cost.rs`), block costs (`block_cost.rs`), lure/must-block (`compute_must_block_targets`), block validation (`validate_blocks`) |
+| `CombatUtil.java` | Combat utility methods | **Partial** — attack/block checks, `get_possible_defenders()`, attack costs (`attack_cost.rs`), block costs (`block_cost.rs`), lure/must-block (`compute_must_block_targets`), block validation (`validate_blocks`), and blocker-declaration parity gating (enter blockers only if at least one legal block exists) |
 | `CombatView.java` | Combat view for UI | Not implemented |
 | `CombatLki.java` | Last-known-information during combat | **Implemented** (`combat/mod.rs` CombatLki struct, save_lki/was_attacking/was_blocking/get_combat_lki) |
 | `AttackConstraints.java` | Attack requirement/restriction aggregation | **Partial** — `attack_requirement.rs` + `attack_restriction.rs` handle goad, must-attack, OnlyAlone, NotAlone, NeedGreaterPower, NeedTwoOthers, Never |
@@ -303,7 +303,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `Cost.java` | Cost container: parses cost strings, holds cost parts | **Partial** (`cost/mod.rs` parse_cost + spell cost extraction from SP$ lines) |
 | `CostPartMana.java` | Mana portion of costs | **Implemented** (`mana_pool.rs` try_pay) |
 | `CostPayment.java` | Cost payment orchestration | **Partial** (`game_loop.rs` pay_ability_cost + pay_additional_costs) |
-| `CostPart.java` | Abstract base for cost components | **Partial** (`cost/mod.rs` CostPart enum — 17 variants implemented) |
+| `CostPart.java` | Abstract base for cost components | **Partial** (`cost/mod.rs` CostPart enum now covers Java parse tokens, with some behavioral edge-cases still approximate) |
 | `CostPartWithList.java` | Cost part tracking affected cards | Not implemented |
 | `CostPartWithTrigger.java` | Cost part that fires triggers | Not implemented |
 | `CostTap.java` | Tap as cost | **Implemented** (`CostPart::Tap` in `cost/mod.rs`) |
@@ -311,10 +311,10 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `CostSacrifice.java` | Sacrifice as cost | **Implemented** (`cost/mod.rs` get_sacrifice_targets, `game_loop.rs` pay_sacrifice_cost) |
 | `CostPayLife.java` | Pay life as cost | **Implemented** (`CostPart::PayLife`, `PayLife<n>` token) |
 | `CostPayEnergy.java` | Pay energy counters | **Implemented** (`CostPart::PayEnergy`, `PayEnergy<n>` token; energy tracked on `PlayerState`) |
-| `CostPayShards.java` | Pay shard tokens | Not implemented |
+| `CostPayShards.java` | Pay shard tokens | **Implemented** (`CostPart::PayShards`; `PlayerState.mana_shards`; paid in `game_action.rs`) |
 | `CostDiscard.java` | Discard as cost | **Implemented** (`CostPart::Discard`, `Discard<n/filter>` token) |
-| `CostExile.java` | Exile as cost | **Implemented** (`CostPart::Exile`, `Exile<n/filter>` / `ExileFromHand<>` / `ExileFromGrave<>` / `ExileFromTop<>`) |
-| `CostExileFromStack.java` | Exile from stack as cost | Not implemented |
+| `CostExile.java` | Exile as cost | **Implemented** (`CostPart::Exile`, `Exile<n/filter>` / `ExileFromHand<>` / `ExileFromGrave<>` / `ExileFromTop<>`; includes `CantExile` static-ability legality in can-pay/payment paths) |
+| `CostExileFromStack.java` | Exile from stack as cost | **Implemented** (`CostPart::ExileFromStack`; Java-style clause normalization into `matches_valid_cards`, exact stack-entry selection via `choose_target_spell`, and source exile in `game_action.rs`) |
 | `CostDamage.java` | Deal damage to self as cost | **Implemented** (`CostPart::DamageYou`, `DamageYou<n>` token) |
 | `CostDraw.java` | Draw as cost | **Implemented** (`CostPart::Draw`, `Draw<n>` token) |
 | `CostMill.java` | Mill as cost | **Implemented** (`CostPart::Mill`, `Mill<n>` token) |
@@ -327,24 +327,24 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `CostUntapType.java` | Untap matching permanent as cost | **Implemented** (`CostPart::UntapType`, `untapYType<n/filter>` token) |
 | `CostGainLife.java` | Opponent gains life as cost | **Implemented** (`CostPart::GainLife`, `GainLife<n>` token) |
 | `CostGainControl.java` | Give control as cost | **Implemented** (`CostPart::GainControl`, `GainControl<n/filter>` token; calls `change_controller`) |
-| `CostFlipCoin.java` | Flip coin as cost | Not implemented |
-| `CostRollDice.java` | Roll dice as cost | Not implemented |
+| `CostFlipCoin.java` | Flip coin as cost | **Implemented** (`CostPart::FlipCoin`; RNG/call handling + `FlippedCoin` trigger fire in `game_action.rs`) |
+| `CostRollDice.java` | Roll dice as cost | **Implemented** (`CostPart::RollDice`; cost-time roll + result SVar write + `RolledDie`/`RolledDieOnce` trigger fire) |
 | `CostExert.java` | Exert as cost | **Implemented** (`CostPart::Exert`, `Exert<>` token; sets `card.exerted` flag) |
-| `CostEnlist.java` | Enlist as cost | Not implemented |
-| `CostForage.java` | Forage as cost | Not implemented |
-| `CostCollectEvidence.java` | Collect evidence as cost | Not implemented |
-| `CostChooseColor.java` | Choose color as cost | Not implemented |
-| `CostChooseCreatureType.java` | Choose creature type as cost | Not implemented |
-| `CostPutCardToLib.java` | Put card to library as cost | Not implemented |
+| `CostEnlist.java` | Enlist as cost | **Implemented** (`CostPart::Enlist`; enlist target selection/tap + Enlisted trigger) |
+| `CostForage.java` | Forage as cost | **Implemented** (`CostPart::Forage`; strict graveyard-3 exile vs Food sacrifice payment + Forage trigger) |
+| `CostCollectEvidence.java` | Collect evidence as cost | **Implemented** (`CostPart::CollectEvidence`; strict MV-threshold exile payment + CollectEvidence trigger) |
+| `CostChooseColor.java` | Choose color as cost | **Implemented** (`CostPart::ChooseColor`; stores chosen colors on source card) |
+| `CostChooseCreatureType.java` | Choose creature type as cost | **Implemented** (`CostPart::ChooseCreatureType`; stores chosen type on source card) |
+| `CostPutCardToLib.java` | Put card to library as cost | **Implemented** (`CostPart::PutCardToLib`; hand/grave/same-grave/battlefield variants) |
 | `CostAddMana.java` | Add mana to pool as cost | **Implemented** — `CostPart::AddMana` in `cost/mod.rs`, parsed as `AddMana<amount/type>`, paid in `game_action.rs` |
 | `CostWaterbend.java` | Waterbend cost (tap artifacts/creatures to help pay) | **Implemented** — `CostPart::Waterbend` in `cost/mod.rs`, reuses Convoke agent for creature/artifact tapping |
 | `CostUnattach.java` | Unattach as cost | **Implemented** (`CostPart::Unattach`, `Unattach<>` token; calls `game.detach()`) |
 | `CostAdjustment.java` | Cost increase/decrease logic | **Implemented** (`ReduceCost`/`RaiseCost`/`SetCost` statics via `static_ability_cost_change.rs`; supports `Color$`, `IgnoreGeneric$`, `IsPresent$`/`PresentZone$`, `EffectZone$`, `MinMana$`, `Activator$`, `ValidCard$`, `CheckSVar$`/`SVarCompare$`, `OnlyFirstSpell$`, `Relative$`, `UpTo$`, `RaiseTo$` (Trinisphere), `ValidTarget$`, `ValidSpell$`, `Condition$` (PlayerTurn/Metalcraft/Delirium)) |
-| `CostBlight.java` | Blight as cost | Not implemented |
-| `CostBehold.java` | Behold as cost | Not implemented |
-| `CostBeholdExile.java` | Behold exile variant | Not implemented |
-| `CostPromiseGift.java` | Promise a gift as cost | Not implemented |
-| `CostRevealChosen.java` | Reveal chosen card as cost | Not implemented |
+| `CostBlight.java` | Blight as cost | **Implemented** (`CostPart::Blight`; applies -1/-1 counter payment, including `X`/dynamic amount resolution) |
+| `CostBehold.java` | Behold as cost | **Implemented** (`CostPart::Behold` with reveal path over hand/battlefield) |
+| `CostBeholdExile.java` | Behold exile variant | **Implemented** (`CostPart::Behold { exile: true }`) |
+| `CostPromiseGift.java` | Promise a gift as cost | **Implemented** (`CostPart::PromiseGift`; stores `promised_gift` on source card) |
+| `CostRevealChosen.java` | Reveal chosen card as cost | **Implemented** (`CostPart::RevealChosen`; chosen value + chooser-controller checked in can-pay, reveal state set on payment) |
 | `CostExiledMoveToGrave.java` | Move exiled to graveyard as cost | **Implemented** (`CostPart::ExiledMoveToGrave`, `ExiledMoveToGrave<n/filter>` token) |
 | `CostDecisionMakerBase.java` | Base for AI cost decisions | Not implemented |
 | `ICostVisitor.java` | Visitor pattern for costs | Not implemented |
@@ -679,7 +679,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `SpellAbilityView.java` | Trackable view for UI | Not implemented |
 | `StackItemView.java` | Stack item view for UI | Not implemented |
 | `TargetChoices.java` | Target selection container | **Partial** (TargetChoice enum in `agent.rs`) |
-| `TargetRestrictions.java` | Targeting restrictions (type, zone, count) | Not implemented |
+| `TargetRestrictions.java` | Targeting restrictions (type, zone, count) | **Partial** (`spellability/target_restrictions.rs`: `ValidTgts` parsing, `TargetMin/Max`, stack spell targeting, and non-battlefield `Origin$` zone-target parsing for `CardInZone`) |
 | `MagicStack.java` | *(in zone/ but logically here)* | **Implemented** (`stack.rs`) |
 | `WrappedAbility.java` | *(in trigger/)* Ability wrapper for triggers | Not implemented |
 | `package-info.java` | Package doc | N/A |
@@ -1152,11 +1152,11 @@ Ninjutsu, Champion, Devour, Hideaway, Companion, Mutate, Boast, Forage, Landwalk
 
 ### 23.6 Static Abilities — Missing
 
-**30 modes have Rust implementations** (6 fully implemented, 24 partial with core hooks wired). All 11 critical modes and 15 high-priority modes have at least partial implementations. Remaining work is edge-case parity with Java.
+**31 modes have Rust implementations** (6 fully implemented, 25 partial with core hooks wired). All 11 critical modes and 15 high-priority modes have at least partial implementations. Remaining work is edge-case parity with Java.
 
-#### Medium Priority Missing (24 modes — no Rust code yet)
+#### Medium Priority Missing (23 modes — no Rust code yet)
 
-Devotion, Exhaust, FlipCoinMod, GainLifeRadiation, IgnoreLandwalk, NumLoyaltyAct, SurveilNum, TapPowerValue, TurnPhaseReversed, UntapOtherPlayer, Adapt, ActivateAbilityAsIfHaste, CantBeCopied, CantBecomeMonarch, CantBeSuspected, CantChangeDayTime, CantCrew, CantDiscard, CantExile, CantPhase, CantPreventDamage, CantTransform, CantVenture, PlotZone
+Devotion, Exhaust, FlipCoinMod, GainLifeRadiation, IgnoreLandwalk, NumLoyaltyAct, SurveilNum, TapPowerValue, TurnPhaseReversed, UntapOtherPlayer, Adapt, ActivateAbilityAsIfHaste, CantBeCopied, CantBecomeMonarch, CantBeSuspected, CantChangeDayTime, CantCrew, CantDiscard, CantPhase, CantPreventDamage, CantTransform, CantVenture, PlotZone
 
 ### 23.7 Replacement Effects — Missing
 
@@ -1179,9 +1179,7 @@ ReplaceAttached, ReplaceBeginPhase, ReplaceBeginTurn, ReplaceExplore, ReplaceLea
 
 ### 23.8 Cost System
 
-**Implemented (26 types):** Mana, Tap, Untap (Q), PayLife, Sacrifice, Discard, Exile (battlefield/hand/graveyard/library), AddCounter (PutCounter), SubCounter (RemoveCounter), Return, TapType (tapXType), UntapType (untapYType), PayEnergy, DamageYou, Draw, Mill, Reveal, Exert, GainLife, GainControl, RemoveAnyCounter, Unattach, ExiledMoveToGrave, AddMana, Waterbend — all in `cost/mod.rs` with payment logic in `game_action.rs`.
-
-**Still Missing (medium/low priority):** CostBehold, CostBeholdExile, CostBlight, CostChooseColor, CostChooseCreatureType, CostCollectEvidence, CostEnlist, CostExileFromStack, CostFlipCoin, CostForage, CostPayShards, CostPromiseGift, CostPutCardToLib, CostRevealChosen, CostRollDice
+**Implemented:** Mana, Tap, Untap (Q), PayLife, Sacrifice, Discard, Exile (battlefield/hand/graveyard/library), AddCounter (PutCounter), SubCounter (RemoveCounter), Return, TapType (tapXType), UntapType (untapYType), PayEnergy, DamageYou, Draw, Mill, Reveal, Exert, GainLife, GainControl, RemoveAnyCounter, Unattach, ExiledMoveToGrave, AddMana, Waterbend — plus Java-parity additions for Behold/BeholdExile, Blight, ChooseColor, ChooseCreatureType, CollectEvidence, Enlist, ExileFromStack, FlipCoin, Forage, PayShards, PromiseGift, PutCardToLib, RevealChosen, RollDice in `cost/mod.rs` and `game_action.rs`.
 
 ### 23.9 Combat System — Gaps
 

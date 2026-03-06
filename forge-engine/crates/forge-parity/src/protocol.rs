@@ -162,10 +162,23 @@ pub struct GameTrace {
     pub deck2: String,
     pub max_turns: u32,
     pub snapshots: Vec<StateSnapshot>,
+    #[serde(default)]
+    pub decisions: Vec<DecisionRecord>,
     /// Card names that were played/cast during the game.
     pub covered_cards: Vec<String>,
     /// Low-effort mechanic signals extracted from notify messages.
     pub mechanic_signals: Vec<MechanicSignal>,
+}
+
+/// A normalized decision record emitted at a choice point.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DecisionRecord {
+    pub turn: u32,
+    pub phase: String,
+    pub deciding_player: u32,
+    pub kind: String,
+    pub options: Vec<String>,
+    pub choice: String,
 }
 
 /// Low-effort mechanic signal observed during a run.

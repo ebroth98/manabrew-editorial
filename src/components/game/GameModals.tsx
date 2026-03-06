@@ -203,6 +203,10 @@ export function GameModals({
         <ChooseOptionalTriggerModal
           description={currentPrompt.description}
           cardName={currentPrompt.sourceCardName}
+          promptKind={currentPrompt.promptKind}
+          optionLabels={currentPrompt.optionLabels}
+          mode={currentPrompt.mode}
+          api={currentPrompt.api}
           onConfirm={onOptionalTriggerDecision}
         />
       )}

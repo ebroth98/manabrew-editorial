@@ -18,6 +18,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
 
+    if sa.params.contains_key("Optional") {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let accepted = ctx.agents[target.index()].confirm_action(
+            target,
+            None,
+            "Do you want to scry?",
+            &[],
+            source_name,
+            Some("Scry"),
+        );
+        if !accepted {
+            return;
+        }
+    }
+
     let lib_len = ctx.game.cards_in_zone(ZoneType::Library, target).len();
     if lib_len == 0 || num == 0 {
         return;
@@ -78,8 +93,8 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::{PassAgent, PlayerAgent};
-    use crate::combat::DefenderId;
     use crate::card::CardInstance;
+    use crate::combat::DefenderId;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -119,7 +134,12 @@ mod tests {
         ) -> crate::agent::MainPhaseAction {
             crate::agent::MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             vec![]
         }
         fn choose_blockers(

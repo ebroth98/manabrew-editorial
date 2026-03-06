@@ -130,17 +130,14 @@ fn setup_single_sa_targets_fixed(game: &GameState, sa: &mut SpellAbility) -> boo
 
     match &tr.target_kind {
         target_restrictions::TargetKind::Creature(ref filter) => {
-            let mut valid: Vec<CardId> =
-                target_restrictions::get_all_candidates_creature_filtered(
-                    game,
-                    filter.as_deref(),
-                    player,
-                )
-                .into_iter()
-                .filter(|&cid| {
-                    target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
-                })
-                .collect();
+            let mut valid: Vec<CardId> = target_restrictions::get_all_candidates_creature_filtered(
+                game,
+                filter.as_deref(),
+                player,
+            )
+            .into_iter()
+            .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
+            .collect();
             // Sort by name, pick first (matches Java's chooseSingleEntityForEffect)
             valid.sort_by(|&a, &b| game.card(a).card_name.cmp(&game.card(b).card_name));
             if let Some(&target) = valid.first() {
@@ -158,9 +155,7 @@ fn setup_single_sa_targets_fixed(game: &GameState, sa: &mut SpellAbility) -> boo
                     player,
                 )
                 .into_iter()
-                .filter(|&cid| {
-                    target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
-                })
+                .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
                 .collect();
             valid.sort_by(|&a, &b| game.card(a).card_name.cmp(&game.card(b).card_name));
             if let Some(&target) = valid.first() {

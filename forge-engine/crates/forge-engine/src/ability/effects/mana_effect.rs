@@ -19,7 +19,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Read metadata params from the ability
     let restriction = sa.params.get("RestrictValid").cloned();
-    let adds_no_counter = sa.params.get("AddsNoCounter").map_or(false, |v| v == "True");
+    let adds_no_counter = sa
+        .params
+        .get("AddsNoCounter")
+        .map_or(false, |v| v == "True");
     let adds_keywords = sa.params.get("AddsKeywords").cloned();
     let adds_keywords_valid = sa.params.get("AddsKeywordsValid").cloned();
     let adds_counters = sa.params.get("AddsCounters").cloned();
@@ -55,7 +58,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Determine mana string to produce
     let mana_string: Option<String> = if produced.contains("Any") {
         // "Any" — all 5 colors available
-        let available = vec!["W".to_string(), "U".to_string(), "B".to_string(), "R".to_string(), "G".to_string()];
+        let available = vec![
+            "W".to_string(),
+            "U".to_string(),
+            "B".to_string(),
+            "R".to_string(),
+            "G".to_string(),
+        ];
         Some(available.first().cloned().unwrap_or("W".to_string()))
     } else if produced.starts_with("Combo") || produced.contains(',') {
         // Combo or comma-separated choices — normalize to color letters
@@ -79,7 +88,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             })
             .collect();
-        available.first().cloned().or_else(|| Some(produced.clone()))
+        available
+            .first()
+            .cloned()
+            .or_else(|| Some(produced.clone()))
     } else if produced == "Chosen" {
         // Use card's chosen color
         let chosen = ctx
@@ -112,29 +124,36 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if amount <= 0 {
         return;
     }
-    let is_combo = produced.contains("Any") || produced.starts_with("Combo") || produced.contains(',');
+    let is_combo =
+        produced.contains("Any") || produced.starts_with("Combo") || produced.contains(',');
     if amount > 1 && is_combo {
         // Multi-amount combo: let agent choose color distribution
         let available: Vec<String> = if produced.contains("Any") {
-            vec!["W", "U", "B", "R", "G"].into_iter().map(String::from).collect()
+            vec!["W", "U", "B", "R", "G"]
+                .into_iter()
+                .map(String::from)
+                .collect()
         } else {
             let options: Vec<&str> = if let Some(rest) = produced.strip_prefix("Combo ") {
                 rest.split_whitespace().collect()
             } else {
                 produced.split(',').map(|s| s.trim()).collect()
             };
-            options.iter().filter_map(|name| {
-                let lower = name.to_lowercase();
-                match lower.as_str() {
-                    "white" | "w" => Some("W".to_string()),
-                    "blue" | "u" => Some("U".to_string()),
-                    "black" | "b" => Some("B".to_string()),
-                    "red" | "r" => Some("R".to_string()),
-                    "green" | "g" => Some("G".to_string()),
-                    "colorless" | "c" => Some("C".to_string()),
-                    _ => None,
-                }
-            }).collect()
+            options
+                .iter()
+                .filter_map(|name| {
+                    let lower = name.to_lowercase();
+                    match lower.as_str() {
+                        "white" | "w" => Some("W".to_string()),
+                        "blue" | "u" => Some("U".to_string()),
+                        "black" | "b" => Some("B".to_string()),
+                        "red" | "r" => Some("R".to_string()),
+                        "green" | "g" => Some("G".to_string()),
+                        "colorless" | "c" => Some("C".to_string()),
+                        _ => None,
+                    }
+                })
+                .collect()
         };
         let card_name = ctx.game.card(source_id).card_name.clone();
         let chosen = ctx.agents[player.index()].specify_mana_combo(
@@ -239,11 +258,21 @@ pub fn resolve_special_mana(
                 let mut tokens = Vec::new();
                 for &shard in milled.mana_cost.shards() {
                     let atoms = shard.shard();
-                    if (atoms & ManaAtom::WHITE) != 0 { tokens.push("W".to_string()); }
-                    if (atoms & ManaAtom::BLUE) != 0 { tokens.push("U".to_string()); }
-                    if (atoms & ManaAtom::BLACK) != 0 { tokens.push("B".to_string()); }
-                    if (atoms & ManaAtom::RED) != 0 { tokens.push("R".to_string()); }
-                    if (atoms & ManaAtom::GREEN) != 0 { tokens.push("G".to_string()); }
+                    if (atoms & ManaAtom::WHITE) != 0 {
+                        tokens.push("W".to_string());
+                    }
+                    if (atoms & ManaAtom::BLUE) != 0 {
+                        tokens.push("U".to_string());
+                    }
+                    if (atoms & ManaAtom::BLACK) != 0 {
+                        tokens.push("B".to_string());
+                    }
+                    if (atoms & ManaAtom::RED) != 0 {
+                        tokens.push("R".to_string());
+                    }
+                    if (atoms & ManaAtom::GREEN) != 0 {
+                        tokens.push("G".to_string());
+                    }
                 }
                 return tokens;
             }
@@ -279,11 +308,21 @@ pub fn resolve_special_mana(
             let mut tokens = Vec::new();
             for &shard in enchanted.mana_cost.shards() {
                 let atoms = shard.shard();
-                if (atoms & ManaAtom::WHITE) != 0 { tokens.push("W".to_string()); }
-                if (atoms & ManaAtom::BLUE) != 0 { tokens.push("U".to_string()); }
-                if (atoms & ManaAtom::BLACK) != 0 { tokens.push("B".to_string()); }
-                if (atoms & ManaAtom::RED) != 0 { tokens.push("R".to_string()); }
-                if (atoms & ManaAtom::GREEN) != 0 { tokens.push("G".to_string()); }
+                if (atoms & ManaAtom::WHITE) != 0 {
+                    tokens.push("W".to_string());
+                }
+                if (atoms & ManaAtom::BLUE) != 0 {
+                    tokens.push("U".to_string());
+                }
+                if (atoms & ManaAtom::BLACK) != 0 {
+                    tokens.push("B".to_string());
+                }
+                if (atoms & ManaAtom::RED) != 0 {
+                    tokens.push("R".to_string());
+                }
+                if (atoms & ManaAtom::GREEN) != 0 {
+                    tokens.push("G".to_string());
+                }
             }
             // Also add generic as colorless
             let generic = enchanted.mana_cost.generic_cost();

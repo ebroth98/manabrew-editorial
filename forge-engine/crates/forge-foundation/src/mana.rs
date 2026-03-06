@@ -578,7 +578,12 @@ impl ManaCost {
     /// Used for playability checks — Phyrexian shards can always be paid with 2 life.
     pub fn without_phyrexian(&self) -> ManaCost {
         ManaCost {
-            shards: self.shards.iter().filter(|s| !s.is_phyrexian()).copied().collect(),
+            shards: self
+                .shards
+                .iter()
+                .filter(|s| !s.is_phyrexian())
+                .copied()
+                .collect(),
             generic_cost: self.generic_cost,
             has_no_cost: self.has_no_cost,
         }
@@ -655,7 +660,8 @@ impl ManaCost {
         while i < shards.len() && remaining > 0 {
             let shard_colors = shards[i].shard() & ManaAtom::COLORS_SUPERPOSITION;
             // Match mono-color shards of this exact color (not hybrid/phyrexian)
-            if shard_colors == color_mask && shards[i].is_mono_color() && !shards[i].is_phyrexian() {
+            if shard_colors == color_mask && shards[i].is_mono_color() && !shards[i].is_phyrexian()
+            {
                 shards.remove(i);
                 remaining -= 1;
             } else {

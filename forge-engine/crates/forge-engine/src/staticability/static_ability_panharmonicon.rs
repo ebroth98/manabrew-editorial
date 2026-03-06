@@ -15,7 +15,11 @@ pub fn extra_triggers(
 ) -> i32 {
     let mut n = 0;
     let trig_host = game.card(trigger_host);
-    for source in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for source in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for st_ab in source
             .static_abilities
             .iter()
@@ -110,7 +114,9 @@ fn trigger_mode_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::TapAll { .. } => "TapAll",
         crate::trigger::TriggerMode::UntapAll { .. } => "UntapAll",
         crate::trigger::TriggerMode::BecomesTargetOnce { .. } => "BecomesTargetOnce",
-        crate::trigger::TriggerMode::AttackerBlockedByCreature { .. } => "AttackerBlockedByCreature",
+        crate::trigger::TriggerMode::AttackerBlockedByCreature { .. } => {
+            "AttackerBlockedByCreature"
+        }
         crate::trigger::TriggerMode::AttackerBlockedOnce { .. } => "AttackerBlockedOnce",
         crate::trigger::TriggerMode::AttackerUnblockedOnce { .. } => "AttackerUnblockedOnce",
         crate::trigger::TriggerMode::SpellCastOnce { .. } => "SpellCastOnce",
@@ -121,6 +127,12 @@ fn trigger_mode_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::LifeGainedAll { .. } => "LifeGainedAll",
         crate::trigger::TriggerMode::CounterRemovedOnce { .. } => "CounterRemovedOnce",
         crate::trigger::TriggerMode::Exerted { .. } => "Exerted",
+        crate::trigger::TriggerMode::CollectEvidence { .. } => "CollectEvidence",
+        crate::trigger::TriggerMode::Forage { .. } => "Forage",
+        crate::trigger::TriggerMode::Enlisted { .. } => "Enlisted",
+        crate::trigger::TriggerMode::FlippedCoin { .. } => "FlippedCoin",
+        crate::trigger::TriggerMode::RolledDie { .. } => "RolledDie",
+        crate::trigger::TriggerMode::RolledDieOnce { .. } => "RolledDieOnce",
         crate::trigger::TriggerMode::ManaExpend { .. } => "ManaExpend",
     }
 }
@@ -143,8 +155,11 @@ fn mode_specific_matches(
                 let Some(cid) = moved else {
                     return false;
                 };
-                if !matches_valid_card_for_controller(valid_cause, game.card(cid), source_controller)
-                {
+                if !matches_valid_card_for_controller(
+                    valid_cause,
+                    game.card(cid),
+                    source_controller,
+                ) {
                     return false;
                 }
             }
@@ -165,8 +180,11 @@ fn mode_specific_matches(
                 let Some(attacker) = run_params.attacker else {
                     return false;
                 };
-                if !matches_valid_card_for_controller(valid_cause, game.card(attacker), source_controller)
-                {
+                if !matches_valid_card_for_controller(
+                    valid_cause,
+                    game.card(attacker),
+                    source_controller,
+                ) {
                     return false;
                 }
             }
@@ -272,16 +290,19 @@ fn mode_specific_matches(
 }
 
 fn zone_list_matches(zones: &str, zone: ZoneType) -> bool {
-    zones.split(',').map(|s| s.trim()).any(|z| match z.to_ascii_lowercase().as_str() {
-        "battlefield" => zone == ZoneType::Battlefield,
-        "hand" => zone == ZoneType::Hand,
-        "graveyard" => zone == ZoneType::Graveyard,
-        "library" => zone == ZoneType::Library,
-        "exile" => zone == ZoneType::Exile,
-        "stack" => zone == ZoneType::Stack,
-        "command" => zone == ZoneType::Command,
-        _ => true,
-    })
+    zones
+        .split(',')
+        .map(|s| s.trim())
+        .any(|z| match z.to_ascii_lowercase().as_str() {
+            "battlefield" => zone == ZoneType::Battlefield,
+            "hand" => zone == ZoneType::Hand,
+            "graveyard" => zone == ZoneType::Graveyard,
+            "library" => zone == ZoneType::Library,
+            "exile" => zone == ZoneType::Exile,
+            "stack" => zone == ZoneType::Stack,
+            "command" => zone == ZoneType::Command,
+            _ => true,
+        })
 }
 
 fn matches_zone(filter: &str, zone: Option<ZoneType>) -> bool {

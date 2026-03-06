@@ -189,6 +189,16 @@ pub enum AgentPromptInner {
         /// Name of the source card (for displaying card image in modals).
         #[serde(rename = "sourceCardName")]
         source_card_name: Option<String>,
+        /// Optional context tag: e.g. "optional_trigger" or "confirm_action".
+        #[serde(rename = "promptKind")]
+        prompt_kind: Option<String>,
+        /// Optional labels for decline/accept buttons.
+        #[serde(rename = "optionLabels")]
+        option_labels: Option<Vec<String>>,
+        /// Optional confirm mode metadata from engine.
+        mode: Option<String>,
+        /// Optional API metadata from engine.
+        api: Option<String>,
     },
     /// Choose N modes for a modal spell (SP$ Charm).
     ChooseMode {

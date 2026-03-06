@@ -11,12 +11,24 @@ interface ChooseOptionalTriggerModalProps {
   description: string;
   /** Name of the source card (for displaying card image). */
   cardName?: string;
+  /** Prompt context (optional_trigger or confirm_action). */
+  promptKind?: string;
+  /** Optional labels for [decline, accept] buttons. */
+  optionLabels?: string[];
+  /** Optional mode metadata for confirm_action prompts. */
+  mode?: string;
+  /** Optional API metadata for confirm_action prompts. */
+  api?: string;
   onConfirm: (accept: boolean) => void;
 }
 
 export function ChooseOptionalTriggerModal({
   description,
   cardName,
+  promptKind,
+  optionLabels,
+  mode,
+  api,
   onConfirm,
 }: ChooseOptionalTriggerModalProps) {
   const { data: imageUrl } = useCardImage(cardName ?? "");
@@ -28,6 +40,14 @@ export function ChooseOptionalTriggerModal({
 
   const handleAccept = useCallback(() => onConfirm(true), [onConfirm]);
   const handleDecline = useCallback(() => onConfirm(false), [onConfirm]);
+  const declineLabel = optionLabels?.[0] ?? "Decline";
+  const acceptLabel = optionLabels?.[1] ?? "Accept";
+  const isGenericConfirm = promptKind === "confirm_action";
+  const title = isGenericConfirm ? "Confirm Action" : "Optional Trigger";
+  const subtitle = isGenericConfirm
+    ? "Confirm whether to apply this optional action."
+    : "Do you want this ability to trigger?";
+  const metaBits = [mode, api].filter(Boolean).join(" • ");
 
   useModalKeyboard(
     { onEnter: handleAccept, onEscape: handleDecline },
@@ -46,11 +66,12 @@ export function ChooseOptionalTriggerModal({
       >
         <Modal.Header>
           <h2 id="optional-trigger-title" className="font-semibold text-base">
-            Optional Trigger
+            {title}
           </h2>
           <p className="text-xs text-muted-foreground">
-            Do you want this ability to trigger?
+            {subtitle}
           </p>
+          {metaBits && <p className="text-[11px] text-muted-foreground">{metaBits}</p>}
         </Modal.Header>
 
         <div className="px-4 py-4 flex gap-3">
@@ -71,14 +92,14 @@ export function ChooseOptionalTriggerModal({
             onClick={handleDecline}
             className="min-w-[80px]"
           >
-            Decline
+            {declineLabel}
           </Button>
           <Button
             size="sm"
             onClick={handleAccept}
             className="min-w-[80px]"
           >
-            Accept
+            {acceptLabel}
           </Button>
         </Modal.Footer>
       </div>

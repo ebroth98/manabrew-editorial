@@ -18,9 +18,17 @@ pub struct LlmAnalysis {
 
 /// Which LLM backend to use.
 enum Backend {
-    Anthropic { api_key: String },
-    OpenAi { api_key: String, base_url: String, model: String },
-    ClaudeCode { binary: String },
+    Anthropic {
+        api_key: String,
+    },
+    OpenAi {
+        api_key: String,
+        base_url: String,
+        model: String,
+    },
+    ClaudeCode {
+        binary: String,
+    },
 }
 
 /// LLM client that calls either Anthropic, OpenAI, or Claude Code CLI for analysis.
@@ -59,16 +67,23 @@ impl LlmClient {
             if !key.is_empty() {
                 let base_url = std::env::var("OPENAI_API_BASE")
                     .unwrap_or_else(|_| "https://api.openai.com".to_string());
-                let model = std::env::var("OPENAI_MODEL")
-                    .unwrap_or_else(|_| "gpt-4o-mini".to_string());
+                let model =
+                    std::env::var("OPENAI_MODEL").unwrap_or_else(|_| "gpt-4o-mini".to_string());
                 return Some(Self {
-                    backend: Backend::OpenAi { api_key: key, base_url, model },
+                    backend: Backend::OpenAi {
+                        api_key: key,
+                        base_url,
+                        model,
+                    },
                     client,
                 });
             }
         }
         // Fall back to Claude Code CLI if available
-        if let Ok(output) = std::process::Command::new("claude").arg("--version").output() {
+        if let Ok(output) = std::process::Command::new("claude")
+            .arg("--version")
+            .output()
+        {
             if output.status.success() {
                 return Some(Self {
                     backend: Backend::ClaudeCode {
@@ -85,15 +100,13 @@ impl LlmClient {
     pub async fn analyze_cluster(&self, ctx: &ClusterContext) -> Result<LlmAnalysis, String> {
         let prompt = build_prompt(ctx);
         let raw = match &self.backend {
-            Backend::Anthropic { api_key } => {
-                self.call_anthropic(api_key, &prompt).await?
-            }
-            Backend::OpenAi { api_key, base_url, model } => {
-                self.call_openai(api_key, base_url, model, &prompt).await?
-            }
-            Backend::ClaudeCode { binary } => {
-                self.call_claude_code(binary, &prompt).await?
-            }
+            Backend::Anthropic { api_key } => self.call_anthropic(api_key, &prompt).await?,
+            Backend::OpenAi {
+                api_key,
+                base_url,
+                model,
+            } => self.call_openai(api_key, base_url, model, &prompt).await?,
+            Backend::ClaudeCode { binary } => self.call_claude_code(binary, &prompt).await?,
         };
 
         // Extract JSON from the response (may be wrapped in markdown code fences)
@@ -161,7 +174,13 @@ impl LlmClient {
         .map_err(|e| format!("spawn_blocking failed: {e}"))?
     }
 
-    async fn call_openai(&self, api_key: &str, base_url: &str, model: &str, prompt: &str) -> Result<String, String> {
+    async fn call_openai(
+        &self,
+        api_key: &str,
+        base_url: &str,
+        model: &str,
+        prompt: &str,
+    ) -> Result<String, String> {
         let url = format!("{}/v1/chat/completions", base_url.trim_end_matches('/'));
         let body = serde_json::json!({
             "model": model,

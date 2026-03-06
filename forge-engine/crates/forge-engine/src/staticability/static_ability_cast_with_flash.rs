@@ -14,17 +14,24 @@ pub fn any_with_flash(
     // Java includes both global static sources and the card itself.
     for source in cards.iter().filter(|c| {
         c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command || c.id == spell_card.id
-    })
-    {
+    }) {
         for st_ab in source
             .static_abilities
             .iter()
             .filter(|sa| sa.mode == StaticMode::CastWithFlash)
         {
-            if !matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), spell_card, source) {
+            if !matches_valid_card(
+                st_ab.params.get("ValidCard").map(String::as_str),
+                spell_card,
+                source,
+            ) {
                 continue;
             }
-            if !matches_valid_player(st_ab.params.get("Caster").map(String::as_str), caster, source.controller) {
+            if !matches_valid_player(
+                st_ab.params.get("Caster").map(String::as_str),
+                caster,
+                source.controller,
+            ) {
                 continue;
             }
             if let Some(valid_sa) = st_ab.params.get("ValidSA") {
@@ -41,7 +48,11 @@ pub fn any_with_flash(
     false
 }
 
-fn matches_valid_player(valid: Option<&str>, player: PlayerId, source_controller: PlayerId) -> bool {
+fn matches_valid_player(
+    valid: Option<&str>,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Player") => true,
@@ -80,16 +91,15 @@ fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
         return true;
     }
 
-    tokens.iter().all(|tok| match tok.to_ascii_lowercase().as_str() {
-        "spell" => true,
-        "istargeting" => params.contains_key("ValidTgts"),
-        "xcost" => {
-            params
-                .get("Cost")
-                .map(|c| c.contains('X'))
-                .unwrap_or(false)
-                || ability_line.contains("X")
-        }
-        _ => false,
-    })
+    tokens
+        .iter()
+        .all(|tok| match tok.to_ascii_lowercase().as_str() {
+            "spell" => true,
+            "istargeting" => params.contains_key("ValidTgts"),
+            "xcost" => {
+                params.get("Cost").map(|c| c.contains('X')).unwrap_or(false)
+                    || ability_line.contains("X")
+            }
+            _ => false,
+        })
 }

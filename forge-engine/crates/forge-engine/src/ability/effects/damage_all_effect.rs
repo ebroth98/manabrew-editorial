@@ -79,8 +79,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
             // Track damage source for DamagedBy trigger filters
             if let Some(src_id) = source {
-                if !ctx.game.card(card_id).damage_sources_this_turn.contains(&src_id) {
-                    ctx.game.card_mut(card_id).damage_sources_this_turn.push(src_id);
+                if !ctx
+                    .game
+                    .card(card_id)
+                    .damage_sources_this_turn
+                    .contains(&src_id)
+                {
+                    ctx.game
+                        .card_mut(card_id)
+                        .damage_sources_this_turn
+                        .push(src_id);
                 }
             }
             if source_has_infect_keyword || source_has_wither {
@@ -117,13 +125,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if !valid_players.is_empty() {
         for pid in player_ids {
             let source_has_infect = if let Some(src_id) = source {
-                    let src = ctx.game.card(src_id);
-                    source_has_infect_keyword
-                        || crate::staticability::static_ability_infect_damage::is_infect_damage(
-                            ctx.game,
-                            &ctx.game.cards,
-                            pid,
-                            src.controller,
+                let src = ctx.game.card(src_id);
+                source_has_infect_keyword
+                    || crate::staticability::static_ability_infect_damage::is_infect_damage(
+                        ctx.game,
+                        &ctx.game.cards,
+                        pid,
+                        src.controller,
                     )
             } else {
                 false

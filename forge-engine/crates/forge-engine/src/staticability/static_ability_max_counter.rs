@@ -3,7 +3,11 @@ use forge_foundation::ZoneType;
 use crate::card::{CardInstance, CounterType};
 use crate::staticability::StaticMode;
 
-pub fn max_counter(cards: &[CardInstance], target: &CardInstance, counter_type: &CounterType) -> Option<i32> {
+pub fn max_counter(
+    cards: &[CardInstance],
+    target: &CardInstance,
+    counter_type: &CounterType,
+) -> Option<i32> {
     let mut result: Option<i32> = None;
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
@@ -18,7 +22,11 @@ pub fn max_counter(cards: &[CardInstance], target: &CardInstance, counter_type: 
                     }
                 }
             }
-            if !matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), target, source) {
+            if !matches_valid_card(
+                st_ab.params.get("ValidCard").map(String::as_str),
+                target,
+                source,
+            ) {
                 continue;
             }
             let value = st_ab

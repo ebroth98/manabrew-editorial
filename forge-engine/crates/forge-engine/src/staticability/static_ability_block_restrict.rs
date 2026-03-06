@@ -29,7 +29,11 @@ pub fn block_restrict_num(cards: &[CardInstance], defender: PlayerId) -> i32 {
     num
 }
 
-fn matches_valid_player(valid: Option<&str>, player: PlayerId, source_controller: PlayerId) -> bool {
+fn matches_valid_player(
+    valid: Option<&str>,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Player") => true,

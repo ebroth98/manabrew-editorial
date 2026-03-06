@@ -177,7 +177,11 @@ impl ManaCostBeingPaid {
         choice
     }
 
-    pub(crate) fn try_pay_mana(&mut self, color_mask: u16, possible_uses: u8) -> Option<ManaCostShard> {
+    pub(crate) fn try_pay_mana(
+        &mut self,
+        color_mask: u16,
+        possible_uses: u8,
+    ) -> Option<ManaCostShard> {
         let payable: Vec<ManaCostShard> = self
             .get_distinct_shards()
             .into_iter()
@@ -212,11 +216,21 @@ impl ManaCostBeingPaid {
 }
 
 fn color_mask_to_short(mask: u16) -> String {
-    if (mask & ManaAtom::WHITE) != 0 { return "W".into(); }
-    if (mask & ManaAtom::BLUE) != 0 { return "U".into(); }
-    if (mask & ManaAtom::BLACK) != 0 { return "B".into(); }
-    if (mask & ManaAtom::RED) != 0 { return "R".into(); }
-    if (mask & ManaAtom::GREEN) != 0 { return "G".into(); }
+    if (mask & ManaAtom::WHITE) != 0 {
+        return "W".into();
+    }
+    if (mask & ManaAtom::BLUE) != 0 {
+        return "U".into();
+    }
+    if (mask & ManaAtom::BLACK) != 0 {
+        return "B".into();
+    }
+    if (mask & ManaAtom::RED) != 0 {
+        return "R".into();
+    }
+    if (mask & ManaAtom::GREEN) != 0 {
+        return "G".into();
+    }
     String::new()
 }
 

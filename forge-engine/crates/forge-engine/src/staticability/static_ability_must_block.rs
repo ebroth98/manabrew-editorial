@@ -27,7 +27,10 @@ fn matches_valid_creature(valid: Option<&str>, card: &CardInstance, source: &Car
         None => card.is_creature(),
         Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),
         Some(v) if v.eq_ignore_ascii_case("Card.Self") => card.id == source.id,
-        Some(v) if v.eq_ignore_ascii_case("Creature.YouCtrl") || v.eq_ignore_ascii_case("Creature.YouControl") => {
+        Some(v)
+            if v.eq_ignore_ascii_case("Creature.YouCtrl")
+                || v.eq_ignore_ascii_case("Creature.YouControl") =>
+        {
             card.is_creature() && card.controller == source.controller
         }
         Some(v) if v.eq_ignore_ascii_case("Creature.OppCtrl") => {

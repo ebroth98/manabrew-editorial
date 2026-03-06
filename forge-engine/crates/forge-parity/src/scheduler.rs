@@ -235,10 +235,7 @@ mod tests {
 
     #[test]
     fn format_inline_deck_spec() {
-        let deck = vec![
-            ("Mountain".into(), 20),
-            ("Lightning Bolt".into(), 4),
-        ];
+        let deck = vec![("Mountain".into(), 20), ("Lightning Bolt".into(), 4)];
         let spec = format_inline_deck(&deck);
         assert_eq!(spec, "Mountain*20|Lightning Bolt*4");
     }

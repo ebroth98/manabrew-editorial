@@ -20,8 +20,7 @@ use crate::game_view_dto::GameViewDto;
 use crate::ids_codec::player_slot;
 use crate::multiplayer_controller::{
     parse_remote_response, spawn_engine_prompt_forwarder, spawn_notify_forwarder,
-    spawn_snapshot_forwarder,
-    spawn_remote_prompt_forwarder,
+    spawn_remote_prompt_forwarder, spawn_snapshot_forwarder,
 };
 use crate::preset_decks::{
     build_ai_opponent, build_custom_deck, build_preset_deck_for_player, build_preset_decks,

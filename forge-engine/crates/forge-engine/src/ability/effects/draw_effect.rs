@@ -9,6 +9,20 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Defined")
         .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
+    if sa.params.contains_key("Optional") {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let accepted = ctx.agents[target.index()].confirm_action(
+            target,
+            None,
+            &format!("Do you want to draw {} card(s)?", num),
+            &[],
+            source_name,
+            Some("Draw"),
+        );
+        if !accepted {
+            return;
+        }
+    }
     let drawn = ctx.game.draw_cards(target, num as usize);
 
     // Fire Drawn trigger per card

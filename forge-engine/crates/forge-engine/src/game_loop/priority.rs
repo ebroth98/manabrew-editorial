@@ -59,58 +59,16 @@ impl GameLoop {
                 return;
             }
 
-            // A player can play sorcery-speed cards if:
-            // - It's their own turn
-            // - It's a main phase
-            // - The stack is empty
-            let can_play_sorcery =
-                is_main_phase && priority_player == game.active_player() && game.stack.is_empty();
-            let must_be_instant = !can_play_sorcery;
-
-            let playable = self.get_playable_cards(game, priority_player, must_be_instant);
-
-            let tappable_lands: Vec<CardId> = game
-                .cards_in_zone(ZoneType::Battlefield, priority_player)
-                .to_vec()
-                .into_iter()
-                .filter(|&cid| {
-                    let c = game.card(cid);
-                    c.is_land() && !c.tapped
-                })
-                .collect();
-
-            let pool_snapshot = self.pool(priority_player).clone();
-            let untappable_lands: Vec<CardId> = game
-                .cards_in_zone(ZoneType::Battlefield, priority_player)
-                .to_vec()
-                .into_iter()
-                .filter(|&cid| {
-                    let c = game.card(cid);
-                    if !c.is_land() || !c.tapped {
-                        return false;
-                    }
-                    // A tapped land is untappable if the pool has ANY atom it could produce
-                    let atoms = mana::land_mana_atoms(c);
-                    if !atoms.is_empty() {
-                        atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
-                    } else if let Some(atom) = basic_land_mana_atom(c) {
-                        pool_snapshot.has_atom(atom, 1)
-                    } else {
-                        false
-                    }
-                })
-                .collect();
-
-            let activatable = self.get_activatable_abilities(game, priority_player);
+            let action_space = self.action_space(game, priority_player, is_main_phase);
 
             agents[priority_player.index()].snapshot_state(game, &self.mana_pools);
             self.log_waiting_for_priority(game, priority_player);
             let action = agents[priority_player.index()].choose_action(
                 priority_player,
-                &playable,
-                &tappable_lands,
-                &untappable_lands,
-                &activatable,
+                &action_space.playable,
+                &action_space.tappable_lands,
+                &action_space.untappable_lands,
+                &action_space.activatable,
             );
 
             if self.apply_pending_snapshot_restore(game, agents) {
@@ -134,7 +92,7 @@ impl GameLoop {
                         priority_player,
                         &self.describe_priority_action(game, action, None),
                     );
-                    if !playable.contains(&card_id) {
+                    if !action_space.playable.contains(&card_id) {
                         crate::agent::notify_all_agents(
                             agents,
                             crate::agent::GameLogEvent::warning(
@@ -194,7 +152,7 @@ impl GameLoop {
                         priority_player,
                         &self.describe_priority_action(game, action, None),
                     );
-                    if !tappable_lands.contains(&land_id) {
+                    if !action_space.tappable_lands.contains(&land_id) {
                         crate::agent::notify_all_agents(
                             agents,
                             crate::agent::GameLogEvent::warning(
@@ -265,7 +223,7 @@ impl GameLoop {
                         priority_player,
                         &self.describe_priority_action(game, action, None),
                     );
-                    if !untappable_lands.contains(&land_id) {
+                    if !action_space.untappable_lands.contains(&land_id) {
                         crate::agent::notify_all_agents(
                             agents,
                             crate::agent::GameLogEvent::warning(
@@ -325,7 +283,7 @@ impl GameLoop {
                         priority_player,
                         &self.describe_priority_action(game, action, Some(ability_idx)),
                     );
-                    if !activatable.contains(&(card_id, ability_idx)) {
+                    if !action_space.activatable.contains(&(card_id, ability_idx)) {
                         crate::agent::notify_all_agents(
                             agents,
                             crate::agent::GameLogEvent::warning(

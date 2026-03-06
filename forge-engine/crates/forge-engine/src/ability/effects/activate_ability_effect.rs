@@ -21,7 +21,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if !ctx.game.player(pid).is_alive() {
             continue;
         }
-        let battlefield = ctx.game.cards_in_zone(forge_foundation::ZoneType::Battlefield, pid);
+        let battlefield = ctx
+            .game
+            .cards_in_zone(forge_foundation::ZoneType::Battlefield, pid);
         let card_ids: Vec<crate::ids::CardId> = battlefield.to_vec();
         for cid in card_ids {
             let (is_land, is_tapped, chosen_colors, produced, has_tap_cost) = {

@@ -4,14 +4,15 @@
 //! `ability/effects/` package (204 files). Effects are dispatched by
 //! API type string extracted from the ability text.
 
+pub mod activate_ability_effect;
 pub mod add_phase_effect;
 pub mod add_turn_effect;
-pub mod activate_ability_effect;
 pub mod animate_all_effect;
 pub mod animate_effect;
 pub mod attach_effect;
 pub mod balance_effect;
 pub mod become_monarch_effect;
+pub mod branch_effect;
 pub mod change_zone_all_effect;
 pub mod change_zone_effect;
 pub mod charm_effect;
@@ -41,8 +42,8 @@ pub mod dig_effect;
 pub mod dig_multiple_effect;
 pub mod dig_until_effect;
 pub mod discard_effect;
-pub mod draw_effect;
 pub mod drain_mana_effect;
+pub mod draw_effect;
 pub mod each_damage_effect;
 pub mod effect_effect;
 pub mod encode_effect;
@@ -139,6 +140,7 @@ macro_rules! effect_dispatch {
 
 effect_dispatch! {
     "DealDamage" => damage_deal_effect::resolve,
+    "Branch" => branch_effect::resolve,
     "GainLife" => life_gain_effect::resolve,
     "LoseLife" => life_lose_effect::resolve,
     "PutCounter" => counters_put_effect::resolve,
@@ -356,22 +358,40 @@ fn check_condition_present(
 
 /// Compare a value against a condition string (e.g. "GE2", "EQ0", "LE3").
 fn compare_condition(value: i32, compare: &str) -> bool {
-    if let Some(n) = compare.strip_prefix("GE").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("GE")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value >= n;
     }
-    if let Some(n) = compare.strip_prefix("GT").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("GT")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value > n;
     }
-    if let Some(n) = compare.strip_prefix("LE").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("LE")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value <= n;
     }
-    if let Some(n) = compare.strip_prefix("LT").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("LT")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value < n;
     }
-    if let Some(n) = compare.strip_prefix("EQ").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("EQ")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value == n;
     }
-    if let Some(n) = compare.strip_prefix("NE").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("NE")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value != n;
     }
     true
@@ -409,7 +429,6 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
         resolve_effect_once(ctx, sa);
     }
 }
-
 
 /// Fallback: detect API type from raw ability text via contains-matching.
 /// Only used when `SpellAbility.api` is None (shouldn't happen for properly
@@ -760,7 +779,11 @@ pub fn resolve_count_svar(
         let cards_to_check: Vec<CardId> = if has_you_ctrl {
             battlefield.to_vec()
         } else {
-            battlefield.iter().chain(opp_battlefield.iter()).copied().collect()
+            battlefield
+                .iter()
+                .chain(opp_battlefield.iter())
+                .copied()
+                .collect()
         };
 
         for &cid in &cards_to_check {
@@ -791,7 +814,11 @@ pub fn resolve_count_svar(
 }
 
 /// Check if a card matches a validity filter string like "Forest.YouCtrl".
-fn valid_card_matches(filter: &str, card: &crate::card::CardInstance, controller: PlayerId) -> bool {
+fn valid_card_matches(
+    filter: &str,
+    card: &crate::card::CardInstance,
+    controller: PlayerId,
+) -> bool {
     let parts: Vec<&str> = filter.split('.').collect();
     let base_type = parts.first().copied().unwrap_or("");
 
@@ -819,7 +846,7 @@ fn valid_card_matches(filter: &str, card: &crate::card::CardInstance, controller
                 }
             }
             "Other" => {} // handled by caller if needed
-            _ => {} // ignore unknown qualifiers
+            _ => {}       // ignore unknown qualifiers
         }
     }
     true
@@ -1070,12 +1097,11 @@ pub fn matches_change_type(
         "Card" => true,
         // Support land-subtype selectors used in tutor scripts
         // (e.g. "Forest.Basic", "Plains.Basic").
-        "Plains" | "Island" | "Swamp" | "Mountain" | "Forest" => {
-            card.type_line
-                .subtypes
-                .iter()
-                .any(|st| st.eq_ignore_ascii_case(type_part))
-        }
+        "Plains" | "Island" | "Swamp" | "Mountain" | "Forest" => card
+            .type_line
+            .subtypes
+            .iter()
+            .any(|st| st.eq_ignore_ascii_case(type_part)),
         _ => true,
     };
 

@@ -55,13 +55,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if let Some(chosen_type) = chosen {
         if let Some(source_id) = sa.source {
-            ctx.game.card_mut(source_id).chosen_type = Some(chosen_type);
+            let source = ctx.game.card_mut(source_id);
+            source.chosen_type = Some(chosen_type);
+            source.chosen_type_controller = Some(controller);
+            source.chosen_type_revealed = false;
         }
     }
 }
 
 /// Default creature types for ChooseType (common types used in MTG).
-fn default_creature_types() -> Vec<String> {
+pub fn default_creature_types() -> Vec<String> {
     vec![
         "Advisor",
         "Angel",

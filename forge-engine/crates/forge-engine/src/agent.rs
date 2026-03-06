@@ -145,12 +145,8 @@ pub trait PlayerAgent {
     /// Choose whether to keep the current opening hand or mulligan.
     /// `mulligan_count` is the number of mulligans already taken this game.
     /// Returns true to keep, false to mulligan.
-    fn mulligan_decision(
-        &mut self,
-        player: PlayerId,
-        hand: &[CardId],
-        mulligan_count: u32,
-    ) -> bool;
+    fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId], mulligan_count: u32)
+        -> bool;
 
     /// London Mulligan: after keeping, choose `count` cards from hand to put
     /// on the bottom of the library. Returns exactly `count` card IDs.
@@ -293,12 +289,6 @@ pub trait PlayerAgent {
         cards.to_vec()
     }
 
-    /// Choose whether to shuffle after looking at the top of the library (e.g. Ponder).
-    /// Default: do not shuffle.
-    fn choose_may_shuffle(&mut self, _player: PlayerId) -> bool {
-        false
-    }
-
     /// Choose which cards to discard from hand (for SP$ Discard effects).
     /// `hand` is the full hand, `num` is how many must be discarded.
     /// Default: discard the first `num` cards.
@@ -398,6 +388,22 @@ pub trait PlayerAgent {
         true
     }
 
+    /// Generic confirmation hook for optional effect prompts that don't yet
+    /// have a dedicated typed callback in the Rust agent interface.
+    ///
+    /// Returns true to accept/confirm, false to decline.
+    fn confirm_action(
+        &mut self,
+        _player: PlayerId,
+        _mode: Option<&str>,
+        _message: &str,
+        _options: &[String],
+        _card_name: Option<&str>,
+        _api: Option<&str>,
+    ) -> bool {
+        false
+    }
+
     /// Choose whether to pay the kicker cost for a spell.
     /// `kicker_cost` is the mana cost string (e.g. "W", "2 R").
     /// `card_name` is the name of the spell being cast (for UI display).
@@ -414,12 +420,7 @@ pub trait PlayerAgent {
 
     /// Assist: another player asks if we'll help pay generic mana.
     /// Returns how much generic mana to pay (0 = decline). Default: decline.
-    fn help_pay_assist(
-        &mut self,
-        _player: PlayerId,
-        _card_name: &str,
-        _max_generic: u32,
-    ) -> u32 {
+    fn help_pay_assist(&mut self, _player: PlayerId, _card_name: &str, _max_generic: u32) -> u32 {
         0
     }
 
@@ -533,12 +534,7 @@ pub trait PlayerAgent {
     /// `max_x` is the maximum affordable value.
     /// Returns the chosen X value (0 to max_x).
     /// Default: spend all available mana (max_x).
-    fn choose_x_value(
-        &mut self,
-        _player: PlayerId,
-        max_x: u32,
-        _card_name: Option<&str>,
-    ) -> u32 {
+    fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, _card_name: Option<&str>) -> u32 {
         max_x
     }
 
@@ -719,7 +715,12 @@ pub enum ManaCostAction {
 pub struct PassAgent;
 
 impl PlayerAgent for PassAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        _player: PlayerId,
+        _hand: &[CardId],
+        _mulligan_count: u32,
+    ) -> bool {
         true
     }
 

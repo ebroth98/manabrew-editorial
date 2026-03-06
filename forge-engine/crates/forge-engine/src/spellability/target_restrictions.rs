@@ -66,7 +66,8 @@ impl TargetRestrictions {
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
-        let mut target_kind = parse_target_kind(&valid_tgts[0]);
+        let origin_zone = params.get("Origin").and_then(|v| parse_zone_type(v));
+        let mut target_kind = parse_target_kind_enhanced(&valid_tgts[0], origin_zone);
         let min_targets = params
             .get("TargetMin")
             .and_then(|s| s.parse().ok())
@@ -435,21 +436,13 @@ fn parse_target_kind_enhanced(val: &str, origin_zone: Option<ZoneType>) -> Targe
     // Handle the special case of CardInZone targeting first
     if let Some(zone) = origin_zone {
         if zone != ZoneType::Battlefield {
-            // If we have a non-battlefield origin, this is zone targeting
-            // The filter might be in the ValidTgts$ (e.g., "Creature.YouCtrl")
-            let filter = if val.starts_with("Creature") {
-                let filter_part = val.strip_prefix("Creature").unwrap();
-                let filter_part = filter_part.strip_prefix('.').unwrap_or(filter_part);
-                if filter_part.is_empty() {
-                    None
-                } else {
-                    Some(filter_part.to_string())
-                }
-            } else if val.contains('.') {
-                // Handle formats like "Creature.YouCtrl" directly
-                Some(val.to_string())
-            } else {
+            // If we have a non-battlefield origin, this is zone targeting.
+            // Keep the full ValidTgts token (e.g., "Creature.YouCtrl"), mirroring
+            // Java's Card.isValid(type.properties) flow.
+            let filter = if val.is_empty() {
                 None
+            } else {
+                Some(val.to_string())
             };
             return TargetKind::CardInZone { zone, filter };
         }
@@ -584,6 +577,21 @@ mod tests {
         assert_eq!(tr.target_kind, TargetKind::Creature(Some("OppCtrl".into())));
         assert_eq!(tr.min_targets, 1);
         assert_eq!(tr.max_targets, 1);
+    }
+
+    #[test]
+    fn target_restrictions_from_params_graveyard_origin() {
+        let mut params = BTreeMap::new();
+        params.insert("Origin".into(), "Graveyard".into());
+        params.insert("ValidTgts".into(), "Creature.YouCtrl".into());
+        let tr = TargetRestrictions::new(&params).unwrap();
+        assert_eq!(
+            tr.target_kind,
+            TargetKind::CardInZone {
+                zone: ZoneType::Graveyard,
+                filter: Some("Creature.YouCtrl".into()),
+            }
+        );
     }
 
     #[test]

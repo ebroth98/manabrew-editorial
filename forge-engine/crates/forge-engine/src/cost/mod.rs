@@ -1,15 +1,75 @@
 use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
-use crate::ability::effects::{matches_change_type, parse_counter_type};
+use crate::ability::effects::{matches_change_type, matches_valid_cards, parse_counter_type};
 use crate::card::CounterType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
+use crate::staticability::static_ability_cant_exile::cant_exile;
 use crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life;
+use crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card;
+use crate::staticability::static_ability_cant_sacrifice::cant_sacrifice;
+
+const DYNAMIC_X_SENTINEL: i32 = i32::MIN;
+
+fn parse_i32_or_x(inner: &str, default: i32) -> i32 {
+    let trimmed = inner.trim();
+    if trimmed.eq_ignore_ascii_case("X") {
+        DYNAMIC_X_SENTINEL
+    } else {
+        trimmed.parse::<i32>().unwrap_or(default)
+    }
+}
+
+pub fn resolve_dynamic_amount(
+    game: &GameState,
+    source: CardId,
+    player: PlayerId,
+    amount: i32,
+) -> i32 {
+    if amount != DYNAMIC_X_SENTINEL {
+        return amount;
+    }
+    let source_card = game.card(source);
+
+    if let Some(paid_x) = source_card
+        .svars
+        .get("XPaid")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
+        return paid_x;
+    }
+
+    if let Some(x_expr) = source_card.svars.get("X") {
+        if x_expr == "Count$xPaid" || x_expr == "Count$XPaid" {
+            return source_card
+                .svars
+                .get("XPaid")
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(0);
+        }
+        if let Ok(n) = x_expr.parse::<i32>() {
+            return n;
+        }
+        if x_expr.starts_with("Count$") {
+            return crate::ability::effects::resolve_count_svar(x_expr, game, source, player);
+        }
+    }
+
+    0
+}
 
 /// A single component of an ability cost.
 /// Mirrors Java's CostPart hierarchy.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum RevealFrom {
+    Hand,
+    Exile,
+    HandOrBattlefield,
+    All,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CostPart {
     /// Tap the source permanent. {T}
@@ -23,9 +83,15 @@ pub enum CostPart {
     /// Discard cards. type_filter "CARDNAME" means discard self.
     Discard { amount: i32, type_filter: String },
     /// Remove counters from the source permanent (e.g. SubCounter<1/DREAM/NICKNAME>).
-    SubCounter { amount: i32, counter_type: CounterType },
+    SubCounter {
+        amount: i32,
+        counter_type: CounterType,
+    },
     /// Add counters to the source permanent (e.g. AddCounter<1/LOYALTY>). Mirrors CostPutCounter.
-    AddCounter { amount: i32, counter_type: CounterType },
+    AddCounter {
+        amount: i32,
+        counter_type: CounterType,
+    },
     /// Exile cards from a specific zone (own zone) as cost. Mirrors CostExile.
     Exile {
         amount: i32,
@@ -33,10 +99,9 @@ pub enum CostPart {
         from: ZoneType,
     },
     /// Exile cards from any player's graveyard as cost (ExileAnyGrave). Mirrors CostExile zoneMode=-1.
-    ExileFromAnyGrave {
-        amount: i32,
-        type_filter: String,
-    },
+    ExileFromAnyGrave { amount: i32, type_filter: String },
+    /// Exile cards from the same graveyard as cost (ExileSameGrave). Mirrors CostExile zoneMode=0.
+    ExileFromSameGrave { amount: i32, type_filter: String },
     /// Return permanents to owner's hand as cost. Mirrors CostReturn.
     Return { amount: i32, type_filter: String },
     /// Tap other permanents of a type as cost (tapXType<n/filter>). Mirrors CostTapType.
@@ -47,23 +112,33 @@ pub enum CostPart {
     UntapType { amount: i32, type_filter: String },
     /// Pay energy counters. Mirrors CostPayEnergy.
     PayEnergy(i32),
+    /// Pay shard counters. Mirrors CostPayShards.
+    PayShards(i32),
     /// Deal damage to the source's controller as cost. Mirrors CostDamage.
     DamageYou(i32),
     /// Draw cards as cost. Mirrors CostDraw.
     Draw(i32),
     /// Mill cards as cost. Mirrors CostMill.
     Mill(i32),
-    /// Reveal cards from hand as cost. Mirrors CostReveal.
-    Reveal { amount: i32, type_filter: String },
-    /// Exert the source permanent as cost. Mirrors CostExert.
-    Exert,
+    /// Reveal cards as cost. Mirrors CostReveal.
+    Reveal {
+        amount: i32,
+        type_filter: String,
+        from: RevealFrom,
+    },
+    /// Exert permanent(s) as cost. Mirrors CostExert.
+    Exert { amount: i32, type_filter: String },
     /// Opponent gains life as cost. Mirrors CostGainLife.
     GainLife(i32),
     /// Gain control of permanents matching type_filter as cost. Mirrors CostGainControl.
     GainControl { amount: i32, type_filter: String },
     /// Remove any counter type from permanents matching type_filter. Mirrors CostRemoveAnyCounter.
     /// `counter_type` is None means any counter type.
-    RemoveAnyCounter { amount: i32, type_filter: String, counter_type: Option<CounterType> },
+    RemoveAnyCounter {
+        amount: i32,
+        type_filter: String,
+        counter_type: Option<CounterType>,
+    },
     /// Unattach the source equipment from whatever it is equipping. Mirrors CostUnattach.
     Unattach,
     /// Move cards from exile to graveyard as cost. Mirrors CostExiledMoveToGrave.
@@ -74,6 +149,48 @@ pub enum CostPart {
     /// Waterbend cost (Waterbend<N>). Mirrors CostWaterbend.
     /// Pay N generic mana, but you can tap your artifacts and creatures to help (each tapped = {1}).
     Waterbend { amount: i32 },
+    /// Choose one or more colors as a cost. Mirrors CostChooseColor.
+    ChooseColor(i32),
+    /// Choose a creature type as a cost. Mirrors CostChooseCreatureType.
+    ChooseCreatureType(i32),
+    /// Flip one or more coins as a cost. Mirrors CostFlipCoin.
+    FlipCoin(i32),
+    /// Roll dice as a cost. Mirrors CostRollDice.
+    RollDice {
+        amount: i32,
+        sides: i32,
+        result_svar: String,
+    },
+    /// Exile spells from stack as a cost. Mirrors CostExileFromStack.
+    ExileFromStack { amount: i32, type_filter: String },
+    /// Collect evidence N (exile cards from your graveyard with total MV >= N).
+    CollectEvidence(i32),
+    /// Forage: exile 3 from your graveyard or sacrifice a Food.
+    Forage,
+    /// Put card(s) to library from a zone as a cost. Mirrors CostPutCardToLib.
+    PutCardToLib {
+        amount: i32,
+        lib_pos: i32,
+        type_filter: String,
+        from: ZoneType,
+        same_zone: bool,
+    },
+    /// Enlist another creature as a cost. Mirrors CostEnlist.
+    Enlist { amount: i32, type_filter: String },
+    /// Promise gift to an opponent as a cost. Mirrors CostPromiseGift.
+    PromiseGift,
+    /// Reveal previously chosen player/type as a cost. Mirrors CostRevealChosen.
+    RevealChosen { reveal_type: String },
+    /// Behold (reveal from hand/battlefield), optionally exile revealed cards.
+    Behold {
+        amount: i32,
+        type_filter: String,
+        exile: bool,
+    },
+    /// Blight N = put N -1/-1 counters on creature(s) you control.
+    Blight(i32),
+    /// Exile from battlefield or graveyard as a combined cost (craft).
+    ExileCtrlOrGrave { amount: i32, type_filter: String },
 }
 
 impl CostPart {
@@ -82,31 +199,57 @@ impl CostPart {
     fn payment_order(&self) -> i32 {
         match self {
             CostPart::Tap => -1,
-            CostPart::Untap => -1,
+            CostPart::Untap => 20,
             CostPart::Mana(_) => 0,
-            CostPart::PayEnergy(_) => 5,
-            CostPart::SubCounter { .. } => 6,
+            CostPart::PayEnergy(_) => 7,
+            CostPart::PayShards(_) => 7,
+            CostPart::SubCounter { .. } => 8,
             CostPart::AddCounter { .. } => 6,
             CostPart::PayLife(_) => 7,
             CostPart::DamageYou(_) => 8,
-            CostPart::GainLife(_) => 9,
-            CostPart::Reveal { .. } => 11,
-            CostPart::Draw(_) => 12,
-            CostPart::Mill(_) => 13,
-            CostPart::Discard { .. } => 14,
+            CostPart::GainLife(_) => 5,
+            CostPart::Reveal { from, .. } => match from {
+                RevealFrom::Hand => 5,
+                RevealFrom::HandOrBattlefield => 5,
+                _ => -1,
+            },
+            CostPart::Draw(_) => 20,
+            CostPart::Mill(_) => 20,
+            CostPart::Discard { .. } => 10,
             CostPart::Sacrifice { .. } => 15,
-            CostPart::Exile { .. } => 16,
-            CostPart::ExileFromAnyGrave { .. } => 16,
-            CostPart::Return { .. } => 17,
+            CostPart::Exile { from, .. } => {
+                if *from == ZoneType::Library {
+                    20
+                } else {
+                    15
+                }
+            }
+            CostPart::ExileFromAnyGrave { .. } => 15,
+            CostPart::ExileFromSameGrave { .. } => 15,
+            CostPart::Return { .. } => 10,
             CostPart::TapType { .. } => 18,
             CostPart::UntapType { .. } => 18,
             CostPart::GainControl { .. } => 8,
             CostPart::RemoveAnyCounter { .. } => 8,
-            CostPart::Unattach => 10,
+            CostPart::Unattach => 5,
             CostPart::ExiledMoveToGrave { .. } => 15,
             CostPart::AddMana { .. } => 5,
             CostPart::Waterbend { .. } => 0,
-            CostPart::Exert => 20,
+            CostPart::Exert { .. } => 5,
+            CostPart::ChooseColor(_) => 8,
+            CostPart::ChooseCreatureType(_) => 5,
+            CostPart::FlipCoin(_) => 22,
+            CostPart::RollDice { .. } => 5,
+            CostPart::ExileFromStack { .. } => 15,
+            CostPart::CollectEvidence(_) => 15,
+            CostPart::Forage => 5,
+            CostPart::PutCardToLib { .. } => 10,
+            CostPart::Enlist { .. } => 5,
+            CostPart::PromiseGift => -1,
+            CostPart::RevealChosen { .. } => 20,
+            CostPart::Behold { .. } => 5,
+            CostPart::Blight(_) => 6,
+            CostPart::ExileCtrlOrGrave { .. } => 15,
         }
     }
 }
@@ -144,9 +287,19 @@ pub fn parse_cost(raw: &str) -> Cost {
         if *token == "T" {
             parts.push(CostPart::Tap);
             has_tap = true;
-        } else if *token == "Q" {
+        } else if *token == "Q" || *token == "Untap" {
             // Q = untap cost
             parts.push(CostPart::Untap);
+        } else if token.starts_with("Mana<") {
+            // Mana<cost[\restriction]>
+            if let Some(inner) = token
+                .strip_prefix("Mana<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let mana_text = inner.split('\\').next().unwrap_or(inner);
+                let mana_cost = ManaCost::parse(mana_text);
+                parts.push(CostPart::Mana(mana_cost));
+            }
         } else if token.starts_with("Sac<") {
             // Parse Sac<amount/filter>
             if let Some(inner) = token.strip_prefix("Sac<").and_then(|s| s.strip_suffix('>')) {
@@ -158,7 +311,10 @@ pub fn parse_cost(raw: &str) -> Cost {
             }
         } else if token.starts_with("Discard<") {
             // Parse Discard<amount/filter>
-            if let Some(inner) = token.strip_prefix("Discard<").and_then(|s| s.strip_suffix('>')) {
+            if let Some(inner) = token
+                .strip_prefix("Discard<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let (amount, filter) = parse_amount_filter(inner);
                 parts.push(CostPart::Discard {
                     amount,
@@ -216,9 +372,59 @@ pub fn parse_cost(raw: &str) -> Cost {
                 let amount = inner.parse::<i32>().unwrap_or(1);
                 parts.push(CostPart::PayEnergy(amount));
             }
+        } else if token.starts_with("PayShards<") {
+            if let Some(inner) = token
+                .strip_prefix("PayShards<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let amount = parse_i32_or_x(inner, 1);
+                parts.push(CostPart::PayShards(amount));
+            }
+        } else if token.starts_with("ChooseColor<") {
+            if let Some(inner) = token
+                .strip_prefix("ChooseColor<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let amount = parse_i32_or_x(inner, 1);
+                parts.push(CostPart::ChooseColor(amount));
+            }
+        } else if token.starts_with("ChooseCreatureType<") {
+            if let Some(inner) = token
+                .strip_prefix("ChooseCreatureType<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let amount = parse_i32_or_x(inner, 1);
+                parts.push(CostPart::ChooseCreatureType(amount));
+            }
+        } else if token.starts_with("FlipCoin<") {
+            if let Some(inner) = token
+                .strip_prefix("FlipCoin<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let amount = parse_i32_or_x(inner, 1);
+                parts.push(CostPart::FlipCoin(amount));
+            }
+        } else if token.starts_with("RollDice<") {
+            if let Some(inner) = token
+                .strip_prefix("RollDice<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let mut it = inner.splitn(4, '/');
+                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
+                let sides = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(6);
+                let result_svar = it.next().unwrap_or("").to_string();
+                parts.push(CostPart::RollDice {
+                    amount,
+                    sides,
+                    result_svar,
+                });
+            }
         } else if token.starts_with("Exile<") {
             // Exile<amount/filter> — from battlefield
-            if let Some(inner) = token.strip_prefix("Exile<").and_then(|s| s.strip_suffix('>')) {
+            if let Some(inner) = token
+                .strip_prefix("Exile<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let (amount, filter) = parse_amount_filter(inner);
                 parts.push(CostPart::Exile {
                     amount,
@@ -275,20 +481,45 @@ pub fn parse_cost(raw: &str) -> Cost {
                 });
             }
         } else if token.starts_with("ExileSameGrave<") {
-            // ExileSameGrave<amount/filter> — exile from the same graveyard (treated same as ExileFromGrave in our model)
+            // ExileSameGrave<amount/filter> — exile from the same graveyard
             if let Some(inner) = token
                 .strip_prefix("ExileSameGrave<")
                 .and_then(|s| s.strip_suffix('>'))
             {
+                let (amount, filter) = parse_amount_filter_dynamic(inner);
+                parts.push(CostPart::ExileFromSameGrave {
+                    amount,
+                    type_filter: filter,
+                });
+            }
+        } else if token.starts_with("ExileCtrlOrGrave<") {
+            if let Some(inner) = token
+                .strip_prefix("ExileCtrlOrGrave<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::ExileFromAnyGrave {
+                parts.push(CostPart::ExileCtrlOrGrave {
+                    amount,
+                    type_filter: filter,
+                });
+            }
+        } else if token.starts_with("ExileFromStack<") {
+            if let Some(inner) = token
+                .strip_prefix("ExileFromStack<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let (amount, filter) = parse_amount_filter_dynamic(inner);
+                parts.push(CostPart::ExileFromStack {
                     amount,
                     type_filter: filter,
                 });
             }
         } else if token.starts_with("Return<") {
             // Return<amount/filter> — return permanent(s) to hand
-            if let Some(inner) = token.strip_prefix("Return<").and_then(|s| s.strip_suffix('>')) {
+            if let Some(inner) = token
+                .strip_prefix("Return<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let (amount, filter) = parse_amount_filter(inner);
                 parts.push(CostPart::Return {
                     amount,
@@ -328,26 +559,110 @@ pub fn parse_cost(raw: &str) -> Cost {
                 parts.push(CostPart::DamageYou(amount));
             }
         } else if token.starts_with("Draw<") {
-            if let Some(inner) = token.strip_prefix("Draw<").and_then(|s| s.strip_suffix('>')) {
+            if let Some(inner) = token
+                .strip_prefix("Draw<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let amount = inner.parse::<i32>().unwrap_or(1);
                 parts.push(CostPart::Draw(amount));
             }
         } else if token.starts_with("Mill<") {
-            if let Some(inner) = token.strip_prefix("Mill<").and_then(|s| s.strip_suffix('>')) {
+            if let Some(inner) = token
+                .strip_prefix("Mill<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let amount = inner.parse::<i32>().unwrap_or(1);
                 parts.push(CostPart::Mill(amount));
             }
         } else if token.starts_with("Reveal<") {
-            if let Some(inner) = token.strip_prefix("Reveal<").and_then(|s| s.strip_suffix('>')) {
+            if let Some(inner) = token
+                .strip_prefix("Reveal<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let (amount, filter) = parse_amount_filter(inner);
                 parts.push(CostPart::Reveal {
                     amount,
                     type_filter: filter,
+                    from: RevealFrom::All,
+                });
+            }
+        } else if token.starts_with("ChooseCard<") {
+            if let Some(inner) = token
+                .strip_prefix("ChooseCard<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let (amount, filter) = parse_amount_filter(inner);
+                parts.push(CostPart::Reveal {
+                    amount,
+                    type_filter: filter,
+                    from: RevealFrom::Hand,
+                });
+            }
+        } else if token.starts_with("RevealFromExile<") {
+            if let Some(inner) = token
+                .strip_prefix("RevealFromExile<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let (amount, filter) = parse_amount_filter(inner);
+                parts.push(CostPart::Reveal {
+                    amount,
+                    type_filter: filter,
+                    from: RevealFrom::Exile,
+                });
+            }
+        } else if token.starts_with("RevealOrChoose<") {
+            if let Some(inner) = token
+                .strip_prefix("RevealOrChoose<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let (amount, filter) = parse_amount_filter(inner);
+                parts.push(CostPart::Reveal {
+                    amount,
+                    type_filter: filter,
+                    from: RevealFrom::HandOrBattlefield,
+                });
+            }
+        } else if token.starts_with("Behold<") {
+            if let Some(inner) = token
+                .strip_prefix("Behold<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let (amount, filter) = parse_amount_filter_dynamic(inner);
+                parts.push(CostPart::Behold {
+                    amount,
+                    type_filter: filter,
+                    exile: false,
+                });
+            }
+        } else if token.starts_with("BeholdExile<") {
+            if let Some(inner) = token
+                .strip_prefix("BeholdExile<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let (amount, filter) = parse_amount_filter_dynamic(inner);
+                parts.push(CostPart::Behold {
+                    amount,
+                    type_filter: filter,
+                    exile: true,
                 });
             }
         } else if token.starts_with("Exert<") {
             // Exert<amount/filter[/desc]> — exert the source creature
-            parts.push(CostPart::Exert);
+            if let Some(inner) = token
+                .strip_prefix("Exert<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let (amount, filter) = parse_amount_filter_dynamic(inner);
+                parts.push(CostPart::Exert {
+                    amount,
+                    type_filter: filter,
+                });
+            } else {
+                parts.push(CostPart::Exert {
+                    amount: 1,
+                    type_filter: "CARDNAME".to_string(),
+                });
+            }
         } else if token.starts_with("GainLife<") {
             if let Some(inner) = token
                 .strip_prefix("GainLife<")
@@ -379,11 +694,12 @@ pub fn parse_cost(raw: &str) -> Cost {
                 let amount = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
                 let counter_str = it.next().unwrap_or("Any");
                 let type_filter = it.next().unwrap_or("Permanent").to_string();
-                let counter_type = if counter_str.eq_ignore_ascii_case("Any") || counter_str.is_empty() {
-                    None
-                } else {
-                    Some(parse_counter_type(counter_str))
-                };
+                let counter_type =
+                    if counter_str.eq_ignore_ascii_case("Any") || counter_str.is_empty() {
+                        None
+                    } else {
+                        Some(parse_counter_type(counter_str))
+                    };
                 parts.push(CostPart::RemoveAnyCounter {
                     amount,
                     type_filter,
@@ -395,13 +711,19 @@ pub fn parse_cost(raw: &str) -> Cost {
             parts.push(CostPart::Unattach);
         } else if token.starts_with("Waterbend<") {
             // Waterbend<N> — pay N generic mana, can tap artifacts/creatures to help
-            if let Some(inner) = token.strip_prefix("Waterbend<").and_then(|s| s.strip_suffix('>')) {
+            if let Some(inner) = token
+                .strip_prefix("Waterbend<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let amount = inner.parse::<i32>().unwrap_or(0);
                 parts.push(CostPart::Waterbend { amount });
             }
         } else if token.starts_with("AddMana<") {
             // AddMana<amount/type> — add mana to pool as cost
-            if let Some(inner) = token.strip_prefix("AddMana<").and_then(|s| s.strip_suffix('>')) {
+            if let Some(inner) = token
+                .strip_prefix("AddMana<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
                 let (amount, mana_type) = parse_amount_filter(inner);
                 parts.push(CostPart::AddMana { amount, mana_type });
             }
@@ -417,6 +739,113 @@ pub fn parse_cost(raw: &str) -> Cost {
                     type_filter: filter,
                 });
             }
+        } else if token.starts_with("CollectEvidence<") {
+            if let Some(inner) = token
+                .strip_prefix("CollectEvidence<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let amount = parse_i32_or_x(inner, 1);
+                parts.push(CostPart::CollectEvidence(amount));
+            }
+        } else if token.starts_with("PutCardToLibFromHand<") {
+            if let Some(inner) = token
+                .strip_prefix("PutCardToLibFromHand<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let mut it = inner.splitn(4, '/');
+                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
+                let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+                let type_filter = it.next().unwrap_or("Card").to_string();
+                parts.push(CostPart::PutCardToLib {
+                    amount,
+                    lib_pos,
+                    type_filter,
+                    from: ZoneType::Hand,
+                    same_zone: false,
+                });
+            }
+        } else if token.starts_with("PutCardToLibFromGrave<") {
+            if let Some(inner) = token
+                .strip_prefix("PutCardToLibFromGrave<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let mut it = inner.splitn(4, '/');
+                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
+                let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+                let type_filter = it.next().unwrap_or("Card").to_string();
+                parts.push(CostPart::PutCardToLib {
+                    amount,
+                    lib_pos,
+                    type_filter,
+                    from: ZoneType::Graveyard,
+                    same_zone: false,
+                });
+            }
+        } else if token.starts_with("PutCardToLibFromSameGrave<") {
+            if let Some(inner) = token
+                .strip_prefix("PutCardToLibFromSameGrave<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let mut it = inner.splitn(4, '/');
+                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
+                let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+                let type_filter = it.next().unwrap_or("Card").to_string();
+                parts.push(CostPart::PutCardToLib {
+                    amount,
+                    lib_pos,
+                    type_filter,
+                    from: ZoneType::Graveyard,
+                    same_zone: true,
+                });
+            }
+        } else if token.starts_with("PutCardToLibFromBattlefield<") {
+            if let Some(inner) = token
+                .strip_prefix("PutCardToLibFromBattlefield<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let mut it = inner.splitn(4, '/');
+                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
+                let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+                let type_filter = it.next().unwrap_or("Card").to_string();
+                parts.push(CostPart::PutCardToLib {
+                    amount,
+                    lib_pos,
+                    type_filter,
+                    from: ZoneType::Battlefield,
+                    same_zone: false,
+                });
+            }
+        } else if token.starts_with("Enlist<") {
+            if let Some(inner) = token
+                .strip_prefix("Enlist<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let (amount, filter) = parse_amount_filter_dynamic(inner);
+                parts.push(CostPart::Enlist {
+                    amount,
+                    type_filter: filter,
+                });
+            }
+        } else if token.starts_with("RevealChosen<") {
+            if let Some(inner) = token
+                .strip_prefix("RevealChosen<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let reveal_type = inner.split('/').next().unwrap_or("Player").to_string();
+                parts.push(CostPart::RevealChosen { reveal_type });
+            }
+        } else if token.starts_with("Blight<") {
+            if let Some(inner) = token
+                .strip_prefix("Blight<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let amount = parse_i32_or_x(inner, 1);
+                parts.push(CostPart::Blight(amount));
+            }
+        } else if token.starts_with("PromiseGift") {
+            parts.push(CostPart::PromiseGift);
+        } else if *token == "Forage" {
+            parts.push(CostPart::Forage);
         } else {
             // Accumulate as mana token
             mana_tokens.push(token);
@@ -442,7 +871,7 @@ pub fn parse_cost(raw: &str) -> Cost {
 /// If there's no slash, defaults to amount=1 and filter=inner.
 fn parse_amount_filter(inner: &str) -> (i32, String) {
     if let Some(slash_idx) = inner.find('/') {
-        let amt = inner[..slash_idx].parse::<i32>().unwrap_or(1);
+        let amt = parse_i32_or_x(&inner[..slash_idx], 1);
         // Strip any trailing description (second slash)
         let rest = &inner[slash_idx + 1..];
         let filter = if let Some(desc_idx) = rest.find('/') {
@@ -453,6 +882,21 @@ fn parse_amount_filter(inner: &str) -> (i32, String) {
         (amt, filter)
     } else {
         (1, inner.to_string())
+    }
+}
+
+fn parse_amount_filter_dynamic(inner: &str) -> (i32, String) {
+    if let Some(slash_idx) = inner.find('/') {
+        let amt = parse_i32_or_x(&inner[..slash_idx], 1);
+        let rest = &inner[slash_idx + 1..];
+        let filter = if let Some(desc_idx) = rest.find('/') {
+            rest[..desc_idx].to_string()
+        } else {
+            rest.to_string()
+        };
+        (amt, filter)
+    } else {
+        (parse_i32_or_x(inner, 1), inner.to_string())
     }
 }
 
@@ -562,6 +1006,209 @@ pub fn get_tap_type_targets(
         .collect()
 }
 
+/// Find cards available to enlist: untapped, non-attacking, non-summoning-sick creatures you control.
+pub fn get_enlist_targets(game: &GameState, player: PlayerId) -> Vec<CardId> {
+    game.cards_in_zone(ZoneType::Battlefield, player)
+        .to_vec()
+        .into_iter()
+        .filter(|&cid| {
+            let c = game.card(cid);
+            c.is_creature() && !c.tapped && !c.summoning_sick && c.attacking_player.is_none()
+        })
+        .collect()
+}
+
+pub fn matches_exile_from_stack_filter(
+    game: &GameState,
+    card_id: CardId,
+    player: PlayerId,
+    type_filter: &str,
+) -> bool {
+    if type_filter == "All" || type_filter.is_empty() {
+        return true;
+    }
+    let card = game.card(card_id);
+    for clause in type_filter.split(';') {
+        let clause = clause.trim();
+        if clause.is_empty() {
+            continue;
+        }
+        let normalized = normalize_stack_clause_for_valid_cards(clause);
+        if matches_valid_cards(card, &normalized, player) {
+            return true;
+        }
+    }
+    false
+}
+
+fn is_valid_cards_type_token(token: &str) -> bool {
+    matches!(
+        token,
+        "Card"
+            | "Permanent"
+            | "Creature"
+            | "Land"
+            | "Artifact"
+            | "Enchantment"
+            | "Planeswalker"
+            | "Instant"
+            | "Sorcery"
+            | "Plains"
+            | "Island"
+            | "Swamp"
+            | "Mountain"
+            | "Forest"
+    )
+}
+
+fn normalize_stack_clause_for_valid_cards(clause: &str) -> String {
+    let mut tokens: Vec<&str> = clause
+        .split(['.', '+'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty() && !s.eq_ignore_ascii_case("Spell"))
+        .collect();
+
+    if tokens.is_empty() {
+        return "Card".to_string();
+    }
+
+    let type_idx = tokens
+        .iter()
+        .position(|t| is_valid_cards_type_token(t))
+        .unwrap_or(usize::MAX);
+
+    if type_idx == usize::MAX {
+        let mut out = String::from("Card");
+        for t in tokens.drain(..) {
+            out.push('.');
+            out.push_str(t);
+        }
+        return out;
+    }
+
+    let type_part = tokens[type_idx].to_string();
+    let mut qualifiers: Vec<&str> = Vec::with_capacity(tokens.len().saturating_sub(1));
+    qualifiers.extend(tokens[..type_idx].iter().copied());
+    qualifiers.extend(tokens[type_idx + 1..].iter().copied());
+
+    if qualifiers.is_empty() {
+        type_part
+    } else {
+        format!("{}.{}", type_part, qualifiers.join("."))
+    }
+}
+
+pub fn strip_exile_type_modifiers(type_filter: &str) -> String {
+    let mut t = type_filter.to_string();
+    if t.contains("FromTopGrave") {
+        t = t.replace("FromTopGrave", "");
+    }
+    if let Some((left, _)) = t.split_once("+withTotalCMCEQ") {
+        t = left.to_string();
+    }
+    if let Some((left, _)) = t.split_once("+withTotalCMCGE") {
+        t = left.to_string();
+    }
+    if t.contains("+withSharedCardType") {
+        t = t.replace("+withSharedCardType", "");
+    }
+    if let Some((left, _)) = t.split_once("+withTypesGE") {
+        t = left.to_string();
+    }
+    t
+}
+
+pub fn normalize_exile_base_filter(type_filter: &str) -> String {
+    let t = strip_exile_type_modifiers(type_filter);
+    if t.is_empty() || t.eq_ignore_ascii_case("All") || t.contains('X') {
+        "Card".to_string()
+    } else {
+        t
+    }
+}
+
+fn parse_exile_total_cmc_eq(type_filter: &str) -> Option<&str> {
+    type_filter
+        .split_once("+withTotalCMCEQ")
+        .map(|(_, rhs)| rhs.trim())
+}
+
+fn parse_exile_total_cmc_ge(type_filter: &str) -> Option<&str> {
+    type_filter
+        .split_once("+withTotalCMCGE")
+        .map(|(_, rhs)| rhs.trim())
+}
+
+fn parse_exile_types_ge(type_filter: &str) -> Option<i32> {
+    type_filter
+        .split_once("+withTypesGE")
+        .and_then(|(_, rhs)| rhs.trim().parse::<i32>().ok())
+}
+
+fn exile_requires_shared_card_type(type_filter: &str) -> bool {
+    type_filter.contains("+withSharedCardType")
+}
+
+fn reveal_candidates(
+    game: &GameState,
+    player: PlayerId,
+    source: CardId,
+    type_filter: &str,
+    from: &RevealFrom,
+) -> Vec<CardId> {
+    let mut cards: Vec<CardId> = match from {
+        RevealFrom::Hand => game.cards_in_zone(ZoneType::Hand, player).to_vec(),
+        RevealFrom::Exile => game.cards_in_zone(ZoneType::Exile, player).to_vec(),
+        RevealFrom::HandOrBattlefield => {
+            let mut v = game.cards_in_zone(ZoneType::Hand, player).to_vec();
+            v.extend(
+                game.cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .copied(),
+            );
+            v
+        }
+        RevealFrom::All => {
+            let mut v = game.cards_in_zone(ZoneType::Hand, player).to_vec();
+            v.extend(
+                game.cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .copied(),
+            );
+            v.extend(
+                game.cards_in_zone(ZoneType::Graveyard, player)
+                    .iter()
+                    .copied(),
+            );
+            v.extend(
+                game.cards_in_zone(ZoneType::Library, player)
+                    .iter()
+                    .copied(),
+            );
+            v.extend(game.cards_in_zone(ZoneType::Exile, player).iter().copied());
+            v
+        }
+    };
+
+    // Spell costs can't pay reveal from the source card itself while in hand.
+    if matches!(
+        from,
+        RevealFrom::Hand | RevealFrom::HandOrBattlefield | RevealFrom::All
+    ) && game.card(source).zone == ZoneType::Hand
+    {
+        cards.retain(|&cid| cid != source);
+    }
+
+    if type_filter == "Card" || type_filter.is_empty() || type_filter == "Hand" {
+        return cards;
+    }
+
+    cards
+        .into_iter()
+        .filter(|&cid| matches_change_type(game.card(cid), type_filter, &[]))
+        .collect()
+}
+
 /// Check if a cost can be paid by the given player for the given source card.
 /// `available_mana` is the total mana available (pool + untapped sources).
 pub fn can_pay(
@@ -654,18 +1301,27 @@ fn can_pay_inner(
                     }
                 } else if type_filter == "Card" || type_filter.is_empty() {
                     // Any card — just need enough cards in hand.
-                    let hand_size = game.cards_in_zone(ZoneType::Hand, player).len() as i32;
+                    let mut hand_size = game.cards_in_zone(ZoneType::Hand, player).len() as i32;
+                    if card.zone == ZoneType::Hand && card.owner == player {
+                        hand_size -= 1;
+                    }
                     if hand_size < *amount {
                         return false;
                     }
                 } else {
                     // Type-filtered discard — count matching cards in hand.
                     // Mirrors Java CostDiscard.getMaxAmountX() filtering by getType().
-                    let matching = game
+                    let mut matching = game
                         .cards_in_zone(ZoneType::Hand, player)
                         .iter()
                         .filter(|&&cid| matches_change_type(game.card(cid), type_filter, &[]))
                         .count() as i32;
+                    if card.zone == ZoneType::Hand
+                        && card.owner == player
+                        && matches_change_type(card, type_filter, &[])
+                    {
+                        matching -= 1;
+                    }
                     if matching < *amount {
                         return false;
                     }
@@ -688,19 +1344,113 @@ fn can_pay_inner(
                     return false;
                 }
             }
-            CostPart::Exile { amount, type_filter, from } => {
-                if type_filter == "CARDNAME" {
+            CostPart::Exile {
+                amount,
+                type_filter,
+                from,
+            } => {
+                if type_filter == "All" {
+                    continue;
+                }
+                if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
                     if card.zone != *from {
                         return false;
                     }
                 } else {
-                    let targets = get_zone_targets(game, player, *from, type_filter);
-                    if (targets.len() as i32) < *amount {
+                    let base_filter = normalize_exile_base_filter(type_filter);
+                    let battlefield_cards: Vec<_> = game
+                        .players
+                        .iter()
+                        .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
+                        .map(|&cid| game.card(cid).clone())
+                        .collect();
+                    let candidates: Vec<CardId> =
+                        get_zone_targets(game, player, *from, &base_filter)
+                            .into_iter()
+                            .filter(|&cid| {
+                                !cant_exile(&battlefield_cards, game.card(cid), None, true)
+                            })
+                            .collect();
+                    let mut available = candidates.len() as i32;
+                    if *from == ZoneType::Hand
+                        && card.zone == ZoneType::Hand
+                        && card.owner == player
+                        && matches_change_type(card, &base_filter, &[])
+                    {
+                        available -= 1;
+                    }
+                    if let Some(n) = parse_exile_types_ge(type_filter) {
+                        let mut unique_types = std::collections::BTreeSet::new();
+                        for cid in &candidates {
+                            for t in &game.card(*cid).type_line.core_types {
+                                unique_types.insert(format!("{:?}", t));
+                            }
+                        }
+                        if (unique_types.len() as i32) < n {
+                            return false;
+                        }
+                    }
+                    if let Some(expr) = parse_exile_total_cmc_eq(type_filter) {
+                        let target = if expr.eq_ignore_ascii_case("X") {
+                            None
+                        } else {
+                            expr.parse::<i32>().ok()
+                        };
+                        if let Some(target) = target {
+                            let values: Vec<i32> = candidates
+                                .iter()
+                                .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
+                                .collect();
+                            if !cmc_can_sum_to(target, &values) {
+                                return false;
+                            }
+                        }
+                    }
+                    if let Some(expr) = parse_exile_total_cmc_ge(type_filter) {
+                        let target = if expr.eq_ignore_ascii_case("X") {
+                            None
+                        } else {
+                            expr.parse::<i32>().ok()
+                        };
+                        if let Some(target) = target {
+                            let total: i32 = candidates
+                                .iter()
+                                .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
+                                .sum();
+                            if total < target {
+                                return false;
+                            }
+                        }
+                    }
+                    if exile_requires_shared_card_type(type_filter) {
+                        if available < *amount {
+                            return false;
+                        }
+                        let mut has_pair = false;
+                        for &a in &candidates {
+                            for &b in &candidates {
+                                if a != b && shares_card_type(game, a, b) {
+                                    has_pair = true;
+                                    break;
+                                }
+                            }
+                            if has_pair {
+                                break;
+                            }
+                        }
+                        if !has_pair {
+                            return false;
+                        }
+                    }
+                    if available < *amount {
                         return false;
                     }
                 }
             }
-            CostPart::Return { amount, type_filter } => {
+            CostPart::Return {
+                amount,
+                type_filter,
+            } => {
                 if type_filter == "CARDNAME" {
                     if card.zone != ZoneType::Battlefield {
                         return false;
@@ -712,13 +1462,19 @@ fn can_pay_inner(
                     }
                 }
             }
-            CostPart::TapType { amount, type_filter } => {
+            CostPart::TapType {
+                amount,
+                type_filter,
+            } => {
                 let targets = get_tap_type_targets(game, player, type_filter, source);
                 if (targets.len() as i32) < *amount {
                     return false;
                 }
             }
-            CostPart::UntapType { amount, type_filter } => {
+            CostPart::UntapType {
+                amount,
+                type_filter,
+            } => {
                 // Untap tapped permanents matching type
                 let count = game
                     .cards_in_zone(ZoneType::Battlefield, player)
@@ -740,6 +1496,12 @@ fn can_pay_inner(
                     return false;
                 }
             }
+            CostPart::PayShards(amount) => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                if game.player(player).mana_shards < resolved_amount {
+                    return false;
+                }
+            }
             CostPart::DamageYou(_) => {
                 // Mirrors Java CostDamage.canPay() — always returns true.
                 // The player may die as a state-based action after payment; that's legal.
@@ -750,22 +1512,78 @@ fn can_pay_inner(
             CostPart::Mill(_) => {
                 // Same as draw: always considered payable
             }
-            CostPart::Reveal { amount, type_filter } => {
-                let count = get_zone_targets(game, player, ZoneType::Hand, type_filter).len() as i32;
-                if count < *amount {
+            CostPart::Reveal {
+                amount,
+                type_filter,
+                from,
+            } => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                if type_filter == "Hand" {
+                    continue;
+                }
+                if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
+                    let src_zone = game.card(source).zone;
+                    let in_zone = match from {
+                        RevealFrom::Hand => src_zone == ZoneType::Hand,
+                        RevealFrom::Exile => src_zone == ZoneType::Exile,
+                        RevealFrom::HandOrBattlefield => {
+                            src_zone == ZoneType::Hand || src_zone == ZoneType::Battlefield
+                        }
+                        RevealFrom::All => true,
+                    };
+                    if !in_zone {
+                        return false;
+                    }
+                    continue;
+                }
+                let candidates = reveal_candidates(game, player, source, type_filter, from);
+                if type_filter == "SameColor" {
+                    let mut ok = false;
+                    for &cid in &candidates {
+                        let color = game.card(cid).color;
+                        let count = candidates
+                            .iter()
+                            .filter(|&&other| game.card(other).color.shares_color_with(color))
+                            .count() as i32;
+                        if count >= resolved_amount {
+                            ok = true;
+                            break;
+                        }
+                    }
+                    if !ok {
+                        return false;
+                    }
+                } else if (candidates.len() as i32) < resolved_amount {
                     return false;
                 }
             }
-            CostPart::Exert => {
-                // Exerting self: source must be on battlefield and not already exerted.
-                if card.zone != ZoneType::Battlefield {
-                    return false;
+            CostPart::Exert {
+                amount,
+                type_filter,
+            } => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
+                    if resolved_amount > 1 {
+                        return false;
+                    }
+                } else {
+                    let count = game
+                        .cards_in_zone(ZoneType::Battlefield, player)
+                        .iter()
+                        .filter(|&&cid| matches_change_type(game.card(cid), type_filter, &[]))
+                        .count() as i32;
+                    if count < resolved_amount {
+                        return false;
+                    }
                 }
             }
             CostPart::GainLife(_) => {
                 // Opponent gaining life is always payable
             }
-            CostPart::GainControl { amount, type_filter } => {
+            CostPart::GainControl {
+                amount,
+                type_filter,
+            } => {
                 // Scan all players' battlefields — can gain control of any matching permanent.
                 // Mirrors Java CostGainControl.canPay() which calls getCardsIn(ZoneType.Battlefield)
                 // across all players.
@@ -779,7 +1597,11 @@ fn can_pay_inner(
                     return false;
                 }
             }
-            CostPart::RemoveAnyCounter { amount, type_filter, counter_type } => {
+            CostPart::RemoveAnyCounter {
+                amount,
+                type_filter,
+                counter_type,
+            } => {
                 // Sum counters of the given type (or any type) across all matching permanents
                 let total: i32 = game
                     .cards_in_zone(ZoneType::Battlefield, player)
@@ -810,23 +1632,69 @@ fn can_pay_inner(
                     return false;
                 }
             }
-            CostPart::ExileFromAnyGrave { amount, type_filter } => {
+            CostPart::ExileFromAnyGrave {
+                amount,
+                type_filter,
+            } => {
+                let base_filter = normalize_exile_base_filter(type_filter);
+                let battlefield_cards: Vec<_> = game
+                    .players
+                    .iter()
+                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
+                    .map(|&cid| game.card(cid).clone())
+                    .collect();
                 // Cards in ANY player's graveyard matching filter.
                 let count = game
                     .players
                     .iter()
                     .flat_map(|p| game.cards_in_zone(ZoneType::Graveyard, p.id))
                     .filter(|&&cid| {
-                        type_filter == "Card"
-                            || type_filter.is_empty()
-                            || matches_change_type(game.card(cid), type_filter, &[])
+                        (base_filter == "Card"
+                            || base_filter.is_empty()
+                            || matches_change_type(game.card(cid), &base_filter, &[]))
+                            && !cant_exile(&battlefield_cards, game.card(cid), None, true)
                     })
                     .count() as i32;
                 if count < *amount {
                     return false;
                 }
             }
-            CostPart::ExiledMoveToGrave { amount, type_filter } => {
+            CostPart::ExileFromSameGrave {
+                amount,
+                type_filter,
+            } => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                let base_filter = normalize_exile_base_filter(type_filter);
+                let battlefield_cards: Vec<_> = game
+                    .players
+                    .iter()
+                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
+                    .map(|&cid| game.card(cid).clone())
+                    .collect();
+                let mut by_owner: std::collections::HashMap<PlayerId, i32> =
+                    std::collections::HashMap::new();
+                for p in &game.players {
+                    for &cid in game.cards_in_zone(ZoneType::Graveyard, p.id) {
+                        if base_filter == "Card"
+                            || base_filter.is_empty()
+                            || matches_change_type(game.card(cid), &base_filter, &[])
+                        {
+                            if cant_exile(&battlefield_cards, game.card(cid), None, true) {
+                                continue;
+                            }
+                            let owner = game.card(cid).owner;
+                            *by_owner.entry(owner).or_insert(0) += 1;
+                        }
+                    }
+                }
+                if by_owner.values().all(|&v| v < resolved_amount) {
+                    return false;
+                }
+            }
+            CostPart::ExiledMoveToGrave {
+                amount,
+                type_filter,
+            } => {
                 // Count cards in exile across all players matching the filter
                 let exiled = get_exiled_targets(game, type_filter).len() as i32;
                 if exiled < *amount {
@@ -851,10 +1719,299 @@ fn can_pay_inner(
                     return false;
                 }
             }
+            CostPart::ChooseColor(_) => {}
+            CostPart::ChooseCreatureType(_) => {}
+            CostPart::FlipCoin(_) => {}
+            CostPart::RollDice { .. } => {}
+            CostPart::PromiseGift => {}
+            CostPart::RevealChosen { reveal_type } => {
+                let source_card = game.card(source);
+                if reveal_type.eq_ignore_ascii_case("Player") {
+                    if source_card.chosen_player.is_none() {
+                        return false;
+                    }
+                    if source_card
+                        .chosen_player_controller
+                        .is_some_and(|pid| pid != player)
+                    {
+                        return false;
+                    }
+                } else if reveal_type.eq_ignore_ascii_case("Type") {
+                    if source_card.chosen_type.is_none() {
+                        return false;
+                    }
+                    if source_card
+                        .chosen_type_controller
+                        .is_some_and(|pid| pid != player)
+                    {
+                        return false;
+                    }
+                }
+            }
+            CostPart::CollectEvidence(amount) => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                let battlefield_cards: Vec<_> = game
+                    .players
+                    .iter()
+                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
+                    .map(|&cid| game.card(cid).clone())
+                    .collect();
+                let total_mv: i32 = game
+                    .cards_in_zone(ZoneType::Graveyard, player)
+                    .iter()
+                    .filter(|&&cid| !cant_exile(&battlefield_cards, game.card(cid), None, true))
+                    .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
+                    .sum();
+                if total_mv < resolved_amount {
+                    return false;
+                }
+            }
+            CostPart::Forage => {
+                let battlefield_cards: Vec<_> = game
+                    .players
+                    .iter()
+                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
+                    .map(|&cid| game.card(cid).clone())
+                    .collect();
+                let gy_count = game
+                    .cards_in_zone(ZoneType::Graveyard, player)
+                    .iter()
+                    .filter(|&&cid| !cant_exile(&battlefield_cards, game.card(cid), None, true))
+                    .count() as i32;
+                let has_food = game
+                    .cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .any(|&cid| {
+                        game.card(cid).type_line.has_subtype("Food")
+                            && !cant_sacrifice(&battlefield_cards, game.card(cid), None, true)
+                    });
+                if gy_count < 3 && !has_food {
+                    return false;
+                }
+            }
+            CostPart::ExileFromStack {
+                amount,
+                type_filter,
+            } => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                if type_filter == "All" {
+                    continue;
+                }
+                let count = game
+                    .stack
+                    .iter()
+                    .filter(|e| e.spell_ability.is_spell)
+                    .filter_map(|e| e.spell_ability.source)
+                    .filter(|&cid| matches_exile_from_stack_filter(game, cid, player, type_filter))
+                    .count() as i32;
+                if count < resolved_amount {
+                    return false;
+                }
+            }
+            CostPart::PutCardToLib {
+                amount,
+                type_filter,
+                from,
+                same_zone,
+                ..
+            } => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
+                    if *same_zone {
+                        let in_zone = game
+                            .players
+                            .iter()
+                            .any(|p| game.cards_in_zone(*from, p.id).contains(&source));
+                        if !in_zone {
+                            return false;
+                        }
+                    } else if game.card(source).zone != *from {
+                        return false;
+                    }
+                    continue;
+                }
+                if *same_zone {
+                    let pool: Vec<CardId> = game
+                        .players
+                        .iter()
+                        .flat_map(|p| game.cards_in_zone(*from, p.id).to_vec())
+                        .filter(|&cid| {
+                            type_filter == "Card"
+                                || type_filter.is_empty()
+                                || matches_change_type(game.card(cid), type_filter, &[])
+                        })
+                        .collect();
+                    let mut by_controller: std::collections::HashMap<PlayerId, i32> =
+                        std::collections::HashMap::new();
+                    for cid in pool {
+                        let ctrl = game.card(cid).controller;
+                        *by_controller.entry(ctrl).or_insert(0) += 1;
+                    }
+                    if by_controller.values().all(|&v| v < resolved_amount) {
+                        return false;
+                    }
+                } else {
+                    let count = get_zone_targets(game, player, *from, type_filter).len() as i32;
+                    if count < resolved_amount {
+                        return false;
+                    }
+                }
+            }
+            CostPart::Enlist { .. } => {
+                let valid = get_enlist_targets(game, player);
+                if valid.is_empty() {
+                    return false;
+                }
+            }
+            CostPart::Behold {
+                amount,
+                type_filter,
+                ..
+            } => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                if type_filter.ends_with("ChosenType") {
+                    let mut cards = game.cards_in_zone(ZoneType::Hand, player).to_vec();
+                    cards.extend(
+                        game.cards_in_zone(ZoneType::Battlefield, player)
+                            .iter()
+                            .copied(),
+                    );
+                    let mut ok = false;
+                    for &cid in &cards {
+                        let shared = cards
+                            .iter()
+                            .filter(|&&other| shares_creature_type(game, cid, other))
+                            .count() as i32;
+                        if shared >= resolved_amount {
+                            ok = true;
+                            break;
+                        }
+                    }
+                    if !ok {
+                        return false;
+                    }
+                    continue;
+                }
+                let mut count = 0i32;
+                for &cid in game.cards_in_zone(ZoneType::Hand, player) {
+                    if type_filter == "Card"
+                        || type_filter.is_empty()
+                        || matches_change_type(game.card(cid), type_filter, &[])
+                    {
+                        count += 1;
+                    }
+                }
+                for &cid in game.cards_in_zone(ZoneType::Battlefield, player) {
+                    if type_filter == "Card"
+                        || type_filter.is_empty()
+                        || matches_change_type(game.card(cid), type_filter, &[])
+                    {
+                        count += 1;
+                    }
+                }
+                if count < resolved_amount {
+                    return false;
+                }
+            }
+            CostPart::Blight(amount) => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                let battlefield_cards: Vec<_> = game
+                    .players
+                    .iter()
+                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
+                    .map(|&cid| game.card(cid).clone())
+                    .collect();
+                let creature_count = game
+                    .cards_in_zone(ZoneType::Battlefield, player)
+                    .iter()
+                    .filter(|&&cid| {
+                        let c = game.card(cid);
+                        c.is_creature()
+                            && !any_cant_put_counter_on_card(
+                                &battlefield_cards,
+                                c,
+                                &CounterType::M1M1,
+                            )
+                    })
+                    .count() as i32;
+                if creature_count < resolved_amount {
+                    return false;
+                }
+            }
+            CostPart::ExileCtrlOrGrave {
+                amount,
+                type_filter,
+            } => {
+                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
+                let base_filter = normalize_exile_base_filter(type_filter);
+                let battlefield_cards: Vec<_> = game
+                    .players
+                    .iter()
+                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
+                    .map(|&cid| game.card(cid).clone())
+                    .collect();
+                let bf = get_zone_targets(game, player, ZoneType::Battlefield, &base_filter)
+                    .into_iter()
+                    .filter(|&cid| !cant_exile(&battlefield_cards, game.card(cid), None, true))
+                    .count();
+                let gy = get_zone_targets(game, player, ZoneType::Graveyard, &base_filter)
+                    .into_iter()
+                    .filter(|&cid| !cant_exile(&battlefield_cards, game.card(cid), None, true))
+                    .count();
+                if ((bf + gy) as i32) < resolved_amount {
+                    return false;
+                }
+            }
         }
     }
 
     true
+}
+
+fn shares_creature_type(game: &GameState, a: CardId, b: CardId) -> bool {
+    let ca = game.card(a);
+    let cb = game.card(b);
+    if !ca.is_creature() || !cb.is_creature() {
+        return false;
+    }
+    ca.type_line
+        .subtypes
+        .iter()
+        .any(|st| cb.type_line.has_subtype(st))
+}
+
+fn shares_card_type(game: &GameState, a: CardId, b: CardId) -> bool {
+    let ca = game.card(a);
+    let cb = game.card(b);
+    ca.type_line
+        .core_types
+        .iter()
+        .any(|t| cb.type_line.core_types.contains(t))
+}
+
+fn cmc_can_sum_to(target: i32, values: &[i32]) -> bool {
+    if target < 0 {
+        return false;
+    }
+    let mut reachable: std::collections::BTreeSet<i32> = std::collections::BTreeSet::new();
+    reachable.insert(0);
+    for &v in values {
+        if v < 0 {
+            continue;
+        }
+        let mut next = reachable.clone();
+        for &r in &reachable {
+            let nv = r + v;
+            if nv <= target {
+                next.insert(nv);
+            }
+        }
+        reachable = next;
+        if reachable.contains(&target) {
+            return true;
+        }
+    }
+    reachable.contains(&target)
 }
 
 #[cfg(test)]
@@ -960,7 +2117,11 @@ mod tests {
         let cost = parse_cost("ExileFromHand<1/Card>");
         assert_eq!(cost.parts.len(), 1);
         match &cost.parts[0] {
-            CostPart::Exile { amount, type_filter, from } => {
+            CostPart::Exile {
+                amount,
+                type_filter,
+                from,
+            } => {
                 assert_eq!(*amount, 1);
                 assert_eq!(type_filter, "Card");
                 assert_eq!(*from, ZoneType::Hand);
@@ -974,7 +2135,10 @@ mod tests {
         let cost = parse_cost("AddCounter<1/LOYALTY>");
         assert_eq!(cost.parts.len(), 1);
         match &cost.parts[0] {
-            CostPart::AddCounter { amount, counter_type } => {
+            CostPart::AddCounter {
+                amount,
+                counter_type,
+            } => {
                 assert_eq!(*amount, 1);
                 assert_eq!(*counter_type, CounterType::Loyalty);
             }
@@ -987,7 +2151,10 @@ mod tests {
         let cost = parse_cost("Return<1/CARDNAME>");
         assert_eq!(cost.parts.len(), 1);
         match &cost.parts[0] {
-            CostPart::Return { amount, type_filter } => {
+            CostPart::Return {
+                amount,
+                type_filter,
+            } => {
                 assert_eq!(*amount, 1);
                 assert_eq!(type_filter, "CARDNAME");
             }
@@ -1000,7 +2167,10 @@ mod tests {
         let cost = parse_cost("tapXType<2/Creature>");
         assert_eq!(cost.parts.len(), 1);
         match &cost.parts[0] {
-            CostPart::TapType { amount, type_filter } => {
+            CostPart::TapType {
+                amount,
+                type_filter,
+            } => {
                 assert_eq!(*amount, 2);
                 assert_eq!(type_filter, "Creature");
             }
@@ -1015,6 +2185,81 @@ mod tests {
         match &cost.parts[0] {
             CostPart::PayEnergy(n) => assert_eq!(*n, 3),
             _ => panic!("expected PayEnergy cost part"),
+        }
+    }
+
+    #[test]
+    fn parse_explicit_mana_token() {
+        let cost = parse_cost("Mana<2 G>");
+        assert_eq!(cost.parts.len(), 1);
+        assert!(matches!(cost.parts[0], CostPart::Mana(_)));
+    }
+
+    #[test]
+    fn parse_collect_evidence() {
+        let cost = parse_cost("CollectEvidence<6>");
+        assert_eq!(cost.parts.len(), 1);
+        assert!(matches!(cost.parts[0], CostPart::CollectEvidence(6)));
+    }
+
+    #[test]
+    fn parse_forage() {
+        let cost = parse_cost("Forage");
+        assert_eq!(cost.parts.len(), 1);
+        assert!(matches!(cost.parts[0], CostPart::Forage));
+    }
+
+    #[test]
+    fn parse_put_card_to_lib_from_grave() {
+        let cost = parse_cost("PutCardToLibFromGrave<1/0/Card>");
+        assert_eq!(cost.parts.len(), 1);
+        match &cost.parts[0] {
+            CostPart::PutCardToLib {
+                amount,
+                lib_pos,
+                type_filter,
+                from,
+                same_zone,
+            } => {
+                assert_eq!(*amount, 1);
+                assert_eq!(*lib_pos, 0);
+                assert_eq!(type_filter, "Card");
+                assert_eq!(*from, ZoneType::Graveyard);
+                assert!(!same_zone);
+            }
+            _ => panic!("expected PutCardToLib cost part"),
+        }
+    }
+
+    #[test]
+    fn parse_exile_from_stack() {
+        let cost = parse_cost("ExileFromStack<1/Spell>");
+        assert_eq!(cost.parts.len(), 1);
+        match &cost.parts[0] {
+            CostPart::ExileFromStack {
+                amount,
+                type_filter,
+            } => {
+                assert_eq!(*amount, 1);
+                assert_eq!(type_filter, "Spell");
+            }
+            _ => panic!("expected ExileFromStack cost part"),
+        }
+    }
+
+    #[test]
+    fn parse_exile_ctrl_or_grave() {
+        let cost = parse_cost("ExileCtrlOrGrave<2/Artifact>");
+        assert_eq!(cost.parts.len(), 1);
+        match &cost.parts[0] {
+            CostPart::ExileCtrlOrGrave {
+                amount,
+                type_filter,
+            } => {
+                assert_eq!(*amount, 2);
+                assert_eq!(type_filter, "Artifact");
+            }
+            _ => panic!("expected ExileCtrlOrGrave cost part"),
         }
     }
 }

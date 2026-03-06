@@ -49,25 +49,44 @@ fn condition_matches(
     } else {
         return true;
     };
-    if let Some(n) = compare.strip_prefix("LE").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("LE")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value <= n;
     }
-    if let Some(n) = compare.strip_prefix("LT").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("LT")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value < n;
     }
-    if let Some(n) = compare.strip_prefix("GE").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("GE")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value >= n;
     }
-    if let Some(n) = compare.strip_prefix("GT").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("GT")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value > n;
     }
-    if let Some(n) = compare.strip_prefix("EQ").and_then(|s| s.parse::<i32>().ok()) {
+    if let Some(n) = compare
+        .strip_prefix("EQ")
+        .and_then(|s| s.parse::<i32>().ok())
+    {
         return value == n;
     }
     true
 }
 
-fn matches_valid_player(valid: Option<&str>, player: PlayerId, source_controller: PlayerId) -> bool {
+fn matches_valid_player(
+    valid: Option<&str>,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Player") => true,

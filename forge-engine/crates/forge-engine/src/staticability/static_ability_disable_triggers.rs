@@ -14,7 +14,11 @@ pub fn is_disabled(
     _run_params: &RunParams,
 ) -> bool {
     let host = game.card(trigger_host);
-    for source in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for source in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for st_ab in source
             .static_abilities
             .iter()
@@ -64,8 +68,11 @@ fn mode_specific_matches(
                 let Some(cid) = moved else {
                     return false;
                 };
-                if !matches_valid_card_for_controller(valid_cause, game.card(cid), source_controller)
-                {
+                if !matches_valid_card_for_controller(
+                    valid_cause,
+                    game.card(cid),
+                    source_controller,
+                ) {
                     return false;
                 }
             }
@@ -86,8 +93,11 @@ fn mode_specific_matches(
                 let Some(cid) = run_params.spell_card else {
                     return false;
                 };
-                if !matches_valid_card_for_controller(valid_cause, game.card(cid), source_controller)
-                {
+                if !matches_valid_card_for_controller(
+                    valid_cause,
+                    game.card(cid),
+                    source_controller,
+                ) {
                     return false;
                 }
             }
@@ -106,8 +116,11 @@ fn mode_specific_matches(
                 let Some(attacker) = run_params.attacker else {
                     return false;
                 };
-                if !matches_valid_card_for_controller(valid_cause, game.card(attacker), source_controller)
-                {
+                if !matches_valid_card_for_controller(
+                    valid_cause,
+                    game.card(attacker),
+                    source_controller,
+                ) {
                     return false;
                 }
             }
@@ -124,8 +137,11 @@ fn mode_specific_matches(
                 let Some(source_id) = run_params.damage_source else {
                     return false;
                 };
-                if !matches_valid_card_for_controller(valid_source, game.card(source_id), source_controller)
-                {
+                if !matches_valid_card_for_controller(
+                    valid_source,
+                    game.card(source_id),
+                    source_controller,
+                ) {
                     return false;
                 }
             }
@@ -210,7 +226,9 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::TapAll { .. } => "TapAll",
         crate::trigger::TriggerMode::UntapAll { .. } => "UntapAll",
         crate::trigger::TriggerMode::BecomesTargetOnce { .. } => "BecomesTargetOnce",
-        crate::trigger::TriggerMode::AttackerBlockedByCreature { .. } => "AttackerBlockedByCreature",
+        crate::trigger::TriggerMode::AttackerBlockedByCreature { .. } => {
+            "AttackerBlockedByCreature"
+        }
         crate::trigger::TriggerMode::AttackerBlockedOnce { .. } => "AttackerBlockedOnce",
         crate::trigger::TriggerMode::AttackerUnblockedOnce { .. } => "AttackerUnblockedOnce",
         crate::trigger::TriggerMode::SpellCastOnce { .. } => "SpellCastOnce",
@@ -221,6 +239,12 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::LifeGainedAll { .. } => "LifeGainedAll",
         crate::trigger::TriggerMode::CounterRemovedOnce { .. } => "CounterRemovedOnce",
         crate::trigger::TriggerMode::Exerted { .. } => "Exerted",
+        crate::trigger::TriggerMode::CollectEvidence { .. } => "CollectEvidence",
+        crate::trigger::TriggerMode::Forage { .. } => "Forage",
+        crate::trigger::TriggerMode::Enlisted { .. } => "Enlisted",
+        crate::trigger::TriggerMode::FlippedCoin { .. } => "FlippedCoin",
+        crate::trigger::TriggerMode::RolledDie { .. } => "RolledDie",
+        crate::trigger::TriggerMode::RolledDieOnce { .. } => "RolledDieOnce",
         crate::trigger::TriggerMode::ManaExpend { .. } => "ManaExpend",
     }
 }
@@ -235,11 +259,13 @@ fn matches_valid_card(valid: &str, card: &CardInstance, source: &CardInstance) -
     if valid.eq_ignore_ascii_case("Card.Self") {
         return card.id == source.id;
     }
-    if valid.eq_ignore_ascii_case("Creature.YouCtrl") || valid.eq_ignore_ascii_case("Creature.YouControl")
+    if valid.eq_ignore_ascii_case("Creature.YouCtrl")
+        || valid.eq_ignore_ascii_case("Creature.YouControl")
     {
         return card.is_creature() && card.controller == source.controller;
     }
-    if valid.eq_ignore_ascii_case("Creature.OppCtrl") || valid.eq_ignore_ascii_case("Creature.OpponentCtrl")
+    if valid.eq_ignore_ascii_case("Creature.OppCtrl")
+        || valid.eq_ignore_ascii_case("Creature.OpponentCtrl")
     {
         return card.is_creature() && card.controller != source.controller;
     }
@@ -257,11 +283,13 @@ fn matches_valid_card_for_controller(
     if valid.eq_ignore_ascii_case("Creature") {
         return card.is_creature();
     }
-    if valid.eq_ignore_ascii_case("Creature.YouCtrl") || valid.eq_ignore_ascii_case("Creature.YouControl")
+    if valid.eq_ignore_ascii_case("Creature.YouCtrl")
+        || valid.eq_ignore_ascii_case("Creature.YouControl")
     {
         return card.is_creature() && card.controller == source_controller;
     }
-    if valid.eq_ignore_ascii_case("Creature.OppCtrl") || valid.eq_ignore_ascii_case("Creature.OpponentCtrl")
+    if valid.eq_ignore_ascii_case("Creature.OppCtrl")
+        || valid.eq_ignore_ascii_case("Creature.OpponentCtrl")
     {
         return card.is_creature() && card.controller != source_controller;
     }

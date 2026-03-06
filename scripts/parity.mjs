@@ -26,6 +26,6 @@ if (!entry) {
   process.exit(1);
 }
 
-const cmd = `cargo run -p forge-parity -- --java-jar "${javaJar}" ${entry.args}`;
+const cmd = `cargo run -p forge-parity --bin forge-parity -- --java-jar "${javaJar}" ${entry.args}`;
 console.log(`> ${cmd}\n`);
 execSync(cmd, { stdio: "inherit", cwd: root });

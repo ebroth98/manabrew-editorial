@@ -33,10 +33,13 @@ use forge_carddb::CardDatabase;
 use forge_parity::card_pool::CardPool;
 use forge_parity::comparator;
 use forge_parity::deck_generator;
-use forge_parity::java_bridge::{JavaBridge, JavaBridgeConfig, JavaBridgeError, JavaServer, JavaServerConfig};
+use forge_parity::java_bridge::{
+    JavaBridge, JavaBridgeConfig, JavaBridgeError, JavaMatchupData, JavaServer, JavaServerConfig,
+};
 use forge_parity::java_random::JavaRandom;
 use forge_parity::protocol::{
-    Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport, MechanicSignal,
+    DecisionRecord, Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
+    MechanicSignal,
 };
 use forge_parity::report;
 use forge_parity::runner::{self, available_presets, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
@@ -527,6 +530,7 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
             deck2: config.deck2.clone(),
             max_turns: config.max_turns,
             snapshots: vec![], // not used by build_report beyond len
+            decisions: vec![],
             covered_cards: vec![],
             mechanic_signals: vec![],
         },
@@ -615,7 +619,7 @@ fn run_single_matchup_server(
     };
 
     // Run Java engine via server
-    let java_snapshots =
+    let java_data =
         match server.run_matchup(
             &config.deck1,
             &config.deck2,
@@ -642,7 +646,12 @@ fn run_single_matchup_server(
                 };
             }
         };
-    let mut result = compare_snapshots(config, &rust_trace.snapshots, &java_snapshots);
+    let mut result = compare_snapshots(
+        config,
+        &rust_trace.snapshots,
+        &rust_trace.decisions,
+        &java_data,
+    );
     result.covered_cards = rust_trace.covered_cards;
     result.mechanic_signals = rust_trace.mechanic_signals;
     result
@@ -690,8 +699,8 @@ fn run_single_matchup_oneshot(
     };
 
     let bridge = JavaBridge::new(bridge_config);
-    let java_snapshots = match bridge.run() {
-        Ok(snaps) => snaps,
+    let java_data = match bridge.run() {
+        Ok(data) => data,
         Err(e) => {
             return MatchupResult {
                 deck1: config.deck1.clone(),
@@ -710,7 +719,12 @@ fn run_single_matchup_oneshot(
             };
         }
     };
-    let mut result = compare_snapshots(config, &rust_trace.snapshots, &java_snapshots);
+    let mut result = compare_snapshots(
+        config,
+        &rust_trace.snapshots,
+        &rust_trace.decisions,
+        &java_data,
+    );
     result.covered_cards = rust_trace.covered_cards;
     result.mechanic_signals = rust_trace.mechanic_signals;
     result
@@ -759,8 +773,10 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
 fn compare_snapshots(
     config: &RunConfig,
     rust_snapshots: &[forge_parity::protocol::StateSnapshot],
-    java_snapshots: &[forge_parity::protocol::StateSnapshot],
+    rust_decisions: &[DecisionRecord],
+    java_data: &JavaMatchupData,
 ) -> MatchupResult {
+    let java_snapshots = &java_data.snapshots;
     let max_snapshots = rust_snapshots.len().max(java_snapshots.len());
     let mut first_divergence: Option<Divergence> = None;
     let mut compared_until = max_snapshots;
@@ -819,10 +835,22 @@ fn compare_snapshots(
         divergence_count,
         trace: first_divergence
             .as_ref()
-            .map(|_| format_rust_trace(config, &rust_snapshots[..compared_until.min(rust_snapshots.len())])),
+            .map(|_| {
+                format_rust_trace(
+                    config,
+                    &rust_snapshots[..compared_until.min(rust_snapshots.len())],
+                    rust_decisions,
+                )
+            }),
         java_trace: first_divergence
             .as_ref()
-            .map(|_| format_java_trace(config, &java_snapshots[..compared_until.min(java_snapshots.len())])),
+            .map(|_| {
+                format_java_trace(
+                    config,
+                    &java_snapshots[..compared_until.min(java_snapshots.len())],
+                    &java_data.decisions,
+                )
+            }),
         first_divergence,
         error_message: None,
         covered_cards: vec![],
@@ -836,6 +864,7 @@ fn compare_snapshots(
 fn format_rust_trace(
     config: &RunConfig,
     rust_snapshots: &[forge_parity::protocol::StateSnapshot],
+    rust_decisions: &[DecisionRecord],
 ) -> String {
     report::format_trace_text(&forge_parity::protocol::GameTrace {
         seed: config.seed,
@@ -843,6 +872,7 @@ fn format_rust_trace(
         deck2: config.deck2.clone(),
         max_turns: config.max_turns,
         snapshots: rust_snapshots.to_vec(),
+        decisions: rust_decisions.to_vec(),
         covered_cards: vec![],
         mechanic_signals: vec![],
     })
@@ -851,6 +881,7 @@ fn format_rust_trace(
 fn format_java_trace(
     config: &RunConfig,
     java_snapshots: &[forge_parity::protocol::StateSnapshot],
+    java_decisions: &[DecisionRecord],
 ) -> String {
     report::format_trace_text(&forge_parity::protocol::GameTrace {
         seed: config.seed,
@@ -858,6 +889,7 @@ fn format_java_trace(
         deck2: config.deck2.clone(),
         max_turns: config.max_turns,
         snapshots: java_snapshots.to_vec(),
+        decisions: java_decisions.to_vec(),
         covered_cards: vec![],
         mechanic_signals: vec![],
     })
@@ -892,7 +924,7 @@ impl ServerPool {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
-    ) -> Result<Vec<forge_parity::protocol::StateSnapshot>, JavaBridgeError> {
+    ) -> Result<JavaMatchupData, JavaBridgeError> {
         // Try each server — grab whichever lock is available
         for server_mutex in &self.servers {
             if let Ok(mut server) = server_mutex.try_lock() {
@@ -1119,7 +1151,7 @@ fn run_single_matchup_with_pool(
     };
 
     // Run Java via pool
-    let java_snapshots = match pool.run_matchup(
+    let java_data = match pool.run_matchup(
             &config.deck1,
             &config.deck2,
             config.seed,
@@ -1145,7 +1177,12 @@ fn run_single_matchup_with_pool(
                 };
             }
         };
-    let mut result = compare_snapshots(config, &rust_trace.snapshots, &java_snapshots);
+    let mut result = compare_snapshots(
+        config,
+        &rust_trace.snapshots,
+        &rust_trace.decisions,
+        &java_data,
+    );
     result.covered_cards = rust_trace.covered_cards;
     result.mechanic_signals = rust_trace.mechanic_signals;
     result

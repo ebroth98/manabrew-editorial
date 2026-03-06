@@ -15,10 +15,18 @@ pub fn cant_attach(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantAttach)
         {
-            if !matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), attachment, source) {
+            if !matches_valid_card(
+                st_ab.params.get("ValidCard").map(String::as_str),
+                attachment,
+                source,
+            ) {
                 continue;
             }
-            if !matches_valid_card(st_ab.params.get("Target").map(String::as_str), target, source) {
+            if !matches_valid_card(
+                st_ab.params.get("Target").map(String::as_str),
+                target,
+                source,
+            ) {
                 continue;
             }
             if let Some(valid_card_to_target) = st_ab.params.get("ValidCardToTarget") {
@@ -68,21 +76,19 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
 }
 
 fn matches_valid_card_for_target(card: &CardInstance, valid: &str, target: &CardInstance) -> bool {
-    valid
-        .split(',')
-        .any(|clause| {
-            clause
-                .split('+')
-                .flat_map(|s| s.split('.'))
-                .map(str::trim)
-                .filter(|s| !s.is_empty())
-                .all(|tok| match tok {
-                    "Card" | "Permanent" => true,
-                    "Creature" => card.is_creature(),
-                    "Card.Self" => card.id == target.id,
-                    "nonLegendary" => !target.type_line.is_legendary(),
-                    "Legendary" => target.type_line.is_legendary(),
-                    _ => true,
-                })
-        })
+    valid.split(',').any(|clause| {
+        clause
+            .split('+')
+            .flat_map(|s| s.split('.'))
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .all(|tok| match tok {
+                "Card" | "Permanent" => true,
+                "Creature" => card.is_creature(),
+                "Card.Self" => card.id == target.id,
+                "nonLegendary" => !target.type_line.is_legendary(),
+                "Legendary" => target.type_line.is_legendary(),
+                _ => true,
+            })
+    })
 }

@@ -18,7 +18,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if let Some(chosen_pid) = chosen {
         if let Some(source_id) = sa.source {
-            ctx.game.card_mut(source_id).chosen_player = Some(chosen_pid);
+            let source = ctx.game.card_mut(source_id);
+            source.chosen_player = Some(chosen_pid);
+            source.chosen_player_controller = Some(controller);
+            source.chosen_player_revealed = false;
         }
     }
 }

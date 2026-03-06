@@ -65,11 +65,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ) {
                 continue;
             }
-            let add_count = if let Some(max) = crate::staticability::static_ability_max_counter::max_counter(
-                &ctx.game.cards,
-                ctx.game.card(card_id),
-                &counter_type,
-            ) {
+            let add_count = if let Some(max) =
+                crate::staticability::static_ability_max_counter::max_counter(
+                    &ctx.game.cards,
+                    ctx.game.card(card_id),
+                    &counter_type,
+                ) {
                 (max - ctx.game.card(card_id).counter_count(&counter_type)).clamp(0, count)
             } else {
                 count
@@ -77,7 +78,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if add_count <= 0 {
                 continue;
             }
-            ctx.game.card_mut(card_id).add_counter(&counter_type, add_count);
+            ctx.game
+                .card_mut(card_id)
+                .add_counter(&counter_type, add_count);
             ctx.trigger_handler.run_trigger(
                 TriggerType::CounterAdded,
                 RunParams {

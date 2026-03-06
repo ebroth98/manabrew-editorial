@@ -428,10 +428,7 @@ async fn matrix_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse
     }
 }
 
-async fn run_handler(
-    State(state): State<Arc<AppState>>,
-    Path(id): Path<i64>,
-) -> impl IntoResponse {
+async fn run_handler(State(state): State<Arc<AppState>>, Path(id): Path<i64>) -> impl IntoResponse {
     let storage = state.storage.lock().unwrap();
     match storage.get_run(id) {
         Ok(record) => Json(record).into_response(),

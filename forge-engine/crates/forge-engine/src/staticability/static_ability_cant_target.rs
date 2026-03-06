@@ -28,7 +28,11 @@ pub fn cant_target(
                 continue;
             }
 
-            if !matches_valid_target(st_ab.params.get("ValidTarget").map(String::as_str), target, source) {
+            if !matches_valid_target(
+                st_ab.params.get("ValidTarget").map(String::as_str),
+                target,
+                source,
+            ) {
                 continue;
             }
             if !matches_valid_activator(
@@ -70,18 +74,17 @@ fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
     if tokens.is_empty() {
         return true;
     }
-    tokens.iter().all(|tok| match tok.to_ascii_lowercase().as_str() {
-        "spell" => params.contains_key("SP"),
-        "istargeting" => params.contains_key("ValidTgts"),
-        "xcost" => {
-            params
-                .get("Cost")
-                .map(|c| c.contains('X'))
-                .unwrap_or(false)
-                || ability_line.contains("X")
-        }
-        _ => false,
-    })
+    tokens
+        .iter()
+        .all(|tok| match tok.to_ascii_lowercase().as_str() {
+            "spell" => params.contains_key("SP"),
+            "istargeting" => params.contains_key("ValidTgts"),
+            "xcost" => {
+                params.get("Cost").map(|c| c.contains('X')).unwrap_or(false)
+                    || ability_line.contains("X")
+            }
+            _ => false,
+        })
 }
 
 fn zone_matches(zone: ZoneType, zone_str: &str) -> bool {
@@ -96,7 +99,11 @@ fn zone_matches(zone: ZoneType, zone_str: &str) -> bool {
     }
 }
 
-fn matches_valid_activator(valid: Option<&str>, player: PlayerId, source_controller: PlayerId) -> bool {
+fn matches_valid_activator(
+    valid: Option<&str>,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Player") => true,
@@ -116,7 +123,10 @@ fn matches_valid_target(valid: Option<&str>, target: &CardInstance, source: &Car
         Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,
         Some(v) if v.eq_ignore_ascii_case("Creature") => target.is_creature(),
         Some(v) if v.eq_ignore_ascii_case("Card.Self") => target.id == source.id,
-        Some(v) if v.eq_ignore_ascii_case("Creature.YouCtrl") || v.eq_ignore_ascii_case("Creature.YouControl") => {
+        Some(v)
+            if v.eq_ignore_ascii_case("Creature.YouCtrl")
+                || v.eq_ignore_ascii_case("Creature.YouControl") =>
+        {
             target.is_creature() && target.controller == source.controller
         }
         Some(v) if v.eq_ignore_ascii_case("Creature.OppCtrl") => {

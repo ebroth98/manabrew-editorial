@@ -110,7 +110,11 @@ fn apply_duration_flags(effect: &mut CardInstance, duration: Option<&str>, sourc
 }
 
 fn apply_forget_on_moved_flags(effect: &mut CardInstance, sa: &SpellAbility) {
-    if let Some(zone) = sa.params.get("ForgetOnMoved").and_then(|z| parse_zone_name(z)) {
+    if let Some(zone) = sa
+        .params
+        .get("ForgetOnMoved")
+        .and_then(|z| parse_zone_name(z))
+    {
         effect.forget_on_moved_origin = Some(zone);
         // Java forget flow exiles effect when no remembered objects remain.
         effect.exile_when_no_remembered = true;
@@ -144,7 +148,9 @@ fn apply_remembered(
         match token {
             // Copy the host card's remembered state.
             "Remembered" => {
-                effect.remembered_cards.extend(host_remembered_cards.iter().copied());
+                effect
+                    .remembered_cards
+                    .extend(host_remembered_cards.iter().copied());
                 effect
                     .remembered_players
                     .extend(host_remembered_players.iter().copied());
@@ -250,11 +256,13 @@ mod tests {
             vec![],
             vec![],
         );
-        assert!(crate::staticability::static_ability_cast_with_flash::any_with_flash(
-            &ctx.game.cards,
-            &fake_creature,
-            p0,
-            &spell_abilities
-        ));
+        assert!(
+            crate::staticability::static_ability_cast_with_flash::any_with_flash(
+                &ctx.game.cards,
+                &fake_creature,
+                p0,
+                &spell_abilities
+            )
+        );
     }
 }

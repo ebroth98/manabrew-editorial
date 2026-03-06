@@ -54,7 +54,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .is_some_and(|v| v.eq_ignore_ascii_case("True"))
     {
         if let Some(source_id) = sa.source {
-            ctx.game.card_mut(source_id).remembered_cmc.push(drained_total);
+            ctx.game
+                .card_mut(source_id)
+                .remembered_cmc
+                .push(drained_total);
         }
     }
 }
@@ -64,7 +67,11 @@ fn has_mana_burn(game: &crate::game::GameState, player: crate::ids::PlayerId) ->
     use crate::staticability::StaticMode;
     use forge_foundation::ZoneType;
 
-    for card in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for st_ab in &card.static_abilities {
             if st_ab.mode != StaticMode::ManaBurn {
                 continue;
@@ -72,10 +79,14 @@ fn has_mana_burn(game: &crate::game::GameState, player: crate::ids::PlayerId) ->
             if let Some(valid_player) = st_ab.params.get("ValidPlayer") {
                 match valid_player.to_ascii_lowercase().as_str() {
                     "you" => {
-                        if card.controller != player { continue; }
+                        if card.controller != player {
+                            continue;
+                        }
                     }
                     "opponent" => {
-                        if card.controller == player { continue; }
+                        if card.controller == player {
+                            continue;
+                        }
                     }
                     _ => return true,
                 }
@@ -85,4 +96,3 @@ fn has_mana_burn(game: &crate::game::GameState, player: crate::ids::PlayerId) ->
     }
     false
 }
-

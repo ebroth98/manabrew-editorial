@@ -313,15 +313,16 @@ fn choose_targets_for(
                     sa,
                     valid_creatures,
                 );
-            let valid_players = if crate::staticability::static_ability_must_target::must_target_cards_required(
-                game,
-                sa,
-                &valid_creatures,
-            ) {
-                Vec::new()
-            } else {
-                valid_players
-            };
+            let valid_players =
+                if crate::staticability::static_ability_must_target::must_target_cards_required(
+                    game,
+                    sa,
+                    &valid_creatures,
+                ) {
+                    Vec::new()
+                } else {
+                    valid_players
+                };
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             match agent.choose_target_any(player, &valid_players, &valid_creatures) {

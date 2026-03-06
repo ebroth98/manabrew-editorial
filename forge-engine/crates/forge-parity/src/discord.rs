@@ -158,7 +158,9 @@ impl DiscordClient {
             if !retry_resp.status().is_success() {
                 let status = retry_resp.status();
                 let text = retry_resp.text().await.unwrap_or_default();
-                return Err(format!("Discord webhook error after retry {status}: {text}"));
+                return Err(format!(
+                    "Discord webhook error after retry {status}: {text}"
+                ));
             }
         } else if !resp.status().is_success() {
             let status = resp.status();

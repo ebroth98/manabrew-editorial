@@ -140,7 +140,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     c.activated_abilities.iter().any(|ab| ab.is_mana_ability)
                 })
                 .count();
-            let lands_in_hand = ctx.game
+            let lands_in_hand = ctx
+                .game
                 .cards_in_zone(ZoneType::Hand, controller)
                 .iter()
                 .filter(|&&cid| ctx.game.card(cid).is_land())
@@ -167,4 +168,3 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 }
-

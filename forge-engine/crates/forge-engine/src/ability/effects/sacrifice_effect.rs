@@ -21,7 +21,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // "ValidTgts$ Player" means a targeted player sacrifices (e.g. Diabolic Edict) —
     // in that case sa.target_chosen.target_player is set. Otherwise default to the controller.
     let sacrificing_players: Vec<PlayerId> = if defined == "player" {
-        ctx.game.player_order.clone()
+        // Match Java getTargetPlayers(): in-game players, ordered in turn
+        // order starting with the current turn player (APNAP base order).
+        let alive = ctx.game.alive_players();
+        let active = ctx.game.active_player();
+        let start = alive.iter().position(|&pid| pid == active).unwrap_or(0);
+        (0..alive.len())
+            .map(|i| alive[(start + i) % alive.len()])
+            .collect()
     } else {
         vec![sa
             .target_chosen
@@ -30,6 +37,20 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     for sacrificing_player in sacrificing_players {
+        if sa.params.contains_key("Optional") {
+            let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+            let accepted = ctx.agents[sacrificing_player.index()].confirm_action(
+                sacrificing_player,
+                None,
+                "Do you want to sacrifice?",
+                &[],
+                source_name,
+                Some("Sacrifice"),
+            );
+            if !accepted {
+                continue;
+            }
+        }
         let card_to_sacrifice = if let Some(uid_str) = defined.strip_prefix("carduid_") {
             // Specific card by ID (e.g. delayed trigger for Blitz sacrifice-at-EOT)
             uid_str

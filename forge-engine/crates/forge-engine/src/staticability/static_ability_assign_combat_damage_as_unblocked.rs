@@ -16,7 +16,11 @@ pub fn assign_as_unblocked(cards: &[CardInstance], card: &CardInstance, optional
             } else if !has_optional && optional {
                 continue;
             }
-            if matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), card, source) {
+            if matches_valid_card(
+                st_ab.params.get("ValidCard").map(String::as_str),
+                card,
+                source,
+            ) {
                 return true;
             }
         }

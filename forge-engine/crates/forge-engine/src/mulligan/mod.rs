@@ -57,7 +57,14 @@ pub fn run_london_mulligans(
 
             if keep {
                 has_kept[i] = true;
-                put_back_cards(game, agents, pid, mulligan_count[i] as usize, mana_pools, game_log);
+                put_back_cards(
+                    game,
+                    agents,
+                    pid,
+                    mulligan_count[i] as usize,
+                    mana_pools,
+                    game_log,
+                );
             } else {
                 perform_mulligan(game, pid, rng, game_log);
                 mulligan_count[i] += 1;
@@ -125,17 +132,15 @@ fn mulligan_order(player_order: &[PlayerId], first_player: PlayerId) -> Vec<Play
         .position(|&p| p == first_player)
         .unwrap_or(0);
     let len = player_order.len();
-    (0..len)
-        .map(|i| player_order[(offset + i) % len])
-        .collect()
+    (0..len).map(|i| player_order[(offset + i) % len]).collect()
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::combat::DefenderId;
     use crate::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
     use crate::card::CardInstance;
+    use crate::combat::DefenderId;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -197,7 +202,12 @@ mod tests {
             MainPhaseAction::Pass
         }
 
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             vec![]
         }
 
@@ -218,12 +228,7 @@ mod tests {
             v.first().copied()
         }
 
-        fn choose_target_any(
-            &mut self,
-            _: PlayerId,
-            _: &[PlayerId],
-            _: &[CardId],
-        ) -> TargetChoice {
+        fn choose_target_any(&mut self, _: PlayerId, _: &[PlayerId], _: &[CardId]) -> TargetChoice {
             TargetChoice::None
         }
 

@@ -1,16 +1,16 @@
 use forge_foundation::mana::ManaAtom;
-use forge_foundation::{ManaCost, ManaCostShard};
+use forge_foundation::{ManaCost, ManaCostShard, ZoneType};
 use indexmap::IndexMap;
 use std::collections::HashMap;
 
-use crate::cost::{can_pay_ignoring_mana, CostPart};
+use crate::cost::{can_pay_ignoring_mana, get_sacrifice_targets, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
 use super::mana_cost_being_paid::{can_pay_for_shard_with_color, ManaCostBeingPaid};
 use super::{
-    all_basic_subtype_atoms, atom_short, basic_land_mana_atom, produced_to_atoms, tap_land_for_mana,
-    ManaPool,
+    all_basic_subtype_atoms, atom_short, basic_land_mana_atom, produced_to_atoms,
+    tap_land_for_mana, ManaPool,
 };
 
 #[derive(Debug, Clone)]
@@ -78,13 +78,20 @@ pub fn auto_tap_lands(
             break;
         }
 
-        let Some(sa_payment) = choose_mana_ability(current_spell, to_pay, &ma_list) else {
+        let Some(sa_payment) = choose_mana_ability(game, player, current_spell, to_pay, &ma_list)
+        else {
             break;
         };
 
-        let Some(chosen_atom) = choose_atom_for_shard(&sa_payment, to_pay, &colors_most_common) else {
+        let Some(chosen_atom) = choose_atom_for_shard(&sa_payment, to_pay, &colors_most_common)
+        else {
             break;
         };
+
+        // Pay non-tap ability costs first so a failed payment cannot generate mana.
+        if !pay_non_tap_mana_ability_costs(game, player, &sa_payment) {
+            break;
+        }
 
         tap_land_for_mana(
             game,
@@ -94,27 +101,6 @@ pub fn auto_tap_lands(
             chosen_atom,
             &mut tapped_lands,
         );
-
-        // Pay non-tap ability costs (e.g. SubCounter for Rasputin Dreamweaver).
-        // tap_land_for_mana handles tapping; here we handle other cost parts.
-        if let Some(ab_idx) = sa_payment.ability_index {
-            let cost_parts: Vec<_> = game
-                .card(sa_payment.card_id)
-                .activated_abilities[ab_idx]
-                .cost
-                .parts
-                .clone();
-            for part in &cost_parts {
-                if let CostPart::SubCounter {
-                    amount,
-                    counter_type,
-                } = part
-                {
-                    game.card_mut(sa_payment.card_id)
-                        .remove_counter(counter_type, *amount);
-                }
-            }
-        }
 
         let _ = unpaid.try_pay_mana(chosen_atom, chosen_atom as u8);
         for _ in 1..sa_payment.amount.max(1) {
@@ -161,6 +147,8 @@ fn get_next_shard_to_pay(
 }
 
 fn choose_mana_ability(
+    game: &GameState,
+    player: PlayerId,
     current_spell: Option<CardId>,
     to_pay: ManaCostShard,
     ma_list: &[ManaAbilityRef],
@@ -170,11 +158,113 @@ fn choose_mana_ability(
         if Some(ma.card_id) == current_spell {
             continue;
         }
-        if ma.can_pay_shard(to_pay) {
+        if ma.can_pay_shard(to_pay) && can_pay_non_tap_mana_ability_costs(game, player, ma) {
             return Some(ma.clone());
         }
     }
     None
+}
+
+fn can_pay_non_tap_mana_ability_costs(game: &GameState, player: PlayerId, ma: &ManaAbilityRef) -> bool {
+    let Some(ab_idx) = ma.ability_index else {
+        return true;
+    };
+    let cost_parts: Vec<_> = game.card(ma.card_id).activated_abilities[ab_idx]
+        .cost
+        .parts
+        .clone();
+    for part in &cost_parts {
+        match part {
+            CostPart::Tap | CostPart::Mana(_) => {}
+            CostPart::PayLife(amount) => {
+                if game.player(player).life < *amount {
+                    return false;
+                }
+            }
+            CostPart::SubCounter {
+                amount,
+                counter_type,
+            } => {
+                if game.card(ma.card_id).counter_count(counter_type) < *amount {
+                    return false;
+                }
+            }
+            CostPart::Sacrifice {
+                type_filter,
+                amount,
+            } => {
+                if type_filter == "CARDNAME" {
+                    if *amount > 1 || game.card(ma.card_id).zone != ZoneType::Battlefield {
+                        return false;
+                    }
+                } else if (get_sacrifice_targets(game, player, type_filter).len() as i32) < *amount {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+    }
+    true
+}
+
+fn pay_non_tap_mana_ability_costs(game: &mut GameState, player: PlayerId, ma: &ManaAbilityRef) -> bool {
+    let Some(ab_idx) = ma.ability_index else {
+        return true;
+    };
+    let cost_parts: Vec<_> = game.card(ma.card_id).activated_abilities[ab_idx]
+        .cost
+        .parts
+        .clone();
+    for part in &cost_parts {
+        match part {
+            CostPart::Tap | CostPart::Mana(_) => {}
+            CostPart::PayLife(amount) => {
+                if game.player(player).life < *amount {
+                    return false;
+                }
+                game.player_mut(player).lose_life(*amount);
+            }
+            CostPart::SubCounter {
+                amount,
+                counter_type,
+            } => {
+                if game.card(ma.card_id).counter_count(counter_type) < *amount {
+                    return false;
+                }
+                game.card_mut(ma.card_id).remove_counter(counter_type, *amount);
+            }
+            CostPart::Sacrifice {
+                type_filter,
+                amount,
+            } => {
+                if type_filter == "CARDNAME" {
+                    if *amount > 1 || game.card(ma.card_id).zone != ZoneType::Battlefield {
+                        return false;
+                    }
+                    let owner = game.card(ma.card_id).owner;
+                    game.move_card(ma.card_id, ZoneType::Graveyard, owner);
+                } else {
+                    let mut targets = get_sacrifice_targets(game, player, type_filter);
+                    targets.sort_by(|&a, &b| {
+                        game.card(a)
+                            .card_name
+                            .cmp(&game.card(b).card_name)
+                            .then_with(|| a.index().cmp(&b.index()))
+                    });
+                    let required = (*amount).max(0) as usize;
+                    if targets.len() < required {
+                        return false;
+                    }
+                    for cid in targets.into_iter().take(required) {
+                        let owner = game.card(cid).owner;
+                        game.move_card(cid, ZoneType::Graveyard, owner);
+                    }
+                }
+            }
+            _ => return false,
+        }
+    }
+    true
 }
 
 fn choose_atom_for_shard(
@@ -235,7 +325,8 @@ fn group_and_order_to_pay_shards(
         }
 
         for (color_key, list) in mana_ability_map {
-            let key_color = (*color_key as u16) & (ManaAtom::COLORS_SUPERPOSITION | ManaAtom::COLORLESS);
+            let key_color =
+                (*color_key as u16) & (ManaAtom::COLORS_SUPERPOSITION | ManaAtom::COLORLESS);
             if can_pay_for_shard_with_color(shard, key_color) {
                 let bucket = res.entry(shard).or_default();
                 for ma in list {
@@ -296,8 +387,14 @@ fn sort_mana_abilities(
         // Java on certain inputs, so we replicate the exact insertion-sort loop
         // that Java executes.
         let cmp = |a: &ManaAbilityRef, b: &ManaAbilityRef| -> std::cmp::Ordering {
-            let idx_a = ordered_cards.iter().position(|&c| c == a.card_id).unwrap_or(usize::MAX);
-            let idx_b = ordered_cards.iter().position(|&c| c == b.card_id).unwrap_or(usize::MAX);
+            let idx_a = ordered_cards
+                .iter()
+                .position(|&c| c == a.card_id)
+                .unwrap_or(usize::MAX);
+            let idx_b = ordered_cards
+                .iter()
+                .position(|&c| c == b.card_id)
+                .unwrap_or(usize::MAX);
             let mut pre_order = (idx_a as isize) - (idx_b as isize);
 
             if pre_order != 0 {
@@ -375,7 +472,10 @@ fn sort_mana_abilities(
     }
 }
 
-fn group_sources_by_mana_color(game: &GameState, player: PlayerId) -> IndexMap<i32, Vec<ManaAbilityRef>> {
+fn group_sources_by_mana_color(
+    game: &GameState,
+    player: PlayerId,
+) -> IndexMap<i32, Vec<ManaAbilityRef>> {
     let mut mana_map: IndexMap<i32, Vec<ManaAbilityRef>> = IndexMap::new();
     let mut source_order = 0usize;
 
@@ -443,7 +543,10 @@ fn group_sources_by_mana_color(game: &GameState, player: PlayerId) -> IndexMap<i
     mana_map
 }
 
-fn add_mana_ability_to_color_map(map: &mut IndexMap<i32, Vec<ManaAbilityRef>>, ma: &ManaAbilityRef) {
+fn add_mana_ability_to_color_map(
+    map: &mut IndexMap<i32, Vec<ManaAbilityRef>>,
+    ma: &ManaAbilityRef,
+) {
     map.entry(ManaAtom::GENERIC as i32)
         .or_default()
         .push(ma.clone());
@@ -678,7 +781,8 @@ fn score_mana_ability(
     let mut score = 0;
     let card = game.card(card_id);
 
-    if let Some(produced) = produced_override.or_else(|| ab.params.get("Produced").map(String::as_str))
+    if let Some(produced) =
+        produced_override.or_else(|| ab.params.get("Produced").map(String::as_str))
     {
         let mana_text = ability_mana_text_for_score(produced, &card.chosen_colors);
         if mana_text == "Any" {

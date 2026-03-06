@@ -33,7 +33,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("RememberNumber")
         .is_some_and(|v| v.eq_ignore_ascii_case("True"))
     {
-        remembered_amount += ctx.game.card(source_id).remembered_cmc.iter().copied().sum::<i32>();
+        remembered_amount += ctx
+            .game
+            .card(source_id)
+            .remembered_cmc
+            .iter()
+            .copied()
+            .sum::<i32>();
     }
     if let Some(svar_name) = sa.params.get("RememberSVarAmount") {
         if let Some(expr) = ctx.game.card(source_id).svars.get(svar_name) {
@@ -133,7 +139,12 @@ fn trigger_mode_to_type(mode: &TriggerMode) -> Option<TriggerType> {
         TriggerMode::LifeGainedAll { .. } => TriggerType::LifeGained,
         TriggerMode::CounterRemovedOnce { .. } => TriggerType::CounterRemoved,
         TriggerMode::Exerted { .. } => TriggerType::Exerted,
+        TriggerMode::CollectEvidence { .. } => TriggerType::CollectEvidence,
+        TriggerMode::Forage { .. } => TriggerType::Forage,
+        TriggerMode::Enlisted { .. } => TriggerType::Enlisted,
+        TriggerMode::FlippedCoin { .. } => TriggerType::FlippedCoin,
+        TriggerMode::RolledDie { .. } => TriggerType::RolledDie,
+        TriggerMode::RolledDieOnce { .. } => TriggerType::RolledDieOnce,
         TriggerMode::ManaExpend { .. } => TriggerType::ManaExpend,
     })
 }
-

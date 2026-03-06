@@ -20,6 +20,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         })
         .unwrap_or(sa.activating_player);
 
+    if sa.params.contains_key("Optional") {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let accepted = ctx.agents[target.index()].confirm_action(
+            target,
+            None,
+            "Do you want to reveal your hand?",
+            &[],
+            source_name,
+            Some("RevealHand"),
+        );
+        if !accepted {
+            return;
+        }
+    }
+
     let hand = ctx.game.cards_in_zone(ZoneType::Hand, target).to_vec();
 
     let names: Vec<String> = hand

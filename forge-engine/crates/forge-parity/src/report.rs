@@ -1,13 +1,15 @@
 //! Report generation: JSON and human-readable text summaries of parity results.
 
 use crate::protocol::{
-    Divergence, GameTrace, FuzzReport, MatchupStatus, MatrixReport, ParityReport,
+    Divergence, FuzzReport, GameTrace, MatchupStatus, MatrixReport, ParityReport,
 };
 
 const ANSI_RESET: &str = "\x1b[0m";
 const ANSI_GREEN: &str = "\x1b[32m";
 const ANSI_RED: &str = "\x1b[31m";
 const ANSI_YELLOW: &str = "\x1b[33m";
+const ANSI_BLUE: &str = "\x1b[34m";
+const ANSI_ORANGE: &str = "\x1b[38;5;208m";
 const ANSI_DIM: &str = "\x1b[90m";
 
 /// Build a parity report from a Rust trace and a set of divergences.
@@ -153,7 +155,9 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
                         match (&r.trace, &r.java_trace) {
                             (Some(rust_trace), Some(java_trace)) => {
                                 out.push_str("     Rust vs Java trace (git-style):\n");
-                                out.push_str(&format_unified_trace_diff(rust_trace, java_trace, "       "));
+                                out.push_str(&format_unified_trace_diff(
+                                    rust_trace, java_trace, "       ",
+                                ));
                                 out.push('\n');
                             }
                             (Some(rust_trace), None) => {
@@ -310,7 +314,9 @@ pub fn format_fuzz_text(report: &FuzzReport) -> String {
                         match (&r.result.trace, &r.result.java_trace) {
                             (Some(rust_trace), Some(java_trace)) => {
                                 out.push_str("     Rust vs Java trace (git-style):\n");
-                                out.push_str(&format_unified_trace_diff(rust_trace, java_trace, "       "));
+                                out.push_str(&format_unified_trace_diff(
+                                    rust_trace, java_trace, "       ",
+                                ));
                             }
                             (Some(rust_trace), None) => {
                                 out.push_str("     Rust trace:\n");
@@ -366,11 +372,11 @@ fn format_unified_trace_diff(rust_trace: &str, java_trace: &str, indent: &str) -
     let mut out = String::new();
 
     out.push_str(indent);
-    out.push_str(&format!("{ANSI_DIM}--- Rust{ANSI_RESET}\n"));
+    out.push_str(&format!("{ANSI_ORANGE}Rust Trace{ANSI_RESET}\n"));
     out.push_str(indent);
-    out.push_str(&format!("{ANSI_DIM}+++ Java{ANSI_RESET}\n"));
+    out.push_str(&format!("{ANSI_GREEN}Java Trace{ANSI_RESET}\n"));
     out.push_str(indent);
-    out.push_str(&format!("{ANSI_DIM}@@ trace @@{ANSI_RESET}\n"));
+    out.push_str(&format!("{ANSI_ORANGE}Trace Diff{ANSI_RESET}\n"));
 
     for i in 0..rows {
         let rust_line = rust_lines.get(i).copied().unwrap_or("");
@@ -383,11 +389,11 @@ fn format_unified_trace_diff(rust_trace: &str, java_trace: &str, indent: &str) -
 
         if !rust_line.is_empty() {
             out.push_str(indent);
-            out.push_str(&format!("{ANSI_RED}- {rust_line}{ANSI_RESET}\n"));
+            out.push_str(&format!("{ANSI_ORANGE}Rust: {rust_line}{ANSI_RESET}\n"));
         }
         if !java_line.is_empty() {
             out.push_str(indent);
-            out.push_str(&format!("{ANSI_GREEN}+ {java_line}{ANSI_RESET}\n"));
+            out.push_str(&format!("{ANSI_GREEN}Java: {java_line}{ANSI_RESET}\n"));
         }
     }
 
@@ -405,6 +411,7 @@ pub fn format_trace_text(trace: &GameTrace) -> String {
     out.push_str(&format!("Max turns:  {}\n", trace.max_turns));
     out.push_str(&format!("Snapshots:  {}\n\n", trace.snapshots.len()));
 
+    let mut decision_idx = 0usize;
     for (i, snap) in trace.snapshots.iter().enumerate() {
         out.push_str(&format!(
             "--- Snapshot {} | Turn {} | {} | Active: P{} ---\n",
@@ -465,6 +472,17 @@ pub fn format_trace_text(trace: &GameTrace) -> String {
         if !snap.stack.is_empty() {
             out.push_str(&format!("  Stack: {}\n", snap.stack.join(", ")));
         }
+        while decision_idx < trace.decisions.len() {
+            let d = &trace.decisions[decision_idx];
+            if d.turn != snap.turn {
+                break;
+            }
+            out.push_str(&format!(
+                "  Decision[P{} {} {}]: options={:?} -> {}\n",
+                d.deciding_player, d.phase, d.kind, d.options, d.choice
+            ));
+            decision_idx += 1;
+        }
         out.push('\n');
     }
 
@@ -520,6 +538,7 @@ mod tests {
             deck1: "red_burn".into(),
             deck2: "green_stompy".into(),
             max_turns: 5,
+            decisions: vec![],
             covered_cards: vec![],
             mechanic_signals: vec![],
             snapshots: vec![StateSnapshot {

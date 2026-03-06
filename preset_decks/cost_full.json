@@ -1,0 +1,34 @@
+{
+  "label": "Cost Parity New Mechanics",
+  "desc": "Covers Collect Evidence, Forage, Gift/Promise, Specialize/ChooseColor, Enlist, stack exile, reveal/choose, behold, blight, and put-to-library costs",
+  "color": "text-emerald-400",
+  "opponent": "red_burn",
+  "ai_eligible": false,
+  "order": 52,
+  "cards": [
+    { "name": "Forest", "count": 5, "set": "akh" },
+    { "name": "Island", "count": 5, "set": "akh" },
+    { "name": "Mountain", "count": 4, "set": "akh" },
+    { "name": "Plains", "count": 4, "set": "akh" },
+    { "name": "Swamp", "count": 4, "set": "akh" },
+
+    { "name": "Forensic Researcher", "count": 3 },
+    { "name": "Curious Forager", "count": 2 },
+    { "name": "Klement, Novice Acolyte", "count": 2 },
+    { "name": "Guardian of New Benalia", "count": 2 },
+    { "name": "Valley Rally", "count": 2 },
+    { "name": "Caller of the Hunt", "count": 1 },
+    { "name": "Leashling", "count": 1 },
+    { "name": "Nivmagus Elemental", "count": 2 },
+    { "name": "Karplusan Minotaur", "count": 1 },
+    { "name": "Clay Golem", "count": 1 },
+    { "name": "Stalking Leonin", "count": 1 },
+    { "name": "Celestial Reunion", "count": 1 },
+    { "name": "Champions of the Shoal", "count": 1 },
+    { "name": "Pyrrhic Strike", "count": 2 },
+    { "name": "Gilded Goose", "count": 3 },
+    { "name": "Faithless Looting", "count": 3 },
+    { "name": "Consider", "count": 2 },
+    { "name": "Satyr Wayfinder", "count": 3 }
+  ]
+}

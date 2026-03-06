@@ -1,6 +1,8 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_counter_type, parse_param, resolve_defined_player, resolve_numeric_svar, EffectContext};
+use super::{
+    parse_counter_type, parse_param, resolve_defined_player, resolve_numeric_svar, EffectContext,
+};
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
@@ -18,16 +20,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
 
     // Resolve the controller of this ability (for Defined$ You etc.)
-    let controller = sa.source.map(|id| ctx.game.card(id).controller).unwrap_or_else(|| {
-        ctx.game.player_order[0]
-    });
+    let controller = sa
+        .source
+        .map(|id| ctx.game.card(id).controller)
+        .unwrap_or_else(|| ctx.game.player_order[0]);
 
     // Check for Defined$ — if targeting a player (e.g. Defined$ You for energy),
     // handle player-level counters like ENERGY instead of card counters.
     if let Some(defined) = sa.params.get("Defined") {
-        if let Some(target_player) =
-            resolve_defined_player(defined, controller, ctx.game)
-        {
+        if let Some(target_player) = resolve_defined_player(defined, controller, ctx.game) {
             match counter_type_str.to_uppercase().as_str() {
                 "ENERGY" => {
                     ctx.game.player_mut(target_player).energy_counters += count;
@@ -43,11 +44,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Resolve target card based on Defined$ parameter.
-    let defined = sa.params.get("Defined").map(|s| s.as_str()).unwrap_or("Self");
+    let defined = sa
+        .params
+        .get("Defined")
+        .map(|s| s.as_str())
+        .unwrap_or("Self");
     let target_id = match defined {
-        "TriggeredTarget" | "TriggeredTargetLKICopy" => {
-            sa.target_chosen.target_card.or(sa.source)
-        }
+        "TriggeredTarget" | "TriggeredTargetLKICopy" => sa.target_chosen.target_card.or(sa.source),
         "Targeted" => sa.target_chosen.target_card.or(sa.source),
         "Self" | _ => sa.source,
     };
@@ -81,7 +84,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         count,
     };
     apply_replacements(ctx.game, &mut event);
-    let count = if let ReplacementEvent::AddCounter { count: final_count, .. } = event {
+    let count = if let ReplacementEvent::AddCounter {
+        count: final_count, ..
+    } = event
+    {
         final_count
     } else {
         count

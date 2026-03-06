@@ -13,7 +13,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::StateSnapshot;
+use crate::protocol::{DecisionRecord, StateSnapshot};
 
 /// Configuration for a Java bridge subprocess.
 pub struct JavaBridgeConfig {
@@ -42,6 +42,12 @@ pub struct JavaBridge {
     pub config: JavaBridgeConfig,
 }
 
+/// Parsed protocol payload for a single Java matchup.
+pub struct JavaMatchupData {
+    pub snapshots: Vec<StateSnapshot>,
+    pub decisions: Vec<DecisionRecord>,
+}
+
 impl JavaBridge {
     /// Create a new bridge from configuration.
     pub fn new(config: JavaBridgeConfig) -> Self {
@@ -52,7 +58,7 @@ impl JavaBridge {
     ///
     /// Launches `java -jar <path> --deck1 ... --deck2 ... --seed ... --max-turns ...`
     /// and reads JSONL output (one `StateSnapshot` per line) from stdout.
-    pub fn run(&self) -> Result<Vec<StateSnapshot>, JavaBridgeError> {
+    pub fn run(&self) -> Result<JavaMatchupData, JavaBridgeError> {
         let jar = &self.config.jar_path;
         let verbose = self.config.verbose;
 
@@ -125,9 +131,15 @@ impl JavaBridge {
             if let Some(stderr) = stderr {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().flatten() {
-                    if verbose || line.contains("Exception") || line.contains("Error")
-                        || line.contains("Failed") || line.contains("WARNING")
+                    if verbose
+                        || line.contains("Exception")
+                        || line.contains("Error")
+                        || line.contains("Failed")
+                        || line.contains("WARNING")
                     {
+                        if line.contains("[det-java") {
+                            continue;
+                        }
                         eprintln!("[java] {}", line);
                     }
                 }
@@ -142,6 +154,7 @@ impl JavaBridge {
 
         let reader = BufReader::new(stdout);
         let mut snapshots = Vec::new();
+        let mut decisions = Vec::new();
 
         for line_result in reader.lines() {
             let line = line_result.map_err(|e| {
@@ -150,6 +163,11 @@ impl JavaBridge {
 
             let line = line.trim().to_string();
             if line.is_empty() {
+                continue;
+            }
+
+            if let Some(decision) = parse_decision_line(&line) {
+                decisions.push(decision);
                 continue;
             }
 
@@ -196,7 +214,10 @@ impl JavaBridge {
                 snapshots.len()
             );
         }
-        Ok(snapshots)
+        Ok(JavaMatchupData {
+            snapshots,
+            decisions,
+        })
     }
 }
 
@@ -317,9 +338,15 @@ impl JavaServer {
             if let Some(stderr) = stderr {
                 let reader = BufReader::new(stderr);
                 for line in reader.lines().flatten() {
-                    if verbose || line.contains("Exception") || line.contains("Error")
-                        || line.contains("Failed") || line.contains("WARNING")
+                    if verbose
+                        || line.contains("Exception")
+                        || line.contains("Error")
+                        || line.contains("Failed")
+                        || line.contains("WARNING")
                     {
+                        if line.contains("[det-java") {
+                            continue;
+                        }
                         eprintln!("[java] {}", line);
                     }
                 }
@@ -347,7 +374,7 @@ impl JavaServer {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
-    ) -> Result<Vec<StateSnapshot>, JavaBridgeError> {
+    ) -> Result<JavaMatchupData, JavaBridgeError> {
         let request = MatchupRequest {
             command: "run".to_string(),
             deck1: deck1.to_string(),
@@ -362,18 +389,19 @@ impl JavaServer {
             JavaBridgeError::ProtocolError(format!("Failed to serialize request: {}", e))
         })?;
 
-        self.stdin
-            .write_all(request_json.as_bytes())
-            .map_err(|e| JavaBridgeError::ProtocolError(format!("Failed to write to stdin: {}", e)))?;
-        self.stdin
-            .write_all(b"\n")
-            .map_err(|e| JavaBridgeError::ProtocolError(format!("Failed to write newline: {}", e)))?;
+        self.stdin.write_all(request_json.as_bytes()).map_err(|e| {
+            JavaBridgeError::ProtocolError(format!("Failed to write to stdin: {}", e))
+        })?;
+        self.stdin.write_all(b"\n").map_err(|e| {
+            JavaBridgeError::ProtocolError(format!("Failed to write newline: {}", e))
+        })?;
         self.stdin
             .flush()
             .map_err(|e| JavaBridgeError::ProtocolError(format!("Failed to flush stdin: {}", e)))?;
 
         // Read response lines until we get the done sentinel
         let mut snapshots = Vec::new();
+        let mut decisions = Vec::new();
         let mut line_buf = String::new();
 
         loop {
@@ -407,6 +435,11 @@ impl JavaServer {
                 }
             }
 
+            if let Some(decision) = parse_decision_line(line) {
+                decisions.push(decision);
+                continue;
+            }
+
             // Otherwise parse as a snapshot
             match serde_json::from_str::<StateSnapshot>(line) {
                 Ok(snapshot) => {
@@ -436,7 +469,10 @@ impl JavaServer {
                 snapshots.len()
             );
         }
-        Ok(snapshots)
+        Ok(JavaMatchupData {
+            snapshots,
+            decisions,
+        })
     }
 
     /// Check if the server process is still alive.
@@ -481,6 +517,32 @@ impl JavaServer {
             }
         }
     }
+}
+
+#[derive(Deserialize)]
+struct DecisionEnvelope {
+    event: String,
+    turn: u32,
+    phase: String,
+    deciding_player: u32,
+    kind: String,
+    options: Vec<String>,
+    choice: String,
+}
+
+fn parse_decision_line(line: &str) -> Option<DecisionRecord> {
+    let env = serde_json::from_str::<DecisionEnvelope>(line).ok()?;
+    if env.event != "decision" {
+        return None;
+    }
+    Some(DecisionRecord {
+        turn: env.turn,
+        phase: env.phase,
+        deciding_player: env.deciding_player,
+        kind: env.kind,
+        options: env.options,
+        choice: env.choice,
+    })
 }
 
 /// Extract the major Java version from a JDK home directory name.

@@ -27,7 +27,8 @@ impl GameState {
         let src_zone = card.zone;
         let src_owner = card.controller;
 
-        let host_left_battlefield = src_zone == ZoneType::Battlefield && dest_zone != ZoneType::Battlefield;
+        let host_left_battlefield =
+            src_zone == ZoneType::Battlefield && dest_zone != ZoneType::Battlefield;
         let forget_effects: Vec<CardId> = self
             .cards
             .iter()
@@ -282,7 +283,9 @@ impl GameState {
         if amount <= 0 {
             return;
         }
-        if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(self, target) {
+        if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(
+            self, target,
+        ) {
             return;
         }
         let mut event = ReplacementEvent::DamageToPlayer {
@@ -363,8 +366,7 @@ impl GameState {
                 let card = &self.cards[cid.index()];
                 let is_creature = card.is_creature();
                 let zero_toughness = card.toughness() <= 0;
-                let lethal =
-                    card.lethal_damage() || card.has_deathtouch_damage;
+                let lethal = card.lethal_damage() || card.has_deathtouch_damage;
                 let should_die = zero_toughness || lethal;
                 (is_creature, zero_toughness, lethal, should_die, card.owner)
             };
@@ -426,8 +428,10 @@ impl GameState {
                 let m1 = self.card(cid).counter_count(&CounterType::M1M1);
                 if p1 > 0 && m1 > 0 {
                     let cancel = p1.min(m1);
-                    self.card_mut(cid).remove_counter(&CounterType::P1P1, cancel);
-                    self.card_mut(cid).remove_counter(&CounterType::M1M1, cancel);
+                    self.card_mut(cid)
+                        .remove_counter(&CounterType::P1P1, cancel);
+                    self.card_mut(cid)
+                        .remove_counter(&CounterType::M1M1, cancel);
                     any_changes = true;
                 }
             }
@@ -624,7 +628,8 @@ impl GameState {
         }
 
         self.cards[card_id.index()].zone = ZoneType::Library;
-        self.zone_mut(ZoneType::Library, owner).add_to_bottom(card_id);
+        self.zone_mut(ZoneType::Library, owner)
+            .add_to_bottom(card_id);
     }
 
     /// Remove a spell from the stack by its entry ID (used by Counter).

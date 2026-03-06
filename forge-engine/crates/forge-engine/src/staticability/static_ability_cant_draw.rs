@@ -9,7 +9,11 @@ pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) ->
         return 0;
     }
     let mut amount = start_amount;
-    for card in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for st_ab in card
             .static_abilities
             .iter()
@@ -31,7 +35,11 @@ pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) ->
     amount
 }
 
-fn matches_valid_player(valid: Option<&str>, player: PlayerId, source_controller: PlayerId) -> bool {
+fn matches_valid_player(
+    valid: Option<&str>,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Player") => true,

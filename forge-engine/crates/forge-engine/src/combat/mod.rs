@@ -592,11 +592,7 @@ impl CombatState {
                         } else {
                             None
                         },
-                        lifelink_amount: if info.has_lifelink {
-                            info.power
-                        } else {
-                            0
-                        },
+                        lifelink_amount: if info.has_lifelink { info.power } else { 0 },
                     });
                 }
 
@@ -629,7 +625,9 @@ pub fn get_available_attackers(game: &GameState, player: PlayerId) -> Vec<CardId
                 && card.zone == ZoneType::Battlefield
                 && card.has_defender()
                 && crate::staticability::static_ability_can_attack_defender::can_attack_defender(
-                    &game.cards, card, defending,
+                    &game.cards,
+                    card,
+                    defending,
                 )
         })
         .collect()
@@ -812,7 +810,9 @@ fn deal_combat_damage_to_card(
             game.player_mut(source_controller).gain_life(amount);
         }
         // Record damage in source's damage history
-        game.card_mut(source).damage_history.record_damage(amount, true);
+        game.card_mut(source)
+            .damage_history
+            .record_damage(amount, true);
     }
 }
 
@@ -831,7 +831,9 @@ pub enum LureType {
 
 /// Determine the lure type of an attacker based on its keywords.
 pub fn get_lure_type(card: &crate::card::CardInstance) -> LureType {
-    for kw in card.keywords.iter()
+    for kw in card
+        .keywords
+        .iter()
         .chain(card.granted_keywords.iter())
         .chain(card.pump_keywords.iter())
     {
@@ -901,10 +903,7 @@ pub fn compute_must_block_targets(
 /// 2. Can't block alone: blocker has keyword and is only blocker on its attacker
 ///
 /// Called after blocker declaration to clean up illegal blocks.
-pub fn validate_blocks(
-    game: &GameState,
-    combat: &CombatState,
-) -> Vec<(CardId, CardId)> {
+pub fn validate_blocks(game: &GameState, combat: &CombatState) -> Vec<(CardId, CardId)> {
     let mut invalid = Vec::new();
 
     for &(attacker_id, _) in &combat.attackers {
@@ -924,7 +923,9 @@ pub fn validate_blocks(
         // Check blockers with "can't block alone" keyword
         for &blocker_id in &blockers_for {
             let blocker = game.card(blocker_id);
-            let cant_block_alone = blocker.keywords.iter()
+            let cant_block_alone = blocker
+                .keywords
+                .iter()
                 .chain(blocker.granted_keywords.iter())
                 .chain(blocker.pump_keywords.iter())
                 .any(|kw| kw.to_lowercase().contains("can't block alone"));

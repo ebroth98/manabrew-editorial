@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::staticability::layer::apply_continuous_effects;
 use forge_engine_core::trigger::parse_trigger;
@@ -43,7 +43,12 @@ impl ScriptedAgent {
 }
 
 impl PlayerAgent for ScriptedAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        _player: PlayerId,
+        _hand: &[CardId],
+        _mulligan_count: u32,
+    ) -> bool {
         true
     }
 
@@ -72,7 +77,12 @@ impl PlayerAgent for ScriptedAgent {
         }
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        available: &[CardId],
+        possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
         if self.attack_idx >= self.attack_plan.len() {
             return Vec::new();
         }
@@ -413,8 +423,16 @@ fn full_game_runs() {
                 .map(MainPhaseAction::Play)
                 .unwrap_or(MainPhaseAction::Pass)
         }
-        fn choose_attackers(&mut self, _: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
-            available.iter().map(|&a| (a, possible_defenders[0])).collect() // attack with everything
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            available: &[CardId],
+            possible_defenders: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
+            available
+                .iter()
+                .map(|&a| (a, possible_defenders[0]))
+                .collect() // attack with everything
         }
         fn choose_blockers(
             &mut self,
@@ -900,7 +918,12 @@ fn upkeep_trigger_fires_each_turn() {
         ) -> MainPhaseAction {
             MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             Vec::new()
         }
         fn choose_blockers(
@@ -1002,8 +1025,16 @@ fn full_game_with_triggers_runs() {
                 .map(MainPhaseAction::Play)
                 .unwrap_or(MainPhaseAction::Pass)
         }
-        fn choose_attackers(&mut self, _: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
-            available.iter().map(|&a| (a, possible_defenders[0])).collect()
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            available: &[CardId],
+            possible_defenders: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
+            available
+                .iter()
+                .map(|&a| (a, possible_defenders[0]))
+                .collect()
         }
         fn choose_blockers(
             &mut self,
@@ -1165,7 +1196,12 @@ fn llanowar_elves_taps_for_mana() {
                 _ => MainPhaseAction::Pass,
             }
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             Vec::new()
         }
         fn choose_blockers(
@@ -1268,7 +1304,12 @@ fn summoning_sick_creature_cant_tap() {
             self.saw_activatable = !activatable.is_empty();
             MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             Vec::new()
         }
         fn choose_blockers(
@@ -1360,7 +1401,12 @@ fn prodigal_sorcerer_pings_opponent() {
             }
             MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             Vec::new()
         }
         fn choose_blockers(
@@ -1464,7 +1510,12 @@ fn sakura_tribe_elder_fetches_land() {
             }
             MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             Vec::new()
         }
         fn choose_blockers(

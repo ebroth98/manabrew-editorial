@@ -230,11 +230,7 @@ impl ReplacementEffect {
     }
 
     /// Returns `true` if this effect can replace an `AddCounter` event.
-    pub fn can_replace_add_counter(
-        &self,
-        target: &CardInstance,
-        source: &CardInstance,
-    ) -> bool {
+    pub fn can_replace_add_counter(&self, target: &CardInstance, source: &CardInstance) -> bool {
         if self.event != ReplacementType::AddCounter {
             return false;
         }
@@ -304,7 +300,11 @@ impl ReplacementEffect {
             }
         }
         // ValidActivator$ / ValidPlayer$ — who controls the producing permanent
-        if let Some(valid_player) = self.params.get("ValidActivator").or(self.params.get("ValidPlayer")) {
+        if let Some(valid_player) = self
+            .params
+            .get("ValidActivator")
+            .or(self.params.get("ValidPlayer"))
+        {
             if !matches_valid_player(valid_player, activator, host) {
                 return false;
             }

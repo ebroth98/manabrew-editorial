@@ -15,11 +15,17 @@
 //! - [`java_bridge`] — Stubbed subprocess bridge for the Java engine
 
 pub mod card_pool;
+pub mod choice_space;
+pub mod combat_choice_space;
 pub mod comparator;
 pub mod deck_generator;
 pub mod deterministic_agent;
+pub mod gui_repro;
 pub mod java_bridge;
 pub mod java_random;
+pub mod parity_card_map;
+pub mod parity_id;
+pub mod parity_order;
 pub mod protocol;
 pub mod report;
 pub mod runner;

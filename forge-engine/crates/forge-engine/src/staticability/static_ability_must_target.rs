@@ -28,7 +28,11 @@ pub fn filter_must_target_cards(
     // Keep only unresolved restrictions where at least one current choice can satisfy it.
     let unresolved: Vec<MustTargetRestriction> = restrictions
         .into_iter()
-        .filter(|r| targets.iter().any(|&cid| card_matches_restriction(game, cid, r)))
+        .filter(|r| {
+            targets
+                .iter()
+                .any(|&cid| card_matches_restriction(game, cid, r))
+        })
         .collect();
 
     if unresolved.is_empty() {
@@ -50,9 +54,11 @@ pub fn must_target_cards_required(game: &GameState, sa: &SpellAbility, targets: 
     if restrictions.is_empty() {
         return false;
     }
-    restrictions
-        .iter()
-        .any(|r| targets.iter().any(|&cid| card_matches_restriction(game, cid, r)))
+    restrictions.iter().any(|r| {
+        targets
+            .iter()
+            .any(|&cid| card_matches_restriction(game, cid, r))
+    })
 }
 
 fn get_restrictions(game: &GameState, sa: &SpellAbility) -> Vec<MustTargetRestriction> {
@@ -68,7 +74,11 @@ fn get_restrictions(game: &GameState, sa: &SpellAbility) -> Vec<MustTargetRestri
     }
 
     let mut out = Vec::new();
-    for source in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for source in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for st_ab in source
             .static_abilities
             .iter()
@@ -179,16 +189,14 @@ fn spell_ability_matches(
             return false;
         }
         match base {
-        "spell" => params.contains_key("SP"),
-        "activated" => params.contains_key("AB"),
-        "istargeting" => params.contains_key("ValidTgts"),
-        "xcost" => {
-            params
-                .get("Cost")
-                .map(|c| c.contains('X'))
-                .unwrap_or(false)
-                || ability_line.contains("X")
+            "spell" => params.contains_key("SP"),
+            "activated" => params.contains_key("AB"),
+            "istargeting" => params.contains_key("ValidTgts"),
+            "xcost" => {
+                params.get("Cost").map(|c| c.contains('X')).unwrap_or(false)
+                    || ability_line.contains("X")
+            }
+            _ => false,
         }
-        _ => false,
-    }})
+    })
 }

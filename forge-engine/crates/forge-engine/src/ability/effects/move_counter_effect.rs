@@ -65,7 +65,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Remove from source
-    ctx.game.card_mut(from).remove_counter(&counter_type, actual);
+    ctx.game
+        .card_mut(from)
+        .remove_counter(&counter_type, actual);
     ctx.trigger_handler.run_trigger(
         TriggerType::CounterRemoved,
         RunParams {
@@ -85,11 +87,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     ) {
         return;
     }
-    let add_amount = if let Some(max) = crate::staticability::static_ability_max_counter::max_counter(
-        &ctx.game.cards,
-        ctx.game.card(to),
-        &counter_type,
-    ) {
+    let add_amount = if let Some(max) =
+        crate::staticability::static_ability_max_counter::max_counter(
+            &ctx.game.cards,
+            ctx.game.card(to),
+            &counter_type,
+        ) {
         (max - ctx.game.card(to).counter_count(&counter_type)).clamp(0, actual)
     } else {
         actual

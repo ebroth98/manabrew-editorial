@@ -28,6 +28,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Shuffle")
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
+    let remember_changed = sa
+        .params
+        .get("RememberChanged")
+        .map(|s| s.eq_ignore_ascii_case("True"))
+        .unwrap_or(false);
     let controller = sa.activating_player;
 
     if let (Some(dest_zone), Some(origin_zone)) = (
@@ -38,18 +43,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Only use target_chosen if the SA actually declares targeting (has ValidTgts$).
         // Trigger-inherited targets (e.g. damage_target_card) should NOT be used for
         // library searches — mirrors Java's isHidden()/changeHiddenOriginResolve split.
-        let cards_to_move: Vec<_> =
-            if sa.uses_targeting() {
-                if let Some(cid) = sa.target_chosen.target_card {
-                    if ctx.game.card(cid).zone == origin_zone {
-                        vec![cid]
-                    } else {
-                        Vec::new()
-                    }
+        let cards_to_move: Vec<_> = if sa.uses_targeting() {
+            if let Some(cid) = sa.target_chosen.target_card {
+                if ctx.game.card(cid).zone == origin_zone {
+                    vec![cid]
                 } else {
                     Vec::new()
                 }
-            } else if defined.eq_ignore_ascii_case("TriggeredNewCardLKICopy")
+            } else {
+                Vec::new()
+            }
+        } else if defined.eq_ignore_ascii_case("TriggeredNewCardLKICopy")
             || defined.eq_ignore_ascii_case("TriggeredCard")
         {
             // Trigger context card (LKI/new card copy in Forge terms).
@@ -73,6 +77,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
                 .into_iter()
                 .collect()
+        } else if defined.eq_ignore_ascii_case("Remembered") {
+            if let Some(source_id) = sa.source {
+                ctx.game
+                    .card(source_id)
+                    .remembered_cards
+                    .iter()
+                    .copied()
+                    .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
+                    .collect()
+            } else {
+                Vec::new()
+            }
         } else if defined.is_empty()
             || defined.eq_ignore_ascii_case("You")
             || defined.eq_ignore_ascii_case("Opponent")
@@ -98,7 +114,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             });
             if let Some(each_spec) = change_type.strip_prefix("EACH ") {
                 let mut out = Vec::new();
-                for clause in each_spec.split('&').map(str::trim).filter(|s| !s.is_empty()) {
+                for clause in each_spec
+                    .split('&')
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                {
                     if let Some(pos) = zone_cards
                         .iter()
                         .position(|&cid| matches_change_type(ctx.game.card(cid), clause, &[]))
@@ -131,6 +151,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
 
         for card_id in cards_to_move {
+            if remember_changed {
+                if let Some(source_id) = sa.source {
+                    ctx.game.card_mut(source_id).add_remembered_card(card_id);
+                }
+            }
             let card_owner = ctx.game.card(card_id).owner;
             let dest_owner = if dest_zone == ZoneType::Battlefield {
                 controller

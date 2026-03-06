@@ -3,9 +3,9 @@ use std::io::{self, Write};
 
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::combat::DefenderId;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -292,13 +292,22 @@ impl InteractiveAgent {
 }
 
 impl PlayerAgent for InteractiveAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, hand: &[CardId], mulligan_count: u32) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        mulligan_count: u32,
+    ) -> bool {
         let game = self.game();
         if mulligan_count > 0 {
             println!(
-                "\n{}{}Opening Hand (mulligan #{} — must put {} card{} back):{}", CYAN, BOLD,
-                mulligan_count, mulligan_count,
-                if mulligan_count == 1 { "" } else { "s" }, RESET
+                "\n{}{}Opening Hand (mulligan #{} — must put {} card{} back):{}",
+                CYAN,
+                BOLD,
+                mulligan_count,
+                mulligan_count,
+                if mulligan_count == 1 { "" } else { "s" },
+                RESET
             );
         } else {
             println!("\n{}{}Opening Hand:{}", CYAN, BOLD, RESET);
@@ -311,12 +320,20 @@ impl PlayerAgent for InteractiveAgent {
         input != "n" && input != "no"
     }
 
-    fn choose_cards_to_bottom(&mut self, _player: PlayerId, hand: &[CardId], count: usize) -> Vec<CardId> {
+    fn choose_cards_to_bottom(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        count: usize,
+    ) -> Vec<CardId> {
         let game = self.game();
         println!(
             "\n{}{}Choose {} card{} to put on the bottom of your library:{}",
-            CYAN, BOLD, count,
-            if count == 1 { "" } else { "s" }, RESET
+            CYAN,
+            BOLD,
+            count,
+            if count == 1 { "" } else { "s" },
+            RESET
         );
         for (i, &cid) in hand.iter().enumerate() {
             println!("  {}: {}", i, format_card_with_cost(game.card(cid)));
@@ -430,7 +447,12 @@ impl PlayerAgent for InteractiveAgent {
             .unwrap_or(MainPhaseAction::Pass)
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        available: &[CardId],
+        possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
         if available.is_empty() {
             return Vec::new();
         }
@@ -457,7 +479,10 @@ impl PlayerAgent for InteractiveAgent {
         );
 
         let indices = read_numbers(&format!("{}Attack> {}", CYAN, RESET), available.len());
-        indices.into_iter().map(|i| (available[i], possible_defenders[0])).collect()
+        indices
+            .into_iter()
+            .map(|i| (available[i], possible_defenders[0]))
+            .collect()
     }
 
     fn choose_blockers(
@@ -650,8 +675,16 @@ impl PlayerAgent for SimpleAiAgent {
             .unwrap_or(MainPhaseAction::Pass)
     }
 
-    fn choose_attackers(&mut self, _: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
-        available.iter().map(|&a| (a, possible_defenders[0])).collect()
+    fn choose_attackers(
+        &mut self,
+        _: PlayerId,
+        available: &[CardId],
+        possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
+        available
+            .iter()
+            .map(|&a| (a, possible_defenders[0]))
+            .collect()
     }
 
     fn choose_blockers(

@@ -760,10 +760,44 @@ impl PlayerAgent for TauriAgent {
             game_view: self.view(),
             description: description.to_string(),
             source_card_name: card_name.map(String::from),
+            prompt_kind: Some("optional_trigger".to_string()),
+            option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
+            mode: None,
+            api: None,
         });
         match self.recv_action() {
             PlayerAction::OptionalTriggerDecision { accept } => accept,
             _ => true,
+        }
+    }
+
+    fn confirm_action(
+        &mut self,
+        _player: PlayerId,
+        mode: Option<&str>,
+        message: &str,
+        options: &[String],
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        // Reuse the existing optional-trigger modal plumbing for generic confirms.
+        let option_labels = if options.is_empty() {
+            vec!["Decline".to_string(), "Accept".to_string()]
+        } else {
+            options.to_vec()
+        };
+        self.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
+            game_view: self.view(),
+            description: message.to_string(),
+            source_card_name: card_name.map(String::from),
+            prompt_kind: Some("confirm_action".to_string()),
+            option_labels: Some(option_labels),
+            mode: mode.map(String::from),
+            api: api.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::OptionalTriggerDecision { accept } => accept,
+            _ => false,
         }
     }
 
@@ -961,12 +995,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_x_value(
-        &mut self,
-        _player: PlayerId,
-        max_x: u32,
-        card_name: Option<&str>,
-    ) -> u32 {
+    fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, card_name: Option<&str>) -> u32 {
         self.send_prompt(AgentPromptInner::ChooseNumber {
             game_view: self.view(),
             min: 0,
@@ -1045,14 +1074,18 @@ impl PlayerAgent for TauriAgent {
     ) -> Vec<CardId> {
         let valid_ids = Self::card_ids(valid);
         // Build CardDtos for the graveyard cards
-        let zone_cards: Vec<_> = valid.iter().filter_map(|&cid| {
-            self.latest_view.as_ref().and_then(|v| {
-                v.graveyard.iter()
-                    .chain(v.opponent_graveyard.iter())
-                    .find(|c| c.id == card_id_str(cid))
-                    .cloned()
+        let zone_cards: Vec<_> = valid
+            .iter()
+            .filter_map(|&cid| {
+                self.latest_view.as_ref().and_then(|v| {
+                    v.graveyard
+                        .iter()
+                        .chain(v.opponent_graveyard.iter())
+                        .find(|c| c.id == card_id_str(cid))
+                        .cloned()
+                })
             })
-        }).collect();
+            .collect();
 
         self.send_prompt(AgentPromptInner::ChooseDelve {
             game_view: self.view(),
@@ -1062,14 +1095,12 @@ impl PlayerAgent for TauriAgent {
             source_card_name: card_name.map(|s| s.to_string()),
         });
         match self.recv_action() {
-            PlayerAction::DelveDecision { chosen_card_ids } => {
-                chosen_card_ids
-                    .iter()
-                    .filter_map(|id| parse_card_id(id))
-                    .filter(|cid| valid.contains(cid))
-                    .take(max)
-                    .collect()
-            }
+            PlayerAction::DelveDecision { chosen_card_ids } => chosen_card_ids
+                .iter()
+                .filter_map(|id| parse_card_id(id))
+                .filter(|cid| valid.contains(cid))
+                .take(max)
+                .collect(),
             _ => vec![],
         }
     }
@@ -1090,13 +1121,11 @@ impl PlayerAgent for TauriAgent {
             source_card_name: card_name.map(|s| s.to_string()),
         });
         match self.recv_action() {
-            PlayerAction::ImproviseDecision { chosen_card_ids } => {
-                chosen_card_ids
-                    .iter()
-                    .filter_map(|id| parse_card_id(id))
-                    .filter(|cid| untapped_artifacts.contains(cid))
-                    .collect()
-            }
+            PlayerAction::ImproviseDecision { chosen_card_ids } => chosen_card_ids
+                .iter()
+                .filter_map(|id| parse_card_id(id))
+                .filter(|cid| untapped_artifacts.contains(cid))
+                .collect(),
             _ => vec![],
         }
     }
@@ -1117,13 +1146,11 @@ impl PlayerAgent for TauriAgent {
             source_card_name: card_name.map(|s| s.to_string()),
         });
         match self.recv_action() {
-            PlayerAction::ConvokeDecision { chosen_card_ids } => {
-                chosen_card_ids
-                    .iter()
-                    .filter_map(|id| parse_card_id(id))
-                    .filter(|cid| untapped_creatures.contains(cid))
-                    .collect()
-            }
+            PlayerAction::ConvokeDecision { chosen_card_ids } => chosen_card_ids
+                .iter()
+                .filter_map(|id| parse_card_id(id))
+                .filter(|cid| untapped_creatures.contains(cid))
+                .collect(),
             _ => vec![],
         }
     }

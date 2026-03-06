@@ -4,7 +4,7 @@ use std::hash::{DefaultHasher, Hasher};
 use forge_foundation::{PhaseType, ZoneType};
 
 use crate::ability::effects::{self, EffectContext};
-use crate::agent::{CombatCostAction, ManaCostAction, MainPhaseAction, PlayerAgent};
+use crate::agent::{CombatCostAction, MainPhaseAction, ManaCostAction, PlayerAgent};
 use crate::card::CardInstance;
 use crate::combat::{self, CombatState};
 use crate::cost::{self, can_pay, parse_cost, CostPart};
@@ -161,16 +161,17 @@ impl GameLoop {
         true
     }
 
-    fn record_checkpoint(
-        &mut self,
-        game: &GameState,
-        include_stack: bool,
-    ) -> (u64, String) {
+    fn record_checkpoint(&mut self, game: &GameState, include_stack: bool) -> (u64, String) {
         let checkpoint_id = self.next_checkpoint_id;
         self.next_checkpoint_id += 1;
-        let label = format!("Turn {} {}", game.turn.turn_number, game.turn.phase.script_name());
+        let label = format!(
+            "Turn {} {}",
+            game.turn.turn_number,
+            game.turn.phase.script_name()
+        );
         let snap = self.make_snapshot(game, include_stack);
-        self.checkpoints.push_back((checkpoint_id, label.clone(), snap));
+        self.checkpoints
+            .push_back((checkpoint_id, label.clone(), snap));
         while self.checkpoints.len() > 256 {
             self.checkpoints.pop_front();
         }
@@ -214,7 +215,12 @@ impl GameLoop {
     }
 
     /// Get tapped lands whose mana is still in the pool (can be untapped to undo).
-    pub fn get_untappable_lands(&self, game: &GameState, player: PlayerId, pool_snapshot: &ManaPool) -> Vec<CardId> {
+    pub fn get_untappable_lands(
+        &self,
+        game: &GameState,
+        player: PlayerId,
+        pool_snapshot: &ManaPool,
+    ) -> Vec<CardId> {
         game.cards_in_zone(ZoneType::Battlefield, player)
             .to_vec()
             .into_iter()
@@ -395,6 +401,7 @@ impl GameLoop {
 
 mod game_action;
 mod game_action_util;
+mod action_space;
 mod magic_stack;
 mod phase_handler;
 mod priority;
@@ -424,7 +431,12 @@ mod tests {
     struct InvalidPlayAgent;
 
     impl PlayerAgent for InvalidPlayAgent {
-        fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
+        fn mulligan_decision(
+            &mut self,
+            _player: PlayerId,
+            _hand: &[CardId],
+            _mulligan_count: u32,
+        ) -> bool {
             true
         }
 
@@ -511,7 +523,12 @@ mod tests {
             self.last_priority = Some(game.turn.priority_player);
         }
 
-        fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId], _mulligan_count: u32) -> bool {
+        fn mulligan_decision(
+            &mut self,
+            _player: PlayerId,
+            _hand: &[CardId],
+            _mulligan_count: u32,
+        ) -> bool {
             true
         }
 

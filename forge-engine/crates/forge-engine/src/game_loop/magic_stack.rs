@@ -82,7 +82,9 @@ impl GameLoop {
                     if !wants_to_pay {
                         // Agent declined to pay — ability does nothing
                         apply_continuous_effects(game);
-                        game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
+                        game.check_state_based_actions_with_triggers(Some(
+                            &mut self.trigger_handler,
+                        ));
                         self.process_triggers(game, agents);
                         return;
                     }
@@ -95,7 +97,9 @@ impl GameLoop {
                     if !crate::cost::can_pay(cost, game, &available, source, player) {
                         // Can't pay the cost — ability fizzles
                         apply_continuous_effects(game);
-                        game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
+                        game.check_state_based_actions_with_triggers(Some(
+                            &mut self.trigger_handler,
+                        ));
                         self.process_triggers(game, agents);
                         return;
                     }
@@ -232,7 +236,11 @@ impl GameLoop {
 
                 // Handle reveal-or-enter-tapped
                 if let Some((_n, filter_str)) = etb_reveal_cost {
-                    let type_name = filter_str.split('/').next().unwrap_or(&filter_str).to_string();
+                    let type_name = filter_str
+                        .split('/')
+                        .next()
+                        .unwrap_or(&filter_str)
+                        .to_string();
                     let has_matching = game
                         .cards_in_zone(ZoneType::Hand, player)
                         .iter()
@@ -250,8 +258,12 @@ impl GameLoop {
                     let cname = game.card(card_id).card_name.clone();
                     let desc = format!("Pay {} life so {} enters untapped?", life_cost, cname);
                     agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    let pay =
-                        agents[player.index()].choose_optional_trigger(player, &desc, Some(&cname), None);
+                    let pay = agents[player.index()].choose_optional_trigger(
+                        player,
+                        &desc,
+                        Some(&cname),
+                        None,
+                    );
                     if pay {
                         game.card_mut(card_id).tapped = false;
                         game.player_mut(player).lose_life(life_cost);

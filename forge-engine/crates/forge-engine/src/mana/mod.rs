@@ -125,7 +125,7 @@ fn check_single_restriction(restriction: &str, ctx: &ManaPaymentContext) -> bool
         _ if restriction.starts_with("Activated.") => !ctx.is_spell,
         _ if restriction.starts_with("CantPayGenericCosts") => true, // handled separately in payment
         _ if restriction.starts_with("CantCast") => true, // zone restrictions handled elsewhere
-        _ => true, // Unknown restriction — be permissive
+        _ => true,                                        // Unknown restriction — be permissive
     }
 }
 
@@ -186,9 +186,9 @@ impl ManaPool {
         self.mana
             .iter()
             .filter_map(|m| {
-                m.adds_keywords.as_ref().map(|kw| {
-                    (kw.clone(), m.adds_keywords_valid.clone())
-                })
+                m.adds_keywords
+                    .as_ref()
+                    .map(|kw| (kw.clone(), m.adds_keywords_valid.clone()))
             })
             .collect()
     }
@@ -198,9 +198,9 @@ impl ManaPool {
         self.mana
             .iter()
             .filter_map(|m| {
-                m.adds_counters.as_ref().map(|cs| {
-                    (cs.clone(), m.adds_counters_valid.clone())
-                })
+                m.adds_counters
+                    .as_ref()
+                    .map(|cs| (cs.clone(), m.adds_counters_valid.clone()))
             })
             .collect()
     }
@@ -211,9 +211,9 @@ impl ManaPool {
         self.mana
             .iter()
             .filter_map(|m| {
-                m.triggers_when_spent.as_ref().and_then(|svar| {
-                    m.source_card.map(|src| (svar.clone(), src))
-                })
+                m.triggers_when_spent
+                    .as_ref()
+                    .and_then(|svar| m.source_card.map(|src| (svar.clone(), src)))
             })
             .collect()
     }
@@ -249,12 +249,24 @@ impl ManaPool {
         self.mana.iter().filter(|m| m.color == atom).count() as i32
     }
 
-    pub fn white(&self) -> i32 { self.count_color(ManaAtom::WHITE) }
-    pub fn blue(&self) -> i32 { self.count_color(ManaAtom::BLUE) }
-    pub fn black(&self) -> i32 { self.count_color(ManaAtom::BLACK) }
-    pub fn red(&self) -> i32 { self.count_color(ManaAtom::RED) }
-    pub fn green(&self) -> i32 { self.count_color(ManaAtom::GREEN) }
-    pub fn colorless(&self) -> i32 { self.count_color(ManaAtom::COLORLESS) }
+    pub fn white(&self) -> i32 {
+        self.count_color(ManaAtom::WHITE)
+    }
+    pub fn blue(&self) -> i32 {
+        self.count_color(ManaAtom::BLUE)
+    }
+    pub fn black(&self) -> i32 {
+        self.count_color(ManaAtom::BLACK)
+    }
+    pub fn red(&self) -> i32 {
+        self.count_color(ManaAtom::RED)
+    }
+    pub fn green(&self) -> i32 {
+        self.count_color(ManaAtom::GREEN)
+    }
+    pub fn colorless(&self) -> i32 {
+        self.count_color(ManaAtom::COLORLESS)
+    }
 
     /// Remove `amount` of a given mana atom from the pool, saturating at 0.
     pub fn remove(&mut self, atom: u16, amount: i32) {
@@ -284,7 +296,13 @@ impl ManaPool {
         self.remove(ManaAtom::COLORLESS, from_colorless);
         amount -= from_colorless;
         // Then consume from colors in WUBRG order
-        for &color in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
+        for &color in &[
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+        ] {
             if amount <= 0 {
                 break;
             }
@@ -395,24 +413,30 @@ impl ManaPool {
     /// Create a clone with restricted mana filtered out based on context.
     fn filtered_for_context(&self, ctx: &ManaPaymentContext) -> ManaPool {
         let mut pool = self.clone();
-        pool.mana.retain(|m| {
-            match &m.restriction {
-                None => true,
-                Some(r) => mana_meets_restriction(r, ctx),
-            }
+        pool.mana.retain(|m| match &m.restriction {
+            None => true,
+            Some(r) => mana_meets_restriction(r, ctx),
         });
         pool
     }
 
     /// Check if pool can pay a cost, respecting mana restrictions for the given spell context.
-    pub fn can_pay_for_spell(&self, cost: &forge_foundation::ManaCost, ctx: &ManaPaymentContext) -> bool {
+    pub fn can_pay_for_spell(
+        &self,
+        cost: &forge_foundation::ManaCost,
+        ctx: &ManaPaymentContext,
+    ) -> bool {
         let filtered = self.filtered_for_context(ctx);
         filtered.can_pay(cost)
     }
 
     /// Pay a cost, skipping restricted mana that doesn't match the context.
     /// Returns true if successful and deducts the mana from the ORIGINAL pool.
-    pub fn try_pay_for_spell(&mut self, cost: &forge_foundation::ManaCost, ctx: &ManaPaymentContext) -> bool {
+    pub fn try_pay_for_spell(
+        &mut self,
+        cost: &forge_foundation::ManaCost,
+        ctx: &ManaPaymentContext,
+    ) -> bool {
         // Temporarily remove ineligible mana, try to pay, then restore unused ones
         let mut ineligible: Vec<Mana> = Vec::new();
         let mut eligible: Vec<Mana> = Vec::new();
@@ -607,7 +631,13 @@ impl ManaPool {
                 // Hybrid mana — try each color
                 let color_atoms = atoms & ManaAtom::COLORS_SUPERPOSITION;
                 let mut paid = false;
-                for &bit in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
+                for &bit in &[
+                    ManaAtom::WHITE,
+                    ManaAtom::BLUE,
+                    ManaAtom::BLACK,
+                    ManaAtom::RED,
+                    ManaAtom::GREEN,
+                ] {
                     if (color_atoms & bit) != 0 && self.count_color(bit) > 0 {
                         self.pay_color(bit);
                         paid = true;
@@ -699,7 +729,14 @@ impl ManaPool {
 
     /// Pay one mana of any color from the pool.
     fn pay_any_colored(&mut self) -> bool {
-        for &color in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN, ManaAtom::COLORLESS] {
+        for &color in &[
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+            ManaAtom::COLORLESS,
+        ] {
             if self.count_color(color) > 0 {
                 self.remove(color, 1);
                 return true;
@@ -709,7 +746,13 @@ impl ManaPool {
     }
 
     pub fn pay_color(&mut self, atoms: u16) -> bool {
-        for &color in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
+        for &color in &[
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+        ] {
             if (atoms & color) != 0 && self.count_color(color) > 0 {
                 self.remove(color, 1);
                 return true;
@@ -720,7 +763,14 @@ impl ManaPool {
 
     pub fn pay_generic(&mut self, mut amount: i32) {
         // Pay with colorless first, then colors (WUBRG order)
-        for &color in &[ManaAtom::COLORLESS, ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
+        for &color in &[
+            ManaAtom::COLORLESS,
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+        ] {
             if amount <= 0 {
                 break;
             }
@@ -1058,6 +1108,20 @@ pub(crate) fn atom_short(atom: u16) -> &'static str {
 /// total mana check in `can_pay` prevents dual/multi-color lands from being
 /// double-counted (e.g. Breeding Pool counts as 1 mana, not 2).
 pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: PlayerId) -> ManaPool {
+    calculate_available_mana_excluding(pool, game, player, None)
+}
+
+/// Calculate available mana while excluding a specific battlefield source.
+///
+/// This is used by activated-ability legality checks to mirror Java's
+/// `ComputerUtilMana` behavior: an ability cannot pay its own mana cost from
+/// mana abilities on the same host permanent.
+pub fn calculate_available_mana_excluding(
+    pool: &ManaPool,
+    game: &GameState,
+    player: PlayerId,
+    excluded_source: Option<CardId>,
+) -> ManaPool {
     let mut available = pool.clone();
     let battlefield = game.cards_in_zone(ZoneType::Battlefield, player);
 
@@ -1098,6 +1162,9 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
     }
 
     for &card_id in battlefield {
+        if excluded_source == Some(card_id) {
+            continue;
+        }
         let card = game.card(card_id);
         let is_tapped = card.tapped;
         let card_is_snow = card.type_line.is_snow();
@@ -1129,8 +1196,7 @@ pub fn calculate_available_mana(pool: &ManaPool, game: &GameState, player: Playe
             .filter(|ab| {
                 ab.is_mana_ability
                     && !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_)))
-                    && (!is_tapped
-                        || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
+                    && (!is_tapped || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
                     && (!summoning_sick
                         || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
             })
@@ -1251,8 +1317,8 @@ mod tests {
     use crate::card::CardInstance;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
-    use forge_foundation::{CardTypeLine, ColorSet, ZoneType};
     use forge_foundation::ManaCost;
+    use forge_foundation::{CardTypeLine, ColorSet, ZoneType};
 
     #[test]
     fn basic_land_detection() {

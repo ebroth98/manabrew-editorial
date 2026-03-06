@@ -67,6 +67,20 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if lib_len == 0 {
         return;
     }
+    if optional {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+        let accepted = ctx.agents[dig_player.index()].confirm_action(
+            dig_player,
+            None,
+            "Do you want to proceed with this optional ability?",
+            &[],
+            source_name.as_deref(),
+            Some("Dig"),
+        );
+        if !accepted {
+            return;
+        }
+    }
 
     let count = dig_num.min(lib_len);
 
@@ -160,8 +174,8 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::{PassAgent, PlayerAgent};
-    use crate::combat::DefenderId;
     use crate::card::CardInstance;
+    use crate::combat::DefenderId;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -201,7 +215,12 @@ mod tests {
         ) -> crate::agent::MainPhaseAction {
             crate::agent::MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId], _: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             vec![]
         }
         fn choose_blockers(

@@ -39,7 +39,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         count: amount as i32,
     };
     apply_replacements(ctx.game, &mut event);
-    if let ReplacementEvent::CreateToken { count: final_count, .. } = event {
+    if let ReplacementEvent::CreateToken {
+        count: final_count, ..
+    } = event
+    {
         amount = final_count.max(0) as usize;
     }
 

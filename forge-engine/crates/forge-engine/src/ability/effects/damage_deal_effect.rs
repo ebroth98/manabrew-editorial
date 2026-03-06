@@ -49,7 +49,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
             // Track damage source for DamagedBy trigger filters
             if let Some(src_id) = sa.source {
-                if !ctx.game.card(cid).damage_sources_this_turn.contains(&src_id) {
+                if !ctx
+                    .game
+                    .card(cid)
+                    .damage_sources_this_turn
+                    .contains(&src_id)
+                {
                     ctx.game.card_mut(cid).damage_sources_this_turn.push(src_id);
                 }
             }
@@ -135,8 +140,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
             // Track damage source for DamagedBy trigger filters
             if let Some(src_id) = sa.source {
-                if !ctx.game.card(target_card).damage_sources_this_turn.contains(&src_id) {
-                    ctx.game.card_mut(target_card).damage_sources_this_turn.push(src_id);
+                if !ctx
+                    .game
+                    .card(target_card)
+                    .damage_sources_this_turn
+                    .contains(&src_id)
+                {
+                    ctx.game
+                        .card_mut(target_card)
+                        .damage_sources_this_turn
+                        .push(src_id);
                 }
             }
             if source_has_infect_keyword || source_has_wither {

@@ -147,7 +147,14 @@ mod tests {
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
-        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates, &mut rng_adapter);
+        let mut ctx = make_ctx(
+            &mut game,
+            &mut agents,
+            &mut th,
+            &mut mp,
+            &templates,
+            &mut rng_adapter,
+        );
         super::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(c1).power(), 4); // 2+2
@@ -175,7 +182,14 @@ mod tests {
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
-        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates, &mut rng_adapter);
+        let mut ctx = make_ctx(
+            &mut game,
+            &mut agents,
+            &mut th,
+            &mut mp,
+            &templates,
+            &mut rng_adapter,
+        );
         super::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(c1).power(), 0); // 2-2
@@ -204,7 +218,14 @@ mod tests {
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
-        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates, &mut rng_adapter);
+        let mut ctx = make_ctx(
+            &mut game,
+            &mut agents,
+            &mut th,
+            &mut mp,
+            &templates,
+            &mut rng_adapter,
+        );
         super::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.card(mine).power(), 4); // boosted

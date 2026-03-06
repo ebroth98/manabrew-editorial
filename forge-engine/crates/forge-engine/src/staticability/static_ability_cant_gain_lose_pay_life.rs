@@ -6,11 +6,29 @@ use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
 pub fn cant_gain_life(game: &GameState, player: PlayerId) -> bool {
-    any_common(game, player, &[StaticMode::Other("CantGainLife".to_string()), StaticMode::Other("CantChangeLife".to_string())], None, false)
+    any_common(
+        game,
+        player,
+        &[
+            StaticMode::Other("CantGainLife".to_string()),
+            StaticMode::Other("CantChangeLife".to_string()),
+        ],
+        None,
+        false,
+    )
 }
 
 pub fn cant_lose_life(game: &GameState, player: PlayerId) -> bool {
-    any_common(game, player, &[StaticMode::Other("CantLoseLife".to_string()), StaticMode::Other("CantChangeLife".to_string())], None, false)
+    any_common(
+        game,
+        player,
+        &[
+            StaticMode::Other("CantLoseLife".to_string()),
+            StaticMode::Other("CantChangeLife".to_string()),
+        ],
+        None,
+        false,
+    )
 }
 
 pub fn cant_pay_life(
@@ -39,7 +57,11 @@ fn any_common(
     _cause: Option<&SpellAbility>,
     is_cost: bool,
 ) -> bool {
-    for card in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for st_ab in &card.static_abilities {
             if !modes.iter().any(|m| match (m, &st_ab.mode) {
                 (StaticMode::Other(a), StaticMode::Other(b)) => a.eq_ignore_ascii_case(b),
@@ -65,7 +87,11 @@ fn any_common(
     false
 }
 
-fn matches_valid_player(valid: Option<&str>, player: PlayerId, source_controller: PlayerId) -> bool {
+fn matches_valid_player(
+    valid: Option<&str>,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Player") => true,

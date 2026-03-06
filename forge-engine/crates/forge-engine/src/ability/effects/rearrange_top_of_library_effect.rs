@@ -68,10 +68,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.game.zone_mut(ZoneType::Library, target).cards.push(id);
     }
 
-    // Handle optional shuffle (default: no shuffle).
+    // Handle optional shuffle.
     if may_shuffle {
-        let wants_shuffle =
-            ctx.agents[sa.activating_player.index()].choose_may_shuffle(sa.activating_player);
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let wants_shuffle = ctx.agents[sa.activating_player.index()].confirm_action(
+            sa.activating_player,
+            None,
+            "Do you want to shuffle the library?",
+            &[],
+            source_name,
+            Some("RearrangeTopOfLibrary"),
+        );
         if wants_shuffle {
             let lib = ctx.game.zone_mut(ZoneType::Library, target);
             ctx.rng.shuffle_cards(&mut lib.cards);

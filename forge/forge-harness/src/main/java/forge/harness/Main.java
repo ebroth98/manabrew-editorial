@@ -260,6 +260,7 @@ public final class Main {
 
         Match match = new Match(rules, players, "ParityTest");
         Game game = match.createGame();
+        ParityCardMap.reset();
 
         // Register turn snapshot subscriber — emits JSONL snapshots at each turn boundary.
         // Uses GameEventTurnPhase(UNTAP) instead of GameEventTurnBegan because:
@@ -284,6 +285,9 @@ public final class Main {
                     game.setGameOver(GameEndReason.Draw);
                     return;
                 }
+                if (currentTurn == 1) {
+                    ParityCardMap.initializeFromOpeningState(game);
+                }
 
                 String snap = SnapshotExtractor.snapshotJson(game);
                 protocolOut.println(snap);
@@ -293,6 +297,10 @@ public final class Main {
         });
 
         System.err.println("[harness] Starting game...");
+        DecisionLog.setSink(line -> {
+            protocolOut.println(line);
+            protocolOut.flush();
+        });
 
         // Run the game synchronously
         try {
@@ -313,6 +321,7 @@ public final class Main {
         } else {
             System.err.println("[harness] Game ended in a draw.");
         }
+        DecisionLog.setSink(null);
     }
 
     /** Escape a string for embedding in a JSON string value. */

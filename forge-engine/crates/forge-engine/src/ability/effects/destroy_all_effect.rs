@@ -145,7 +145,14 @@ mod tests {
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
-        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates, &mut rng_adapter);
+        let mut ctx = make_ctx(
+            &mut game,
+            &mut agents,
+            &mut th,
+            &mut mp,
+            &templates,
+            &mut rng_adapter,
+        );
         super::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Battlefield, p0).len(), 0);
@@ -174,7 +181,14 @@ mod tests {
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
-        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates, &mut rng_adapter);
+        let mut ctx = make_ctx(
+            &mut game,
+            &mut agents,
+            &mut th,
+            &mut mp,
+            &templates,
+            &mut rng_adapter,
+        );
         super::resolve(&mut ctx, &sa);
 
         // One creature destroyed, indestructible one stays

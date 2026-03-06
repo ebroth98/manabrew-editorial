@@ -32,6 +32,16 @@ fn matches_single_property(
     source_controller: PlayerId,
 ) -> bool {
     match property {
+        // Inclusive type checks (mirrors Java Card.isValid type token before dot).
+        "Card" | "card" => true,
+        "Permanent" => card.is_permanent(),
+        "Creature" => card.is_creature(),
+        "Land" => card.is_land(),
+        "Instant" => card.type_line.is_instant(),
+        "Sorcery" => card.type_line.is_sorcery(),
+        "Artifact" => card.type_line.is_artifact(),
+        "Enchantment" => card.type_line.is_enchantment(),
+        "Planeswalker" => card.type_line.is_planeswalker(),
         "OppCtrl" => card.controller != source_controller,
         "YouCtrl" => card.controller == source_controller,
         "YouDontCtrl" => card.controller != source_controller,
@@ -137,5 +147,29 @@ mod tests {
         let caster = PlayerId(0);
         // OppCtrl.nonBlack → opponent controls + not black → true for green creature
         assert!(card_has_property(&card, "OppCtrl.nonBlack", caster));
+    }
+
+    #[test]
+    fn creature_you_ctrl_requires_creature_type() {
+        use crate::ids::CardId;
+
+        let sorcery = CardInstance::new(
+            CardId(2),
+            "Innocent Blood".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Sorcery"),
+            ManaCost::parse("B"),
+            ColorSet::BLACK,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+
+        assert!(!card_has_property(
+            &sorcery,
+            "Creature.YouCtrl",
+            PlayerId(0)
+        ));
     }
 }

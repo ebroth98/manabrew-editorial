@@ -1,8 +1,8 @@
 mod ai_agent;
 mod card_db;
 mod commands;
-mod game_manager;
 mod game_log_event;
+mod game_manager;
 mod game_snapshot_event;
 mod game_view_dto;
 mod ids_codec;

@@ -50,4 +50,3 @@ impl GameSnapshot {
         *trigger_handler = self.trigger_handler.clone();
     }
 }
-

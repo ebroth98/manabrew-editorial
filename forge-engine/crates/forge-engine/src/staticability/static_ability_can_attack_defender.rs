@@ -19,7 +19,11 @@ pub fn can_attack_defender(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CanAttackDefender)
         {
-            if !matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), card, source) {
+            if !matches_valid_card(
+                st_ab.params.get("ValidCard").map(String::as_str),
+                card,
+                source,
+            ) {
                 continue;
             }
             if !matches_valid_attacked(

@@ -96,8 +96,7 @@ fn get_colors_from_cards(
                     .cards
                     .iter()
                     .filter(|c| {
-                        c.zone == ZoneType::Exile
-                            && c.remembered_cards.contains(&source_id)
+                        c.zone == ZoneType::Exile && c.remembered_cards.contains(&source_id)
                     })
                     .map(|c| c.id)
                     .collect()
@@ -190,9 +189,8 @@ fn get_colors_from_mana_abilities(
                                 // Already handled by split
                                 None
                             } else {
-                                color_name_to_mana_atom(tok).and_then(|_| {
-                                    mana_atom_from_produced(tok)
-                                })
+                                color_name_to_mana_atom(tok)
+                                    .and_then(|_| mana_atom_from_produced(tok))
                             }
                         }
                     };

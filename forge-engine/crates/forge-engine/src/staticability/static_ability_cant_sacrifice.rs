@@ -21,7 +21,11 @@ pub fn cant_sacrifice(
                     continue;
                 }
             }
-            if !matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), card, source) {
+            if !matches_valid_card(
+                st_ab.params.get("ValidCard").map(String::as_str),
+                card,
+                source,
+            ) {
                 continue;
             }
             if st_ab.params.contains_key("ValidCause") && cause.is_none() {
@@ -39,10 +43,16 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
         Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,
         Some(v) if v.eq_ignore_ascii_case("Card.Self") => card.id == source.id,
         Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),
-        Some(v) if v.eq_ignore_ascii_case("Creature.YouCtrl") || v.eq_ignore_ascii_case("Creature.YouControl") => {
+        Some(v)
+            if v.eq_ignore_ascii_case("Creature.YouCtrl")
+                || v.eq_ignore_ascii_case("Creature.YouControl") =>
+        {
             card.is_creature() && card.controller == source.controller
         }
-        Some(v) if v.eq_ignore_ascii_case("Creature.OppCtrl") || v.eq_ignore_ascii_case("Creature.OpponentCtrl") => {
+        Some(v)
+            if v.eq_ignore_ascii_case("Creature.OppCtrl")
+                || v.eq_ignore_ascii_case("Creature.OpponentCtrl") =>
+        {
             card.is_creature() && card.controller != source.controller
         }
         _ => true,

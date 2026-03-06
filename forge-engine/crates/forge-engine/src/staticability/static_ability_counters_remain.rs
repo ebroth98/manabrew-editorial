@@ -4,7 +4,10 @@ use crate::card::CardInstance;
 use crate::staticability::StaticMode;
 
 pub fn counters_remain(cards: &[CardInstance], card: &CardInstance, destination: ZoneType) -> bool {
-    if matches!(destination, ZoneType::Library | ZoneType::Hand | ZoneType::None) {
+    if matches!(
+        destination,
+        ZoneType::Library | ZoneType::Hand | ZoneType::None
+    ) {
         return false;
     }
     for source in cards {
@@ -22,7 +25,11 @@ pub fn counters_remain(cards: &[CardInstance], card: &CardInstance, destination:
             if !active {
                 continue;
             }
-            if matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), card, source) {
+            if matches_valid_card(
+                st_ab.params.get("ValidCard").map(String::as_str),
+                card,
+                source,
+            ) {
                 return true;
             }
         }

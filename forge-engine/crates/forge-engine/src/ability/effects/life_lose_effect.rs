@@ -9,7 +9,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Defined")
         .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
-    if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(ctx.game, target) {
+    if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(
+        ctx.game, target,
+    ) {
         return;
     }
     ctx.game.player_mut(target).lose_life(amount);

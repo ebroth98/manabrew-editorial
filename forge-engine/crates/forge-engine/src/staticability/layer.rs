@@ -500,7 +500,10 @@ pub fn get_etb_unless_reveal_cost(card: &crate::card::CardInstance) -> Option<(i
                         if let Some(end) = after.find('>') {
                             let inner = &after[..end]; // "1/Merfolk" or "1/Filter"
                             let mut parts = inner.splitn(2, '/');
-                            let n = parts.next().and_then(|s| s.trim().parse::<i32>().ok()).unwrap_or(1);
+                            let n = parts
+                                .next()
+                                .and_then(|s| s.trim().parse::<i32>().ok())
+                                .unwrap_or(1);
                             let filter = parts.next().unwrap_or("").trim().to_string();
                             return Some((n, filter));
                         }

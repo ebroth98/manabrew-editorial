@@ -78,8 +78,8 @@ fn get_decks_dir() -> &'static std::path::PathBuf {
     static DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
     DIR.get_or_init(|| {
         let project_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..");
-        let configured = std::env::var("PRESET_DECKS_DIR")
-            .unwrap_or_else(|_| DEFAULT_DECKS_DIR.to_string());
+        let configured =
+            std::env::var("PRESET_DECKS_DIR").unwrap_or_else(|_| DEFAULT_DECKS_DIR.to_string());
         let configured_path = std::path::PathBuf::from(configured);
         if configured_path.is_absolute() {
             configured_path
@@ -174,9 +174,7 @@ fn fallback_preset(
 
 fn ensure_registry_invariants(presets: &mut Vec<LoadedPreset>) {
     if presets.is_empty() {
-        eprintln!(
-            "[preset_decks] No decks loaded from JSON. Injecting fallback presets."
-        );
+        eprintln!("[preset_decks] No decks loaded from JSON. Injecting fallback presets.");
     }
 
     if !presets.iter().any(|p| p.id == "red_burn") {
@@ -276,7 +274,10 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
             if let Some(opp) = get_preset_by_id(opp_id) {
                 build_deck_from_entries(game, p1, &opp.cards);
             } else {
-                eprintln!("[preset_decks] Unknown opponent '{}', using red_burn", opp_id);
+                eprintln!(
+                    "[preset_decks] Unknown opponent '{}', using red_burn",
+                    opp_id
+                );
                 if let Some(rb) = get_preset_by_id("red_burn") {
                     build_deck_from_entries(game, p1, &rb.cards);
                 }
@@ -294,8 +295,7 @@ pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p
 /// Build a single-player deck for `owner` from a preset id.
 /// Falls back to the red burn preset if `preset_id` is unknown.
 pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner: PlayerId) {
-    let preset = get_preset_by_id(preset_id)
-        .or_else(|| get_preset_by_id("red_burn"));
+    let preset = get_preset_by_id(preset_id).or_else(|| get_preset_by_id("red_burn"));
     if let Some(p) = preset {
         build_deck_from_entries(game, owner, &p.cards);
     }

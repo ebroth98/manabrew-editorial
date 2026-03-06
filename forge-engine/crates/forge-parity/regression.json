@@ -1,18 +1,14 @@
 [
   {
-    "name": "3-seed matrix (7 decks)",
-    "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,comprehensive_test,trigger_expanded,staticability_test --max-turns 10"
+    "name": "basic_red_vs_green",
+    "args": "--deck1 red_burn --deck2 green_stompy --games 10 --max-turns 30"
   },
   {
-    "name": "10-seed extended matrix (7 decks)",
-    "args": "--matrix --seeds 42,100,999,1,7,31,256,500,1234,9999 --decks red_burn,green_stompy,white_aggro,black_control,comprehensive_test,trigger_expanded,staticability_test --max-turns 10"
+    "name": "basic_black_control_vs_zone_change",
+    "args": "--deck1 black_control --deck2 zone_change --games 10 --max-turns 30"
   },
   {
-    "name": "staticability",
-    "args": "--deck1 staticability_test --deck2 staticability_test --max-turns 30 --seed 42 --games 2"
-  },
-  {
-      "name": "flashback",
-      "args": "--deck1 flashback_test --deck2 flashback_test --max-turns 30 --seed 42 --games 10"
+      "name": "tokens",
+      "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 10"
   }
 ]

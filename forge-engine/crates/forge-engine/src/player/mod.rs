@@ -51,6 +51,8 @@ pub struct PlayerState {
 
     // Energy counters (Kaladesh block). Persistent resource like mana.
     pub energy_counters: i32,
+    // Adventure shard resource used by PayShards costs.
+    pub mana_shards: i32,
 
     // Mana expend tracking: cumulative mana spent on spells this turn (for Expend triggers).
     pub mana_expended_this_turn: i32,
@@ -81,6 +83,7 @@ impl PlayerState {
             skip_next_untap: false,
             damage_prevention: 0,
             energy_counters: 0,
+            mana_shards: 0,
             mana_expended_this_turn: 0,
         }
     }

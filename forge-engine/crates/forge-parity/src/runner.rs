@@ -5,14 +5,14 @@
 //! [`GameTrace`].
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use forge_carddb::CardDatabase;
-use forge_engine_core::agent::PlayerAgent;
-use forge_engine_core::combat::DefenderId;
+use forge_engine_core::agent::{MainPhaseAction, PlayerAgent};
 use forge_engine_core::card::CardInstance;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
@@ -25,7 +25,10 @@ use serde::Deserialize;
 use crate::deck_generator;
 use crate::deterministic_agent::DeterministicAgent;
 use crate::java_random::JavaRandom;
-use crate::protocol::{GameTrace, MechanicSignal, StateSnapshot};
+use crate::parity_card_map::ParityCardMap;
+use crate::parity_id;
+use crate::parity_order;
+use crate::protocol::{DecisionRecord, GameTrace, MechanicSignal, StateSnapshot};
 use crate::snapshot::snapshot_game;
 
 // ── Preset Deck Loading (from preset_decks/*.json) ───────────────
@@ -110,16 +113,28 @@ fn parse_deck_file(path: &str) -> Result<Vec<(String, usize)>, String> {
             continue;
         }
         // Split on first whitespace: "4 Lightning Bolt" -> ("4", "Lightning Bolt")
-        let (count_str, name) = line
-            .split_once(char::is_whitespace)
-            .ok_or_else(|| format!("Line {}: expected 'Count CardName', got '{}'", line_num + 1, line))?;
-        let count: usize = count_str
-            .trim()
-            .parse()
-            .map_err(|_| format!("Line {}: invalid count '{}' in '{}'", line_num + 1, count_str, line))?;
+        let (count_str, name) = line.split_once(char::is_whitespace).ok_or_else(|| {
+            format!(
+                "Line {}: expected 'Count CardName', got '{}'",
+                line_num + 1,
+                line
+            )
+        })?;
+        let count: usize = count_str.trim().parse().map_err(|_| {
+            format!(
+                "Line {}: invalid count '{}' in '{}'",
+                line_num + 1,
+                count_str,
+                line
+            )
+        })?;
         let name = name.trim();
         if name.is_empty() {
-            return Err(format!("Line {}: empty card name in '{}'", line_num + 1, line));
+            return Err(format!(
+                "Line {}: empty card name in '{}'",
+                line_num + 1,
+                line
+            ));
         }
         deck.push((name.to_string(), count));
     }
@@ -162,6 +177,7 @@ fn build_deck_from_spec(
 /// in `notify_turn_changed()` — this matches Java's `GameEventTurnBegan` timing
 /// exactly.
 struct CapturingAgent {
+    player_id: PlayerId,
     inner: DeterministicAgent,
     /// Shared snapshot storage — collected after the game ends.
     shared_snapshots: Arc<Mutex<Vec<StateSnapshot>>>,
@@ -169,10 +185,26 @@ struct CapturingAgent {
     shared_covered_cards: Arc<Mutex<BTreeSet<String>>>,
     /// Shared low-effort mechanic signals (notify message buckets).
     shared_mechanic_signals: Arc<Mutex<BTreeMap<String, usize>>>,
+    /// Shared choice-point decisions captured from agent callbacks.
+    shared_decisions: Arc<Mutex<Vec<DecisionRecord>>>,
     /// Snapshot cached by `snapshot_state()`, pushed on `notify_turn_changed()`.
     pending_snapshot: Option<StateSnapshot>,
     /// If true, capture snapshots at turn start.
     capture_snapshots: bool,
+    /// Current turn for decision records.
+    current_turn: u32,
+    /// Current phase for decision records.
+    current_phase: String,
+    /// Card id -> card name lookup cache for option labels.
+    card_names: HashMap<CardId, String>,
+    /// Card id -> is_land cache for main action labels.
+    card_is_land: HashMap<CardId, bool>,
+    /// (CardId, ability_index) -> is_mana_ability cache for main action labels.
+    ability_is_mana: HashMap<(CardId, usize), bool>,
+    /// Native Rust CardId -> shared parity id mapping.
+    parity_map: Arc<ParityCardMap>,
+    /// Latest game snapshot for legality checks in blocker choice logging.
+    last_game_state: Option<GameState>,
 }
 
 impl CapturingAgent {
@@ -183,18 +215,65 @@ impl CapturingAgent {
         shared: Arc<Mutex<Vec<StateSnapshot>>>,
         covered: Arc<Mutex<BTreeSet<String>>>,
         mechanics: Arc<Mutex<BTreeMap<String, usize>>>,
+        decisions: Arc<Mutex<Vec<DecisionRecord>>>,
         rng: Rc<RefCell<JavaRandom>>,
         game_rng: Rc<RefCell<JavaRandom>>,
+        parity_map: Arc<ParityCardMap>,
         capture_snapshots: bool,
     ) -> Self {
         Self {
-            inner: DeterministicAgent::new(player_id, verbose, rng, game_rng, prefer_actions),
+            player_id,
+            inner: DeterministicAgent::new(
+                player_id,
+                verbose,
+                rng,
+                game_rng,
+                prefer_actions,
+                Arc::clone(&parity_map),
+            ),
             shared_snapshots: shared,
             shared_covered_cards: covered,
             shared_mechanic_signals: mechanics,
+            shared_decisions: decisions,
             pending_snapshot: None,
             capture_snapshots,
+            current_turn: 0,
+            current_phase: "Unknown".to_string(),
+            card_names: HashMap::new(),
+            card_is_land: HashMap::new(),
+            ability_is_mana: HashMap::new(),
+            parity_map,
+            last_game_state: None,
         }
+    }
+
+    fn card_name(&self, id: CardId) -> String {
+        self.card_names
+            .get(&id)
+            .cloned()
+            .unwrap_or_else(|| format!("Card({})", id.0))
+    }
+
+    fn record_decision(&self, kind: &str, options: Vec<String>, choice: String) {
+        self.shared_decisions.lock().unwrap().push(DecisionRecord {
+            turn: self.current_turn,
+            phase: self.current_phase.clone(),
+            deciding_player: self.player_id.0,
+            kind: kind.to_string(),
+            options,
+            choice,
+        });
+    }
+
+    fn legal_attackers_for_blocker(&self, blocker: CardId, attackers: &[CardId]) -> Vec<CardId> {
+        let Some(ref game) = self.last_game_state else {
+            return attackers.to_vec();
+        };
+        attackers
+            .iter()
+            .copied()
+            .filter(|&attacker| forge_engine_core::combat::can_creature_block(game, blocker, attacker))
+            .collect()
     }
 }
 
@@ -205,6 +284,18 @@ impl PlayerAgent for CapturingAgent {
         mana_pools: &[forge_engine_core::mana::ManaPool],
     ) {
         self.inner.snapshot_state(game, mana_pools);
+        self.card_names.clear();
+        self.card_is_land.clear();
+        self.ability_is_mana.clear();
+        self.last_game_state = Some(game.clone());
+        for c in &game.cards {
+            self.card_names.insert(c.id, c.card_name.clone());
+            self.card_is_land.insert(c.id, c.is_land());
+            for ab in &c.activated_abilities {
+                self.ability_is_mana
+                    .insert((c.id, ab.ability_index), ab.is_mana_ability);
+            }
+        }
         if !self.capture_snapshots {
             return;
         }
@@ -214,6 +305,7 @@ impl PlayerAgent for CapturingAgent {
 
     fn notify_turn_changed(&mut self, active_player: PlayerId, turn_number: u32) {
         self.inner.notify_turn_changed(active_player, turn_number);
+        self.current_turn = turn_number;
         if !self.capture_snapshots {
             return;
         }
@@ -243,6 +335,7 @@ impl PlayerAgent for CapturingAgent {
     }
 
     fn notify_phase_changed(&mut self, phase: forge_foundation::PhaseType) {
+        self.current_phase = format!("{:?}", phase);
         self.inner.notify_phase_changed(phase);
     }
 
@@ -250,7 +343,12 @@ impl PlayerAgent for CapturingAgent {
         self.inner.on_library_peek(game, cards);
     }
 
-    fn mulligan_decision(&mut self, player: PlayerId, hand: &[CardId], mulligan_count: u32) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        player: PlayerId,
+        hand: &[CardId],
+        mulligan_count: u32,
+    ) -> bool {
         self.inner.mulligan_decision(player, hand, mulligan_count)
     }
 
@@ -262,17 +360,152 @@ impl PlayerAgent for CapturingAgent {
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
     ) -> forge_engine_core::agent::MainPhaseAction {
-        self.inner.choose_action(
+        #[derive(Clone, Copy)]
+        enum EntryKind {
+            Card(CardId),
+            Ability(CardId, usize),
+        }
+        let mut entries: Vec<(String, EntryKind)> = Vec::new();
+        for &cid in playable {
+            let base = if self.card_is_land.get(&cid).copied().unwrap_or(false) {
+                format!("LAND:{}", self.card_name(cid))
+            } else {
+                format!("SPELL:{}", self.card_name(cid))
+            };
+            entries.push((base, EntryKind::Card(cid)));
+        }
+        for &(cid, ab_idx) in activatable {
+            if self
+                .ability_is_mana
+                .get(&(cid, ab_idx))
+                .copied()
+                .unwrap_or(false)
+            {
+                continue;
+            }
+            entries.push((format!("AB:{}", self.card_name(cid)), EntryKind::Ability(cid, ab_idx)));
+        }
+        entries.sort_by(|a, b| {
+            let key = |(label, kind): &(String, EntryKind)| match *kind {
+                EntryKind::Card(cid) => (
+                    label.clone(),
+                    "0".to_string(),
+                    self.parity_map.id(cid).to_string(),
+                    "0".to_string(),
+                ),
+                EntryKind::Ability(cid, idx) => (
+                    label.clone(),
+                    "1".to_string(),
+                    self.parity_map.id(cid).to_string(),
+                    idx.to_string(),
+                ),
+            };
+            key(a).cmp(&key(b))
+        });
+        let options_raw: Vec<String> = entries.iter().map(|(s, _)| s.clone()).collect();
+        let option_keys: Vec<u64> = entries
+            .iter()
+            .map(|(_, kind)| match *kind {
+                EntryKind::Card(cid) => self.parity_map.id(cid) as u64,
+                EntryKind::Ability(cid, _idx) => self.parity_map.id(cid) as u64,
+            })
+            .collect();
+        let options = parity_id::disambiguate_labels_with_keys(&options_raw, &option_keys);
+
+        let action = self.inner.choose_action(
             player,
             playable,
             tappable_lands,
             untappable_lands,
             activatable,
-        )
+        );
+
+        if entries.is_empty() {
+            return action;
+        }
+
+        let choice = match action {
+            MainPhaseAction::Pass => "PASS".to_string(),
+            MainPhaseAction::Play(cid) => entries
+                .iter()
+                .enumerate()
+                .find(|(_, (_, kind))| matches!(kind, EntryKind::Card(id) if *id == cid))
+                .map(|(idx, _)| options[idx].clone())
+                .unwrap_or_else(|| {
+                    if self.card_is_land.get(&cid).copied().unwrap_or(false) {
+                        format!("LAND:{}", self.card_name(cid))
+                    } else {
+                        format!("SPELL:{}", self.card_name(cid))
+                    }
+                }),
+            MainPhaseAction::ActivateMana(cid) => format!("MANA:{}", self.card_name(cid)),
+            MainPhaseAction::UntapMana(cid) => format!("UNTAP_MANA:{}", self.card_name(cid)),
+            MainPhaseAction::ActivateAbility(cid, ab_idx) => entries
+                .iter()
+                .enumerate()
+                .find(|(_, (_, kind))| {
+                    matches!(kind, EntryKind::Ability(id, idx) if *id == cid && *idx == ab_idx)
+                })
+                .map(|(idx, _)| options[idx].clone())
+                .unwrap_or_else(|| {
+                    format!("AB:{}@{}", self.card_name(cid), self.parity_map.id(cid))
+                }),
+        };
+        self.record_decision("main_action", options, choice);
+        action
     }
 
-    fn choose_attackers(&mut self, player: PlayerId, available: &[CardId], possible_defenders: &[DefenderId]) -> Vec<(CardId, DefenderId)> {
-        self.inner.choose_attackers(player, available, possible_defenders)
+    fn choose_attackers(
+        &mut self,
+        player: PlayerId,
+        available: &[CardId],
+        possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
+        let mut sorted_defenders: Vec<DefenderId> = possible_defenders.to_vec();
+        sorted_defenders.sort_by_key(|d| format!("{:?}", d));
+        let sorted_available = parity_order::sort_cards_by_name_then_id(
+            available,
+            |id| self.card_name(id),
+            |id| self.parity_map.id(id),
+        );
+        let picked = self
+            .inner
+            .choose_attackers(player, &sorted_available, &sorted_defenders);
+        let attacker_labels =
+            parity_id::label_cards_in_order(
+                &sorted_available,
+                |id| self.card_name(id),
+                |id| self.parity_map.id(id),
+            );
+        let mut attacker_label_by_id: HashMap<CardId, String> = HashMap::new();
+        for (id, label) in attacker_labels {
+            attacker_label_by_id.insert(id, label);
+        }
+        for &attacker in &sorted_available {
+            let mut options = vec!["PASS".to_string()];
+            let attacker_label = attacker_label_by_id
+                .get(&attacker)
+                .cloned()
+                .unwrap_or_else(|| self.card_name(attacker));
+            for (idx, _) in sorted_defenders.iter().enumerate() {
+                options.push(format!("ATTACK:{attacker_label}->D{idx}"));
+            }
+
+            let choice = picked
+                .iter()
+                .find(|(cid, _)| *cid == attacker)
+                .and_then(|(_, defender)| {
+                    sorted_defenders
+                        .iter()
+                        .position(|d| d == defender)
+                        .map(|idx| format!("ATTACK:{attacker_label}->D{idx}"))
+                })
+                .unwrap_or_else(|| "PASS".to_string());
+
+            self.record_decision("combat_attacker_choice", options, choice);
+        }
+
+        picked
     }
 
     fn choose_blockers(
@@ -281,8 +514,114 @@ impl PlayerAgent for CapturingAgent {
         attackers: &[CardId],
         available_blockers: &[CardId],
     ) -> Vec<(CardId, CardId)> {
-        self.inner
-            .choose_blockers(player, attackers, available_blockers)
+        let sorted_attackers = parity_order::sort_cards_by_name_then_id(
+            attackers,
+            |id| self.card_name(id),
+            |id| self.parity_map.id(id),
+        );
+        let sorted_blockers = parity_order::sort_cards_by_name_then_id(
+            available_blockers,
+            |id| self.card_name(id),
+            |id| self.parity_map.id(id),
+        );
+        let chosen = self
+            .inner
+            .choose_blockers(player, &sorted_attackers, &sorted_blockers);
+
+        let attacker_labels = parity_id::label_cards_in_order(
+            &sorted_attackers,
+            |id| self.card_name(id),
+            |id| self.parity_map.id(id),
+        );
+        let blocker_labels = parity_id::label_cards_in_order(
+            &sorted_blockers,
+            |id| self.card_name(id),
+            |id| self.parity_map.id(id),
+        );
+        let attacker_label_by_id: HashMap<CardId, String> =
+            attacker_labels.into_iter().collect();
+        let blocker_label_by_id: HashMap<CardId, String> =
+            blocker_labels.into_iter().collect();
+
+        let mut chosen_by_blocker: HashMap<CardId, CardId> = HashMap::new();
+        for (blocker, attacker) in chosen.iter().copied() {
+            chosen_by_blocker.entry(blocker).or_insert(attacker);
+        }
+
+        for &blocker in &sorted_blockers {
+            let blocker_label = blocker_label_by_id
+                .get(&blocker)
+                .cloned()
+                .unwrap_or_else(|| format!("{}@{}", self.card_name(blocker), self.parity_map.id(blocker)));
+            let mut options = vec!["PASS".to_string()];
+            let legal_attackers = self.legal_attackers_for_blocker(blocker, &sorted_attackers);
+            for &attacker in &legal_attackers {
+                let attacker_label = attacker_label_by_id
+                    .get(&attacker)
+                    .cloned()
+                    .unwrap_or_else(|| self.card_name(attacker));
+                options.push(format!("BLOCK:{blocker_label}->{attacker_label}"));
+            }
+            let choice = chosen_by_blocker
+                .get(&blocker)
+                .and_then(|attacker| {
+                    attacker_label_by_id
+                        .get(attacker)
+                        .map(|label| format!("BLOCK:{blocker_label}->{label}"))
+                })
+                .unwrap_or_else(|| "PASS".to_string());
+            self.record_decision("combat_blocker_choice", options, choice);
+        }
+
+        chosen
+    }
+
+    fn choose_blocker_for(
+        &mut self,
+        player: PlayerId,
+        attackers: &[CardId],
+        blocker: CardId,
+    ) -> Option<CardId> {
+        let sorted_attackers = parity_order::sort_cards_by_name_then_id(
+            attackers,
+            |id| self.card_name(id),
+            |id| self.parity_map.id(id),
+        );
+        let chosen = self
+            .inner
+            .choose_blocker_for(player, &sorted_attackers, blocker);
+        let attacker_labels =
+            parity_id::label_cards_in_order(
+                &sorted_attackers,
+                |id| self.card_name(id),
+                |id| self.parity_map.id(id),
+            );
+        let mut attacker_label_by_id: HashMap<CardId, String> = HashMap::new();
+        for (id, label) in attacker_labels {
+            attacker_label_by_id.insert(id, label);
+        }
+        let mut options = vec!["PASS".to_string()];
+        let blocker_label = format!("{}@{}", self.card_name(blocker), self.parity_map.id(blocker));
+        let legal_attackers = self.legal_attackers_for_blocker(blocker, &sorted_attackers);
+        for &attacker in &legal_attackers {
+            let attacker_label = attacker_label_by_id
+                .get(&attacker)
+                .cloned()
+                .unwrap_or_else(|| self.card_name(attacker));
+            options.push(format!("BLOCK:{blocker_label}->{attacker_label}",));
+        }
+        let choice = chosen
+            .map(|attacker| {
+                let attacker_label = attacker_label_by_id
+                    .get(&attacker)
+                    .cloned()
+                    .unwrap_or_else(|| self.card_name(attacker));
+                format!("BLOCK:{blocker_label}->{attacker_label}")
+            })
+            .unwrap_or_else(|| "PASS".to_string());
+        self.record_decision("combat_blocker_choice", options, choice);
+
+        chosen
     }
 
     fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
@@ -338,10 +677,6 @@ impl PlayerAgent for CapturingAgent {
         self.inner.choose_reorder_library(player, cards)
     }
 
-    fn choose_may_shuffle(&mut self, player: PlayerId) -> bool {
-        self.inner.choose_may_shuffle(player)
-    }
-
     fn choose_discard(&mut self, player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
         self.inner.choose_discard(player, hand, num)
     }
@@ -378,12 +713,55 @@ impl PlayerAgent for CapturingAgent {
         card_name: Option<&str>,
         api: Option<&str>,
     ) -> bool {
-        self.inner
-            .choose_optional_trigger(player, description, card_name, api)
+        let accept = self
+            .inner
+            .choose_optional_trigger(player, description, card_name, api);
+        self.record_decision(
+            "optional_trigger",
+            vec!["DECLINE".to_string(), "ACCEPT".to_string()],
+            if accept {
+                "ACCEPT".to_string()
+            } else {
+                "DECLINE".to_string()
+            },
+        );
+        accept
     }
 
     fn choose_land_or_spell(&mut self, player: PlayerId) -> Option<bool> {
         self.inner.choose_land_or_spell(player)
+    }
+
+    fn confirm_action(
+        &mut self,
+        player: PlayerId,
+        mode: Option<&str>,
+        message: &str,
+        options: &[String],
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        let accept = self
+            .inner
+            .confirm_action(player, mode, message, options, card_name, api);
+        let mut logged_options = if options.is_empty() {
+            vec!["DECLINE".to_string(), "ACCEPT".to_string()]
+        } else {
+            options.to_vec()
+        };
+        if logged_options.is_empty() {
+            logged_options = vec!["DECLINE".to_string(), "ACCEPT".to_string()];
+        }
+        self.record_decision(
+            "confirm_action",
+            logged_options,
+            if accept {
+                "ACCEPT".to_string()
+            } else {
+                "DECLINE".to_string()
+            },
+        );
+        accept
     }
 
     fn notify(&mut self, message: &str) {
@@ -465,14 +843,14 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         .unwrap_or_default();
     if token_dir_path.exists() {
         if verbose {
-            eprintln!("[parity] Loading token scripts from {:?} ...", token_dir_path);
+            eprintln!(
+                "[parity] Loading token scripts from {:?} ...",
+                token_dir_path
+            );
         }
         let (token_db, token_result) = CardDatabase::load_from_directory(&token_dir_path);
         if verbose {
-            eprintln!(
-                "[parity] Loaded {} token scripts",
-                token_result.loaded
-            );
+            eprintln!("[parity] Loaded {} token scripts", token_result.loaded);
         }
         for (script_name, rules) in token_db.iter() {
             let template = CardInstance::from_rules(rules, PlayerId(0));
@@ -480,7 +858,10 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         }
     }
 
-    Ok(LoadedData { db, token_templates })
+    Ok(LoadedData {
+        db,
+        token_templates,
+    })
 }
 
 /// Run a game using pre-loaded data (avoids reloading the DB for each matchup).
@@ -507,10 +888,10 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
 
     // Shared storage for turn-start snapshots captured by CapturingAgent
     let shared_snapshots: Arc<Mutex<Vec<StateSnapshot>>> = Arc::new(Mutex::new(Vec::new()));
-    let shared_covered_cards: Arc<Mutex<BTreeSet<String>>> =
-        Arc::new(Mutex::new(BTreeSet::new()));
+    let shared_covered_cards: Arc<Mutex<BTreeSet<String>>> = Arc::new(Mutex::new(BTreeSet::new()));
     let shared_mechanic_signals: Arc<Mutex<BTreeMap<String, usize>>> =
         Arc::new(Mutex::new(BTreeMap::new()));
+    let shared_decisions: Arc<Mutex<Vec<DecisionRecord>>> = Arc::new(Mutex::new(Vec::new()));
 
     // Run game with fixed seed (for any engine-internal randomness)
     let mut rng = StdRng::seed_from_u64(config.seed);
@@ -566,6 +947,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     for &pid in &game.player_order.clone() {
         game.draw_cards(pid, 7);
     }
+    let parity_map = Arc::new(ParityCardMap::from_opening_state(&game));
 
     // Create a SEPARATE agent RNG seeded identically to Java's `new Random(seed)`.
     // This is distinct from the game RNG — both sides create a fresh Random(seed)
@@ -580,24 +962,28 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
         Box::new(CapturingAgent::new(
             p0,
-            config.verbose,
+            false,
             config.prefer_actions,
             Arc::clone(&shared_snapshots),
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_mechanic_signals),
+            Arc::clone(&shared_decisions),
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
+            Arc::clone(&parity_map),
             true,
         )),
         Box::new(CapturingAgent::new(
             p1,
-            config.verbose,
+            false,
             config.prefer_actions,
             Arc::clone(&shared_snapshots),
             Arc::clone(&shared_covered_cards),
             Arc::clone(&shared_mechanic_signals),
+            Arc::clone(&shared_decisions),
             Rc::clone(&agent_rng),
             Rc::clone(&game_rng),
+            Arc::clone(&parity_map),
             false,
         )),
     ];
@@ -616,6 +1002,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     let turn_snapshots = shared_snapshots.lock().unwrap();
     let snapshots: Vec<StateSnapshot> = turn_snapshots.clone();
     drop(turn_snapshots);
+    let decisions: Vec<DecisionRecord> = shared_decisions.lock().unwrap().clone();
     let covered_cards: Vec<String> = shared_covered_cards
         .lock()
         .unwrap()
@@ -638,6 +1025,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         deck2: config.deck2.clone(),
         max_turns: config.max_turns,
         snapshots,
+        decisions,
         covered_cards,
         mechanic_signals,
     })

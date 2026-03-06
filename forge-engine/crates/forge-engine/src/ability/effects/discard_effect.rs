@@ -33,6 +33,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .cards_in_zone(ZoneType::Hand, target_player)
         .to_vec();
 
+    if sa.params.contains_key("Optional") {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let accepted = ctx.agents[target_player.index()].confirm_action(
+            target_player,
+            None,
+            "Do you want to discard?",
+            &[],
+            source_name,
+            Some("Discard"),
+        );
+        if !accepted {
+            return;
+        }
+    }
+
     // Mode$ Random — discard at random (e.g. Hypnotic Specter).
     // Mirrors Java's DiscardEffect which calls Aggregates.random() bypassing the controller.
     // We route through the agent's choose_random_discard so deterministic agents can

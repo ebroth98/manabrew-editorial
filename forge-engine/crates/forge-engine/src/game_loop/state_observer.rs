@@ -170,7 +170,11 @@ fn compute_unspent_mana_colors(game: &GameState, player: crate::ids::PlayerId) -
     use forge_foundation::mana::ManaAtom;
 
     let mut keep: u16 = 0;
-    for card in game.cards.iter().filter(|c| c.zone == forge_foundation::ZoneType::Battlefield) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == forge_foundation::ZoneType::Battlefield)
+    {
         for st_ab in &card.static_abilities {
             if st_ab.mode != StaticMode::UnspentMana {
                 continue;
@@ -179,10 +183,14 @@ fn compute_unspent_mana_colors(game: &GameState, player: crate::ids::PlayerId) -
             if let Some(valid_player) = st_ab.params.get("ValidPlayer") {
                 match valid_player.to_ascii_lowercase().as_str() {
                     "you" => {
-                        if card.controller != player { continue; }
+                        if card.controller != player {
+                            continue;
+                        }
                     }
                     "opponent" => {
-                        if card.controller == player { continue; }
+                        if card.controller == player {
+                            continue;
+                        }
                     }
                     _ => {} // "Player" or unknown → applies to all
                 }
@@ -194,8 +202,12 @@ fn compute_unspent_mana_colors(game: &GameState, player: crate::ids::PlayerId) -
                 keep |= ManaAtom::from_name(&mana_type.to_ascii_lowercase());
             } else {
                 // All mana types
-                keep |= ManaAtom::WHITE | ManaAtom::BLUE | ManaAtom::BLACK
-                    | ManaAtom::RED | ManaAtom::GREEN | ManaAtom::COLORLESS;
+                keep |= ManaAtom::WHITE
+                    | ManaAtom::BLUE
+                    | ManaAtom::BLACK
+                    | ManaAtom::RED
+                    | ManaAtom::GREEN
+                    | ManaAtom::COLORLESS;
             }
         }
     }
@@ -207,7 +219,11 @@ fn compute_unspent_mana_colors(game: &GameState, player: crate::ids::PlayerId) -
 fn has_mana_burn(game: &GameState, player: crate::ids::PlayerId) -> bool {
     use crate::staticability::StaticMode;
 
-    for card in game.cards.iter().filter(|c| c.zone == forge_foundation::ZoneType::Battlefield) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == forge_foundation::ZoneType::Battlefield)
+    {
         for st_ab in &card.static_abilities {
             if st_ab.mode != StaticMode::ManaBurn {
                 continue;
@@ -215,10 +231,14 @@ fn has_mana_burn(game: &GameState, player: crate::ids::PlayerId) -> bool {
             if let Some(valid_player) = st_ab.params.get("ValidPlayer") {
                 match valid_player.to_ascii_lowercase().as_str() {
                     "you" => {
-                        if card.controller != player { continue; }
+                        if card.controller != player {
+                            continue;
+                        }
                     }
                     "opponent" => {
-                        if card.controller == player { continue; }
+                        if card.controller == player {
+                            continue;
+                        }
                     }
                     _ => return true, // "Player" or unspecified → applies to all
                 }

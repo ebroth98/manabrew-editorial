@@ -49,7 +49,9 @@ pub fn parse_activated_ability(raw: &str, index: usize) -> Option<ActivatedAbili
     // - No loyalty cost
     let ab_type = params.get("AB").map(|s| s.as_str()).unwrap_or("");
     let has_targets = params.contains_key("ValidTgts");
-    let is_mana_ability = (ab_type.eq_ignore_ascii_case("Mana") || ab_type.eq_ignore_ascii_case("ManaReflected")) && !has_targets;
+    let is_mana_ability = (ab_type.eq_ignore_ascii_case("Mana")
+        || ab_type.eq_ignore_ascii_case("ManaReflected"))
+        && !has_targets;
 
     Some(ActivatedAbility {
         ability_index: index,

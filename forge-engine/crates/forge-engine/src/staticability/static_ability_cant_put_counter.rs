@@ -15,10 +15,17 @@ pub fn any_cant_put_counter_on_card(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(st_ab.params.get("CounterType").map(String::as_str), &counter_type) {
+            if !counter_type_matches(
+                st_ab.params.get("CounterType").map(String::as_str),
+                &counter_type,
+            ) {
                 continue;
             }
-            if !matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), target, source) {
+            if !matches_valid_card(
+                st_ab.params.get("ValidCard").map(String::as_str),
+                target,
+                source,
+            ) {
                 continue;
             }
             if st_ab.params.contains_key("ValidPlayer") {
@@ -41,7 +48,10 @@ pub fn any_cant_put_counter_on_player(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(st_ab.params.get("CounterType").map(String::as_str), &counter_type) {
+            if !counter_type_matches(
+                st_ab.params.get("CounterType").map(String::as_str),
+                &counter_type,
+            ) {
                 continue;
             }
             if !matches_valid_player(
@@ -67,7 +77,11 @@ fn counter_type_matches(param: Option<&str>, ct: &CounterType) -> bool {
     }
 }
 
-fn matches_valid_player(valid: Option<&str>, player: PlayerId, source_controller: PlayerId) -> bool {
+fn matches_valid_player(
+    valid: Option<&str>,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Player") => true,

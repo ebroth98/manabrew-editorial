@@ -148,6 +148,18 @@ pub enum TriggerType {
     CounterRemovedOnce,
     /// A creature was exerted.
     Exerted,
+    /// A player collected evidence.
+    CollectEvidence,
+    /// A player foraged.
+    Forage,
+    /// A creature enlisted another creature.
+    Enlisted,
+    /// A player flipped a coin.
+    FlippedCoin,
+    /// A player rolled a die.
+    RolledDie,
+    /// A player completed a die-roll action.
+    RolledDieOnce,
     /// Mana was expended (cumulative per-turn tracking for Expend mechanic).
     ManaExpend,
 }
@@ -199,4 +211,12 @@ pub struct RunParams {
     pub original_controller: Option<PlayerId>,
     /// Cumulative mana expend amount (for ManaExpend trigger).
     pub mana_expend_amount: Option<i32>,
+    /// Enlisted card (for TriggerMode::Enlisted).
+    pub enlisted: Option<CardId>,
+    /// Coin-flip outcome (true = win/heads).
+    pub coin_flip_won: Option<bool>,
+    /// Rolled die result (modified).
+    pub die_result: Option<i32>,
+    /// Number of sides on the rolled die.
+    pub die_sides: Option<i32>,
 }

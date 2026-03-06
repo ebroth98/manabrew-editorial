@@ -212,13 +212,9 @@ fn collect_effects(
                     re.can_replace_add_counter(target_card, card)
                 }
 
-                ReplacementEvent::GameLoss { player } => {
-                    re.can_replace_game_loss(*player, card)
-                }
+                ReplacementEvent::GameLoss { player } => re.can_replace_game_loss(*player, card),
 
-                ReplacementEvent::GameWin { player } => {
-                    re.can_replace_game_win(*player, card)
-                }
+                ReplacementEvent::GameWin { player } => re.can_replace_game_win(*player, card),
 
                 ReplacementEvent::Counter { card: target_id } => {
                     let target_card = &game.cards[target_id.index()];
@@ -247,7 +243,12 @@ fn collect_effects(
 /// Execute a single replacement effect, mutating the event parameters.
 ///
 /// Mirrors `ReplacementHandler.executeReplacement()`.
-fn execute_effect(game: &GameState, card_id: CardId, effect: &ReplacementEffect, event: &mut ReplacementEvent) -> ReplacementResult {
+fn execute_effect(
+    game: &GameState,
+    card_id: CardId,
+    effect: &ReplacementEffect,
+    event: &mut ReplacementEvent,
+) -> ReplacementResult {
     match event {
         ReplacementEvent::Draw { .. } => {
             // Prevent$ True or Skip$ True → skip the draw.
@@ -417,36 +418,51 @@ fn execute_effect(game: &GameState, card_id: CardId, effect: &ReplacementEffect,
                 let color = if replace_color == "Chosen" {
                     // Use host card's chosen color
                     let host_card = &game.cards[card_id.index()];
-                    host_card.chosen_colors.first()
+                    host_card
+                        .chosen_colors
+                        .first()
                         .map(|c| color_word_to_short(c))
                         .unwrap_or_else(|| "W".into())
                 } else {
                     color_word_to_short(replace_color)
                 };
-                let replace_only = effect.params.get("ReplaceOnly").map(|s| color_word_to_short(s));
+                let replace_only = effect
+                    .params
+                    .get("ReplaceOnly")
+                    .map(|s| color_word_to_short(s));
                 let colored = ["W", "U", "B", "R", "G"];
-                let replaced: Vec<String> = mana.split_whitespace().map(|tok| {
-                    if let Some(ref only) = replace_only {
-                        if tok == only { color.clone() } else { tok.to_string() }
-                    } else if colored.contains(&tok) {
-                        color.clone()
-                    } else {
-                        tok.to_string()
-                    }
-                }).collect();
+                let replaced: Vec<String> = mana
+                    .split_whitespace()
+                    .map(|tok| {
+                        if let Some(ref only) = replace_only {
+                            if tok == only {
+                                color.clone()
+                            } else {
+                                tok.to_string()
+                            }
+                        } else if colored.contains(&tok) {
+                            color.clone()
+                        } else {
+                            tok.to_string()
+                        }
+                    })
+                    .collect();
                 *mana = replaced.join(" ");
                 return ReplacementResult::Updated;
             } else if let Some(replace_with) = effect.params.get("ReplaceWith") {
                 // ReplaceAmount via SVar name convention
-                let multiplier = if replace_with.contains("Triple") || replace_with.contains("Thrice") {
-                    3usize
-                } else if replace_with.contains("Twice") || replace_with.contains("Double") {
-                    2usize
-                } else {
-                    effect.params.get("ReplaceAmount")
-                        .and_then(|s| s.parse::<usize>().ok())
-                        .unwrap_or(2)
-                };
+                let multiplier =
+                    if replace_with.contains("Triple") || replace_with.contains("Thrice") {
+                        3usize
+                    } else if replace_with.contains("Twice") || replace_with.contains("Double") {
+                        2usize
+                    } else {
+                        effect
+                            .params
+                            .get("ReplaceAmount")
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or(2)
+                    };
 
                 if multiplier > 1 {
                     let parts: Vec<&str> = mana.split_whitespace().collect();

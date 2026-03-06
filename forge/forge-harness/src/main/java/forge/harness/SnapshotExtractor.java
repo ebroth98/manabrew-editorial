@@ -154,7 +154,7 @@ public final class SnapshotExtractor {
      * Map a Java PhaseType to the Rust Debug format (e.g. UNTAP -> "Untap").
      * Rust uses format!("{:?}", phase) which gives the variant name.
      */
-    private static String phaseToRustName(PhaseType phase) {
+    public static String phaseToRustName(PhaseType phase) {
         if (phase == null) return "Untap";
         switch (phase) {
             case UNTAP: return "Untap";

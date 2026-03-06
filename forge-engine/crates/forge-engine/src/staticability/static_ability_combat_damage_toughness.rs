@@ -13,7 +13,11 @@ pub fn combat_damage_uses_toughness(cards: &[CardInstance], card: &CardInstance)
             .iter()
             .filter(|sa| sa.mode == StaticMode::CombatDamageToughness)
         {
-            if matches_valid_card(st_ab.params.get("ValidCard").map(String::as_str), card, source) {
+            if matches_valid_card(
+                st_ab.params.get("ValidCard").map(String::as_str),
+                card,
+                source,
+            ) {
                 return true;
             }
         }
@@ -30,7 +34,9 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
         Some(v) if v.eq_ignore_ascii_case("Card.IsRemembered") => {
             source.remembered_cards.contains(&card.id)
         }
-        Some(v) if v.eq_ignore_ascii_case("Card.EffectSource") => source.effect_source == Some(card.id),
+        Some(v) if v.eq_ignore_ascii_case("Card.EffectSource") => {
+            source.effect_source == Some(card.id)
+        }
         _ => true,
     }
 }

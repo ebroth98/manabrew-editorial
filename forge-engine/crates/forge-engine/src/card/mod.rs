@@ -238,6 +238,16 @@ pub struct CardInstance {
     pub chosen_number: Option<i32>,
     /// Player chosen by ChoosePlayer effect.
     pub chosen_player: Option<PlayerId>,
+    /// Controller who made the chosen-player choice.
+    pub chosen_player_controller: Option<PlayerId>,
+    /// Controller who made the chosen-type choice.
+    pub chosen_type_controller: Option<PlayerId>,
+    /// Whether the chosen player has been revealed.
+    pub chosen_player_revealed: bool,
+    /// Whether the chosen type has been revealed.
+    pub chosen_type_revealed: bool,
+    /// Opponent chosen for PromiseGift cost.
+    pub promised_gift: Option<PlayerId>,
     /// True if detained — can't attack, block, or activate abilities. Clears at controller's next turn.
     pub detained: bool,
     /// Set during combat to the player this creature is attacking; None if not attacking.
@@ -269,6 +279,8 @@ pub struct CardInstance {
     pub chosen_modes: Option<Vec<usize>>,
     /// Number of extra targets paid for via Strive (0 = no extra targets).
     pub strive_extra_targets: u32,
+    /// Set when this creature enlisted another creature in the current combat.
+    pub enlisted_this_combat: bool,
     /// Per-ability activation count this game (for PowerUp once-per-game restriction).
     pub activations_this_game: std::collections::BTreeMap<usize, u32>,
 }
@@ -371,6 +383,11 @@ impl CardInstance {
             named_cards: Vec::new(),
             chosen_number: None,
             chosen_player: None,
+            chosen_player_controller: None,
+            chosen_type_controller: None,
+            chosen_player_revealed: false,
+            chosen_type_revealed: false,
+            promised_gift: None,
             detained: false,
             attacking_player: None,
             goaded_by: None,
@@ -384,6 +401,7 @@ impl CardInstance {
             colors_spent_to_cast: 0,
             chosen_modes: None,
             strive_extra_targets: 0,
+            enlisted_this_combat: false,
             activations_this_game: std::collections::BTreeMap::new(),
         };
 
@@ -407,8 +425,7 @@ impl CardInstance {
         for &(subtype, letter, desc) in SUBTYPE_MANA {
             if self.type_line.has_subtype(subtype) {
                 let already_produces = self.activated_abilities.iter().any(|ab| {
-                    ab.is_mana_ability
-                        && ab.params.get("Produced").map_or(false, |p| p == letter)
+                    ab.is_mana_ability && ab.params.get("Produced").map_or(false, |p| p == letter)
                 });
                 if !already_produces {
                     let raw = format!(
@@ -439,6 +456,34 @@ impl CardInstance {
                 self.activated_abilities.push(ab);
             }
         }
+
+        // Equip: K:Equip:{cost}[...]
+        // Forge keyword payload can include optional suffix data; we only need
+        // the activation cost + default target filter to mirror Java baseline.
+        if let Some(equip_raw) = self.get_keyword_cost("Equip") {
+            let payload = equip_raw
+                .split(":::")
+                .next()
+                .unwrap_or(equip_raw.as_str())
+                .trim();
+            let mut parts = payload.split(':');
+            let equip_cost = parts.next().unwrap_or(payload).trim();
+            let target_filter = parts
+                .next()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Creature.YouCtrl");
+            if !equip_cost.is_empty() {
+                let ab_text = format!(
+                    "AB$ Attach | Cost$ {} | ValidTgts$ {} | SorcerySpeed$ True | SpellDescription$ Equip {}",
+                    equip_cost, target_filter, equip_cost
+                );
+                let next_idx = self.activated_abilities.len();
+                if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                    self.activated_abilities.push(ab);
+                }
+            }
+        }
     }
 
     /// Generate triggered abilities from keywords (e.g. Prowess, Bushido).
@@ -454,9 +499,11 @@ impl CardInstance {
                     trig.execute = "TrigProwess".to_string();
                     self.triggers.push(trig);
                 }
-                self.svars.entry("TrigProwess".to_string()).or_insert_with(|| {
-                    "DB$ Pump | Defined$ Self | NumAtt$ 1 | NumDef$ 1".to_string()
-                });
+                self.svars
+                    .entry("TrigProwess".to_string())
+                    .or_insert_with(|| {
+                        "DB$ Pump | Defined$ Self | NumAtt$ 1 | NumDef$ 1".to_string()
+                    });
             }
 
             // Bushido N: +N/+N when blocking or becoming blocked
@@ -472,9 +519,11 @@ impl CardInstance {
                         trig.execute = "TrigBushido".to_string();
                         self.triggers.push(trig);
                     }
-                    self.svars.entry("TrigBushido".to_string()).or_insert_with(|| {
-                        format!("DB$ Pump | Defined$ Self | NumAtt$ {n_str} | NumDef$ {n_str}")
-                    });
+                    self.svars
+                        .entry("TrigBushido".to_string())
+                        .or_insert_with(|| {
+                            format!("DB$ Pump | Defined$ Self | NumAtt$ {n_str} | NumDef$ {n_str}")
+                        });
                 }
             }
         }
@@ -634,7 +683,13 @@ impl CardInstance {
     pub fn sunburst_count(&self) -> i32 {
         use forge_foundation::mana::ManaAtom;
         let mut count = 0;
-        for &bit in &[ManaAtom::WHITE, ManaAtom::BLUE, ManaAtom::BLACK, ManaAtom::RED, ManaAtom::GREEN] {
+        for &bit in &[
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+        ] {
             if (self.colors_spent_to_cast & bit) != 0 {
                 count += 1;
             }
@@ -763,7 +818,10 @@ impl CardInstance {
         for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
             if let Some(rest) = kw.strip_prefix("AltCostGainLife:") {
                 let mut parts = rest.splitn(2, ':');
-                let amount = parts.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
+                let amount = parts
+                    .next()
+                    .and_then(|s| s.parse::<i32>().ok())
+                    .unwrap_or(0);
                 let condition = parts.next().unwrap_or("").to_string();
                 return Some((amount, condition));
             }
