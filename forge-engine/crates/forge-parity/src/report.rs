@@ -387,12 +387,16 @@ fn format_unified_trace_diff(rust_trace: &str, java_trace: &str, indent: &str) -
             continue;
         }
 
-        if !rust_line.is_empty() {
-            out.push_str(indent);
+        out.push_str(indent);
+        if rust_line.is_empty() {
+            out.push_str(&format!("{ANSI_ORANGE}Rust: <no line>{ANSI_RESET}\n"));
+        } else {
             out.push_str(&format!("{ANSI_ORANGE}Rust: {rust_line}{ANSI_RESET}\n"));
         }
-        if !java_line.is_empty() {
-            out.push_str(indent);
+        out.push_str(indent);
+        if java_line.is_empty() {
+            out.push_str(&format!("{ANSI_GREEN}Java: <no line>{ANSI_RESET}\n"));
+        } else {
             out.push_str(&format!("{ANSI_GREEN}Java: {java_line}{ANSI_RESET}\n"));
         }
     }
