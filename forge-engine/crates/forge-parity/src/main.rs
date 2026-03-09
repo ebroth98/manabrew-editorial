@@ -142,6 +142,11 @@ struct Cli {
     #[arg(long)]
     java_workers: Option<usize>,
 
+    /// Maximum JVM heap size per Java worker (e.g. "512m", "1g"). Default: "512m".
+    /// On memory-constrained VMs, this prevents each JVM from consuming all available RAM.
+    #[arg(long, default_value = "512m")]
+    java_heap: String,
+
     /// Run continuous parity testing: execute games, store in SQLite, exit with threshold check
     #[arg(long)]
     continuous: bool,
@@ -289,6 +294,7 @@ fn run_multi_game_mode(cli: &Cli) {
             forge_home: None,
             decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
+            java_heap: cli.java_heap.clone(),
         };
         match JavaServer::spawn(&server_config) {
             Ok(s) => Some(s),
@@ -314,6 +320,7 @@ fn run_multi_game_mode(cli: &Cli) {
             decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
+            java_heap: cli.java_heap.clone(),
         };
 
         let result = if let Some(ref mut srv) = server {
@@ -442,6 +449,7 @@ fn run_rust_only_mode(cli: &Cli) {
         decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
         prefer_actions: cli.prefer_actions,
+        java_heap: cli.java_heap.clone(),
     };
 
     let data = match runner::load_data(config.cards_dir.as_deref(), cli.verbose) {
@@ -502,6 +510,7 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
         decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
         prefer_actions: cli.prefer_actions,
+        java_heap: cli.java_heap.clone(),
     };
 
     let data = match runner::load_data(config.cards_dir.as_deref(), cli.verbose) {
@@ -518,6 +527,7 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
         forge_home: None,
         decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
+        java_heap: cli.java_heap.clone(),
     };
 
     let result = match JavaServer::spawn(&server_config) {
@@ -708,6 +718,7 @@ fn run_single_matchup_oneshot(
         decks_dir: config.decks_dir.clone(),
         verbose: config.verbose,
         prefer_actions: config.prefer_actions,
+        java_heap: config.java_heap.clone(),
     };
 
     let bridge = JavaBridge::new(bridge_config);
@@ -1029,10 +1040,11 @@ fn run_matrix_mode(cli: &Cli) {
 
     let completed = AtomicUsize::new(0);
 
-    // Spawn server pool if Java JAR is provided
+    // Spawn server pool if Java JAR is provided.
+    // Default worker count is memory-aware: caps to what fits in RAM at the given heap size.
     let num_workers = cli.java_workers.unwrap_or_else(|| {
         if cli.java_jar.is_some() {
-            num_cpus()
+            max_workers_for_memory(&cli.java_heap)
         } else {
             0
         }
@@ -1044,6 +1056,7 @@ fn run_matrix_mode(cli: &Cli) {
             forge_home: None,
             decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
+            java_heap: cli.java_heap.clone(),
         };
         match ServerPool::spawn(num_workers.max(1), &server_config) {
             Ok(pool) => Some(pool),
@@ -1069,6 +1082,7 @@ fn run_matrix_mode(cli: &Cli) {
                 decks_dir: cli.decks_dir.clone(),
                 verbose: cli.verbose,
                 prefer_actions: cli.prefer_actions,
+                java_heap: cli.java_heap.clone(),
             };
 
             let result = if let Some(ref pool) = pool {
@@ -1256,6 +1270,7 @@ fn run_fuzz_mode(cli: &Cli) {
             forge_home: None,
             decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
+            java_heap: cli.java_heap.clone(),
         };
         match JavaServer::spawn(&server_config) {
             Ok(s) => Some(s),
@@ -1298,6 +1313,7 @@ fn run_fuzz_mode(cli: &Cli) {
             decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
+            java_heap: cli.java_heap.clone(),
         };
 
         let matchup_result = if let Some(ref mut srv) = server {
@@ -1313,6 +1329,7 @@ fn run_fuzz_mode(cli: &Cli) {
                     forge_home: None,
                     decks_dir: cli.decks_dir.clone(),
                     verbose: cli.verbose,
+                    java_heap: cli.java_heap.clone(),
                 }) {
                     Ok(new_srv) => {
                         *srv = new_srv;
@@ -1722,6 +1739,67 @@ fn num_cpus() -> usize {
         .min(8)
 }
 
+/// Parse a JVM heap size string (e.g. "512m", "1g") into bytes.
+fn parse_heap_bytes(heap: &str) -> u64 {
+    let heap = heap.trim().to_lowercase();
+    if let Some(n) = heap.strip_suffix('g') {
+        n.parse::<u64>().unwrap_or(1) * 1024 * 1024 * 1024
+    } else if let Some(n) = heap.strip_suffix('m') {
+        n.parse::<u64>().unwrap_or(512) * 1024 * 1024
+    } else if let Some(n) = heap.strip_suffix('k') {
+        n.parse::<u64>().unwrap_or(512_000) * 1024
+    } else {
+        heap.parse::<u64>().unwrap_or(512 * 1024 * 1024)
+    }
+}
+
+/// Compute max Java workers that fit in available system memory.
+/// Reserves 512MB for OS + Rust process, then divides remaining by per-worker heap.
+fn max_workers_for_memory(java_heap: &str) -> usize {
+    let heap_per_worker = parse_heap_bytes(java_heap);
+    if heap_per_worker == 0 {
+        return 1;
+    }
+    // Read total system memory from /proc/meminfo (Linux) or sysctl (macOS)
+    let total_mem = get_total_memory_bytes();
+    if total_mem == 0 {
+        return num_cpus(); // can't detect, fall back to CPU count
+    }
+    let reserved = 512 * 1024 * 1024u64; // 512MB for OS + Rust
+    let available = total_mem.saturating_sub(reserved);
+    let max = (available / heap_per_worker) as usize;
+    max.max(1).min(num_cpus()) // at least 1, at most num_cpus
+}
+
+fn get_total_memory_bytes() -> u64 {
+    // Try /proc/meminfo first (Linux / Docker)
+    if let Ok(contents) = std::fs::read_to_string("/proc/meminfo") {
+        for line in contents.lines() {
+            if let Some(rest) = line.strip_prefix("MemTotal:") {
+                let rest = rest.trim();
+                if let Some(kb_str) = rest.strip_suffix("kB").or(rest.strip_suffix("KB")) {
+                    if let Ok(kb) = kb_str.trim().parse::<u64>() {
+                        return kb * 1024;
+                    }
+                }
+            }
+        }
+    }
+    // macOS: sysctl hw.memsize
+    if let Ok(output) = std::process::Command::new("sysctl")
+        .arg("-n")
+        .arg("hw.memsize")
+        .output()
+    {
+        if let Ok(s) = std::str::from_utf8(&output.stdout) {
+            if let Ok(bytes) = s.trim().parse::<u64>() {
+                return bytes;
+            }
+        }
+    }
+    0 // unknown
+}
+
 // ── Continuous Parity Mode ──────────────────────────────────────────
 
 #[cfg(feature = "storage")]
@@ -1796,6 +1874,7 @@ fn run_continuous_mode(cli: &Cli) {
         forge_home: None,
         decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
+        java_heap: cli.java_heap.clone(),
     };
     let mut server = match JavaServer::spawn(&server_config) {
         Ok(s) => s,
@@ -1824,6 +1903,7 @@ fn run_continuous_mode(cli: &Cli) {
             decks_dir: cli.decks_dir.clone(),
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
+            java_heap: cli.java_heap.clone(),
         };
 
         let game_start = Instant::now();
@@ -2057,6 +2137,7 @@ fn run_serve_mode(cli: &Cli) {
         forge_home: None,
         decks_dir: cli.decks_dir.clone(),
         verbose: cli.verbose,
+        java_heap: cli.java_heap.clone(),
     };
     let mut java_server = match JavaServer::spawn(&server_config) {
         Ok(s) => s,
@@ -2136,6 +2217,7 @@ fn run_serve_mode(cli: &Cli) {
     let cli_decks_dir = cli.decks_dir.clone();
     let cli_verbose = cli.verbose;
     let cli_prefer_actions = cli.prefer_actions;
+    let cli_java_heap = cli.java_heap.clone();
     let cfg = Arc::clone(&dashboard_config);
 
     let mut completed = 0usize;
@@ -2157,6 +2239,7 @@ fn run_serve_mode(cli: &Cli) {
                 decks_dir: cli_decks_dir.clone(),
                 verbose: cli_verbose,
                 prefer_actions: cli_prefer_actions,
+                java_heap: cli_java_heap.clone(),
             };
 
             let game_start = Instant::now();
@@ -2359,6 +2442,7 @@ fn run_serve_mode(cli: &Cli) {
             decks_dir: cli_decks_dir.clone(),
             verbose: cli_verbose,
             prefer_actions: cli_prefer_actions,
+            java_heap: cli_java_heap.clone(),
         };
 
         let game_start = Instant::now();

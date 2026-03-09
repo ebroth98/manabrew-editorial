@@ -1094,6 +1094,8 @@ pub struct RunConfig {
     pub decks_dir: Option<String>,
     pub verbose: bool,
     pub prefer_actions: bool,
+    /// Maximum JVM heap size (e.g. "512m", "1g").
+    pub java_heap: String,
 }
 
 /// Pre-loaded card database and token templates, reusable across multiple matchups.

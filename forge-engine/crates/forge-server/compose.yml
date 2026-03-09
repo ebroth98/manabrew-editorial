@@ -17,11 +17,14 @@ services:
             dockerfile: forge-engine/crates/forge-parity/Dockerfile
         ports:
             - "8080:8080"
+        mem_limit: 3g
+        memswap_limit: 3g
         environment:
             PORT: "8080"
             THRESHOLD: "0.90"
             MAX_TURNS: "10"
             FUZZ_PER_BATCH: "0"
+            JAVA_HEAP: "${JAVA_HEAP:-512m}"
             # MAX_GAMES: ""          # omit for unlimited
             # DECKS: ""              # omit for all presets
             ANALYZE: "${ANALYZE:-}"

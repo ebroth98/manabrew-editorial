@@ -35,6 +35,8 @@ pub struct JavaBridgeConfig {
     pub verbose: bool,
     /// If true, bias main-phase random decisions toward actions over pass.
     pub prefer_actions: bool,
+    /// Maximum JVM heap size (e.g. "512m", "1g"). Passed as -Xmx to the JVM.
+    pub java_heap: String,
 }
 
 /// Java bridge that manages a subprocess running the Java Forge engine (one-shot mode).
@@ -80,6 +82,10 @@ impl JavaBridge {
         let java_bin = resolve_java_bin(verbose);
 
         let mut cmd = Command::new(&java_bin);
+
+        // Cap JVM heap to prevent unbounded memory consumption on VMs.
+        cmd.arg(format!("-Xmx{}", self.config.java_heap));
+        cmd.arg(format!("-Xms{}", self.config.java_heap));
 
         // Pass preset decks directory as JVM system property (must come before -jar)
         if let Some(ref dd) = self.config.decks_dir {
@@ -235,6 +241,8 @@ pub struct JavaServerConfig {
     pub decks_dir: Option<String>,
     /// If true, print step-by-step Java server logs.
     pub verbose: bool,
+    /// Maximum JVM heap size (e.g. "512m", "1g"). Passed as -Xmx to the JVM.
+    pub java_heap: String,
 }
 
 /// Request sent to the Java server over stdin (JSONL).
@@ -288,6 +296,10 @@ impl JavaServer {
         let java_bin = resolve_java_bin(verbose);
 
         let mut cmd = Command::new(&java_bin);
+
+        // Cap JVM heap to prevent unbounded memory consumption on VMs.
+        cmd.arg(format!("-Xmx{}", config.java_heap));
+        cmd.arg(format!("-Xms{}", config.java_heap));
 
         // Pass preset decks directory as JVM system property (must come before -jar)
         if let Some(ref dd) = config.decks_dir {

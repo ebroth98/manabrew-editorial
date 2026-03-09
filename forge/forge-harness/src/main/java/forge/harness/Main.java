@@ -198,6 +198,9 @@ public final class Main {
                         escapeJson(e.getMessage()) + "\"}");
                 }
                 protocolOut.flush();
+                // Reclaim memory between games — clear image caches and hint GC.
+                forge.ImageKeys.clearCaches();
+                System.gc();
             }
         } catch (IOException e) {
             System.err.println("[harness] Stdin read error: " + e.getMessage());

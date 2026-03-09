@@ -98,6 +98,7 @@ ENTRYPOINT ["/bin/sh", "-c", "\
     --java-jar /app/forge-harness.jar \
     --cards-dir /app/forge-gui/res/cardsfolder \
     --decks-dir /app/preset_decks \
+    --java-heap ${JAVA_HEAP:-512m} \
     --threshold ${THRESHOLD:-0.90} \
     --fuzz-per-batch ${FUZZ_PER_BATCH:-0} \
     --max-turns ${MAX_TURNS:-10}\"; \
