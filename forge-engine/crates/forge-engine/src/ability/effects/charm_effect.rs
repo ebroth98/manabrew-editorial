@@ -301,11 +301,20 @@ pub(crate) fn can_make_choices_precast(
 
     let mut charm_num: usize = sa_params
         .get("CharmNum")
-        .and_then(|s| s.parse().ok())
+        .and_then(|s| {
+            s.parse().ok().or_else(|| {
+                // If not a plain integer, try resolving as an SVar from the source card.
+                game.card(source_id).svars.get(s.trim()).and_then(|v| v.parse().ok())
+            })
+        })
         .unwrap_or(1);
     let min_charm_num: usize = sa_params
         .get("MinCharmNum")
-        .and_then(|s| s.parse().ok())
+        .and_then(|s| {
+            s.parse().ok().or_else(|| {
+                game.card(source_id).svars.get(s.trim()).and_then(|v| v.parse().ok())
+            })
+        })
         .unwrap_or(charm_num);
     let can_repeat = sa_params.contains_key("CanRepeatModes");
 

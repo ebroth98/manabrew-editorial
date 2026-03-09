@@ -111,6 +111,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             Some("Dig"),
         );
         if !accepted {
+            // Put cards back into library — reverse to restore original deepest→top order.
+            top_n.reverse();
+            let zone = ctx.game.zone_mut(ZoneType::Library, dig_player);
+            zone.cards.extend(top_n);
             return;
         }
     }

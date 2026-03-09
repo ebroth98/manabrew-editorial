@@ -389,6 +389,16 @@ impl GameLoop {
                     false,
                 );
                 game.move_card(card_id, ZoneType::Graveyard, owner);
+                self.trigger_handler.run_trigger(
+                    TriggerType::ChangesZone,
+                    RunParams {
+                        card: Some(card_id),
+                        origin: Some(ZoneType::Battlefield),
+                        destination: Some(ZoneType::Graveyard),
+                        ..Default::default()
+                    },
+                    false,
+                );
             }
         }
         processed_any
@@ -684,21 +694,6 @@ impl GameLoop {
                 .copied()
                 .filter(|cid| optional_exert_by_attacker.contains_key(cid))
                 .collect();
-            // Match Java flow: OptionalAttackCost (Enlist) prompts are only offered
-            // when CostEnlist.canPay() is true (i.e., there is at least one current
-            // enlisting candidate). If no candidates exist, skip enlist callback to
-            // avoid consuming RNG and desyncing parity decisions.
-            let enlist_can_pay = !crate::cost::get_enlist_targets(game, active).is_empty();
-            let possible_enlisters: Vec<CardId> = if enlist_can_pay {
-                declared_attackers
-                    .iter()
-                    .copied()
-                    .filter(|cid| optional_enlist_by_attacker.contains_key(cid))
-                    .collect()
-            } else {
-                Vec::new()
-            };
-
             if !possible_exerters.is_empty() {
                 let chosen = agents[active.index()].exert_attackers(active, &possible_exerters);
                 for attacker in chosen {
@@ -720,6 +715,19 @@ impl GameLoop {
                     }
                 }
             }
+
+            // Re-check enlist targets AFTER exert loop — exerting taps creatures,
+            // which can invalidate enlist candidates.
+            let enlist_can_pay = !crate::cost::get_enlist_targets(game, active).is_empty();
+            let possible_enlisters: Vec<CardId> = if enlist_can_pay {
+                declared_attackers
+                    .iter()
+                    .copied()
+                    .filter(|cid| optional_enlist_by_attacker.contains_key(cid))
+                    .collect()
+            } else {
+                Vec::new()
+            };
 
             if !possible_enlisters.is_empty() {
                 let chosen = agents[active.index()].enlist_attackers(active, &possible_enlisters);

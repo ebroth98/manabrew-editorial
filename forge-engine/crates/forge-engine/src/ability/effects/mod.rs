@@ -533,6 +533,23 @@ fn try_pay_unless_cost(
         }
     }
 
+    // Pre-check that all cost parts are supported before executing any,
+    // to avoid partial side-effects (damage/life loss) that can't be rolled back.
+    for part in &cost.parts {
+        match part {
+            CostPart::DamageYou(_)
+            | CostPart::PayLife(_)
+            | CostPart::Mana(_)
+            | CostPart::PayEnergy(_)
+            | CostPart::PayShards(_)
+            | CostPart::Draw(_)
+            | CostPart::Mill(_) => {}
+            _ => {
+                return false;
+            }
+        }
+    }
+
     for part in &cost.parts {
         match part {
             CostPart::DamageYou(amount) => {
@@ -596,10 +613,7 @@ fn try_pay_unless_cost(
                     }
                 }
             }
-            _ => {
-                // Unsupported UnlessCost part in effect resolution path.
-                return false;
-            }
+            _ => unreachable!("pre-checked above"),
         }
     }
     true

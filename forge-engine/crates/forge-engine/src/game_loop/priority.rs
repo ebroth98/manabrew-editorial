@@ -131,9 +131,8 @@ impl GameLoop {
                         });
                         passed_count = 0;
                     } else {
-                        // Cast/setup failed (e.g. target/mode invalid) — keep priority on the
-                        // same player. Mirrors Java deterministic play flow where failed casts
-                        // do not auto-pass.
+                        // Cast/setup failed (e.g. auto-tap heuristic failure, mana
+                        // restrictions) — treat as a pass to prevent infinite retry loops.
                         crate::agent::notify_all_agents(
                             agents,
                             crate::agent::GameLogEvent::warning(
@@ -141,9 +140,11 @@ impl GameLoop {
                             )
                             .with_player(priority_player),
                         );
-                        // Important: do not reset pass progression on failed cast.
-                        // Java PhaseHandler only resets first-priority tracking on
-                        // successful play; failed play leaves pass state intact.
+                        passed_count += 1;
+                        priority_player = game.next_player(priority_player);
+                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                            game.turn.priority_player = priority_player;
+                        });
                     }
                 }
                 MainPhaseAction::ActivateMana(land_id) => {

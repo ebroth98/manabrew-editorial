@@ -88,6 +88,8 @@ final class DeterministicPlayPlumbing {
             game.getStack().add(sa);
             return true;
         }
+        // Payment failed — rollback moveToStack if the card was moved.
+        GameActionUtil.rollbackAbility(sa, fromZone, zonePosition, pay, source);
         return false;
     }
 

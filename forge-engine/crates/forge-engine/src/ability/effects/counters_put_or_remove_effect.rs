@@ -28,7 +28,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .params
         .get("CounterType")
         .map(|s| parse_counter_type(s))
-        .or_else(|| ctx.game.card(target_id).counters.keys().next().cloned());
+        .or_else(|| {
+            // Sort keys for deterministic fallback (HashMap iteration is random).
+            let mut keys: Vec<_> = ctx.game.card(target_id).counters.keys().cloned().collect();
+            keys.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
+            keys.into_iter().next()
+        });
     let Some(counter_type) = counter_type else { return };
 
     let can_add = !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
@@ -75,6 +80,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else {
         ctx.game.card_mut(target_id)
             .remove_counter(&counter_type, amount);
+        ctx.trigger_handler.run_trigger(
+            crate::event::TriggerType::CounterRemoved,
+            crate::event::RunParams {
+                card: Some(target_id),
+                counter_type: Some(format!("{:?}", counter_type)),
+                counter_amount: Some(amount),
+                cause_player: Some(controller),
+                ..Default::default()
+            },
+            false,
+        );
         if sa.params.get("RememberRemovedCards").is_some() {
             ctx.game.card_mut(source_id).add_remembered_card(target_id);
         }

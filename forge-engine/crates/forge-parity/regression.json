@@ -18,5 +18,9 @@
   {
     "name": "payments",
     "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 10"
+  },
+  {
+    "name": "bugfix_regression",
+    "args": "--deck1 bugfix_regression --deck2 bugfix_regression --max-turns 20 --seed 42 --games 5"
   }
 ]

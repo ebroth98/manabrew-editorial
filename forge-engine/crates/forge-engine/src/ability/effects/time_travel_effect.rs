@@ -69,6 +69,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 );
             } else {
                 ctx.game.card_mut(cid).remove_counter(&CounterType::Time, 1);
+                ctx.trigger_handler.run_trigger(
+                    crate::event::TriggerType::CounterRemoved,
+                    crate::event::RunParams {
+                        card: Some(cid),
+                        counter_type: Some("Time".to_string()),
+                        counter_amount: Some(1),
+                        cause_player: Some(controller),
+                        ..Default::default()
+                    },
+                    false,
+                );
             }
         }
     }

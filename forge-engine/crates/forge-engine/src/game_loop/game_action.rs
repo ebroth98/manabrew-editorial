@@ -941,7 +941,8 @@ impl GameLoop {
                         *from,
                         *same_zone,
                     ) {
-                        return false;
+                        payment_ok = false;
+                        break;
                     }
                 }
                 CostPart::Enlist {
@@ -1418,7 +1419,8 @@ impl GameLoop {
                         *from,
                         *same_zone,
                     ) {
-                        return false;
+                        payment_ok = false;
+                        break;
                     }
                 }
                 CostPart::Enlist {
