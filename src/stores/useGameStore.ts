@@ -22,6 +22,8 @@ export interface AgentPrompt {
   gameView: GameView;
   displayEvents?: DisplayEvent[];
   playableCardIds?: string[];
+  /** All play options with modes (normal, spectacle, evoke, etc.) */
+  playableOptions?: { cardId: string; mode: string; modeLabel: string }[];
   handCardIds?: string[];
   availableAttackerIds?: string[];
   attackerIds?: string[];
@@ -120,6 +122,20 @@ export interface AgentPrompt {
   availableColors?: string[];
   /** specifyManaCombo: total mana to distribute */
   amount?: number;
+  /** exploreDecision: name of the revealed card */
+  revealedCardName?: string;
+  /** exploreDecision: card DTO for the revealed card */
+  revealedCard?: Card;
+  /** chooseExertAttackers / chooseEnlistAttackers: attacker card IDs */
+  attackerCardIds?: string[];
+  /** chooseExertAttackers / chooseEnlistAttackers: attacker card DTOs */
+  attackerCards?: Card[];
+  /** reorderLibrary: cards to reorder */
+  reorderCards?: Card[];
+  /** reorderLibrary: card IDs to reorder */
+  reorderCardIds?: string[];
+  /** helpPayAssist: max generic mana the assisting player can pay */
+  maxGeneric?: number;
 }
 
 interface GameConfig {
@@ -167,7 +183,7 @@ interface GameState {
     startingLife: number
   ) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
-  castSpell: (cardId: string) => void;
+  castSpell: (cardId: string, mode?: string) => void;
   passPriority: () => void;
   declareAttackers: (attackerIds: string[], defenderId?: string) => void;
   declareBlockers: (assignments: { blockerId: string; attackerId: string }[]) => void;
@@ -199,6 +215,11 @@ interface GameState {
   convokeDecision: (chosenCardIds: string[]) => void;
   improviseDecision: (chosenCardIds: string[]) => void;
   manaComboDecision: (chosenColors: string[]) => void;
+  exploreDecision: (putInGraveyard: boolean) => void;
+  exertDecision: (chosenAttackerIds: string[]) => void;
+  enlistDecision: (chosenAttackerIds: string[]) => void;
+  reorderLibraryDecision: (orderedCardIds: string[]) => void;
+  assistDecision: (amountToPay: number) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
@@ -244,6 +265,11 @@ const HANDLED_PROMPT_TYPES = new Set([
   "scry",
   "surveil",
   "dig",
+  "chooseExertAttackers",
+  "chooseEnlistAttackers",
+  "reorderLibrary",
+  "exploreDecision",
+  "helpPayAssist",
 ]);
 
 function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial<GameState>) => void, get: () => GameState) {
@@ -377,8 +403,8 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  castSpell: (cardId) => {
-    get().respond({ type: 'playCard', cardId });
+  castSpell: (cardId, mode?: string) => {
+    get().respond({ type: 'playCard', cardId, mode: mode ?? null });
   },
 
   passPriority: () => {
@@ -525,6 +551,26 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   manaComboDecision: (chosenColors) => {
     get().respond({ type: 'manaComboDecision', chosenColors });
+  },
+
+  exploreDecision: (putInGraveyard) => {
+    get().respond({ type: 'exploreResponse', putInGraveyard });
+  },
+
+  exertDecision: (chosenAttackerIds) => {
+    get().respond({ type: 'exertDecision', chosenAttackerIds });
+  },
+
+  enlistDecision: (chosenAttackerIds) => {
+    get().respond({ type: 'enlistDecision', chosenAttackerIds });
+  },
+
+  reorderLibraryDecision: (orderedCardIds) => {
+    get().respond({ type: 'reorderLibraryDecision', orderedCardIds });
+  },
+
+  assistDecision: (amountToPay) => {
+    get().respond({ type: 'assistDecision', amountToPay });
   },
 
   concede: () => {

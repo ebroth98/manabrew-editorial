@@ -11,6 +11,7 @@ import { ChooseTypeModal } from "@/components/game/ChooseTypeModal";
 import { ChooseNumberModal } from "@/components/game/ChooseNumberModal";
 import { ChooseCardNameModal } from "@/components/game/ChooseCardNameModal";
 import { DamageOrderModal } from "@/components/game/DamageOrderModal";
+import { ReorderLibraryModal } from "@/components/game/ReorderLibraryModal";
 import { PayCombatCostModal } from "@/components/game/PayCombatCostModal";
 import { PayManaCostModal } from "@/components/game/PayManaCostModal";
 import { AbilityPickerModal } from "@/components/game/AbilityPickerModal";
@@ -75,6 +76,15 @@ interface GameModalsProps {
   onImproviseDecision: (cardIds: string[]) => void;
   // Specify mana combo
   onManaComboDecision: (chosenColors: string[]) => void;
+  // Explore
+  onExploreDecision: (putInGraveyard: boolean) => void;
+  // Exert / Enlist
+  onExertDecision: (chosenAttackerIds: string[]) => void;
+  onEnlistDecision: (chosenAttackerIds: string[]) => void;
+  // Reorder library
+  onReorderLibraryDecision: (orderedCardIds: string[]) => void;
+  // Assist
+  onAssistDecision: (amountToPay: number) => void;
 }
 
 export function GameModals({
@@ -121,6 +131,11 @@ export function GameModals({
   onConvokeDecision,
   onImproviseDecision,
   onManaComboDecision,
+  onExploreDecision,
+  onExertDecision,
+  onEnlistDecision,
+  onReorderLibraryDecision,
+  onAssistDecision,
 }: GameModalsProps) {
   return (
     <>
@@ -374,6 +389,55 @@ export function GameModals({
           blockerCards={currentPrompt.blockerCards ?? []}
           gameViewCards={currentPrompt.gameView?.battlefield}
           onConfirm={onDamageOrderDecision}
+        />
+      )}
+
+      {promptType === "reorderLibrary" && currentPrompt?.cards != null && (
+        <ReorderLibraryModal
+          cards={currentPrompt.cards}
+          cardName={currentPrompt.sourceCardName}
+          onConfirm={onReorderLibraryDecision}
+        />
+      )}
+
+      {promptType === "exploreDecision" && currentPrompt?.revealedCardName != null && (
+        <ChooseOptionalTriggerModal
+          description={`Exploring revealed ${currentPrompt.revealedCardName} (nonland). Put it in graveyard or leave on top of library?`}
+          cardName={currentPrompt.revealedCardName}
+          promptKind="explore_decision"
+          optionLabels={["Put on top of library", "Put in graveyard"]}
+          onConfirm={(accept) => onExploreDecision(accept)}
+        />
+      )}
+
+      {promptType === "chooseExertAttackers" && currentPrompt?.attackerCards != null && (
+        <ChooseCardsModal
+          cards={currentPrompt.attackerCards}
+          minChoices={0}
+          maxChoices={currentPrompt.attackerCards.length}
+          sourceCardName="Exert Attackers"
+          description="Choose which attacking creatures to exert. Exerted creatures won't untap during your next untap step."
+          onConfirm={onExertDecision}
+        />
+      )}
+
+      {promptType === "chooseEnlistAttackers" && currentPrompt?.attackerCards != null && (
+        <ChooseCardsModal
+          cards={currentPrompt.attackerCards}
+          minChoices={0}
+          maxChoices={currentPrompt.attackerCards.length}
+          sourceCardName="Enlist Attackers"
+          description="Choose which attacking creatures to enlist. Enlisted creatures tap a non-attacking creature to add its power."
+          onConfirm={onEnlistDecision}
+        />
+      )}
+
+      {promptType === "helpPayAssist" && currentPrompt?.maxGeneric != null && (
+        <ChooseNumberModal
+          min={0}
+          max={currentPrompt.maxGeneric}
+          cardName={currentPrompt.cardName ?? currentPrompt.sourceCardName}
+          onConfirm={(n) => onAssistDecision(n ?? 0)}
         />
       )}
     </>

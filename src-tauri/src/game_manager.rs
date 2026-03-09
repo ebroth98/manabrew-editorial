@@ -165,7 +165,7 @@ impl GameManager {
             if let Some(session) = session_guard.as_ref() {
                 let _ = session
                     .response_tx
-                    .send(PlayerAction::PlayCard { card_id: None });
+                    .send(PlayerAction::PlayCard { card_id: None, mode: None });
             }
             return Ok(());
         }

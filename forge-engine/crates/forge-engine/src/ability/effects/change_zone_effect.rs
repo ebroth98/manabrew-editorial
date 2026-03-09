@@ -152,6 +152,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         .copied()
                         .filter(|&cid| matches_with_context(cid, clause))
                         .collect();
+                    ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
+                    ctx.agents[controller.index()].on_library_peek(ctx.game, &candidates);
                     if let Some(chosen) = ctx.agents[controller.index()]
                         .choose_single_card_for_zone_change(
                             controller,
@@ -172,6 +174,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     .into_iter()
                     .filter(|&cid| matches_with_context(cid, &change_type))
                     .collect();
+                ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
+                ctx.agents[controller.index()].on_library_peek(ctx.game, &candidates);
                 ctx.agents[controller.index()]
                     .choose_single_card_for_zone_change(
                         controller,

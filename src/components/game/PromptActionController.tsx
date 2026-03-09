@@ -157,6 +157,23 @@ export function PromptActionController({
     case "dig":
     case "chooseDiscard":
     case "payCombatCost":
+    case "payManaCost":
+    case "chooseColor":
+    case "chooseType":
+    case "chooseNumber":
+    case "chooseCardName":
+    case "chooseDelve":
+    case "chooseConvoke":
+    case "chooseImprovise":
+    case "specifyManaCombo":
+    case "chooseDamageAssignmentOrder":
+    case "chooseCardsForEffect":
+    case "choosePhyrexian":
+    case "chooseExertAttackers":
+    case "chooseEnlistAttackers":
+    case "reorderLibrary":
+    case "exploreDecision":
+    case "helpPayAssist":
       return <p className={PROMPT_HINT}>Decision modal is open. Complete the prompt there.</p>;
 
     default:

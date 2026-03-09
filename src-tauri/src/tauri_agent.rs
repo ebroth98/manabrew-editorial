@@ -19,7 +19,7 @@ use crate::ids_codec::{
 };
 use crate::prompt::{
     ActivatableAbilityInfo, AgentPrompt, AgentPromptInner, BlockAssignment, DisplayEvent,
-    PlayerAction, TargetAnyChoice,
+    PlayOptionDto, PlayerAction, TargetAnyChoice,
 };
 
 /// A PlayerAgent that sends prompts to the frontend and blocks waiting for a response.
@@ -148,11 +148,11 @@ impl TauriAgent {
         if let Some(timeout) = self.response_timeout {
             self.response_rx
                 .recv_timeout(timeout)
-                .unwrap_or(PlayerAction::PlayCard { card_id: None })
+                .unwrap_or(PlayerAction::PlayCard { card_id: None, mode: None })
         } else {
             self.response_rx
                 .recv()
-                .unwrap_or(PlayerAction::PlayCard { card_id: None })
+                .unwrap_or(PlayerAction::PlayCard { card_id: None, mode: None })
         }
     }
 
@@ -185,6 +185,63 @@ impl TauriAgent {
                 },
             })
             .collect()
+    }
+
+    fn play_option_to_dto(play: &PlayOption) -> PlayOptionDto {
+        use forge_engine_core::agent::PlayCardMode;
+        let card_id = card_id_str(play.card_id);
+        let (mode, mode_label) = match &play.mode {
+            PlayCardMode::Normal => ("normal".to_string(), "Cast normally".to_string()),
+            PlayCardMode::Alternative(alt) => {
+                let name = format!("{:?}", alt);
+                (
+                    format!("alternative:{}", name.to_lowercase()),
+                    format!("Cast with {}", name),
+                )
+            }
+            PlayCardMode::GainLifeAlt => (
+                "gainLifeAlt".to_string(),
+                "Cast with alternate cost".to_string(),
+            ),
+            PlayCardMode::ForetellExile => (
+                "foretellExile".to_string(),
+                "Foretell (exile face-down)".to_string(),
+            ),
+        };
+        PlayOptionDto {
+            card_id,
+            mode,
+            mode_label,
+        }
+    }
+
+    fn parse_play_mode(mode_str: &str) -> Option<forge_engine_core::agent::PlayCardMode> {
+        use forge_engine_core::agent::PlayCardMode;
+        use forge_engine_core::spellability::AlternativeCost;
+        match mode_str {
+            "normal" => Some(PlayCardMode::Normal),
+            "gainLifeAlt" => Some(PlayCardMode::GainLifeAlt),
+            "foretellExile" => Some(PlayCardMode::ForetellExile),
+            s if s.starts_with("alternative:") => {
+                let alt_name = &s["alternative:".len()..];
+                let alt = match alt_name {
+                    "flashback" => AlternativeCost::Flashback,
+                    "evoke" => AlternativeCost::Evoke,
+                    "dash" => AlternativeCost::Dash,
+                    "escape" => AlternativeCost::Escape,
+                    "madness" => AlternativeCost::Madness,
+                    "overload" => AlternativeCost::Overload,
+                    "spectacle" => AlternativeCost::Spectacle,
+                    "emerge" => AlternativeCost::Emerge,
+                    "blitz" => AlternativeCost::Blitz,
+                    "foretell" => AlternativeCost::Foretell,
+                    "suspend" => AlternativeCost::Suspend,
+                    _ => return None,
+                };
+                Some(PlayCardMode::Alternative(alt))
+            }
+            _ => None,
+        }
     }
 
     fn parse_defender_id(id: &str, possible: &[DefenderId]) -> Option<DefenderId> {
@@ -321,6 +378,8 @@ impl PlayerAgent for TauriAgent {
     ) -> MainPhaseAction {
         let playable_card_ids: Vec<String> =
             playable.iter().map(|play| card_id_str(play.card_id)).collect();
+        let playable_options: Vec<PlayOptionDto> =
+            playable.iter().map(|play| Self::play_option_to_dto(play)).collect();
         let mut tappable_land_ids: Vec<String> =
             tappable_lands.iter().map(|&c| card_id_str(c)).collect();
         let untappable_land_ids: Vec<String> =
@@ -372,6 +431,7 @@ impl PlayerAgent for TauriAgent {
         self.send_prompt(AgentPromptInner::ChooseAction {
             game_view: view,
             playable_card_ids,
+            playable_options,
             tappable_land_ids,
             untappable_land_ids,
             activatable_ability_ids,
@@ -381,9 +441,21 @@ impl PlayerAgent for TauriAgent {
                 self.pending_restore_checkpoint = Some(checkpoint_id);
                 MainPhaseAction::Pass
             }
-            PlayerAction::PlayCard { card_id } => card_id
-                .and_then(|id| parse_card_id(&id))
-                .and_then(|cid| playable.iter().copied().find(|play| play.card_id == cid))
+            PlayerAction::PlayCard { card_id, mode } => card_id
+                .and_then(|id| {
+                    let cid = parse_card_id(&id)?;
+                    // If mode is specified, find the exact PlayOption matching card+mode
+                    if let Some(mode_str) = &mode {
+                        if let Some(parsed_mode) = Self::parse_play_mode(mode_str) {
+                            return playable
+                                .iter()
+                                .copied()
+                                .find(|play| play.card_id == cid && play.mode == parsed_mode);
+                        }
+                    }
+                    // Fallback: first matching PlayOption for this card
+                    playable.iter().copied().find(|play| play.card_id == cid)
+                })
                 .map(MainPhaseAction::Play)
                 .unwrap_or(MainPhaseAction::Pass),
             PlayerAction::TapLand { card_id } => {
@@ -1018,6 +1090,118 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
+    fn choose_single_card_for_zone_change(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        select_prompt: &str,
+        is_optional: bool,
+    ) -> Option<CardId> {
+        let valid_card_ids = Self::card_ids(valid);
+        let view = self.view();
+
+        // Build zone_cards from all known zones + peeked library cards
+        let peeked = std::mem::take(&mut self.peeked_library_cards);
+        let all_cards: Vec<&CardDto> = view
+            .battlefield
+            .iter()
+            .chain(view.my_hand.iter())
+            .chain(view.graveyard.iter())
+            .chain(view.exile.iter())
+            .chain(view.opponent_graveyard.iter())
+            .chain(view.opponent_exile.iter())
+            .chain(view.my_command_zone.iter())
+            .collect();
+        let mut zone_cards: Vec<CardDto> = valid_card_ids
+            .iter()
+            .filter_map(|id| {
+                all_cards
+                    .iter()
+                    .find(|c| c.id == *id)
+                    .map(|c| (*c).clone())
+                    .or_else(|| peeked.iter().find(|c| c.id == *id).cloned())
+            })
+            .collect();
+        // Deduplicate
+        let mut seen = std::collections::HashSet::new();
+        zone_cards.retain(|c| seen.insert(c.id.clone()));
+
+        let min_choices = if is_optional { 0 } else { 1 };
+        self.send_prompt(AgentPromptInner::ChooseCardsForEffect {
+            game_view: view,
+            valid_card_ids,
+            zone_cards,
+            min_choices,
+            max_choices: 1,
+            source_card_name: Some(select_prompt.to_string()),
+        });
+        match self.recv_action() {
+            PlayerAction::ChooseCardsDecision { chosen_card_ids } => chosen_card_ids
+                .first()
+                .and_then(|id| parse_card_id(id)),
+            _ => {
+                if is_optional {
+                    None
+                } else {
+                    valid.first().copied()
+                }
+            }
+        }
+    }
+
+    fn choose_cards_for_zone_change(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        min: usize,
+        max: usize,
+        select_prompt: &str,
+    ) -> Vec<CardId> {
+        let valid_card_ids = Self::card_ids(valid);
+        let view = self.view();
+
+        // Build zone_cards from all known zones + peeked library cards
+        let peeked = std::mem::take(&mut self.peeked_library_cards);
+        let all_cards: Vec<&CardDto> = view
+            .battlefield
+            .iter()
+            .chain(view.my_hand.iter())
+            .chain(view.graveyard.iter())
+            .chain(view.exile.iter())
+            .chain(view.opponent_graveyard.iter())
+            .chain(view.opponent_exile.iter())
+            .chain(view.my_command_zone.iter())
+            .collect();
+        let mut zone_cards: Vec<CardDto> = valid_card_ids
+            .iter()
+            .filter_map(|id| {
+                all_cards
+                    .iter()
+                    .find(|c| c.id == *id)
+                    .map(|c| (*c).clone())
+                    .or_else(|| peeked.iter().find(|c| c.id == *id).cloned())
+            })
+            .collect();
+        let mut seen = std::collections::HashSet::new();
+        zone_cards.retain(|c| seen.insert(c.id.clone()));
+
+        self.send_prompt(AgentPromptInner::ChooseCardsForEffect {
+            game_view: view,
+            valid_card_ids,
+            zone_cards,
+            min_choices: min,
+            max_choices: max,
+            source_card_name: Some(select_prompt.to_string()),
+        });
+        match self.recv_action() {
+            PlayerAction::ChooseCardsDecision { chosen_card_ids } => chosen_card_ids
+                .iter()
+                .filter_map(|id| parse_card_id(id))
+                .collect(),
+            _ => valid.iter().copied().take(max).collect(),
+        }
+    }
+
     fn choose_type(
         &mut self,
         _player: PlayerId,
@@ -1280,6 +1464,141 @@ impl PlayerAgent for TauriAgent {
                 vec![available_colors.first().cloned().unwrap_or("C".to_string()); amount]
             }
         }
+    }
+
+    fn exert_attackers(
+        &mut self,
+        _player: PlayerId,
+        attackers: &[CardId],
+    ) -> Vec<CardId> {
+        let attacker_ids = Self::card_ids(attackers);
+        let view = self.view();
+        let attacker_cards: Vec<CardDto> = attacker_ids
+            .iter()
+            .filter_map(|id| view.battlefield.iter().find(|c| c.id == *id).cloned())
+            .collect();
+        self.send_prompt(AgentPromptInner::ChooseExertAttackers {
+            game_view: view,
+            attacker_ids,
+            attacker_cards,
+        });
+        match self.recv_action() {
+            PlayerAction::ExertDecision { chosen_attacker_ids } => chosen_attacker_ids
+                .iter()
+                .filter_map(|id| parse_card_id(id))
+                .filter(|cid| attackers.contains(cid))
+                .collect(),
+            _ => vec![],
+        }
+    }
+
+    fn enlist_attackers(
+        &mut self,
+        _player: PlayerId,
+        attackers: &[CardId],
+    ) -> Vec<CardId> {
+        let attacker_ids = Self::card_ids(attackers);
+        let view = self.view();
+        let attacker_cards: Vec<CardDto> = attacker_ids
+            .iter()
+            .filter_map(|id| view.battlefield.iter().find(|c| c.id == *id).cloned())
+            .collect();
+        self.send_prompt(AgentPromptInner::ChooseEnlistAttackers {
+            game_view: view,
+            attacker_ids,
+            attacker_cards,
+        });
+        match self.recv_action() {
+            PlayerAction::EnlistDecision { chosen_attacker_ids } => chosen_attacker_ids
+                .iter()
+                .filter_map(|id| parse_card_id(id))
+                .filter(|cid| attackers.contains(cid))
+                .collect(),
+            _ => vec![],
+        }
+    }
+
+    fn choose_reorder_library(
+        &mut self,
+        _player: PlayerId,
+        cards: &[CardId],
+    ) -> Vec<CardId> {
+        let card_ids = Self::card_ids(cards);
+        let peeked = std::mem::take(&mut self.peeked_library_cards);
+        self.send_prompt(AgentPromptInner::ReorderLibrary {
+            game_view: self.view(),
+            card_ids,
+            cards: peeked,
+            source_card_name: None,
+        });
+        match self.recv_action() {
+            PlayerAction::ReorderLibraryDecision { ordered_card_ids } => {
+                let parsed: Vec<CardId> = ordered_card_ids
+                    .iter()
+                    .filter_map(|s| parse_card_id(s))
+                    .collect();
+                // Validate: must contain exactly the same cards
+                if parsed.len() == cards.len() && cards.iter().all(|id| parsed.contains(id)) {
+                    parsed
+                } else {
+                    cards.to_vec()
+                }
+            }
+            _ => cards.to_vec(),
+        }
+    }
+
+    fn choose_explore_put_in_graveyard(
+        &mut self,
+        _player: PlayerId,
+        revealed_card_name: &str,
+        _revealed_cmc: i32,
+        _mana_producing_lands: usize,
+        _predicted_mana: usize,
+        _lands_in_hand: usize,
+    ) -> bool {
+        let peeked = std::mem::take(&mut self.peeked_library_cards);
+        let revealed_card = peeked.into_iter().next();
+        self.send_prompt(AgentPromptInner::ExploreDecision {
+            game_view: self.view(),
+            revealed_card_name: revealed_card_name.to_string(),
+            revealed_card,
+            source_card_name: None,
+        });
+        match self.recv_action() {
+            PlayerAction::ExploreResponse { put_in_graveyard } => put_in_graveyard,
+            _ => false,
+        }
+    }
+
+    fn help_pay_assist(
+        &mut self,
+        _player: PlayerId,
+        card_name: &str,
+        max_generic: u32,
+    ) -> u32 {
+        self.send_prompt(AgentPromptInner::HelpPayAssist {
+            game_view: self.view(),
+            card_name: card_name.to_string(),
+            max_generic,
+        });
+        match self.recv_action() {
+            PlayerAction::AssistDecision { amount_to_pay } => amount_to_pay.min(max_generic),
+            _ => 0,
+        }
+    }
+
+    fn choose_random_discard(
+        &mut self,
+        _player: PlayerId,
+        hand: &[CardId],
+        num: usize,
+    ) -> Vec<CardId> {
+        use rand::seq::SliceRandom;
+        let mut v = hand.to_vec();
+        v.shuffle(&mut rand::thread_rng());
+        v.truncate(num);
+        v
     }
 
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {

@@ -49,6 +49,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // see the same card order, and "keep original" produces the same result.
     top_n.reverse();
 
+    // Let the agent see the cards before reordering.
+    ctx.agents[sa.activating_player.index()].snapshot_state(ctx.game, ctx.mana_pools);
+    ctx.agents[sa.activating_player.index()].on_library_peek(ctx.game, &top_n);
+
     // Ask the agent to reorder the cards.
     let reordered = ctx.agents[sa.activating_player.index()]
         .choose_reorder_library(sa.activating_player, &top_n);

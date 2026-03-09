@@ -26,6 +26,7 @@ pub fn spawn_ai_prompt_responder(
                     playable_card_ids, ..
                 } => Some(PlayerAction::PlayCard {
                     card_id: playable_card_ids.first().cloned(),
+                    mode: None,
                 }),
                 AgentPromptInner::ChooseAttackers {
                     available_attacker_ids,
@@ -229,6 +230,29 @@ pub fn spawn_ai_prompt_responder(
                     Some(PlayerAction::ManaComboDecision {
                         chosen_colors: vec![color; amount],
                     })
+                }
+                AgentPromptInner::ChooseExertAttackers { .. } => {
+                    Some(PlayerAction::ExertDecision {
+                        chosen_attacker_ids: vec![],
+                    })
+                }
+                AgentPromptInner::ChooseEnlistAttackers { .. } => {
+                    Some(PlayerAction::EnlistDecision {
+                        chosen_attacker_ids: vec![],
+                    })
+                }
+                AgentPromptInner::ReorderLibrary { card_ids, .. } => {
+                    Some(PlayerAction::ReorderLibraryDecision {
+                        ordered_card_ids: card_ids,
+                    })
+                }
+                AgentPromptInner::ExploreDecision { .. } => {
+                    Some(PlayerAction::ExploreResponse {
+                        put_in_graveyard: false,
+                    })
+                }
+                AgentPromptInner::HelpPayAssist { .. } => {
+                    Some(PlayerAction::AssistDecision { amount_to_pay: 0 })
                 }
                 AgentPromptInner::StateUpdate { .. } | AgentPromptInner::GameOver { .. } => None,
             };

@@ -62,6 +62,9 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         #[serde(rename = "playableCardIds")]
         playable_card_ids: Vec<String>,
+        /// All play options with their modes (normal, spectacle, evoke, etc.).
+        #[serde(rename = "playableOptions")]
+        playable_options: Vec<PlayOptionDto>,
         /// Untapped lands (and creatures/artifacts with mana abilities) that the player can tap.
         #[serde(rename = "tappableLandIds")]
         tappable_land_ids: Vec<String>,
@@ -411,6 +414,60 @@ pub enum AgentPromptInner {
         #[serde(rename = "sourceCardName")]
         source_card_name: Option<String>,
     },
+    /// Choose which attackers to exert.
+    ChooseExertAttackers {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "attackerIds")]
+        attacker_ids: Vec<String>,
+        #[serde(rename = "attackerCards")]
+        attacker_cards: Vec<CardDto>,
+    },
+    /// Choose which attackers to enlist.
+    ChooseEnlistAttackers {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "attackerIds")]
+        attacker_ids: Vec<String>,
+        #[serde(rename = "attackerCards")]
+        attacker_cards: Vec<CardDto>,
+    },
+    /// Reorder top cards of library (Ponder-style effects).
+    ReorderLibrary {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// Card IDs to reorder (in current top-first order).
+        #[serde(rename = "cardIds")]
+        card_ids: Vec<String>,
+        /// Card DTOs for display.
+        cards: Vec<CardDto>,
+        /// Name of the source card.
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Explore: choose whether to put the revealed nonland card in graveyard or on top.
+    ExploreDecision {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        /// Name of the revealed card.
+        #[serde(rename = "revealedCardName")]
+        revealed_card_name: String,
+        /// Card DTO for the revealed card (for display).
+        #[serde(rename = "revealedCard")]
+        revealed_card: Option<CardDto>,
+        /// Name of the exploring creature.
+        #[serde(rename = "sourceCardName")]
+        source_card_name: Option<String>,
+    },
+    /// Help pay for a spell with Assist.
+    HelpPayAssist {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "cardName")]
+        card_name: String,
+        #[serde(rename = "maxGeneric")]
+        max_generic: u32,
+    },
     /// Choose card(s) for an effect (ChooseCardEffect, CloneEffect).
     ChooseCardsForEffect {
         #[serde(rename = "gameView")]
@@ -460,6 +517,11 @@ impl AgentPromptInner {
             | AgentPromptInner::ChooseNumber { game_view, .. }
             | AgentPromptInner::ChooseCardName { game_view, .. }
             | AgentPromptInner::ChooseDamageAssignmentOrder { game_view, .. }
+            | AgentPromptInner::ChooseExertAttackers { game_view, .. }
+            | AgentPromptInner::ChooseEnlistAttackers { game_view, .. }
+            | AgentPromptInner::ReorderLibrary { game_view, .. }
+            | AgentPromptInner::ExploreDecision { game_view, .. }
+            | AgentPromptInner::HelpPayAssist { game_view, .. }
             | AgentPromptInner::ChooseCardsForEffect { game_view, .. }
             | AgentPromptInner::PayCombatCost { game_view, .. }
             | AgentPromptInner::PayManaCost { game_view, .. }
@@ -469,6 +531,17 @@ impl AgentPromptInner {
             | AgentPromptInner::SpecifyManaCombo { game_view, .. } => game_view,
         }
     }
+}
+
+/// Describes a single way to play a card (normal, alternative cost, etc.).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayOptionDto {
+    pub card_id: String,
+    /// e.g. "normal", "alternative:spectacle", "alternative:evoke", "gainLifeAlt", "foretellExile"
+    pub mode: String,
+    /// Human-readable label, e.g. "Cast normally", "Cast with Spectacle"
+    pub mode_label: String,
 }
 
 /// Info about an activatable ability on a battlefield permanent.
@@ -496,6 +569,9 @@ pub enum PlayerAction {
     PlayCard {
         #[serde(rename = "cardId")]
         card_id: Option<String>,
+        /// Optional play mode, e.g. "normal", "alternative:spectacle"
+        #[serde(default)]
+        mode: Option<String>,
     },
     DeclareAttackers {
         /// Attack assignments: each attacker paired with its defender.
@@ -615,6 +691,31 @@ pub enum PlayerAction {
     DamageAssignmentOrderDecision {
         #[serde(rename = "orderedBlockerIds")]
         ordered_blocker_ids: Vec<String>,
+    },
+    /// Response to ChooseExertAttackers: IDs of attackers to exert.
+    ExertDecision {
+        #[serde(rename = "chosenAttackerIds")]
+        chosen_attacker_ids: Vec<String>,
+    },
+    /// Response to ChooseEnlistAttackers: IDs of attackers to enlist.
+    EnlistDecision {
+        #[serde(rename = "chosenAttackerIds")]
+        chosen_attacker_ids: Vec<String>,
+    },
+    /// Response to ReorderLibrary: ordered card IDs (last = top of library).
+    ReorderLibraryDecision {
+        #[serde(rename = "orderedCardIds")]
+        ordered_card_ids: Vec<String>,
+    },
+    /// Response to ExploreDecision: whether to put in graveyard.
+    ExploreResponse {
+        #[serde(rename = "putInGraveyard")]
+        put_in_graveyard: bool,
+    },
+    /// Response to HelpPayAssist: amount of generic mana to pay.
+    AssistDecision {
+        #[serde(rename = "amountToPay")]
+        amount_to_pay: u32,
     },
     /// Response to ChooseCardsForEffect prompt: IDs of chosen cards.
     ChooseCardsDecision {

@@ -17,6 +17,7 @@ import { PlayerPanel } from "@/components/game/PlayerPanel";
 import { OpponentHalf } from "@/components/game/OpponentHalf";
 import { MidPhaseStrip } from "@/components/game/MidPhaseStrip";
 import { HandDisplay } from "@/components/game/HandDisplay";
+import { PlayModePicker } from "@/components/game/PlayModePicker";
 import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
 import { BATTLEFIELD_CARD } from "@/components/game/game.styles";
 import { useFlashQueue } from "@/hooks/useFlashQueue";
@@ -74,6 +75,11 @@ export default function Game() {
     convokeDecision,
     improviseDecision,
     manaComboDecision,
+    exploreDecision,
+    exertDecision,
+    enlistDecision,
+    reorderLibraryDecision,
+    assistDecision,
     concede,
     endGame,
     restoreSnapshot,
@@ -96,6 +102,29 @@ export default function Game() {
     cardName: string;
     abilities: ActivatableAbilityInfo[];
   } | null>(null);
+
+  // Play mode picker state (for cards with multiple cast modes like Spectacle/Evoke)
+  const [playModePicker, setPlayModePicker] = useState<{
+    cardId: string;
+    cardName: string;
+    options: { cardId: string; mode: string; modeLabel: string }[];
+  } | null>(null);
+
+  // Wraps castSpell: if a card has multiple play modes, show picker first
+  const handleCastSpell = (cardId: string) => {
+    const options = currentPrompt?.playableOptions?.filter((o) => o.cardId === cardId);
+    if (options && options.length > 1) {
+      const cardName = gameView?.myHand?.find((c) => c.id === cardId)?.name
+        ?? gameView?.graveyard?.find((c) => c.id === cardId)?.name
+        ?? gameView?.exile?.find((c) => c.id === cardId)?.name
+        ?? "Card";
+      setPlayModePicker({ cardId, cardName, options });
+    } else if (options && options.length === 1) {
+      castSpell(cardId, options[0].mode);
+    } else {
+      castSpell(cardId);
+    }
+  };
 
   // Combat state + battlefield/targeting click handlers
   const {
@@ -170,7 +199,7 @@ export default function Game() {
   const battlefieldContainerRef = useRef<HTMLDivElement>(null);
   const { draggingHandCard, ghostPos, isOverBattlefield, startHandCardDrag } = useHandDrag({
     battlefieldContainerRef,
-    onCastSpell: castSpell,
+    onCastSpell: handleCastSpell,
     dismissHover,
   });
 
@@ -467,7 +496,7 @@ export default function Game() {
                             hasPlayable && promptType === "chooseAction"
                               ? (cardId) => {
                                   closeZone();
-                                  castSpell(cardId);
+                                  handleCastSpell(cardId);
                                 }
                               : undefined,
                           );
@@ -480,7 +509,7 @@ export default function Game() {
                             hasPlayable && promptType === "chooseAction"
                               ? (cardId) => {
                                   closeZone();
-                                  castSpell(cardId);
+                                  handleCastSpell(cardId);
                                 }
                               : undefined,
                           );
@@ -679,7 +708,24 @@ export default function Game() {
         onConvokeDecision={convokeDecision}
         onImproviseDecision={improviseDecision}
         onManaComboDecision={manaComboDecision}
+        onExploreDecision={exploreDecision}
+        onExertDecision={exertDecision}
+        onEnlistDecision={enlistDecision}
+        onReorderLibraryDecision={reorderLibraryDecision}
+        onAssistDecision={assistDecision}
       />
+
+      {playModePicker && (
+        <PlayModePicker
+          cardName={playModePicker.cardName}
+          options={playModePicker.options}
+          onSelect={(mode) => {
+            castSpell(playModePicker.cardId, mode);
+            setPlayModePicker(null);
+          }}
+          onCancel={() => setPlayModePicker(null)}
+        />
+      )}
 
       {/* ── Card-play flash overlay ───────────────────────── */}
       {activeFlash?.kind === "card" &&
