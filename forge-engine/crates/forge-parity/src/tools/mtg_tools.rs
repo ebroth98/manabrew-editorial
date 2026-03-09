@@ -17,7 +17,10 @@ fn load_rules() -> &'static Option<String> {
         let path = std::env::var("MTG_RULES_PATH").ok()?;
         match std::fs::read_to_string(&path) {
             Ok(text) => {
-                eprintln!("[mtg_tools] Loaded MTG rules ({} bytes) from {path}", text.len());
+                eprintln!(
+                    "[mtg_tools] Loaded MTG rules ({} bytes) from {path}",
+                    text.len()
+                );
                 Some(text)
             }
             Err(e) => {

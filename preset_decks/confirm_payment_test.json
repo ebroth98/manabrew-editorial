@@ -1,0 +1,40 @@
+{
+  "label": "Confirm Payment Parity",
+  "desc": "Focused coverage for optional/branching cost confirmations: Collect Evidence, Forage, Gift, Enlist, ExileFromStack, RollDice, RevealChosen, Behold/Blight, PutCardToLib, PayEnergy, PayLife, Mill, and coin-flip upkeep costs",
+  "color": "text-emerald-300",
+  "opponent": "red_burn",
+  "ai_eligible": false,
+  "order": 53,
+  "cards": [
+    { "name": "Forest", "count": 5, "set": "akh" },
+    { "name": "Island", "count": 5, "set": "akh" },
+    { "name": "Mountain", "count": 4, "set": "akh" },
+    { "name": "Plains", "count": 4, "set": "akh" },
+    { "name": "Swamp", "count": 4, "set": "akh" },
+
+    { "name": "Forensic Researcher", "count": 3 },
+    { "name": "Guardian of New Benalia", "count": 2 },
+    { "name": "Valley Rally", "count": 2 },
+    { "name": "Caller of the Hunt", "count": 1 },
+    { "name": "Leashling", "count": 1 },
+    { "name": "Nivmagus Elemental", "count": 2 },
+    { "name": "Karplusan Minotaur", "count": 1 },
+    { "name": "Clay Golem", "count": 1 },
+    { "name": "Stalking Leonin", "count": 1 },
+    { "name": "Celestial Reunion", "count": 1 },
+    { "name": "Champions of the Shoal", "count": 1 },
+    { "name": "Pyrrhic Strike", "count": 2 },
+
+    { "name": "Whirler Virtuoso", "count": 2 },
+    { "name": "Vexing Devil", "count": 2 },
+    { "name": "Invigorate", "count": 2 },
+    { "name": "Deep Spawn", "count": 1 },
+    { "name": "Wirewood Symbiote", "count": 1 },
+    { "name": "Watchful Naga", "count": 1 },
+
+    { "name": "Gilded Goose", "count": 3 },
+    { "name": "Faithless Looting", "count": 2 },
+    { "name": "Consider", "count": 2 },
+    { "name": "Satyr Wayfinder", "count": 2 }
+  ]
+}

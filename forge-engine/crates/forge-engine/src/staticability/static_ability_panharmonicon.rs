@@ -82,6 +82,7 @@ fn trigger_mode_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::TapsForMana { .. } => "TapsForMana",
         crate::trigger::TriggerMode::AbilityActivated { .. } => "AbilityActivated",
         crate::trigger::TriggerMode::Explored { .. } => "Explored",
+        crate::trigger::TriggerMode::BecomeMonstrous { .. } => "BecomeMonstrous",
         crate::trigger::TriggerMode::BecomeMonarch { .. } => "BecomeMonarch",
         crate::trigger::TriggerMode::DamageDealtOnce { .. } => "DamageDealtOnce",
         crate::trigger::TriggerMode::Destroyed { .. } => "Destroyed",

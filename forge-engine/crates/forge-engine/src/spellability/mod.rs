@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::ability::effects::resolve_defined_players;
 use crate::agent::{PlayerAgent, TargetChoice};
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
@@ -48,6 +49,9 @@ pub struct SpellAbility {
     pub source: Option<CardId>,
     /// The player who activated/cast this. Mirrors Java's `activatingPlayer`.
     pub activating_player: PlayerId,
+    /// The player who chooses this ability's targets. Mirrors Java's
+    /// `targetingPlayer` field.
+    pub targeting_player: Option<PlayerId>,
     /// The raw ability text (pipe-delimited params).
     pub ability_text: String,
     /// Parsed pipe-delimited parameters.
@@ -89,6 +93,8 @@ pub struct SpellAbility {
     pub kick_count: u32,
     /// Number of times the replicate cost was paid.
     pub replicate_count: u32,
+    /// Whether a generic optional additional cost was paid.
+    pub optional_generic_cost_paid: bool,
     /// Sum of integer values remembered on the trigger that spawned this
     /// ability (Java: TriggerRememberAmount / sa.getTriggerRemembered()).
     pub trigger_remembered_amount: i32,
@@ -143,6 +149,7 @@ impl SpellAbility {
         // Walk self, then sub_ability chain — mirrors Java's do/while
         if self.uses_targeting() {
             self.clear_targets();
+            self.targeting_player = choose_targeting_player(self, game, agents);
             if !choose_targets_for(self, game, agents, mana_pools) {
                 return false;
             }
@@ -153,6 +160,7 @@ impl SpellAbility {
         while let Some(sa) = current {
             if sa.uses_targeting() {
                 sa.clear_targets();
+                sa.targeting_player = choose_targeting_player(sa, game, agents);
                 if !choose_targets_for(sa, game, agents, mana_pools) {
                     return false;
                 }
@@ -178,6 +186,7 @@ impl SpellAbility {
             api,
             source,
             activating_player: player,
+            targeting_player: None,
             ability_text: ability_text.to_string(),
             params,
             target_restrictions,
@@ -196,6 +205,7 @@ impl SpellAbility {
             is_copy: false,
             kick_count: 0,
             replicate_count: 0,
+            optional_generic_cost_paid: false,
             trigger_remembered_amount: 0,
             x_mana_cost_paid: 0,
         }
@@ -237,6 +247,7 @@ pub fn build_spell_ability(
         api,
         source: Some(card_id),
         activating_player: player,
+        targeting_player: None,
         ability_text: ability_text.to_string(),
         params,
         target_restrictions,
@@ -255,6 +266,7 @@ pub fn build_spell_ability(
         is_copy: false,
         kick_count: 0,
         replicate_count: 0,
+        optional_generic_cost_paid: false,
         trigger_remembered_amount: 0,
         x_mana_cost_paid: 0,
     }
@@ -274,13 +286,14 @@ fn choose_targets_for(
         None => return true,
     };
 
-    let player = sa.activating_player;
+    let player = sa.targeting_player.unwrap_or(sa.activating_player);
 
     // Spells with TargetMin$ 0 (e.g. Fireball) can be cast with zero targets.
     // Java's DeterministicController skips setupDeterministicTargets when
     // isTargetNumberValid() is already true (min=0, 0 targets), consuming no RNG.
     // We must match by returning early without calling any agent choose method.
-    if tr.min_targets <= 0 {
+    let min_targets = tr.get_min_targets(game, sa);
+    if min_targets <= 0 {
         return true;
     }
 
@@ -298,26 +311,29 @@ fn choose_targets_for(
             sa.target_chosen.target_player = agent.choose_target_player(player, &valid_players);
         }
         TargetKind::Any => {
-            // "any target" includes all alive players (the caster too) and all creatures.
-            let valid_players: Vec<PlayerId> = game.alive_players().into_iter().collect();
-            let mut valid_creatures: Vec<CardId> =
-                target_restrictions::get_all_candidates_creatures(game)
+            let valid_players: Vec<PlayerId> = if target_restrictions::any_target_allows_players(
+                &tr.valid_tgts,
+            ) {
+                game.alive_players().into_iter().collect()
+            } else {
+                Vec::new()
+            };
+            let mut valid_cards: Vec<CardId> =
+                target_restrictions::get_all_candidates_any_filtered(game, &tr.valid_tgts, player)
                     .into_iter()
-                    .filter(|&cid| {
-                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
-                    })
+                    .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
                     .collect();
-            valid_creatures =
+            valid_cards =
                 crate::staticability::static_ability_must_target::filter_must_target_cards(
                     game,
                     sa,
-                    valid_creatures,
+                    valid_cards,
                 );
             let valid_players =
                 if crate::staticability::static_ability_must_target::must_target_cards_required(
                     game,
                     sa,
-                    &valid_creatures,
+                    &valid_cards,
                 ) {
                     Vec::new()
                 } else {
@@ -325,17 +341,22 @@ fn choose_targets_for(
                 };
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            match agent.choose_target_any(player, &valid_players, &valid_creatures) {
+            match agent.choose_target_any(player, &valid_players, &valid_cards) {
                 TargetChoice::Player(pid) => sa.target_chosen.target_player = Some(pid),
                 TargetChoice::Card(cid) => sa.target_chosen.target_card = Some(cid),
                 TargetChoice::None => {}
             }
         }
         TargetKind::Creature(ref filter) => {
-            let mut valid: Vec<CardId> = target_restrictions::get_all_candidates_creature_filtered(
+            let base = target_restrictions::get_all_candidates_creature_filtered(
                 game,
                 filter.as_deref(),
                 player,
+            );
+            let mut valid: Vec<CardId> = target_restrictions::apply_other_source_filter(
+                base,
+                filter.as_deref(),
+                sa.source,
             )
             .into_iter()
             .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
@@ -348,15 +369,19 @@ fn choose_targets_for(
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
         }
         TargetKind::Permanent(ref filter) => {
-            let mut valid: Vec<CardId> =
-                target_restrictions::get_all_battlefield_permanents_filtered(
-                    game,
-                    filter.as_deref(),
-                    player,
-                )
-                .into_iter()
-                .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
-                .collect();
+            let base = target_restrictions::get_all_battlefield_permanents_filtered(
+                game,
+                filter.as_deref(),
+                player,
+            );
+            let mut valid: Vec<CardId> = target_restrictions::apply_other_source_filter(
+                base,
+                filter.as_deref(),
+                sa.source,
+            )
+            .into_iter()
+            .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
+            .collect();
             valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
                 game, sa, valid,
             );
@@ -370,6 +395,7 @@ fn choose_targets_for(
                 *zone,
                 player,
                 filter.as_deref(),
+                sa.source,
             );
             valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
                 game, sa, valid,
@@ -398,6 +424,22 @@ fn choose_targets_for(
     }
 
     true
+}
+
+fn choose_targeting_player(
+    sa: &SpellAbility,
+    game: &GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+) -> Option<PlayerId> {
+    if let Some(defined) = sa.params.get("TargetingPlayer") {
+        let candidates = resolve_defined_players(defined, sa.activating_player, game);
+        if candidates.is_empty() {
+            return None;
+        }
+        return agents[sa.activating_player.index()]
+            .choose_target_player(sa.activating_player, &candidates);
+    }
+    Some(sa.activating_player)
 }
 
 // ── StackEntry (mirrors Java's SpellAbilityStackInstance) ────────────

@@ -220,6 +220,9 @@ pub struct CardInstance {
     /// Mirrors Java `Card.isKicked()`. Stored on the card so triggers
     /// with `ValidCard$ Card.Self+kicked` can check it after resolution.
     pub kicked: bool,
+    /// Whether this permanent has become monstrous.
+    /// Mirrors Java `Card.isMonstrous()`. Resets when the permanent changes zones.
+    pub monstrous: bool,
 
     /// Colors chosen by ChooseColorEffect (stored for later reference by other effects).
     pub chosen_colors: Vec<String>,
@@ -376,6 +379,7 @@ impl CardInstance {
             phased_out: false,
             regeneration_shields: 0,
             kicked: false,
+            monstrous: false,
             chosen_colors: Vec::new(),
             chosen_cards: Vec::new(),
             animate_state: None,
@@ -482,6 +486,21 @@ impl CardInstance {
                 if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
                     self.activated_abilities.push(ab);
                 }
+            }
+        }
+
+        // Enlist: K:Enlist -> intrinsic optional attack cost static ability.
+        // Java builds: Mode$ OptionalAttackCost | Cost$ Enlist<1/CARDNAME/creature> ...
+        // Rust cost parser normalizes this and the combat loop applies the enlist payment.
+        if self
+            .keywords
+            .iter()
+            .chain(self.granted_keywords.iter())
+            .any(|k| k.eq_ignore_ascii_case("Enlist"))
+        {
+            let raw = "S:Mode$ OptionalAttackCost | ValidCard$ Card.Self | Cost$ Enlist<1/CARDNAME/creature> | Secondary$ True";
+            if let Some(sa) = parse_static_ability(raw) {
+                self.static_abilities.push(sa);
             }
         }
     }

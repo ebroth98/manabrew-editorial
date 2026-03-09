@@ -170,6 +170,7 @@ impl GameState {
                 card.cant_attack_static = false;
                 card.cant_block_static = false;
                 card.summoning_sick = true;
+                card.monstrous = false;
                 card.controller = card.owner;
                 if !keep_counters {
                     card.counters.clear();
@@ -204,6 +205,7 @@ impl GameState {
                 card.cant_attack_static = false;
                 card.cant_block_static = false;
                 card.summoning_sick = true;
+                card.monstrous = false;
                 card.controller = card.owner;
                 if !keep_counters {
                     card.counters.clear();

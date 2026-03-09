@@ -75,23 +75,19 @@ fn cluster_failures(records: &[RunRecord]) -> HashMap<String, FailureCluster> {
     for record in records {
         let key = cluster_key(record);
 
-        let cluster = clusters.entry(key.clone()).or_insert_with(|| FailureCluster {
-            divergence_field: record
-                .first_divergence_field
-                .clone()
-                .unwrap_or_else(|| "error".to_string()),
-            rust_value: record
-                .first_divergence_rust
-                .clone()
-                .unwrap_or_default(),
-            java_value: record
-                .first_divergence_java
-                .clone()
-                .unwrap_or_default(),
-            deck_pairs: HashMap::new(),
-            covered_cards: Vec::new(),
-            count: 0,
-        });
+        let cluster = clusters
+            .entry(key.clone())
+            .or_insert_with(|| FailureCluster {
+                divergence_field: record
+                    .first_divergence_field
+                    .clone()
+                    .unwrap_or_else(|| "error".to_string()),
+                rust_value: record.first_divergence_rust.clone().unwrap_or_default(),
+                java_value: record.first_divergence_java.clone().unwrap_or_default(),
+                deck_pairs: HashMap::new(),
+                covered_cards: Vec::new(),
+                count: 0,
+            });
 
         cluster.count += 1;
 
@@ -156,16 +152,22 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                 let db = backfill_storage.lock().unwrap();
                 db.get_clusters_by_field().unwrap_or_default()
             };
-            let backfill_count = backfill_fields.iter()
+            let backfill_count = backfill_fields
+                .iter()
                 .filter(|fc| fc.total_failures >= backfill_threshold && fc.github_issue.is_none())
                 .count();
             if backfill_count == 0 {
                 return;
             }
-            tracing::info!(count = backfill_count, "Backfill: filing GitHub issues in background");
+            tracing::info!(
+                count = backfill_count,
+                "Backfill: filing GitHub issues in background"
+            );
             for fc in &backfill_fields {
                 if fc.total_failures >= backfill_threshold && fc.github_issue.is_none() {
-                    let analysis: Option<LlmAnalysis> = fc.llm_analysis.as_ref()
+                    let analysis: Option<LlmAnalysis> = fc
+                        .llm_analysis
+                        .as_ref()
                         .and_then(|j| serde_json::from_str(j).ok());
 
                     let issue_data = IssueData {
@@ -193,7 +195,9 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                                 }
                             }
                         }
-                        Err(e) => tracing::error!(%e, field = %fc.field, "Backfill: GitHub issue creation failed"),
+                        Err(e) => {
+                            tracing::error!(%e, field = %fc.field, "Backfill: GitHub issue creation failed")
+                        }
                     }
                     tokio::time::sleep(std::time::Duration::from_secs(2)).await;
                 }
@@ -241,9 +245,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
         let clusters = cluster_failures(&new_failures);
 
         // 4. Upsert all clusters in DB (cheap, no LLM calls)
-        let now_iso = chrono::Utc::now()
-            .format("%Y-%m-%dT%H:%M:%SZ")
-            .to_string();
+        let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
 
         for (key, cluster) in &clusters {
             let db = storage.lock().unwrap();
@@ -285,7 +287,8 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
             let total_count: usize = field_clusters.iter().map(|c| c.count).sum();
 
             // Skip if this field already has LLM analysis cached
-            let already_analyzed = cached_field_clusters.iter()
+            let already_analyzed = cached_field_clusters
+                .iter()
                 .any(|fc| fc.field == **field && fc.llm_analysis.is_some());
 
             // Aggregate all deck pairs and seeds across clusters for this field
@@ -323,9 +326,14 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
 
             // LLM analysis (skip if already cached)
             let cached_analysis: Option<LlmAnalysis> = if already_analyzed {
-                cached_field_clusters.iter()
+                cached_field_clusters
+                    .iter()
                     .find(|fc| fc.field == **field)
-                    .and_then(|fc| fc.llm_analysis.as_ref().and_then(|j| serde_json::from_str(j).ok()))
+                    .and_then(|fc| {
+                        fc.llm_analysis
+                            .as_ref()
+                            .and_then(|j| serde_json::from_str(j).ok())
+                    })
             } else {
                 None
             };
@@ -431,8 +439,11 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                 let local_issue = {
                     let db = storage.lock().unwrap();
                     db.get_clusters_by_field().ok().and_then(|fields| {
-                        fields.iter()
-                            .find(|fc| crate::github_issues::normalize_field(&fc.field) == normalized_field)
+                        fields
+                            .iter()
+                            .find(|fc| {
+                                crate::github_issues::normalize_field(&fc.field) == normalized_field
+                            })
                             .and_then(|fc| fc.github_issue)
                     })
                 };
@@ -462,7 +473,8 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                     })
                     .collect();
 
-                let first_seed = all_seeds.first()
+                let first_seed = all_seeds
+                    .first()
                     .and_then(|s| s.parse().ok())
                     .unwrap_or(42u64);
                 let repro = all_deck_pairs.first()
@@ -546,7 +558,9 @@ fn grew_significantly(cluster: &crate::storage::KnownCluster) -> bool {
 }
 
 fn build_summary(db: &Storage, config: &AnalyzerConfig) -> Option<PeriodSummary> {
-    let stats = db.stats(config.summary_interval.as_secs(), "1970-01-01T00:00:00Z").ok()?;
+    let stats = db
+        .stats(config.summary_interval.as_secs(), "1970-01-01T00:00:00Z")
+        .ok()?;
 
     // Get top failure fields
     let failures = db.recent_failures(100).ok()?;

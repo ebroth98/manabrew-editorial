@@ -1,4 +1,5 @@
 use super::*;
+use super::game_action::CostPaymentContext;
 
 impl GameLoop {
     fn effect_kind_for_sa(sa: &SpellAbility) -> String {
@@ -56,45 +57,26 @@ impl GameLoop {
             // when the ability resolves. If they can't pay, the ability does nothing.
             //
             // For triggers with costs (e.g. Roar of Resistance's "you may pay {1}{R}"),
-            // the optionality lives in the cost payment, not in OptionalDecider$. Java's
-            // AI brain evaluates whether the cost is worth paying (e.g. PumpAllAi declines).
-            // We mirror this by asking the agent before paying.
+            // optionality lives in cost payment decisions. Mirror Java by routing
+            // through per-cost-part confirmations (`confirmPayment` parity hook).
             if entry.spell_ability.is_trigger {
                 if let Some(cost) = &entry.spell_ability.pay_costs {
                     let player = entry.spell_ability.activating_player;
                     let source = entry.spell_ability.source.unwrap_or(CardId(0));
-
-                    // Ask agent if they want to pay — mirrors Java's AI brain evaluation
-                    // (e.g. PumpAllAi.doTriggerNoCost() declining optional pump costs).
                     let api = entry.spell_ability.api.as_deref();
-                    let source_name = entry
-                        .spell_ability
-                        .source
-                        .and_then(|cid| game.cards.get(cid.index()).map(|c| c.card_name.clone()))
-                        .unwrap_or_else(|| "Ability".to_string());
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    let wants_to_pay = agents[player.index()].choose_optional_trigger(
-                        player,
-                        &format!("Pay trigger cost for {}?", source_name),
-                        Some(&source_name),
-                        api,
-                    );
-                    if !wants_to_pay {
-                        // Agent declined to pay — ability does nothing
-                        apply_continuous_effects(game);
-                        game.check_state_based_actions_with_triggers(Some(
-                            &mut self.trigger_handler,
-                        ));
-                        self.process_triggers(game, agents);
-                        return;
-                    }
-
                     let available = crate::mana::calculate_available_mana(
                         &self.mana_pools[player.index()],
                         game,
                         player,
                     );
-                    if !crate::cost::can_pay(cost, game, &available, source, player) {
+                    if !crate::cost::can_pay_with_ability(
+                        cost,
+                        game,
+                        &available,
+                        source,
+                        player,
+                        Some(&entry.spell_ability),
+                    ) {
                         // Can't pay the cost — ability fizzles
                         apply_continuous_effects(game);
                         game.check_state_based_actions_with_triggers(Some(
@@ -103,13 +85,27 @@ impl GameLoop {
                         self.process_triggers(game, agents);
                         return;
                     }
-                    // Pay the cost
-                    self.pay_ability_cost(game, agents, player, source, cost);
+                    if !self.pay_ability_cost(
+                        game,
+                        agents,
+                        player,
+                        source,
+                        cost,
+                        api,
+                        cost.mandatory,
+                        CostPaymentContext::TriggerResolve,
+                    ) {
+                        apply_continuous_effects(game);
+                        game.check_state_based_actions_with_triggers(Some(
+                            &mut self.trigger_handler,
+                        ));
+                        self.process_triggers(game, agents);
+                        return;
+                    }
                 }
             }
             // Triggered/activated ability: resolve the effect
             self.resolve_spell_effect(game, agents, &entry);
-
             // Fire Cycled trigger if this was a cycling ability
             // (mirrors Java MagicStack resolve → Player.addCycled)
             if entry.spell_ability.is_activated {

@@ -67,29 +67,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if lib_len == 0 {
         return;
     }
-    if optional {
-        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
-        let accepted = ctx.agents[dig_player.index()].confirm_action(
-            dig_player,
-            None,
-            "Do you want to proceed with this optional ability?",
-            &[],
-            source_name.as_deref(),
-            Some("Dig"),
-        );
-        if !accepted {
-            return;
-        }
-    }
 
     let count = dig_num.min(lib_len);
 
     // Take top N cards off the library.
-    let top_n: Vec<_> = {
+    let mut top_n: Vec<_> = {
         let zone = ctx.game.zone_mut(ZoneType::Library, dig_player);
         let len = zone.cards.len();
         zone.cards.split_off(len - count)
     };
+    // Java DigEffect iterates top cards in top-first order.
+    // Our library uses index 0 = bottom, so split_off returns deepest->top.
+    // Reverse to expose the same chooser order Java uses.
+    top_n.reverse();
 
     // Filter valid choices by ChangeValid$ (e.g. "Creature").
     let valid: Vec<_> = if change_valid.is_empty() {
@@ -101,6 +91,29 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .filter(|&id| matches_change_type(ctx.game.card(id), &change_valid, &[]))
             .collect()
     };
+
+    // Java DigEffect only prompts for optional skip when PromptToSkipOptionalAbility is set.
+    // Otherwise Optional$ True is modeled by allowing 0 selected cards in choose_dig.
+    let may_be_skipped = sa.params.contains_key("PromptToSkipOptionalAbility");
+    if optional && may_be_skipped && !valid.is_empty() {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
+        let prompt = sa
+            .params
+            .get("OptionalAbilityPrompt")
+            .map(String::as_str)
+            .unwrap_or("Would you like to proceed with this optional ability?");
+        let accepted = ctx.agents[dig_player.index()].confirm_action(
+            dig_player,
+            None,
+            prompt,
+            &[],
+            source_name.as_deref(),
+            Some("Dig"),
+        );
+        if !accepted {
+            return;
+        }
+    }
 
     // Let UI agents pre-build card info for the revealed cards.
     ctx.agents[sa.activating_player.index()].on_library_peek(ctx.game, &top_n);
@@ -208,7 +221,7 @@ mod tests {
         fn choose_action(
             &mut self,
             _: PlayerId,
-            _: &[CardId],
+            _: &[crate::agent::PlayOption],
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],

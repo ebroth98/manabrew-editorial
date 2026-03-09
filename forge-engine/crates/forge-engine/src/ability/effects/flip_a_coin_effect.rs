@@ -1,4 +1,5 @@
 use super::EffectContext;
+use crate::agent::BinaryChoiceKind;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// `SP$ FlipACoin` — flip a coin, resolve different abilities for win/lose.
@@ -44,7 +45,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     } else {
         // Call mode: player calls heads/tails
-        let called_heads = ctx.agents[controller.index()].flip_coin_call(controller);
+        let card_name = ctx.game.card(source_id).card_name.clone();
+        let called_heads = ctx.agents[controller.index()].choose_binary(
+            controller,
+            "Call the coin flip",
+            BinaryChoiceKind::HeadsOrTails,
+            None,
+            Some(&card_name),
+            sa.api.as_deref(),
+        );
         let won = called_heads == is_heads;
 
         let sub_key = if won {

@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, matches_change_type, parse_zone_type, EffectContext};
+use super::{emit_zone_trigger, evaluate_svar, matches_change_type, parse_zone_type, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
@@ -34,6 +34,43 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
     let controller = sa.activating_player;
+    let matches_with_context = |card_id, clause: &str| {
+        let card = ctx.game.card(card_id);
+        if !matches_change_type(card, clause, &[]) {
+            return false;
+        }
+        // Java ChangeType supports numeric CMC comparators such as "cmcLE3" and
+        // variable-referenced forms like "cmcLEX" (resolved through SVars).
+        for qualifier in clause.split('.').skip(1) {
+            if let Some(raw_max) = qualifier.strip_prefix("cmcLE") {
+                let max_cmc = if let Ok(v) = raw_max.parse::<i32>() {
+                    v
+                } else if raw_max.eq_ignore_ascii_case("X") {
+                    if let Some(source_id) = sa.source {
+                        if let Some(expr) = ctx.game.card(source_id).svars.get("X") {
+                            evaluate_svar(expr, sa)
+                        } else {
+                            sa.x_mana_cost_paid as i32
+                        }
+                    } else {
+                        sa.x_mana_cost_paid as i32
+                    }
+                } else if let Some(source_id) = sa.source {
+                    if let Some(expr) = ctx.game.card(source_id).svars.get(raw_max) {
+                        evaluate_svar(expr, sa)
+                    } else {
+                        return false;
+                    }
+                } else {
+                    return false;
+                };
+                if card.mana_cost.cmc() as i32 > max_cmc {
+                    return false;
+                }
+            }
+        }
+        true
+    };
 
     if let (Some(dest_zone), Some(origin_zone)) = (
         parse_zone_type(destination_str),
@@ -71,8 +108,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
                 .into_iter()
                 .collect()
-        } else if defined.eq_ignore_ascii_case("Self") {
-            // Move the source card itself
+        } else if defined.eq_ignore_ascii_case("Self")
+            || (defined.is_empty() && origin_zone.is_known())
+        {
+            // Java parity: missing Defined defaults to Self for known-origin ChangeZone;
+            // hidden-origin empty Defined uses search flow below.
             sa.source
                 .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
                 .into_iter()
@@ -89,29 +129,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             } else {
                 Vec::new()
             }
-        } else if defined.is_empty()
+        } else if (defined.is_empty() && origin_zone.is_hidden())
             || defined.eq_ignore_ascii_case("You")
             || defined.eq_ignore_ascii_case("Opponent")
         {
-            // No target: search selected player's origin zone for a matching card.
+            // Hidden-origin search flow (library/hand) with optional chooser prompt.
             let search_player = if defined.eq_ignore_ascii_case("Opponent") {
                 ctx.game.opponent_of(controller)
             } else {
                 controller
             };
             let mut zone_cards = ctx.game.cards_in_zone(origin_zone, search_player).to_vec();
-            // Sort candidates to match Java's fetchList.sort() + DeterministicController.
-            // Java sorts fetchList by Card.toString() which is "Zone Name (ID)",
-            // making same-name cards sort by ID. The DeterministicController then
-            // re-sorts by Card::getName (stable), picking index 0. The effective
-            // sort is: name ascending, then card ID ascending for tiebreaking.
-            zone_cards.sort_by(|&a, &b| {
-                ctx.game
-                    .card(a)
-                    .card_name
-                    .cmp(&ctx.game.card(b).card_name)
-                    .then(a.0.cmp(&b.0))
-            });
             if let Some(each_spec) = change_type.strip_prefix("EACH ") {
                 let mut out = Vec::new();
                 for clause in each_spec
@@ -119,18 +147,38 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     .map(str::trim)
                     .filter(|s| !s.is_empty())
                 {
-                    if let Some(pos) = zone_cards
+                    let candidates: Vec<_> = zone_cards
                         .iter()
-                        .position(|&cid| matches_change_type(ctx.game.card(cid), clause, &[]))
+                        .copied()
+                        .filter(|&cid| matches_with_context(cid, clause))
+                        .collect();
+                    if let Some(chosen) = ctx.agents[controller.index()]
+                        .choose_single_card_for_zone_change(
+                            controller,
+                            &candidates,
+                            "Select card for zone change",
+                            false,
+                        )
                     {
-                        out.push(zone_cards.remove(pos));
+                        out.push(chosen);
+                        if let Some(pos) = zone_cards.iter().position(|&cid| cid == chosen) {
+                            zone_cards.remove(pos);
+                        }
                     }
                 }
                 out
             } else {
-                zone_cards
+                let candidates: Vec<_> = zone_cards
                     .into_iter()
-                    .find(|&cid| matches_change_type(ctx.game.card(cid), &change_type, &[]))
+                    .filter(|&cid| matches_with_context(cid, &change_type))
+                    .collect();
+                ctx.agents[controller.index()]
+                    .choose_single_card_for_zone_change(
+                        controller,
+                        &candidates,
+                        "Select card for zone change",
+                        false,
+                    )
                     .into_iter()
                     .collect()
             }

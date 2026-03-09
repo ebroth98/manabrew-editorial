@@ -21,8 +21,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     };
 
-    let mut sub_sa =
-        crate::spellability::build_spell_ability(ctx.game, source_id, &sub_text, sa.activating_player);
+    let mut sub_sa = crate::spellability::build_spell_ability(
+        ctx.game,
+        source_id,
+        &sub_text,
+        sa.activating_player,
+    );
     sub_sa.target_chosen = sa.target_chosen.clone();
     sub_sa.trigger_source = sa.trigger_source;
     sub_sa.trigger_index = sa.trigger_index;
@@ -63,10 +67,9 @@ fn evaluate_branch_condition(ctx: &EffectContext, sa: &SpellAbility) -> bool {
                 .copied()
                 .any(|cid| ctx.game.card(cid).type_line.has_subtype(&chosen_type));
         }
-        return remembered
-            .iter()
-            .copied()
-            .any(|cid| super::matches_valid_cards(ctx.game.card(cid), valid_filter, sa.activating_player));
+        return remembered.iter().copied().any(|cid| {
+            super::matches_valid_cards(ctx.game.card(cid), valid_filter, sa.activating_player)
+        });
     }
 
     super::evaluate_svar(expr, sa) > 0

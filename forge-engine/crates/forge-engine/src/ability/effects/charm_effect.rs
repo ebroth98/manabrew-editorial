@@ -1,14 +1,14 @@
-use forge_foundation::ZoneType;
-
-use super::{matches_valid_cards, EffectContext};
+use super::{resolve_numeric_svar, EffectContext};
+use crate::agent::PlayerAgent;
 use crate::agent::TargetChoice;
+use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::spellability::target_restrictions::{
     get_all_battlefield_permanents_filtered, get_all_candidates_creature_filtered,
     get_all_candidates_spells, get_valid_cards_in_zone, TargetKind,
 };
-use crate::spellability::{build_spell_ability, SpellAbility};
 use crate::trigger::parse_pipe_params;
+use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// `SP$ Charm` — modal spell: player chooses N effects from a list.
 ///
@@ -21,9 +21,23 @@ use crate::trigger::parse_pipe_params;
 /// SVar:Mode2:DB$ Destroy | ValidTgts$ Creature | SpellDescription$ Destroy target creature.
 /// ```
 ///
-/// Modes are resolved at resolution time (shortcut vs MTG rules cast-time targeting),
-/// which is acceptable for single-player implementations.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    // Java chains chosen charm modes onto the root SpellAbility during casting,
+    // then target setup walks that full sub-ability chain before the spell is put
+    // on the stack. If those sub-abilities are already present, resolve them
+    // directly and do not ask for modes again.
+    if let Some(first_mode) = sa.sub_ability.as_deref() {
+        let mut cur = Some(first_mode);
+        while let Some(cur_sa) = cur {
+            super::resolve_effect(ctx, cur_sa);
+            cur = cur_sa.sub_ability.as_deref();
+            if ctx.game.game_over {
+                break;
+            }
+        }
+        return;
+    }
+
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
@@ -34,16 +48,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    let charm_num: usize = sa
-        .params
-        .get("CharmNum")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1);
-    let min_charm_num: usize = sa
-        .params
-        .get("MinCharmNum")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(charm_num);
+    let charm_num = resolve_numeric_svar(ctx.game, sa, "CharmNum", 1).max(0) as usize;
+    let min_charm_num =
+        resolve_numeric_svar(ctx.game, sa, "MinCharmNum", charm_num as i32).max(0) as usize;
 
     let player = sa.activating_player;
 
@@ -159,6 +166,169 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
+pub fn make_choices_precast(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    sa: &mut SpellAbility,
+) -> bool {
+    let source_id = match sa.source {
+        Some(id) => id,
+        None => return true,
+    };
+
+    let choices_str = sa.params.get("Choices").cloned().unwrap_or_default();
+    if choices_str.is_empty() {
+        return true;
+    }
+
+    let player = sa.activating_player;
+    let mode_svars: Vec<&str> = choices_str.split(',').map(|s| s.trim()).collect();
+    let svars = game.card(source_id).svars.clone();
+    let mode_texts: Vec<String> = mode_svars
+        .iter()
+        .filter_map(|svar| svars.get(*svar).cloned())
+        .collect();
+    if mode_texts.is_empty() {
+        return false;
+    }
+
+    let mode_descriptions: Vec<String> = mode_texts
+        .iter()
+        .map(|text| {
+            let params = parse_pipe_params(text);
+            params
+                .get("SpellDescription")
+                .cloned()
+                .unwrap_or_else(|| text.clone())
+        })
+        .collect();
+
+    let valid_mode_indices: Vec<usize> = mode_texts
+        .iter()
+        .enumerate()
+        .filter(|(_, text)| mode_has_valid_targets_in_game(game, text, player, source_id))
+        .map(|(i, _)| i)
+        .collect();
+    if valid_mode_indices.is_empty() {
+        return false;
+    }
+
+    let valid_descriptions: Vec<String> = valid_mode_indices
+        .iter()
+        .map(|&i| mode_descriptions[i].clone())
+        .collect();
+
+    let has_entwine = game.card(source_id).get_entwine_cost().is_some();
+    let has_escalate = game.card(source_id).get_escalate_cost().is_some();
+    let can_repeat = sa.params.contains_key("CanRepeatModes");
+
+    let mut charm_num = resolve_numeric_svar(game, sa, "CharmNum", 1).max(0) as usize;
+    let min_charm_num =
+        resolve_numeric_svar(game, sa, "MinCharmNum", charm_num as i32).max(0) as usize;
+    if has_escalate {
+        charm_num = mode_texts.len();
+    }
+    if !can_repeat && min_charm_num > valid_mode_indices.len() {
+        return false;
+    }
+
+    let pre_selected = game.card_mut(source_id).chosen_modes.take();
+    let chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
+        pre
+    } else if sa.params.contains_key("Entwine") || (has_entwine && sa.kicked) {
+        valid_mode_indices.clone()
+    } else {
+        let card_name = game.card(source_id).card_name.clone();
+        let chosen = agents[player.index()].choose_mode(
+            player,
+            &valid_descriptions,
+            min_charm_num,
+            charm_num.min(valid_mode_indices.len()),
+            Some(&card_name),
+        );
+        chosen
+            .into_iter()
+            .filter_map(|i| valid_mode_indices.get(i).copied())
+            .collect()
+    };
+
+    if chosen_indices.len() < min_charm_num {
+        return false;
+    }
+
+    game.card_mut(source_id).chosen_modes = Some(chosen_indices.clone());
+    sa.sub_ability = None;
+    for idx in chosen_indices {
+        if idx >= mode_texts.len() {
+            continue;
+        }
+        let mut mode_sa = build_spell_ability(game, source_id, &mode_texts[idx], player);
+        mode_sa.source = Some(source_id);
+        append_subability(sa, mode_sa);
+    }
+
+    true
+}
+
+/// Pre-cast legality check for Charm mode selection.
+///
+/// Mirrors Java `CharmEffect.makeChoices` behavior enough to decide whether the
+/// cast should proceed at all: if not enough legal modes exist, casting fails.
+pub(crate) fn can_make_choices_precast(
+    game: &GameState,
+    player: PlayerId,
+    source_id: crate::ids::CardId,
+    charm_sa_text: &str,
+) -> bool {
+    let sa_params = parse_pipe_params(charm_sa_text);
+    let Some(choices_str) = sa_params.get("Choices") else {
+        return true;
+    };
+
+    let mode_svars: Vec<&str> = choices_str.split(',').map(|s| s.trim()).collect();
+    if mode_svars.is_empty() {
+        return false;
+    }
+
+    let svars = game.card(source_id).svars.clone();
+    let mode_texts: Vec<String> = mode_svars
+        .iter()
+        .filter_map(|svar| svars.get(*svar).cloned())
+        .collect();
+    if mode_texts.is_empty() {
+        return false;
+    }
+
+    let mut charm_num: usize = sa_params
+        .get("CharmNum")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(1);
+    let min_charm_num: usize = sa_params
+        .get("MinCharmNum")
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(charm_num);
+    let can_repeat = sa_params.contains_key("CanRepeatModes");
+
+    let valid_count = mode_texts
+        .iter()
+        .filter(|text| mode_has_valid_targets_in_game(game, text, player, source_id))
+        .count();
+
+    if valid_count == 0 {
+        return false;
+    }
+
+    if !can_repeat && min_charm_num > valid_count {
+        return false;
+    }
+
+    if !can_repeat {
+        charm_num = charm_num.min(valid_count);
+    }
+
+    charm_num >= min_charm_num
+}
+
 /// Check whether a charm mode has valid targets (or needs no targets).
 ///
 /// Mirrors Java's pre-filtering of `possible` modes in CharmEffect before
@@ -171,35 +341,72 @@ fn mode_has_valid_targets(
     player: PlayerId,
     source_id: crate::ids::CardId,
 ) -> bool {
-    let sa = build_spell_ability(ctx.game, source_id, mode_text, player);
+    mode_has_valid_targets_in_game(ctx.game, mode_text, player, source_id)
+}
+
+fn append_subability(root: &mut SpellAbility, mode_sa: SpellAbility) {
+    let mut slot = &mut root.sub_ability;
+    loop {
+        match slot {
+            Some(node) => slot = &mut node.sub_ability,
+            None => {
+                *slot = Some(Box::new(mode_sa));
+                return;
+            }
+        }
+    }
+}
+
+fn mode_has_valid_targets_in_game(
+    game: &GameState,
+    mode_text: &str,
+    player: PlayerId,
+    source_id: crate::ids::CardId,
+) -> bool {
+    let sa = build_spell_ability(game, source_id, mode_text, player);
     let tr = match &sa.target_restrictions {
         Some(tr) => tr,
         None => return true, // No targeting = always valid
     };
     match &tr.target_kind {
         TargetKind::Player => true,
-        TargetKind::Spell => !get_all_candidates_spells(ctx.game).is_empty(),
+        TargetKind::Spell => !get_all_candidates_spells(game).is_empty(),
         TargetKind::Creature(ref filter) => {
-            !get_all_candidates_creature_filtered(ctx.game, filter.as_deref(), player).is_empty()
+            !crate::spellability::target_restrictions::apply_other_source_filter(
+                get_all_candidates_creature_filtered(game, filter.as_deref(), player),
+                filter.as_deref(),
+                sa.source,
+            )
+            .is_empty()
         }
         TargetKind::Permanent(ref filter) => {
-            !get_all_battlefield_permanents_filtered(ctx.game, filter.as_deref(), player).is_empty()
+            !crate::spellability::target_restrictions::apply_other_source_filter(
+                get_all_battlefield_permanents_filtered(game, filter.as_deref(), player),
+                filter.as_deref(),
+                sa.source,
+            )
+            .is_empty()
         }
-        TargetKind::CardInZone { zone, filter } => ctx.game.player_order.iter().any(|&pid| {
-            !get_valid_cards_in_zone(ctx.game, *zone, pid, filter.as_deref()).is_empty()
+        TargetKind::CardInZone { zone, filter } => game.player_order.iter().any(|&pid| {
+            !get_valid_cards_in_zone(game, *zone, pid, filter.as_deref(), sa.source).is_empty()
         }),
         TargetKind::Any => {
-            let filter = tr
-                .valid_tgts
-                .first()
-                .map(String::as_str)
-                .unwrap_or("Permanent");
-            ctx.game.player_order.iter().any(|&pid| {
-                ctx.game
-                    .cards_in_zone(ZoneType::Battlefield, pid)
-                    .iter()
-                    .any(|&cid| matches_valid_cards(ctx.game.card(cid), filter, player))
-            }) || !ctx.game.alive_players().is_empty()
+            if crate::spellability::target_restrictions::any_target_allows_players(&tr.valid_tgts)
+                && !game.alive_players().is_empty()
+            {
+                return true;
+            }
+            crate::spellability::target_restrictions::get_all_candidates_any_filtered(
+                game,
+                &tr.valid_tgts,
+                player,
+            )
+            .into_iter()
+            .any(|cid| {
+                crate::spellability::target_restrictions::can_be_targeted_by_sa(
+                    game, cid, player, &sa,
+                )
+            })
         }
         TargetKind::None => true,
     }
@@ -231,15 +438,22 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
         }
 
         TargetKind::Creature(ref filter) => {
-            let valid = get_all_candidates_creature_filtered(ctx.game, filter.as_deref(), player);
+            let valid = crate::spellability::target_restrictions::apply_other_source_filter(
+                get_all_candidates_creature_filtered(ctx.game, filter.as_deref(), player),
+                filter.as_deref(),
+                mode_sa.source,
+            );
             if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid) {
                 mode_sa.target_chosen.target_card = Some(card);
             }
         }
 
         TargetKind::Permanent(ref filter) => {
-            let valid =
-                get_all_battlefield_permanents_filtered(ctx.game, filter.as_deref(), player);
+            let valid = crate::spellability::target_restrictions::apply_other_source_filter(
+                get_all_battlefield_permanents_filtered(ctx.game, filter.as_deref(), player),
+                filter.as_deref(),
+                mode_sa.source,
+            );
             if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid) {
                 mode_sa.target_chosen.target_card = Some(card);
             }
@@ -250,7 +464,13 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
             let filter = filter.clone();
             let mut valid = Vec::new();
             for &pid in &ctx.game.player_order.clone() {
-                let zone_cards = get_valid_cards_in_zone(ctx.game, zone, pid, filter.as_deref());
+                let zone_cards = get_valid_cards_in_zone(
+                    ctx.game,
+                    zone,
+                    pid,
+                    filter.as_deref(),
+                    mode_sa.source,
+                );
                 valid.extend(zone_cards);
             }
             if let Some(card) =
@@ -262,41 +482,33 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
 
         // Generic fallback: use valid_tgts[0] with matches_valid_cards for battlefield
         TargetKind::Any => {
-            let filter = tr
-                .valid_tgts
-                .first()
-                .map(String::as_str)
-                .unwrap_or("Permanent");
-            let mut valid = Vec::new();
-            for &pid in &ctx.game.player_order.clone() {
-                let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
-                for cid in zone_cards {
-                    if matches_valid_cards(ctx.game.card(cid), filter, player) {
-                        valid.push(cid);
-                    }
-                }
-            }
-            if valid.is_empty() {
-                // No battlefield cards match → try targeting a player
-                let players = ctx.game.alive_players();
-                if let Some(p) = ctx.agents[player.index()].choose_target_player(player, &players) {
+            let valid_players = if crate::spellability::target_restrictions::any_target_allows_players(&tr.valid_tgts) {
+                ctx.game.alive_players()
+            } else {
+                Vec::new()
+            };
+            let valid_cards = crate::spellability::target_restrictions::get_all_candidates_any_filtered(
+                ctx.game,
+                &tr.valid_tgts,
+                player,
+            )
+            .into_iter()
+            .filter(|&cid| {
+                crate::spellability::target_restrictions::can_be_targeted_by_sa(
+                    ctx.game, cid, player, mode_sa,
+                )
+            })
+            .collect::<Vec<_>>();
+            let choice =
+                ctx.agents[player.index()].choose_target_any(player, &valid_players, &valid_cards);
+            match choice {
+                TargetChoice::Player(p) => {
                     mode_sa.target_chosen.target_player = Some(p);
                 }
-            } else {
-                let choice = ctx.agents[player.index()].choose_target_any(
-                    player,
-                    &ctx.game.alive_players(),
-                    &valid,
-                );
-                match choice {
-                    TargetChoice::Player(p) => {
-                        mode_sa.target_chosen.target_player = Some(p);
-                    }
-                    TargetChoice::Card(c) => {
-                        mode_sa.target_chosen.target_card = Some(c);
-                    }
-                    TargetChoice::None => {}
+                TargetChoice::Card(c) => {
+                    mode_sa.target_chosen.target_card = Some(c);
                 }
+                TargetChoice::None => {}
             }
         }
 

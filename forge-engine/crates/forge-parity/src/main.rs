@@ -52,7 +52,10 @@ fn truncate_trace(trace: &str, max_lines: usize) -> String {
     }
     let half = max_lines / 2;
     let mut result = lines[..half].join("\n");
-    result.push_str(&format!("\n... ({} lines omitted) ...\n", lines.len() - max_lines));
+    result.push_str(&format!(
+        "\n... ({} lines omitted) ...\n",
+        lines.len() - max_lines
+    ));
     result.push_str(&lines[lines.len() - half..].join("\n"));
     result
 }
@@ -206,17 +209,13 @@ fn resolve_issue_threshold(cli_val: i64) -> i64 {
 
 /// Resolve github_repo: CLI flag > env var
 fn resolve_github_repo(cli_val: Option<String>) -> Option<String> {
-    cli_val.or_else(|| {
-        std::env::var("GITHUB_REPO")
-            .ok()
-            .filter(|s| !s.is_empty())
-    })
+    cli_val.or_else(|| std::env::var("GITHUB_REPO").ok().filter(|s| !s.is_empty()))
 }
 
 fn main() {
     let cli = Cli::parse();
-    let games_flag_present = std::env::args()
-        .any(|arg| arg == "--games" || arg.starts_with("--games="));
+    let games_flag_present =
+        std::env::args().any(|arg| arg == "--games" || arg.starts_with("--games="));
 
     if cli.analyze && !cli.serve {
         #[cfg(feature = "analyze")]
@@ -366,9 +365,18 @@ fn run_multi_game_mode(cli: &Cli) {
         srv.shutdown();
     }
 
-    let passed = results.iter().filter(|r| r.status == MatchupStatus::Pass).count();
-    let failed = results.iter().filter(|r| r.status == MatchupStatus::Fail).count();
-    let errors = results.iter().filter(|r| r.status == MatchupStatus::Error).count();
+    let passed = results
+        .iter()
+        .filter(|r| r.status == MatchupStatus::Pass)
+        .count();
+    let failed = results
+        .iter()
+        .filter(|r| r.status == MatchupStatus::Fail)
+        .count();
+    let errors = results
+        .iter()
+        .filter(|r| r.status == MatchupStatus::Error)
+        .count();
 
     let report_data = MatrixReport {
         total_matchups: total,
@@ -386,7 +394,12 @@ fn run_multi_game_mode(cli: &Cli) {
         _ => {
             let mut out = String::new();
             let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
-            out.push_str(&build_coverage_report(&cli.deck1, &cli.deck2, &report_data.results, dd));
+            out.push_str(&build_coverage_report(
+                &cli.deck1,
+                &cli.deck2,
+                &report_data.results,
+                dd,
+            ));
             out.push_str(&build_mechanics_report(
                 &cli.deck1,
                 &cli.deck2,
@@ -619,33 +632,32 @@ fn run_single_matchup_server(
     };
 
     // Run Java engine via server
-    let java_data =
-        match server.run_matchup(
-            &config.deck1,
-            &config.deck2,
-            config.seed,
-            config.max_turns,
-            config.prefer_actions,
-        ) {
-            Ok(snaps) => snaps,
-            Err(e) => {
-                return MatchupResult {
-                    deck1: config.deck1.clone(),
-                    deck2: config.deck2.clone(),
-                    seed: config.seed,
-                    status: MatchupStatus::Error,
-                    snapshots_compared: 0,
-                    divergence_count: 0,
-                    first_divergence: None,
-                    error_message: Some(format!("Java server error: {}", e)),
-                    trace: None,
+    let java_data = match server.run_matchup(
+        &config.deck1,
+        &config.deck2,
+        config.seed,
+        config.max_turns,
+        config.prefer_actions,
+    ) {
+        Ok(snaps) => snaps,
+        Err(e) => {
+            return MatchupResult {
+                deck1: config.deck1.clone(),
+                deck2: config.deck2.clone(),
+                seed: config.seed,
+                status: MatchupStatus::Error,
+                snapshots_compared: 0,
+                divergence_count: 0,
+                first_divergence: None,
+                error_message: Some(format!("Java server error: {}", e)),
+                trace: None,
                 java_trace: None,
-                    covered_cards: vec![],
-                    mechanic_signals: vec![],
-                    finished_turn: None,
-                };
-            }
-        };
+                covered_cards: vec![],
+                mechanic_signals: vec![],
+                finished_turn: None,
+            };
+        }
+    };
     let mut result = compare_snapshots(
         config,
         &rust_trace.snapshots,
@@ -743,13 +755,16 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
             first_divergence: None,
             error_message: None,
             trace: None,
-                java_trace: None,
+            java_trace: None,
             covered_cards: trace.covered_cards,
             mechanic_signals: trace.mechanic_signals,
-            finished_turn: trace
-                .snapshots
-                .last()
-                .and_then(|s| if s.game_over { Some(s.turn) } else { None }),
+            finished_turn: trace.snapshots.last().and_then(|s| {
+                if s.game_over {
+                    Some(s.turn)
+                } else {
+                    None
+                }
+            }),
         },
         Err(e) => MatchupResult {
             deck1: config.deck1.clone(),
@@ -761,7 +776,7 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
             first_divergence: None,
             error_message: Some(format!("Rust engine error: {}", e)),
             trace: None,
-                java_trace: None,
+            java_trace: None,
             covered_cards: vec![],
             mechanic_signals: vec![],
             finished_turn: None,
@@ -833,31 +848,31 @@ fn compare_snapshots(
         status,
         snapshots_compared: compared_until,
         divergence_count,
-        trace: first_divergence
-            .as_ref()
-            .map(|_| {
-                format_rust_trace(
-                    config,
-                    &rust_snapshots[..compared_until.min(rust_snapshots.len())],
-                    rust_decisions,
-                )
-            }),
-        java_trace: first_divergence
-            .as_ref()
-            .map(|_| {
-                format_java_trace(
-                    config,
-                    &java_snapshots[..compared_until.min(java_snapshots.len())],
-                    &java_data.decisions,
-                )
-            }),
+        trace: first_divergence.as_ref().map(|_| {
+            format_rust_trace(
+                config,
+                &rust_snapshots[..compared_until.min(rust_snapshots.len())],
+                rust_decisions,
+            )
+        }),
+        java_trace: first_divergence.as_ref().map(|_| {
+            format_java_trace(
+                config,
+                &java_snapshots[..compared_until.min(java_snapshots.len())],
+                &java_data.decisions,
+            )
+        }),
         first_divergence,
         error_message: None,
         covered_cards: vec![],
         mechanic_signals: vec![],
-        finished_turn: rust_snapshots
-            .last()
-            .and_then(|s| if s.game_over { Some(s.turn) } else { None }),
+        finished_turn: rust_snapshots.last().and_then(|s| {
+            if s.game_over {
+                Some(s.turn)
+            } else {
+                None
+            }
+        }),
     }
 }
 
@@ -943,7 +958,8 @@ impl ServerPool {
 
     /// Shutdown all servers in parallel.
     fn shutdown(self) {
-        let handles: Vec<_> = self.servers
+        let handles: Vec<_> = self
+            .servers
             .into_iter()
             .map(|server_mutex| {
                 std::thread::spawn(move || {
@@ -971,10 +987,7 @@ fn run_matrix_mode(cli: &Cli) {
     let valid = available_presets(decks_dir);
     for d in &deck_names {
         if !valid.contains(d) {
-            eprintln!(
-                "[parity] Unknown deck '{}'. Available: {:?}",
-                d, valid
-            );
+            eprintln!("[parity] Unknown deck '{}'. Available: {:?}", d, valid);
             std::process::exit(1);
         }
     }
@@ -1017,9 +1030,13 @@ fn run_matrix_mode(cli: &Cli) {
     let completed = AtomicUsize::new(0);
 
     // Spawn server pool if Java JAR is provided
-    let num_workers = cli
-        .java_workers
-        .unwrap_or_else(|| if cli.java_jar.is_some() { num_cpus() } else { 0 });
+    let num_workers = cli.java_workers.unwrap_or_else(|| {
+        if cli.java_jar.is_some() {
+            num_cpus()
+        } else {
+            0
+        }
+    });
 
     let pool = if let Some(ref jar_path) = cli.java_jar {
         let server_config = JavaServerConfig {
@@ -1080,7 +1097,11 @@ fn run_matrix_mode(cli: &Cli) {
                     MatchupStatus::Error => {
                         eprintln!(
                             "[parity] [{}/{}] {} vs {} seed={} ... ERROR: {}",
-                            n, total, d1, d2, seed,
+                            n,
+                            total,
+                            d1,
+                            d2,
+                            seed,
                             result.error_message.as_deref().unwrap_or("unknown")
                         );
                     }
@@ -1096,9 +1117,18 @@ fn run_matrix_mode(cli: &Cli) {
         pool.shutdown();
     }
 
-    let passed = results.iter().filter(|r| r.status == MatchupStatus::Pass).count();
-    let failed = results.iter().filter(|r| r.status == MatchupStatus::Fail).count();
-    let errors = results.iter().filter(|r| r.status == MatchupStatus::Error).count();
+    let passed = results
+        .iter()
+        .filter(|r| r.status == MatchupStatus::Pass)
+        .count();
+    let failed = results
+        .iter()
+        .filter(|r| r.status == MatchupStatus::Fail)
+        .count();
+    let errors = results
+        .iter()
+        .filter(|r| r.status == MatchupStatus::Error)
+        .count();
 
     let matrix_report = MatrixReport {
         total_matchups: total,
@@ -1152,31 +1182,31 @@ fn run_single_matchup_with_pool(
 
     // Run Java via pool
     let java_data = match pool.run_matchup(
-            &config.deck1,
-            &config.deck2,
-            config.seed,
-            config.max_turns,
-            config.prefer_actions,
-        ) {
-            Ok(snaps) => snaps,
-            Err(e) => {
-                return MatchupResult {
-                    deck1: config.deck1.clone(),
-                    deck2: config.deck2.clone(),
-                    seed: config.seed,
-                    status: MatchupStatus::Error,
-                    snapshots_compared: 0,
-                    divergence_count: 0,
-                    first_divergence: None,
-                    error_message: Some(format!("Java server error: {}", e)),
-                    trace: None,
+        &config.deck1,
+        &config.deck2,
+        config.seed,
+        config.max_turns,
+        config.prefer_actions,
+    ) {
+        Ok(snaps) => snaps,
+        Err(e) => {
+            return MatchupResult {
+                deck1: config.deck1.clone(),
+                deck2: config.deck2.clone(),
+                seed: config.seed,
+                status: MatchupStatus::Error,
+                snapshots_compared: 0,
+                divergence_count: 0,
+                first_divergence: None,
+                error_message: Some(format!("Java server error: {}", e)),
+                trace: None,
                 java_trace: None,
-                    covered_cards: vec![],
-                    mechanic_signals: vec![],
-                    finished_turn: None,
-                };
-            }
-        };
+                covered_cards: vec![],
+                mechanic_signals: vec![],
+                finished_turn: None,
+            };
+        }
+    };
     let mut result = compare_snapshots(
         config,
         &rust_trace.snapshots,
@@ -1407,14 +1437,22 @@ fn collect_unique_deck_cards(deck1: &str, deck2: &str, decks_dir: &str) -> Vec<S
                 }
             }
             Err(e) => {
-                eprintln!("[parity] Coverage warning: failed to parse deck '{}': {}", deck, e);
+                eprintln!(
+                    "[parity] Coverage warning: failed to parse deck '{}': {}",
+                    deck, e
+                );
             }
         }
     }
     cards.into_iter().collect()
 }
 
-fn build_coverage_report(deck1: &str, deck2: &str, results: &[MatchupResult], decks_dir: &str) -> String {
+fn build_coverage_report(
+    deck1: &str,
+    deck2: &str,
+    results: &[MatchupResult],
+    decks_dir: &str,
+) -> String {
     let deck_cards = collect_unique_deck_cards(deck1, deck2, decks_dir);
     let mut covered: BTreeSet<String> = BTreeSet::new();
     for r in results {
@@ -1544,7 +1582,12 @@ fn coverage_line(label: &str, defined: &BTreeSet<String>, observed: &BTreeSet<St
     format!("{}: {}/{} ({:.1}%)\n", label, matched, total, pct)
 }
 
-fn collect_defined_mechanics(deck1: &str, deck2: &str, db: &CardDatabase, decks_dir: &str) -> DefinedMechanics {
+fn collect_defined_mechanics(
+    deck1: &str,
+    deck2: &str,
+    db: &CardDatabase,
+    decks_dir: &str,
+) -> DefinedMechanics {
     let mut card_names: BTreeSet<String> = BTreeSet::new();
     for deck in [deck1, deck2] {
         match runner::resolve_deck_spec(deck, decks_dir) {
@@ -1578,7 +1621,8 @@ fn collect_defined_mechanics(deck1: &str, deck2: &str, db: &CardDatabase, decks_
 fn collect_face_mechanics(face: &forge_carddb::CardFace, defs: &mut DefinedMechanics) {
     for raw in &face.abilities {
         if let Some(ab) = extract_param(raw, "AB") {
-            defs.ability_keys.insert(format!("Activated ability: {}", ab));
+            defs.ability_keys
+                .insert(format!("Activated ability: {}", ab));
         }
         if let Some(sp) = extract_param(raw, "SP") {
             defs.effect_keys.insert(format!("Effect resolved: {}", sp));
@@ -1590,7 +1634,8 @@ fn collect_face_mechanics(face: &forge_carddb::CardFace, defs: &mut DefinedMecha
 
     for raw in face.svars.values() {
         if let Some(ab) = extract_param(raw, "AB") {
-            defs.ability_keys.insert(format!("Activated ability: {}", ab));
+            defs.ability_keys
+                .insert(format!("Activated ability: {}", ab));
         }
         if let Some(sp) = extract_param(raw, "SP") {
             defs.effect_keys.insert(format!("Effect resolved: {}", sp));
@@ -1730,7 +1775,11 @@ fn run_continuous_mode(cli: &Cli) {
         eprintln!("[parity] No preset decks found in {}", dd);
         std::process::exit(1);
     }
-    eprintln!("[parity] Using {} preset decks: {:?}", deck_names.len(), deck_names);
+    eprintln!(
+        "[parity] Using {} preset decks: {:?}",
+        deck_names.len(),
+        deck_names
+    );
 
     // Initialize scheduler
     let fuzz_db = if cli.fuzz_per_batch > 0 {
@@ -1738,7 +1787,8 @@ fn run_continuous_mode(cli: &Cli) {
     } else {
         None
     };
-    let mut scheduler = Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db, false, 1);
+    let mut scheduler =
+        Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db, false, 1);
 
     // Spawn Java server
     let server_config = JavaServerConfig {
@@ -1845,19 +1895,43 @@ fn run_continuous_mode(cli: &Cli) {
     eprintln!();
     eprintln!("=== Continuous Parity Summary ===");
     eprintln!("  Total games:    {}", completed);
-    eprintln!("  Passed:         {} ({:.1}%)", passed, if completed > 0 { passed as f64 / completed as f64 * 100.0 } else { 0.0 });
+    eprintln!(
+        "  Passed:         {} ({:.1}%)",
+        passed,
+        if completed > 0 {
+            passed as f64 / completed as f64 * 100.0
+        } else {
+            0.0
+        }
+    );
     eprintln!("  Failed:         {}", failed);
     eprintln!("  Errors:         {}", errors);
-    eprintln!("  Pass rate:      {:.1}% (threshold: {:.1}%)", pass_rate * 100.0, cli.threshold * 100.0);
-    eprintln!("  Duration:       {:.1}s ({:.1} games/min)", elapsed.as_secs_f64(), gpm);
+    eprintln!(
+        "  Pass rate:      {:.1}% (threshold: {:.1}%)",
+        pass_rate * 100.0,
+        cli.threshold * 100.0
+    );
+    eprintln!(
+        "  Duration:       {:.1}s ({:.1} games/min)",
+        elapsed.as_secs_f64(),
+        gpm
+    );
     eprintln!("  Database:       {}", cli.db_path);
     eprintln!();
 
     if pass_rate >= cli.threshold {
-        eprintln!("\x1b[32mPASSED\x1b[0m — pass rate {:.1}% >= threshold {:.1}%", pass_rate * 100.0, cli.threshold * 100.0);
+        eprintln!(
+            "\x1b[32mPASSED\x1b[0m — pass rate {:.1}% >= threshold {:.1}%",
+            pass_rate * 100.0,
+            cli.threshold * 100.0
+        );
         std::process::exit(0);
     } else {
-        eprintln!("\x1b[31mFAILED\x1b[0m — pass rate {:.1}% < threshold {:.1}%", pass_rate * 100.0, cli.threshold * 100.0);
+        eprintln!(
+            "\x1b[31mFAILED\x1b[0m — pass rate {:.1}% < threshold {:.1}%",
+            pass_rate * 100.0,
+            cli.threshold * 100.0
+        );
         std::process::exit(1);
     }
 }
@@ -1966,11 +2040,7 @@ fn run_serve_mode(cli: &Cli) {
     }
 
     let initial_fuzz = cli.fuzz_per_batch > 0;
-    let fuzz_db = if initial_fuzz {
-        Some(&data.db)
-    } else {
-        None
-    };
+    let fuzz_db = if initial_fuzz { Some(&data.db) } else { None };
     let initial_fuzz_per_batch = if initial_fuzz { cli.fuzz_per_batch } else { 0 };
     let mut scheduler = Scheduler::new(
         &deck_names,
@@ -2043,7 +2113,10 @@ fn run_serve_mode(cli: &Cli) {
             issue_threshold: resolve_issue_threshold(cli.issue_threshold),
             github_repo: resolve_github_repo(cli.github_repo.clone()),
             dashboard_url: Some(format!("http://localhost:{}", port)),
-            java_jar: cli.java_jar.as_ref().map(|p| p.to_string_lossy().to_string()),
+            java_jar: cli
+                .java_jar
+                .as_ref()
+                .map(|p| p.to_string_lossy().to_string()),
             cards_dir: cli.cards_dir.clone(),
             project_root: std::env::current_dir()
                 .map(|p| p.to_string_lossy().to_string())
@@ -2053,10 +2126,7 @@ fn run_serve_mode(cli: &Cli) {
         rt.spawn(async move {
             analyzer::run(analyzer_storage, analyzer_config, analysis_running).await;
         });
-        tracing::info!(
-            running = cli.analyze,
-            "Analysis daemon spawned"
-        );
+        tracing::info!(running = cli.analyze, "Analysis daemon spawned");
     }
 
     // Run game loop on main thread (blocking)
@@ -2252,7 +2322,11 @@ fn run_serve_mode(cli: &Cli) {
             || fuzz_enabled != prev_fuzz_enabled
             || self_matchups != prev_self_matchups
         {
-            let fuzz_per = if fuzz_enabled { cli.fuzz_per_batch.max(5) } else { 0 };
+            let fuzz_per = if fuzz_enabled {
+                cli.fuzz_per_batch.max(5)
+            } else {
+                0
+            };
             let fdb = if fuzz_enabled { Some(&data.db) } else { None };
             scheduler = Scheduler::new(
                 &deck_names,
@@ -2391,7 +2465,10 @@ fn run_analyze_only(cli: &Cli) {
         issue_threshold: cli.issue_threshold,
         github_repo: cli.github_repo.clone(),
         dashboard_url: Some(format!("http://localhost:{}", cli.port)),
-        java_jar: cli.java_jar.as_ref().map(|p| p.to_string_lossy().to_string()),
+        java_jar: cli
+            .java_jar
+            .as_ref()
+            .map(|p| p.to_string_lossy().to_string()),
         cards_dir: cli.cards_dir.clone(),
         project_root: std::env::current_dir()
             .map(|p| p.to_string_lossy().to_string())

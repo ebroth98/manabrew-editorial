@@ -32,14 +32,36 @@ impl ManaAbilityRef {
 }
 
 /// Auto-tap lands to produce the required mana.
-/// Mirrors Java ComputerUtilMana flow: groupSourcesByManaColor ->
-/// groupAndOrderToPayShards -> sortManaAbilities -> getNextShardToPay -> chooseManaAbility.
+/// Mirrors harness AutoPay flow used by parity tests: collect currently playable
+/// mana abilities in battlefield order, choose the first legal source for the
+/// next unpaid shard, then repeat after each activation.
 pub fn auto_tap_lands(
     game: &mut GameState,
     pool: &mut ManaPool,
     player: PlayerId,
     cost: &ManaCost,
     current_spell: Option<CardId>,
+) -> Vec<CardId> {
+    auto_tap_lands_internal(game, pool, player, cost, current_spell, false)
+}
+
+pub fn auto_tap_lands_allow_reserved_source_reuse(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+) -> Vec<CardId> {
+    auto_tap_lands_internal(game, pool, player, cost, current_spell, true)
+}
+
+fn auto_tap_lands_internal(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    allow_reserved_source_reuse: bool,
 ) -> Vec<CardId> {
     let mut tapped_lands: Vec<CardId> = Vec::new();
 
@@ -49,7 +71,6 @@ pub fn auto_tap_lands(
         return tapped_lands;
     }
 
-    let colors_most_common = colors_most_common_in_hand(game, player, current_spell);
     let mana_ability_map = group_sources_by_mana_color(game, player);
     if mana_ability_map.is_empty() {
         return tapped_lands;
@@ -59,14 +80,6 @@ pub fn auto_tap_lands(
     if sources_for_shards.is_empty() {
         return tapped_lands;
     }
-
-    sort_mana_abilities(
-        game,
-        player,
-        current_spell,
-        &mut sources_for_shards,
-        &colors_most_common,
-    );
 
     while !unpaid.is_paid() {
         let Some(to_pay) = get_next_shard_to_pay(&unpaid, &sources_for_shards) else {
@@ -78,18 +91,31 @@ pub fn auto_tap_lands(
             break;
         }
 
-        let Some(sa_payment) = choose_mana_ability(game, player, current_spell, to_pay, &ma_list)
+        let Some(sa_payment) = choose_mana_ability(
+            game,
+            player,
+            current_spell,
+            to_pay,
+            &ma_list,
+            allow_reserved_source_reuse,
+        )
         else {
             break;
         };
 
-        let Some(chosen_atom) = choose_atom_for_shard(&sa_payment, to_pay, &colors_most_common)
+        let Some(chosen_atom) = choose_atom_for_shard(&sa_payment, to_pay)
         else {
             break;
         };
 
         // Pay non-tap ability costs first so a failed payment cannot generate mana.
-        if !pay_non_tap_mana_ability_costs(game, player, &sa_payment) {
+        if !pay_non_tap_mana_ability_costs(
+            game,
+            player,
+            &sa_payment,
+            current_spell,
+            allow_reserved_source_reuse,
+        ) {
             break;
         }
 
@@ -152,20 +178,36 @@ fn choose_mana_ability(
     current_spell: Option<CardId>,
     to_pay: ManaCostShard,
     ma_list: &[ManaAbilityRef],
+    allow_reserved_source_reuse: bool,
 ) -> Option<ManaAbilityRef> {
     for ma in ma_list {
-        // Java avoids paying from the same host card when selecting payment ability.
+        // Java ComputerUtilMana.chooseManaAbility() skips mana abilities on the
+        // same host card as the spell/ability currently being paid for.
         if Some(ma.card_id) == current_spell {
             continue;
         }
-        if ma.can_pay_shard(to_pay) && can_pay_non_tap_mana_ability_costs(game, player, ma) {
+        if ma.can_pay_shard(to_pay)
+            && can_pay_non_tap_mana_ability_costs(
+                game,
+                player,
+                ma,
+                current_spell,
+                allow_reserved_source_reuse,
+            )
+        {
             return Some(ma.clone());
         }
     }
     None
 }
 
-fn can_pay_non_tap_mana_ability_costs(game: &GameState, player: PlayerId, ma: &ManaAbilityRef) -> bool {
+fn can_pay_non_tap_mana_ability_costs(
+    game: &GameState,
+    player: PlayerId,
+    ma: &ManaAbilityRef,
+    reserved_source: Option<CardId>,
+    allow_reserved_source_reuse: bool,
+) -> bool {
     let Some(ab_idx) = ma.ability_index else {
         return true;
     };
@@ -197,8 +239,16 @@ fn can_pay_non_tap_mana_ability_costs(game: &GameState, player: PlayerId, ma: &M
                     if *amount > 1 || game.card(ma.card_id).zone != ZoneType::Battlefield {
                         return false;
                     }
-                } else if (get_sacrifice_targets(game, player, type_filter).len() as i32) < *amount {
-                    return false;
+                } else {
+                    let mut targets = get_sacrifice_targets(game, player, type_filter);
+                    if !allow_reserved_source_reuse {
+                        if let Some(reserved) = reserved_source {
+                            targets.retain(|&cid| cid != reserved);
+                        }
+                    }
+                    if (targets.len() as i32) < *amount {
+                        return false;
+                    }
                 }
             }
             _ => return false,
@@ -207,7 +257,13 @@ fn can_pay_non_tap_mana_ability_costs(game: &GameState, player: PlayerId, ma: &M
     true
 }
 
-fn pay_non_tap_mana_ability_costs(game: &mut GameState, player: PlayerId, ma: &ManaAbilityRef) -> bool {
+fn pay_non_tap_mana_ability_costs(
+    game: &mut GameState,
+    player: PlayerId,
+    ma: &ManaAbilityRef,
+    reserved_source: Option<CardId>,
+    allow_reserved_source_reuse: bool,
+) -> bool {
     let Some(ab_idx) = ma.ability_index else {
         return true;
     };
@@ -231,7 +287,8 @@ fn pay_non_tap_mana_ability_costs(game: &mut GameState, player: PlayerId, ma: &M
                 if game.card(ma.card_id).counter_count(counter_type) < *amount {
                     return false;
                 }
-                game.card_mut(ma.card_id).remove_counter(counter_type, *amount);
+                game.card_mut(ma.card_id)
+                    .remove_counter(counter_type, *amount);
             }
             CostPart::Sacrifice {
                 type_filter,
@@ -245,6 +302,11 @@ fn pay_non_tap_mana_ability_costs(game: &mut GameState, player: PlayerId, ma: &M
                     game.move_card(ma.card_id, ZoneType::Graveyard, owner);
                 } else {
                     let mut targets = get_sacrifice_targets(game, player, type_filter);
+                    if !allow_reserved_source_reuse {
+                        if let Some(reserved) = reserved_source {
+                            targets.retain(|&cid| cid != reserved);
+                        }
+                    }
                     targets.sort_by(|&a, &b| {
                         game.card(a)
                             .card_name
@@ -270,7 +332,6 @@ fn pay_non_tap_mana_ability_costs(game: &mut GameState, player: PlayerId, ma: &M
 fn choose_atom_for_shard(
     mana_ab: &ManaAbilityRef,
     shard: ManaCostShard,
-    colors_most_common: &[u16],
 ) -> Option<u16> {
     if shard.is_colorless() {
         if mana_ab.atoms.contains(&ManaAtom::COLORLESS) {
@@ -279,7 +340,6 @@ fn choose_atom_for_shard(
     }
 
     if shard == ManaCostShard::Generic || shard.is_generic() {
-        let _ = colors_most_common;
         return mana_ab.atoms.first().copied();
     }
 
@@ -557,127 +617,30 @@ fn add_mana_ability_to_color_map(
 }
 
 fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId> {
-    // Include ALL battlefield permanents — don't pre-filter by tapped state.
-    // Tapped cards with non-tap mana abilities (e.g. Rasputin Dreamweaver's
-    // "Remove a dream counter: Add {C}") are valid mana sources. The inner
-    // can_pay_ignoring_mana() check already excludes Tap-costed abilities from
-    // tapped cards.
-    let battlefield: Vec<CardId> = game
+    let mut sources: Vec<CardId> = game
         .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
         .iter()
         .copied()
         .collect();
-
-    let mut other_sources: Vec<CardId> = Vec::new();
-    let mut colorless_sources: Vec<CardId> = Vec::new();
-    let mut one_sources: Vec<CardId> = Vec::new();
-    let mut two_sources: Vec<CardId> = Vec::new();
-    let mut three_sources: Vec<CardId> = Vec::new();
-    let mut four_sources: Vec<CardId> = Vec::new();
-    let mut five_plus_sources: Vec<CardId> = Vec::new();
-    let mut any_color_sources: Vec<CardId> = Vec::new();
-
-    for cid in battlefield {
+    sources.retain(|&cid| {
         let card = game.card(cid);
-
-        let mut has_any_mana_ability = false;
-        let mut usable_mana_abilities = 0usize;
-        let mut produces_any_color = false;
-        let mut needs_limited_resources = false;
-        let mut unique_atoms: Vec<u16> = Vec::new();
-
         for ab in &card.activated_abilities {
             if !ab.is_mana_ability {
                 continue;
             }
-            has_any_mana_ability = true;
             if ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_))) {
                 continue;
             }
-            if !can_pay_ignoring_mana(&ab.cost, game, cid, player) {
-                continue;
-            }
-            let Some(produced) = ab.params.get("Produced") else {
-                continue;
-            };
-            if produced.eq_ignore_ascii_case("Any") {
-                produces_any_color = true;
-            }
-            // Java parity: mana abilities with SubAbility drawbacks (e.g. pain lands
-            // with DealDamage) set needsLimitedResources = true, pushing the card into
-            // otherManaSources (near end of the priority list).
-            if let Some(sub_name) = ab.params.get("SubAbility") {
-                if let Some(sub_text) = card.svars.get(sub_name) {
-                    let sub_params = crate::trigger::parse_pipe_params(sub_text);
-                    let sub_type = sub_params.get("DB").map(String::as_str).unwrap_or("");
-                    if matches!(
-                        sub_type,
-                        "DealDamage" | "LoseLife" | "Discard" | "Destroy" | "Sacrifice" | "Mill"
-                    ) {
-                        needs_limited_resources = true;
-                    }
-                }
-            }
-            for atom in produced_to_atoms(produced, &card.chosen_colors) {
-                if !unique_atoms.contains(&atom) {
-                    unique_atoms.push(atom);
-                }
-            }
-            usable_mana_abilities += 1;
-        }
-
-        if usable_mana_abilities == 0 {
-            // Implicit land mana (basic land subtypes) requires tapping, so skip tapped lands.
-            if card.is_land() && !has_any_mana_ability && !card.tapped {
-                unique_atoms = all_basic_subtype_atoms(card);
-                if unique_atoms.is_empty() {
-                    if let Some(a) = basic_land_mana_atom(card) {
-                        unique_atoms.push(a);
-                    }
-                }
-                usable_mana_abilities = unique_atoms.len();
+            if can_pay_ignoring_mana(&ab.cost, game, cid, player) {
+                return true;
             }
         }
-
-        if usable_mana_abilities == 0 {
-            continue;
+        if card.tapped || !card.is_land() {
+            return false;
         }
-
-        if card.is_creature() {
-            other_sources.push(cid);
-        } else if needs_limited_resources {
-            // Java parity: cards with SubAbility drawbacks on mana abilities
-            // (e.g. pain lands like Yavimaya Coast) go to otherManaSources.
-            other_sources.push(cid);
-        } else if produces_any_color {
-            any_color_sources.push(cid);
-        } else if usable_mana_abilities <= 1 {
-            if unique_atoms.len() == 1 && unique_atoms[0] == ManaAtom::COLORLESS {
-                colorless_sources.push(cid);
-            } else {
-                one_sources.push(cid);
-            }
-        } else if usable_mana_abilities == 2 {
-            two_sources.push(cid);
-        } else if usable_mana_abilities == 3 {
-            three_sources.push(cid);
-        } else if usable_mana_abilities == 4 {
-            four_sources.push(cid);
-        } else {
-            five_plus_sources.push(cid);
-        }
-    }
-
-    let mut sorted: Vec<CardId> = Vec::new();
-    sorted.extend(colorless_sources);
-    sorted.extend(one_sources);
-    sorted.extend(two_sources);
-    sorted.extend(three_sources);
-    sorted.extend(four_sources);
-    sorted.extend(five_plus_sources);
-    sorted.extend(any_color_sources);
-    sorted.extend(other_sources);
-    sorted
+        !all_basic_subtype_atoms(card).is_empty() || basic_land_mana_atom(card).is_some()
+    });
+    sources
 }
 
 fn colors_most_common_in_hand(
@@ -908,4 +871,183 @@ fn parse_mana_ability_amount(ab: &crate::ability::activated::ActivatedAbility) -
         .and_then(|s| s.parse::<i32>().ok())
         .filter(|&n| n > 0)
         .unwrap_or(1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::card::CardInstance;
+    use forge_foundation::{CardTypeLine, ColorSet};
+
+    fn make_card(
+        id: u32,
+        owner: PlayerId,
+        name: &str,
+        type_line: &str,
+        abilities: Vec<&str>,
+    ) -> CardInstance {
+        CardInstance::new(
+            CardId(id),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse(type_line),
+            ManaCost::no_cost(),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            abilities.into_iter().map(|s| s.to_string()).collect(),
+        )
+    }
+
+    #[test]
+    fn auto_tap_does_not_spend_reserved_source_on_mana_sacrifice_costs_by_default() {
+        let mut game = GameState::new(&["P1", "P2"], 20);
+        let player = PlayerId(0);
+        let mut pool = ManaPool::new();
+
+        let reserved_food = game.create_card(make_card(
+            1,
+            player,
+            "Food Token",
+            "Artifact Food",
+            vec!["AB$ GainLife | Cost$ 2 T Sac<1/CARDNAME> | LifeAmount$ 3"],
+        ));
+        let goose = game.create_card(make_card(
+            2,
+            player,
+            "Gilded Goose",
+            "Creature Bird",
+            vec!["AB$ Mana | Cost$ T Sac<1/Food> | Produced$ Any"],
+        ));
+        let forest = game.create_card(make_card(
+            3,
+            player,
+            "Forest",
+            "Land",
+            vec!["AB$ Mana | Cost$ T | Produced$ G"],
+        ));
+
+        game.zone_mut(ZoneType::Battlefield, player).add(reserved_food);
+        game.zone_mut(ZoneType::Battlefield, player).add(goose);
+        game.zone_mut(ZoneType::Battlefield, player).add(forest);
+        game.card_mut(reserved_food).zone = ZoneType::Battlefield;
+        game.card_mut(goose).zone = ZoneType::Battlefield;
+        game.card_mut(forest).zone = ZoneType::Battlefield;
+        game.card_mut(reserved_food).summoning_sick = false;
+        game.card_mut(goose).summoning_sick = false;
+        game.card_mut(forest).summoning_sick = false;
+
+        let tapped = auto_tap_lands(
+            &mut game,
+            &mut pool,
+            player,
+            &ManaCost::parse("2"),
+            Some(reserved_food),
+        );
+
+        assert_eq!(pool.total(), 1);
+        assert_eq!(tapped, vec![forest]);
+        assert!(!game.card(goose).tapped);
+        assert_eq!(game.card(goose).zone, ZoneType::Battlefield);
+        assert_eq!(game.card(reserved_food).zone, ZoneType::Battlefield);
+    }
+
+    #[test]
+    fn auto_tap_can_spend_reserved_source_when_explicitly_allowed() {
+        let mut game = GameState::new(&["P1", "P2"], 20);
+        let player = PlayerId(0);
+        let mut pool = ManaPool::new();
+
+        let reserved_food = game.create_card(make_card(
+            1,
+            player,
+            "Food Token",
+            "Artifact Food",
+            vec!["AB$ GainLife | Cost$ 2 T Sac<1/CARDNAME> | LifeAmount$ 3"],
+        ));
+        let goose = game.create_card(make_card(
+            2,
+            player,
+            "Gilded Goose",
+            "Creature Bird",
+            vec!["AB$ Mana | Cost$ T Sac<1/Food> | Produced$ Any"],
+        ));
+        let forest = game.create_card(make_card(
+            3,
+            player,
+            "Forest",
+            "Land",
+            vec!["AB$ Mana | Cost$ T | Produced$ G"],
+        ));
+
+        for cid in [reserved_food, goose, forest] {
+            game.zone_mut(ZoneType::Battlefield, player).add(cid);
+            game.card_mut(cid).zone = ZoneType::Battlefield;
+            game.card_mut(cid).summoning_sick = false;
+        }
+
+        let tapped = auto_tap_lands_allow_reserved_source_reuse(
+            &mut game,
+            &mut pool,
+            player,
+            &ManaCost::parse("2"),
+            Some(reserved_food),
+        );
+
+        assert_eq!(pool.total(), 2);
+        assert_eq!(tapped, vec![goose, forest]);
+        assert!(game.card(goose).tapped);
+        assert_eq!(game.card(goose).zone, ZoneType::Battlefield);
+        assert_eq!(game.card(reserved_food).zone, ZoneType::Graveyard);
+    }
+
+    #[test]
+    fn auto_tap_uses_battlefield_order_for_generic_payment() {
+        let mut game = GameState::new(&["P1", "P2"], 20);
+        let player = PlayerId(0);
+        let mut pool = ManaPool::new();
+
+        let plains = game.create_card(make_card(
+            1,
+            player,
+            "Plains",
+            "Land",
+            vec!["AB$ Mana | Cost$ T | Produced$ W"],
+        ));
+        let mountain = game.create_card(make_card(
+            2,
+            player,
+            "Mountain",
+            "Land",
+            vec!["AB$ Mana | Cost$ T | Produced$ R"],
+        ));
+        let forest = game.create_card(make_card(
+            3,
+            player,
+            "Forest",
+            "Land",
+            vec!["AB$ Mana | Cost$ T | Produced$ G"],
+        ));
+
+        for cid in [plains, mountain, forest] {
+            game.zone_mut(ZoneType::Battlefield, player).add(cid);
+            game.card_mut(cid).zone = ZoneType::Battlefield;
+            game.card_mut(cid).summoning_sick = false;
+        }
+
+        let tapped = auto_tap_lands(
+            &mut game,
+            &mut pool,
+            player,
+            &ManaCost::parse("2"),
+            None,
+        );
+
+        assert_eq!(pool.total(), 2);
+        assert_eq!(tapped, vec![plains, mountain]);
+        assert!(game.card(plains).tapped);
+        assert!(game.card(mountain).tapped);
+        assert!(!game.card(forest).tapped);
+    }
 }

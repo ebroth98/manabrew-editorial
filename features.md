@@ -89,7 +89,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 |-----------|---------|:-------------------:|
 | `AbilityFactory.java` | Parses card script text into SpellAbility objects | **Partial** (parser.rs parses abilities/triggers/SVars) |
 | `AbilityKey.java` | Enum of all ability parameter keys used in run/replacement params | **Partial** (RunParams in `event.rs`) |
-| `AbilityUtils.java` | Utility: resolve defined cards/players, calculate amounts | **Partial** (`resolve_defined_player` in `effects/mod.rs`: handles `You`, `Player.You`, `Opponent`, `Player.Opponent`, `OpponentCtrl`; used by trigger-driven effects like Guttersnipe) |
+| `AbilityUtils.java` | Utility: resolve defined cards/players, calculate amounts | **Partial** (`resolve_defined_player` in `effects/mod.rs`: handles `You`, `Player.You`, `Opponent`, `Player.Opponent`, `OpponentCtrl`; Count$ resolution includes `Converge/Sunburst` and `PromisedGift` variants used by Gift cards; core `UnlessCost` gating path wired in effect resolution, including payment parts used by current parity decks such as `DamageYou`/`PayLife`/mana/`Draw`/`Mill`/energy/shards) |
 | `ApiType.java` | Enum of all ability API types (~200 types: DealDamage, Destroy, Draw…) | Not implemented |
 | `AbilityApiBased.java` | Base class for API-based abilities | Not implemented |
 | `SpellAbilityEffect.java` | Abstract base for all spell ability effects | Not implemented |
@@ -123,7 +123,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `BranchEffect.java` | Conditional branching in ability chains | Not implemented |
 | `ChangeZoneEffect.java` | Move card(s) to another zone | **Implemented** (`game_loop.rs` ChangeZone handler: targeted/defined/self, LibraryPosition, Shuffle, Tapped, ChangesZone trigger) |
 | `ChangeZoneAllEffect.java` | Move all matching cards to a zone | **Implemented** (`game_loop.rs`/`change_zone_all_effect.rs`: ValidCards/ChangeType filters, multi-player, triggers, targeted `ChangeType$` clause support incl. `TargetedCard.Self`, `NotDefinedTargeted`, `sharesNameWith Targeted`, `ControlledBy TargetedController`) |
-| `CharmEffect.java` | Modal "choose N" charm abilities | **Implemented** — `charm_effect.rs`: `SP$ Charm`, `Choices$ SVar1,...`, `CharmNum$`, `MinCharmNum$`; resolution-time targeting via `TargetKind` dispatch; agent `choose_mode`; TauriAgent `ChooseMode` prompt + `ModeDecision` response; `ChooseModeModal` frontend |
+| `CharmEffect.java` | Modal "choose N" charm abilities | **Implemented** — `charm_effect.rs`: `SP$ Charm`, `Choices$ SVar1,...`, `CharmNum$`, `MinCharmNum$`; cast-time mode chaining and target setup mirror Java stack behavior; resolution-time fallback via `TargetKind` dispatch; agent `choose_mode`; TauriAgent `ChooseMode` prompt + `ModeDecision` response; `ChooseModeModal` frontend |
 | `ChooseCardEffect.java` | Choose a card from a set | **Implemented** — `choose_card_effect.rs`: `Amount$`, `ChoiceZone$`, `Choices$` filter, `RememberChosen$`; stores chosen on source card's `chosen_cards`; agent `choose_cards_for_effect()` + TauriAgent `ChooseCardsForEffect` prompt + `ChooseCardsModal` frontend |
 | `ChooseCardNameEffect.java` | Name a card | **Implemented** — `name_card_effect.rs`: `ChooseFromList$`/`ChooseFromDefinedCards$` modes + open naming; stores in `card.named_cards`; agent `choose_card_name`; TauriAgent `ChooseCardName` prompt + `CardNameDecision` response; `ChooseCardNameModal` frontend |
 | `ChooseColorEffect.java` | Choose a color | **Implemented** — `choose_color_effect.rs`: `Defined$` player(s), `Choices$` valid colors (default all 5); stores on source card's `chosen_colors`; agent `choose_color()` + TauriAgent `ChooseColor` prompt + `ChooseColorModal` frontend |
@@ -136,7 +136,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `CopyPermanentEffect.java` | Copy a permanent onto battlefield | **Partial** — see `CloneEffect.java` above |
 | `CopySpellAbilityEffect.java` | Copy a spell on the stack | **Implemented** — `copy_spell_ability_effect.rs`: clones topmost stack entry with same targets; pushes copy onto stack |
 | `CounterEffect.java` | Counter a spell or ability | **Implemented** — `counter.rs`: removes targeted stack entry via `MagicStack.remove_by_id`; moves source card to graveyard (or Destination$); `TargetKind::Spell` + `target_stack_entry: Option<u32>` in targeting system; `ChooseTargetSpell` prompt + clickable stack UI |
-| `CountersPutEffect.java` | Put counters on a permanent/player | **Implemented** — `counters_put_effect.rs`: puts `CounterType$` counters on source card (`Defined$ Self`); fires `CounterAdded` trigger |
+| `CountersPutEffect.java` | Put counters on a permanent/player | **Implemented** — `counters_put_effect.rs`: puts `CounterType$` counters on source/defined card or player; fires `CounterAdded`; supports `Monstrosity$ True` with persistent monstrous-state tracking and `BecomeMonstrous` trigger parity |
 | `CountersRemoveEffect.java` | Remove counters | **Partial** — `counters_remove_effect.rs`: removes specific `CounterType$` counters from `Defined$ Self` or targeted card; `CounterNum$` supports integer and "All"; fires `CounterRemoved` trigger. Deferred: `CounterType$ Any/All` (interactive selection), `Choices$`, `Optional$`, `UpTo$`, player counter removal |
 | `CountersMoveEffect.java` | Move counters between permanents | **Implemented** — `move_counter_effect.rs`: `CounterType$`, `CounterNum$`, `Source$`/`Defined$`; moves counters between permanents; fires CounterAdded/CounterRemoved triggers |
 | `CountersMultiplyEffect.java` | Multiply counters | Not implemented |
@@ -160,7 +160,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `EndTurnEffect.java` | End the turn | **Implemented** — `end_turn_effect.rs`: clears stack, sets `game.end_turn_requested`; game loop skips remaining phases to cleanup |
 | `ExploreEffect.java` | Explore mechanic | **Implemented** — `explore_effect.rs`: reveal top card, land→hand, nonland→+1/+1 counter + optional graveyard; reuses `choose_optional_trigger` |
 | `FightEffect.java` | Fight between creatures | **Implemented** — `fight.rs`: source creature and target creature deal damage to each other equal to power simultaneously; fires `Fight` trigger; `TriggerType::Fight` + `RunParams.card2` added to event system |
-| `FlipCoinEffect.java` | Flip a coin | **Implemented** — `flip_a_coin_effect.rs`: random bool, `NoCall` flag for Heads/TailsSubAbility or WinSubAbility/LoseSubAbility; resolves sub-ability chains |
+| `FlipCoinEffect.java` | Flip a coin | **Implemented** — `flip_a_coin_effect.rs`: random bool, `NoCall` flag for Heads/TailsSubAbility or WinSubAbility/LoseSubAbility; call-mode now routes through Java-parity `choose_binary(HeadsOrTails)`; resolves sub-ability chains |
 | `FogEffect.java` | Prevent all combat damage | **Implemented** — `fog_effect.rs`: sets `prevent_all_combat_damage` flag on `GameState`; combat `resolve_damage_step()` returns empty when flag is set; flag reset at end of turn cleanup |
 | `GameDrawEffect.java` | Force game draw | **Implemented** — `game_draw_effect.rs`: sets all players `has_lost = true`, `game_over = true`, `winner = None` |
 | `GameLossEffect.java` | Force player to lose | **Implemented** — `game_loss_effect.rs`: `Defined$` player, sets `has_lost = true`; checks remaining alive players for game over |
@@ -302,7 +302,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 |-----------|---------|:-------------------:|
 | `Cost.java` | Cost container: parses cost strings, holds cost parts | **Partial** (`cost/mod.rs` parse_cost + spell cost extraction from SP$ lines) |
 | `CostPartMana.java` | Mana portion of costs | **Implemented** (`mana_pool.rs` try_pay) |
-| `CostPayment.java` | Cost payment orchestration | **Partial** (`game_loop.rs` pay_ability_cost + pay_additional_costs) |
+| `CostPayment.java` | Cost payment orchestration | **Partial** (`game_loop.rs` pay_ability_cost + pay_additional_costs; Java-parity `confirm_payment` gates specific optional/branching cost parts; `Cost` now parses/carries `Mandatory` and trigger-cost optionality honors non-mandatory, non-zero costs; failed multi-part payments now transactionally roll back via `GameSnapshot` restore) |
 | `CostPart.java` | Abstract base for cost components | **Partial** (`cost/mod.rs` CostPart enum now covers Java parse tokens, with some behavioral edge-cases still approximate) |
 | `CostPartWithList.java` | Cost part tracking affected cards | Not implemented |
 | `CostPartWithTrigger.java` | Cost part that fires triggers | Not implemented |
@@ -330,7 +330,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `CostFlipCoin.java` | Flip coin as cost | **Implemented** (`CostPart::FlipCoin`; RNG/call handling + `FlippedCoin` trigger fire in `game_action.rs`) |
 | `CostRollDice.java` | Roll dice as cost | **Implemented** (`CostPart::RollDice`; cost-time roll + result SVar write + `RolledDie`/`RolledDieOnce` trigger fire) |
 | `CostExert.java` | Exert as cost | **Implemented** (`CostPart::Exert`, `Exert<>` token; sets `card.exerted` flag) |
-| `CostEnlist.java` | Enlist as cost | **Implemented** (`CostPart::Enlist`; enlist target selection/tap + Enlisted trigger) |
+| `CostEnlist.java` | Enlist as cost | **Implemented** (`CostPart::Enlist`; Java-style `Enlist<1/CARDNAME/creature>` parsing, enlist target selection/tap, attacker gets enlisted creature's power until end of turn, Enlisted trigger) |
 | `CostForage.java` | Forage as cost | **Implemented** (`CostPart::Forage`; strict graveyard-3 exile vs Food sacrifice payment + Forage trigger) |
 | `CostCollectEvidence.java` | Collect evidence as cost | **Implemented** (`CostPart::CollectEvidence`; strict MV-threshold exile payment + CollectEvidence trigger) |
 | `CostChooseColor.java` | Choose color as cost | **Implemented** (`CostPart::ChooseColor`; stores chosen colors on source card) |
@@ -515,7 +515,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `Mana.java` | Individual mana object with color, source, restrictions | **Implemented** (`mana/mod.rs` — `Mana` struct with color, source_card, is_snow, is_persistent, is_combat_mana, restriction fields; `RestrictValid$` propagated from abilities) |
-| `ManaPool.java` | Player's mana pool with payment logic | **Implemented** (`mana/mod.rs` — refactored from integer counters to `Vec<Mana>` individual mana objects with source tracking and snow support; pool-aware auto-tap, dual land support; intrinsic mana ability generation for basic subtypes in `card_db.rs`; `land_mana_atoms()` helper for ability-driven mana production; `clear_pool(phase)` retains persistent/combat mana across phase transitions; interactive mana payment for human players via `pay_mana_cost` agent method) |
+| `ManaPool.java` | Player's mana pool with payment logic | **Implemented** (`mana/mod.rs` — refactored from integer counters to `Vec<Mana>` individual mana objects with source tracking and snow support; deterministic auto-pay entrypoint in `mana/auto_pay.rs`; auto-tap source selection in `computer_util_mana.rs`, matching harness `AutoPay`'s legality-first battlefield-order source selection and same-host mana-source exclusion, plus Java-harness parity for self-sacrificing activated abilities that reuse the pending source while paying mana (for example Food + Gilded Goose); dual land support; intrinsic mana ability generation for basic subtypes in `card_db.rs`; `land_mana_atoms()` helper for ability-driven mana production; `clear_pool(phase)` retains persistent/combat mana across phase transitions; interactive mana payment for human players via `pay_mana_cost` agent method) |
 | `ManaCostBeingPaid.java` | Tracks partial mana cost payment | **Partial** (`mana/mana_cost_being_paid.rs`: Java-shaped unpaid-shard state, shard-priority payment, 2/C generic fallback; wired into `computer_util_mana.rs` auto-pay flow) |
 | `ManaConversionMatrix.java` | Mana color conversion rules | Not implemented |
 | `ManaAtom.java` | Mana atom bitmask constants | **Implemented** (ManaAtom in `foundation/mana.rs`) |
@@ -546,11 +546,11 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `PhaseType.java` | Enum of all phases/steps | **Implemented** (`foundation/phase.rs`) |
-| `PhaseHandler.java` | Turn/phase state machine with priority | **Partial** (`phase.rs` TurnState + `game_loop.rs`: APNAP priority rotation, draw/combat/end priority windows, shared state-mutation gateway (`with_shared_state_mutation`) with implicit state broadcast on mutation (including priority handoff/pass windows); extra turns/phases and full replacement-phase interactions still missing) |
+| `PhaseHandler.java` | Turn/phase state machine with priority | **Partial** (`phase.rs` TurnState + `game_loop.rs`: APNAP priority rotation, draw/combat/end priority windows, upkeep now mirrors Java's conditional second upkeep priority only after cumulative-upkeep processing/resolution, shared state-mutation gateway (`with_shared_state_mutation`) with implicit state broadcast on mutation (including priority handoff/pass windows); extra turns/phases and full replacement-phase interactions still missing) |
 | `Phase.java` | Individual phase instance | **Partial** (advance_phase in `phase.rs`) |
 | `ExtraTurn.java` | Extra turn tracking | Not implemented |
 | `ExtraPhase.java` | Extra phase tracking | Not implemented |
-| `Untap.java` | Untap step logic (phasing, untap restrictions) | **Partial** (`action.rs` untap_all) |
+| `Untap.java` | Untap step logic (phasing, untap restrictions) | **Partial** (`phase_handler.rs` untap step incl. optional `choose_binary(UntapOrLeaveTapped)` for "you may choose not to untap" keyword; phasing + full restriction matrix still partial) |
 | `package-info.java` | Package doc | N/A |
 
 ---
@@ -589,7 +589,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 |-----------|---------|:-------------------:|
 | `PlayerAction.java` | Abstract base action | **Partial** (MainPhaseAction enum in `agent.rs`) |
 | `CastSpellAction.java` | Cast spell action | **Partial** (Play(CardId) variant) |
-| `ActivateAbilityAction.java` | Activate ability action | **Partial** (ActivateMana + ActivateAbility variants) |
+| `ActivateAbilityAction.java` | Activate ability action | **Partial** (`ActivateMana` + `ActivateAbility` variants; parity main-action enumeration keeps mana abilities out of `activatable` action lists, matching harness `ActionSpace.java`; activated-ability mana-feasibility checks exclude same-host mana sources, matching Java `ComputerUtilMana.canPayManaCost(...)`) |
 | `PassPriorityAction.java` | Pass priority action | **Implemented** (Pass variant) |
 | `PayCostAction.java` | Pay cost action | Not implemented |
 | `PayManaFromPoolAction.java` | Pay mana from pool | Not implemented |
@@ -661,7 +661,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `SpellAbility.java` | Core spell/ability class: cost, targeting, resolution | **Partial** (StackEntry in `stack.rs`) |
+| `SpellAbility.java` | Core spell/ability class: cost, targeting, resolution | **Partial** (`stack.rs`/`game_action_util.rs`/`spellability/mod.rs`: stack entry context, target storage/setup, `TargetingPlayer$ ...` chooser support, and Java-style spell announcement ordering where modes/targets are chosen from pre-payment game state before mana payment mutates the battlefield) |
 | `SpellAbilityStackInstance.java` | Spell on the stack with full context | **Implemented** (`stack.rs` StackEntry) |
 | `SpellPermanent.java` | Permanent spell (creature/non-creature) | Not implemented |
 | `Spell.java` | Non-permanent spell base | Not implemented |
@@ -694,7 +694,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 |-----------|---------|:-------------------:|
 | `StaticAbility.java` | Core static ability class with layer system | **Partial** (`static_ability.rs`: `StaticAbility` struct + parser, expanded `StaticMode` enum (critical/high-priority ticket modes wired), `CardFilter` for `Affected$`/`ValidCards$`; still missing Java dependency graph/timestamp parity) |
 | `StaticAbilityLayer.java` | Enum: copy, control, text, type, color, abilities, P/T, rules | **Partial** (`static_ability.rs`: `Layer` enum — Control(2), Type(4), Color(5), Ability(6), SetPT(7b), ModifyPT(7c); missing: copy/text/7a/rules layers) |
-| `StaticAbilityMode.java` | Enum: 80+ static ability modes | **Partial** (`static_ability.rs` `StaticMode`: includes baseline 7 plus ticket modes: CantTarget, CantAttach, MustAttack, MustBlock, Panharmonicon, CantGainLosePayLife, CantDraw, CantSacrifice, CantRegenerate, DisableTriggers, CantPutCounter, CastWithFlash, BlockRestrict, AttackRestrict, IgnoreHexproof/Shroud, IgnoreLegendRule, MustTarget, AssignCombatDamageAsUnblocked, AssignNoCombatDamage, CombatDamageToughness, NoCleanupDamage, InfectDamage, WitherDamage, ColorlessDamageSource, CountersRemain, MaxCounter; plus CanAttackDefender) |
+| `StaticAbilityMode.java` | Enum: 80+ static ability modes | **Partial** (`static_ability.rs` `StaticMode`: includes baseline 7 plus ticket modes: CantTarget, CantAttach, MustAttack, MustBlock, Panharmonicon, CantGainLosePayLife, CantDraw, CantSacrifice, CantRegenerate, DisableTriggers, CantPutCounter, CastWithFlash, BlockRestrict, AttackRestrict, IgnoreHexproof/Shroud, IgnoreLegendRule, MustTarget, AssignCombatDamageAsUnblocked, AssignNoCombatDamage, CombatDamageToughness, NoCleanupDamage, InfectDamage, WitherDamage, ColorlessDamageSource, CountersRemain, MaxCounter; plus CanAttackDefender and OptionalAttackCost) |
 | `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: Control (2, `GainControl$` incl. aura `Card.EnchantedBy`), Ability/keyword-grant (6), SetPT (7b), ModifyPT (7c) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped via static abilities, `R:Event$ Moved | ReplaceWith$ ETBTapped` replacement effects, AND `ReplaceWith$ DBTap` shock land pattern with `UnlessCost$ PayLife<N>` player prompt; missing: type/color layers, dependency resolution) |
 | `StaticAbilityCantAttack.java` | Prevents attacking | **Implemented** (`layer.rs`: `Mode$ CantAttack` sets `cant_attack_static` flag; `card.rs` `can_attack()` respects it) |
 | `StaticAbilityCantBlock.java` | Prevents blocking | **Implemented** (`layer.rs`: `Mode$ CantBlock` sets `cant_block_static` flag; `card.rs` `can_block()` respects it) |
@@ -834,7 +834,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `TriggerExplores.java` | Creature explores | **Implemented** (TriggerType + TriggerMode defined, `explore_effect.rs` mechanic implemented) |
 | `TriggerMutates.java` | Creature mutates | Not implemented |
 | `TriggerAdapt.java` | Creature adapts | Not implemented |
-| `TriggerBecomeMonstrous.java` | Becomes monstrous | Not implemented |
+| `TriggerBecomeMonstrous.java` | Becomes monstrous | **Implemented** (`trigger.rs`/`handler.rs` + `counters_put_effect.rs`: parses `BecomeMonstrous`, fires when `Monstrosity$ True` resolves for a non-monstrous permanent, passes `MonstrosityAmount`) |
 | `TriggerBecomeRenowned.java` | Becomes renowned | Not implemented |
 | `TriggerBecomeMonarch.java` | Becomes monarch | **Implemented** — TriggerType::BecomeMonarch fired by `become_monarch_effect.rs`; `game.monarch` tracks current monarch; monarch draws card at end of turn |
 | `TriggerBecomesCrewed.java` | Vehicle crewed | Not implemented |
@@ -953,17 +953,17 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `event.rs` | **Complete** | TriggerType enum (68 types: 34 original + 34 new from issue #54), RunParams (~33 fields) |
 | `trigger.rs` | **Complete** | Trigger matching, ValidCard/ValidPlayer filters, parsing |
 | `trigger_handler.rs` | **Complete** | Active/waiting/delayed triggers, dispatch, OptionalDecider$ support, APNAP ordering |
-| `agent.rs` | **Complete** | PlayerAgent trait (19 callbacks incl. choose_buyback, choose_multikicker, choose_replicate, choose_alternative_cost), MainPhaseAction, TargetChoice |
+| `agent.rs` | **Complete** | PlayerAgent trait (Java-parity decision hooks including `confirm_action`, `confirm_payment`, `choose_binary`, optional-cost callbacks including choose_buyback/multikicker/replicate/alternative_cost, plus combat optional-cost callbacks `exert_attackers`/`enlist_attackers`), MainPhaseAction, TargetChoice, BinaryChoiceKind |
 | `game_loop.rs` | **Partial** | Game flow orchestration with APNAP priority handoff, `priority_player` tracking, draw/combat/end priority windows, and illegal-action guardrails; still missing full Java parity for extra turns/phases and advanced phase replacement hooks |
 | `spellability/mod.rs` | **Complete** | SpellAbility module structure |
-| `spellability/targeting.rs` | **Complete** | Targeting system: parse_valid_targets, choose_targets, CardInZone support for graveyard/exile targeting |
+| `spellability/targeting.rs` | **Complete** | Targeting system: parse_valid_targets, choose_targets, CardInZone support for graveyard/exile targeting, dynamic `TargetMin/TargetMax` expression resolution (e.g. `TargetMin$ X`) |
 
 ### Crate: `forge-parity` (cross-engine differential testing)
 | File | Status | Features |
 |------|--------|----------|
 | `main.rs` | **Implemented** | CLI entry point: Rust-only, full parity (`--java-jar`), matrix (`--matrix`), fuzz (`--fuzz`), and multi-game single-match runs via `--games` (seeds increment from `--seed`); quiet-by-default batch output with per-step logging behind `--verbose`; failed matchups include first divergence plus full Rust trace; text reports append a run-level **Coverage Report** (covered vs uncovered deck cards), a per-game completion column (`FINISHED TURN X` / `STOPPED AT MAX`), and low-effort ability/effect/trigger signal coverage from notify messages |
-| `runner.rs` | **Implemented** | Rust game runner with deterministic agents, snapshot collection, `resolve_deck_spec()` supporting both preset names and `inline:` deck specs |
-| `deterministic_agent.rs` | **Implemented** | Hybrid RNG agent: JavaRandom for core decisions (play/attack/block/target), fixed values for the rest |
+| `runner.rs` | **Implemented** | Rust game runner with deterministic agents, snapshot collection, `resolve_deck_spec()` supporting both preset names and `inline:` deck specs; captures Java-parity decision kinds including `confirm_payment` and `choose_binary`, and forwards optional combat-cost callbacks (`exert_attackers`/`enlist_attackers`) |
+| `deterministic_agent.rs` | **Implemented** | Hybrid RNG agent: JavaRandom for core decisions (play/attack/block/target/type), plus deterministic overrides for `confirm_action`/`confirm_payment`/`choose_binary` parity callbacks and optional combat-cost callbacks (`exert_attackers`/`enlist_attackers`); main-action ordering matches harness `ParityOrder.actionComparator()` including concatenated sort-key behavior for alternative-cost variants like Flashback |
 | `snapshot.rs` | **Implemented** | Extract normalized StateSnapshot from GameState (sorted, name-based) |
 | `protocol.rs` | **Implemented** | Shared JSON types: StateSnapshot, DecisionPoint, Decision, GameTrace, ParityReport, MatrixReport, FuzzReport/Result |
 | `comparator.rs` | **Implemented** | Snapshot diff engine: field-by-field comparison, Divergence reporting |
@@ -977,7 +977,8 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | File | Status | Features |
 |------|--------|----------|
 | `Main.java` | **Implemented** | Headless CLI: loads decks, runs game, emits JSONL snapshots |
-| `DeterministicController.java` | **Implemented** | Deterministic PlayerController matching Rust DeterministicAgent logic; `canCastSorcery()` gate enforces main-phase-only spell casting |
+| `DeterministicController.java` | **Implemented** | Deterministic PlayerController matching Rust DeterministicAgent logic; `canCastSorcery()` gate enforces main-phase-only spell casting; cost/cast entry overrides funnel through shared deterministic payment plumbing (`payWithDeterministicDecision`) and harness `AutoPay` (no `PlayerControllerAi` dependency on mana payment path); explicit parity overrides for `confirmPayment(...)` and both `chooseBinary(...)` overloads |
+| `AutoPay.java` | **Implemented** | Harness-owned legality-first deterministic mana payment (`payManaCost`) that avoids AI decision classes, pays floating mana first, selects legal mana abilities deterministically, pays required activation costs through deterministic cost plumbing, and refunds/aborts on failed payment |
 | `DeterministicLobbyPlayer.java` | **Implemented** | LobbyPlayer factory that creates DeterministicController instances |
 | `SnapshotExtractor.java` | **Implemented** | Extracts JSON snapshots from Java Game state matching Rust format |
 | `PresetDecks.java` | **Implemented** | Builds preset decks and inline deck specs (`inline:Name*Count\|...`) for fuzz mode |
@@ -1012,19 +1013,19 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Replacement Effects | 46 | 11 | 5 | 30 |
 | Spell Abilities | 22 | 5 | 3 | 14 |
 | Static Abilities | 54 | 6 | 24 | 24 |
-| Triggers | 131 | 71 | 1 | 59 |
+| Triggers | 131 | 72 | 1 | 58 |
 | Zones | 8 | 3 | 1 | 4 |
-| **TOTAL** | **738** | **232** | **86** | **420** |
+| **TOTAL** | **738** | **233** | **86** | **419** |
 
-> **Coverage: ~43.1% implemented or partially implemented** (318 of 738 features have a Rust counterpart).
+> **Coverage: ~43.2% implemented or partially implemented** (319 of 738 features have a Rust counterpart).
 >
-> The Rust engine has **~130 implementation files** (160+ total incl. tests/tools) across 6 crates. **80 effect handlers**, **71 trigger types**, **51 keyword abilities**, **30 static ability modes**, **14 replacement event types**, and **26 cost types** are functional.
+> The Rust engine has **~130 implementation files** (160+ total incl. tests/tools) across 6 crates. **80 effect handlers**, **72 trigger types**, **51 keyword abilities**, **30 static ability modes**, **14 replacement event types**, and **26 cost types** are functional.
 >
 > **Mana system: 100% complete** — individual mana objects, interactive payment, persistent/combat mana, conversion matrix, snow, restrictions, keywords/counters on mana, uncounterable mana, production doublers/replacers, sunburst/converge, mana burn, refund, waterbend.
 >
 > **Remaining gaps by priority**:
 > - **Effects**: ~114 not implemented (0 critical, 0 high, ~62 medium, ~48 low)
-> - **Triggers**: ~59 not implemented (0 critical, 1 high, ~40 medium)
+> - **Triggers**: ~58 not implemented (0 critical, 1 high, ~40 medium)
 > - **Static Abilities**: ~24 not implemented (edge-case parity on 24 partial modes)
 > - **Costs**: ~23 not implemented (medium/low priority)
 > - **Replacement Effects**: ~30 not implemented (2 critical, ~10 high)
@@ -1086,21 +1087,21 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 
 All 7 critical effects (Animate, ControlGainVariant, Balance, ChooseCard, ChooseColor, Clone, RepeatEach) and all 25 high-priority effects (issue #53) are fully implemented.
 
-#### Medium Priority (62 effects)
+#### Medium Priority (61 effects)
 
 <details>
 <summary>Click to expand full list</summary>
 
-Amass, AssignGroup, BidLife, Block, Bond, Branch, Camouflage, ChangeCombatants, ChangeSpeed, ChangeTargets, ChangeText, ChangeX, ChangeZoneResolve, Clash, ClassLevelUp, Cloak, Connive, ControlExchange, ControlExchangeVariant, ControlPlayer, ControlSpell, CountersMultiply, CountersNote, CountersPutOrRemove, CountersRemoveAll, DamageBase, DamageResolve, DayTime, Debuff, DetachedCard, Discover, EffectEffect, Endure, Haunt, ImmediateTrigger, Incubate, Intensify, Investigate, Learn, LifeExchangeVariant, ManifestBase, Manifest, ManaReflected, Meld, MultiplePiles, Mutate, PermanentCreature, Permanent, PermanentNoncreature, PlayLandVariant, RegenerationEffect, RemoveFromGame, RemoveFromMatch, ReorderZone, RepeatEffect, ReplaceCounter, ReplaceDamage, ReplaceMana, ReplaceSplitDamage, ReplaceToken, StoreSVar
+Amass, AssignGroup, BidLife, Block, Bond, Branch, Camouflage, ChangeCombatants, ChangeSpeed, ChangeTargets, ChangeText, ChangeX, ChangeZoneResolve, Clash, ClassLevelUp, Cloak, Connive, ControlExchange, ControlExchangeVariant, ControlPlayer, ControlSpell, CountersMultiply, CountersNote, CountersRemoveAll, DamageBase, DamageResolve, DayTime, Debuff, DetachedCard, Discover, EffectEffect, Endure, Haunt, ImmediateTrigger, Incubate, Intensify, Investigate, Learn, LifeExchangeVariant, ManifestBase, Manifest, ManaReflected, Meld, MultiplePiles, Mutate, PermanentCreature, Permanent, PermanentNoncreature, PlayLandVariant, RegenerationEffect, RemoveFromGame, RemoveFromMatch, ReorderZone, RepeatEffect, ReplaceCounter, ReplaceDamage, ReplaceMana, ReplaceSplitDamage, ReplaceToken, StoreSVar
 
 </details>
 
-#### Low Priority (48 effects — niche/format-specific)
+#### Low Priority (43 effects — niche/format-specific)
 
 <details>
 <summary>Click to expand full list</summary>
 
-Abandon, AdvanceCrank, Airbend, AlterAttribute, Ascend, AssembleContraption, BecomesBlocked, BlankLine, Blight, ChaosEnsues, ChooseDirection, ChooseEvenOdd, ChooseGeneric, ChooseSector, ClaimThePrize, DraftEffect, Earthbend, FlipOntoBattlefield, Heist, InternalRadiation, LosePerpetual, MakeCard, ManifestDread, OpenAttraction, OwnershipGain, Planeswalk, Radiation, ReplaceEffect, RestartGame, RingTemptsYou, RollPlanarDice, RunChaos, Seek, SetInMotion, SubgameEffect, SwitchBlock, TapOrUntap, TapOrUntapAll, TextBoxExchange, TimeTravel, Unattach, UnlockDoor, Venture, VillainousChoice, Vote, ZoneExchange
+Abandon, AdvanceCrank, Airbend, AlterAttribute, Ascend, AssembleContraption, BecomesBlocked, BlankLine, Blight, ChaosEnsues, ChooseGeneric, ChooseSector, ClaimThePrize, DraftEffect, Earthbend, FlipOntoBattlefield, Heist, InternalRadiation, LosePerpetual, MakeCard, ManifestDread, OpenAttraction, OwnershipGain, Planeswalk, Radiation, ReplaceEffect, RestartGame, RingTemptsYou, RollPlanarDice, RunChaos, Seek, SetInMotion, SubgameEffect, SwitchBlock, TextBoxExchange, Unattach, UnlockDoor, Venture, VillainousChoice, Vote, ZoneExchange
 
 </details>
 

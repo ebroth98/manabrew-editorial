@@ -39,7 +39,13 @@ fn main() {
             });
             let pr_comment = get_arg(&args, "--pr").filter(|p| p != "0");
             let repo = get_arg(&args, "--repo");
-            cmd_poll(&host, port, &batch_id, pr_comment.as_deref(), repo.as_deref());
+            cmd_poll(
+                &host,
+                port,
+                &batch_id,
+                pr_comment.as_deref(),
+                repo.as_deref(),
+            );
         }
         _ => {
             eprintln!("Unknown command: {command}. Use health, submit, or poll.");
@@ -141,7 +147,10 @@ fn parse_http_response(raw: &str) -> Result<(u16, String), String> {
         .unwrap_or(0);
 
     // Handle chunked transfer encoding
-    if headers.to_lowercase().contains("transfer-encoding: chunked") {
+    if headers
+        .to_lowercase()
+        .contains("transfer-encoding: chunked")
+    {
         let decoded = decode_chunked(body);
         Ok((status_code, decoded))
     } else {
@@ -293,7 +302,9 @@ fn cmd_poll(host: &str, port: u16, batch_id: &str, pr: Option<&str>, repo: Optio
 
                         // Post as PR comment if requested
                         if let (Some(pr_num), Some(repo_name)) = (pr, repo) {
-                            post_pr_comment(repo_name, pr_num, &report, total, passed, failed, errors);
+                            post_pr_comment(
+                                repo_name, pr_num, &report, total, passed, failed, errors,
+                            );
                         }
 
                         std::process::exit(1);
@@ -313,7 +324,10 @@ fn cmd_poll(host: &str, port: u16, batch_id: &str, pr: Option<&str>, repo: Optio
                 }
             }
             Ok((code, body)) => {
-                eprintln!("[poll {poll_count}] HTTP {code}: {}", &body[..body.len().min(200)]);
+                eprintln!(
+                    "[poll {poll_count}] HTTP {code}: {}",
+                    &body[..body.len().min(200)]
+                );
             }
             Err(e) => {
                 eprintln!("[poll {poll_count}] Request failed: {e}");
@@ -438,7 +452,15 @@ fn unified_diff(rust_trace: &str, java_trace: &str, d1: &str, d2: &str, seed: u6
 }
 
 /// Post a comment to a GitHub PR using `gh` CLI.
-fn post_pr_comment(repo: &str, pr: &str, report: &str, total: u64, passed: u64, failed: u64, errors: u64) {
+fn post_pr_comment(
+    repo: &str,
+    pr: &str,
+    report: &str,
+    total: u64,
+    passed: u64,
+    failed: u64,
+    errors: u64,
+) {
     let body = format!(
         "## Parity Regression: {status}\n\n\
          | Metric | Count |\n|--------|-------|\n\
@@ -466,13 +488,20 @@ fn gh_comment(repo: &str, pr: &str, body: &str) {
 
     let output = std::process::Command::new("curl")
         .args([
-            "-s", "-S",
-            "-X", "POST",
-            "-H", &format!("Authorization: token {token}"),
-            "-H", "Accept: application/vnd.github.v3+json",
-            "-H", "Content-Type: application/json",
-            "-d", &json.to_string(),
-            "-w", "\n%{http_code}",
+            "-s",
+            "-S",
+            "-X",
+            "POST",
+            "-H",
+            &format!("Authorization: token {token}"),
+            "-H",
+            "Accept: application/vnd.github.v3+json",
+            "-H",
+            "Content-Type: application/json",
+            "-d",
+            &json.to_string(),
+            "-w",
+            "\n%{http_code}",
             &url,
         ])
         .stdout(std::process::Stdio::piped())

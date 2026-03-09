@@ -73,13 +73,23 @@ impl GameLoop {
         None
     }
 
+    fn mana_from_cost(cost: &crate::cost::Cost) -> forge_foundation::ManaCost {
+        let mut out = forge_foundation::ManaCost::generic(0);
+        for part in &cost.parts {
+            if let CostPart::Mana(mc) = part {
+                out = out.add(mc);
+            }
+        }
+        out
+    }
+
     /// Get cards the active player can play.
     pub(crate) fn get_playable_cards(
         &self,
         game: &GameState,
         player: PlayerId,
         must_be_instant: bool,
-    ) -> Vec<CardId> {
+    ) -> Vec<crate::agent::PlayOption> {
         let mut playable = Vec::new();
         let hand = game.cards_in_zone(ZoneType::Hand, player);
         let has_flash_permission = |card_id: CardId| {
@@ -99,7 +109,10 @@ impl GameLoop {
             let card = game.card(card_id);
             if card.is_land() {
                 if !must_be_instant && game.player(player).can_play_land() {
-                    playable.push(card_id);
+                    playable.push(crate::agent::PlayOption {
+                        card_id,
+                        mode: crate::agent::PlayCardMode::Normal,
+                    });
                 }
             } else {
                 if must_be_instant && !has_flash_permission(card_id) {
@@ -118,6 +131,17 @@ impl GameLoop {
                         player,
                         ZoneType::Hand,
                     );
+                let raise_cost =
+                    crate::staticability::static_ability_cost_change::compute_raise_cost_parts(
+                        game,
+                        card,
+                        player,
+                        ZoneType::Hand,
+                    );
+                let raise_mana = raise_cost
+                    .as_ref()
+                    .map(Self::mana_from_cost)
+                    .unwrap_or_else(|| forge_foundation::ManaCost::generic(0));
 
                 // Check mana conversion for playability
                 let any_color =
@@ -137,6 +161,7 @@ impl GameLoop {
                     } else {
                         cost_adj.apply(&card.mana_cost)
                     };
+                    let base = base.add(&raise_mana);
                     // Phyrexian shards can be paid with 2 life each, so strip them
                     // for the mana affordability check (player can always choose life).
                     let phyrexian_count =
@@ -192,7 +217,9 @@ impl GameLoop {
                 let spectacle_ok = if let Some(spec_cost_str) = card.get_spectacle_cost() {
                     let opp = game.opponent_of(player);
                     let adjusted =
-                        cost_adj.apply(&forge_foundation::ManaCost::parse(&spec_cost_str));
+                        cost_adj
+                            .apply(&forge_foundation::ManaCost::parse(&spec_cost_str))
+                            .add(&raise_mana);
                     game.player(opp).life_lost_this_turn > 0 && available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -201,7 +228,9 @@ impl GameLoop {
                 // Evoke: alt cost for creatures
                 let evoke_ok = if let Some(evoke_cost_str) = card.get_evoke_cost() {
                     let adjusted =
-                        cost_adj.apply(&forge_foundation::ManaCost::parse(&evoke_cost_str));
+                        cost_adj
+                            .apply(&forge_foundation::ManaCost::parse(&evoke_cost_str))
+                            .add(&raise_mana);
                     available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -210,7 +239,9 @@ impl GameLoop {
                 // Dash: alt cost
                 let dash_ok = if let Some(dash_cost_str) = card.get_dash_cost() {
                     let adjusted =
-                        cost_adj.apply(&forge_foundation::ManaCost::parse(&dash_cost_str));
+                        cost_adj
+                            .apply(&forge_foundation::ManaCost::parse(&dash_cost_str))
+                            .add(&raise_mana);
                     available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -219,7 +250,9 @@ impl GameLoop {
                 // Blitz: alt cost
                 let blitz_ok = if let Some(blitz_cost_str) = card.get_blitz_cost() {
                     let adjusted =
-                        cost_adj.apply(&forge_foundation::ManaCost::parse(&blitz_cost_str));
+                        cost_adj
+                            .apply(&forge_foundation::ManaCost::parse(&blitz_cost_str))
+                            .add(&raise_mana);
                     available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -228,7 +261,9 @@ impl GameLoop {
                 // Overload: alt cost
                 let overload_ok = if let Some(ovl_cost_str) = card.get_overload_cost() {
                     let adjusted =
-                        cost_adj.apply(&forge_foundation::ManaCost::parse(&ovl_cost_str));
+                        cost_adj
+                            .apply(&forge_foundation::ManaCost::parse(&ovl_cost_str))
+                            .add(&raise_mana);
                     available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -350,28 +385,20 @@ impl GameLoop {
                     continue;
                 }
 
-                // Check additional costs from SP$ line (e.g. Sac<1/Creature>).
+                // Check additional non-mana costs from SP$ line (e.g. Sac<1/Creature>,
+                // BeholdExile<...>) through shared cost payability logic.
                 let spell_cost = Self::parse_spell_cost(&card.abilities);
-                let additional_costs_ok = if let Some(ref sc) = spell_cost {
-                    sc.parts.iter().all(|part| match part {
-                        CostPart::Sacrifice {
-                            type_filter,
-                            amount,
-                        } => {
-                            if type_filter == "CARDNAME" {
-                                true
-                            } else {
-                                let targets =
-                                    cost::get_sacrifice_targets(game, player, type_filter);
-                                (targets.len() as i32) >= *amount
-                            }
-                        }
-                        CostPart::PayLife(life) => game.player(player).life >= *life,
-                        _ => true,
-                    })
+                let sp_additional_ok = if let Some(ref sc) = spell_cost {
+                    crate::cost::can_pay_ignoring_mana(sc, game, card_id, player)
                 } else {
                     true
                 };
+                let raised_additional_ok = if let Some(ref rc) = raise_cost {
+                    crate::cost::can_pay_ignoring_mana(rc, game, card_id, player)
+                } else {
+                    true
+                };
+                let additional_costs_ok = sp_additional_ok && raised_additional_ok;
 
                 if additional_costs_ok {
                     // Only validate cast-time targets from SP$ abilities.
@@ -392,7 +419,80 @@ impl GameLoop {
                             )
                         });
                     if all_valid {
-                        playable.push(card_id);
+                        if normal_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Normal,
+                            });
+                        }
+                        if spectacle_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Spectacle,
+                                ),
+                            });
+                        }
+                        if evoke_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Evoke,
+                                ),
+                            });
+                        }
+                        if dash_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Dash,
+                                ),
+                            });
+                        }
+                        if blitz_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Blitz,
+                                ),
+                            });
+                        }
+                        if overload_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Overload,
+                                ),
+                            });
+                        }
+                        if emerge_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Emerge,
+                                ),
+                            });
+                        }
+                        if suspend_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Suspend,
+                                ),
+                            });
+                        }
+                        if gainlife_alt_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::GainLifeAlt,
+                            });
+                        }
+                        if foretell_exile_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::ForetellExile,
+                            });
+                        }
                     }
                 }
             }
@@ -422,8 +522,21 @@ impl GameLoop {
             } else {
                 false
             };
-            if flashback_ok || escape_ok {
-                playable.push(card_id);
+            if flashback_ok {
+                playable.push(crate::agent::PlayOption {
+                    card_id,
+                    mode: crate::agent::PlayCardMode::Alternative(
+                        crate::spellability::AlternativeCost::Flashback,
+                    ),
+                });
+            }
+            if escape_ok {
+                playable.push(crate::agent::PlayOption {
+                    card_id,
+                    mode: crate::agent::PlayCardMode::Alternative(
+                        crate::spellability::AlternativeCost::Escape,
+                    ),
+                });
             }
         }
 
@@ -449,7 +562,12 @@ impl GameLoop {
                         );
                     let adjusted = cost_adj.apply(&foretell_mc);
                     if available_mana.can_pay(&adjusted) {
-                        playable.push(card_id);
+                        playable.push(crate::agent::PlayOption {
+                            card_id,
+                            mode: crate::agent::PlayCardMode::Alternative(
+                                crate::spellability::AlternativeCost::Foretell,
+                            ),
+                        });
                     }
                 }
             } else if card.has_keyword("MadnessExiled") {
@@ -462,7 +580,12 @@ impl GameLoop {
                         mana::calculate_available_mana(self.pool(player), game, player);
                     if available_mana.can_pay(&forge_foundation::ManaCost::parse(&madness_cost_str))
                     {
-                        playable.push(card_id);
+                        playable.push(crate::agent::PlayOption {
+                            card_id,
+                            mode: crate::agent::PlayCardMode::Alternative(
+                                crate::spellability::AlternativeCost::Madness,
+                            ),
+                        });
                     }
                 }
             }
@@ -488,7 +611,10 @@ impl GameLoop {
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
                 if available_mana.can_pay_with_extra_generic(&adjusted_cost, tax) {
-                    playable.push(card_id);
+                    playable.push(crate::agent::PlayOption {
+                        card_id,
+                        mode: crate::agent::PlayCardMode::Normal,
+                    });
                 }
             }
         }
@@ -504,11 +630,15 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
         card_id: CardId,
+        play_mode: crate::agent::PlayCardMode,
     ) -> Option<(CardId, String)> {
         let card = game.card(card_id);
         let card_name = card.card_name.clone();
 
         if card.is_land() {
+            if play_mode != crate::agent::PlayCardMode::Normal {
+                return None;
+            }
             // Check for shock-land-style "pay life or enter tapped" before entering
             let etb_life_cost =
                 crate::staticability::layer::get_etb_unless_life_cost(game.card(card_id));
@@ -590,296 +720,34 @@ impl GameLoop {
             let is_creature = game.card(card_id).is_creature();
             let is_permanent = game.card(card_id).is_permanent();
 
-            // ── Alternative cost detection ──────────────────────────────
+            // ── Alternative cost mode selection (from action-space choice) ──────────
+            let mut is_foretell = false;
+            let mut is_flashback = false;
+            let mut is_spectacle = false;
+            let mut is_evoke = false;
+            let mut is_escape = false;
+            let mut is_overload = false;
+            let mut is_dash = false;
+            let mut is_blitz = false;
+            let mut is_madness = false;
+            let mut is_emerge = false;
+            let mut is_gainlife_alt = false;
 
-            // Detect Foretell: casting from exile (face-down) with foretell cost
-            let is_foretell = game.card(card_id).zone == ZoneType::Exile
-                && game.card(card_id).face_down
-                && game.card(card_id).get_foretell_cost().is_some();
-
-            // Detect Flashback: casting from graveyard with flashback cost
-            let is_flashback = !is_foretell
-                && game.card(card_id).zone == ZoneType::Graveyard
-                && game.card(card_id).get_flashback_cost().is_some();
-
-            // Detect Spectacle: alternative cost if opponent lost life this turn
-            let is_spectacle = if !is_flashback && !is_foretell {
-                if let Some(_spec_cost_str) = game.card(card_id).get_spectacle_cost() {
-                    let opponent_lost_life = game
-                        .player_order
-                        .iter()
-                        .filter(|&&pid| pid != player)
-                        .any(|&pid| game.player(pid).life_lost_this_turn > 0);
-                    if opponent_lost_life {
-                        let spec_cost_str = game.card(card_id).get_spectacle_cost().unwrap();
-                        let spec_mc = forge_foundation::ManaCost::parse(&spec_cost_str);
-                        let available_mana =
-                            mana::calculate_available_mana(self.pool(player), game, player);
-                        if available_mana.can_pay(&spec_mc) {
-                            // Offer choice: spectacle is cheaper, auto-pick it
-                            true
-                        } else {
-                            false
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
+            match play_mode {
+                crate::agent::PlayCardMode::Normal => {}
+                crate::agent::PlayCardMode::GainLifeAlt => {
+                    is_gainlife_alt = true;
                 }
-            } else {
-                false
-            };
-
-            // Detect Evoke: alternative cost for creatures
-            let is_evoke = if !is_flashback && !is_spectacle && !is_foretell {
-                if let Some(evoke_cost_str) = game.card(card_id).get_evoke_cost() {
-                    let evoke_mc = forge_foundation::ManaCost::parse(&evoke_cost_str);
-                    let normal_mc = &game.card(card_id).mana_cost;
-                    let available_mana =
-                        mana::calculate_available_mana(self.pool(player), game, player);
-                    // Offer evoke if: can afford evoke but NOT normal cost, or player chooses it
-                    if available_mana.can_pay(&evoke_mc) && !available_mana.can_pay(normal_mc) {
-                        true // auto-evoke when can't afford normal cost
-                    } else if available_mana.can_pay(&evoke_mc) && available_mana.can_pay(normal_mc)
+                crate::agent::PlayCardMode::ForetellExile => {
+                    if game.card(card_id).get_foretell_cost().is_some()
+                        && game.card(card_id).zone == ZoneType::Hand
                     {
-                        // Both affordable — offer choice via alternative cost prompt
-                        let name = game.card(card_id).card_name.clone();
-                        let options = vec![
-                            format!("Normal cost: {}", normal_mc),
-                            format!("Evoke: {} (sacrifice on ETB)", evoke_cost_str),
-                        ];
-                        agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        let choice = agents[player.index()].choose_alternative_cost(
-                            player,
-                            &options,
-                            Some(&name),
-                        );
-                        choice == 1
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            // Detect Escape: casting from graveyard with escape cost + exiling graveyard cards
-            let is_escape = if !is_flashback && !is_foretell {
-                if game.card(card_id).zone == ZoneType::Graveyard {
-                    if let Some((escape_mana_str, exile_count)) =
-                        game.card(card_id).get_escape_cost()
-                    {
-                        let escape_mc = forge_foundation::ManaCost::parse(&escape_mana_str);
                         let available_mana =
                             mana::calculate_available_mana(self.pool(player), game, player);
-                        // Count other cards in graveyard that can be exiled
-                        let other_gy_count = game
-                            .cards_in_zone(ZoneType::Graveyard, player)
-                            .iter()
-                            .filter(|&&cid| cid != card_id)
-                            .count() as i32;
-                        available_mana.can_pay(&escape_mc) && other_gy_count >= exile_count
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            // Detect Overload: alternative cost that changes "target" to "each"
-            let is_overload =
-                if !is_flashback && !is_spectacle && !is_evoke && !is_escape && !is_foretell {
-                    if let Some(overload_cost_str) = game.card(card_id).get_overload_cost() {
-                        let overload_mc = forge_foundation::ManaCost::parse(&overload_cost_str);
-                        let normal_mc = &game.card(card_id).mana_cost;
-                        let available_mana =
-                            mana::calculate_available_mana(self.pool(player), game, player);
-                        if available_mana.can_pay(&overload_mc) {
-                            if available_mana.can_pay(normal_mc) {
-                                // Both affordable — offer choice
-                                let name = game.card(card_id).card_name.clone();
-                                let options = vec![
-                                    format!("Normal cost: {}", normal_mc),
-                                    format!("Overload: {} (affects all)", overload_cost_str),
-                                ];
-                                agents[player.index()].snapshot_state(game, &self.mana_pools);
-                                let choice = agents[player.index()].choose_alternative_cost(
-                                    player,
-                                    &options,
-                                    Some(&name),
-                                );
-                                choice == 1
-                            } else {
-                                true // Can only afford overload cost — auto-select it
-                            }
-                        } else {
-                            false
+                        let foretell_exile_cost = forge_foundation::ManaCost::generic(2);
+                        if !available_mana.can_pay(&foretell_exile_cost) {
+                            return None;
                         }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                };
-
-            // Detect Dash: alternative cost, creature gains haste, returns at EOT
-            let is_dash = if !is_flashback
-                && !is_spectacle
-                && !is_evoke
-                && !is_escape
-                && !is_overload
-                && !is_foretell
-            {
-                if let Some(dash_cost_str) = game.card(card_id).get_dash_cost() {
-                    let dash_mc = forge_foundation::ManaCost::parse(&dash_cost_str);
-                    let normal_mc = &game.card(card_id).mana_cost;
-                    let available_mana =
-                        mana::calculate_available_mana(self.pool(player), game, player);
-                    if available_mana.can_pay(&dash_mc) {
-                        if !available_mana.can_pay(normal_mc) {
-                            true // can only afford dash
-                        } else {
-                            let name = game.card(card_id).card_name.clone();
-                            let options = vec![
-                                format!("Normal cost: {}", normal_mc),
-                                format!("Dash: {} (haste, return at EOT)", dash_cost_str),
-                            ];
-                            agents[player.index()].snapshot_state(game, &self.mana_pools);
-                            let choice = agents[player.index()].choose_alternative_cost(
-                                player,
-                                &options,
-                                Some(&name),
-                            );
-                            choice == 1
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            // Detect Blitz: alternative cost, haste + "dies: draw" + sacrifice at EOT
-            let is_blitz = if !is_flashback
-                && !is_spectacle
-                && !is_evoke
-                && !is_escape
-                && !is_overload
-                && !is_dash
-                && !is_foretell
-            {
-                if let Some(blitz_cost_str) = game.card(card_id).get_blitz_cost() {
-                    let blitz_mc = forge_foundation::ManaCost::parse(&blitz_cost_str);
-                    let normal_mc = &game.card(card_id).mana_cost;
-                    let available_mana =
-                        mana::calculate_available_mana(self.pool(player), game, player);
-                    if available_mana.can_pay(&blitz_mc) {
-                        if !available_mana.can_pay(normal_mc) {
-                            true
-                        } else {
-                            let name = game.card(card_id).card_name.clone();
-                            let options = vec![
-                                format!("Normal cost: {}", normal_mc),
-                                format!(
-                                    "Blitz: {} (haste, draw on death, sac at EOT)",
-                                    blitz_cost_str
-                                ),
-                            ];
-                            agents[player.index()].snapshot_state(game, &self.mana_pools);
-                            let choice = agents[player.index()].choose_alternative_cost(
-                                player,
-                                &options,
-                                Some(&name),
-                            );
-                            choice == 1
-                        }
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            // Detect Madness: casting from exile with madness cost
-            let is_madness = !is_foretell
-                && game.card(card_id).zone == ZoneType::Exile
-                && game.card(card_id).get_madness_cost().is_some();
-
-            // Detect Emerge: alternative cost (sacrifice creature to reduce cost)
-            let is_emerge = if !is_flashback
-                && !is_foretell
-                && !is_spectacle
-                && !is_evoke
-                && !is_escape
-                && !is_overload
-                && !is_dash
-                && !is_blitz
-                && !is_madness
-            {
-                game.card(card_id).get_emerge_cost().is_some()
-            } else {
-                false
-            };
-
-            // Detect GainLife alternative cost (e.g. Invigorate):
-            // free cast when condition is met (opponent gains N life instead).
-            // Auto-selected when the condition holds — mirrors Java's behavior
-            // of preferring the cheaper/free option.
-            let is_gainlife_alt = if !is_flashback
-                && !is_foretell
-                && !is_spectacle
-                && !is_evoke
-                && !is_escape
-                && !is_overload
-                && !is_dash
-                && !is_blitz
-                && !is_madness
-                && !is_emerge
-            {
-                if let Some((_life, condition)) = game.card(card_id).get_gainlife_alt_cost() {
-                    check_is_present(game, player, &condition)
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            // ── Foretell exile: special action, not a cast ────────────
-            // If foretell card is in hand (not being cast from exile), offer to exile face-down for {2}.
-            if !is_foretell
-                && game.card(card_id).get_foretell_cost().is_some()
-                && game.card(card_id).zone == ZoneType::Hand
-            {
-                let available_mana =
-                    mana::calculate_available_mana(self.pool(player), game, player);
-                let foretell_exile_cost = forge_foundation::ManaCost::generic(2);
-                if available_mana.can_pay(&foretell_exile_cost) {
-                    let name = game.card(card_id).card_name.clone();
-                    let options = vec![
-                        "Cast normally".to_string(),
-                        "Foretell (exile face-down for {2})".to_string(),
-                    ];
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    let choice = agents[player.index()].choose_alternative_cost(
-                        player,
-                        &options,
-                        Some(&name),
-                    );
-                    if choice == 1 {
-                        // Pay {2}
                         let tapped = mana::auto_tap_lands(
                             game,
                             self.pool_mut(player),
@@ -889,10 +757,8 @@ impl GameLoop {
                         );
                         self.emit_tap_for_mana_triggers(player, &tapped);
                         self.pool_mut(player).try_pay(&foretell_exile_cost);
-                        // Exile face-down
                         game.card_mut(card_id).face_down = true;
                         game.move_card(card_id, ZoneType::Exile, player);
-                        // Fire Foretell trigger (mirrors Java Player.addForetoldThisTurn)
                         self.trigger_handler.run_trigger(
                             TriggerType::Foretell,
                             RunParams {
@@ -910,28 +776,31 @@ impl GameLoop {
                         );
                         return Some((card_id, card_name));
                     }
+                    return None;
                 }
-            }
-
-            // ── Suspend: special action, exile with time counters ────────
-            if let Some((suspend_cost, counters)) = game.card(card_id).get_suspend_cost() {
-                if game.card(card_id).zone == ZoneType::Hand {
-                    let available_mana =
-                        mana::calculate_available_mana(self.pool(player), game, player);
-                    let suspend_mc = forge_foundation::ManaCost::parse(&suspend_cost);
-                    if available_mana.can_pay(&suspend_mc) {
-                        let name = game.card(card_id).card_name.clone();
-                        let options = vec![
-                            "Cast normally".to_string(),
-                            format!("Suspend ({}, {} time counters)", suspend_cost, counters),
-                        ];
-                        agents[player.index()].snapshot_state(game, &self.mana_pools);
-                        let choice = agents[player.index()].choose_alternative_cost(
-                            player,
-                            &options,
-                            Some(&name),
-                        );
-                        if choice == 1 {
+                crate::agent::PlayCardMode::Alternative(alt) => match alt {
+                    crate::spellability::AlternativeCost::Foretell => is_foretell = true,
+                    crate::spellability::AlternativeCost::Flashback => is_flashback = true,
+                    crate::spellability::AlternativeCost::Spectacle => is_spectacle = true,
+                    crate::spellability::AlternativeCost::Evoke => is_evoke = true,
+                    crate::spellability::AlternativeCost::Dash => is_dash = true,
+                    crate::spellability::AlternativeCost::Blitz => is_blitz = true,
+                    crate::spellability::AlternativeCost::Escape => is_escape = true,
+                    crate::spellability::AlternativeCost::Overload => is_overload = true,
+                    crate::spellability::AlternativeCost::Madness => is_madness = true,
+                    crate::spellability::AlternativeCost::Emerge => is_emerge = true,
+                    crate::spellability::AlternativeCost::Suspend => {
+                        if let Some((suspend_cost, counters)) = game.card(card_id).get_suspend_cost()
+                        {
+                            if game.card(card_id).zone != ZoneType::Hand {
+                                return None;
+                            }
+                            let available_mana =
+                                mana::calculate_available_mana(self.pool(player), game, player);
+                            let suspend_mc = forge_foundation::ManaCost::parse(&suspend_cost);
+                            if !available_mana.can_pay(&suspend_mc) {
+                                return None;
+                            }
                             let tapped = mana::auto_tap_lands(
                                 game,
                                 self.pool_mut(player),
@@ -955,8 +824,32 @@ impl GameLoop {
                             );
                             return Some((card_id, card_name));
                         }
+                        return None;
                     }
-                }
+                },
+            }
+
+            // Select the card's spell ability line (SP$ ...) for cast-time logic.
+            // Mirrors Java where casting operates on a concrete SpellAbility, not
+            // arbitrary non-activated lines like `S:Mode$ OptionalCost`.
+            let abilities_for_spell = game.card(card_id).abilities.clone();
+            let spell_ability_text = abilities_for_spell
+                .iter()
+                .find(|a| parse_pipe_params(a).contains_key("SP"))
+                .cloned()
+                .unwrap_or_default();
+
+            // Mirror Java cast-time Charm gating (CharmEffect.makeChoices):
+            // if not enough legal modes exist, casting fails before any payment.
+            if spell_ability_text.contains("SP$ Charm")
+                && !crate::ability::effects::charm_effect::can_make_choices_precast(
+                    game,
+                    player,
+                    card_id,
+                    &spell_ability_text,
+                )
+            {
+                return None;
             }
 
             // Parse flashback total cost once (can include non-mana parts like Sac<...>).
@@ -1128,7 +1021,18 @@ impl GameLoop {
                     player,
                     cast_zone,
                 );
-            let mana_cost = cost_adj.apply(&mana_cost);
+            let raise_cost =
+                crate::staticability::static_ability_cost_change::compute_raise_cost_parts(
+                    game,
+                    game.card(card_id),
+                    player,
+                    cast_zone,
+                );
+            let raise_mana = raise_cost
+                .as_ref()
+                .map(Self::mana_from_cost)
+                .unwrap_or_else(|| forge_foundation::ManaCost::generic(0));
+            let mana_cost = cost_adj.apply(&mana_cost).add(&raise_mana);
 
             // ── Additional cost checks (Kicker, Buyback, Multikicker, Replicate) ──
             // Check Kicker: offer to pay additional kicker cost
@@ -1506,7 +1410,11 @@ impl GameLoop {
                 let chosen_x = agents[player.index()].choose_x_value(player, max_x, Some(&name));
                 x_value = chosen_x.min(max_x);
                 // Build effective cost: non-X shards + (X * x_count) generic
-                let extra_generic = (x_value as i32) * (x_count as i32);
+                let extra_generic = if agents[player.index()].pay_x_cost_in_mana() {
+                    (x_value as i32) * (x_count as i32)
+                } else {
+                    0
+                };
                 let mut effective = non_x_cost;
                 if extra_generic > 0 {
                     effective = effective.add(&forge_foundation::ManaCost::generic(extra_generic));
@@ -1770,6 +1678,65 @@ impl GameLoop {
                 mana_cost
             };
 
+            // Build SpellAbility chain and choose modes/targets from the pre-payment
+            // game state. This matches Java/MTG casting order: announce modes and
+            // targets before paying costs, so mana payments can invalidate a chosen
+            // target later (for example, sacrificing a Food token used as a target).
+            let mut sa = build_spell_ability(game, card_id, &spell_ability_text, player);
+            sa.is_spell = true;
+
+            // Set alternative cost on the SpellAbility
+            if is_foretell {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Foretell);
+            } else if is_flashback {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Flashback);
+            } else if is_madness {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Madness);
+            } else if is_spectacle {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Spectacle);
+            } else if is_evoke {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Evoke);
+            } else if is_escape {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Escape);
+            } else if is_overload {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Overload);
+                sa.overloaded = true;
+            } else if is_dash {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Dash);
+            } else if is_blitz {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Blitz);
+            } else if is_emerge {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Emerge);
+            }
+
+            if kicked || kick_count > 0 || entwine_paid {
+                sa.kicked = true;
+            }
+
+            sa.buyback_paid = buyback_paid;
+            sa.kick_count = kick_count;
+            sa.replicate_count = replicate_count;
+            sa.x_mana_cost_paid = x_value;
+            game.card_mut(card_id)
+                .svars
+                .insert("XPaid".to_string(), x_value.to_string());
+
+            if !sa.overloaded {
+                let mut targeting_game = game.clone();
+                if sa.api.as_deref() == Some("Charm")
+                    && !crate::ability::effects::charm_effect::make_choices_precast(
+                        &mut targeting_game,
+                        agents,
+                        &mut sa,
+                    )
+                {
+                    return None;
+                }
+                if !sa.setup_targets(&targeting_game, agents, &self.mana_pools) {
+                    return None;
+                }
+            }
+
             // Build mana payment context for restriction checking
             let payment_ctx = {
                 let card = game.card(card_id);
@@ -1975,42 +1942,26 @@ impl GameLoop {
                     }
                 }
             } else {
-                // AI: auto-tap lands to pay the effective cost
-                let tapped = mana::auto_tap_lands(
+                // AI deterministic auto-pay: preserve full state so failed payment
+                // cannot leave partial taps or partial pool mutations behind.
+                let mana_payment_snapshot = self.make_snapshot(game, true);
+                let tapped = match mana::pay_mana_cost_auto(
                     game,
                     self.pool_mut(player),
                     player,
                     &mana_cost,
                     Some(card_id),
-                );
-                self.emit_tap_for_mana_triggers(player, &tapped);
-
-                // Auto-tap extra lands for commander tax
-                if commander_tax > 0 {
-                    let tapped_tax = mana::auto_tap_lands_generic(
-                        game,
-                        self.pool_mut(player),
-                        player,
-                        commander_tax,
-                    );
-                    self.emit_tap_for_mana_triggers(player, &tapped_tax);
-                }
-
-                // Pay the mana cost from pool (respecting restrictions)
-                let paid = self.pool_mut(player).try_pay_for_spell_converted(
-                    &mana_cost,
+                    commander_tax,
                     &payment_ctx,
                     any_color_conversion,
-                );
-                if !paid {
-                    return None;
-                }
-
-                // Pay commander tax
-                if commander_tax > 0 && !self.pool_mut(player).try_pay_extra_generic(commander_tax)
-                {
-                    return None;
-                }
+                ) {
+                    Some(tapped) => tapped,
+                    None => {
+                        self.restore_snapshot(game, &mana_payment_snapshot);
+                        return None;
+                    }
+                };
+                self.emit_tap_for_mana_triggers(player, &tapped);
             }
 
             // If uncounterable mana was consumed during payment (Cavern of Souls),
@@ -2199,18 +2150,49 @@ impl GameLoop {
                 }
             }
 
-            let abilities = game.card(card_id).abilities.clone();
-
             // Pay additional costs from SP$ line (e.g. sacrifice a creature).
-            let spell_cost = Self::parse_spell_cost(&abilities);
+            let spell_cost = Self::parse_spell_cost(&abilities_for_spell);
             if let Some(ref sc) = spell_cost {
-                self.pay_additional_costs(game, agents, player, card_id, sc);
+                if !self.pay_additional_costs(
+                    game,
+                    agents,
+                    player,
+                    card_id,
+                    sc,
+                    None,
+                    sc.mandatory,
+                ) {
+                    return None;
+                }
+            }
+            if let Some(ref rc) = raise_cost {
+                if !self.pay_additional_costs(
+                    game,
+                    agents,
+                    player,
+                    card_id,
+                    rc,
+                    None,
+                    rc.mandatory,
+                ) {
+                    return None;
+                }
             }
 
             // Pay additional non-mana costs from Flashback keyword cost
             // (e.g. Lava Dart: Flashback—Sacrifice a Mountain).
             if let Some(ref fb_cost) = flashback_total_cost {
-                self.pay_additional_costs(game, agents, player, card_id, fb_cost);
+                if !self.pay_additional_costs(
+                    game,
+                    agents,
+                    player,
+                    card_id,
+                    fb_cost,
+                    None,
+                    fb_cost.mandatory,
+                ) {
+                    return None;
+                }
             }
 
             // Pay Escape exile cost: exile N other graveyard cards
@@ -2234,64 +2216,6 @@ impl GameLoop {
                 if let Some((life_amount, _)) = game.card(card_id).get_gainlife_alt_cost() {
                     let opp = game.opponent_of(player);
                     game.player_mut(opp).life += life_amount;
-                }
-            }
-
-            // Build SpellAbility chain and choose targets.
-            // Filter out AB$ (activated ability) lines — those are not spell effects.
-            // Only DB$ (direct) and SP$ (spell) lines are the card's ETB/spell effect.
-            let ability_text = abilities
-                .iter()
-                .find(|a| !a.contains("AB$ "))
-                .cloned()
-                .unwrap_or_default();
-            let mut sa = build_spell_ability(game, card_id, &ability_text, player);
-            sa.is_spell = true;
-
-            // Set alternative cost on the SpellAbility
-            if is_foretell {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Foretell);
-            } else if is_flashback {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Flashback);
-            } else if is_madness {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Madness);
-            } else if is_spectacle {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Spectacle);
-            } else if is_evoke {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Evoke);
-            } else if is_escape {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Escape);
-            } else if is_overload {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Overload);
-                sa.overloaded = true;
-            } else if is_dash {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Dash);
-            } else if is_blitz {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Blitz);
-            } else if is_emerge {
-                sa.alt_cost = Some(crate::spellability::AlternativeCost::Emerge);
-            }
-
-            // Set kicked flag on the SpellAbility (also set for entwine -- charm_effect checks sa.kicked)
-            if kicked || kick_count > 0 || entwine_paid {
-                sa.kicked = true;
-            }
-
-            // Set additional cost flags
-            sa.buyback_paid = buyback_paid;
-            sa.kick_count = kick_count;
-            sa.replicate_count = replicate_count;
-            sa.x_mana_cost_paid = x_value;
-            game.card_mut(card_id)
-                .svars
-                .insert("XPaid".to_string(), x_value.to_string());
-
-            // Overloaded spells replace "target" with "each" -- skip targeting.
-            if !sa.overloaded {
-                if !sa.setup_targets(game, agents, &self.mana_pools) {
-                    // Targeting failed: do not place spell on stack.
-                    // Mirrors Java behavior where failed targeting prevents adding to stack.
-                    return None;
                 }
             }
 

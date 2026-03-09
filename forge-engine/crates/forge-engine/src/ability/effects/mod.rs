@@ -18,6 +18,8 @@ pub mod change_zone_effect;
 pub mod charm_effect;
 pub mod choose_card_effect;
 pub mod choose_color_effect;
+pub mod choose_direction_effect;
+pub mod choose_even_odd_effect;
 pub mod choose_number_effect;
 pub mod choose_player_effect;
 pub mod choose_source_effect;
@@ -31,6 +33,7 @@ pub mod copy_spell_ability_effect;
 pub mod counter_effect;
 pub mod counters_put_all_effect;
 pub mod counters_put_effect;
+pub mod counters_put_or_remove_effect;
 pub mod counters_remove_effect;
 pub mod damage_all_effect;
 pub mod damage_deal_effect;
@@ -98,6 +101,9 @@ pub mod surveil_effect;
 pub mod take_initiative_effect;
 pub mod tap_all_effect;
 pub mod tap_effect;
+pub mod tap_or_untap_all_effect;
+pub mod tap_or_untap_effect;
+pub mod time_travel_effect;
 pub mod token_effect;
 pub mod two_piles_effect;
 pub mod untap_all_effect;
@@ -109,6 +115,7 @@ use forge_foundation::{ColorSet, ZoneType};
 
 use crate::agent::PlayerAgent;
 use crate::card::{CardInstance, CounterType};
+use crate::cost::{parse_cost, Cost, CostPart};
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -179,8 +186,10 @@ effect_dispatch! {
     "DamageAll" => damage_all_effect::resolve,
     "PumpAll" => pump_all_effect::resolve,
     "TapAll" => tap_all_effect::resolve,
+    "TapOrUntapAll" => tap_or_untap_all_effect::resolve,
     "UntapAll" => untap_all_effect::resolve,
     "Tap" => tap_effect::resolve,
+    "TapOrUntap" => tap_or_untap_effect::resolve,
     "Untap" => untap_effect::resolve,
     "LifeSet" => life_set_effect::resolve,
     "LifeExchange" => life_exchange_effect::resolve,
@@ -207,11 +216,14 @@ effect_dispatch! {
     "Balance" => balance_effect::resolve,
     "ChooseCard" => choose_card_effect::resolve,
     "ChooseColor" => choose_color_effect::resolve,
+    "ChooseDirection" => choose_direction_effect::resolve,
+    "ChooseEvenOdd" => choose_even_odd_effect::resolve,
     "Clone" => clone_effect::resolve,
     "ControlGainVariant" => control_gain_variant_effect::resolve,
     "RepeatEach" => repeat_each_effect::resolve,
     "Shuffle" => shuffle_effect::resolve,
     "PutCounterAll" => counters_put_all_effect::resolve,
+    "CountersPutOrRemove" => counters_put_or_remove_effect::resolve,
     "EachDamage" => each_damage_effect::resolve,
     "Effect" => effect_effect::resolve,
     "DelayedTrigger" => delayed_trigger_effect::resolve,
@@ -233,6 +245,7 @@ effect_dispatch! {
     "PreventDamage" => prevent_damage_effect::resolve,
     "Proliferate" => proliferate_effect::resolve,
     "MoveCounter" => move_counter_effect::resolve,
+    "TimeTravel" => time_travel_effect::resolve,
     "MustBlock" => must_block_effect::resolve,
     "CopySpellAbility" => copy_spell_ability_effect::resolve,
     "TwoPiles" => two_piles_effect::resolve,
@@ -426,7 +439,182 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     for _ in 0..repeat_count {
+        if let Some(unless_cost) = sa
+            .params
+            .get("UnlessCost")
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+        {
+            resolve_effect_with_unless_cost(ctx, sa, unless_cost);
+        } else {
+            resolve_effect_once(ctx, sa);
+        }
+    }
+}
+
+/// Resolve a SpellAbility with Java-style `UnlessCost` payment flow.
+/// Mirrors `AbilityUtils.handleUnlessCost(...)` for the core branch:
+/// if a payer pays the cost, resolution is gated by `UnlessSwitched`.
+fn resolve_effect_with_unless_cost(ctx: &mut EffectContext, sa: &SpellAbility, unless_cost: &str) {
+    let source = match sa.source {
+        Some(cid) => cid,
+        None => {
+            resolve_effect_once(ctx, sa);
+            return;
+        }
+    };
+    let cost = parse_cost(unless_cost);
+    let payers = resolve_unless_payers(sa, ctx.game);
+    let mut already_paid = false;
+    for payer in payers {
+        if ctx.game.player(payer).has_lost {
+            continue;
+        }
+        if try_pay_unless_cost(ctx, sa, source, payer, &cost) {
+            already_paid = true;
+            break;
+        }
+    }
+
+    let is_switched = sa.params.contains_key("UnlessSwitched");
+    if already_paid == is_switched {
         resolve_effect_once(ctx, sa);
+    }
+}
+
+fn resolve_unless_payers(sa: &SpellAbility, game: &GameState) -> Vec<PlayerId> {
+    let pays = sa
+        .params
+        .get("UnlessPayer")
+        .map(|s| s.as_str())
+        .unwrap_or("TargetedController");
+    if pays.eq_ignore_ascii_case("TargetedController") {
+        if let Some(pid) = sa.target_chosen.target_player {
+            vec![pid]
+        } else {
+            vec![game.opponent_of(sa.activating_player)]
+        }
+    } else {
+        resolve_defined_players(pays, sa.activating_player, game)
+    }
+}
+
+fn try_pay_unless_cost(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    source: CardId,
+    payer: PlayerId,
+    cost: &Cost,
+) -> bool {
+    if !crate::cost::can_pay_with_ability(
+        cost,
+        ctx.game,
+        &ctx.mana_pools[payer.index()],
+        source,
+        payer,
+        Some(sa),
+    ) {
+        return false;
+    }
+
+    let card_name = ctx.game.card(source).card_name.clone();
+    let api = sa.api.as_deref();
+    for part in &cost.parts {
+        let kind = cost_part_kind(part);
+        let msg = format!("Pay {} cost for {}?", kind, card_name);
+        if !ctx.agents[payer.index()].confirm_payment(
+            payer,
+            kind,
+            &msg,
+            Some(&card_name),
+            api,
+        ) {
+            return false;
+        }
+    }
+
+    for part in &cost.parts {
+        match part {
+            CostPart::DamageYou(amount) => {
+                ctx.game.deal_damage_to_player(payer, *amount);
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::DamageDone,
+                    RunParams {
+                        damage_target_player: Some(payer),
+                        damage_amount: Some(*amount),
+                        is_combat_damage: Some(false),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+            CostPart::PayLife(amount) => {
+                ctx.game.player_mut(payer).lose_life(*amount);
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::LifeLost,
+                    RunParams {
+                        player: Some(payer),
+                        life_amount: Some(*amount),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+            CostPart::Mana(mana_cost) => {
+                let _ = ctx.mana_pools[payer.index()].try_pay(mana_cost);
+            }
+            CostPart::PayEnergy(amount) => {
+                ctx.game.player_mut(payer).energy_counters -= *amount;
+            }
+            CostPart::PayShards(amount) => {
+                ctx.game.player_mut(payer).mana_shards -= *amount;
+            }
+            CostPart::Draw(amount) => {
+                for _ in 0..*amount {
+                    ctx.game.draw_card(payer);
+                }
+            }
+            CostPart::Mill(amount) => {
+                for _ in 0..*amount {
+                    if let Some(top) = ctx.game.zone_mut(ZoneType::Library, payer).take_top() {
+                        ctx.game.move_card(top, ZoneType::Graveyard, payer);
+                        ctx.trigger_handler.run_trigger(
+                            TriggerType::Milled,
+                            RunParams {
+                                card: Some(top),
+                                player: Some(payer),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                        emit_zone_trigger(
+                            &mut ctx.trigger_handler,
+                            top,
+                            ZoneType::Library,
+                            ZoneType::Graveyard,
+                        );
+                    }
+                }
+            }
+            _ => {
+                // Unsupported UnlessCost part in effect resolution path.
+                return false;
+            }
+        }
+    }
+    true
+}
+
+fn cost_part_kind(part: &CostPart) -> &'static str {
+    match part {
+        CostPart::Mana(_) => "Mana",
+        CostPart::PayLife(_) => "PayLife",
+        CostPart::DamageYou(_) => "DamageYou",
+        CostPart::PayEnergy(_) => "PayEnergy",
+        CostPart::PayShards(_) => "PayShards",
+        CostPart::Draw(_) => "Draw",
+        CostPart::Mill(_) => "Mill",
+        _ => "Cost",
     }
 }
 
@@ -516,6 +704,8 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "DamageAll"
     } else if ability.contains("PumpAll") {
         "PumpAll"
+    } else if ability.contains("TapOrUntapAll") {
+        "TapOrUntapAll"
     } else if ability.contains("TapAll") {
         "TapAll"
     } else if ability.contains("UntapAll") {
@@ -537,6 +727,8 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "ActivateAbility"
     } else if ability.contains("$ Fog") {
         "Fog"
+    } else if ability.contains("TapOrUntap") {
+        "TapOrUntap"
     } else if ability.contains("$ Tap") {
         "Tap"
     } else if ability.contains("$ Untap") {
@@ -575,6 +767,10 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "ChooseCard"
     } else if ability.contains("ChooseColor") {
         "ChooseColor"
+    } else if ability.contains("ChooseDirection") {
+        "ChooseDirection"
+    } else if ability.contains("ChooseEvenOdd") {
+        "ChooseEvenOdd"
     } else if ability.contains("$ Clone") {
         "Clone"
     } else if ability.contains("ControlGainVariant") {
@@ -584,6 +780,8 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
     // High-priority effects (issue #53) — PutCounterAll before PutCounter, EachDamage before DealDamage
     } else if ability.contains("PutCounterAll") {
         "PutCounterAll"
+    } else if ability.contains("CountersPutOrRemove") {
+        "CountersPutOrRemove"
     } else if ability.contains("EachDamage") {
         "EachDamage"
     } else if ability.contains("$ Effect") {
@@ -627,6 +825,8 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "Proliferate"
     } else if ability.contains("MoveCounter") {
         "MoveCounter"
+    } else if ability.contains("TimeTravel") {
+        "TimeTravel"
     } else if ability.contains("MustBlock") {
         "MustBlock"
     // High-priority effects (issue #53, Batch 5)
@@ -692,6 +892,15 @@ pub fn resolve_numeric_svar(
         // First check if there's an SVar named "X" on the source card
         if let Some(source_id) = sa.source {
             if let Some(svar_expr) = game.card(source_id).svars.get("X") {
+                if svar_expr.starts_with("Count$") {
+                    return resolve_count_svar_for_sa(
+                        svar_expr,
+                        game,
+                        source_id,
+                        sa.activating_player,
+                        sa,
+                    );
+                }
                 return evaluate_svar(svar_expr, sa);
             }
         }
@@ -702,9 +911,15 @@ pub fn resolve_numeric_svar(
     // It's an SVar reference — look it up on the source card
     if let Some(source_id) = sa.source {
         if let Some(svar_expr) = game.card(source_id).svars.get(val_str.trim()) {
-            // Game-aware SVar resolution for patterns that need GameState
-            if svar_expr == "Count$Converge" || svar_expr == "Count$Sunburst" {
-                return game.card(source_id).sunburst_count();
+            // Game-aware SVar resolution for patterns that need GameState.
+            if svar_expr.starts_with("Count$") {
+                return resolve_count_svar_for_sa(
+                    svar_expr,
+                    game,
+                    source_id,
+                    sa.activating_player,
+                    sa,
+                );
             }
             return evaluate_svar(svar_expr, sa);
         }
@@ -760,10 +975,60 @@ pub fn resolve_count_svar(
     source_id: CardId,
     controller: PlayerId,
 ) -> i32 {
+    resolve_count_svar_for_sa(
+        expr,
+        game,
+        source_id,
+        controller,
+        &crate::spellability::SpellAbility::new_simple(Some(source_id), controller, ""),
+    )
+}
+
+pub fn resolve_count_svar_for_sa(
+    expr: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> i32 {
     use forge_foundation::ZoneType;
 
     if expr == "Count$Converge" || expr == "Count$Sunburst" {
         return game.card(source_id).sunburst_count();
+    }
+
+    if let Some(rest) = expr.strip_prefix("Count$OptionalGenericCostPaid.") {
+        let parts: Vec<&str> = rest.splitn(2, '.').collect();
+        if parts.len() == 2 {
+            let paid_val = parts[0].parse::<i32>().unwrap_or(1);
+            let unpaid_val = parts[1].parse::<i32>().unwrap_or(0);
+            return if sa.optional_generic_cost_paid {
+                paid_val
+            } else {
+                unpaid_val
+            };
+        }
+    }
+
+    // Count$PromisedGift.A.B — return A when gift promised, else B.
+    if let Some(rest) = expr.strip_prefix("Count$PromisedGift.") {
+        let parts: Vec<&str> = rest.splitn(2, '.').collect();
+        if parts.len() == 2 {
+            let promised_val = parts[0].parse::<i32>().unwrap_or(1);
+            let not_promised_val = parts[1].parse::<i32>().unwrap_or(0);
+            return if game.card(source_id).promised_gift.is_some() {
+                promised_val
+            } else {
+                not_promised_val
+            };
+        }
+    }
+    if expr == "Count$PromisedGift" {
+        return if game.card(source_id).promised_gift.is_some() {
+            1
+        } else {
+            0
+        };
     }
 
     // Count$Valid TYPE.QUALIFIERS — count permanents matching filter
@@ -1094,6 +1359,11 @@ pub fn matches_change_type(
     let type_matches = match type_part {
         "Land" => card.is_land(),
         "Creature" => card.is_creature(),
+        "Artifact" => card.type_line.is_artifact(),
+        "Enchantment" => card.type_line.is_enchantment(),
+        "Instant" => card.type_line.is_instant(),
+        "Sorcery" => card.type_line.is_sorcery(),
+        "Planeswalker" => card.type_line.is_planeswalker(),
         "Card" => true,
         // Support land-subtype selectors used in tutor scripts
         // (e.g. "Forest.Basic", "Plains.Basic").
@@ -1102,7 +1372,7 @@ pub fn matches_change_type(
             .subtypes
             .iter()
             .any(|st| st.eq_ignore_ascii_case(type_part)),
-        _ => true,
+        _ => card.type_line.has_subtype(type_part),
     };
 
     if !type_matches {

@@ -227,7 +227,11 @@ impl LlmClient {
         tools: &Value,
     ) -> Result<Value, String> {
         match &self.backend {
-            Backend::OpenAi { api_key, base_url, model } => {
+            Backend::OpenAi {
+                api_key,
+                base_url,
+                model,
+            } => {
                 self.openai_chat_completions(api_key, base_url, model, messages, Some(tools))
                     .await
             }
@@ -242,17 +246,19 @@ impl LlmClient {
     }
 
     /// Send a chat completions request without tools (for final nudge).
-    pub async fn chat_completions_no_tools(
-        &self,
-        messages: &[Value],
-    ) -> Result<Value, String> {
+    pub async fn chat_completions_no_tools(&self, messages: &[Value]) -> Result<Value, String> {
         match &self.backend {
-            Backend::OpenAi { api_key, base_url, model } => {
+            Backend::OpenAi {
+                api_key,
+                base_url,
+                model,
+            } => {
                 self.openai_chat_completions(api_key, base_url, model, messages, None)
                     .await
             }
             Backend::Anthropic { api_key } => {
-                self.anthropic_chat_completions(api_key, messages, None).await
+                self.anthropic_chat_completions(api_key, messages, None)
+                    .await
             }
             Backend::ClaudeCode { .. } => {
                 Err("ClaudeCode backend does not support tool-calling".to_string())
@@ -291,7 +297,10 @@ impl LlmClient {
     ///
     /// No-op for Anthropic and ClaudeCode backends (model is fixed).
     pub fn set_model(&mut self, model: &str) {
-        if let Backend::OpenAi { model: ref mut m, .. } = self.backend {
+        if let Backend::OpenAi {
+            model: ref mut m, ..
+        } = self.backend
+        {
             *m = model.to_string();
         }
     }
@@ -464,11 +473,9 @@ fn convert_to_anthropic_messages(messages: &[Value]) -> (String, Vec<Value>) {
                 // Tool use blocks
                 if let Some(tool_calls) = msg["tool_calls"].as_array() {
                     for tc in tool_calls {
-                        let args_str = tc["function"]["arguments"]
-                            .as_str()
-                            .unwrap_or("{}");
-                        let input: Value = serde_json::from_str(args_str)
-                            .unwrap_or(serde_json::json!({}));
+                        let args_str = tc["function"]["arguments"].as_str().unwrap_or("{}");
+                        let input: Value =
+                            serde_json::from_str(args_str).unwrap_or(serde_json::json!({}));
                         content_blocks.push(serde_json::json!({
                             "type": "tool_use",
                             "id": tc["id"],

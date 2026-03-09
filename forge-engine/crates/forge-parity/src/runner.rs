@@ -10,12 +10,15 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 
 use forge_carddb::CardDatabase;
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent};
+use forge_engine_core::agent::{
+    BinaryChoiceKind, MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent,
+};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::spellability::AlternativeCost;
 use forge_foundation::ZoneType;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -205,6 +208,8 @@ struct CapturingAgent {
     parity_map: Arc<ParityCardMap>,
     /// Latest game snapshot for legality checks in blocker choice logging.
     last_game_state: Option<GameState>,
+    /// If true, include verbose-only auxiliary decision records.
+    verbose: bool,
 }
 
 impl CapturingAgent {
@@ -244,6 +249,7 @@ impl CapturingAgent {
             ability_is_mana: HashMap::new(),
             parity_map,
             last_game_state: None,
+            verbose,
         }
     }
 
@@ -265,6 +271,12 @@ impl CapturingAgent {
         });
     }
 
+    fn record_verbose_decision(&self, kind: &str, options: Vec<String>, choice: String) {
+        if self.verbose {
+            self.record_decision(kind, options, choice);
+        }
+    }
+
     fn legal_attackers_for_blocker(&self, blocker: CardId, attackers: &[CardId]) -> Vec<CardId> {
         let Some(ref game) = self.last_game_state else {
             return attackers.to_vec();
@@ -272,7 +284,9 @@ impl CapturingAgent {
         attackers
             .iter()
             .copied()
-            .filter(|&attacker| forge_engine_core::combat::can_creature_block(game, blocker, attacker))
+            .filter(|&attacker| {
+                forge_engine_core::combat::can_creature_block(game, blocker, attacker)
+            })
             .collect()
     }
 }
@@ -355,24 +369,31 @@ impl PlayerAgent for CapturingAgent {
     fn choose_action(
         &mut self,
         player: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
     ) -> forge_engine_core::agent::MainPhaseAction {
         #[derive(Clone, Copy)]
         enum EntryKind {
-            Card(CardId),
+            Card(PlayOption),
             Ability(CardId, usize),
         }
         let mut entries: Vec<(String, EntryKind)> = Vec::new();
-        for &cid in playable {
+        for &play in playable {
+            let cid = play.card_id;
             let base = if self.card_is_land.get(&cid).copied().unwrap_or(false) {
                 format!("LAND:{}", self.card_name(cid))
             } else {
-                format!("SPELL:{}", self.card_name(cid))
+                let fb_tag = match play.mode {
+                    PlayCardMode::Alternative(AlternativeCost::Flashback) => {
+                        "[FB]"
+                    }
+                    _ => "",
+                };
+                format!("SPELL:{}{}", self.card_name(cid), fb_tag)
             };
-            entries.push((base, EntryKind::Card(cid)));
+            entries.push((base, EntryKind::Card(play)));
         }
         for &(cid, ab_idx) in activatable {
             if self
@@ -383,15 +404,55 @@ impl PlayerAgent for CapturingAgent {
             {
                 continue;
             }
-            entries.push((format!("AB:{}", self.card_name(cid)), EntryKind::Ability(cid, ab_idx)));
+            entries.push((
+                format!("AB:{}", self.card_name(cid)),
+                EntryKind::Ability(cid, ab_idx),
+            ));
         }
         entries.sort_by(|a, b| {
             let key = |(label, kind): &(String, EntryKind)| match *kind {
                 EntryKind::Card(cid) => (
                     label.clone(),
                     "0".to_string(),
-                    self.parity_map.id(cid).to_string(),
-                    "0".to_string(),
+                    self.parity_map.id(cid.card_id).to_string(),
+                    match cid.mode {
+                        PlayCardMode::Normal => "0".to_string(),
+                        PlayCardMode::Alternative(AlternativeCost::Flashback) => {
+                            "Flashback".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Spectacle) => {
+                            "Spectacle".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Evoke) => {
+                            "Evoke".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Dash) => {
+                            "Dash".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Blitz) => {
+                            "Blitz".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Escape) => {
+                            "Escape".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Overload) => {
+                            "Overload".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Madness) => {
+                            "Madness".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Foretell) => {
+                            "Foretell".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Emerge) => {
+                            "Emerge".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Suspend) => {
+                            "Suspend".to_string()
+                        }
+                        PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
+                        PlayCardMode::ForetellExile => "ForetellExile".to_string(),
+                    },
                 ),
                 EntryKind::Ability(cid, idx) => (
                     label.clone(),
@@ -402,11 +463,33 @@ impl PlayerAgent for CapturingAgent {
             };
             key(a).cmp(&key(b))
         });
-        let options_raw: Vec<String> = entries.iter().map(|(s, _)| s.clone()).collect();
+        let mut options_raw: Vec<String> = entries.iter().map(|(s, _)| s.clone()).collect();
+        // Mirror Java harness: if the same card has multiple cost variants, label as $1/$2/...
+        let mut totals: HashMap<(String, u64), usize> = HashMap::new();
+        for (idx, (_, kind)) in entries.iter().enumerate() {
+            let key = match *kind {
+                EntryKind::Card(play) => self.parity_map.id(play.card_id) as u64,
+                EntryKind::Ability(cid, _) => self.parity_map.id(cid) as u64,
+            };
+            *totals.entry((options_raw[idx].clone(), key)).or_insert(0) += 1;
+        }
+        let mut seen: HashMap<(String, u64), usize> = HashMap::new();
+        for i in 0..entries.len() {
+            let key = match entries[i].1 {
+                EntryKind::Card(play) => self.parity_map.id(play.card_id) as u64,
+                EntryKind::Ability(cid, _) => self.parity_map.id(cid) as u64,
+            };
+            let tuple = (options_raw[i].clone(), key);
+            if totals.get(&tuple).copied().unwrap_or(0) > 1 {
+                let n = seen.get(&tuple).copied().unwrap_or(0) + 1;
+                seen.insert(tuple.clone(), n);
+                options_raw[i] = format!("{}${}", options_raw[i], n);
+            }
+        }
         let option_keys: Vec<u64> = entries
             .iter()
             .map(|(_, kind)| match *kind {
-                EntryKind::Card(cid) => self.parity_map.id(cid) as u64,
+                EntryKind::Card(play) => self.parity_map.id(play.card_id) as u64,
                 EntryKind::Ability(cid, _idx) => self.parity_map.id(cid) as u64,
             })
             .collect();
@@ -426,16 +509,21 @@ impl PlayerAgent for CapturingAgent {
 
         let choice = match action {
             MainPhaseAction::Pass => "PASS".to_string(),
-            MainPhaseAction::Play(cid) => entries
+            MainPhaseAction::Play(play) => entries
                 .iter()
                 .enumerate()
-                .find(|(_, (_, kind))| matches!(kind, EntryKind::Card(id) if *id == cid))
+                .find(|(_, (_, kind))| matches!(kind, EntryKind::Card(id) if *id == play))
                 .map(|(idx, _)| options[idx].clone())
                 .unwrap_or_else(|| {
+                    let cid = play.card_id;
                     if self.card_is_land.get(&cid).copied().unwrap_or(false) {
                         format!("LAND:{}", self.card_name(cid))
                     } else {
-                        format!("SPELL:{}", self.card_name(cid))
+                        let fb_tag = match play.mode {
+                            PlayCardMode::Alternative(AlternativeCost::Flashback) => "[FB]",
+                            _ => "",
+                        };
+                        format!("SPELL:{}{}", self.card_name(cid), fb_tag)
                     }
                 }),
             MainPhaseAction::ActivateMana(cid) => format!("MANA:{}", self.card_name(cid)),
@@ -471,12 +559,11 @@ impl PlayerAgent for CapturingAgent {
         let picked = self
             .inner
             .choose_attackers(player, &sorted_available, &sorted_defenders);
-        let attacker_labels =
-            parity_id::label_cards_in_order(
-                &sorted_available,
-                |id| self.card_name(id),
-                |id| self.parity_map.id(id),
-            );
+        let attacker_labels = parity_id::label_cards_in_order(
+            &sorted_available,
+            |id| self.card_name(id),
+            |id| self.parity_map.id(id),
+        );
         let mut attacker_label_by_id: HashMap<CardId, String> = HashMap::new();
         for (id, label) in attacker_labels {
             attacker_label_by_id.insert(id, label);
@@ -506,6 +593,14 @@ impl PlayerAgent for CapturingAgent {
         }
 
         picked
+    }
+
+    fn exert_attackers(&mut self, player: PlayerId, attackers: &[CardId]) -> Vec<CardId> {
+        self.inner.exert_attackers(player, attackers)
+    }
+
+    fn enlist_attackers(&mut self, player: PlayerId, attackers: &[CardId]) -> Vec<CardId> {
+        self.inner.enlist_attackers(player, attackers)
     }
 
     fn choose_blockers(
@@ -538,10 +633,8 @@ impl PlayerAgent for CapturingAgent {
             |id| self.card_name(id),
             |id| self.parity_map.id(id),
         );
-        let attacker_label_by_id: HashMap<CardId, String> =
-            attacker_labels.into_iter().collect();
-        let blocker_label_by_id: HashMap<CardId, String> =
-            blocker_labels.into_iter().collect();
+        let attacker_label_by_id: HashMap<CardId, String> = attacker_labels.into_iter().collect();
+        let blocker_label_by_id: HashMap<CardId, String> = blocker_labels.into_iter().collect();
 
         let mut chosen_by_blocker: HashMap<CardId, CardId> = HashMap::new();
         for (blocker, attacker) in chosen.iter().copied() {
@@ -552,7 +645,13 @@ impl PlayerAgent for CapturingAgent {
             let blocker_label = blocker_label_by_id
                 .get(&blocker)
                 .cloned()
-                .unwrap_or_else(|| format!("{}@{}", self.card_name(blocker), self.parity_map.id(blocker)));
+                .unwrap_or_else(|| {
+                    format!(
+                        "{}@{}",
+                        self.card_name(blocker),
+                        self.parity_map.id(blocker)
+                    )
+                });
             let mut options = vec!["PASS".to_string()];
             let legal_attackers = self.legal_attackers_for_blocker(blocker, &sorted_attackers);
             for &attacker in &legal_attackers {
@@ -590,18 +689,21 @@ impl PlayerAgent for CapturingAgent {
         let chosen = self
             .inner
             .choose_blocker_for(player, &sorted_attackers, blocker);
-        let attacker_labels =
-            parity_id::label_cards_in_order(
-                &sorted_attackers,
-                |id| self.card_name(id),
-                |id| self.parity_map.id(id),
-            );
+        let attacker_labels = parity_id::label_cards_in_order(
+            &sorted_attackers,
+            |id| self.card_name(id),
+            |id| self.parity_map.id(id),
+        );
         let mut attacker_label_by_id: HashMap<CardId, String> = HashMap::new();
         for (id, label) in attacker_labels {
             attacker_label_by_id.insert(id, label);
         }
         let mut options = vec!["PASS".to_string()];
-        let blocker_label = format!("{}@{}", self.card_name(blocker), self.parity_map.id(blocker));
+        let blocker_label = format!(
+            "{}@{}",
+            self.card_name(blocker),
+            self.parity_map.id(blocker)
+        );
         let legal_attackers = self.legal_attackers_for_blocker(blocker, &sorted_attackers);
         for &attacker in &legal_attackers {
             let attacker_label = attacker_label_by_id
@@ -655,6 +757,15 @@ impl PlayerAgent for CapturingAgent {
         self.inner.choose_sacrifice(player, valid)
     }
 
+    fn choose_type(
+        &mut self,
+        player: PlayerId,
+        type_category: &str,
+        valid_types: &[String],
+    ) -> Option<String> {
+        self.inner.choose_type(player, type_category, valid_types)
+    }
+
     fn choose_scry(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
         self.inner.choose_scry(player, cards)
     }
@@ -670,7 +781,31 @@ impl PlayerAgent for CapturingAgent {
         max: usize,
         optional: bool,
     ) -> Vec<CardId> {
-        self.inner.choose_dig(player, valid, max, optional)
+        let chosen = self.inner.choose_dig(player, valid, max, optional);
+        let options: Vec<String> = valid
+            .iter()
+            .map(|&cid| {
+                let name = self.card_name(cid);
+                format!("{name}@{}", self.parity_map.id(cid))
+            })
+            .collect();
+        let picked: Vec<String> = chosen
+            .iter()
+            .map(|&cid| {
+                let name = self.card_name(cid);
+                format!("{name}@{}", self.parity_map.id(cid))
+            })
+            .collect();
+        self.record_verbose_decision(
+            "choose_dig",
+            options,
+            if picked.is_empty() {
+                "PASS".to_string()
+            } else {
+                picked.join(",")
+            },
+        );
+        chosen
     }
 
     fn choose_reorder_library(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
@@ -690,6 +825,107 @@ impl PlayerAgent for CapturingAgent {
         self.inner.choose_random_discard(player, hand, num)
     }
 
+    fn choose_cards_for_effect(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        min: usize,
+        max: usize,
+    ) -> Vec<CardId> {
+        let chosen = self.inner.choose_cards_for_effect(player, valid, min, max);
+        let options: Vec<String> = valid
+            .iter()
+            .map(|&cid| {
+                let name = self.card_name(cid);
+                format!("{name}@{}", self.parity_map.id(cid))
+            })
+            .collect();
+        let picked: Vec<String> = chosen
+            .iter()
+            .map(|&cid| {
+                let name = self.card_name(cid);
+                format!("{name}@{}", self.parity_map.id(cid))
+            })
+            .collect();
+        self.record_verbose_decision(
+            "choose_cards_for_effect",
+            options,
+            if picked.is_empty() {
+                "PASS".to_string()
+            } else {
+                picked.join(",")
+            },
+        );
+        chosen
+    }
+
+    fn choose_single_card_for_zone_change(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        select_prompt: &str,
+        is_optional: bool,
+    ) -> Option<CardId> {
+        let chosen = self.inner.choose_single_card_for_zone_change(
+            player,
+            valid,
+            select_prompt,
+            is_optional,
+        );
+        let options: Vec<String> = valid
+            .iter()
+            .map(|&cid| {
+                let name = self.card_name(cid);
+                format!("{name}@{}", self.parity_map.id(cid))
+            })
+            .collect();
+        let picked = chosen
+            .map(|cid| {
+                let name = self.card_name(cid);
+                format!("{name}@{}", self.parity_map.id(cid))
+            })
+            .unwrap_or_else(|| "PASS".to_string());
+        self.record_verbose_decision("choose_zone_change", options, picked);
+        chosen
+    }
+
+    fn choose_cards_for_zone_change(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        min: usize,
+        max: usize,
+        _select_prompt: &str,
+    ) -> Vec<CardId> {
+        let chosen = self
+            .inner
+            .choose_cards_for_zone_change(player, valid, min, max, _select_prompt);
+        let options: Vec<String> = valid
+            .iter()
+            .map(|&cid| {
+                let name = self.card_name(cid);
+                format!("{name}@{}", self.parity_map.id(cid))
+            })
+            .collect();
+        let picked: Vec<String> = chosen
+            .iter()
+            .map(|&cid| {
+                let name = self.card_name(cid);
+                format!("{name}@{}", self.parity_map.id(cid))
+            })
+            .collect();
+        self.record_verbose_decision(
+            "choose_zone_change",
+            options,
+            if picked.is_empty() {
+                "PASS".to_string()
+            } else {
+                picked.join(",")
+            },
+        );
+        chosen
+    }
+
     fn choose_target_spell(&mut self, player: PlayerId, valid: &[u32]) -> Option<u32> {
         self.inner.choose_target_spell(player, valid)
     }
@@ -704,6 +940,14 @@ impl PlayerAgent for CapturingAgent {
     ) -> Vec<usize> {
         self.inner
             .choose_mode(player, descriptions, min, max, card_name)
+    }
+
+    fn choose_x_value(&mut self, player: PlayerId, max_x: u32, card_name: Option<&str>) -> u32 {
+        self.inner.choose_x_value(player, max_x, card_name)
+    }
+
+    fn pay_x_cost_in_mana(&self) -> bool {
+        self.inner.pay_x_cost_in_mana()
     }
 
     fn choose_optional_trigger(
@@ -762,6 +1006,51 @@ impl PlayerAgent for CapturingAgent {
             },
         );
         accept
+    }
+
+    fn confirm_payment(
+        &mut self,
+        player: PlayerId,
+        cost_kind: &str,
+        message: &str,
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        let accept = self
+            .inner
+            .confirm_payment(player, cost_kind, message, card_name, api);
+        self.record_decision(
+            "confirm_payment",
+            vec!["DECLINE".to_string(), "ACCEPT".to_string()],
+            if accept {
+                "ACCEPT".to_string()
+            } else {
+                "DECLINE".to_string()
+            },
+        );
+        accept
+    }
+
+    fn choose_binary(
+        &mut self,
+        player: PlayerId,
+        question: &str,
+        kind: BinaryChoiceKind,
+        default_choice: Option<bool>,
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        let left = format!("{}:LEFT", kind.as_str());
+        let right = format!("{}:RIGHT", kind.as_str());
+        let chosen_left =
+            self.inner
+                .choose_binary(player, question, kind, default_choice, card_name, api);
+        self.record_decision(
+            "choose_binary",
+            vec![left.clone(), right.clone()],
+            if chosen_left { left } else { right },
+        );
+        chosen_left
     }
 
     fn notify(&mut self, message: &str) {
@@ -962,7 +1251,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
         Box::new(CapturingAgent::new(
             p0,
-            false,
+            config.verbose,
             config.prefer_actions,
             Arc::clone(&shared_snapshots),
             Arc::clone(&shared_covered_cards),
@@ -975,7 +1264,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         )),
         Box::new(CapturingAgent::new(
             p1,
-            false,
+            config.verbose,
             config.prefer_actions,
             Arc::clone(&shared_snapshots),
             Arc::clone(&shared_covered_cards),

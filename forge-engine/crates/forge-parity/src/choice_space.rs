@@ -13,9 +13,9 @@ pub fn pick_one<T: Copy>(options: &[T], rng: &mut JavaRandom) -> Option<T> {
     Some(options[idx])
 }
 
-/// Pick index in [0, size). Consumes RNG for size==1 as Java does.
+/// Pick index in [0, size). Does not consume RNG when size <= 1.
 pub fn pick_index(size: usize, rng: &mut JavaRandom) -> usize {
-    if size == 0 {
+    if size <= 1 {
         return 0;
     }
     rng.next_int(size as i32) as usize
@@ -42,10 +42,7 @@ pub fn pick_weighted_index_with_pass(
     }
 }
 
-pub fn sort_native<T: Clone>(
-    native: &[T],
-    mut cmp: impl FnMut(&T, &T) -> Ordering,
-) -> Vec<T> {
+pub fn sort_native<T: Clone>(native: &[T], mut cmp: impl FnMut(&T, &T) -> Ordering) -> Vec<T> {
     let mut out = native.to_vec();
     out.sort_by(|a, b| cmp(a, b));
     out
@@ -74,7 +71,7 @@ pub fn pick_many_unique<T: Copy>(
         if pool.is_empty() {
             break;
         }
-        let idx = rng.next_int(pool.len() as i32) as usize;
+        let idx = pick_index(pool.len(), rng);
         out.push(pool.remove(idx));
     }
     out

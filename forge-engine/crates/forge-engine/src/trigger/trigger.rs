@@ -149,6 +149,10 @@ pub enum TriggerMode {
     Explored {
         valid_card: Option<String>,
     },
+    /// A creature became monstrous.
+    BecomeMonstrous {
+        valid_card: Option<String>,
+    },
     /// A player became the monarch.
     BecomeMonarch {
         valid_player: Option<String>,
@@ -847,6 +851,7 @@ impl TriggerMode {
             | TriggerMode::BecomesTarget { valid_card }
             | TriggerMode::TapsForMana { valid_card }
             | TriggerMode::Explored { valid_card }
+            | TriggerMode::BecomeMonstrous { valid_card }
             | TriggerMode::Destroyed { valid_card }
             | TriggerMode::Exiled { valid_card }
             | TriggerMode::TokenCreated { valid_card }
@@ -1385,6 +1390,10 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Explored" | "Explores" => {
             let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Explored { valid_card }
+        }
+        "BecomeMonstrous" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::BecomeMonstrous { valid_card }
         }
         "BecomeMonarch" => {
             let valid_player = params.get("ValidPlayer").cloned();

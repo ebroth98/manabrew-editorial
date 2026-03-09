@@ -2,6 +2,7 @@ use crate::combat::DefenderId;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
+use crate::spellability::AlternativeCost;
 use forge_foundation::PhaseType;
 
 /// Structured log event delivered to agents for UI/debug rendering.
@@ -98,6 +99,20 @@ impl GameLogEvent {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlayOption {
+    pub card_id: CardId,
+    pub mode: PlayCardMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PlayCardMode {
+    Normal,
+    Alternative(AlternativeCost),
+    GainLifeAlt,
+    ForetellExile,
+}
+
 /// A target choice that can be a player, a card, or nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TargetChoice {
@@ -111,8 +126,8 @@ pub enum TargetChoice {
 pub enum MainPhaseAction {
     /// Pass priority / end main phase.
     Pass,
-    /// Play a card from hand (land or spell).
-    Play(CardId),
+    /// Play a card from hand / graveyard / exile / command with a specific cast mode.
+    Play(PlayOption),
     /// Tap an untapped land on the battlefield to add its mana to the pool.
     ActivateMana(CardId),
     /// Untap a tapped land and remove its mana from the pool (undo tap).
@@ -168,7 +183,7 @@ pub trait PlayerAgent {
     fn choose_action(
         &mut self,
         player: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
@@ -183,6 +198,22 @@ pub trait PlayerAgent {
         available: &[CardId],
         possible_defenders: &[DefenderId],
     ) -> Vec<(CardId, DefenderId)>;
+
+    /// Choose which attackers to exert (Java: `PlayerController.exertAttackers`).
+    /// Input is the subset of already-declared attackers that can pay an Exert
+    /// optional attack cost. Return a subset of `attackers`.
+    /// Default: choose none.
+    fn exert_attackers(&mut self, _player: PlayerId, _attackers: &[CardId]) -> Vec<CardId> {
+        vec![]
+    }
+
+    /// Choose which attackers to enlist with (Java: `PlayerController.enlistAttackers`).
+    /// Input is the subset of already-declared attackers that can pay an Enlist
+    /// optional attack cost. Return a subset of `attackers`.
+    /// Default: choose none.
+    fn enlist_attackers(&mut self, _player: PlayerId, _attackers: &[CardId]) -> Vec<CardId> {
+        vec![]
+    }
 
     /// Choose blockers. Returns pairs of (blocker, attacker).
     fn choose_blockers(
@@ -404,6 +435,44 @@ pub trait PlayerAgent {
         false
     }
 
+    /// Java-parity cost payment confirmation hook.
+    /// Mirrors `PlayerController.confirmPayment(CostPart, String, SpellAbility)`.
+    ///
+    /// `cost_kind` should be a stable identifier for the cost part variant.
+    fn confirm_payment(
+        &mut self,
+        player: PlayerId,
+        cost_kind: &str,
+        message: &str,
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        let _ = (player, cost_kind, message, card_name, api);
+        true
+    }
+
+    /// Java-parity binary choice hook.
+    /// Mirrors `PlayerController.chooseBinary(...)`.
+    fn choose_binary(
+        &mut self,
+        player: PlayerId,
+        question: &str,
+        kind: BinaryChoiceKind,
+        _default_choice: Option<bool>,
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        let (left, right) = kind.labels();
+        self.confirm_action(
+            player,
+            Some(kind.as_str()),
+            question,
+            &[right.to_string(), left.to_string()],
+            card_name,
+            api,
+        )
+    }
+
     /// Choose whether to pay the kicker cost for a spell.
     /// `kicker_cost` is the mana cost string (e.g. "W", "2 R").
     /// `card_name` is the name of the spell being cast (for UI display).
@@ -497,6 +566,35 @@ pub trait PlayerAgent {
         valid.iter().copied().take(max).collect()
     }
 
+    /// Choose a single card for hidden-origin zone changes (e.g. library search).
+    /// Mirrors Java `chooseSingleCardForZoneChange`.
+    /// Default: delegate to `choose_cards_for_effect` with [1,1].
+    fn choose_single_card_for_zone_change(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        _select_prompt: &str,
+        _is_optional: bool,
+    ) -> Option<CardId> {
+        self.choose_cards_for_effect(player, valid, 1, 1)
+            .into_iter()
+            .next()
+    }
+
+    /// Choose multiple cards for hidden-origin zone changes (e.g. tutor multi-select).
+    /// Mirrors Java `chooseCardsForZoneChange`.
+    /// Default: delegate to `choose_cards_for_effect`.
+    fn choose_cards_for_zone_change(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        min: usize,
+        max: usize,
+        _select_prompt: &str,
+    ) -> Vec<CardId> {
+        self.choose_cards_for_effect(player, valid, min, max)
+    }
+
     /// Choose a creature/card type (for ChooseType effect).
     /// `type_category` is "Creature", "Card", "Land", etc.
     /// `valid_types` lists the legal type choices.
@@ -536,6 +634,12 @@ pub trait PlayerAgent {
     /// Default: spend all available mana (max_x).
     fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, _card_name: Option<&str>) -> u32 {
         max_x
+    }
+
+    /// Whether chosen X should be charged as generic mana in the mana-payment
+    /// step. Default engine behavior is true.
+    fn pay_x_cost_in_mana(&self) -> bool {
+        true
     }
 
     /// Choose whether to pay life instead of mana for a Phyrexian mana shard.
@@ -710,6 +814,48 @@ pub enum ManaCostAction {
     Cancel,
 }
 
+/// Java-parity binary choice kinds (`PlayerController.BinaryChoiceType`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinaryChoiceKind {
+    HeadsOrTails,
+    TapOrUntap,
+    PlayOrDraw,
+    OddsOrEvens,
+    UntapOrLeaveTapped,
+    LeftOrRight,
+    AddOrRemove,
+    IncreaseOrDecrease,
+}
+
+impl BinaryChoiceKind {
+    /// Canonical button labels for each binary choice kind.
+    pub fn labels(self) -> (&'static str, &'static str) {
+        match self {
+            BinaryChoiceKind::HeadsOrTails => ("Heads", "Tails"),
+            BinaryChoiceKind::TapOrUntap => ("Tap", "Untap"),
+            BinaryChoiceKind::PlayOrDraw => ("Play", "Draw"),
+            BinaryChoiceKind::OddsOrEvens => ("Odds", "Evens"),
+            BinaryChoiceKind::UntapOrLeaveTapped => ("Untap", "Leave tapped"),
+            BinaryChoiceKind::LeftOrRight => ("Left", "Right"),
+            BinaryChoiceKind::AddOrRemove => ("Add", "Remove"),
+            BinaryChoiceKind::IncreaseOrDecrease => ("Increase", "Decrease"),
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            BinaryChoiceKind::HeadsOrTails => "HeadsOrTails",
+            BinaryChoiceKind::TapOrUntap => "TapOrUntap",
+            BinaryChoiceKind::PlayOrDraw => "PlayOrDraw",
+            BinaryChoiceKind::OddsOrEvens => "OddsOrEvens",
+            BinaryChoiceKind::UntapOrLeaveTapped => "UntapOrLeaveTapped",
+            BinaryChoiceKind::LeftOrRight => "LeftOrRight",
+            BinaryChoiceKind::AddOrRemove => "AddOrRemove",
+            BinaryChoiceKind::IncreaseOrDecrease => "IncreaseOrDecrease",
+        }
+    }
+}
+
 /// A simple agent that always passes priority and makes no choices.
 /// Useful for testing.
 pub struct PassAgent;
@@ -727,7 +873,7 @@ impl PlayerAgent for PassAgent {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        _playable: &[CardId],
+        _playable: &[PlayOption],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],

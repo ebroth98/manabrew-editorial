@@ -109,9 +109,9 @@ impl Storage {
             "ALTER TABLE runs ADD COLUMN rust_trace TEXT;
              ALTER TABLE runs ADD COLUMN java_trace TEXT;",
         );
-        let _ = self.conn.execute_batch(
-            "ALTER TABLE runs ADD COLUMN is_fuzz INTEGER NOT NULL DEFAULT 0;",
-        );
+        let _ = self
+            .conn
+            .execute_batch("ALTER TABLE runs ADD COLUMN is_fuzz INTEGER NOT NULL DEFAULT 0;");
         Ok(())
     }
 
@@ -174,9 +174,11 @@ impl Storage {
     /// the current session, while totals/pass_rate reflect all historical data.
     pub fn stats(&self, uptime_seconds: u64, start_time_iso: &str) -> SqlResult<ContinuousStats> {
         // Preset-only stats (is_fuzz = 0)
-        let total: usize = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM runs WHERE is_fuzz = 0", [], |r| r.get(0))?;
+        let total: usize =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM runs WHERE is_fuzz = 0", [], |r| {
+                    r.get(0)
+                })?;
         let passed: usize = self.conn.query_row(
             "SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 0",
             [],
@@ -212,16 +214,18 @@ impl Storage {
             0.0
         };
 
-        let current_batch: i64 = self.conn.query_row(
-            "SELECT COALESCE(MAX(batch_id), 0) FROM runs",
-            [],
-            |r| r.get(0),
-        )?;
+        let current_batch: i64 =
+            self.conn
+                .query_row("SELECT COALESCE(MAX(batch_id), 0) FROM runs", [], |r| {
+                    r.get(0)
+                })?;
 
         // Fuzz-only stats
-        let fuzz_total: usize = self
-            .conn
-            .query_row("SELECT COUNT(*) FROM runs WHERE is_fuzz = 1", [], |r| r.get(0))?;
+        let fuzz_total: usize =
+            self.conn
+                .query_row("SELECT COUNT(*) FROM runs WHERE is_fuzz = 1", [], |r| {
+                    r.get(0)
+                })?;
         let fuzz_passed: usize = self.conn.query_row(
             "SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 1",
             [],
@@ -406,9 +410,7 @@ impl Storage {
                 |r| r.get(0),
             )
             .ok();
-        Ok(result
-            .and_then(|v| v.parse::<i64>().ok())
-            .unwrap_or(0))
+        Ok(result.and_then(|v| v.parse::<i64>().ok()).unwrap_or(0))
     }
 
     /// Update the watermark to the given run ID.
@@ -591,8 +593,7 @@ impl Storage {
             _ => MatchupStatus::Error,
         };
         let covered_json: String = row.get(11)?;
-        let covered_cards: Vec<String> =
-            serde_json::from_str(&covered_json).unwrap_or_default();
+        let covered_cards: Vec<String> = serde_json::from_str(&covered_json).unwrap_or_default();
         let seed_i64: i64 = row.get(4)?;
 
         Ok(RunRecord {
@@ -632,11 +633,7 @@ mod tests {
             seed: 42,
             status,
             snapshots_compared: 10,
-            divergence_count: if is_fail {
-                1
-            } else {
-                0
-            },
+            divergence_count: if is_fail { 1 } else { 0 },
             first_divergence: if is_fail {
                 Some(Divergence {
                     snapshot_index: 3,

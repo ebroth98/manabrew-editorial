@@ -81,7 +81,10 @@ impl GitHubIssues {
     }
 
     /// Execute a request with rate-limit-aware retry (up to 2 retries with exponential backoff).
-    async fn send_with_retry(&self, request: reqwest::RequestBuilder) -> Result<reqwest::Response, String> {
+    async fn send_with_retry(
+        &self,
+        request: reqwest::RequestBuilder,
+    ) -> Result<reqwest::Response, String> {
         let mut delay = std::time::Duration::from_secs(2);
         for attempt in 0..3u32 {
             // Clone the request builder for retry (reqwest builders are not Clone,
@@ -94,9 +97,12 @@ impl GitHubIssues {
                 .map_err(|e| format!("GitHub API request failed: {e}"))?;
 
             let status = resp.status();
-            if status == reqwest::StatusCode::FORBIDDEN || status == reqwest::StatusCode::TOO_MANY_REQUESTS {
+            if status == reqwest::StatusCode::FORBIDDEN
+                || status == reqwest::StatusCode::TOO_MANY_REQUESTS
+            {
                 // Check Retry-After or X-RateLimit-Reset header
-                let retry_secs = resp.headers()
+                let retry_secs = resp
+                    .headers()
                     .get("retry-after")
                     .or_else(|| resp.headers().get("x-ratelimit-reset"))
                     .and_then(|v| v.to_str().ok())
@@ -126,7 +132,9 @@ impl GitHubIssues {
                     continue;
                 }
                 let text = resp.text().await.unwrap_or_default();
-                return Err(format!("GitHub rate limited after retries: {status} {text}"));
+                return Err(format!(
+                    "GitHub rate limited after retries: {status} {text}"
+                ));
             }
 
             return Ok(resp);
@@ -143,14 +151,16 @@ impl GitHubIssues {
             "repo:{} is:issue label:parity-failure {} in:title",
             self.repo, normalized
         );
-        let resp = self.send_with_retry(
-            self.client
-                .get("https://api.github.com/search/issues")
-                .query(&[("q", &query), ("per_page", &"1".to_string())])
-                .header("Authorization", format!("Bearer {token}"))
-                .header("User-Agent", "forge-parity")
-                .header("Accept", "application/vnd.github+json")
-        ).await?;
+        let resp = self
+            .send_with_retry(
+                self.client
+                    .get("https://api.github.com/search/issues")
+                    .query(&[("q", &query), ("per_page", &"1".to_string())])
+                    .header("Authorization", format!("Bearer {token}"))
+                    .header("User-Agent", "forge-parity")
+                    .header("Accept", "application/vnd.github+json"),
+            )
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -187,14 +197,16 @@ impl GitHubIssues {
             "labels": ["parity-failure", "automated"],
         });
 
-        let resp = self.send_with_retry(
-            self.client
-                .post(self.api_url("/issues"))
-                .header("Authorization", format!("Bearer {token}"))
-                .header("User-Agent", "forge-parity")
-                .header("Accept", "application/vnd.github+json")
-                .json(&payload)
-        ).await?;
+        let resp = self
+            .send_with_retry(
+                self.client
+                    .post(self.api_url("/issues"))
+                    .header("Authorization", format!("Bearer {token}"))
+                    .header("User-Agent", "forge-parity")
+                    .header("Accept", "application/vnd.github+json")
+                    .json(&payload),
+            )
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();
@@ -226,14 +238,16 @@ impl GitHubIssues {
 
         let payload = serde_json::json!({ "body": body });
 
-        let resp = self.send_with_retry(
-            self.client
-                .post(self.api_url(&format!("/issues/{issue_number}/comments")))
-                .header("Authorization", format!("Bearer {token}"))
-                .header("User-Agent", "forge-parity")
-                .header("Accept", "application/vnd.github+json")
-                .json(&payload)
-        ).await?;
+        let resp = self
+            .send_with_retry(
+                self.client
+                    .post(self.api_url(&format!("/issues/{issue_number}/comments")))
+                    .header("Authorization", format!("Bearer {token}"))
+                    .header("User-Agent", "forge-parity")
+                    .header("Accept", "application/vnd.github+json")
+                    .json(&payload),
+            )
+            .await?;
 
         if !resp.status().is_success() {
             let status = resp.status();

@@ -1,4 +1,4 @@
-use super::EffectContext;
+use super::{resolve_defined_players, EffectContext};
 use crate::spellability::SpellAbility;
 
 /// `SP$ ChoosePlayer` — the activating player chooses a player.
@@ -12,16 +12,42 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let valid_players = ctx.game.alive_players();
+    let defined = sa.params.get("Defined").map(|s| s.as_str()).unwrap_or("You");
+    let choosers = resolve_defined_players(defined, controller, ctx.game);
 
-    let chosen = ctx.agents[controller.index()].choose_target_player(controller, &valid_players);
+    let valid_players: Vec<_> = if let Some(choices) = sa.params.get("Choices") {
+        resolve_defined_players(choices, controller, ctx.game)
+            .into_iter()
+            .filter(|&pid| ctx.game.player(pid).is_alive())
+            .collect()
+    } else {
+        // Match Java getPlayersInTurnOrder() ordering while excluding players
+        // no longer in game.
+        ctx.game
+            .player_order
+            .iter()
+            .copied()
+            .filter(|&pid| ctx.game.player(pid).is_alive())
+            .collect()
+    };
 
-    if let Some(chosen_pid) = chosen {
-        if let Some(source_id) = sa.source {
-            let source = ctx.game.card_mut(source_id);
-            source.chosen_player = Some(chosen_pid);
-            source.chosen_player_controller = Some(controller);
-            source.chosen_player_revealed = false;
+    for chooser in choosers {
+        if !ctx.game.player(chooser).is_alive() {
+            continue;
+        }
+        let chosen = ctx.agents[chooser.index()].choose_target_player(chooser, &valid_players);
+
+        if let Some(chosen_pid) = chosen {
+            if let Some(source_id) = sa.source {
+                let source = ctx.game.card_mut(source_id);
+                source.chosen_player = Some(chosen_pid);
+                source.chosen_player_controller = Some(chooser);
+                source.chosen_player_revealed = !sa
+                    .params
+                    .get("Secretly")
+                    .map(|v| v.eq_ignore_ascii_case("True"))
+                    .unwrap_or(false);
+            }
         }
     }
 }

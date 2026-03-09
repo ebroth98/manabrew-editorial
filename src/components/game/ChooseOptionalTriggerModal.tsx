@@ -11,7 +11,7 @@ interface ChooseOptionalTriggerModalProps {
   description: string;
   /** Name of the source card (for displaying card image). */
   cardName?: string;
-  /** Prompt context (optional_trigger or confirm_action). */
+  /** Prompt context (optional_trigger, confirm_action, confirm_payment, choose_binary). */
   promptKind?: string;
   /** Optional labels for [decline, accept] buttons. */
   optionLabels?: string[];
@@ -43,10 +43,22 @@ export function ChooseOptionalTriggerModal({
   const declineLabel = optionLabels?.[0] ?? "Decline";
   const acceptLabel = optionLabels?.[1] ?? "Accept";
   const isGenericConfirm = promptKind === "confirm_action";
-  const title = isGenericConfirm ? "Confirm Action" : "Optional Trigger";
+  const isPaymentConfirm = promptKind === "confirm_payment";
+  const isBinaryChoice = promptKind === "choose_binary";
+  const title = isGenericConfirm
+    ? "Confirm Action"
+    : isPaymentConfirm
+      ? "Confirm Payment"
+      : isBinaryChoice
+        ? "Choose One"
+        : "Optional Trigger";
   const subtitle = isGenericConfirm
     ? "Confirm whether to apply this optional action."
-    : "Do you want this ability to trigger?";
+    : isPaymentConfirm
+      ? "Confirm whether to pay this cost."
+      : isBinaryChoice
+        ? "Choose one of the two options."
+        : "Do you want this ability to trigger?";
   const metaBits = [mode, api].filter(Boolean).join(" • ");
 
   useModalKeyboard(

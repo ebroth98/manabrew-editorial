@@ -193,10 +193,17 @@ impl TriggerHandler {
                         is_permanent_spell: false,
                         cast_from_zone: None,
                     };
+                    let trigger_cost_optional = entry
+                        .spell_ability
+                        .pay_costs
+                        .as_ref()
+                        .map(|c| !c.mandatory && !c.is_zero_cost())
+                        .unwrap_or(false);
+                    let pending_optional = trigger.optional || trigger_cost_optional;
 
                     let pending = PendingTrigger {
                         entry,
-                        optional: trigger.optional,
+                        optional: pending_optional,
                         decider: host_controller,
                         description: trigger.description.clone(),
                     };
@@ -226,10 +233,17 @@ impl TriggerHandler {
                             is_permanent_spell: false,
                             cast_from_zone: None,
                         };
+                        let trigger_cost_optional = extra_entry
+                            .spell_ability
+                            .pay_costs
+                            .as_ref()
+                            .map(|c| !c.mandatory && !c.is_zero_cost())
+                            .unwrap_or(false);
+                        let pending_optional = trigger.optional || trigger_cost_optional;
                         entries.push((
                             PendingTrigger {
                                 entry: extra_entry,
-                                optional: trigger.optional,
+                                optional: pending_optional,
                                 decider: host_controller,
                                 description: trigger.description.clone(),
                             },
@@ -384,6 +398,7 @@ impl TriggerHandler {
             TriggerMode::TapsForMana { .. } => TriggerType::TapsForMana,
             TriggerMode::AbilityActivated { .. } => TriggerType::AbilityActivated,
             TriggerMode::Explored { .. } => TriggerType::Explored,
+            TriggerMode::BecomeMonstrous { .. } => TriggerType::BecomeMonstrous,
             TriggerMode::BecomeMonarch { .. } => TriggerType::BecomeMonarch,
             TriggerMode::DamageDealtOnce { .. } => TriggerType::DamageDealtOnce,
             TriggerMode::Destroyed { .. } => TriggerType::Destroyed,

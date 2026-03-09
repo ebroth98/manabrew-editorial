@@ -1,6 +1,12 @@
 use super::*;
 use forge_foundation::mana::ManaAtom;
 
+pub(crate) enum CostPaymentContext {
+    TriggerResolve,
+    ActivatedAbility,
+    ManaAbility,
+}
+
 impl GameLoop {
     pub(crate) fn emit_tap_for_mana_triggers(&mut self, player: PlayerId, tapped_lands: &[CardId]) {
         for &land_id in tapped_lands {
@@ -35,6 +41,22 @@ impl GameLoop {
         let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
         let battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
         let can_activate = |card_id: CardId, ab: &crate::ability::ActivatedAbility| {
+            // Per-game activation cap (e.g. "GameActivationLimit$ 1").
+            if let Some(limit) = ab
+                .params
+                .get("GameActivationLimit")
+                .and_then(|v| v.trim().parse::<u32>().ok())
+            {
+                let used = game
+                    .card(card_id)
+                    .activations_this_game
+                    .get(&ab.ability_index)
+                    .copied()
+                    .unwrap_or(0);
+                if used >= limit {
+                    return false;
+                }
+            }
             // PowerUp: once-per-game restriction
             if ab.params.get("PowerUp").map_or(false, |v| v == "True") {
                 let card = game.card(card_id);
@@ -48,10 +70,25 @@ impl GameLoop {
                     return false;
                 }
             }
-            if ab.params.get("SorcerySpeed").map_or(false, |v| v == "True")
-                && !can_play_sorcery
-            {
+            if ab.params.get("SorcerySpeed").map_or(false, |v| v == "True") && !can_play_sorcery {
                 return false;
+            }
+            // Activated abilities that require targets should only be offered
+            // when at least one legal target candidate exists.
+            let sa_for_target_check =
+                crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
+            if let Some(tr) = sa_for_target_check.target_restrictions.as_ref() {
+                let min_targets = tr.get_min_targets(game, &sa_for_target_check);
+                if min_targets > 0
+                    && !crate::spellability::target_restrictions::has_candidates_in_chain(
+                        game,
+                        player,
+                        &ab.ability_text,
+                        Some(card_id),
+                    )
+                {
+                    return false;
+                }
             }
             // Equip/Attach-style abilities need at least one currently legal
             // attachment target, including static CantAttach restrictions.
@@ -67,18 +104,31 @@ impl GameLoop {
                     .map(|tr| {
                         use crate::spellability::target_restrictions::{
                             can_be_targeted_by_sa, get_all_battlefield_permanents_filtered,
-                            get_all_candidates_creature_filtered, get_valid_cards_in_zone, TargetKind,
+                            get_all_candidates_creature_filtered, get_valid_cards_in_zone,
+                            TargetKind,
                         };
 
                         let candidates: Vec<CardId> = match &tr.target_kind {
-                            TargetKind::Creature(filter) => {
-                                get_all_candidates_creature_filtered(game, filter.as_deref(), player)
-                            }
+                            TargetKind::Creature(filter) => get_all_candidates_creature_filtered(
+                                game,
+                                filter.as_deref(),
+                                player,
+                            ),
                             TargetKind::Permanent(filter) => {
-                                get_all_battlefield_permanents_filtered(game, filter.as_deref(), player)
+                                get_all_battlefield_permanents_filtered(
+                                    game,
+                                    filter.as_deref(),
+                                    player,
+                                )
                             }
                             TargetKind::CardInZone { zone, filter } => {
-                                get_valid_cards_in_zone(game, *zone, player, filter.as_deref())
+                                get_valid_cards_in_zone(
+                                    game,
+                                    *zone,
+                                    player,
+                                    filter.as_deref(),
+                                    sa.source,
+                                )
                             }
                             _ => Vec::new(),
                         };
@@ -104,8 +154,10 @@ impl GameLoop {
                 .iter()
                 .any(|p| matches!(p, crate::cost::CostPart::Mana(_)));
             let mana_for_check = if needs_mana {
-                // Mirror Java ComputerUtilMana: ability host cannot fund its own
-                // mana payment via its own mana abilities during legality checks.
+                // Java parity: ComputerUtilMana.canPayManaCost(...) excludes mana
+                // abilities on the same host card as the spell/ability being paid for.
+                // Without that, cards like Gilded Goose incorrectly appear able to pay
+                // for their own non-mana activated abilities.
                 mana::calculate_available_mana_excluding(
                     self.pool(player),
                     game,
@@ -115,7 +167,14 @@ impl GameLoop {
             } else {
                 available_mana.clone()
             };
-            if !can_pay(&ab.cost, game, &mana_for_check, card_id, player) {
+            if !crate::cost::can_pay_with_ability(
+                &ab.cost,
+                game,
+                &mana_for_check,
+                card_id,
+                player,
+                Some(&sa_for_target_check),
+            ) {
                 return false;
             }
             true
@@ -290,6 +349,122 @@ impl GameLoop {
         }
     }
 
+    fn cost_part_kind(part: &CostPart) -> &'static str {
+        match part {
+            CostPart::Tap => "Tap",
+            CostPart::Untap => "Untap",
+            CostPart::Mana(_) => "Mana",
+            CostPart::PayLife(_) => "PayLife",
+            CostPart::Sacrifice { .. } => "Sacrifice",
+            CostPart::Discard { .. } => "Discard",
+            CostPart::ExileFromAnyGrave { .. } => "ExileFromAnyGrave",
+            CostPart::ExileFromSameGrave { .. } => "ExileFromSameGrave",
+            CostPart::SubCounter { .. } => "SubCounter",
+            CostPart::AddCounter { .. } => "AddCounter",
+            CostPart::Exile { .. } => "Exile",
+            CostPart::Return { .. } => "Return",
+            CostPart::TapType { .. } => "TapType",
+            CostPart::UntapType { .. } => "UntapType",
+            CostPart::PayEnergy(_) => "PayEnergy",
+            CostPart::PayShards(_) => "PayShards",
+            CostPart::DamageYou(_) => "DamageYou",
+            CostPart::Draw(_) => "Draw",
+            CostPart::Mill(_) => "Mill",
+            CostPart::Reveal { .. } => "Reveal",
+            CostPart::Exert { .. } => "Exert",
+            CostPart::GainLife(_) => "GainLife",
+            CostPart::GainControl { .. } => "GainControl",
+            CostPart::RemoveAnyCounter { .. } => "RemoveAnyCounter",
+            CostPart::Unattach => "Unattach",
+            CostPart::ExiledMoveToGrave { .. } => "ExiledMoveToGrave",
+            CostPart::AddMana { .. } => "AddMana",
+            CostPart::Waterbend { .. } => "Waterbend",
+            CostPart::ChooseColor(_) => "ChooseColor",
+            CostPart::ChooseCreatureType(_) => "ChooseCreatureType",
+            CostPart::FlipCoin(_) => "FlipCoin",
+            CostPart::RollDice { .. } => "RollDice",
+            CostPart::ExileFromStack { .. } => "ExileFromStack",
+            CostPart::CollectEvidence(_) => "CollectEvidence",
+            CostPart::Forage => "Forage",
+            CostPart::PutCardToLib { .. } => "PutCardToLib",
+            CostPart::Enlist { .. } => "Enlist",
+            CostPart::PromiseGift => "PromiseGift",
+            CostPart::RevealChosen { .. } => "RevealChosen",
+            CostPart::Behold { .. } => "Behold",
+            CostPart::Blight(_) => "Blight",
+            CostPart::ExileCtrlOrGrave { .. } => "ExileCtrlOrGrave",
+        }
+    }
+
+    fn should_confirm_payment(
+        part: &CostPart,
+        source_is_planeswalker: bool,
+        mandatory: bool,
+    ) -> bool {
+        match part {
+            // HumanCostDecision.confirmAction(...) branches
+            CostPart::AddMana { .. } => true,
+            CostPart::DamageYou(_) => true,
+            CostPart::Draw(_) => true,
+            CostPart::Exile {
+                type_filter, from, ..
+            } => {
+                type_filter == "All"
+                    || type_filter == "CARDNAME"
+                    || type_filter == "OriginalHost"
+                    || *from == ZoneType::Library
+            }
+            CostPart::Exert { type_filter, .. } => {
+                type_filter == "CARDNAME" || type_filter == "OriginalHost"
+            }
+            CostPart::FlipCoin(_) => true,
+            CostPart::Forage => true,
+            CostPart::Mill(_) => true,
+            CostPart::PayLife(_) => !mandatory,
+            CostPart::PayEnergy(_) => true,
+            CostPart::PayShards(_) => true,
+            CostPart::PutCardToLib { type_filter, .. } => {
+                type_filter == "CARDNAME" || type_filter == "OriginalHost"
+            }
+            CostPart::Return { type_filter, .. } => {
+                type_filter == "CARDNAME" || type_filter == "OriginalHost"
+            }
+            CostPart::RollDice { .. } => true,
+            CostPart::Sacrifice { type_filter, .. } => {
+                (type_filter == "CARDNAME" && !mandatory) || type_filter == "OriginalHost"
+            }
+            CostPart::SubCounter { .. } => !source_is_planeswalker,
+            CostPart::Unattach => true,
+
+            // HumanPlay.payCostDuringAbilityResolve(...) explicit branches
+            CostPart::Discard { type_filter, .. } => {
+                type_filter == "Hand" || type_filter == "Random"
+            }
+            CostPart::Mana(mana_cost) => mana_cost.is_zero(),
+            _ => false,
+        }
+    }
+
+    fn confirm_cost_part_payment(
+        &mut self,
+        game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        source: CardId,
+        part: &CostPart,
+        api: Option<&str>,
+        mandatory: bool,
+    ) -> bool {
+        let source_is_planeswalker = game.card(source).type_line.is_planeswalker();
+        if !Self::should_confirm_payment(part, source_is_planeswalker, mandatory) {
+            return true;
+        }
+        let card_name = game.card(source).card_name.clone();
+        let kind = Self::cost_part_kind(part);
+        let message = format!("Pay {} cost for {}?", kind, card_name);
+        agents[player.index()].confirm_payment(player, kind, &message, Some(&card_name), api)
+    }
+
     /// Pay the cost parts of an activated ability (tap, mana, life, sacrifice, etc.).
     /// Mirrors Java's `CostPayment.payCost()` iterating over `CostPart`s.
     pub(crate) fn pay_ability_cost(
@@ -299,7 +474,31 @@ impl GameLoop {
         player: PlayerId,
         card_id: CardId,
         cost: &crate::cost::Cost,
-    ) {
+        api: Option<&str>,
+        mandatory: bool,
+        context: CostPaymentContext,
+    ) -> bool {
+        let _ = context;
+        // Mirror Java cost-payment flow by resolving optional confirmations before
+        // mutating any game state. This avoids partially paid costs when a later
+        // cost part is declined.
+        for part in cost.parts.iter() {
+            if !self.confirm_cost_part_payment(
+                game,
+                agents,
+                player,
+                card_id,
+                part,
+                api,
+                mandatory,
+            ) {
+                return false;
+            }
+        }
+        // Java CostPayment is transactional: if any later cost part fails,
+        // previously applied parts are undone. Mirror that via full snapshot.
+        let payment_snapshot = self.make_snapshot(game, true);
+        let mut payment_ok = true;
         for part in cost.parts.clone() {
             match &part {
                 CostPart::Tap => {
@@ -318,15 +517,34 @@ impl GameLoop {
                     game.untap(card_id);
                 }
                 CostPart::Mana(mana_cost) => {
-                    let tapped = mana::auto_tap_lands(
-                        game,
-                        &mut self.mana_pools[player.index()],
-                        player,
-                        mana_cost,
-                        Some(card_id),
-                    );
+                    let reuses_reserved_source = cost.parts.iter().any(|part| {
+                        matches!(
+                            part,
+                            CostPart::Sacrifice { type_filter, .. } if type_filter == "CARDNAME"
+                        )
+                    });
+                    let tapped = if reuses_reserved_source {
+                        mana::auto_tap_lands_allow_reserved_source_reuse(
+                            game,
+                            &mut self.mana_pools[player.index()],
+                            player,
+                            mana_cost,
+                            Some(card_id),
+                        )
+                    } else {
+                        mana::auto_tap_lands(
+                            game,
+                            &mut self.mana_pools[player.index()],
+                            player,
+                            mana_cost,
+                            Some(card_id),
+                        )
+                    };
                     self.emit_tap_for_mana_triggers(player, &tapped);
-                    self.mana_pools[player.index()].try_pay(mana_cost);
+                    if !self.mana_pools[player.index()].try_pay(mana_cost) {
+                        payment_ok = false;
+                        break;
+                    }
                 }
                 CostPart::PayLife(amount) => {
                     self.pay_life_cost(game, player, *amount);
@@ -470,11 +688,8 @@ impl GameLoop {
                 }
                 CostPart::Mill(amount) => {
                     for _ in 0..*amount {
-                        let lib: Vec<CardId> =
-                            game.cards_in_zone(ZoneType::Library, player).to_vec();
-                        if let Some(&top) = lib.first() {
-                            let owner = game.card(top).owner;
-                            game.move_card(top, ZoneType::Graveyard, owner);
+                        if let Some(top) = game.zone_mut(ZoneType::Library, player).take_top() {
+                            game.move_card(top, ZoneType::Graveyard, player);
                             self.trigger_handler.run_trigger(
                                 TriggerType::Milled,
                                 RunParams {
@@ -624,8 +839,17 @@ impl GameLoop {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
                     for _ in 0..resolved_amount {
-                        let _ = agents[player.index()].flip_coin_call(player);
-                        let won = self.game_rng.next_int(2) == 0;
+                        let source_name = game.card(card_id).card_name.clone();
+                        let called_heads = agents[player.index()].choose_binary(
+                            player,
+                            "Call the coin flip",
+                            crate::agent::BinaryChoiceKind::HeadsOrTails,
+                            None,
+                            Some(&source_name),
+                            None,
+                        );
+                        let is_heads = self.game_rng.next_int(2) == 0;
+                        let won = called_heads == is_heads;
                         self.trigger_handler.run_trigger(
                             TriggerType::FlippedCoin,
                             RunParams {
@@ -689,7 +913,10 @@ impl GameLoop {
                 CostPart::CollectEvidence(amount) => {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
-                    self.pay_collect_evidence_cost(game, agents, player, resolved_amount);
+                    if !self.pay_collect_evidence_cost(game, agents, player, resolved_amount) {
+                        payment_ok = false;
+                        break;
+                    }
                 }
                 CostPart::Forage => {
                     self.pay_forage_cost(game, agents, player);
@@ -703,7 +930,7 @@ impl GameLoop {
                 } => {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
-                    self.pay_put_card_to_lib_cost(
+                    if !self.pay_put_card_to_lib_cost(
                         game,
                         agents,
                         player,
@@ -713,7 +940,9 @@ impl GameLoop {
                         *lib_pos,
                         *from,
                         *same_zone,
-                    );
+                    ) {
+                        return false;
+                    }
                 }
                 CostPart::Enlist {
                     amount,
@@ -758,6 +987,7 @@ impl GameLoop {
                         game,
                         agents,
                         player,
+                        card_id,
                         type_filter,
                         resolved_amount,
                         *exile,
@@ -784,6 +1014,11 @@ impl GameLoop {
                 }
             }
         }
+        if !payment_ok {
+            self.restore_snapshot(game, &payment_snapshot);
+            return false;
+        }
+        true
     }
 
     /// Pay additional costs from an SP$ ability line (non-mana cost parts only).
@@ -796,8 +1031,16 @@ impl GameLoop {
         player: PlayerId,
         card_id: CardId,
         spell_cost: &crate::cost::Cost,
-    ) {
+        api: Option<&str>,
+        mandatory: bool,
+    ) -> bool {
+        let payment_snapshot = self.make_snapshot(game, true);
+        let mut payment_ok = true;
         for part in spell_cost.parts.clone() {
+            // Java deterministic parity does not route confirm-payment prompts
+            // through RNG while paying spell costs; confirmPayment() returns true
+            // for spell payment context. Keep Rust aligned to avoid decision-RNG
+            // drift when spell-cost prompt timing differs between engines.
             match &part {
                 // Mana is already paid by play_card's main mana payment flow.
                 // Tap/Untap are not applicable to spell additional costs.
@@ -924,11 +1167,8 @@ impl GameLoop {
                 }
                 CostPart::Mill(amount) => {
                     for _ in 0..*amount {
-                        let lib: Vec<CardId> =
-                            game.cards_in_zone(ZoneType::Library, player).to_vec();
-                        if let Some(&top) = lib.first() {
-                            let owner = game.card(top).owner;
-                            game.move_card(top, ZoneType::Graveyard, owner);
+                        if let Some(top) = game.zone_mut(ZoneType::Library, player).take_top() {
+                            game.move_card(top, ZoneType::Graveyard, player);
                             self.trigger_handler.run_trigger(
                                 TriggerType::Milled,
                                 RunParams {
@@ -1076,8 +1316,17 @@ impl GameLoop {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
                     for _ in 0..resolved_amount {
-                        let _ = agents[player.index()].flip_coin_call(player);
-                        let won = self.game_rng.next_int(2) == 0;
+                        let source_name = game.card(card_id).card_name.clone();
+                        let called_heads = agents[player.index()].choose_binary(
+                            player,
+                            "Call the coin flip",
+                            crate::agent::BinaryChoiceKind::HeadsOrTails,
+                            None,
+                            Some(&source_name),
+                            None,
+                        );
+                        let is_heads = self.game_rng.next_int(2) == 0;
+                        let won = called_heads == is_heads;
                         self.trigger_handler.run_trigger(
                             TriggerType::FlippedCoin,
                             RunParams {
@@ -1141,7 +1390,10 @@ impl GameLoop {
                 CostPart::CollectEvidence(amount) => {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
-                    self.pay_collect_evidence_cost(game, agents, player, resolved_amount);
+                    if !self.pay_collect_evidence_cost(game, agents, player, resolved_amount) {
+                        payment_ok = false;
+                        break;
+                    }
                 }
                 CostPart::Forage => {
                     self.pay_forage_cost(game, agents, player);
@@ -1155,7 +1407,7 @@ impl GameLoop {
                 } => {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
-                    self.pay_put_card_to_lib_cost(
+                    if !self.pay_put_card_to_lib_cost(
                         game,
                         agents,
                         player,
@@ -1165,7 +1417,9 @@ impl GameLoop {
                         *lib_pos,
                         *from,
                         *same_zone,
-                    );
+                    ) {
+                        return false;
+                    }
                 }
                 CostPart::Enlist {
                     amount,
@@ -1210,6 +1464,7 @@ impl GameLoop {
                         game,
                         agents,
                         player,
+                        card_id,
                         type_filter,
                         resolved_amount,
                         *exile,
@@ -1236,6 +1491,11 @@ impl GameLoop {
                 }
             }
         }
+        if !payment_ok {
+            self.restore_snapshot(game, &payment_snapshot);
+            return false;
+        }
+        true
     }
 
     /// Pay a Waterbend cost: pay `amount` generic mana, but the player can tap
@@ -1483,37 +1743,47 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
         amount: i32,
-    ) {
+    ) -> bool {
         if amount <= 0 {
-            return;
+            return true;
         }
-        let mut remaining = amount;
-        while remaining > 0 {
-            let gy: Vec<CardId> = game
-                .cards_in_zone(ZoneType::Graveyard, player)
-                .iter()
-                .copied()
-                .filter(|&cid| can_exile_for_cost(game, cid))
-                .collect();
-            if gy.is_empty() {
-                return;
-            }
-            let chosen = agents[player.index()]
-                .choose_sacrifice(player, &gy)
-                .unwrap_or(gy[0]);
-            let mv = game.card(chosen).mana_cost.cmc() as i32;
-            let owner = game.card(chosen).owner;
-            game.move_card(chosen, ZoneType::Exile, owner);
+        // Mirror Java human-style collect-evidence selection:
+        // choose any number from graveyard, then require total CMC >= amount.
+        let valid: Vec<CardId> = game
+            .cards_in_zone(ZoneType::Graveyard, player)
+            .iter()
+            .copied()
+            .filter(|&cid| can_exile_for_cost(game, cid))
+            .collect();
+        if valid.is_empty() {
+            return false;
+        }
+
+        let selected = agents[player.index()].choose_cards_for_effect(
+            player,
+            &valid,
+            0,
+            valid.len(),
+        );
+        let chosen: Vec<CardId> = selected.into_iter().filter(|cid| valid.contains(cid)).collect();
+
+        let total_mv: i32 = chosen
+            .iter()
+            .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
+            .sum();
+        if total_mv < amount {
+            return false;
+        }
+
+        for cid in chosen {
+            let owner = game.card(cid).owner;
+            game.move_card(cid, ZoneType::Exile, owner);
             crate::ability::effects::emit_zone_trigger(
                 &mut self.trigger_handler,
-                chosen,
+                cid,
                 ZoneType::Graveyard,
                 ZoneType::Exile,
             );
-            remaining -= mv;
-        }
-        if remaining > 0 {
-            return;
         }
         self.trigger_handler.run_trigger(
             TriggerType::CollectEvidence,
@@ -1523,6 +1793,7 @@ impl GameLoop {
             },
             false,
         );
+        true
     }
 
     /// Forage as a cost: exile 3 from graveyard or sacrifice a Food.
@@ -1803,7 +2074,7 @@ impl GameLoop {
         lib_pos: i32,
         from: ZoneType,
         same_zone: bool,
-    ) {
+    ) -> bool {
         if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
             // Self payment path: move the source card itself if it's in the expected zone.
             if game.card(source).zone == from {
@@ -1813,10 +2084,12 @@ impl GameLoop {
                 } else {
                     game.put_on_bottom_of_library(source, owner);
                 }
+                return true;
             }
-            return;
+            return false;
         }
         let mut chosen_controller: Option<PlayerId> = None;
+        let mut paid = 0i32;
         for _ in 0..amount {
             let valid: Vec<CardId> = if same_zone {
                 game.players
@@ -1841,10 +2114,10 @@ impl GameLoop {
                 crate::cost::get_zone_targets(game, player, from, type_filter)
             };
             if valid.is_empty() {
-                break;
+                return false;
             }
             let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) else {
-                break;
+                return false;
             };
             if same_zone {
                 chosen_controller = Some(game.card(chosen).controller);
@@ -1862,7 +2135,9 @@ impl GameLoop {
                 origin,
                 ZoneType::Library,
             );
+            paid += 1;
         }
+        paid == amount
     }
 
     pub(crate) fn pay_exert_cost(
@@ -1934,7 +2209,7 @@ impl GameLoop {
             let valid: Vec<CardId> = crate::cost::get_enlist_targets(game, player)
                 .into_iter()
                 .filter(|&cid| {
-                    type_filter == "Creature"
+                    type_filter.eq_ignore_ascii_case("Creature")
                         || type_filter.is_empty()
                         || crate::ability::effects::matches_change_type(
                             game.card(cid),
@@ -1949,8 +2224,12 @@ impl GameLoop {
             let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) else {
                 break;
             };
+            let enlisted_power = game.card(chosen).power();
             game.tap(chosen);
             game.card_mut(source).enlisted_this_combat = true;
+            // Enlist rule text: add enlisted creature's power to attacker until end of turn.
+            // Temporary power modifiers are cleared in cleanup.
+            game.card_mut(source).power_modifier += enlisted_power;
             self.trigger_handler.run_trigger(
                 TriggerType::TapAll,
                 RunParams {
@@ -1979,6 +2258,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         type_filter: &str,
         amount: i32,
         exile: bool,
@@ -1992,6 +2272,9 @@ impl GameLoop {
                 .copied()
                 .collect();
             valid.retain(|&cid| {
+                if cid == source {
+                    return false;
+                }
                 (type_filter == "Card"
                     || type_filter.is_empty()
                     || crate::ability::effects::matches_change_type(
@@ -2366,7 +2649,19 @@ impl GameLoop {
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
     ) {
-        self.pay_ability_cost(game, agents, player, card_id, &ab.cost);
+        let api = ab.params.get("AB").map(String::as_str);
+        if !self.pay_ability_cost(
+            game,
+            agents,
+            player,
+            card_id,
+            &ab.cost,
+            api,
+            ab.cost.mandatory,
+            CostPaymentContext::ManaAbility,
+        ) {
+            return;
+        }
 
         // If this is a ManaReflected ability, delegate to the effect resolver
         if ab.params.get("AB").map_or(false, |v| v == "ManaReflected") {
@@ -2675,7 +2970,14 @@ impl GameLoop {
         // where the root AB$ Pump resolves a DB$ Effect sub-ability.
         let mut sa = crate::spellability::build_spell_ability(game, card_id, &ability_text, player);
         sa.is_activated = true;
-        sa.setup_targets(game, agents, &self.mana_pools);
+        if sa.api.as_deref() == Some("Charm")
+            && !crate::ability::effects::charm_effect::make_choices_precast(game, agents, &mut sa)
+        {
+            return;
+        }
+        if !sa.setup_targets(game, agents, &self.mana_pools) {
+            return;
+        }
 
         // Fire BecomesTarget trigger if a card was targeted
         if let Some(target_card) = sa.target_chosen.target_card {
@@ -2709,7 +3011,19 @@ impl GameLoop {
         };
 
         // Pay costs
-        self.pay_ability_cost(game, agents, player, card_id, &adjusted_cost);
+        let api = ab.params.get("AB").map(String::as_str);
+        if !self.pay_ability_cost(
+            game,
+            agents,
+            player,
+            card_id,
+            &adjusted_cost,
+            api,
+            adjusted_cost.mandatory,
+            CostPaymentContext::ActivatedAbility,
+        ) {
+            return;
+        }
 
         // Track activation count (for PowerUp once-per-game)
         game.card_mut(card_id)
@@ -2772,14 +3086,9 @@ fn shares_creature_type(game: &GameState, a: CardId, b: CardId) -> bool {
 }
 
 fn can_exile_for_cost(game: &GameState, card_id: CardId) -> bool {
-    let battlefield_cards: Vec<_> = game
-        .players
-        .iter()
-        .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
-        .map(|&cid| game.card(cid).clone())
-        .collect();
+    let static_sources = crate::cost::static_ability_source_cards(game);
     !crate::staticability::static_ability_cant_exile::cant_exile(
-        &battlefield_cards,
+        &static_sources,
         game.card(card_id),
         None,
         true,

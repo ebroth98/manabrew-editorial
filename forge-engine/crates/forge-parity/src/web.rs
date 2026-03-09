@@ -241,10 +241,7 @@ struct RegressionEntry {
 }
 
 /// Expand a regression entry's args string into individual (deck1, deck2, seed, max_turns) matchups.
-fn expand_regression_entry(
-    args: &str,
-    default_max_turns: u32,
-) -> Vec<(String, String, u64, u32)> {
+fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, String, u64, u32)> {
     let tokens: Vec<&str> = args.split_whitespace().collect();
 
     let mut matrix = false;
@@ -370,7 +367,10 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/matrix", get(matrix_handler))
         .route("/api/run/:id", get(run_handler))
         .route("/api/clusters", get(clusters_handler))
-        .route("/api/config", get(config_get_handler).post(config_post_handler))
+        .route(
+            "/api/config",
+            get(config_get_handler).post(config_post_handler),
+        )
         .route("/api/analysis/toggle", post(analysis_toggle_handler))
         .route("/api/analysis/status", get(analysis_status_handler))
         .route("/api/logs", get(logs_handler))
@@ -498,10 +498,7 @@ async fn clusters_handler(State(state): State<Arc<AppState>>) -> impl IntoRespon
                             }
                         }
                     })
-                    .or_insert(FieldCluster {
-                        field: key,
-                        ..fc
-                    });
+                    .or_insert(FieldCluster { field: key, ..fc });
             }
             // Sort by total_failures descending
             let mut result: Vec<FieldCluster> = merged.into_values().collect();
@@ -610,10 +607,17 @@ async fn analysis_status_handler(State(state): State<Arc<AppState>>) -> impl Int
     let model = cfg.llm_model.lock().unwrap().clone();
 
     // Detect backend from env
-    let backend = if std::env::var("ANTHROPIC_API_KEY").map(|k| !k.is_empty()).unwrap_or(false) {
+    let backend = if std::env::var("ANTHROPIC_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false)
+    {
         "anthropic".to_string()
-    } else if std::env::var("OPENAI_API_KEY").map(|k| !k.is_empty()).unwrap_or(false) {
-        let base = std::env::var("OPENAI_API_BASE").unwrap_or_else(|_| "https://api.openai.com".into());
+    } else if std::env::var("OPENAI_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false)
+    {
+        let base =
+            std::env::var("OPENAI_API_BASE").unwrap_or_else(|_| "https://api.openai.com".into());
         format!("openai ({})", base)
     } else {
         "none".to_string()
@@ -695,7 +699,11 @@ async fn batch_status_handler(
     let batches = state.job_queue.batches.lock().unwrap();
     match batches.get(&batch_id) {
         Some(batch) => Json(serde_json::to_value(batch).unwrap()).into_response(),
-        None => (StatusCode::NOT_FOUND, format!("Batch {} not found", batch_id)).into_response(),
+        None => (
+            StatusCode::NOT_FOUND,
+            format!("Batch {} not found", batch_id),
+        )
+            .into_response(),
     }
 }
 
@@ -709,8 +717,8 @@ async fn batch_status_handler(
 /// a model selector dropdown.
 async fn models_handler() -> impl IntoResponse {
     let api_key = std::env::var("OPENAI_API_KEY").unwrap_or_default();
-    let base_url = std::env::var("OPENAI_API_BASE")
-        .unwrap_or_else(|_| "https://api.openai.com".into());
+    let base_url =
+        std::env::var("OPENAI_API_BASE").unwrap_or_else(|_| "https://api.openai.com".into());
     let url = format!("{}/v1/models", base_url.trim_end_matches('/'));
 
     use std::sync::OnceLock;
@@ -736,19 +744,26 @@ async fn models_handler() -> impl IntoResponse {
                         .unwrap_or_default();
                     Json(serde_json::json!({ "models": models })).into_response()
                 }
-                Err(e) => {
-                    (StatusCode::BAD_GATEWAY, format!("Failed to parse models response: {e}"))
-                        .into_response()
-                }
+                Err(e) => (
+                    StatusCode::BAD_GATEWAY,
+                    format!("Failed to parse models response: {e}"),
+                )
+                    .into_response(),
             }
         }
         Ok(resp) => {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
-            (StatusCode::BAD_GATEWAY, format!("Upstream {status}: {text}")).into_response()
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("Upstream {status}: {text}"),
+            )
+                .into_response()
         }
-        Err(e) => {
-            (StatusCode::BAD_GATEWAY, format!("Failed to reach LLM provider: {e}")).into_response()
-        }
+        Err(e) => (
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to reach LLM provider: {e}"),
+        )
+            .into_response(),
     }
 }

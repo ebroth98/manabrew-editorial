@@ -194,7 +194,7 @@ mod tests {
         fn choose_action(
             &mut self,
             _: PlayerId,
-            _: &[CardId],
+            _: &[crate::agent::PlayOption],
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],

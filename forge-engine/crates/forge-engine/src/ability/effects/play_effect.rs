@@ -41,6 +41,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let ability_text = abilities.first().cloned().unwrap_or_default();
     let mut spell_sa = build_spell_ability(ctx.game, card_id, &ability_text, controller);
     spell_sa.is_spell = true;
+    if let Some(cost) = spell_sa.pay_costs.as_mut() {
+        // Java PlayEffect forces mandatory payment in non-optional branches.
+        cost.mandatory = true;
+    }
 
     // Choose targets if the spell needs them
     spell_sa.setup_targets(ctx.game, ctx.agents, ctx.mana_pools);

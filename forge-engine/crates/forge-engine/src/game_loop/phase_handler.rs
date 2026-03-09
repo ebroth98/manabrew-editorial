@@ -1,4 +1,6 @@
 use super::*;
+use super::game_action::CostPaymentContext;
+use crate::card::CounterType;
 
 impl GameLoop {
     pub(crate) fn run_turn_state_machine(
@@ -65,6 +67,29 @@ impl GameLoop {
                             is_main_phase: false,
                         },
                     );
+                    let mut had_cumulative_upkeep = false;
+                    self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                        had_cumulative_upkeep = this.process_cumulative_upkeep(game, agents);
+                        // Cumulative upkeep costs can fire triggers (e.g. FlipCoin).
+                        // Resolve those triggers in Upkeep, then return priority in
+                        // Upkeep before advancing to Draw. This mirrors Java's
+                        // phase flow around beginning-of-upkeep trigger resolution.
+                        if had_cumulative_upkeep {
+                            this.process_triggers(game, agents);
+                            while !game.stack.is_empty() {
+                                this.resolve_stack(game, agents);
+                            }
+                        }
+                    });
+                    if had_cumulative_upkeep {
+                        self.apply_turn_event(
+                            game,
+                            agents,
+                            TurnEvent::PriorityWindow {
+                                is_main_phase: false,
+                            },
+                        );
+                    }
                     TurnMachineState::Draw
                 }
                 TurnMachineState::Draw => {
@@ -210,8 +235,8 @@ impl GameLoop {
                 self.step_with_priority(game, agents, is_main_phase);
             }
             TurnEvent::UntapStep => {
-                self.with_shared_state_mutation(game, agents, |this, game, _agents| {
-                    this.step_untap(game);
+                self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                    this.step_untap(game, agents);
                 });
             }
             TurnEvent::DrawStep => {
@@ -251,7 +276,7 @@ impl GameLoop {
         }
     }
 
-    pub fn step_untap(&mut self, game: &mut GameState) {
+    pub fn step_untap(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         let active = game.active_player();
 
         // Phase-in (issue #22): phase in all phased-out permanents controlled by active player.
@@ -272,10 +297,101 @@ impl GameLoop {
                 // Exerted creatures don't untap this turn; reset flag so they untap next turn.
                 game.card_mut(cid).exerted = false;
             } else {
-                game.untap(cid);
+                let optional_keyword =
+                    "You may choose not to untap CARDNAME during your untap step.";
+                let should_untap = if game.card(cid).has_keyword(optional_keyword) {
+                    let question = format!("Untap {}?", game.card(cid).card_name);
+                    let source_name = game.card(cid).card_name.clone();
+                    agents[active.index()].choose_binary(
+                        active,
+                        &question,
+                        crate::agent::BinaryChoiceKind::UntapOrLeaveTapped,
+                        Some(true),
+                        Some(&source_name),
+                        None,
+                    )
+                } else {
+                    true
+                };
+                if should_untap {
+                    game.untap(cid);
+                }
             }
         }
         self.pool_mut(active).empty();
+    }
+
+    fn process_cumulative_upkeep(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) -> bool {
+        let active = game.active_player();
+        let permanents = game.cards_in_zone(ZoneType::Battlefield, active).to_vec();
+        let mut processed_any = false;
+
+        for card_id in permanents {
+            if game.card(card_id).zone != ZoneType::Battlefield || game.card(card_id).controller != active {
+                continue;
+            }
+
+            let cumulative_kw = game
+                .card(card_id)
+                .keywords
+                .iter()
+                .find(|kw| kw.starts_with("Cumulative upkeep:"))
+                .cloned();
+            let Some(keyword) = cumulative_kw else {
+                continue;
+            };
+            processed_any = true;
+
+            // Card script format: "Cumulative upkeep:<CostSpec>:<Reminder>"
+            let rest = &keyword["Cumulative upkeep:".len()..];
+            let Some((cost_spec, _)) = rest.split_once(':') else {
+                continue;
+            };
+            let cost = crate::cost::parse_cost(cost_spec);
+            if cost.parts.is_empty() {
+                continue;
+            }
+
+            game.card_mut(card_id).add_counter(&CounterType::Age, 1);
+            let age_counters = game.card(card_id).counter_count(&CounterType::Age).max(0);
+
+            let mut paid_all = true;
+            for _ in 0..age_counters {
+                let paid = self.pay_ability_cost(
+                    game,
+                    agents,
+                    active,
+                    card_id,
+                    &cost,
+                    None,
+                    false,
+                    CostPaymentContext::TriggerResolve,
+                );
+                if !paid {
+                    paid_all = false;
+                    break;
+                }
+            }
+
+            if !paid_all && game.card(card_id).zone == ZoneType::Battlefield {
+                let owner = game.card(card_id).owner;
+                self.trigger_handler.run_trigger(
+                    TriggerType::Sacrificed,
+                    RunParams {
+                        card: Some(card_id),
+                        player: Some(active),
+                        ..Default::default()
+                    },
+                    false,
+                );
+                game.move_card(card_id, ZoneType::Graveyard, owner);
+            }
+        }
+        processed_any
     }
 
     pub fn step_draw(&mut self, game: &mut GameState) {
@@ -510,6 +626,124 @@ impl GameLoop {
             );
         }
 
+        // Java parity: pre-mark declared attackers before optional attack-cost
+        // resolution so they are not valid enlist targets.
+        // Java does this by temporarily tapping non-vigilance attackers and
+        // treating them as attacking before OptionalAttackCost is paid.
+        let premarked_attackers: Vec<(CardId, combat::DefenderId)> = chosen_attackers.clone();
+        for &(attacker_id, def) in &premarked_attackers {
+            let defending_player = def.controlling_player(game);
+            game.card_mut(attacker_id).attacking_player = Some(defending_player);
+            if !game.card(attacker_id).has_vigilance() {
+                game.card_mut(attacker_id).tapped = true;
+            }
+        }
+
+        // Java parity: optional attack costs (Exert/Enlist) are chosen immediately
+        // after attackers are declared and before CantAttackUnless payments.
+        {
+            let declared_attackers: Vec<CardId> =
+                chosen_attackers.iter().map(|(attacker, _)| *attacker).collect();
+            let mut optional_exert_by_attacker: std::collections::HashMap<CardId, Vec<(i32, String)>> =
+                std::collections::HashMap::new();
+            let mut optional_enlist_by_attacker: std::collections::HashMap<CardId, Vec<(i32, String)>> =
+                std::collections::HashMap::new();
+
+            for &attacker in &declared_attackers {
+                let static_abilities = game.card(attacker).static_abilities.clone();
+                for st in &static_abilities {
+                    if st.mode != crate::staticability::StaticMode::OptionalAttackCost {
+                        continue;
+                    }
+                    let Some(cost_raw) = st.params.get("Cost") else {
+                        continue;
+                    };
+                    let parsed = crate::cost::parse_cost(cost_raw);
+                    for part in parsed.parts {
+                        match part {
+                            crate::cost::CostPart::Exert { amount, type_filter } => {
+                                optional_exert_by_attacker
+                                    .entry(attacker)
+                                    .or_default()
+                                    .push((amount, type_filter));
+                            }
+                            crate::cost::CostPart::Enlist { amount, type_filter } => {
+                                optional_enlist_by_attacker
+                                    .entry(attacker)
+                                    .or_default()
+                                    .push((amount, type_filter));
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+
+            let possible_exerters: Vec<CardId> = declared_attackers
+                .iter()
+                .copied()
+                .filter(|cid| optional_exert_by_attacker.contains_key(cid))
+                .collect();
+            // Match Java flow: OptionalAttackCost (Enlist) prompts are only offered
+            // when CostEnlist.canPay() is true (i.e., there is at least one current
+            // enlisting candidate). If no candidates exist, skip enlist callback to
+            // avoid consuming RNG and desyncing parity decisions.
+            let enlist_can_pay = !crate::cost::get_enlist_targets(game, active).is_empty();
+            let possible_enlisters: Vec<CardId> = if enlist_can_pay {
+                declared_attackers
+                    .iter()
+                    .copied()
+                    .filter(|cid| optional_enlist_by_attacker.contains_key(cid))
+                    .collect()
+            } else {
+                Vec::new()
+            };
+
+            if !possible_exerters.is_empty() {
+                let chosen = agents[active.index()].exert_attackers(active, &possible_exerters);
+                for attacker in chosen {
+                    if let Some(parts) = optional_exert_by_attacker.get(&attacker).cloned() {
+                        for (amount, type_filter) in parts {
+                            let resolved =
+                                crate::cost::resolve_dynamic_amount(game, attacker, active, amount);
+                            if resolved > 0 {
+                                self.pay_exert_cost(
+                                    game,
+                                    agents,
+                                    active,
+                                    attacker,
+                                    &type_filter,
+                                    resolved,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+
+            if !possible_enlisters.is_empty() {
+                let chosen = agents[active.index()].enlist_attackers(active, &possible_enlisters);
+                for attacker in chosen {
+                    if let Some(parts) = optional_enlist_by_attacker.get(&attacker).cloned() {
+                        for (amount, type_filter) in parts {
+                            let resolved =
+                                crate::cost::resolve_dynamic_amount(game, attacker, active, amount);
+                            if resolved > 0 {
+                                self.pay_enlist_cost(
+                                    game,
+                                    agents,
+                                    active,
+                                    attacker,
+                                    &type_filter,
+                                    resolved,
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Check attack costs (Propaganda, Ghostly Prison effects)
         {
             let mut cost_failures = Vec::new();
@@ -658,6 +892,16 @@ impl GameLoop {
             chosen_attackers.retain(|(id, _)| !cost_failures.contains(id));
         }
 
+        // Undo temporary attack markers for attackers removed by cost payment.
+        for &(attacker_id, _) in &premarked_attackers {
+            if !chosen_attackers.iter().any(|(id, _)| *id == attacker_id) {
+                game.card_mut(attacker_id).attacking_player = None;
+                if !game.card(attacker_id).has_vigilance() {
+                    game.card_mut(attacker_id).tapped = false;
+                }
+            }
+        }
+
         if !chosen_attackers.is_empty() {
             crate::agent::notify_all_agents(
                 agents,
@@ -686,7 +930,24 @@ impl GameLoop {
         let num_attackers = chosen_attackers.len() as i32;
         for &(attacker_id, defender) in &chosen_attackers {
             if !game.card(attacker_id).has_vigilance() {
+                // We pre-tapped attackers before OptionalAttackCost resolution to
+                // mirror Java legality checks; untap first so this tap emits the
+                // declaration-time Taps trigger once.
+                if game.card(attacker_id).tapped {
+                    game.untap(attacker_id);
+                }
                 game.tap(attacker_id);
+                // Java attacker.tap(...) emits Taps triggers when a creature becomes tapped
+                // as part of attacker declaration.
+                self.trigger_handler.run_trigger(
+                    TriggerType::Taps,
+                    RunParams {
+                        card: Some(attacker_id),
+                        player: Some(active),
+                        ..Default::default()
+                    },
+                    false,
+                );
             }
             game.card_mut(attacker_id).attacked_this_turn = true;
             // Set attacking_player to the controlling player of the defender
@@ -739,146 +1000,147 @@ impl GameLoop {
         if self.combat.has_attackers() {
             // Declare Blockers
             self.set_phase(game, agents, PhaseType::CombatDeclareBlockers);
-            let attacker_card_ids: Vec<CardId> = self.combat.attackers.iter().map(|(a, _)| *a).collect();
+            let attacker_card_ids: Vec<CardId> =
+                self.combat.attackers.iter().map(|(a, _)| *a).collect();
             let available_blockers = combat::get_available_blockers(game, defending);
             let has_any_legal_blocker =
                 !combat::filter_legal_blockers(game, &attacker_card_ids, &available_blockers)
                     .is_empty();
 
             if has_any_legal_blocker {
-                    agents[defending.index()].snapshot_state(game, &self.mana_pools);
-                    self.game_log.log(
-                        GameLogEntryType::PriorityWaiting,
-                        2,
-                        format!(
-                            "Waiting for {} blocker declaration",
-                            game.player(defending).name
-                        ),
+                agents[defending.index()].snapshot_state(game, &self.mana_pools);
+                self.game_log.log(
+                    GameLogEntryType::PriorityWaiting,
+                    2,
+                    format!(
+                        "Waiting for {} blocker declaration",
+                        game.player(defending).name
+                    ),
+                );
+                let mut chosen_blockers = {
+                    let def_agent = &mut agents[defending.index()];
+                    def_agent.choose_blockers(defending, &attacker_card_ids, &available_blockers)
+                };
+                if self.apply_pending_snapshot_restore(game, agents) {
+                    return;
+                }
+                // Ignore duplicate blocker assignments; first assignment wins.
+                let mut seen_blockers = std::collections::HashSet::new();
+                chosen_blockers.retain(|(blocker, _)| seen_blockers.insert(*blocker));
+                self.game_log.log(
+                    GameLogEntryType::PriorityResponse,
+                    2,
+                    format!(
+                        "{} declared {} blocker assignment(s)",
+                        game.player(defending).name,
+                        chosen_blockers.len()
+                    ),
+                );
+
+                for (blocker, attacker) in chosen_blockers.into_iter() {
+                    // Validate: use comprehensive evasion check
+                    if !combat::can_creature_block(game, blocker, attacker) {
+                        continue; // illegal block
+                    }
+                    self.combat.declare_blocker(blocker, attacker);
+
+                    // Fire Blocks trigger for each (blocker, attacker) pair
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Blocks,
+                        RunParams {
+                            blocker: Some(blocker),
+                            blocked_attacker: Some(attacker),
+                            card: Some(blocker),
+                            ..Default::default()
+                        },
+                        false,
                     );
-                    let mut chosen_blockers = {
-                        let def_agent = &mut agents[defending.index()];
-                        def_agent.choose_blockers(defending, &attacker_card_ids, &available_blockers)
-                    };
-                    if self.apply_pending_snapshot_restore(game, agents) {
-                        return;
-                    }
-                    // Ignore duplicate blocker assignments; first assignment wins.
-                    let mut seen_blockers = std::collections::HashSet::new();
-                    chosen_blockers.retain(|(blocker, _)| seen_blockers.insert(*blocker));
-                    self.game_log.log(
-                        GameLogEntryType::PriorityResponse,
-                        2,
-                        format!(
-                            "{} declared {} blocker assignment(s)",
-                            game.player(defending).name,
-                            chosen_blockers.len()
-                        ),
-                    );
+                }
 
-                    for (blocker, attacker) in chosen_blockers.into_iter() {
-                        // Validate: use comprehensive evasion check
-                        if !combat::can_creature_block(game, blocker, attacker) {
-                            continue; // illegal block
-                        }
-                        self.combat.declare_blocker(blocker, attacker);
-
-                        // Fire Blocks trigger for each (blocker, attacker) pair
-                        self.trigger_handler.run_trigger(
-                            TriggerType::Blocks,
-                            RunParams {
-                                blocker: Some(blocker),
-                                blocked_attacker: Some(attacker),
-                                card: Some(blocker),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                    }
-
-                    // Block cost checking (War Cadence effects)
-                    {
-                        let mut block_cost_failures = Vec::new();
-                        for &(blocker_id, attacker_id) in &self.combat.blockers {
-                            let cost = combat::block_cost::get_block_cost(
-                                &game.cards,
-                                game.card(blocker_id),
-                                game.card(attacker_id),
-                            );
-                            if cost > 0 {
-                                let controller = game.card(blocker_id).controller;
-                                let pool = &mut self.mana_pools[controller.index()];
-                                if pool.total() >= cost {
-                                    pool.spend_generic(cost);
-                                } else {
-                                    block_cost_failures.push(blocker_id);
-                                }
-                            }
-                        }
-                        self.combat
-                            .blockers
-                            .retain(|(b, _)| !block_cost_failures.contains(b));
-                    }
-
-                    // Block validation (Menace, can't block alone)
-                    let invalid_blocks = combat::validate_blocks(game, &self.combat);
-                    for (blocker_id, attacker_id) in &invalid_blocks {
-                        self.combat
-                            .blockers
-                            .retain(|(b, a)| !(b == blocker_id && a == attacker_id));
-                    }
-
-                    // Must-block enforcement: auto-assign blockers to required targets
-                    let all_legal_blockers: Vec<CardId> = available_blockers.clone();
-                    for &blocker_id in &all_legal_blockers {
-                        let must_targets =
-                            combat::compute_must_block_targets(game, &self.combat, blocker_id);
-                        if must_targets.is_empty() {
-                            continue;
-                        }
-                        let currently_blocking: Vec<CardId> = self
-                            .combat
-                            .blockers
-                            .iter()
-                            .filter(|(b, _)| *b == blocker_id)
-                            .map(|(_, a)| *a)
-                            .collect();
-                        if !must_targets.iter().any(|t| currently_blocking.contains(t)) {
-                            // Not blocking any required target — force-assign first
-                            if combat::can_creature_block(game, blocker_id, must_targets[0]) {
-                                self.combat.declare_blocker(blocker_id, must_targets[0]);
-                            }
-                        }
-                    }
-
-                    // Record damage history for blockers
+                // Block cost checking (War Cadence effects)
+                {
+                    let mut block_cost_failures = Vec::new();
                     for &(blocker_id, attacker_id) in &self.combat.blockers {
-                        game.card_mut(blocker_id).damage_history.record_block();
-                        game.card_mut(attacker_id)
-                            .damage_history
-                            .record_got_blocked();
-                    }
-
-                    // Publish finalized blocker assignments for UI snapshots in this combat.
-                    game.turn.combat_block_assignments = self.combat.blockers.clone();
-
-                    if !self.combat.blockers.is_empty() {
-                        let blockers_msg = self
-                            .combat
-                            .blockers
-                            .iter()
-                            .map(|(blocker_id, attacker_id)| {
-                                let blocker_name = game.card(*blocker_id).card_name.clone();
-                                let attacker_name = game.card(*attacker_id).card_name.clone();
-                                format!("{blocker_name} -> {attacker_name}")
-                            })
-                            .collect::<Vec<_>>()
-                            .join(", ");
-                        crate::agent::notify_all_agents(
-                            agents,
-                            crate::agent::GameLogEvent::action(format!("Blockers: {blockers_msg}"))
-                                .with_player(defending),
+                        let cost = combat::block_cost::get_block_cost(
+                            &game.cards,
+                            game.card(blocker_id),
+                            game.card(attacker_id),
                         );
+                        if cost > 0 {
+                            let controller = game.card(blocker_id).controller;
+                            let pool = &mut self.mana_pools[controller.index()];
+                            if pool.total() >= cost {
+                                pool.spend_generic(cost);
+                            } else {
+                                block_cost_failures.push(blocker_id);
+                            }
+                        }
                     }
+                    self.combat
+                        .blockers
+                        .retain(|(b, _)| !block_cost_failures.contains(b));
+                }
+
+                // Block validation (Menace, can't block alone)
+                let invalid_blocks = combat::validate_blocks(game, &self.combat);
+                for (blocker_id, attacker_id) in &invalid_blocks {
+                    self.combat
+                        .blockers
+                        .retain(|(b, a)| !(b == blocker_id && a == attacker_id));
+                }
+
+                // Must-block enforcement: auto-assign blockers to required targets
+                let all_legal_blockers: Vec<CardId> = available_blockers.clone();
+                for &blocker_id in &all_legal_blockers {
+                    let must_targets =
+                        combat::compute_must_block_targets(game, &self.combat, blocker_id);
+                    if must_targets.is_empty() {
+                        continue;
+                    }
+                    let currently_blocking: Vec<CardId> = self
+                        .combat
+                        .blockers
+                        .iter()
+                        .filter(|(b, _)| *b == blocker_id)
+                        .map(|(_, a)| *a)
+                        .collect();
+                    if !must_targets.iter().any(|t| currently_blocking.contains(t)) {
+                        // Not blocking any required target — force-assign first
+                        if combat::can_creature_block(game, blocker_id, must_targets[0]) {
+                            self.combat.declare_blocker(blocker_id, must_targets[0]);
+                        }
+                    }
+                }
+
+                // Record damage history for blockers
+                for &(blocker_id, attacker_id) in &self.combat.blockers {
+                    game.card_mut(blocker_id).damage_history.record_block();
+                    game.card_mut(attacker_id)
+                        .damage_history
+                        .record_got_blocked();
+                }
+
+                // Publish finalized blocker assignments for UI snapshots in this combat.
+                game.turn.combat_block_assignments = self.combat.blockers.clone();
+
+                if !self.combat.blockers.is_empty() {
+                    let blockers_msg = self
+                        .combat
+                        .blockers
+                        .iter()
+                        .map(|(blocker_id, attacker_id)| {
+                            let blocker_name = game.card(*blocker_id).card_name.clone();
+                            let attacker_name = game.card(*attacker_id).card_name.clone();
+                            format!("{blocker_name} -> {attacker_name}")
+                        })
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    crate::agent::notify_all_agents(
+                        agents,
+                        crate::agent::GameLogEvent::action(format!("Blockers: {blockers_msg}"))
+                            .with_player(defending),
+                    );
+                }
             }
 
             // Prompt for damage assignment order on multi-blocked attackers

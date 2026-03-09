@@ -4,6 +4,7 @@
 //! - forge/forge-harness/src/main/java/forge/harness/DeterministicController.java
 //! - forge/forge-harness/src/main/java/forge/harness/GuiRepro.java
 
+use crate::choice_space;
 use crate::java_random::JavaRandom;
 
 /// Mirrors Java ChoiceSpace.pickIntInRange(min, max, rng): inclusive range.
@@ -20,7 +21,7 @@ pub fn choose_color(valid_colors: &[String], rng: &mut JavaRandom) -> Option<Str
     if valid_colors.is_empty() {
         None
     } else {
-        let idx = rng.next_int(valid_colors.len() as i32) as usize;
+        let idx = choice_space::pick_index(valid_colors.len(), rng);
         valid_colors.get(idx).cloned()
     }
 }
@@ -30,7 +31,7 @@ pub fn choose_type(valid_types: &[String], rng: &mut JavaRandom) -> Option<Strin
     if valid_types.is_empty() {
         None
     } else {
-        let idx = rng.next_int(valid_types.len() as i32) as usize;
+        let idx = choice_space::pick_index(valid_types.len(), rng);
         valid_types.get(idx).cloned()
     }
 }
@@ -40,7 +41,7 @@ pub fn choose_card_name(valid_names: &[String], rng: &mut JavaRandom) -> Option<
     if valid_names.is_empty() {
         None
     } else {
-        let idx = rng.next_int(valid_names.len() as i32) as usize;
+        let idx = choice_space::pick_index(valid_names.len(), rng);
         valid_names.get(idx).cloned()
     }
 }
@@ -80,7 +81,7 @@ pub fn pick_many_unique<T: Copy>(
         if pool.is_empty() {
             break;
         }
-        let idx = rng.next_int(pool.len() as i32) as usize;
+        let idx = choice_space::pick_index(pool.len(), rng);
         out.push(pool.remove(idx));
     }
     out

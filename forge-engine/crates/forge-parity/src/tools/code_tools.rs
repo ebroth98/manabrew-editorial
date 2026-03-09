@@ -32,7 +32,9 @@ fn safe_resolve(root: &Path, relative: &str) -> Result<PathBuf, String> {
 ///
 /// Returns up to 30 matching lines in `file:line:content` format.
 pub fn grep_code(project_root: &Path, pattern: &str) -> String {
-    let canonical_root = project_root.canonicalize().unwrap_or_else(|_| project_root.to_path_buf());
+    let canonical_root = project_root
+        .canonicalize()
+        .unwrap_or_else(|_| project_root.to_path_buf());
     let search_dir = canonical_root.join("forge-engine");
     if !search_dir.exists() {
         return "Error: forge-engine/ directory not found".to_string();
@@ -65,7 +67,10 @@ pub fn grep_code(project_root: &Path, pattern: &str) -> String {
 
             let total = stdout.lines().count();
             if total > MAX_GREP_LINES {
-                result.push_str(&format!("\n[{} more matches truncated]", total - MAX_GREP_LINES));
+                result.push_str(&format!(
+                    "\n[{} more matches truncated]",
+                    total - MAX_GREP_LINES
+                ));
             }
             result
         }
@@ -97,7 +102,10 @@ pub fn read_file(
     let end = end_line.unwrap_or(lines.len()).min(lines.len());
 
     if start >= lines.len() {
-        return format!("Start line {start} exceeds file length ({} lines)", lines.len());
+        return format!(
+            "Start line {start} exceeds file length ({} lines)",
+            lines.len()
+        );
     }
 
     let mut result = String::new();

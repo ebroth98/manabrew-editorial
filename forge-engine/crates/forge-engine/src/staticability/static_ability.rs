@@ -82,6 +82,8 @@ pub enum StaticMode {
     MaxCounter,
     /// `Mode$ CantAttackUnless` — attacker must pay a cost to attack (Propaganda, Ghostly Prison).
     CantAttackUnless,
+    /// `Mode$ OptionalAttackCost` — optional attack payment like Exert/Enlist.
+    OptionalAttackCost,
     /// `Mode$ CantBlockUnless` — blocker must pay a cost to block (War Cadence).
     CantBlockUnless,
     /// `Mode$ ManaConvert` — spend mana as though it were mana of any color/type.
@@ -381,6 +383,7 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("CountersRemain") => StaticMode::CountersRemain,
         Some("MaxCounter") => StaticMode::MaxCounter,
         Some("CantAttackUnless") => StaticMode::CantAttackUnless,
+        Some("OptionalAttackCost") => StaticMode::OptionalAttackCost,
         Some("CantBlockUnless") => StaticMode::CantBlockUnless,
         Some("ManaConvert") => StaticMode::ManaConvert,
         Some("UnspentMana") => StaticMode::UnspentMana,

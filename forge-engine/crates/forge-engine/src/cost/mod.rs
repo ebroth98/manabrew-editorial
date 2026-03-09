@@ -2,10 +2,11 @@ use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::ability::effects::{matches_change_type, matches_valid_cards, parse_counter_type};
-use crate::card::CounterType;
+use crate::card::{CardInstance, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
+use crate::spellability::SpellAbility;
 use crate::staticability::static_ability_cant_exile::cant_exile;
 use crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life;
 use crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card;
@@ -259,6 +260,15 @@ impl CostPart {
 pub struct Cost {
     pub parts: Vec<CostPart>,
     pub has_tap: bool,
+    pub mandatory: bool,
+}
+
+impl Cost {
+    pub fn is_zero_cost(&self) -> bool {
+        self.parts.is_empty()
+            || (self.parts.len() == 1
+                && matches!(&self.parts[0], CostPart::Mana(mana) if mana.is_zero()))
+    }
 }
 
 /// Parse a Cost$ value from the DSL.
@@ -278,6 +288,7 @@ pub struct Cost {
 pub fn parse_cost(raw: &str) -> Cost {
     let mut parts = Vec::new();
     let mut has_tap = false;
+    let mut mandatory = false;
     let mut mana_tokens: Vec<&str> = Vec::new();
 
     // Split on spaces, but keep <...> groups together
@@ -290,6 +301,8 @@ pub fn parse_cost(raw: &str) -> Cost {
         } else if *token == "Q" || *token == "Untap" {
             // Q = untap cost
             parts.push(CostPart::Untap);
+        } else if *token == "Mandatory" {
+            mandatory = true;
         } else if token.starts_with("Mana<") {
             // Mana<cost[\restriction]>
             if let Some(inner) = token
@@ -820,7 +833,19 @@ pub fn parse_cost(raw: &str) -> Cost {
                 .strip_prefix("Enlist<")
                 .and_then(|s| s.strip_suffix('>'))
             {
-                let (amount, filter) = parse_amount_filter_dynamic(inner);
+                let pieces: Vec<&str> = inner.split('/').collect();
+                let amount = pieces
+                    .first()
+                    .map(|s| parse_i32_or_x(s, 1))
+                    .unwrap_or(1);
+                // Java payload is usually Enlist<1/CARDNAME/creature> where the
+                // third segment is the effective enlist target description.
+                let filter = if pieces.len() >= 3 {
+                    pieces[2]
+                } else {
+                    pieces.get(1).copied().unwrap_or("")
+                }
+                .to_string();
                 parts.push(CostPart::Enlist {
                     amount,
                     type_filter: filter,
@@ -864,7 +889,11 @@ pub fn parse_cost(raw: &str) -> Cost {
     // Sort by payment order
     parts.sort_by_key(|p| p.payment_order());
 
-    Cost { parts, has_tap }
+    Cost {
+        parts,
+        has_tap,
+        mandatory,
+    }
 }
 
 /// Parse `"amount/filter"` inner content, returning (amount, filter).
@@ -1013,7 +1042,13 @@ pub fn get_enlist_targets(game: &GameState, player: PlayerId) -> Vec<CardId> {
         .into_iter()
         .filter(|&cid| {
             let c = game.card(cid);
-            c.is_creature() && !c.tapped && !c.summoning_sick && c.attacking_player.is_none()
+            // Mirror Java CostEnlist.getCardsForEnlisting():
+            // c.canTap() && !c.isSick() && !c.isAttacking()
+            // where isSick() is false for creatures with haste.
+            c.is_creature()
+                && !c.tapped
+                && (!c.summoning_sick || c.has_haste())
+                && c.attacking_player.is_none()
         })
         .collect()
 }
@@ -1218,7 +1253,19 @@ pub fn can_pay(
     source: CardId,
     player: PlayerId,
 ) -> bool {
-    can_pay_inner(cost, game, Some(available_mana), source, player)
+    can_pay_inner(cost, game, Some(available_mana), source, player, None)
+}
+
+/// Java parity helper: canPay(cost, ability-context).
+pub fn can_pay_with_ability(
+    cost: &Cost,
+    game: &GameState,
+    available_mana: &ManaPool,
+    source: CardId,
+    player: PlayerId,
+    ability: Option<&SpellAbility>,
+) -> bool {
+    can_pay_inner(cost, game, Some(available_mana), source, player, ability)
 }
 
 /// Check if a cost can be paid ignoring mana requirements.
@@ -1229,7 +1276,7 @@ pub fn can_pay_ignoring_mana(
     source: CardId,
     player: PlayerId,
 ) -> bool {
-    can_pay_inner(cost, game, None, source, player)
+    can_pay_inner(cost, game, None, source, player, None)
 }
 
 /// Shared implementation for cost payability checks.
@@ -1240,8 +1287,10 @@ fn can_pay_inner(
     available_mana: Option<&ManaPool>,
     source: CardId,
     player: PlayerId,
+    ability: Option<&SpellAbility>,
 ) -> bool {
     let card = game.card(source);
+    let static_source_cards = static_ability_source_cards(game);
 
     for part in &cost.parts {
         match part {
@@ -1358,17 +1407,11 @@ fn can_pay_inner(
                     }
                 } else {
                     let base_filter = normalize_exile_base_filter(type_filter);
-                    let battlefield_cards: Vec<_> = game
-                        .players
-                        .iter()
-                        .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
-                        .map(|&cid| game.card(cid).clone())
-                        .collect();
                     let candidates: Vec<CardId> =
                         get_zone_targets(game, player, *from, &base_filter)
                             .into_iter()
                             .filter(|&cid| {
-                                !cant_exile(&battlefield_cards, game.card(cid), None, true)
+                                !cant_exile(&static_source_cards, game.card(cid), ability, true)
                             })
                             .collect();
                     let mut available = candidates.len() as i32;
@@ -1637,12 +1680,6 @@ fn can_pay_inner(
                 type_filter,
             } => {
                 let base_filter = normalize_exile_base_filter(type_filter);
-                let battlefield_cards: Vec<_> = game
-                    .players
-                    .iter()
-                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
-                    .map(|&cid| game.card(cid).clone())
-                    .collect();
                 // Cards in ANY player's graveyard matching filter.
                 let count = game
                     .players
@@ -1652,7 +1689,7 @@ fn can_pay_inner(
                         (base_filter == "Card"
                             || base_filter.is_empty()
                             || matches_change_type(game.card(cid), &base_filter, &[]))
-                            && !cant_exile(&battlefield_cards, game.card(cid), None, true)
+                            && !cant_exile(&static_source_cards, game.card(cid), ability, true)
                     })
                     .count() as i32;
                 if count < *amount {
@@ -1665,12 +1702,6 @@ fn can_pay_inner(
             } => {
                 let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
                 let base_filter = normalize_exile_base_filter(type_filter);
-                let battlefield_cards: Vec<_> = game
-                    .players
-                    .iter()
-                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
-                    .map(|&cid| game.card(cid).clone())
-                    .collect();
                 let mut by_owner: std::collections::HashMap<PlayerId, i32> =
                     std::collections::HashMap::new();
                 for p in &game.players {
@@ -1679,7 +1710,7 @@ fn can_pay_inner(
                             || base_filter.is_empty()
                             || matches_change_type(game.card(cid), &base_filter, &[])
                         {
-                            if cant_exile(&battlefield_cards, game.card(cid), None, true) {
+                            if cant_exile(&static_source_cards, game.card(cid), ability, true) {
                                 continue;
                             }
                             let owner = game.card(cid).owner;
@@ -1750,16 +1781,10 @@ fn can_pay_inner(
             }
             CostPart::CollectEvidence(amount) => {
                 let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                let battlefield_cards: Vec<_> = game
-                    .players
-                    .iter()
-                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
-                    .map(|&cid| game.card(cid).clone())
-                    .collect();
                 let total_mv: i32 = game
                     .cards_in_zone(ZoneType::Graveyard, player)
                     .iter()
-                    .filter(|&&cid| !cant_exile(&battlefield_cards, game.card(cid), None, true))
+                    .filter(|&&cid| !cant_exile(&static_source_cards, game.card(cid), ability, true))
                     .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
                     .sum();
                 if total_mv < resolved_amount {
@@ -1767,23 +1792,17 @@ fn can_pay_inner(
                 }
             }
             CostPart::Forage => {
-                let battlefield_cards: Vec<_> = game
-                    .players
-                    .iter()
-                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
-                    .map(|&cid| game.card(cid).clone())
-                    .collect();
                 let gy_count = game
                     .cards_in_zone(ZoneType::Graveyard, player)
                     .iter()
-                    .filter(|&&cid| !cant_exile(&battlefield_cards, game.card(cid), None, true))
+                    .filter(|&&cid| !cant_exile(&static_source_cards, game.card(cid), ability, true))
                     .count() as i32;
                 let has_food = game
                     .cards_in_zone(ZoneType::Battlefield, player)
                     .iter()
                     .any(|&cid| {
                         game.card(cid).type_line.has_subtype("Food")
-                            && !cant_sacrifice(&battlefield_cards, game.card(cid), None, true)
+                            && !cant_sacrifice(&static_source_cards, game.card(cid), ability, true)
                     });
                 if gy_count < 3 && !has_food {
                     return false;
@@ -1894,6 +1913,11 @@ fn can_pay_inner(
                 }
                 let mut count = 0i32;
                 for &cid in game.cards_in_zone(ZoneType::Hand, player) {
+                    // While casting a spell from hand, the source card itself can't be
+                    // revealed/exiled to satisfy its own Behold additional cost.
+                    if cid == source {
+                        continue;
+                    }
                     if type_filter == "Card"
                         || type_filter.is_empty()
                         || matches_change_type(game.card(cid), type_filter, &[])
@@ -1944,19 +1968,13 @@ fn can_pay_inner(
             } => {
                 let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
                 let base_filter = normalize_exile_base_filter(type_filter);
-                let battlefield_cards: Vec<_> = game
-                    .players
-                    .iter()
-                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
-                    .map(|&cid| game.card(cid).clone())
-                    .collect();
                 let bf = get_zone_targets(game, player, ZoneType::Battlefield, &base_filter)
                     .into_iter()
-                    .filter(|&cid| !cant_exile(&battlefield_cards, game.card(cid), None, true))
+                    .filter(|&cid| !cant_exile(&static_source_cards, game.card(cid), ability, true))
                     .count();
                 let gy = get_zone_targets(game, player, ZoneType::Graveyard, &base_filter)
                     .into_iter()
-                    .filter(|&cid| !cant_exile(&battlefield_cards, game.card(cid), None, true))
+                    .filter(|&cid| !cant_exile(&static_source_cards, game.card(cid), ability, true))
                     .count();
                 if ((bf + gy) as i32) < resolved_amount {
                     return false;
@@ -1966,6 +1984,31 @@ fn can_pay_inner(
     }
 
     true
+}
+
+pub fn static_ability_source_cards(game: &GameState) -> Vec<CardInstance> {
+    use std::collections::HashSet;
+
+    let mut ids: HashSet<CardId> = HashSet::new();
+    for p in &game.players {
+        for &zone in &[
+            ZoneType::Battlefield,
+            ZoneType::Graveyard,
+            ZoneType::Exile,
+            ZoneType::Command,
+        ] {
+            for &cid in game.cards_in_zone(zone, p.id) {
+                ids.insert(cid);
+            }
+        }
+    }
+    for entry in game.stack.iter() {
+        if let Some(cid) = entry.spell_ability.source {
+            ids.insert(cid);
+        }
+    }
+
+    ids.into_iter().map(|cid| game.card(cid).clone()).collect()
 }
 
 fn shares_creature_type(game: &GameState, a: CardId, b: CardId) -> bool {

@@ -147,7 +147,13 @@ pub async fn run_agent_analysis(
         let futures: Vec<_> = pending
             .iter()
             .map(|(name, args, _)| {
-                execute_tool(name, args, &config.project_root, &parity_config, llm.http_client())
+                execute_tool(
+                    name,
+                    args,
+                    &config.project_root,
+                    &parity_config,
+                    llm.http_client(),
+                )
             })
             .collect();
 
@@ -254,11 +260,7 @@ fn extract_tool_calls(msg: &mut Value) -> Vec<Value> {
         let parsed = parse_xml_tool_calls(content);
         if !parsed.is_empty() {
             // Strip <tool_call> blocks from content
-            let clean = content
-                .split("<tool_call>")
-                .next()
-                .unwrap_or("")
-                .trim();
+            let clean = content.split("<tool_call>").next().unwrap_or("").trim();
             if clean.is_empty() {
                 msg["content"] = Value::Null;
             } else {
@@ -354,11 +356,9 @@ fn trim_messages(messages: &mut Vec<Value>, ctx_size: usize) {
             if msg.get("role").and_then(|r| r.as_str()) == Some("tool") {
                 if let Some(content) = msg.get("content").and_then(|c| c.as_str()) {
                     if content.len() > 1000 {
-                        let truncated =
-                            &content[..content[..1000].rfind('\n').unwrap_or(1000)];
-                        msg["content"] = Value::String(format!(
-                            "{truncated}\n\n[Truncated for context budget]"
-                        ));
+                        let truncated = &content[..content[..1000].rfind('\n').unwrap_or(1000)];
+                        msg["content"] =
+                            Value::String(format!("{truncated}\n\n[Truncated for context budget]"));
                     }
                 }
             }
@@ -371,9 +371,7 @@ fn trim_messages(messages: &mut Vec<Value>, ctx_size: usize) {
             let role = m.get("role").and_then(|r| r.as_str()).unwrap_or("");
             role == "tool"
                 || (role == "assistant"
-                    && m.get("tool_calls")
-                        .and_then(|tc| tc.as_array())
-                        .is_some())
+                    && m.get("tool_calls").and_then(|tc| tc.as_array()).is_some())
         });
         match drop_idx {
             Some(idx) if idx >= 2 => {
@@ -663,8 +661,11 @@ mod tests {
         let llm = crate::llm::LlmClient::from_env()
             .expect("Set OPENAI_API_KEY + OPENAI_API_BASE for this test");
 
-        eprintln!("Backend: supports_tool_calling={}, ctx_size={}",
-            llm.supports_tool_calling(), llm.context_size());
+        eprintln!(
+            "Backend: supports_tool_calling={}, ctx_size={}",
+            llm.supports_tool_calling(),
+            llm.context_size()
+        );
 
         let ctx = crate::llm::ClusterContext {
             count: 3,
@@ -677,7 +678,13 @@ mod tests {
         };
 
         let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        let project_root = manifest_dir.parent().unwrap().parent().unwrap().parent().unwrap();
+        let project_root = manifest_dir
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
 
         let config = AgentConfig {
             project_root: project_root.to_path_buf(),
@@ -685,7 +692,10 @@ mod tests {
             cards_dir: None,
         };
 
-        eprintln!("\n--- Starting agent analysis (project_root: {}) ---\n", project_root.display());
+        eprintln!(
+            "\n--- Starting agent analysis (project_root: {}) ---\n",
+            project_root.display()
+        );
 
         match run_agent_analysis(&llm, &ctx, &config, llm.context_size()).await {
             Ok(result) => {
@@ -699,10 +709,19 @@ mod tests {
                 eprintln!("Severity: {}", result.analysis.severity);
 
                 // Verify the agent actually used tools
-                assert!(result.tools_called > 0, "Agent should have called at least one tool");
+                assert!(
+                    result.tools_called > 0,
+                    "Agent should have called at least one tool"
+                );
                 // Verify files_to_check contain real paths
-                assert!(!result.analysis.files_to_check.is_empty(), "Should suggest files to check");
-                assert!(!result.analysis.mechanic.is_empty(), "Should identify a mechanic");
+                assert!(
+                    !result.analysis.files_to_check.is_empty(),
+                    "Should suggest files to check"
+                );
+                assert!(
+                    !result.analysis.mechanic.is_empty(),
+                    "Should identify a mechanic"
+                );
             }
             Err(e) => {
                 eprintln!("\n=== AGENT FAILED ===");

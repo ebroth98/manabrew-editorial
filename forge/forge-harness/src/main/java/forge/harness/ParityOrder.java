@@ -2,6 +2,8 @@ package forge.harness;
 
 import forge.game.GameEntity;
 import forge.game.card.Card;
+import forge.game.spellability.AlternativeCost;
+import forge.game.spellability.OptionalCost;
 import forge.game.spellability.SpellAbility;
 
 import java.util.ArrayList;
@@ -34,13 +36,61 @@ public final class ParityOrder {
     }
 
     private static String actionSortKey(final SpellAbility sa) {
-        final String kind = sa.isLandAbility() ? "LAND"
-                : (sa.isSpell() ? "SPELL"
-                : (sa.isManaAbility() ? "MANA" : "AB"));
-        final String host = sa.getHostCard() == null ? "" : sa.getHostCard().getName();
-        final String text = sa.toUnsuppressedString() == null ? "" : sa.toUnsuppressedString();
+        final String label = actionBaseLabel(sa);
+        final String bucket = (sa.isSpell() || sa.isLandAbility()) ? "0" : "1";
         final int hostParity = ParityCardMap.parityId(sa.getHostCard());
-        return kind + "|" + host + "|" + text + "|" + hostParity;
+        final String variant = (sa.isSpell() || sa.isLandAbility())
+                ? cardModeSortKey(sa)
+                : String.format("%05d", abilityDeclarationIndex(sa));
+        final String fallback = sa.toUnsuppressedString() == null ? "" : sa.toUnsuppressedString();
+        return label + "|" + bucket + "|" + hostParity + "|" + variant + "|" + fallback;
+    }
+
+    private static String actionBaseLabel(final SpellAbility sa) {
+        final String kind = sa.isLandAbility() ? "LAND"
+                : (sa.isSpell() ? "SPELL" : (sa.isManaAbility() ? "MANA" : "AB"));
+        final String host = sa.getHostCard() == null ? "" : sa.getHostCard().getName();
+        final String fbTag = sa.isFlashback() ? "[FB]" : "";
+        return kind + ":" + host + fbTag;
+    }
+
+    private static String cardModeSortKey(final SpellAbility sa) {
+        if (sa.isOptionalCostPaid(OptionalCost.AltCost)) return "GainLifeAlt";
+        if (sa.isAlternativeCost(AlternativeCost.Flashback)) return "Flashback";
+        if (sa.isAlternativeCost(AlternativeCost.Spectacle)) return "Spectacle";
+        if (sa.isAlternativeCost(AlternativeCost.Evoke)) return "Evoke";
+        if (sa.isAlternativeCost(AlternativeCost.Dash)) return "Dash";
+        if (sa.isAlternativeCost(AlternativeCost.Blitz)) return "Blitz";
+        if (sa.isAlternativeCost(AlternativeCost.Escape)) return "Escape";
+        if (sa.isAlternativeCost(AlternativeCost.Overload)) return "Overload";
+        if (sa.isAlternativeCost(AlternativeCost.Madness)) return "Madness";
+        if (sa.isAlternativeCost(AlternativeCost.Foretold)) return "Foretell";
+        if (sa.isAlternativeCost(AlternativeCost.Emerge)) return "Emerge";
+        return "0";
+    }
+
+    private static int abilityDeclarationIndex(final SpellAbility sa) {
+        final Card host = sa.getHostCard();
+        if (host == null) {
+            return Integer.MAX_VALUE;
+        }
+        int idx = 0;
+        for (final SpellAbility base : host.getSpellAbilities()) {
+            if (base == sa) {
+                return idx;
+            }
+            idx++;
+        }
+        final String text = sa.toUnsuppressedString();
+        idx = 0;
+        for (final SpellAbility base : host.getSpellAbilities()) {
+            final String bt = base.toUnsuppressedString();
+            if (text != null && text.equals(bt)) {
+                return idx;
+            }
+            idx++;
+        }
+        return Integer.MAX_VALUE;
     }
 
     public static List<GameEntity> sortDefenders(final List<GameEntity> defenders) {

@@ -3,6 +3,7 @@ use forge_foundation::mana::ManaCost;
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::staticability::StaticMode;
@@ -126,11 +127,9 @@ pub fn compute_cost_adjustment_with_targets(
 ) -> CostAdjustment {
     let mut adj = CostAdjustment::default();
 
-    for source in game
-        .cards
-        .iter()
-        .filter(|c| c.zone == ZoneType::Battlefield)
-    {
+    for source in game.cards.iter().filter(|c| {
+        c.zone == ZoneType::Battlefield || c.id == spell_card.id
+    }) {
         for st_ab in source.static_abilities.iter() {
             let is_reduce;
             let is_set_cost;
@@ -149,6 +148,13 @@ pub fn compute_cost_adjustment_with_targets(
                 }
                 _ => continue,
             };
+
+            // Java `CostAdjustment.applyRaiseCostAbility` merges `Cost$...` directly
+            // into the spell's payable cost, not into generic mana deltas.
+            // Those parts are handled by `compute_raise_cost_parts`; skip here.
+            if st_ab.params.contains_key("Cost") {
+                continue;
+            }
 
             // ── Type$ filter ──────────────────────────────────────────
             if let Some(type_filter) = st_ab.params.get("Type") {
@@ -447,6 +453,260 @@ pub fn compute_cost_adjustment_with_targets(
     }
 
     adj
+}
+
+/// Compute additional non-standard cost parts contributed by `Mode$ RaiseCost`
+/// static abilities (Java: `CostAdjustment.applyRaiseCostAbility` with `Cost$...`).
+///
+/// Returned `Cost` can contain mana and non-mana parts. Callers should:
+/// - include mana parts in spell mana affordability/payment, and
+/// - route non-mana parts through normal additional-cost payment plumbing.
+pub fn compute_raise_cost_parts(
+    game: &GameState,
+    spell_card: &CardInstance,
+    caster: PlayerId,
+    cast_zone: ZoneType,
+) -> Option<Cost> {
+    compute_raise_cost_parts_with_targets(game, spell_card, caster, cast_zone, &[])
+}
+
+/// Like `compute_raise_cost_parts`, but checks `ValidTarget$` against chosen targets.
+pub fn compute_raise_cost_parts_with_targets(
+    game: &GameState,
+    spell_card: &CardInstance,
+    caster: PlayerId,
+    cast_zone: ZoneType,
+    targets: &[crate::ids::CardId],
+) -> Option<Cost> {
+    let mut merged_parts = Vec::new();
+    let mut has_tap = false;
+    let mut mandatory = false;
+
+    for source in game.cards.iter().filter(|c| {
+        c.zone == ZoneType::Battlefield || c.id == spell_card.id
+    }) {
+        for st_ab in source.static_abilities.iter() {
+            if st_ab.mode != StaticMode::IncreaseCost {
+                continue;
+            }
+
+            let Some(scost) = st_ab.params.get("Cost") else {
+                continue;
+            };
+
+            if let Some(type_filter) = st_ab.params.get("Type") {
+                match type_filter.to_ascii_lowercase().as_str() {
+                    "spell" => {}
+                    _ => continue,
+                }
+            }
+
+            if let Some(activator) = st_ab.params.get("Activator") {
+                match activator.to_ascii_lowercase().as_str() {
+                    "you" => {
+                        if source.controller != caster {
+                            continue;
+                        }
+                    }
+                    "opponent" => {
+                        if source.controller == caster {
+                            continue;
+                        }
+                    }
+                    _ => {}
+                }
+            } else if source.controller != caster {
+                continue;
+            }
+
+            if let Some(valid_card) = st_ab.params.get("ValidCard") {
+                if !matches_valid_card(valid_card, spell_card, source) {
+                    continue;
+                }
+            }
+
+            if let Some(zone_str) = st_ab
+                .params
+                .get("EffectZone")
+                .or_else(|| st_ab.params.get("AffectedZone"))
+            {
+                if !zone_str.eq_ignore_ascii_case("All") {
+                    let zones: Vec<&str> = zone_str.split(',').map(|s| s.trim()).collect();
+                    if !zones.iter().any(|z| zone_name_matches(cast_zone, z)) {
+                        continue;
+                    }
+                }
+            }
+
+            if let Some(condition) = st_ab.params.get("IsPresent") {
+                let present_zone = st_ab
+                    .params
+                    .get("PresentZone")
+                    .map(String::as_str)
+                    .unwrap_or("Battlefield");
+                if !check_is_present(game, caster, condition, present_zone) {
+                    continue;
+                }
+            }
+
+            if let Some(check_name) = st_ab.params.get("CheckSVar") {
+                if let Some(compare) = st_ab.params.get("SVarCompare") {
+                    let value = resolve_svar_for_cost(game, source, check_name, caster);
+                    if !compare_svar(value, compare) {
+                        continue;
+                    }
+                }
+            }
+
+            if st_ab
+                .params
+                .get("OnlyFirstSpell")
+                .map(|v| v.eq_ignore_ascii_case("True"))
+                .unwrap_or(false)
+                && game.player(caster).spells_cast_this_turn > 0
+            {
+                continue;
+            }
+
+            if let Some(condition) = st_ab.params.get("Condition") {
+                let met = match condition.as_str() {
+                    "PlayerTurn" => game.active_player() == source.controller,
+                    "NotPlayerTurn" => game.active_player() != source.controller,
+                    "Metalcraft" => {
+                        game.cards_in_zone(ZoneType::Battlefield, source.controller)
+                            .iter()
+                            .filter(|&&cid| game.card(cid).type_line.is_artifact())
+                            .count()
+                            >= 3
+                    }
+                    "Delirium" => {
+                        let gy = game.cards_in_zone(ZoneType::Graveyard, source.controller);
+                        let mut types = std::collections::HashSet::new();
+                        for &cid in gy {
+                            let c = game.card(cid);
+                            if c.is_creature() {
+                                types.insert("creature");
+                            }
+                            if c.type_line.is_instant() {
+                                types.insert("instant");
+                            }
+                            if c.type_line.is_sorcery() {
+                                types.insert("sorcery");
+                            }
+                            if c.type_line.is_artifact() {
+                                types.insert("artifact");
+                            }
+                            if c.type_line.is_enchantment() {
+                                types.insert("enchantment");
+                            }
+                            if c.is_land() {
+                                types.insert("land");
+                            }
+                            if c.type_line.is_planeswalker() {
+                                types.insert("planeswalker");
+                            }
+                        }
+                        types.len() >= 4
+                    }
+                    _ => true,
+                };
+                if !met {
+                    continue;
+                }
+            }
+
+            if let Some(valid_target) = st_ab.params.get("ValidTarget") {
+                let target_valid = if targets.is_empty() {
+                    game.cards.iter().any(|c| {
+                        c.zone == ZoneType::Battlefield
+                            && matches_valid_card(valid_target, c, source)
+                    })
+                } else {
+                    targets.iter().any(|&tid| {
+                        let target = game.card(tid);
+                        matches_valid_card(valid_target, target, source)
+                    })
+                };
+                let unless = st_ab
+                    .params
+                    .get("UnlessValidTarget")
+                    .map(|v| v.eq_ignore_ascii_case("True"))
+                    .unwrap_or(false);
+                if (unless && target_valid) || (!unless && !target_valid) {
+                    continue;
+                }
+            }
+
+            if let Some(valid_spell) = st_ab.params.get("ValidSpell") {
+                let any_match = valid_spell.split(',').any(|option| {
+                    let parts: Vec<&str> = option.trim().split('.').collect();
+                    let category = parts.first().copied().unwrap_or("");
+                    match category {
+                        "Spell" => parts.iter().skip(1).all(|attr| {
+                            matches!(attr.to_lowercase().as_str(), "bargain")
+                                .then_some(spell_card.has_keyword("Bargain"))
+                                .unwrap_or(true)
+                        }),
+                        "Activated" | "Static" => false,
+                        _ => true,
+                    }
+                });
+                if !any_match {
+                    continue;
+                }
+            }
+
+            let count: i32 = if let Some(shard_color) = st_ab.params.get("ForEachShard") {
+                let atom =
+                    forge_foundation::mana::ManaAtom::from_name(&shard_color.to_ascii_lowercase());
+                spell_card
+                    .mana_cost
+                    .shards()
+                    .iter()
+                    .filter(|s| (s.shard() & atom) != 0)
+                    .count() as i32
+            } else if st_ab
+                .params
+                .get("Relative")
+                .map(|v| v.eq_ignore_ascii_case("True"))
+                .unwrap_or(false)
+            {
+                let amount_str = st_ab
+                    .params
+                    .get("Amount")
+                    .map(String::as_str)
+                    .unwrap_or("1");
+                resolve_svar_for_cost(game, source, amount_str, caster)
+            } else {
+                st_ab
+                    .params
+                    .get("Amount")
+                    .and_then(|a| a.parse().ok())
+                    .unwrap_or(1)
+            };
+
+            if count <= 0 {
+                continue;
+            }
+
+            let parsed = parse_cost(scost);
+            for _ in 0..count {
+                merged_parts.extend(parsed.parts.clone());
+            }
+            has_tap |= parsed.has_tap;
+            mandatory |= parsed.mandatory;
+        }
+    }
+
+    if merged_parts.is_empty() {
+        None
+    } else {
+        Some(Cost {
+            parts: merged_parts,
+            has_tap,
+            mandatory,
+        })
+    }
 }
 
 // ── SVar resolution for cost adjustment context ──────────────────────

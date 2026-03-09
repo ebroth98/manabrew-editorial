@@ -34,8 +34,7 @@ pub async fn run_parity_test(
         .unwrap_or("forge/forge-gui/res/cardsfolder");
 
     // Build command
-    let parity_bin = Path::new(&config.project_root)
-        .join("target/release/forge-parity");
+    let parity_bin = Path::new(&config.project_root).join("target/release/forge-parity");
     let parity_bin_str = if parity_bin.exists() {
         parity_bin.to_string_lossy().to_string()
     } else {
@@ -52,16 +51,22 @@ pub async fn run_parity_test(
     };
 
     cmd.args([
-        "--deck1", deck1,
-        "--deck2", deck2,
-        "--seed", &seed.to_string(),
-        "--java-jar", &java_jar,
-        "--cards-dir", cards_dir,
+        "--deck1",
+        deck1,
+        "--deck2",
+        deck2,
+        "--seed",
+        &seed.to_string(),
+        "--java-jar",
+        &java_jar,
+        "--cards-dir",
+        cards_dir,
     ]);
 
     // Set JAVA_HOME for zulu-18 (critical for Java harness)
-    let java_home = std::env::var("JAVA_HOME")
-        .unwrap_or_else(|_| "/Library/Java/JavaVirtualMachines/zulu-18.jdk/Contents/Home".to_string());
+    let java_home = std::env::var("JAVA_HOME").unwrap_or_else(|_| {
+        "/Library/Java/JavaVirtualMachines/zulu-18.jdk/Contents/Home".to_string()
+    });
     cmd.env("JAVA_HOME", &java_home);
 
     cmd.current_dir(&config.project_root);

@@ -22,11 +22,14 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{
+    BinaryChoiceKind, MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
+};
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
+use forge_engine_core::spellability::AlternativeCost;
 use forge_foundation::PhaseType;
 
 use crate::choice_space;
@@ -68,6 +71,12 @@ struct GameSnapshot {
     card_names: Vec<(CardId, String)>,
     card_is_land: Vec<(CardId, bool)>,
     ability_is_mana: Vec<((CardId, usize), bool)>,
+}
+
+#[derive(Clone, Copy)]
+enum ActionChoice {
+    Card(PlayOption),
+    Ability(CardId, usize),
 }
 
 impl DeterministicAgent {
@@ -126,6 +135,79 @@ impl DeterministicAgent {
         false
     }
 
+    fn ability_sort_text(&self, card_id: CardId, ability_idx: usize) -> String {
+        if let Some(ref snap) = self.last_game_snapshot {
+            let card = snap.game.card(card_id);
+            if let Some(ab) = card
+                .activated_abilities
+                .iter()
+                .find(|ab| ab.ability_index == ability_idx)
+            {
+                return ab.ability_text.clone();
+            }
+        }
+        String::new()
+    }
+
+    fn play_option_label(&self, play: PlayOption) -> String {
+        if self.is_land(play.card_id) {
+            return format!("LAND:{}", self.card_name(play.card_id));
+        }
+        let fb_tag = match play.mode {
+            PlayCardMode::Alternative(AlternativeCost::Flashback) => "[FB]",
+            _ => "",
+        };
+        format!("SPELL:{}{}", self.card_name(play.card_id), fb_tag)
+    }
+
+    fn play_option_sort_text(play: PlayOption) -> &'static str {
+        match play.mode {
+            PlayCardMode::Normal => "0",
+            PlayCardMode::Alternative(AlternativeCost::Flashback) => {
+                "Flashback"
+            }
+            PlayCardMode::Alternative(AlternativeCost::Spectacle) => {
+                "Spectacle"
+            }
+            PlayCardMode::Alternative(AlternativeCost::Evoke) => "Evoke",
+            PlayCardMode::Alternative(AlternativeCost::Dash) => "Dash",
+            PlayCardMode::Alternative(AlternativeCost::Blitz) => "Blitz",
+            PlayCardMode::Alternative(AlternativeCost::Escape) => "Escape",
+            PlayCardMode::Alternative(AlternativeCost::Overload) => {
+                "Overload"
+            }
+            PlayCardMode::Alternative(AlternativeCost::Madness) => "Madness",
+            PlayCardMode::Alternative(AlternativeCost::Foretell) => {
+                "Foretell"
+            }
+            PlayCardMode::Alternative(AlternativeCost::Emerge) => "Emerge",
+            PlayCardMode::Alternative(AlternativeCost::Suspend) => "Suspend",
+            PlayCardMode::GainLifeAlt => "GainLifeAlt",
+            PlayCardMode::ForetellExile => "ForetellExile",
+        }
+    }
+
+    fn action_sort_key(&self, choice: &ActionChoice) -> String {
+        match *choice {
+            ActionChoice::Card(play) => {
+                let label = self.play_option_label(play);
+                format!(
+                    "{}|0|{}|{}|",
+                    label,
+                    self.parity_map.id(play.card_id),
+                    Self::play_option_sort_text(play),
+                )
+            }
+            ActionChoice::Ability(card_id, ability_idx) => format!(
+                "AB:{}|1|{}|{:05}|{}",
+                self.card_name(card_id),
+                self.parity_map.id(card_id),
+                ability_idx,
+                self.ability_sort_text(card_id, ability_idx),
+            ),
+        }
+    }
+
     fn legal_attackers_for_blocker(&self, blocker: CardId, attackers: &[CardId]) -> Vec<CardId> {
         let Some(ref snap) = self.last_game_snapshot else {
             return attackers.to_vec();
@@ -133,7 +215,9 @@ impl DeterministicAgent {
         attackers
             .iter()
             .copied()
-            .filter(|&attacker| forge_engine_core::combat::can_creature_block(&snap.game, blocker, attacker))
+            .filter(|&attacker| {
+                forge_engine_core::combat::can_creature_block(&snap.game, blocker, attacker)
+            })
             .collect()
     }
 
@@ -205,7 +289,7 @@ impl PlayerAgent for DeterministicAgent {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
@@ -215,11 +299,6 @@ impl PlayerAgent for DeterministicAgent {
             return MainPhaseAction::Pass;
         }
 
-        #[derive(Clone, Copy)]
-        enum ActionChoice {
-            Card(CardId),
-            Ability(CardId, usize),
-        }
         // Match Java harness ActionSpace: omit explicit mana abilities from the
         // deterministic main action space.
         let filtered_activatable: Vec<(CardId, usize)> = activatable
@@ -239,18 +318,8 @@ impl PlayerAgent for DeterministicAgent {
                     .map(|(card_id, idx)| ActionChoice::Ability(card_id, idx)),
             )
             .collect();
-        let choices = choice_space::sort_native(&choices, |a, b| {
-            let key = |c: &ActionChoice| match *c {
-                ActionChoice::Card(cid) => {
-                    let kind = if self.is_land(cid) { "LAND" } else { "SPELL" };
-                    format!("{kind}|{}|{}", self.card_name(cid), self.parity_map.id(cid))
-                }
-                ActionChoice::Ability(cid, idx) => {
-                    format!("AB|{}|{}|{}", self.card_name(cid), idx, self.parity_map.id(cid))
-                }
-            };
-            key(a).cmp(&key(b))
-        });
+        let choices =
+            choice_space::sort_native(&choices, |a, b| self.action_sort_key(a).cmp(&self.action_sort_key(b)));
         if choices.is_empty() {
             self.log_decision("Main phase: PASS (no non-mana actions)");
             return MainPhaseAction::Pass;
@@ -275,13 +344,7 @@ impl PlayerAgent for DeterministicAgent {
                 let opts: Vec<String> = choices
                     .iter()
                     .map(|c| match *c {
-                        ActionChoice::Card(cid) => {
-                            if self.is_land(cid) {
-                                format!("LAND:{}", self.card_name(cid))
-                            } else {
-                                format!("SPELL:{}", self.card_name(cid))
-                            }
-                        }
+                        ActionChoice::Card(cid) => self.play_option_label(cid),
                         ActionChoice::Ability(cid, _) => format!("AB:{}", self.card_name(cid)),
                     })
                     .collect();
@@ -302,7 +365,7 @@ impl PlayerAgent for DeterministicAgent {
 
         match choices[chosen_idx] {
             ActionChoice::Card(chosen) => {
-                let name = self.card_name(chosen);
+                let name = self.card_name(chosen.card_id);
                 self.log_decision(&format!(
                     "Main phase: PLAY {} (random idx={})",
                     name, chosen_idx
@@ -345,8 +408,10 @@ impl PlayerAgent for DeterministicAgent {
                     );
                 }
                 if roll == 1 {
-                    let def_idx =
-                        choice_space::pick_index(possible_defenders.len(), &mut self.rng.borrow_mut());
+                    let def_idx = choice_space::pick_index(
+                        possible_defenders.len(),
+                        &mut self.rng.borrow_mut(),
+                    );
                     if self.verbose {
                         eprintln!(
                             "[parity-agent p{}] atk defender {} idx={}/{}",
@@ -372,6 +437,29 @@ impl PlayerAgent for DeterministicAgent {
         attackers
     }
 
+    fn exert_attackers(&mut self, _player: PlayerId, attackers: &[CardId]) -> Vec<CardId> {
+        if attackers.is_empty() {
+            return vec![];
+        }
+        let mut out = Vec::new();
+        let mut rng = self.rng.borrow_mut();
+        for &attacker in attackers {
+            if gui_repro::pick_bool(&mut rng) {
+                out.push(attacker);
+            }
+        }
+        out
+    }
+
+    fn enlist_attackers(&mut self, _player: PlayerId, attackers: &[CardId]) -> Vec<CardId> {
+        if attackers.is_empty() {
+            return vec![];
+        }
+        choice_space::pick_one(attackers, &mut self.rng.borrow_mut())
+            .into_iter()
+            .collect()
+    }
+
     fn choose_blockers(
         &mut self,
         _player: PlayerId,
@@ -394,8 +482,10 @@ impl PlayerAgent for DeterministicAgent {
         let mut pairs = Vec::new();
         for &blocker in &sorted_blockers {
             let legal_attackers = self.legal_attackers_for_blocker(blocker, &sorted_attackers);
-            let choice =
-                choice_space::pick_index_with_pass(legal_attackers.len(), &mut self.rng.borrow_mut());
+            let choice = choice_space::pick_index_with_pass(
+                legal_attackers.len(),
+                &mut self.rng.borrow_mut(),
+            );
             if choice > 0 && choice <= legal_attackers.len() {
                 pairs.push((blocker, legal_attackers[choice - 1]));
             }
@@ -438,8 +528,10 @@ impl PlayerAgent for DeterministicAgent {
             }
             return None;
         }
-        let attacker =
-            combat_choice_space::pick_single_blocker_target(&legal_attackers, &mut self.rng.borrow_mut());
+        let attacker = combat_choice_space::pick_single_blocker_target(
+            &legal_attackers,
+            &mut self.rng.borrow_mut(),
+        );
         if attacker.is_none() {
             if self.verbose {
                 self.log_decision("Blockers: NONE (random)");
@@ -552,6 +644,47 @@ impl PlayerAgent for DeterministicAgent {
         accept
     }
 
+    fn confirm_payment(
+        &mut self,
+        _player: PlayerId,
+        cost_kind: &str,
+        message: &str,
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
+        self.log_decision(&format!(
+            "Confirm payment {} (cost_kind={}, api={:?}): {} [{}]",
+            if accept { "ACCEPTED" } else { "DECLINED" },
+            cost_kind,
+            api,
+            message,
+            card_name.unwrap_or("?")
+        ));
+        accept
+    }
+
+    fn choose_binary(
+        &mut self,
+        _player: PlayerId,
+        question: &str,
+        kind: BinaryChoiceKind,
+        _default_choice: Option<bool>,
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        let chosen_left = choice_space::pick_bool(&mut self.rng.borrow_mut());
+        self.log_decision(&format!(
+            "Choose binary {} (kind={}, api={:?}): {} [{}]",
+            if chosen_left { "LEFT" } else { "RIGHT" },
+            kind.as_str(),
+            api,
+            question,
+            card_name.unwrap_or("?")
+        ));
+        chosen_left
+    }
+
     // ── Fixed overrides that sort alphabetically (matching Java) but use no RNG ──
 
     fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
@@ -640,6 +773,14 @@ impl PlayerAgent for DeterministicAgent {
         ))
     }
 
+    fn choose_x_value(&mut self, _player: PlayerId, max_x: u32, _card_name: Option<&str>) -> u32 {
+        max_x
+    }
+
+    fn pay_x_cost_in_mana(&self) -> bool {
+        false
+    }
+
     fn choose_cards_for_effect(
         &mut self,
         _player: PlayerId,
@@ -651,6 +792,39 @@ impl PlayerAgent for DeterministicAgent {
             return vec![];
         }
         gui_repro::pick_many_unique(valid, min, max, &mut self.rng.borrow_mut())
+    }
+
+    fn choose_single_card_for_zone_change(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        _select_prompt: &str,
+        _is_optional: bool,
+    ) -> Option<CardId> {
+        let sorted = choice_space::sort_native(valid, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        self.choose_cards_for_effect(player, &sorted, 1, 1)
+            .into_iter()
+            .next()
+    }
+
+    fn choose_cards_for_zone_change(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        min: usize,
+        max: usize,
+        _select_prompt: &str,
+    ) -> Vec<CardId> {
+        let sorted = choice_space::sort_native(valid, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        self.choose_cards_for_effect(player, &sorted, min, max)
     }
 
     fn choose_mode(
@@ -753,15 +927,14 @@ mod tests {
 
     #[test]
     fn always_keeps_hand() {
-        let mut agent =
-            DeterministicAgent::new(
-                PlayerId(0),
-                false,
-                make_rng(42),
-                make_rng(42),
-                false,
-                Arc::new(ParityCardMap::default()),
-            );
+        let mut agent = DeterministicAgent::new(
+            PlayerId(0),
+            false,
+            make_rng(42),
+            make_rng(42),
+            false,
+            Arc::new(ParityCardMap::default()),
+        );
         assert!(agent.mulligan_decision(PlayerId(0), &[], 0));
     }
 

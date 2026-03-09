@@ -39,12 +39,18 @@ public final class ChoiceSpace {
         if (options == null || options.isEmpty()) {
             return null;
         }
+        if (options.size() == 1) {
+            return options.get(0);
+        }
         return options.get(rng.nextInt(options.size()));
     }
 
     public static <T> T pickOne(final List<T> options, final Random rng) {
         if (options == null || options.isEmpty()) {
             return null;
+        }
+        if (options.size() == 1) {
+            return options.get(0);
         }
         return options.get(rng.nextInt(options.size()));
     }
@@ -77,7 +83,7 @@ public final class ChoiceSpace {
         final int count = pickCount(min, max, pool.size(), rng);
         final CardCollection out = new CardCollection();
         for (int i = 0; i < count && !pool.isEmpty(); i++) {
-            out.add(pool.remove(rng.nextInt(pool.size())));
+            out.add(pool.remove(pickIndex(pool.size(), rng)));
         }
         return out;
     }
@@ -92,10 +98,13 @@ public final class ChoiceSpace {
         return rng.nextInt(2) == 1;
     }
 
-    /** Pick an index in [0, size). Consumes RNG even when size == 1. */
+    /** Pick an index in [0, size). Does not consume RNG when size <= 1. */
     public static int pickIndex(final int size, final Random rng) {
         if (size <= 0) {
             return -1;
+        }
+        if (size == 1) {
+            return 0;
         }
         return rng.nextInt(size);
     }

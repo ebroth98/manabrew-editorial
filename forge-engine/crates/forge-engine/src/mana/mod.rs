@@ -7,9 +7,15 @@ use crate::cost::CostPart;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
+pub mod auto_pay;
 pub mod computer_util_mana;
 pub(crate) mod mana_cost_being_paid;
-pub use computer_util_mana::{auto_tap_lands, auto_tap_lands_generic};
+pub use auto_pay::pay_mana_cost_auto;
+pub use computer_util_mana::{
+    auto_tap_lands,
+    auto_tap_lands_allow_reserved_source_reuse,
+    auto_tap_lands_generic,
+};
 
 /// An individual mana object in the pool, tracking source and properties.
 #[derive(Debug, Clone)]
@@ -1199,6 +1205,10 @@ pub fn calculate_available_mana_excluding(
                     && (!is_tapped || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
                     && (!summoning_sick
                         || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
+                    // Mirror Java ComputerUtilMana playability checks:
+                    // only count mana abilities whose non-mana costs are currently payable
+                    // (e.g. Gilded Goose needs a Food to produce mana).
+                    && crate::cost::can_pay_ignoring_mana(&ab.cost, game, card_id, player)
             })
             .collect();
 

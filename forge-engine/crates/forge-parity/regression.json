@@ -1,5 +1,9 @@
 [
   {
+    "name": "3-seed matrix (5 decks)",
+    "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,trigger_expanded --max-turns 10"
+  },
+  {
     "name": "basic_red_vs_green",
     "args": "--deck1 red_burn --deck2 green_stompy --games 10 --max-turns 30"
   },
@@ -10,5 +14,9 @@
   {
       "name": "tokens",
       "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 10"
+  },
+  {
+    "name": "payments",
+    "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 10"
   }
 ]

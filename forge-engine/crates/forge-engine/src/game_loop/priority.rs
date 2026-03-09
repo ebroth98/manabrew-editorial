@@ -15,8 +15,8 @@ impl GameLoop {
         };
         match action {
             MainPhaseAction::Pass => "Pass".to_string(),
-            MainPhaseAction::Play(card_id) => {
-                format!("Play {}", card_name_or_id(card_id))
+            MainPhaseAction::Play(play) => {
+                format!("Play {}", card_name_or_id(play.card_id))
             }
             MainPhaseAction::ActivateMana(card_id) => {
                 format!("Activate mana ({})", card_name_or_id(card_id))
@@ -86,13 +86,13 @@ impl GameLoop {
                         game.turn.priority_player = priority_player;
                     });
                 }
-                MainPhaseAction::Play(card_id) => {
+                MainPhaseAction::Play(play) => {
                     self.log_priority_response(
                         game,
                         priority_player,
                         &self.describe_priority_action(game, action, None),
                     );
-                    if !action_space.playable.contains(&card_id) {
+                    if !action_space.playable.contains(&play) {
                         crate::agent::notify_all_agents(
                             agents,
                             crate::agent::GameLogEvent::warning(
@@ -109,7 +109,7 @@ impl GameLoop {
                     }
                     let played =
                         self.with_shared_state_mutation(game, agents, |this, game, agents| {
-                            this.play_card(game, agents, priority_player, card_id)
+                            this.play_card(game, agents, priority_player, play.card_id, play.mode)
                         });
                     if let Some((played_id, played_name)) = played {
                         let set_code = game.card(played_id).set_code.clone().unwrap_or_default();
@@ -131,19 +131,19 @@ impl GameLoop {
                         });
                         passed_count = 0;
                     } else {
-                        // Payment failed — treat as a pass to avoid infinite retry loop
+                        // Cast/setup failed (e.g. target/mode invalid) — keep priority on the
+                        // same player. Mirrors Java deterministic play flow where failed casts
+                        // do not auto-pass.
                         crate::agent::notify_all_agents(
                             agents,
                             crate::agent::GameLogEvent::warning(
-                                "Card play failed (insufficient mana)",
+                                "Card play failed",
                             )
                             .with_player(priority_player),
                         );
-                        passed_count += 1;
-                        priority_player = game.next_player(priority_player);
-                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
-                            game.turn.priority_player = priority_player;
-                        });
+                        // Important: do not reset pass progression on failed cast.
+                        // Java PhaseHandler only resets first-priority tracking on
+                        // successful play; failed play leaves pass state intact.
                     }
                 }
                 MainPhaseAction::ActivateMana(land_id) => {

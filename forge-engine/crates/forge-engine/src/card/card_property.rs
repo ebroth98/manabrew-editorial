@@ -45,6 +45,10 @@ fn matches_single_property(
         "OppCtrl" => card.controller != source_controller,
         "YouCtrl" => card.controller == source_controller,
         "YouDontCtrl" => card.controller != source_controller,
+        // Combat qualifier used by scripts such as Stalking Leonin
+        // (`ValidTgts$ Creature.attackingYou`): card must currently be
+        // attacking the source controller.
+        "attackingYou" => card.attacking_player == Some(source_controller),
         "Other" => true, // "Other" means "not self" — handled at call site
         // Type-based filters
         "nonLand" => !card.type_line.is_land(),
@@ -52,6 +56,36 @@ fn matches_single_property(
         "nonArtifact" => !card.type_line.is_artifact(),
         _ => {
             let lower = property.to_ascii_lowercase();
+            if let Some(rest) = lower.strip_prefix("cmcge") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() >= n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("cmcgt") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() > n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("cmcle") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() <= n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("cmclt") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() < n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("cmceq") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() == n;
+                }
+                return false;
+            }
             if let Some(color_name) = lower.strip_prefix("non") {
                 let excluded = ColorSet::from_names(color_name);
                 !card.color.shares_color_with(excluded)
@@ -171,5 +205,31 @@ mod tests {
             "Creature.YouCtrl",
             PlayerId(0)
         ));
+    }
+
+    #[test]
+    fn cmc_comparators() {
+        use crate::ids::CardId;
+
+        let creature = CardInstance::new(
+            CardId(3),
+            "Hill Giant".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Creature - Giant"),
+            ManaCost::parse("3 R"),
+            ColorSet::RED,
+            Some(3),
+            Some(3),
+            vec![],
+            vec![],
+        );
+
+        assert!(card_has_property(&creature, "cmcGE3", PlayerId(0)));
+        assert!(card_has_property(&creature, "cmcGT2", PlayerId(0)));
+        assert!(card_has_property(&creature, "cmcLE4", PlayerId(0)));
+        assert!(card_has_property(&creature, "cmcLT5", PlayerId(0)));
+        assert!(card_has_property(&creature, "cmcEQ4", PlayerId(0)));
+        assert!(!card_has_property(&creature, "cmcGE5", PlayerId(0)));
+        assert!(!card_has_property(&creature, "cmcEQ3", PlayerId(0)));
     }
 }

@@ -59,6 +59,8 @@ pub enum TriggerType {
     AbilityActivated,
     /// A creature explored.
     Explored,
+    /// A creature became monstrous.
+    BecomeMonstrous,
     /// A player became the monarch.
     BecomeMonarch,
     /// Damage was dealt to a player/creature for the first time this turn.

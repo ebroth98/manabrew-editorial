@@ -3,7 +3,6 @@ use forge_foundation::ZoneType;
 use super::{
     parse_counter_type, parse_param, resolve_defined_player, resolve_numeric_svar, EffectContext,
 };
-use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
@@ -50,13 +49,25 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .map(|s| s.as_str())
         .unwrap_or("Self");
     let target_id = match defined {
-        "TriggeredTarget" | "TriggeredTargetLKICopy" => sa.target_chosen.target_card.or(sa.source),
-        "Targeted" => sa.target_chosen.target_card.or(sa.source),
+        // Java AbilityUtils "TriggeredTarget*" / "Targeted" resolve from actual
+        // target choices only; if no target was chosen (e.g. TargetMin$ 0), they
+        // resolve to empty and do nothing.
+        "TriggeredTarget" | "TriggeredTargetLKICopy" => sa.target_chosen.target_card,
+        "Targeted" => sa.target_chosen.target_card,
         "Self" | _ => sa.source,
     };
 
     let Some(card_id) = target_id else { return };
     if ctx.game.card(card_id).zone != ZoneType::Battlefield {
+        return;
+    }
+
+    let is_monstrosity = sa
+        .params
+        .get("Monstrosity")
+        .map(|s| s.eq_ignore_ascii_case("True"))
+        .unwrap_or(false);
+    if is_monstrosity && ctx.game.card(card_id).monstrous {
         return;
     }
 
@@ -107,4 +118,118 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+
+    if is_monstrosity {
+        ctx.game.card_mut(card_id).monstrous = true;
+        ctx.trigger_handler.run_trigger(
+            TriggerType::BecomeMonstrous,
+            RunParams {
+                card: Some(card_id),
+                counter_amount: Some(count),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+
+    use crate::ability::effects::EffectContext;
+    use crate::agent::PassAgent;
+    use crate::card::{CardInstance, CounterType};
+    use crate::game::GameState;
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::ManaPool;
+    use crate::spellability::SpellAbility;
+    use crate::trigger::handler::TriggerHandler;
+
+    fn make_creature(game: &mut GameState, owner: PlayerId, name: &str) -> CardId {
+        let card = CardInstance::new(
+            CardId(0),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse("Creature - Golem"),
+            ManaCost::parse("5"),
+            ColorSet::COLORLESS,
+            Some(3),
+            Some(3),
+            vec![],
+            vec![],
+        );
+        game.create_card(card)
+    }
+
+    fn make_ctx<'a>(
+        game: &'a mut GameState,
+        agents: &'a mut Vec<Box<dyn crate::agent::PlayerAgent>>,
+        trigger_handler: &'a mut TriggerHandler,
+        mana_pools: &'a mut Vec<ManaPool>,
+        token_templates: &'a HashMap<String, CardInstance>,
+        rng: &'a mut dyn crate::game_rng::GameRng,
+    ) -> EffectContext<'a> {
+        EffectContext {
+            game,
+            agents,
+            trigger_handler,
+            token_templates,
+            mana_pools,
+            parent_target_card: None,
+            rng,
+        }
+    }
+
+    #[test]
+    fn monstrosity_only_applies_once() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        let clay_golem = make_creature(&mut game, p0, "Clay Golem");
+        game.move_card(clay_golem, ZoneType::Battlefield, p0);
+
+        let sa = SpellAbility::new_simple(
+            Some(clay_golem),
+            p0,
+            "AB$ PutCounter | Defined$ Self | Monstrosity$ True | CounterNum$ 4 | CounterType$ P1P1",
+        );
+
+        let mut trigger_handler = TriggerHandler::new();
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
+        let token_templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = make_ctx(
+            &mut game,
+            &mut agents,
+            &mut trigger_handler,
+            &mut mana_pools,
+            &token_templates,
+            &mut rng_adapter,
+        );
+
+        super::resolve(&mut ctx, &sa);
+        assert_eq!(ctx.game.card(clay_golem).counter_count(&CounterType::P1P1), 4);
+        assert!(ctx.game.card(clay_golem).monstrous);
+
+        super::resolve(&mut ctx, &sa);
+        assert_eq!(ctx.game.card(clay_golem).counter_count(&CounterType::P1P1), 4);
+        assert!(ctx.game.card(clay_golem).monstrous);
+    }
+
+    #[test]
+    fn monstrous_resets_after_leaving_battlefield() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        let clay_golem = make_creature(&mut game, p0, "Clay Golem");
+        game.move_card(clay_golem, ZoneType::Battlefield, p0);
+        game.card_mut(clay_golem).monstrous = true;
+
+        game.move_card(clay_golem, ZoneType::Hand, p0);
+
+        assert!(!game.card(clay_golem).monstrous);
+    }
 }

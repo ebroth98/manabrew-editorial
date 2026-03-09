@@ -38,7 +38,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    // Defined$ Self — tap the source card.
+    // Java TapEffect uses getTargetCards(sa): for targeting SAs with zero chosen
+    // targets (e.g. TargetMin$ 0 and player picked none), this resolves to an
+    // empty set and does nothing. Do not fall back to Self in that case.
+    if sa.uses_targeting() {
+        return;
+    }
+
+    // Non-targeting Tap effects default to Self.
     if let Some(source) = sa.source {
         if ctx.game.card(source).zone == ZoneType::Battlefield {
             tap_card(

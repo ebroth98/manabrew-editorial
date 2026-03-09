@@ -399,9 +399,9 @@ impl GameLoop {
     }
 }
 
+mod action_space;
 mod game_action;
 mod game_action_util;
-mod action_space;
 mod magic_stack;
 mod phase_handler;
 mod priority;
@@ -443,12 +443,15 @@ mod tests {
         fn choose_action(
             &mut self,
             _player: PlayerId,
-            _playable: &[CardId],
+            _playable: &[crate::agent::PlayOption],
             _tappable_lands: &[CardId],
             _untappable_lands: &[CardId],
             _activatable: &[(CardId, usize)],
         ) -> MainPhaseAction {
-            MainPhaseAction::Play(CardId(u32::MAX))
+            MainPhaseAction::Play(crate::agent::PlayOption {
+                card_id: CardId(u32::MAX),
+                mode: crate::agent::PlayCardMode::Normal,
+            })
         }
 
         fn choose_attackers(
@@ -535,7 +538,7 @@ mod tests {
         fn choose_action(
             &mut self,
             player: PlayerId,
-            _playable: &[CardId],
+            _playable: &[crate::agent::PlayOption],
             _tappable_lands: &[CardId],
             _untappable_lands: &[CardId],
             _activatable: &[(CardId, usize)],
@@ -677,6 +680,21 @@ mod tests {
         card
     }
 
+    fn activated_permanent(owner: PlayerId, name: &str, type_line: &str, abilities: Vec<&str>) -> CardInstance {
+        CardInstance::new(
+            CardId(0),
+            name.to_string(),
+            owner,
+            CardTypeLine::parse(type_line),
+            ManaCost::no_cost(),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            abilities.into_iter().map(|s| s.to_string()).collect(),
+        )
+    }
+
     #[test]
     fn run_turn_opens_draw_and_combat_priority_windows() {
         let p0 = PlayerId(0);
@@ -754,6 +772,86 @@ mod tests {
     }
 
     #[test]
+    fn action_space_excludes_nonland_mana_abilities_from_main_actions() {
+        let p0 = PlayerId(0);
+        let mut game = GameState::new(&["A", "B"], 20);
+
+        let goose = game.create_card(activated_permanent(
+            p0,
+            "Gilded Goose",
+            "Creature - Bird",
+            vec![
+                "AB$ Token | Cost$ 1 G T | TokenScript$ c_a_food_sac | TokenOwner$ You | SpellDescription$ Create a Food Token.",
+                "AB$ Mana | Cost$ T Sac<1/Food> | Produced$ Any | SpellDescription$ Add one mana of any color.",
+            ],
+        ));
+        let food = game.create_card(activated_permanent(
+            p0,
+            "Food Token",
+            "Artifact Food",
+            vec!["AB$ GainLife | Cost$ 2 T Sac<1/CARDNAME> | LifeAmount$ 3 | SpellDescription$ You gain 3 life."],
+        ));
+        let forest = game.create_card(mana_land(p0, "Forest", "G"));
+        let island = game.create_card(mana_land(p0, "Island", "U"));
+
+        for cid in [goose, food, forest, island] {
+            game.move_card(cid, ZoneType::Battlefield, p0);
+            game.card_mut(cid).summoning_sick = false;
+        }
+
+        game.turn.turn_number = 20;
+        game.turn.active_player = p0;
+        game.turn.priority_player = p0;
+        game.turn.phase = PhaseType::Main1;
+
+        let gl = GameLoop::new(2);
+        let action_space = gl.action_space(&game, p0, true);
+
+        assert!(action_space.activatable.contains(&(food, 0)));
+        assert!(action_space.activatable.contains(&(goose, 0)));
+        assert!(!action_space.activatable.contains(&(goose, 1)));
+    }
+
+    #[test]
+    fn action_space_excludes_activated_abilities_that_only_pay_via_same_host_mana() {
+        let p0 = PlayerId(0);
+        let mut game = GameState::new(&["A", "B"], 20);
+
+        let goose = game.create_card(activated_permanent(
+            p0,
+            "Gilded Goose",
+            "Creature - Bird",
+            vec![
+                "AB$ Token | Cost$ 1 G T | TokenScript$ c_a_food_sac | TokenOwner$ You | SpellDescription$ Create a Food Token.",
+                "AB$ Mana | Cost$ T Sac<1/Food> | Produced$ Any | SpellDescription$ Add one mana of any color.",
+            ],
+        ));
+        let food = game.create_card(activated_permanent(
+            p0,
+            "Food Token",
+            "Artifact Food",
+            vec!["AB$ GainLife | Cost$ 2 T Sac<1/CARDNAME> | LifeAmount$ 3 | SpellDescription$ You gain 3 life."],
+        ));
+        let plains = game.create_card(mana_land(p0, "Plains", "W"));
+
+        for cid in [goose, food, plains] {
+            game.move_card(cid, ZoneType::Battlefield, p0);
+            game.card_mut(cid).summoning_sick = false;
+        }
+
+        game.turn.active_player = p0;
+        game.turn.priority_player = p0;
+        game.turn.phase = PhaseType::Main1;
+
+        let gl = GameLoop::new(2);
+        let action_space = gl.action_space(&game, p0, true);
+
+        assert!(action_space.activatable.contains(&(food, 0)));
+        assert!(!action_space.activatable.contains(&(goose, 0)));
+        assert!(!action_space.activatable.contains(&(goose, 1)));
+    }
+
+    #[test]
     fn play_card_uses_manual_pool_then_auto_taps_deficit() {
         let p0 = PlayerId(0);
         let _p1 = PlayerId(1);
@@ -789,7 +887,13 @@ mod tests {
         assert!(!game.card(land_combo).tapped);
 
         // Cast 1U spell: should consume manual pool mana and auto-tap exactly one additional land.
-        let played = gl.play_card(&mut game, &mut agents, p0, spell);
+        let played = gl.play_card(
+            &mut game,
+            &mut agents,
+            p0,
+            spell,
+            crate::agent::PlayCardMode::Normal,
+        );
         assert!(
             played.is_some(),
             "manual + auto mana payment should succeed"

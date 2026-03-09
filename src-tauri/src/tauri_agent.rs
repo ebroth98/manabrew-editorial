@@ -2,7 +2,8 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use forge_engine_core::agent::{
-    CombatCostAction, GameLogEvent, MainPhaseAction, ManaCostAction, PlayerAgent, TargetChoice,
+    BinaryChoiceKind, CombatCostAction, GameLogEvent, MainPhaseAction, ManaCostAction, PlayOption,
+    PlayerAgent, TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -313,12 +314,13 @@ impl PlayerAgent for TauriAgent {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
-        let playable_card_ids = Self::card_ids(playable);
+        let playable_card_ids: Vec<String> =
+            playable.iter().map(|play| card_id_str(play.card_id)).collect();
         let mut tappable_land_ids: Vec<String> =
             tappable_lands.iter().map(|&c| card_id_str(c)).collect();
         let untappable_land_ids: Vec<String> =
@@ -381,6 +383,7 @@ impl PlayerAgent for TauriAgent {
             }
             PlayerAction::PlayCard { card_id } => card_id
                 .and_then(|id| parse_card_id(&id))
+                .and_then(|cid| playable.iter().copied().find(|play| play.card_id == cid))
                 .map(MainPhaseAction::Play)
                 .unwrap_or(MainPhaseAction::Pass),
             PlayerAction::TapLand { card_id } => {
@@ -793,6 +796,56 @@ impl PlayerAgent for TauriAgent {
             prompt_kind: Some("confirm_action".to_string()),
             option_labels: Some(option_labels),
             mode: mode.map(String::from),
+            api: api.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::OptionalTriggerDecision { accept } => accept,
+            _ => false,
+        }
+    }
+
+    fn confirm_payment(
+        &mut self,
+        _player: PlayerId,
+        cost_kind: &str,
+        message: &str,
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        self.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
+            game_view: self.view(),
+            description: message.to_string(),
+            source_card_name: card_name.map(String::from),
+            prompt_kind: Some("confirm_payment".to_string()),
+            option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
+            mode: Some(cost_kind.to_string()),
+            api: api.map(String::from),
+        });
+        match self.recv_action() {
+            PlayerAction::OptionalTriggerDecision { accept } => accept,
+            _ => false,
+        }
+    }
+
+    fn choose_binary(
+        &mut self,
+        _player: PlayerId,
+        question: &str,
+        kind: BinaryChoiceKind,
+        _default_choice: Option<bool>,
+        card_name: Option<&str>,
+        api: Option<&str>,
+    ) -> bool {
+        let (left, right) = kind.labels();
+        // In this modal pipeline, `accept=true` means "second button";
+        // reverse labels so `true` still maps to Java's first (left) choice.
+        self.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
+            game_view: self.view(),
+            description: question.to_string(),
+            source_card_name: card_name.map(String::from),
+            prompt_kind: Some("choose_binary".to_string()),
+            option_labels: Some(vec![right.to_string(), left.to_string()]),
+            mode: Some(kind.as_str().to_string()),
             api: api.map(String::from),
         });
         match self.recv_action() {
