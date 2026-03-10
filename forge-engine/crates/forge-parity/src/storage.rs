@@ -112,6 +112,9 @@ impl Storage {
         let _ = self
             .conn
             .execute_batch("ALTER TABLE runs ADD COLUMN is_fuzz INTEGER NOT NULL DEFAULT 0;");
+        let _ = self
+            .conn
+            .execute_batch("ALTER TABLE runs ADD COLUMN commit_sha TEXT;");
         Ok(())
     }
 
@@ -122,6 +125,7 @@ impl Storage {
         result: &MatchupResult,
         duration_ms: u64,
         is_fuzz: bool,
+        commit_sha: Option<&str>,
     ) -> SqlResult<i64> {
         let status_str = match result.status {
             MatchupStatus::Pass => "pass",
@@ -144,8 +148,8 @@ impl Storage {
             "INSERT INTO runs (batch_id, deck1, deck2, seed, status, snapshots_compared,
              divergence_count, first_divergence_field, first_divergence_rust,
              first_divergence_java, covered_cards, duration_ms, error_message,
-             rust_trace, java_trace, is_fuzz)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+             rust_trace, java_trace, is_fuzz, commit_sha)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             params![
                 batch_id,
                 result.deck1,
@@ -163,6 +167,7 @@ impl Storage {
                 result.trace,
                 result.java_trace,
                 is_fuzz as i64,
+                commit_sha,
             ],
         )?;
         Ok(self.conn.last_insert_rowid())
@@ -255,14 +260,28 @@ impl Storage {
             fuzz_passed,
             fuzz_failed,
             fuzz_pass_rate,
+            commit_sha: None, // filled by web handler
         })
     }
 
     /// Get time-series trend data bucketed by hour or day.
-    pub fn trend(&self, bucket: &str, limit: usize) -> SqlResult<Vec<TrendPoint>> {
+    ///
+    /// `since` is an optional ISO-8601 timestamp; only rows with `timestamp >= since` are included.
+    pub fn trend(
+        &self,
+        bucket: &str,
+        limit: usize,
+        since: Option<&str>,
+    ) -> SqlResult<Vec<TrendPoint>> {
         let format_str = match bucket {
             "day" => "%Y-%m-%d",
             _ => "%Y-%m-%dT%H:00:00Z", // hour
+        };
+
+        let since_clause = if since.is_some() {
+            "AND timestamp >= ?2"
+        } else {
+            ""
         };
 
         let sql = format!(
@@ -273,14 +292,14 @@ impl Storage {
                 SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) as failed,
                 SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
              FROM runs
-             WHERE is_fuzz = 0
+             WHERE is_fuzz = 0 {since_clause}
              GROUP BY bucket
              ORDER BY bucket DESC
              LIMIT ?1"
         );
 
         let mut stmt = self.conn.prepare(&sql)?;
-        let rows = stmt.query_map(params![limit as i64], |row| {
+        let map_row = |row: &rusqlite::Row<'_>| {
             let total: usize = row.get(1)?;
             let passed: usize = row.get(2)?;
             let failed: usize = row.get(3)?;
@@ -298,9 +317,13 @@ impl Storage {
                 errors,
                 pass_rate,
             })
-        })?;
-
-        rows.collect()
+        };
+        if let Some(s) = since {
+            stmt.query_map(params![limit as i64, s], map_row)?
+                .collect()
+        } else {
+            stmt.query_map(params![limit as i64], map_row)?.collect()
+        }
     }
 
     /// Get recent failures with divergence details.
@@ -309,7 +332,7 @@ impl Storage {
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
-                    rust_trace, java_trace, is_fuzz, timestamp
+                    rust_trace, java_trace, is_fuzz, timestamp, commit_sha
              FROM runs
              WHERE status IN ('fail', 'error')
              ORDER BY id DESC
@@ -326,7 +349,7 @@ impl Storage {
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
-                    rust_trace, java_trace, is_fuzz, timestamp
+                    rust_trace, java_trace, is_fuzz, timestamp, commit_sha
              FROM runs WHERE id = ?1",
             params![id],
             |row| Self::row_to_record(row),
@@ -334,17 +357,23 @@ impl Storage {
     }
 
     /// Get pass rate heatmap by deck pair.
-    pub fn deck_pair_matrix(&self) -> SqlResult<Vec<DeckPairStats>> {
-        let mut stmt = self.conn.prepare(
+    pub fn deck_pair_matrix(&self, since: Option<&str>) -> SqlResult<Vec<DeckPairStats>> {
+        let since_clause = if since.is_some() {
+            "AND timestamp >= ?1"
+        } else {
+            ""
+        };
+        let sql = format!(
             "SELECT deck1, deck2, COUNT(*) as total,
                     SUM(CASE WHEN status = 'pass' THEN 1 ELSE 0 END) as passed
              FROM runs
-             WHERE status != 'error' AND is_fuzz = 0
+             WHERE status != 'error' AND is_fuzz = 0 {since_clause}
              GROUP BY deck1, deck2
-             ORDER BY deck1, deck2",
-        )?;
+             ORDER BY deck1, deck2"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
 
-        let rows = stmt.query_map([], |row| {
+        let map_row = |row: &rusqlite::Row<'_>| {
             let total: usize = row.get(2)?;
             let passed: usize = row.get(3)?;
             let pass_rate = if total > 0 {
@@ -359,9 +388,12 @@ impl Storage {
                 passed,
                 pass_rate,
             })
-        })?;
-
-        rows.collect()
+        };
+        if let Some(s) = since {
+            stmt.query_map(params![s], map_row)?.collect()
+        } else {
+            stmt.query_map([], map_row)?.collect()
+        }
     }
 
     /// Compute the current pass rate (excluding errors).
@@ -388,7 +420,7 @@ impl Storage {
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
-                    rust_trace, java_trace, is_fuzz, timestamp
+                    rust_trace, java_trace, is_fuzz, timestamp, commit_sha
              FROM runs
              WHERE is_fuzz = 1
              ORDER BY id DESC
@@ -429,7 +461,7 @@ impl Storage {
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
-                    rust_trace, java_trace, is_fuzz, timestamp
+                    rust_trace, java_trace, is_fuzz, timestamp, commit_sha
              FROM runs
              WHERE id > ?1 AND status IN ('fail', 'error')
              ORDER BY id ASC",
@@ -615,6 +647,7 @@ impl Storage {
             java_trace: row.get(15)?,
             is_fuzz: row.get::<_, i64>(16)? != 0,
             timestamp: row.get(17)?,
+            commit_sha: row.get(18).ok().flatten(),
         })
     }
 }
@@ -662,11 +695,11 @@ mod tests {
     #[test]
     fn insert_and_query_stats() {
         let db = Storage::open_memory().unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Pass), 100, false)
+        db.insert_run(1, &make_result(MatchupStatus::Pass), 100, false, None)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Pass), 150, false)
+        db.insert_run(1, &make_result(MatchupStatus::Pass), 150, false, None)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false)
+        db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false, None)
             .unwrap();
 
         let stats = db.stats(60, "2024-01-01T00:00:00Z").unwrap();
@@ -679,11 +712,11 @@ mod tests {
     #[test]
     fn recent_failures_query() {
         let db = Storage::open_memory().unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Pass), 100, false)
+        db.insert_run(1, &make_result(MatchupStatus::Pass), 100, false, None)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false)
+        db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false, None)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Error), 50, false)
+        db.insert_run(1, &make_result(MatchupStatus::Error), 50, false, None)
             .unwrap();
 
         let failures = db.recent_failures(10).unwrap();
@@ -696,7 +729,7 @@ mod tests {
     fn get_run_by_id() {
         let db = Storage::open_memory().unwrap();
         let id = db
-            .insert_run(1, &make_result(MatchupStatus::Pass), 100, false)
+            .insert_run(1, &make_result(MatchupStatus::Pass), 100, false, None)
             .unwrap();
 
         let record = db.get_run(id).unwrap();
@@ -707,12 +740,12 @@ mod tests {
     #[test]
     fn deck_pair_matrix_query() {
         let db = Storage::open_memory().unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Pass), 100, false)
+        db.insert_run(1, &make_result(MatchupStatus::Pass), 100, false, None)
             .unwrap();
-        db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false)
+        db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false, None)
             .unwrap();
 
-        let matrix = db.deck_pair_matrix().unwrap();
+        let matrix = db.deck_pair_matrix(None).unwrap();
         assert_eq!(matrix.len(), 1);
         assert_eq!(matrix[0].total, 2);
         assert_eq!(matrix[0].passed, 1);

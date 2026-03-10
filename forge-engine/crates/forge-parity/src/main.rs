@@ -1930,7 +1930,7 @@ fn run_continuous_mode(cli: &Cli) {
         }
         completed += 1;
 
-        if let Err(e) = db.insert_run(job.batch_id, &result, duration_ms, job.is_fuzz) {
+        if let Err(e) = db.insert_run(job.batch_id, &result, duration_ms, job.is_fuzz, None) {
             eprintln!("[parity] DB insert error: {}", e);
         }
 
@@ -2151,6 +2151,20 @@ fn run_serve_mode(cli: &Cli) {
 
     let now_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let start = Instant::now();
+    // Detect git commit SHA at startup
+    let commit_sha = std::process::Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
+        .or_else(|| option_env!("GIT_COMMIT_SHA").map(|s| s.to_string()));
+
     let app_state = Arc::new(web::AppState {
         storage: std::sync::Mutex::new(db),
         start_time: start,
@@ -2158,6 +2172,7 @@ fn run_serve_mode(cli: &Cli) {
         config: Arc::clone(&dashboard_config),
         logs: log_buffer,
         job_queue: Arc::clone(&job_queue),
+        commit_sha,
     });
 
     // Build tokio runtime
@@ -2342,7 +2357,7 @@ fn run_serve_mode(cli: &Cli) {
             // Store in DB
             {
                 let storage = app_state.storage.lock().unwrap();
-                if let Err(e) = storage.insert_run(0, &result, duration_ms, false) {
+                if let Err(e) = storage.insert_run(0, &result, duration_ms, false, app_state.commit_sha.as_deref()) {
                     tracing::error!(%e, "DB insert error");
                 }
             }
@@ -2502,7 +2517,7 @@ fn run_serve_mode(cli: &Cli) {
         // Write to storage under lock
         {
             let storage = app_state.storage.lock().unwrap();
-            if let Err(e) = storage.insert_run(job.batch_id, &result, duration_ms, job.is_fuzz) {
+            if let Err(e) = storage.insert_run(job.batch_id, &result, duration_ms, job.is_fuzz, app_state.commit_sha.as_deref()) {
                 tracing::error!(%e, "DB insert error");
             }
         }

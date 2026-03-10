@@ -282,6 +282,9 @@ pub struct RunRecord {
     pub java_trace: Option<String>,
     pub is_fuzz: bool,
     pub timestamp: String,
+    /// Git commit SHA that produced this run result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_sha: Option<String>,
 }
 
 /// Aggregate statistics for the continuous parity server.
@@ -299,6 +302,9 @@ pub struct ContinuousStats {
     pub fuzz_passed: usize,
     pub fuzz_failed: usize,
     pub fuzz_pass_rate: f64,
+    /// Git commit SHA the server was built from.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_sha: Option<String>,
 }
 
 /// A single point in a time-series trend.

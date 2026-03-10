@@ -181,7 +181,7 @@
 <body>
 <div class="container">
   <header>
-    <h1>Forge Parity Dashboard</h1>
+    <h1>Forge Parity Dashboard <span id="commit-sha" style="font-size:11px;color:var(--text-muted);font-weight:400;font-family:'SF Mono','Menlo',monospace;margin-left:8px"></span></h1>
     <div class="status" id="uptime">Loading...</div>
   </header>
 
@@ -194,6 +194,15 @@
         <button data-val="5">5</button>
         <button data-val="10" class="active">10</button>
         <button data-val="30">30</button>
+      </div>
+    </div>
+    <div class="control-group">
+      <label>Time Range</label>
+      <div class="seg-btns" id="time-range-seg">
+        <button data-val="today" class="active">Today</button>
+        <button data-val="24h">24h</button>
+        <button data-val="7d">7d</button>
+        <button data-val="all">All</button>
       </div>
     </div>
     <div class="control-group">
@@ -229,7 +238,7 @@
     </div>
 
     <div class="chart-container">
-      <h2>Pass Rate Trend (Hourly)</h2>
+      <h2 id="trend-title">Pass Rate Trend (Hourly)</h2>
       <canvas id="trend-chart"></canvas>
     </div>
 
@@ -340,6 +349,26 @@
 <script>
 let trendChart = null;
 let allFailures = []; // cached for filtering
+let currentTimeRange = 'today'; // today, 24h, 7d, all
+
+function getSinceISO() {
+  const now = new Date();
+  switch (currentTimeRange) {
+    case 'today': {
+      const d = new Date(now);
+      d.setHours(0, 0, 0, 0);
+      return d.toISOString();
+    }
+    case '24h': return new Date(now.getTime() - 24*60*60*1000).toISOString();
+    case '7d': return new Date(now.getTime() - 7*24*60*60*1000).toISOString();
+    default: return null; // 'all'
+  }
+}
+
+function sinceParam() {
+  const s = getSinceISO();
+  return s ? `&since=${encodeURIComponent(s)}` : '';
+}
 
 function fmt(n) { return n.toLocaleString(); }
 function pct(n) { return (n * 100).toFixed(1) + '%'; }
@@ -382,6 +411,16 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 });
 
 // ── Control Panel ─────────────────────────────────────────
+// Time range segmented buttons
+document.querySelectorAll('#time-range-seg button').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#time-range-seg button').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTimeRange = btn.dataset.val;
+    refresh();
+  });
+});
+
 // Games per matchup segmented buttons
 document.querySelectorAll('#games-seg button').forEach(btn => {
   btn.addEventListener('click', () => {
@@ -483,6 +522,9 @@ async function updateStats() {
   try {
     const s = await fetchJson('/api/stats');
     document.getElementById('uptime').textContent = 'Uptime: ' + uptimeFmt(s.uptime_seconds);
+    if (s.commit_sha) {
+      document.getElementById('commit-sha').textContent = '@' + s.commit_sha;
+    }
     const rateClass = s.pass_rate >= 0.9 ? 'green' : s.pass_rate >= 0.7 ? 'yellow' : 'red';
     document.getElementById('stats-grid').innerHTML = `
       <div class="stat-card"><div class="label">Total Games</div><div class="value">${fmt(s.total_games)}</div></div>
@@ -510,9 +552,15 @@ async function updateStats() {
 
 async function updateTrend() {
   try {
-    const data = await fetchJson('/api/trend?bucket=hour&limit=24');
+    const bucket = currentTimeRange === '7d' ? 'day' : 'hour';
+    const limit = currentTimeRange === '7d' ? 7 : currentTimeRange === 'all' ? 168 : 24;
+    const titleMap = { today: 'Today', '24h': 'Last 24h', '7d': 'Last 7 Days', all: 'All Time' };
+    document.getElementById('trend-title').textContent = `Pass Rate Trend — ${titleMap[currentTimeRange] || 'Hourly'}`;
+    const data = await fetchJson(`/api/trend?bucket=${bucket}&limit=${limit}${sinceParam()}`);
     data.reverse();
-    const labels = data.map(d => d.bucket.replace('T', ' ').replace(':00:00Z', 'h'));
+    const labels = data.map(d => bucket === 'day'
+      ? d.bucket
+      : d.bucket.replace('T', ' ').replace(':00:00Z', 'h'));
     const passed = data.map(d => d.passed);
     const failed = data.map(d => d.failed);
     const errors = data.map(d => d.errors);
@@ -547,7 +595,9 @@ async function updateTrend() {
 
 async function updateMatrix() {
   try {
-    const data = await fetchJson('/api/matrix');
+    const sinceISO = getSinceISO();
+    const matrixUrl = sinceISO ? `/api/matrix?since=${encodeURIComponent(sinceISO)}` : '/api/matrix';
+    const data = await fetchJson(matrixUrl);
     if (data.length === 0) {
       document.getElementById('matrix-container').innerHTML = '<p style="color:var(--text-muted)">No data yet</p>';
       return;

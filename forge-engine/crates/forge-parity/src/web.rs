@@ -60,6 +60,8 @@ pub struct AppState {
     pub config: Arc<DashboardConfig>,
     pub logs: LogBuffer,
     pub job_queue: Arc<JobQueue>,
+    /// Git commit SHA the server was built from.
+    pub commit_sha: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -68,6 +70,8 @@ pub struct TrendQuery {
     bucket: String,
     #[serde(default = "default_limit")]
     limit: usize,
+    /// Optional ISO-8601 timestamp; only include data from this time onwards.
+    since: Option<String>,
 }
 
 fn default_bucket() -> String {
@@ -86,6 +90,13 @@ pub struct FailuresQuery {
 
 fn default_failures_limit() -> usize {
     50
+}
+
+/// Optional time filter used by matrix and other endpoints.
+#[derive(serde::Deserialize)]
+pub struct SinceQuery {
+    /// Optional ISO-8601 timestamp; only include data from this time onwards.
+    since: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -377,7 +388,8 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/api/fuzz/recent", get(fuzz_recent_handler))
         .route("/api/health", get(health_handler))
         .route("/api/jobs", post(submit_jobs_handler))
-        .route("/api/jobs/:batch_id", get(batch_status_handler));
+        .route("/api/jobs/:batch_id", get(batch_status_handler))
+        .route("/api/run-matchup", post(run_matchup_handler));
 
     #[cfg(feature = "analyze")]
     let router = router.route("/api/models", get(models_handler));
@@ -393,7 +405,10 @@ async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse 
     let uptime = state.start_time.elapsed().as_secs();
     let storage = state.storage.lock().unwrap();
     match storage.stats(uptime, &state.start_time_iso) {
-        Ok(stats) => Json(stats).into_response(),
+        Ok(mut stats) => {
+            stats.commit_sha = state.commit_sha.clone();
+            Json(stats).into_response()
+        }
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
 }
@@ -403,7 +418,7 @@ async fn trend_handler(
     Query(params): Query<TrendQuery>,
 ) -> impl IntoResponse {
     let storage = state.storage.lock().unwrap();
-    match storage.trend(&params.bucket, params.limit) {
+    match storage.trend(&params.bucket, params.limit, params.since.as_deref()) {
         Ok(trend) => Json(trend).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -420,9 +435,12 @@ async fn failures_handler(
     }
 }
 
-async fn matrix_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn matrix_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SinceQuery>,
+) -> impl IntoResponse {
     let storage = state.storage.lock().unwrap();
-    match storage.deck_pair_matrix() {
+    match storage.deck_pair_matrix(params.since.as_deref()) {
         Ok(matrix) => Json(matrix).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -632,8 +650,12 @@ async fn analysis_status_handler(State(state): State<Arc<AppState>>) -> impl Int
 
 // ── CI Job Queue endpoints ────────────────────────────────────────
 
-async fn health_handler() -> impl IntoResponse {
-    Json(serde_json::json!({ "status": "ok" }))
+async fn health_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let mut resp = serde_json::json!({ "status": "ok" });
+    if let Some(ref sha) = state.commit_sha {
+        resp["commit_sha"] = serde_json::Value::String(sha.clone());
+    }
+    Json(resp)
 }
 
 #[derive(serde::Serialize)]
@@ -705,6 +727,66 @@ async fn batch_status_handler(
         )
             .into_response(),
     }
+}
+
+// ── Run Matchup endpoint ──────────────────────────────────────────
+
+/// Simple endpoint to trigger a single matchup (or small batch) via API.
+///
+/// POST /api/run-matchup with JSON body:
+/// ```json
+/// { "deck1": "red_burn", "deck2": "green_stompy", "seed": 42, "max_turns": 10 }
+/// ```
+#[derive(serde::Deserialize)]
+struct RunMatchupRequest {
+    deck1: String,
+    deck2: String,
+    #[serde(default = "default_matchup_seed")]
+    seed: u64,
+    #[serde(default = "default_matchup_max_turns")]
+    max_turns: u32,
+}
+
+fn default_matchup_seed() -> u64 {
+    42
+}
+fn default_matchup_max_turns() -> u32 {
+    10
+}
+
+async fn run_matchup_handler(
+    State(state): State<Arc<AppState>>,
+    Json(req): Json<RunMatchupRequest>,
+) -> impl IntoResponse {
+    let jq = &state.job_queue;
+    let batch_id = jq.next_batch_id.fetch_add(1, Ordering::Relaxed);
+
+    let batch_name = format!("{} vs {} (seed {})", req.deck1, req.deck2, req.seed);
+    let batch = BatchStatus {
+        name: batch_name,
+        total: 1,
+        completed: 0,
+        passed: 0,
+        failed: 0,
+        errors: 0,
+        done: false,
+        results: Vec::new(),
+    };
+    jq.batches.lock().unwrap().insert(batch_id, batch);
+
+    jq.queue.lock().unwrap().push_back(QueuedJob {
+        batch_id,
+        regression_name: "api-triggered".to_string(),
+        deck1: req.deck1,
+        deck2: req.deck2,
+        seed: req.seed,
+        max_turns: req.max_turns,
+    });
+
+    Json(serde_json::json!({
+        "batch_id": batch_id,
+        "status": "queued"
+    }))
 }
 
 // ── Models proxy (LiteLLM / OpenAI-compatible) ────────────────────
