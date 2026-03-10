@@ -39,7 +39,7 @@ impl DashboardConfig {
     /// Create with sensible defaults. Analysis starts paused.
     pub fn new() -> Self {
         Self {
-            games_per_matchup: AtomicUsize::new(10),
+            games_per_matchup: AtomicUsize::new(1),
             fuzz_enabled: AtomicBool::new(false),
             self_matchups: AtomicBool::new(true),
             llm_model: Mutex::new(

@@ -108,20 +108,32 @@ final class AutoPay {
     }
 
     private List<ManaCostShard> shardPriority(final ManaCostBeingPaid unpaid) {
-        final List<ManaCostShard> out = new ArrayList<>();
+        final List<ManaCostShard> colored = new ArrayList<>();
+        ManaCostShard generic = null;
         final Set<ManaCostShard> seen = new LinkedHashSet<>();
         for (final ManaCostShard shard : unpaid.getUnpaidShards()) {
             if (shard == ManaCostShard.X) {
                 continue;
             }
-            if (seen.add(shard)) {
-                out.add(shard);
+            if (!seen.add(shard)) {
+                continue;
+            }
+            // Separate colored/other shards from generic so colored always
+            // get priority — mirrors Rust's get_shard_to_pay_by_priority
+            // and the original intent in ManaCostBeingPaid ("ManaPartColor
+            // is stored before ManaPartGeneric").
+            if (shard == ManaCostShard.GENERIC) {
+                generic = shard;
+            } else {
+                colored.add(shard);
             }
         }
-        if (!seen.contains(ManaCostShard.GENERIC)) {
-            out.add(ManaCostShard.GENERIC);
+        if (generic != null) {
+            colored.add(generic);
+        } else if (!seen.contains(ManaCostShard.GENERIC)) {
+            colored.add(ManaCostShard.GENERIC);
         }
-        return out;
+        return colored;
     }
 
     private ManaAbilityCandidate chooseFirstPayingShard(

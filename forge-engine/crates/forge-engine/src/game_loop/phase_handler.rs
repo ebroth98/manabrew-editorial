@@ -525,7 +525,7 @@ impl GameLoop {
         // and re-prompt if invalid.  We mirror this so RNG consumption matches.
         let mut chosen_attackers: Vec<(CardId, combat::DefenderId)> = Vec::new();
         if !available_attackers.is_empty() {
-            let max_attempts = 5; // safety valve to avoid infinite loops
+            let max_attempts = 50; // safety valve to avoid infinite loops
             for _attempt in 0..max_attempts {
                 agents[active.index()].snapshot_state(game, &self.mana_pools);
                 self.game_log.log(
@@ -580,23 +580,39 @@ impl GameLoop {
                     crate::staticability::static_ability_attack_restrict::global_attack_restrict(
                         &game.cards,
                     );
-                let defender_max =
-                    crate::staticability::static_ability_attack_restrict::attack_restrict_num_for_defender(
-                        &game.cards,
-                        defending,
-                    );
-                let effective_max = [global_max, defender_max]
-                    .iter()
-                    .filter_map(|m| *m)
-                    .min()
-                    .map(|m| m as usize);
 
-                if let Some(max) = effective_max {
-                    if picked.len() > max {
-                        // Declaration invalid — re-prompt like Java's PhaseHandler.
-                        agents[active.index()].notify("Attack declaration invalid");
-                        continue;
+                // Global limit applies to ALL attackers regardless of defender.
+                let mut invalid = false;
+                if let Some(max) = global_max {
+                    if picked.len() > max as usize {
+                        invalid = true;
                     }
+                }
+
+                // Per-defender limit: only count attackers going to that defender.
+                // Crawlspace's "ValidDefender$ You" only restricts attacks against
+                // the Crawlspace controller, not attacks against planeswalkers.
+                if !invalid {
+                    let defender_max =
+                        crate::staticability::static_ability_attack_restrict::attack_restrict_num_for_defender(
+                            &game.cards,
+                            defending,
+                        );
+                    if let Some(max) = defender_max {
+                        let attackers_to_defender = picked
+                            .iter()
+                            .filter(|(_, def)| def.controlling_player(game) == defending)
+                            .count();
+                        if attackers_to_defender > max as usize {
+                            invalid = true;
+                        }
+                    }
+                }
+
+                if invalid {
+                    // Declaration invalid — re-prompt like Java's PhaseHandler.
+                    agents[active.index()].notify("Attack declaration invalid");
+                    continue;
                 }
 
                 chosen_attackers = picked;

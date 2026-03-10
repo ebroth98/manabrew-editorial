@@ -347,7 +347,7 @@ fn execute_effect(
         ReplacementEvent::AddCounter { count, .. } => {
             if let Some(replace) = effect.params.get("ReplaceWith") {
                 match replace.as_str() {
-                    "AddOneMoreCounter" => {
+                    "AddOneMoreCounter" | "AddOneMoreCounters" => {
                         *count += 1;
                         return ReplacementResult::Updated;
                     }

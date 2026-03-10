@@ -142,5 +142,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     ctx.game.cards[card_id.index()].color.union(new_color);
             }
         }
+
     }
 }

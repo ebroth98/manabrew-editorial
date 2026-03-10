@@ -10,6 +10,10 @@ on:
       - ".github/workflows/parity-self-hosted.yml"
   workflow_dispatch:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
