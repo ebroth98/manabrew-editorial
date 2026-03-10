@@ -74,15 +74,16 @@ export BUILDKIT_PROGRESS=plain
 
 SERVICES_TO_RESTART=""
 BUILD_START=$(date +%s)
+BUILD_ARGS="--build-arg GIT_COMMIT_SHA=${CURR}"
 
 # -- parity-dashboard (Java + Rust) --
 if $INFRA_CHANGED; then
     echo "Building parity-dashboard (full)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build --progress=plain --no-cache parity-dashboard >> "$RAW_LOG" 2>&1
+    docker compose -f "$COMPOSE_FILE" build --progress=plain --no-cache $BUILD_ARGS parity-dashboard >> "$RAW_LOG" 2>&1
     SERVICES_TO_RESTART="parity-dashboard"
 elif $JAVA_CHANGED || $RUST_CHANGED; then
     echo "Building parity-dashboard (cached)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build --progress=plain parity-dashboard >> "$RAW_LOG" 2>&1
+    docker compose -f "$COMPOSE_FILE" build --progress=plain $BUILD_ARGS parity-dashboard >> "$RAW_LOG" 2>&1
     SERVICES_TO_RESTART="parity-dashboard"
 fi
 
