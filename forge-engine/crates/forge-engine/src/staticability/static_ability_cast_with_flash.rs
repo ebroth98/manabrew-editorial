@@ -35,10 +35,17 @@ pub fn any_with_flash(
                 continue;
             }
             if let Some(valid_sa) = st_ab.params.get("ValidSA") {
-                if !spell_abilities
-                    .iter()
-                    .any(|line| spell_ability_matches(valid_sa, line))
-                {
+                // "Spell" matches any card being cast as a spell (creatures,
+                // sorceries, etc.) — not just cards with explicit SP$ lines.
+                // Java treats the inherent spell ability of a card as matching.
+                let sa_matches = valid_sa
+                    .split(',')
+                    .map(str::trim)
+                    .any(|tok| tok.eq_ignore_ascii_case("Spell"))
+                    || spell_abilities
+                        .iter()
+                        .any(|line| spell_ability_matches(valid_sa, line));
+                if !sa_matches {
                     continue;
                 }
             }

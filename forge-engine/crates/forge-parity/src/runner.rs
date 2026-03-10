@@ -766,6 +766,18 @@ impl PlayerAgent for CapturingAgent {
         self.inner.choose_type(player, type_category, valid_types)
     }
 
+    fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> {
+        self.inner.choose_color(player, valid_colors)
+    }
+
+    fn choose_card_name(&mut self, player: PlayerId, valid_names: &[String]) -> Option<String> {
+        self.inner.choose_card_name(player, valid_names)
+    }
+
+    fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> {
+        self.inner.choose_number(player, min, max)
+    }
+
     fn choose_scry(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
         self.inner.choose_scry(player, cards)
     }

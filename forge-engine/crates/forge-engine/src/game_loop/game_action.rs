@@ -90,64 +90,10 @@ impl GameLoop {
                     return false;
                 }
             }
-            // Equip/Attach-style abilities need at least one currently legal
-            // attachment target, including static CantAttach restrictions.
-            if ab.params.get("AB").map_or(false, |v| v == "Attach") {
-                let sa = crate::spellability::SpellAbility::new_simple(
-                    Some(card_id),
-                    player,
-                    &ab.ability_text,
-                );
-                let has_attach_target = sa
-                    .target_restrictions
-                    .as_ref()
-                    .map(|tr| {
-                        use crate::spellability::target_restrictions::{
-                            can_be_targeted_by_sa, get_all_battlefield_permanents_filtered,
-                            get_all_candidates_creature_filtered, get_valid_cards_in_zone,
-                            TargetKind,
-                        };
-
-                        let candidates: Vec<CardId> = match &tr.target_kind {
-                            TargetKind::Creature(filter) => get_all_candidates_creature_filtered(
-                                game,
-                                filter.as_deref(),
-                                player,
-                            ),
-                            TargetKind::Permanent(filter) => {
-                                get_all_battlefield_permanents_filtered(
-                                    game,
-                                    filter.as_deref(),
-                                    player,
-                                )
-                            }
-                            TargetKind::CardInZone { zone, filter } => {
-                                get_valid_cards_in_zone(
-                                    game,
-                                    *zone,
-                                    player,
-                                    filter.as_deref(),
-                                    sa.source,
-                                )
-                            }
-                            _ => Vec::new(),
-                        };
-
-                        candidates.into_iter().any(|target_id| {
-                            can_be_targeted_by_sa(game, target_id, player, &sa)
-                                && !crate::staticability::static_ability_cant_attach::cant_attach(
-                                    &game.cards,
-                                    game.card(card_id),
-                                    game.card(target_id),
-                                    false,
-                                )
-                        })
-                    })
-                    .unwrap_or(false);
-                if !has_attach_target {
-                    return false;
-                }
-            }
+            // Java parity: Equip/Attach abilities are offered if ValidTgts
+            // candidates exist, without checking CantAttach statics.  CantAttach
+            // is enforced at resolution time, not during action-space generation.
+            // This matches Java's ActionSpace.hasValidTargets() behavior.
             let needs_mana = ab
                 .cost
                 .parts

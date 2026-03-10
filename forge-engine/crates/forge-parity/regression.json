@@ -1,7 +1,7 @@
 [
   {
-    "name": "3-seed matrix (5 decks)",
-    "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,trigger_expanded --max-turns 10"
+    "name": "3-seed matrix (7 decks)",
+    "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,trigger_expanded,comprehensive_test,staticability_test --max-turns 10"
   },
   {
     "name": "basic_red_vs_green",
@@ -22,5 +22,25 @@
   {
     "name": "bugfix_regression",
     "args": "--deck1 bugfix_regression --deck2 bugfix_regression --max-turns 20 --seed 42 --games 5"
+  },
+  {
+    "name": "charm_double_execution",
+    "args": "--deck1 comprehensive_test --deck2 comprehensive_test --seed 42 --max-turns 15 --games 5"
+  },
+  {
+    "name": "land_etb_triggers (temple_of_mystery_scry)",
+    "args": "--deck1 staticability_test --deck2 red_burn --seed 42 --max-turns 15 --games 5"
+  },
+  {
+    "name": "cast_with_flash (winding_canyons)",
+    "args": "--deck1 staticability_test --deck2 red_burn --seed 100 --max-turns 15 --games 5"
+  },
+  {
+    "name": "attack_restrict_reprompt (crawlspace)",
+    "args": "--deck1 staticability_test --deck2 white_aggro --seed 999 --max-turns 15 --games 3"
+  },
+  {
+    "name": "equip_action_space (kondas_banner)",
+    "args": "--deck1 comprehensive_test --deck2 staticability_test --seed 999 --max-turns 15 --games 3"
   }
 ]

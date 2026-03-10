@@ -705,6 +705,19 @@ impl GameLoop {
                     .with_card(card_id),
             );
 
+            // Register triggers for the new permanent (must happen before
+            // emitting ChangesZone so the land's own ETB triggers are active).
+            self.trigger_handler.register_active_trigger(game, card_id);
+
+            // Emit ChangesZone trigger (ETB) — mirrors the stack resolver's
+            // emit_zone_trigger for spells entering the battlefield.
+            crate::ability::effects::emit_zone_trigger(
+                &mut self.trigger_handler,
+                card_id,
+                ZoneType::Hand,
+                ZoneType::Battlefield,
+            );
+
             // Fire LandPlayed trigger
             self.trigger_handler.run_trigger(
                 TriggerType::LandPlayed,

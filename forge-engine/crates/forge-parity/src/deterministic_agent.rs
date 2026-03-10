@@ -875,7 +875,9 @@ impl PlayerAgent for DeterministicAgent {
     }
 
     fn choose_reorder_library(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
-        gui_repro::shuffle_copy(cards, &mut self.rng.borrow_mut())
+        // Java's DeterministicController.orderMoveToZoneList returns cards as-is
+        // (no RNG consumed), so we must do the same to stay in sync.
+        cards.to_vec()
     }
 
     fn notify(&mut self, message: &str) {

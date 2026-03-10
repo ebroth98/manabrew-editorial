@@ -22,19 +22,11 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// ```
 ///
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    // Java chains chosen charm modes onto the root SpellAbility during casting,
-    // then target setup walks that full sub-ability chain before the spell is put
-    // on the stack. If those sub-abilities are already present, resolve them
-    // directly and do not ask for modes again.
-    if let Some(first_mode) = sa.sub_ability.as_deref() {
-        let mut cur = Some(first_mode);
-        while let Some(cur_sa) = cur {
-            super::resolve_effect(ctx, cur_sa);
-            cur = cur_sa.sub_ability.as_deref();
-            if ctx.game.game_over {
-                break;
-            }
-        }
+    // Java chains chosen charm modes onto the root SpellAbility during casting
+    // (via make_choices_precast), then the stack resolver walks the full
+    // sub-ability chain. If sub-abilities are already present, just return —
+    // the stack's resolve_ability loop will walk and resolve each sub-ability.
+    if sa.sub_ability.is_some() {
         return;
     }
 

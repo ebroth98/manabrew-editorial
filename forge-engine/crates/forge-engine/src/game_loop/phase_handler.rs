@@ -521,10 +521,12 @@ impl GameLoop {
             combat::attack_requirement::must_attack_ids(&requirements)
         };
 
-        let mut chosen_attackers: Vec<(CardId, combat::DefenderId)> =
-            if available_attackers.is_empty() {
-                Vec::new()
-            } else {
+        // Java's PhaseHandler uses a do-while loop: declare attackers, validate,
+        // and re-prompt if invalid.  We mirror this so RNG consumption matches.
+        let mut chosen_attackers: Vec<(CardId, combat::DefenderId)> = Vec::new();
+        if !available_attackers.is_empty() {
+            let max_attempts = 5; // safety valve to avoid infinite loops
+            for _attempt in 0..max_attempts {
                 agents[active.index()].snapshot_state(game, &self.mana_pools);
                 self.game_log.log(
                     GameLogEntryType::PriorityWaiting,
@@ -562,78 +564,44 @@ impl GameLoop {
                         picked.push((must, default_defender));
                     }
                 }
-                picked
-            };
 
-        // Validate attack restrictions (OnlyAlone, NotAlone, NeedGreaterPower, etc.)
-        let attacker_ids: Vec<CardId> = chosen_attackers.iter().map(|(a, _)| *a).collect();
-        let illegal =
-            combat::attack_restriction::validate_attack_restrictions(&attacker_ids, &game.cards);
-        if !illegal.is_empty() {
-            chosen_attackers.retain(|(id, _)| !illegal.contains(id));
-        }
+                // Validate attack restrictions (OnlyAlone, NotAlone, NeedGreaterPower, etc.)
+                let attacker_ids: Vec<CardId> = picked.iter().map(|(a, _)| *a).collect();
+                let illegal = combat::attack_restriction::validate_attack_restrictions(
+                    &attacker_ids,
+                    &game.cards,
+                );
+                if !illegal.is_empty() {
+                    picked.retain(|(id, _)| !illegal.contains(id));
+                }
 
-        // AttackRestrict: enforce global maximum attackers.
-        // Java's DeterministicController validates the declaration and, when
-        // invalid, falls back to AttackConstraints.getLegalAttackers() which
-        // keeps must-attack creatures and drops the rest.  Mirror that by
-        // retaining must-attack creatures up to the limit.
-        let trim_to_limit =
-            |attackers: &mut Vec<(CardId, combat::DefenderId)>, max: usize, must: &[CardId]| {
-                if attackers.len() <= max {
-                    return;
-                }
-                if must.is_empty() {
-                    // No must-attack requirements: Java's getLegalAttackers() returns
-                    // the empty set (0 violations), so clear all.
-                    attackers.clear();
-                    return;
-                }
-                // Keep must-attack creatures, drop others
-                let mut kept: Vec<(CardId, combat::DefenderId)> = attackers
+                // Check AttackRestrict limits (global + per-defender).
+                let global_max =
+                    crate::staticability::static_ability_attack_restrict::global_attack_restrict(
+                        &game.cards,
+                    );
+                let defender_max =
+                    crate::staticability::static_ability_attack_restrict::attack_restrict_num_for_defender(
+                        &game.cards,
+                        defending,
+                    );
+                let effective_max = [global_max, defender_max]
                     .iter()
-                    .filter(|(id, _)| must.contains(id))
-                    .copied()
-                    .collect();
-                if kept.len() <= max {
-                    // Fill remaining slots with non-must attackers
-                    for &pair in attackers.iter() {
-                        if kept.len() >= max {
-                            break;
-                        }
-                        if !must.contains(&pair.0) {
-                            kept.push(pair);
-                        }
+                    .filter_map(|m| *m)
+                    .min()
+                    .map(|m| m as usize);
+
+                if let Some(max) = effective_max {
+                    if picked.len() > max {
+                        // Declaration invalid — re-prompt like Java's PhaseHandler.
+                        agents[active.index()].notify("Attack declaration invalid");
+                        continue;
                     }
-                    *attackers = kept;
-                } else {
-                    // Even must-attackers exceed the limit — truncate
-                    kept.truncate(max);
-                    *attackers = kept;
                 }
-            };
-        if let Some(max_attackers) =
-            crate::staticability::static_ability_attack_restrict::global_attack_restrict(
-                &game.cards,
-            )
-        {
-            trim_to_limit(
-                &mut chosen_attackers,
-                max_attackers as usize,
-                &must_attackers,
-            );
-        }
-        if let Some(max_vs_defender) =
-            crate::staticability::static_ability_attack_restrict::attack_restrict_num_for_defender(
-                &game.cards,
-                defending,
-            )
-        {
-            trim_to_limit(
-                &mut chosen_attackers,
-                max_vs_defender as usize,
-                &must_attackers,
-            );
+
+                chosen_attackers = picked;
+                break;
+            }
         }
 
         // Java parity: pre-mark declared attackers before optional attack-cost

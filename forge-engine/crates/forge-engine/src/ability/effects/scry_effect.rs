@@ -41,12 +41,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let count = num.min(lib_len);
 
     // Take top N cards off the library (index 0 = bottom, last = top).
-    let top_n: Vec<_> = {
+    let mut top_n: Vec<_> = {
         let zone = ctx.game.zone_mut(ZoneType::Library, target);
         let len = zone.cards.len();
         // Take the last `count` cards (top of library).
         zone.cards.split_off(len - count)
     };
+    // Reverse to match Java's iteration order (top-to-bottom).
+    // Java's `getCardsIn(Library, n)` returns cards starting from index 0 (top)
+    // downward, so the deterministic agent must consume RNG in the same order.
+    top_n.reverse();
 
     // Let UI agents pre-build card info for the revealed cards.
     ctx.agents[target.index()].on_library_peek(ctx.game, &top_n);
@@ -72,7 +76,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         zone.cards.insert(0, id);
     }
     // Put remaining top cards back on top (append to end).
-    for &id in &top {
+    // `top` is in top-to-bottom order (from the reversed top_n), so iterate
+    // in reverse to restore original library order (last push = actual top).
+    for &id in top.iter().rev() {
         zone.cards.push(id);
     }
 
