@@ -2163,7 +2163,7 @@ fn run_serve_mode(cli: &Cli) {
                 None
             }
         })
-        .or_else(|| option_env!("GIT_COMMIT_SHA").map(|s| s.to_string()));
+        .or_else(|| std::env::var("GIT_COMMIT_SHA").ok());
 
     let app_state = Arc::new(web::AppState {
         storage: std::sync::Mutex::new(db),

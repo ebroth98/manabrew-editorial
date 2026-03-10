@@ -333,6 +333,7 @@
 <script>
 let trendChart = null;
 let allFailures = []; // cached for filtering
+const expandedTraces = new Map(); // runId -> {meta, diff} HTML to preserve across refreshes
 let currentTimeRange = 'today'; // today, 24h, 7d, all
 
 function getSinceISO() {
@@ -653,9 +654,20 @@ function renderFailures() {
     </td>
   </tr>`).join('');
 
-  // Attach click handlers to failure rows
+  // Attach click handlers and restore expanded traces
   tbody.querySelectorAll('.failure-row').forEach(row => {
-    row.addEventListener('click', () => toggleTrace(row.dataset.runId));
+    const id = row.dataset.runId;
+    row.addEventListener('click', () => toggleTrace(id));
+    // Restore previously expanded traces
+    if (expandedTraces.has(id)) {
+      const cached = expandedTraces.get(id);
+      const traceRow = document.getElementById('trace-row-' + id);
+      if (traceRow) {
+        traceRow.style.display = '';
+        traceRow.querySelector('.trace-meta').innerHTML = cached.meta;
+        traceRow.querySelector('.trace-diff').innerHTML = cached.diff;
+      }
+    }
   });
 }
 
@@ -665,14 +677,18 @@ async function toggleTrace(runId) {
   // Toggle visibility
   if (traceRow.style.display !== 'none') {
     traceRow.style.display = 'none';
+    expandedTraces.delete(runId);
     return;
   }
   traceRow.style.display = '';
   const container = traceRow.querySelector('.inline-trace');
   const metaEl = container.querySelector('.trace-meta');
   const diffEl = container.querySelector('.trace-diff');
-  // If already loaded, just show
-  if (diffEl.innerHTML) return;
+  // If already loaded (from cache), just show
+  if (diffEl.innerHTML) {
+    expandedTraces.set(runId, { meta: metaEl.innerHTML, diff: diffEl.innerHTML });
+    return;
+  }
   metaEl.innerHTML = '<em>Loading trace...</em>';
   try {
     const run = await fetchJson(`/api/run/${runId}`);
@@ -681,6 +697,7 @@ async function toggleTrace(runId) {
       (run.error_message ? ` &middot; error: <code>${escapeHtml(run.error_message)}</code>` : '');
     const diffLines = computeDiff(run.rust_trace, run.java_trace);
     diffEl.innerHTML = renderDiff(diffLines);
+    expandedTraces.set(runId, { meta: metaEl.innerHTML, diff: diffEl.innerHTML });
   } catch(e) {
     metaEl.innerHTML = `<span style="color:var(--red)">Failed to load trace: ${escapeHtml(e.message)}</span>`;
   }

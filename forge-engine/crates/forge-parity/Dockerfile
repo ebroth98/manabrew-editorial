@@ -88,6 +88,9 @@ COPY preset_decks/ /app/preset_decks/
 # Download MTG Comprehensive Rules for agent analysis
 RUN curl -fsSL -o /app/mtg_rules.txt "https://media.wizards.com/2026/downloads/MagicCompRules%2020260227.txt" || true
 
+ARG GIT_COMMIT_SHA=""
+ENV GIT_COMMIT_SHA=${GIT_COMMIT_SHA}
+
 VOLUME /app/data
 
 EXPOSE 8080
