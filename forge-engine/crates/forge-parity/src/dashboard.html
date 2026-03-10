@@ -349,9 +349,9 @@ function getSinceISO() {
   }
 }
 
-function sinceParam() {
+function sinceParam(prefix = '?') {
   const s = getSinceISO();
-  return s ? `&since=${encodeURIComponent(s)}` : '';
+  return s ? `${prefix}since=${encodeURIComponent(s)}` : '';
 }
 
 function fmt(n) { return n.toLocaleString(); }
@@ -540,7 +540,7 @@ async function updateTrend() {
     const limit = currentTimeRange === '7d' ? 7 : currentTimeRange === 'all' ? 168 : 24;
     const titleMap = { today: 'Today', '24h': 'Last 24h', '7d': 'Last 7 Days', all: 'All Time' };
     document.getElementById('trend-title').textContent = `Pass Rate Trend — ${titleMap[currentTimeRange] || 'Hourly'}`;
-    const data = await fetchJson(`/api/trend?bucket=${bucket}&limit=${limit}${sinceParam()}`);
+    const data = await fetchJson(`/api/trend?bucket=${bucket}&limit=${limit}${sinceParam('&')}`);
     data.reverse();
     const labels = data.map(d => bucket === 'day'
       ? d.bucket
