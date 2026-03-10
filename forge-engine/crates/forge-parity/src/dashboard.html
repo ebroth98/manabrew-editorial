@@ -118,6 +118,8 @@
   .filter-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
   .filter-bar select { background: var(--bg); border: 1px solid var(--border); border-radius: 4px;
     color: var(--text); padding: 4px 8px; font-size: 12px; }
+  .failure-row:hover { background: var(--surface); }
+  .failure-row:hover td { background: var(--surface); }
 
   /* ── Cluster cards ───────────────────────────────────── */
   .cluster-cards { display: grid; gap: 12px; }
@@ -220,7 +222,6 @@
     <button class="tab-btn active" data-tab="games">Games</button>
     <button class="tab-btn" data-tab="failures">Failures</button>
     <button class="tab-btn" data-tab="analysis">Analysis</button>
-    <button class="tab-btn" data-tab="traces">Traces</button>
     <button class="tab-btn" data-tab="logs">Logs</button>
   </nav>
 
@@ -296,23 +297,6 @@
     </div>
   </div>
 
-  <!-- ═══ Traces Tab ═══ -->
-  <div class="tab-content" id="tab-traces">
-    <div class="filter-bar" style="gap:12px">
-      <label style="color:var(--text-muted);font-size:12px">Select a failed game to view its traces:</label>
-      <select class="ctrl-input" id="trace-run-select" style="width:400px">
-        <option value="">-- select a failed run --</option>
-      </select>
-      <button class="btn-sm" id="trace-load-btn">Load</button>
-    </div>
-    <div id="trace-viewer" style="display:none">
-      <div class="trace-header" id="trace-meta" style="padding:8px 12px;background:var(--surface);border:1px solid var(--border);border-radius:6px;margin-bottom:12px;font-size:13px;color:var(--text-muted)"></div>
-      <div id="trace-diff" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:0;font-size:11px;max-height:700px;overflow:auto;font-family:'SF Mono','Menlo','Consolas',monospace;line-height:1.6"></div>
-    </div>
-    <div id="trace-empty" style="color:var(--text-muted);font-size:13px;margin-top:12px">
-      Select a failed run above to view the Rust and Java game traces side by side.
-    </div>
-  </div>
 
   <!-- ═══ Logs Tab ═══ -->
   <div class="tab-content" id="tab-logs">
@@ -520,7 +504,7 @@ async function updateAnalysisStatus() {
 
 async function updateStats() {
   try {
-    const s = await fetchJson('/api/stats');
+    const s = await fetchJson('/api/stats' + sinceParam());
     document.getElementById('uptime').textContent = 'Uptime: ' + uptimeFmt(s.uptime_seconds);
     if (s.commit_sha) {
       document.getElementById('commit-sha').textContent = '@' + s.commit_sha;
@@ -650,7 +634,7 @@ function renderFailures() {
     tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted);text-align:center">No failures</td></tr>';
     return;
   }
-  tbody.innerHTML = filtered.map(r => `<tr>
+  tbody.innerHTML = filtered.map(r => `<tr class="failure-row" data-run-id="${r.id}" style="cursor:pointer" title="Click to view trace">
     <td class="mono">${r.id}</td>
     <td>${r.batch_id}</td>
     <td>${r.deck1}</td>
@@ -659,7 +643,47 @@ function renderFailures() {
     <td><span class="badge ${r.status === 'pass' ? 'pass' : r.status === 'fail' ? 'fail' : 'error'}">${r.status}</span>${r.is_fuzz ? ' <span style="background:rgba(210,153,34,0.2);color:var(--yellow);padding:1px 5px;border-radius:8px;font-size:9px;font-weight:600">FUZZ</span>' : ''}</td>
     <td class="mono">${r.first_divergence_field || r.error_message || '-'}</td>
     <td style="color:var(--text-muted)">${r.timestamp.replace('T', ' ').slice(0, 19)}</td>
+  </tr>
+  <tr class="trace-row" id="trace-row-${r.id}" style="display:none">
+    <td colspan="8" style="padding:0">
+      <div class="inline-trace" style="background:var(--surface);border-top:1px solid var(--border);padding:8px 12px">
+        <div class="trace-meta" style="font-size:12px;color:var(--text-muted);margin-bottom:8px"></div>
+        <div class="trace-diff" style="font-size:11px;max-height:500px;overflow:auto;font-family:'SF Mono','Menlo','Consolas',monospace;line-height:1.6"></div>
+      </div>
+    </td>
   </tr>`).join('');
+
+  // Attach click handlers to failure rows
+  tbody.querySelectorAll('.failure-row').forEach(row => {
+    row.addEventListener('click', () => toggleTrace(row.dataset.runId));
+  });
+}
+
+async function toggleTrace(runId) {
+  const traceRow = document.getElementById('trace-row-' + runId);
+  if (!traceRow) return;
+  // Toggle visibility
+  if (traceRow.style.display !== 'none') {
+    traceRow.style.display = 'none';
+    return;
+  }
+  traceRow.style.display = '';
+  const container = traceRow.querySelector('.inline-trace');
+  const metaEl = container.querySelector('.trace-meta');
+  const diffEl = container.querySelector('.trace-diff');
+  // If already loaded, just show
+  if (diffEl.innerHTML) return;
+  metaEl.innerHTML = '<em>Loading trace...</em>';
+  try {
+    const run = await fetchJson(`/api/run/${runId}`);
+    metaEl.innerHTML = `<strong>#${run.id}</strong> &middot; ${run.deck1} vs ${run.deck2} &middot; seed ${run.seed}` +
+      (run.first_divergence_field ? ` &middot; divergence: <code>${run.first_divergence_field}</code> (Rust: <code>${run.first_divergence_rust}</code>, Java: <code>${run.first_divergence_java}</code>)` : '') +
+      (run.error_message ? ` &middot; error: <code>${escapeHtml(run.error_message)}</code>` : '');
+    const diffLines = computeDiff(run.rust_trace, run.java_trace);
+    diffEl.innerHTML = renderDiff(diffLines);
+  } catch(e) {
+    metaEl.innerHTML = `<span style="color:var(--red)">Failed to load trace: ${escapeHtml(e.message)}</span>`;
+  }
 }
 
 document.getElementById('failure-deck-filter').addEventListener('change', renderFailures);
@@ -791,17 +815,7 @@ document.getElementById('log-search').addEventListener('input', () => {
   updateLogs();
 });
 
-// ── Traces ────────────────────────────────────────────────
-async function updateTraceDropdown() {
-  try {
-    const data = await fetchJson('/api/failures?limit=100');
-    const sel = document.getElementById('trace-run-select');
-    const curVal = sel.value;
-    sel.innerHTML = '<option value="">-- select a failed run --</option>' +
-      data.map(r => `<option value="${r.id}">#${r.id} ${r.deck1} vs ${r.deck2} (seed ${r.seed}) — ${r.first_divergence_field || r.error_message || '?'}</option>`).join('');
-    if (curVal) sel.value = curVal;
-  } catch(e) { console.error('Trace dropdown error:', e); }
-}
+// ── Traces (inline in failures) ───────────────────────────
 
 // Simple LCS-based unified diff
 function computeDiff(rustText, javaText) {
@@ -897,29 +911,6 @@ function renderDiff(diffLines) {
   return html;
 }
 
-document.getElementById('trace-load-btn').addEventListener('click', async () => {
-  const id = document.getElementById('trace-run-select').value;
-  if (!id) return;
-  try {
-    const run = await fetchJson(`/api/run/${id}`);
-    const viewer = document.getElementById('trace-viewer');
-    const empty = document.getElementById('trace-empty');
-
-    const meta = document.getElementById('trace-meta');
-    meta.innerHTML = `<strong>#${run.id}</strong> &middot; ${run.deck1} vs ${run.deck2} &middot; seed ${run.seed} &middot; <span class="badge ${run.status}">${run.status}</span>` +
-      (run.first_divergence_field ? ` &middot; divergence: <code>${run.first_divergence_field}</code> (Rust: <code>${run.first_divergence_rust}</code>, Java: <code>${run.first_divergence_java}</code>)` : '') +
-      (run.error_message ? ` &middot; error: <code>${escapeHtml(run.error_message)}</code>` : '');
-
-    const diffLines = computeDiff(run.rust_trace, run.java_trace);
-    document.getElementById('trace-diff').innerHTML = renderDiff(diffLines);
-
-    viewer.style.display = '';
-    empty.style.display = 'none';
-  } catch(e) {
-    console.error('Trace load error:', e);
-    alert('Failed to load run: ' + e.message);
-  }
-});
 
 async function updateFuzzGames() {
   try {
@@ -949,7 +940,7 @@ async function refresh() {
     updateStats(), updateTrend(), updateMatrix(),
     updateFailures(), updateClusters(),
     updateConfig(), updateAnalysisStatus(),
-    updateLogs(), updateTraceDropdown(), updateFuzzGames()
+    updateLogs(), updateFuzzGames()
   ]);
 }
 

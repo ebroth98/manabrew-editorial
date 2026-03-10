@@ -177,25 +177,34 @@ impl Storage {
     ///
     /// `start_time_iso` filters `games_per_minute` to only count games from
     /// the current session, while totals/pass_rate reflect all historical data.
-    pub fn stats(&self, uptime_seconds: u64, start_time_iso: &str) -> SqlResult<ContinuousStats> {
-        // Preset-only stats (is_fuzz = 0)
-        let total: usize =
-            self.conn
-                .query_row("SELECT COUNT(*) FROM runs WHERE is_fuzz = 0", [], |r| {
-                    r.get(0)
-                })?;
+    pub fn stats(
+        &self,
+        uptime_seconds: u64,
+        start_time_iso: &str,
+        since: Option<&str>,
+    ) -> SqlResult<ContinuousStats> {
+        // Preset-only stats (is_fuzz = 0), optionally filtered by time range
+        let time_filter = since
+            .map(|s| format!(" AND timestamp >= '{}'", s.replace('\'', "''")))
+            .unwrap_or_default();
+
+        let total: usize = self.conn.query_row(
+            &format!("SELECT COUNT(*) FROM runs WHERE is_fuzz = 0{time_filter}"),
+            [],
+            |r| r.get(0),
+        )?;
         let passed: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 0",
+            &format!("SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 0{time_filter}"),
             [],
             |r| r.get(0),
         )?;
         let failed: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status = 'fail' AND is_fuzz = 0",
+            &format!("SELECT COUNT(*) FROM runs WHERE status = 'fail' AND is_fuzz = 0{time_filter}"),
             [],
             |r| r.get(0),
         )?;
         let errors: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status = 'error' AND is_fuzz = 0",
+            &format!("SELECT COUNT(*) FROM runs WHERE status = 'error' AND is_fuzz = 0{time_filter}"),
             [],
             |r| r.get(0),
         )?;
@@ -226,18 +235,18 @@ impl Storage {
                 })?;
 
         // Fuzz-only stats
-        let fuzz_total: usize =
-            self.conn
-                .query_row("SELECT COUNT(*) FROM runs WHERE is_fuzz = 1", [], |r| {
-                    r.get(0)
-                })?;
+        let fuzz_total: usize = self.conn.query_row(
+            &format!("SELECT COUNT(*) FROM runs WHERE is_fuzz = 1{time_filter}"),
+            [],
+            |r| r.get(0),
+        )?;
         let fuzz_passed: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 1",
+            &format!("SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 1{time_filter}"),
             [],
             |r| r.get(0),
         )?;
         let fuzz_failed: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE status IN ('fail', 'error') AND is_fuzz = 1",
+            &format!("SELECT COUNT(*) FROM runs WHERE status IN ('fail', 'error') AND is_fuzz = 1{time_filter}"),
             [],
             |r| r.get(0),
         )?;
@@ -702,7 +711,7 @@ mod tests {
         db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false, None)
             .unwrap();
 
-        let stats = db.stats(60, "2024-01-01T00:00:00Z").unwrap();
+        let stats = db.stats(60, "2024-01-01T00:00:00Z", None).unwrap();
         assert_eq!(stats.total_games, 3);
         assert_eq!(stats.passed, 2);
         assert_eq!(stats.failed, 1);

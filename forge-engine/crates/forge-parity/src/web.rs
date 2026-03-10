@@ -401,10 +401,13 @@ async fn dashboard_handler() -> Html<&'static str> {
     Html(include_str!("dashboard.html"))
 }
 
-async fn stats_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn stats_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SinceQuery>,
+) -> impl IntoResponse {
     let uptime = state.start_time.elapsed().as_secs();
     let storage = state.storage.lock().unwrap();
-    match storage.stats(uptime, &state.start_time_iso) {
+    match storage.stats(uptime, &state.start_time_iso, params.since.as_deref()) {
         Ok(mut stats) => {
             stats.commit_sha = state.commit_sha.clone();
             Json(stats).into_response()
