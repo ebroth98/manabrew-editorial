@@ -487,6 +487,135 @@ impl JavaServer {
         })
     }
 
+    /// Run a matchup with streaming snapshot comparison.
+    ///
+    /// Like `run_matchup`, but calls `on_snapshot(index, &snapshot)` for each
+    /// Java snapshot as it arrives. If the callback returns `false`, remaining
+    /// snapshots are skipped (not parsed/stored) but output is drained to the
+    /// done sentinel to keep the protocol in sync.
+    ///
+    /// This enables early divergence detection without waiting for the full
+    /// Java game to be parsed, saving JSON deserialization time on long games.
+    pub fn run_matchup_streaming<F>(
+        &mut self,
+        deck1: &str,
+        deck2: &str,
+        seed: u64,
+        max_turns: u32,
+        prefer_actions: bool,
+        mut on_snapshot: F,
+    ) -> Result<JavaMatchupData, JavaBridgeError>
+    where
+        F: FnMut(usize, &StateSnapshot) -> bool,
+    {
+        let request = MatchupRequest {
+            command: "run".to_string(),
+            deck1: deck1.to_string(),
+            deck2: deck2.to_string(),
+            seed,
+            max_turns,
+            prefer_actions,
+        };
+
+        let request_json = serde_json::to_string(&request).map_err(|e| {
+            JavaBridgeError::ProtocolError(format!("Failed to serialize request: {}", e))
+        })?;
+
+        self.stdin.write_all(request_json.as_bytes()).map_err(|e| {
+            JavaBridgeError::ProtocolError(format!("Failed to write to stdin: {}", e))
+        })?;
+        self.stdin.write_all(b"\n").map_err(|e| {
+            JavaBridgeError::ProtocolError(format!("Failed to write newline: {}", e))
+        })?;
+        self.stdin
+            .flush()
+            .map_err(|e| JavaBridgeError::ProtocolError(format!("Failed to flush stdin: {}", e)))?;
+
+        let mut snapshots = Vec::new();
+        let mut decisions = Vec::new();
+        let mut line_buf = String::new();
+        let mut snapshot_idx: usize = 0;
+        let mut draining = false;
+
+        loop {
+            line_buf.clear();
+            let bytes_read = self.stdout.read_line(&mut line_buf).map_err(|e| {
+                JavaBridgeError::ProtocolError(format!("Failed to read stdout: {}", e))
+            })?;
+
+            if bytes_read == 0 {
+                return Err(JavaBridgeError::ProtocolError(
+                    "Java server closed stdout (crashed?)".into(),
+                ));
+            }
+
+            let line = line_buf.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            // Always check for done sentinel
+            if let Ok(sentinel) = serde_json::from_str::<DoneSentinel>(line) {
+                if sentinel.done {
+                    if let Some(err) = sentinel.error {
+                        return Err(JavaBridgeError::ProtocolError(format!(
+                            "Java game error: {}",
+                            err
+                        )));
+                    }
+                    break;
+                }
+            }
+
+            // When draining after divergence, skip parsing snapshots entirely
+            if draining {
+                continue;
+            }
+
+            if let Some(decision) = parse_decision_line(line) {
+                decisions.push(decision);
+                continue;
+            }
+
+            match serde_json::from_str::<StateSnapshot>(line) {
+                Ok(snapshot) => {
+                    if self.verbose {
+                        eprintln!(
+                            "[parity] Java snapshot: turn={} phase={} game_over={}",
+                            snapshot.turn, snapshot.phase, snapshot.game_over
+                        );
+                    }
+                    let keep_going = on_snapshot(snapshot_idx, &snapshot);
+                    snapshots.push(snapshot);
+                    snapshot_idx += 1;
+                    if !keep_going {
+                        draining = true;
+                    }
+                }
+                Err(e) => {
+                    if self.verbose {
+                        eprintln!(
+                            "[parity] Warning: failed to parse Java output: {} (line: {})",
+                            e, line
+                        );
+                    }
+                }
+            }
+        }
+
+        if self.verbose {
+            eprintln!(
+                "[parity] Java server matchup completed: {} snapshot(s){}",
+                snapshots.len(),
+                if draining { " (early divergence)" } else { "" }
+            );
+        }
+        Ok(JavaMatchupData {
+            snapshots,
+            decisions,
+        })
+    }
+
     /// Check if the server process is still alive.
     pub fn is_alive(&mut self) -> bool {
         matches!(self.child.try_wait(), Ok(None))

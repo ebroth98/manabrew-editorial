@@ -20,6 +20,20 @@
 //!
 //! **Fuzz mode** (`--fuzz`):
 //! Generates random decks from the parseable card pool and runs parity tests.
+//!
+//! # Performance: Three-tier optimization
+//!
+//! 1. **Parallel engines** (single-matchup modes): Rust and Java run concurrently
+//!    via `std::thread::scope`. Matchup time = `max(rust, java)` not `rust + java`.
+//!
+//! 2. **Streaming diff** (matrix mode): Java snapshots are compared against
+//!    pre-computed Rust results as they arrive via `run_matchup_streaming`. On
+//!    divergence, remaining Java snapshots are skipped (not parsed), saving JSON
+//!    deserialization time on long games.
+//!
+//! 3. **Rust-ahead batching** (matrix mode): All Rust games run first in a
+//!    parallel burst (phase 1), then Java servers process results with streaming
+//!    comparison (phase 2). Java servers are never idle waiting for Rust.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
@@ -614,13 +628,32 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
 }
 
 /// Run a single matchup using a JavaServer (server mode).
+/// Rust engine runs on a background thread while Java runs on the current thread,
+/// so both engines execute in parallel.
 fn run_single_matchup_server(
     config: &RunConfig,
     data: &LoadedData,
     server: &mut JavaServer,
 ) -> MatchupResult {
-    // Run Rust engine
-    let rust_trace = match runner::run_with_data(config, data) {
+    // Run Rust and Java engines concurrently:
+    // Rust on a scoped thread, Java on the current thread (needs &mut server).
+    let (rust_result, java_result) = std::thread::scope(|s| {
+        let rust_handle = s.spawn(|| runner::run_with_data(config, data));
+
+        // Java runs on this thread since it needs exclusive &mut server
+        let java_result = server.run_matchup(
+            &config.deck1,
+            &config.deck2,
+            config.seed,
+            config.max_turns,
+            config.prefer_actions,
+        );
+
+        let rust_result = rust_handle.join().expect("Rust engine thread panicked");
+        (rust_result, java_result)
+    });
+
+    let rust_trace = match rust_result {
         Ok(trace) => trace,
         Err(e) => {
             return MatchupResult {
@@ -641,14 +674,7 @@ fn run_single_matchup_server(
         }
     };
 
-    // Run Java engine via server
-    let java_data = match server.run_matchup(
-        &config.deck1,
-        &config.deck2,
-        config.seed,
-        config.max_turns,
-        config.prefer_actions,
-    ) {
+    let java_data = match java_result {
         Ok(snaps) => snaps,
         Err(e) => {
             return MatchupResult {
@@ -668,6 +694,7 @@ fn run_single_matchup_server(
             };
         }
     };
+
     let mut result = compare_snapshots(
         config,
         &rust_trace.snapshots,
@@ -680,13 +707,40 @@ fn run_single_matchup_server(
 }
 
 /// Run a single matchup using one-shot JavaBridge (fallback mode).
+/// Rust and Java engines run in parallel using scoped threads.
 fn run_single_matchup_oneshot(
     config: &RunConfig,
     data: &LoadedData,
     jar_path: &PathBuf,
 ) -> MatchupResult {
-    // Run Rust engine
-    let rust_trace = match runner::run_with_data(config, data) {
+    // Run Rust and Java engines concurrently
+    let (rust_result, java_result) = std::thread::scope(|s| {
+        let rust_handle = s.spawn(|| runner::run_with_data(config, data));
+
+        let java_handle = s.spawn(|| {
+            let bridge_config = JavaBridgeConfig {
+                jar_path: jar_path.clone(),
+                seed: config.seed,
+                max_turns: config.max_turns,
+                deck1: config.deck1.clone(),
+                deck2: config.deck2.clone(),
+                forge_home: None,
+                decks_dir: config.decks_dir.clone(),
+                verbose: config.verbose,
+                prefer_actions: config.prefer_actions,
+                java_heap: config.java_heap.clone(),
+            };
+            let bridge = JavaBridge::new(bridge_config);
+            bridge.run()
+        });
+
+        (
+            rust_handle.join().expect("Rust engine thread panicked"),
+            java_handle.join().expect("Java bridge thread panicked"),
+        )
+    });
+
+    let rust_trace = match rust_result {
         Ok(trace) => trace,
         Err(e) => {
             return MatchupResult {
@@ -707,22 +761,7 @@ fn run_single_matchup_oneshot(
         }
     };
 
-    // Run Java engine via one-shot bridge
-    let bridge_config = JavaBridgeConfig {
-        jar_path: jar_path.clone(),
-        seed: config.seed,
-        max_turns: config.max_turns,
-        deck1: config.deck1.clone(),
-        deck2: config.deck2.clone(),
-        forge_home: None,
-        decks_dir: config.decks_dir.clone(),
-        verbose: config.verbose,
-        prefer_actions: config.prefer_actions,
-        java_heap: config.java_heap.clone(),
-    };
-
-    let bridge = JavaBridge::new(bridge_config);
-    let java_data = match bridge.run() {
+    let java_data = match java_result {
         Ok(data) => data,
         Err(e) => {
             return MatchupResult {
@@ -742,6 +781,7 @@ fn run_single_matchup_oneshot(
             };
         }
     };
+
     let mut result = compare_snapshots(
         config,
         &rust_trace.snapshots,
@@ -941,30 +981,41 @@ impl ServerPool {
         Ok(Self { servers })
     }
 
-    /// Run a matchup on any available server. Tries each server in round-robin.
-    /// If a server has crashed, marks it as dead and tries the next.
-    fn run_matchup(
+    /// Run a matchup on any available server with streaming snapshot comparison.
+    /// The callback `on_snapshot(index, &snapshot)` is called for each Java snapshot.
+    /// Return `false` to signal divergence — remaining snapshots are skipped (not parsed)
+    /// but output is drained to keep the protocol in sync.
+    fn run_matchup_streaming<F>(
         &self,
         deck1: &str,
         deck2: &str,
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
-    ) -> Result<JavaMatchupData, JavaBridgeError> {
-        // Try each server — grab whichever lock is available
+        on_snapshot: F,
+    ) -> Result<JavaMatchupData, JavaBridgeError>
+    where
+        F: FnMut(usize, &forge_parity::protocol::StateSnapshot) -> bool,
+    {
         for server_mutex in &self.servers {
             if let Ok(mut server) = server_mutex.try_lock() {
                 if !server.is_alive() {
                     continue;
                 }
-                return server.run_matchup(deck1, deck2, seed, max_turns, prefer_actions);
+                return server.run_matchup_streaming(
+                    deck1,
+                    deck2,
+                    seed,
+                    max_turns,
+                    prefer_actions,
+                    on_snapshot,
+                );
             }
         }
-        // All busy on try_lock — block on the first one
         let mut server = self.servers[0]
             .lock()
             .map_err(|e| JavaBridgeError::ProtocolError(format!("Mutex poisoned: {}", e)))?;
-        server.run_matchup(deck1, deck2, seed, max_turns, prefer_actions)
+        server.run_matchup_streaming(deck1, deck2, seed, max_turns, prefer_actions, on_snapshot)
     }
 
     /// Shutdown all servers in parallel.
@@ -1070,7 +1121,13 @@ fn run_matrix_mode(cli: &Cli) {
         None
     };
 
-    let results: Vec<MatchupResult> = jobs
+    // Two-phase execution: run all Rust games first (very fast), then feed
+    // Java servers with streaming comparison. This maximizes Java server
+    // utilization — servers are never idle waiting for Rust to finish.
+
+    // Phase 1: Run ALL Rust games in parallel (typically finishes in seconds)
+    let rust_completed = AtomicUsize::new(0);
+    let rust_phase: Vec<(RunConfig, Result<forge_parity::protocol::GameTrace, String>)> = jobs
         .par_iter()
         .map(|&(d1, d2, seed)| {
             let config = RunConfig {
@@ -1084,13 +1141,58 @@ fn run_matrix_mode(cli: &Cli) {
                 prefer_actions: cli.prefer_actions,
                 java_heap: cli.java_heap.clone(),
             };
+            let result = runner::run_with_data(&config, &data);
+            if cli.verbose {
+                let n = rust_completed.fetch_add(1, Ordering::Relaxed) + 1;
+                eprintln!(
+                    "[parity] [Rust {}/{}] {} vs {} seed={} ... {}",
+                    n,
+                    total,
+                    d1,
+                    d2,
+                    seed,
+                    if result.is_ok() { "OK" } else { "ERROR" }
+                );
+            }
+            (config, result)
+        })
+        .collect();
 
-            let result = if let Some(ref pool) = pool {
-                run_single_matchup_with_pool(&config, &data, pool)
-            } else if let Some(ref jar_path) = cli.java_jar {
-                run_single_matchup_oneshot(&config, &data, jar_path)
-            } else {
-                run_single_matchup_rust_only(&config, &data)
+    if cli.verbose {
+        eprintln!("[parity] Phase 1 complete: all Rust games finished");
+    }
+
+    // Phase 2: Run Java games with streaming comparison against Rust results.
+    // Java servers run at 100% utilization since all Rust results are ready.
+    let results: Vec<MatchupResult> = rust_phase
+        .par_iter()
+        .map(|(config, rust_result)| {
+            let result = match rust_result {
+                Ok(trace) => {
+                    if let Some(ref pool) = pool {
+                        run_java_streaming_compare_pool(config, trace, pool)
+                    } else if let Some(ref jar_path) = cli.java_jar {
+                        run_java_streaming_compare_oneshot(config, trace, jar_path)
+                    } else {
+                        // No Java — Rust-only result
+                        build_rust_only_result(config, trace)
+                    }
+                }
+                Err(e) => MatchupResult {
+                    deck1: config.deck1.clone(),
+                    deck2: config.deck2.clone(),
+                    seed: config.seed,
+                    status: MatchupStatus::Error,
+                    snapshots_compared: 0,
+                    divergence_count: 0,
+                    first_divergence: None,
+                    error_message: Some(format!("Rust engine error: {}", e)),
+                    trace: None,
+                    java_trace: None,
+                    covered_cards: vec![],
+                    mechanic_signals: vec![],
+                    finished_turn: None,
+                },
             };
 
             if cli.verbose {
@@ -1099,13 +1201,15 @@ fn run_matrix_mode(cli: &Cli) {
                     MatchupStatus::Pass => {
                         eprintln!(
                             "[parity] [{}/{}] {} vs {} seed={} ... PASS ({} snapshots)",
-                            n, total, d1, d2, seed, result.snapshots_compared
+                            n, total, config.deck1, config.deck2, config.seed,
+                            result.snapshots_compared
                         );
                     }
                     MatchupStatus::Fail => {
                         eprintln!(
                             "[parity] [{}/{}] {} vs {} seed={} ... FAIL ({} divergences)",
-                            n, total, d1, d2, seed, result.divergence_count
+                            n, total, config.deck1, config.deck2, config.seed,
+                            result.divergence_count
                         );
                     }
                     MatchupStatus::Error => {
@@ -1113,9 +1217,9 @@ fn run_matrix_mode(cli: &Cli) {
                             "[parity] [{}/{}] {} vs {} seed={} ... ERROR: {}",
                             n,
                             total,
-                            d1,
-                            d2,
-                            seed,
+                            config.deck1,
+                            config.deck2,
+                            config.seed,
                             result.error_message.as_deref().unwrap_or("unknown")
                         );
                     }
@@ -1166,43 +1270,51 @@ fn run_matrix_mode(cli: &Cli) {
     }
 }
 
-/// Run a single matchup using the server pool.
-fn run_single_matchup_with_pool(
+/// Run Java via server pool with streaming comparison against pre-computed Rust trace.
+/// Compares each Java snapshot as it arrives, skipping JSON parsing after divergence.
+fn run_java_streaming_compare_pool(
     config: &RunConfig,
-    data: &LoadedData,
+    rust_trace: &forge_parity::protocol::GameTrace,
     pool: &ServerPool,
 ) -> MatchupResult {
-    // Run Rust engine
-    let rust_trace = match runner::run_with_data(config, data) {
-        Ok(trace) => trace,
-        Err(e) => {
-            return MatchupResult {
-                deck1: config.deck1.clone(),
-                deck2: config.deck2.clone(),
-                seed: config.seed,
-                status: MatchupStatus::Error,
-                snapshots_compared: 0,
-                divergence_count: 0,
-                first_divergence: None,
-                error_message: Some(format!("Rust engine error: {}", e)),
-                trace: None,
-                java_trace: None,
-                covered_cards: vec![],
-                mechanic_signals: vec![],
-                finished_turn: None,
-            };
-        }
-    };
+    let rust_snapshots = &rust_trace.snapshots;
+    let mut first_divergence: Option<Divergence> = None;
+    let mut compared_until: usize = 0;
 
-    // Run Java via pool
-    let java_data = match pool.run_matchup(
+    let java_result = pool.run_matchup_streaming(
         &config.deck1,
         &config.deck2,
         config.seed,
         config.max_turns,
         config.prefer_actions,
-    ) {
-        Ok(snaps) => snaps,
+        |idx, java_snap| {
+            if let Some(rust_snap) = rust_snapshots.get(idx) {
+                let divs = comparator::compare(idx, rust_snap, java_snap);
+                if let Some(div) = divs.into_iter().next() {
+                    first_divergence = Some(div);
+                    compared_until = idx + 1;
+                    return false; // divergence found — stop storing
+                }
+            } else {
+                // Java has more snapshots than Rust
+                first_divergence = Some(Divergence {
+                    snapshot_index: idx,
+                    turn: java_snap.turn,
+                    phase: java_snap.phase.clone(),
+                    field: "snapshot.exists".into(),
+                    rust_value: "missing".into(),
+                    java_value: "present".into(),
+                });
+                compared_until = idx + 1;
+                return false;
+            }
+            compared_until = idx + 1;
+            true
+        },
+    );
+
+    let java_data = match java_result {
+        Ok(data) => data,
         Err(e) => {
             return MatchupResult {
                 deck1: config.deck1.clone(),
@@ -1215,8 +1327,111 @@ fn run_single_matchup_with_pool(
                 error_message: Some(format!("Java server error: {}", e)),
                 trace: None,
                 java_trace: None,
-                covered_cards: vec![],
-                mechanic_signals: vec![],
+                covered_cards: rust_trace.covered_cards.clone(),
+                mechanic_signals: rust_trace.mechanic_signals.clone(),
+                finished_turn: None,
+            };
+        }
+    };
+
+    // Check if Rust has more snapshots than Java
+    if first_divergence.is_none() && rust_snapshots.len() > java_data.snapshots.len() {
+        let idx = java_data.snapshots.len();
+        if let Some(rs) = rust_snapshots.get(idx) {
+            first_divergence = Some(Divergence {
+                snapshot_index: idx,
+                turn: rs.turn,
+                phase: rs.phase.clone(),
+                field: "snapshot.exists".into(),
+                rust_value: "present".into(),
+                java_value: "missing".into(),
+            });
+            compared_until = idx + 1;
+        }
+    }
+
+    let divergence_count = usize::from(first_divergence.is_some());
+    let status = if first_divergence.is_none() {
+        MatchupStatus::Pass
+    } else {
+        MatchupStatus::Fail
+    };
+
+    MatchupResult {
+        deck1: config.deck1.clone(),
+        deck2: config.deck2.clone(),
+        seed: config.seed,
+        status,
+        snapshots_compared: if first_divergence.is_some() {
+            compared_until
+        } else {
+            rust_snapshots.len().max(java_data.snapshots.len())
+        },
+        divergence_count,
+        trace: first_divergence.as_ref().map(|_| {
+            format_rust_trace(
+                config,
+                &rust_snapshots[..compared_until.min(rust_snapshots.len())],
+                &rust_trace.decisions,
+            )
+        }),
+        java_trace: first_divergence.as_ref().map(|_| {
+            format_java_trace(
+                config,
+                &java_data.snapshots[..compared_until.min(java_data.snapshots.len())],
+                &java_data.decisions,
+            )
+        }),
+        first_divergence,
+        error_message: None,
+        covered_cards: rust_trace.covered_cards.clone(),
+        mechanic_signals: rust_trace.mechanic_signals.clone(),
+        finished_turn: rust_snapshots.last().and_then(|s| {
+            if s.game_over {
+                Some(s.turn)
+            } else {
+                None
+            }
+        }),
+    }
+}
+
+/// Run Java via one-shot bridge with streaming comparison against pre-computed Rust trace.
+fn run_java_streaming_compare_oneshot(
+    config: &RunConfig,
+    rust_trace: &forge_parity::protocol::GameTrace,
+    jar_path: &PathBuf,
+) -> MatchupResult {
+    // For one-shot mode, run Java and compare after (no streaming support on subprocess)
+    let bridge_config = JavaBridgeConfig {
+        jar_path: jar_path.clone(),
+        seed: config.seed,
+        max_turns: config.max_turns,
+        deck1: config.deck1.clone(),
+        deck2: config.deck2.clone(),
+        forge_home: None,
+        decks_dir: config.decks_dir.clone(),
+        verbose: config.verbose,
+        prefer_actions: config.prefer_actions,
+        java_heap: config.java_heap.clone(),
+    };
+    let bridge = JavaBridge::new(bridge_config);
+    let java_data = match bridge.run() {
+        Ok(data) => data,
+        Err(e) => {
+            return MatchupResult {
+                deck1: config.deck1.clone(),
+                deck2: config.deck2.clone(),
+                seed: config.seed,
+                status: MatchupStatus::Error,
+                snapshots_compared: 0,
+                divergence_count: 0,
+                first_divergence: None,
+                error_message: Some(format!("Java engine error: {}", e)),
+                trace: None,
+                java_trace: None,
+                covered_cards: rust_trace.covered_cards.clone(),
+                mechanic_signals: rust_trace.mechanic_signals.clone(),
                 finished_turn: None,
             };
         }
@@ -1227,9 +1442,37 @@ fn run_single_matchup_with_pool(
         &rust_trace.decisions,
         &java_data,
     );
-    result.covered_cards = rust_trace.covered_cards;
-    result.mechanic_signals = rust_trace.mechanic_signals;
+    result.covered_cards = rust_trace.covered_cards.clone();
+    result.mechanic_signals = rust_trace.mechanic_signals.clone();
     result
+}
+
+/// Build a MatchupResult from a completed Rust-only trace (no Java).
+fn build_rust_only_result(
+    config: &RunConfig,
+    trace: &forge_parity::protocol::GameTrace,
+) -> MatchupResult {
+    MatchupResult {
+        deck1: config.deck1.clone(),
+        deck2: config.deck2.clone(),
+        seed: config.seed,
+        status: MatchupStatus::Pass,
+        snapshots_compared: trace.snapshots.len(),
+        divergence_count: 0,
+        first_divergence: None,
+        error_message: None,
+        trace: None,
+        java_trace: None,
+        covered_cards: trace.covered_cards.clone(),
+        mechanic_signals: trace.mechanic_signals.clone(),
+        finished_turn: trace.snapshots.last().and_then(|s| {
+            if s.game_over {
+                Some(s.turn)
+            } else {
+                None
+            }
+        }),
+    }
 }
 
 fn run_fuzz_mode(cli: &Cli) {
