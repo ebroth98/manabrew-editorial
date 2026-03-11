@@ -8,6 +8,8 @@ import { CARD_W, CARD_H, CARD_GAP as GAP } from "./game.constants";
 import { CARD_RING, BATTLEFIELD_CARD } from "./game.styles";
 import { useBattlefieldLayout } from "@/hooks/useBattlefieldLayout";
 
+const ATTACH_OFFSET_Y = 16;
+
 interface FreeBattlefieldProps {
   cards: XMageCard[];
   className?: string;
@@ -47,10 +49,31 @@ export function FreeBattlefield({
   rightReserved = 0,
   isDropActive = false,
 }: FreeBattlefieldProps) {
-  const cardIds = useMemo(() => cards.map((c) => c.id), [cards]);
+  const cardMap = useMemo(() => {
+    const m = new Map<string, XMageCard>();
+    for (const c of cards) m.set(c.id, c);
+    return m;
+  }, [cards]);
+
+  // IDs of cards that are attached to another card on the battlefield
+  const attachedIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of cards) {
+      if (c.attachedTo && cardMap.has(c.attachedTo)) s.add(c.id);
+    }
+    return s;
+  }, [cards, cardMap]);
+
+  // Only top-level cards get grid positions
+  const topLevelCards = useMemo(
+    () => cards.filter((c) => !attachedIds.has(c.id)),
+    [cards, attachedIds],
+  );
+
+  const topLevelIds = useMemo(() => topLevelCards.map((c) => c.id), [topLevelCards]);
   const landCardIds = useMemo(
-    () => cards.filter((c) => c.types.includes("Land")).map((c) => c.id),
-    [cards],
+    () => topLevelCards.filter((c) => c.types.includes("Land")).map((c) => c.id),
+    [topLevelCards],
   );
 
   const {
@@ -63,16 +86,102 @@ export function FreeBattlefield({
     marqueeRect,
     handleCardMouseDown,
     handleContainerMouseDown,
-  } = useBattlefieldLayout({ cardIds, bottomReserved, leftReserved, rightReserved, landCardIds });
+  } = useBattlefieldLayout({ cardIds: topLevelIds, bottomReserved, leftReserved, rightReserved, landCardIds });
 
-  // Minimum container height to show all positioned cards
+  // Minimum container height to show all positioned cards (account for attachment offset)
   const minH = Math.max(
     120,
-    ...cards.map((c) => {
+    ...topLevelCards.map((c) => {
       const p = positions[c.id];
-      return p ? p.y + CARD_H + GAP : 120;
+      const attCount = (c.attachmentIds ?? []).filter((id) => cardMap.has(id)).length;
+      const offset = attCount * ATTACH_OFFSET_Y;
+      return p ? p.y + CARD_H + GAP + offset : 120;
     }),
   );
+
+  const renderSingleCard = (
+    card: XMageCard,
+    opts: { onMouseDown?: (e: React.MouseEvent) => void; extraStyle?: React.CSSProperties } = {},
+  ) => {
+    const isPending = pendingCardIds?.includes(card.id);
+    const isAttacking = attackingCardIds?.includes(card.id);
+    const isTappable = tappableLandIds?.includes(card.id);
+    const isUntappable = untappableLandIds?.includes(card.id);
+    const isChoosableClick =
+      (card.isChoosable && !!onClickCard) || (isAttacking && !!onClickAnyCard);
+    const isDragging = draggingCardIds.has(card.id);
+    const isSelected = selectedCardIds.has(card.id);
+
+    return (
+      <div
+        key={card.id}
+        data-card-id={card.id}
+        className="absolute group"
+        style={{
+          width: CARD_W,
+          ...opts.extraStyle,
+        }}
+        onMouseDown={opts.onMouseDown}
+        onMouseEnter={(e) => onHoverCard?.(card, e)}
+        onMouseLeave={() => onHoverCard?.(null)}
+      >
+        <Card
+          card={card}
+          isTapped={card.tapped}
+          onFlip={onFlipCard}
+          showBackFace={showBackFace}
+          className={cn(
+            BATTLEFIELD_CARD,
+            isDragging ? "cursor-grabbing" : "cursor-grab",
+            isSelected && CARD_RING.selected,
+            !isSelected && card.isChoosable && onClickCard && CARD_RING.choosable,
+            !isSelected && isPending && CARD_RING.pending,
+            !isSelected && isAttacking && CARD_RING.attacking,
+            !isSelected && isTappable && !isAttacking && CARD_RING.tappable,
+            !isSelected && isUntappable && !isAttacking && !isTappable && CARD_RING.untappable,
+          )}
+        />
+
+        {isTappable && onTapLand && (
+          <CardOverlayButton
+            variant="tap"
+            label="TAP"
+            onClick={() => onTapLand(card)}
+            title={`Tap ${card.name} for mana`}
+            stopMouseDown
+          />
+        )}
+
+        {isUntappable && onUntapLand && (
+          <CardOverlayButton
+            variant="untap"
+            label="UNTAP"
+            onClick={() => onUntapLand(card)}
+            title={`Untap ${card.name} (undo mana)`}
+            stopMouseDown
+          />
+        )}
+
+        {!isTappable && isChoosableClick && (
+          <CardOverlayButton
+            variant={isPending ? "pending" : isAttacking ? "attacking" : "choosable"}
+            onClick={() => {
+              if (card.isChoosable && onClickCard) onClickCard(card);
+              else if (isAttacking && onClickAnyCard) onClickAnyCard(card);
+            }}
+            title={
+              isPending
+                ? `Deselect ${card.name}`
+                : isAttacking
+                  ? `Block ${card.name}`
+                  : `Select ${card.name}`
+            }
+            stopMouseDown
+          />
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className={cn("flex flex-col gap-1 min-h-0 flex-1", className)}>
@@ -128,88 +237,40 @@ export function FreeBattlefield({
           </span>
         )}
 
-        {cards.map((card) => {
+        {topLevelCards.map((card) => {
           const pos = positions[card.id] ?? { x: 0, y: 0 };
-          const isPending = pendingCardIds?.includes(card.id);
-          const isAttacking = attackingCardIds?.includes(card.id);
-          const isTappable = tappableLandIds?.includes(card.id);
-          const isUntappable = untappableLandIds?.includes(card.id);
-          const isChoosableClick =
-            (card.isChoosable && !!onClickCard) ||
-            (isAttacking && !!onClickAnyCard);
           const isDragging = draggingCardIds.has(card.id);
           const isSelected = selectedCardIds.has(card.id);
+          const baseZ = isDragging ? 100 : isSelected ? 10 : 1;
+
+          const attachments = (card.attachmentIds ?? [])
+            .map((id) => cardMap.get(id))
+            .filter((c): c is XMageCard => c !== undefined);
+
+          const totalOffset = attachments.length * ATTACH_OFFSET_Y;
 
           return (
-            <div
-              key={card.id}
-              data-card-id={card.id}
-              className="absolute group"
-              style={{
-                left: pos.x,
-                top: pos.y,
-                width: CARD_W,
-                zIndex: isDragging ? 100 : isSelected ? 10 : 1,
-              }}
-              onMouseDown={(e) => handleCardMouseDown(e, card.id)}
-              onMouseEnter={(e) => onHoverCard?.(card, e)}
-              onMouseLeave={() => onHoverCard?.(null)}
-            >
-              <Card
-                card={card}
-                isTapped={card.tapped}
-                onFlip={onFlipCard}
-                showBackFace={showBackFace}
-                className={cn(
-                  BATTLEFIELD_CARD,
-                  isDragging ? "cursor-grabbing" : "cursor-grab",
-                  isSelected && CARD_RING.selected,
-                  !isSelected && card.isChoosable && onClickCard && CARD_RING.choosable,
-                  !isSelected && isPending && CARD_RING.pending,
-                  !isSelected && isAttacking && CARD_RING.attacking,
-                  !isSelected && isTappable && !isAttacking && CARD_RING.tappable,
-                  !isSelected && isUntappable && !isAttacking && !isTappable && CARD_RING.untappable,
-                )}
-              />
-
-              {isTappable && onTapLand && (
-                <CardOverlayButton
-                  variant="tap"
-                  label="TAP"
-                  onClick={() => onTapLand(card)}
-                  title={`Tap ${card.name} for mana`}
-                  stopMouseDown
-                />
+            <React.Fragment key={card.id}>
+              {/* Attachments peeking above the host */}
+              {attachments.map((att, i) =>
+                renderSingleCard(att, {
+                  extraStyle: {
+                    left: pos.x,
+                    top: pos.y + totalOffset - (attachments.length - i) * ATTACH_OFFSET_Y,
+                    zIndex: baseZ + i,
+                  },
+                }),
               )}
-
-              {isUntappable && onUntapLand && (
-                <CardOverlayButton
-                  variant="untap"
-                  label="UNTAP"
-                  onClick={() => onUntapLand(card)}
-                  title={`Untap ${card.name} (undo mana)`}
-                  stopMouseDown
-                />
-              )}
-
-              {!isTappable && isChoosableClick && (
-                <CardOverlayButton
-                  variant={isPending ? "pending" : isAttacking ? "attacking" : "choosable"}
-                  onClick={() => {
-                    if (card.isChoosable && onClickCard) onClickCard(card);
-                    else if (isAttacking && onClickAnyCard) onClickAnyCard(card);
-                  }}
-                  title={
-                    isPending
-                      ? `Deselect ${card.name}`
-                      : isAttacking
-                        ? `Block ${card.name}`
-                        : `Select ${card.name}`
-                  }
-                  stopMouseDown
-                />
-              )}
-            </div>
+              {/* Host card */}
+              {renderSingleCard(card, {
+                onMouseDown: (e) => handleCardMouseDown(e, card.id),
+                extraStyle: {
+                  left: pos.x,
+                  top: pos.y + totalOffset,
+                  zIndex: baseZ + attachments.length,
+                },
+              })}
+            </React.Fragment>
           );
         })}
 

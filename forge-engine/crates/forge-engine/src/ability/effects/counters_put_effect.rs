@@ -62,6 +62,23 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
+    // Adapt gate: if Adapt$ True, only place counters if creature has no +1/+1 counters.
+    // Mirrors Java CountersPutEffect lines 498-501.
+    let is_adapt = sa
+        .params
+        .get("Adapt")
+        .map(|s| s.eq_ignore_ascii_case("True"))
+        .unwrap_or(false);
+    if is_adapt {
+        let current = ctx
+            .game
+            .card(card_id)
+            .counter_count(&crate::card::CounterType::P1P1);
+        if current > 0 {
+            return;
+        }
+    }
+
     let is_monstrosity = sa
         .params
         .get("Monstrosity")
@@ -105,6 +122,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
     let cause_player = ctx.game.card(card_id).controller;
     ctx.game.card_mut(card_id).add_counter(&counter_type, count);
+
+    // Mark creature as renowned after successfully placing counters.
+    if sa
+        .params
+        .get("Renown")
+        .map(|s| s.eq_ignore_ascii_case("True"))
+        .unwrap_or(false)
+    {
+        ctx.game.card_mut(card_id).is_renowned = true;
+    }
 
     // Fire CounterAdded trigger
     ctx.trigger_handler.run_trigger(

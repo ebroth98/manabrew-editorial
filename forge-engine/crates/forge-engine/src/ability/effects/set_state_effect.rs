@@ -71,6 +71,27 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             let card = ctx.game.card_mut(source_id);
             if card.face_down {
                 card.face_down = false;
+                // Restore original P/T by clearing the face-down overrides
+                card.static_set_power = None;
+                card.static_set_toughness = None;
+
+                // Megamorph: add a +1/+1 counter when turning face-up
+                if sa.param_is_true("Mega") {
+                    card.add_counter(&crate::card::CounterType::P1P1, 1);
+                }
+
+                // Fire TurnFaceUp trigger
+                ctx.trigger_handler.run_trigger(
+                    crate::event::TriggerType::TurnFaceUp,
+                    crate::event::RunParams {
+                        card: Some(source_id),
+                        ..Default::default()
+                    },
+                    false,
+                );
+
+                // Re-scan active triggers for the revealed card
+                ctx.trigger_handler.reset_active_triggers(ctx.game);
             }
         }
         "TurnFaceDown" => {

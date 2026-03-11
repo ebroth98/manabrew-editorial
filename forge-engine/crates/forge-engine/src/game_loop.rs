@@ -7,7 +7,7 @@ use crate::ability::effects::{self, EffectContext};
 use crate::agent::{CombatCostAction, MainPhaseAction, ManaCostAction, PlayerAgent};
 use crate::card::CardInstance;
 use crate::combat::{self, CombatState};
-use crate::cost::{self, can_pay, parse_cost, CostPart};
+use crate::cost::{self, parse_cost, CostPart};
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::game_log::GameLog;

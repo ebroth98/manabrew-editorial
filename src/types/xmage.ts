@@ -13,6 +13,10 @@ export interface Card {
   supertypes: string[];
   power?: string;
   toughness?: string;
+  /** Base power before modifiers (for buff/debuff color-coding). */
+  basePower?: number;
+  /** Base toughness before modifiers (for buff/debuff color-coding). */
+  baseToughness?: number;
   text: string;
   imageUrl?: string;
   isPlayable: boolean;
@@ -32,6 +36,14 @@ export interface Card {
   isDoubleFaced?: boolean;
   /** True if this card is currently showing its back face. */
   isTransformed?: boolean;
+  /** True if this card is face-down (Morph, Manifest). */
+  isFaceDown?: boolean;
+  /** True if this card is currently bestowed (attached as an Aura via Bestow). */
+  isBestowed?: boolean;
+  /** ID of the card this permanent is attached to (equipment host, enchanted creature). */
+  attachedTo?: string;
+  /** IDs of cards attached to this permanent (equipment, auras). */
+  attachmentIds?: string[];
   /** True if this card is phased out (treated as not on battlefield). */
   phasedOut?: boolean;
   /** True if this creature has been exerted (won't untap next untap step). */

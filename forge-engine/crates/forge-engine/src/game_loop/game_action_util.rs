@@ -370,6 +370,21 @@ impl GameLoop {
                     false
                 };
 
+                // Morph: can cast any Morph card face-down for the morph generic cost
+                let morph_ok = card.has_morph
+                    && available_mana.can_pay(&forge_foundation::ManaCost::generic(
+                        crate::spellability::MORPH_GENERIC_COST,
+                    ));
+
+                // Bestow: cast as an Aura for bestow cost
+                let bestow_ok = if let Some(bestow_cost_str) = card.get_bestow_cost() {
+                    let adjusted =
+                        cost_adj.apply(&forge_foundation::ManaCost::parse(&bestow_cost_str));
+                    available_mana.can_pay(&adjusted)
+                } else {
+                    false
+                };
+
                 if !normal_ok
                     && !spectacle_ok
                     && !evoke_ok
@@ -381,6 +396,8 @@ impl GameLoop {
                     && !emerge_ok
                     && !gainlife_alt_ok
                     && !offering_ok
+                    && !morph_ok
+                    && !bestow_ok
                 {
                     continue;
                 }
@@ -745,6 +762,8 @@ impl GameLoop {
             let mut is_madness = false;
             let mut is_emerge = false;
             let mut is_gainlife_alt = false;
+            let mut is_bestow = false;
+            let mut is_morph_facedown = false;
 
             match play_mode {
                 crate::agent::PlayCardMode::Normal => {}
@@ -802,6 +821,11 @@ impl GameLoop {
                     crate::spellability::AlternativeCost::Overload => is_overload = true,
                     crate::spellability::AlternativeCost::Madness => is_madness = true,
                     crate::spellability::AlternativeCost::Emerge => is_emerge = true,
+                    crate::spellability::AlternativeCost::Bestow => is_bestow = true,
+                    crate::spellability::AlternativeCost::Morph
+                    | crate::spellability::AlternativeCost::Megamorph => {
+                        is_morph_facedown = true;
+                    }
                     crate::spellability::AlternativeCost::Suspend => {
                         if let Some((suspend_cost, counters)) = game.card(card_id).get_suspend_cost()
                         {
@@ -926,6 +950,11 @@ impl GameLoop {
                 // GainLife alternative cost: cast for free (zero mana).
                 // The side effect (opponent gains life) is applied below.
                 forge_foundation::ManaCost::generic(0)
+            } else if is_bestow {
+                let bestow_cost_str = game.card(card_id).get_bestow_cost().unwrap();
+                forge_foundation::ManaCost::parse(&bestow_cost_str)
+            } else if is_morph_facedown {
+                forge_foundation::ManaCost::generic(crate::spellability::MORPH_GENERIC_COST)
             } else {
                 game.card(card_id).mana_cost.clone()
             };
@@ -1439,7 +1468,7 @@ impl GameLoop {
             };
 
             // ── Phyrexian mana: pay all phyrexian shards with life or mana ──────
-            let mut phyrexian_life_paid = 0i32;
+            let mut _phyrexian_life_paid = 0i32;
             let mana_cost = if mana_cost.has_phyrexian() {
                 let phyrexian_count = mana_cost
                     .shards()
@@ -1463,7 +1492,7 @@ impl GameLoop {
                         Some(&card_name),
                     );
                 if pay_life {
-                    phyrexian_life_paid = life_cost;
+                    _phyrexian_life_paid = life_cost;
                     let remaining: Vec<forge_foundation::ManaCostShard> = mana_cost
                         .shards()
                         .iter()
@@ -1720,6 +1749,15 @@ impl GameLoop {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Blitz);
             } else if is_emerge {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Emerge);
+            } else if is_bestow {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Bestow);
+            } else if is_morph_facedown {
+                let is_mega = game.card(card_id).keywords.iter().any(|k| k.starts_with("Megamorph:"));
+                sa.alt_cost = Some(if is_mega {
+                    crate::spellability::AlternativeCost::Megamorph
+                } else {
+                    crate::spellability::AlternativeCost::Morph
+                });
             }
 
             if kicked || kick_count > 0 || entwine_paid {
@@ -1974,6 +2012,11 @@ impl GameLoop {
                         return None;
                     }
                 };
+
+                // Note: Java AutoPay sets express choice on ManaReflected abilities,
+                // which restricts chooseColor to 1 option (no RNG consumed).
+                // No RNG compensation needed here.
+
                 self.emit_tap_for_mana_triggers(player, &tapped);
             }
 
@@ -2257,6 +2300,7 @@ impl GameLoop {
                     RunParams {
                         card: Some(target_card),
                         cause_player: Some(player),
+                        cause_card: Some(card_id),
                         ..Default::default()
                     },
                     false,

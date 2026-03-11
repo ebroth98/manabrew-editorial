@@ -8,8 +8,10 @@ use std::collections::{HashMap, HashSet};
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
+use crate::card::card_property;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::staticability::static_ability::StaticMode;
 
 /// Identifies the target of an attack: a player or a permanent (planeswalker/battle).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -702,6 +704,70 @@ pub fn can_creature_block(game: &GameState, blocker_id: CardId, attacker_id: Car
     // Protection: can't be blocked by matching creatures
     if attacker.is_protected_from(blocker) {
         return false;
+    }
+    // CantBlockBy static abilities (e.g. "CARDNAME can block only creatures with flying")
+    if cant_block_by(game, attacker_id, blocker_id) {
+        return false;
+    }
+    true
+}
+
+/// Check if any `CantBlockBy` static ability prevents `blocker_id` from blocking `attacker_id`.
+/// Mirrors Java `StaticAbilityCantAttackBlock.cantBlockBy()`.
+fn cant_block_by(game: &GameState, attacker_id: CardId, blocker_id: CardId) -> bool {
+    let attacker = game.card(attacker_id);
+    let blocker = game.card(blocker_id);
+
+    for source in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+        for sa in &source.static_abilities {
+            if sa.mode != StaticMode::CantBlockBy {
+                continue;
+            }
+
+            // ValidAttacker$ — the attacker must match for this restriction to apply.
+            if let Some(valid_attacker) = sa.params.get("ValidAttacker") {
+                if !matches_valid_card(attacker, valid_attacker, source) {
+                    continue;
+                }
+            }
+
+            // ValidBlocker$ — if the blocker matches ANY comma-separated validator,
+            // the restriction applies to this blocker.
+            if let Some(valid_blocker) = sa.params.get("ValidBlocker") {
+                let blocker_matches = valid_blocker
+                    .split(',')
+                    .any(|v| matches_valid_card(blocker, v.trim(), source));
+                if !blocker_matches {
+                    // Blocker doesn't match any validator — restriction doesn't target it.
+                    continue;
+                }
+            }
+
+            // Both conditions met: this block is illegal.
+            return true;
+        }
+    }
+    false
+}
+
+/// Check if a card matches a `ValidAttacker$` / `ValidBlocker$` filter string.
+/// Handles `Card.Self` (card is the source) and delegates to `card_has_property`.
+fn matches_valid_card(
+    card: &crate::card::CardInstance,
+    filter: &str,
+    source: &crate::card::CardInstance,
+) -> bool {
+    // Split into parts on '.' and '+' to detect "Self" and "Card.Self".
+    for part in filter.split(|c: char| c == '.' || c == '+') {
+        let part = part.trim();
+        if part.eq_ignore_ascii_case("Self") {
+            // "Self" means the card must be the source of the static ability.
+            if card.id != source.id {
+                return false;
+            }
+        } else if !card_property::card_has_property(card, part, source.controller) {
+            return false;
+        }
     }
     true
 }

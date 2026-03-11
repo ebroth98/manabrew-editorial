@@ -959,6 +959,7 @@ impl GameLoop {
                     attacker: Some(attacker_id),
                     card: Some(attacker_id),
                     defending_player: Some(def_player),
+                    num_attackers: Some(num_attackers as usize),
                     ..Default::default()
                 },
                 false,
@@ -995,9 +996,8 @@ impl GameLoop {
             let attacker_card_ids: Vec<CardId> =
                 self.combat.attackers.iter().map(|(a, _)| *a).collect();
             let available_blockers = combat::get_available_blockers(game, defending);
-            let has_any_legal_blocker =
-                !combat::filter_legal_blockers(game, &attacker_card_ids, &available_blockers)
-                    .is_empty();
+            let legal_blockers = combat::filter_legal_blockers(game, &attacker_card_ids, &available_blockers);
+            let has_any_legal_blocker = !legal_blockers.is_empty();
 
             if has_any_legal_blocker {
                 agents[defending.index()].snapshot_state(game, &self.mana_pools);

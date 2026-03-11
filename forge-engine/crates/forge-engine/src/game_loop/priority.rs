@@ -157,7 +157,7 @@ impl GameLoop {
                         crate::agent::notify_all_agents(
                             agents,
                             crate::agent::GameLogEvent::warning(
-                                "Illegal action ignored: land can't tap for mana",
+                                "Illegal action ignored: permanent can't tap for mana",
                             )
                             .with_player(priority_player),
                         );

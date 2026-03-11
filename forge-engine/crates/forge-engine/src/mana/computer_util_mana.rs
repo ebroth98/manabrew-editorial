@@ -9,8 +9,8 @@ use crate::ids::{CardId, PlayerId};
 
 use super::mana_cost_being_paid::{can_pay_for_shard_with_color, ManaCostBeingPaid};
 use super::{
-    all_basic_subtype_atoms, atom_short, basic_land_mana_atom, produced_to_atoms,
-    tap_land_for_mana, ManaPool,
+    all_basic_subtype_atoms, atom_short, basic_land_mana_atom, compute_reflected_atoms,
+    produced_to_atoms, tap_land_for_mana, ManaPool,
 };
 
 #[derive(Debug, Clone)]
@@ -80,6 +80,11 @@ fn auto_tap_lands_internal(
     if sources_for_shards.is_empty() {
         return tapped_lands;
     }
+
+    // Sort per-shard source lists so lands are tapped before creatures.
+    // Mirrors Java AutoPay's ManaAbilityCandidate.score() sort which assigns
+    // lower scores to lands and higher scores (+26) to creatures.
+    sort_sources_for_autopay(game, player, &mut sources_for_shards);
 
     while !unpaid.is_paid() {
         let Some(to_pay) = get_next_shard_to_pay(&unpaid, &sources_for_shards) else {
@@ -553,6 +558,25 @@ fn group_sources_by_mana_color(
             if !can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
                 continue;
             }
+            // Handle ManaReflected abilities (e.g. Incubation Druid)
+            if ab.params.get("AB").map_or(false, |v| v == "ManaReflected") {
+                let reflected_atoms = compute_reflected_atoms(game, player, card_id, ab);
+                if !reflected_atoms.is_empty() {
+                    explicit_mana_added = true;
+                    let ma = ManaAbilityRef {
+                        card_id,
+                        ability_index: Some(ab.ability_index),
+                        atoms: reflected_atoms,
+                        amount: parse_mana_ability_amount_with_game(ab, Some(game), Some(card_id), Some(player)),
+                        mana_text: "Reflected".to_string(),
+                        source_order,
+                    };
+                    source_order += 1;
+                    add_mana_ability_to_color_map(&mut mana_map, &ma);
+                }
+                continue;
+            }
+
             let Some(produced) = ab.params.get("Produced") else {
                 continue;
             };
@@ -570,7 +594,7 @@ fn group_sources_by_mana_color(
                 card_id,
                 ability_index: Some(ab.ability_index),
                 atoms: atoms.clone(),
-                amount: parse_mana_ability_amount(ab),
+                amount: parse_mana_ability_amount_with_game(ab, Some(game), Some(card_id), Some(player)),
                 mana_text: ability_mana_text_for_score(produced, &card.chosen_colors),
                 source_order,
             };
@@ -638,7 +662,9 @@ fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId>
         if card.tapped || !card.is_land() {
             return false;
         }
-        !all_basic_subtype_atoms(card).is_empty() || basic_land_mana_atom(card).is_some()
+        let has_subtype = !all_basic_subtype_atoms(card).is_empty();
+        let has_basic = basic_land_mana_atom(card).is_some();
+        has_subtype || has_basic
     });
     sources
 }
@@ -797,6 +823,69 @@ fn score_mana_ability(
     score
 }
 
+/// Sort per-shard source lists to match Java AutoPay's ManaAbilityCandidate.score().
+/// Lower scores are picked first. Lands score low; creatures score high (+26).
+/// This ensures lands are tapped before valuable mana dorks.
+fn sort_sources_for_autopay(
+    game: &GameState,
+    player: PlayerId,
+    sources_for_shards: &mut IndexMap<ManaCostShard, Vec<ManaAbilityRef>>,
+) {
+    for abilities in sources_for_shards.values_mut() {
+        abilities.sort_by(|a, b| {
+            // Score per-ability (not per-card) so that different abilities on the same
+            // card (e.g. Yavimaya Coast's {C} vs {G}/{U}) get accurate individual scores.
+            let sa = autopay_source_score(game, player, a) * 1000 + a.source_order as i32;
+            let sb = autopay_source_score(game, player, b) * 1000 + b.source_order as i32;
+            sa.cmp(&sb)
+        });
+    }
+}
+
+/// Score a mana source for AutoPay sorting, mirroring Java AutoPay's
+/// ManaAbilityCandidate.score():
+/// - Mana ability score based on produced colors
+/// - +cost_parts.size() for activation cost complexity
+/// - +13 per combat role (attack/block) for creatures
+fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef) -> i32 {
+    let card = game.card(ma.card_id);
+    let mut s: i32 = 0;
+
+    // Mana ability intrinsic score.
+    if ma.mana_text == "Any" || ma.mana_text == "Reflected" {
+        // Any-mana and reflected abilities are flexible → higher score.
+        s += 7;
+    } else {
+        let words: Vec<&str> = ma.mana_text.split_whitespace().collect();
+        s += words.len() as i32;
+        if !ma.mana_text.contains('C') {
+            s += 1;
+        }
+    }
+
+    // Cost complexity.
+    if let Some(ab_idx) = ma.ability_index {
+        if let Some(ab) = card.activated_abilities.get(ab_idx) {
+            s += ab.cost.parts.len() as i32;
+        }
+    } else {
+        // Implicit land tap: 1 cost part (tap).
+        s += 1;
+    }
+
+    // Creatures with combat potential are more valuable.
+    if card.is_creature() {
+        if card.can_attack() {
+            s += 13;
+        }
+        if card.can_block() {
+            s += 13;
+        }
+    }
+
+    s
+}
+
 fn score_implicit_land_mana_ability(atom: u16) -> i32 {
     let mut score = 0;
     let text = atom_short(atom);
@@ -866,11 +955,34 @@ pub fn auto_tap_lands_generic(
     tapped_lands
 }
 fn parse_mana_ability_amount(ab: &crate::ability::activated::ActivatedAbility) -> i32 {
-    ab.params
-        .get("Amount")
-        .and_then(|s| s.parse::<i32>().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(1)
+    parse_mana_ability_amount_with_game(ab, None, None, None)
+}
+
+/// Resolve the Amount param for a mana ability, supporting SVar expressions
+/// like `IncubationAmount` → `Count$Compare Y GE1.3.1`.
+fn parse_mana_ability_amount_with_game(
+    ab: &crate::ability::activated::ActivatedAbility,
+    game: Option<&GameState>,
+    card_id: Option<CardId>,
+    player: Option<PlayerId>,
+) -> i32 {
+    let Some(amount_str) = ab.params.get("Amount") else {
+        return 1;
+    };
+    // Try direct integer parse first
+    if let Ok(n) = amount_str.parse::<i32>() {
+        return if n > 0 { n } else { 1 };
+    }
+    // It's an SVar reference — resolve it using the source card's SVars
+    if let (Some(game), Some(cid), Some(pid)) = (game, card_id, player) {
+        if let Some(svar_expr) = game.card(cid).svars.get(amount_str.as_str()) {
+            if svar_expr.starts_with("Count$") {
+                return crate::ability::effects::resolve_count_svar(svar_expr, game, cid, pid);
+            }
+            return svar_expr.parse::<i32>().unwrap_or(1);
+        }
+    }
+    1
 }
 
 #[cfg(test)]

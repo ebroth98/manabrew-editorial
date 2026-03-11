@@ -11,6 +11,8 @@ const MASK: i64 = (1i64 << 48) - 1;
 /// A faithful reimplementation of `java.util.Random`.
 pub struct JavaRandom {
     seed: i64,
+    pub call_count: u64,
+    pub label: &'static str,
 }
 
 impl JavaRandom {
@@ -18,11 +20,14 @@ impl JavaRandom {
     pub fn new(seed: i64) -> Self {
         Self {
             seed: (seed ^ MULTIPLIER) & MASK,
+            call_count: 0,
+            label: "unknown",
         }
     }
 
     /// Core LCG step — equivalent to `java.util.Random.next(int bits)`.
     fn next(&mut self, bits: u32) -> i32 {
+        self.call_count += 1;
         self.seed = self.seed.wrapping_mul(MULTIPLIER).wrapping_add(ADDEND) & MASK;
         (self.seed >> (48 - bits)) as i32
     }
@@ -30,20 +35,21 @@ impl JavaRandom {
     /// Equivalent to `java.util.Random.nextInt(int bound)`.
     pub fn next_int(&mut self, bound: i32) -> i32 {
         assert!(bound > 0, "bound must be positive");
-
         // Power-of-two fast path
-        if bound & (bound - 1) == 0 {
-            return ((bound as i64).wrapping_mul(self.next(31) as i64) >> 31) as i32;
-        }
-
-        // Rejection sampling to avoid modular bias
-        loop {
-            let bits = self.next(31);
-            let val = bits % bound;
-            if bits.wrapping_sub(val).wrapping_add(bound - 1) >= 0 {
-                return val;
+        let result = if bound & (bound - 1) == 0 {
+            ((bound as i64).wrapping_mul(self.next(31) as i64) >> 31) as i32
+        } else {
+            // Rejection sampling to avoid modular bias
+            loop {
+                let bits = self.next(31);
+                let val = bits % bound;
+                if bits.wrapping_sub(val).wrapping_add(bound - 1) >= 0 {
+                    break val;
+                }
             }
-        }
+        };
+
+        result
     }
 
     /// Fisher-Yates shuffle matching `java.util.Collections.shuffle(list, rng)`.

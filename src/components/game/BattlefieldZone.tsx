@@ -4,6 +4,9 @@ import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
 import type { BattlefieldZoneProps } from "./game.types";
 import { CARD_RING, BATTLEFIELD_CARD, ZONE_LABEL } from "./game.styles";
+import type { Card as XMageCard } from "@/types/xmage";
+
+const ATTACH_OFFSET_Y = 16;
 
 export function BattlefieldZone({
   cards,
@@ -29,10 +32,30 @@ export function BattlefieldZone({
 }: BattlefieldZoneProps) {
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
 
-  const nonLands = useMemo(() => cards.filter((c) => !c.types.includes("Land")), [cards]);
-  const lands = useMemo(() => cards.filter((c) => c.types.includes("Land")), [cards]);
+  const cardMap = useMemo(() => {
+    const m = new Map<string, XMageCard>();
+    for (const c of cards) m.set(c.id, c);
+    return m;
+  }, [cards]);
 
-  const renderCard = (card: (typeof cards)[number]) => {
+  // Cards that are attached to another card — will render with their host
+  const attachedIds = useMemo(() => {
+    const s = new Set<string>();
+    for (const c of cards) {
+      if (c.attachedTo && cardMap.has(c.attachedTo)) s.add(c.id);
+    }
+    return s;
+  }, [cards, cardMap]);
+
+  // Top-level cards (not attached to anything on the battlefield)
+  const topLevel = useMemo(
+    () => cards.filter((c) => !attachedIds.has(c.id)),
+    [cards, attachedIds],
+  );
+  const nonLands = useMemo(() => topLevel.filter((c) => !c.types.includes("Land")), [topLevel]);
+  const lands = useMemo(() => topLevel.filter((c) => c.types.includes("Land")), [topLevel]);
+
+  const renderSingleCard = (card: XMageCard, extraClass?: string) => {
     const isPending = pendingCardIds?.includes(card.id);
     const isAttacking = attackingCardIds?.includes(card.id);
     const isTappable = tappableLandIds?.includes(card.id);
@@ -43,7 +66,7 @@ export function BattlefieldZone({
       <div
         key={card.id}
         data-card-id={card.id}
-        className="relative group shrink-0 p-px"
+        className={cn("relative group shrink-0", extraClass)}
         onMouseEnter={(e) => {
           setHoveredCardId(card.id);
           onHoverCard?.(card, e);
@@ -101,6 +124,39 @@ export function BattlefieldZone({
             }
           />
         )}
+      </div>
+    );
+  };
+
+  const renderCard = (card: XMageCard) => {
+    const attachments = (card.attachmentIds ?? [])
+      .map((id) => cardMap.get(id))
+      .filter((c): c is XMageCard => c !== undefined);
+
+    if (attachments.length === 0) {
+      return renderSingleCard(card, "p-px");
+    }
+
+    // Stacked group: attachments peek out above the host
+    const totalOffset = attachments.length * ATTACH_OFFSET_Y;
+    return (
+      <div
+        key={card.id}
+        className="relative shrink-0"
+        style={{ paddingTop: totalOffset }}
+      >
+        {attachments.map((att, i) => (
+          <div
+            key={att.id}
+            className="absolute left-0"
+            style={{ top: i * ATTACH_OFFSET_Y, zIndex: i + 1 }}
+          >
+            {renderSingleCard(att)}
+          </div>
+        ))}
+        <div className="relative" style={{ zIndex: attachments.length + 1 }}>
+          {renderSingleCard(card)}
+        </div>
       </div>
     );
   };

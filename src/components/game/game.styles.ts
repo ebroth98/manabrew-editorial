@@ -67,6 +67,14 @@ export const PROMPT_BUTTON_COLUMN = "flex flex-col gap-2" as const;
 /** Muted hint text used across prompt/modal contexts */
 export const PROMPT_HINT = "text-xs text-muted-foreground" as const;
 
+// ── Card badge / banner ──────────────────────────────────────────────────
+
+/** Container for top-center card banner badges (Exerted, Morph, Bestow, Token, Transformed) */
+export const CARD_BANNER_CONTAINER = "absolute top-0 left-0 right-0 flex justify-center z-20 pointer-events-none" as const;
+
+/** Base text style for card banner badges */
+export const CARD_BANNER_TEXT = "text-[8px] font-bold px-1.5 py-0.5 rounded-b leading-none" as const;
+
 /** Attack confirm button */
 export const BUTTON_ATTACK = "flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white" as const;
 

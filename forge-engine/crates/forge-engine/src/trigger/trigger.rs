@@ -49,6 +49,8 @@ pub enum TriggerMode {
     },
     Attacks {
         valid_card: Option<String>,
+        /// If true, only triggers when the creature attacks alone (Exalted).
+        alone: bool,
     },
     DamageDone {
         valid_source: Option<String>,
@@ -340,6 +342,11 @@ pub enum TriggerMode {
         valid_player: Option<String>,
         amount: i32,
     },
+    /// A creature was exploited (Exploit keyword).
+    Exploited {
+        valid_card: Option<String>,
+        valid_source: Option<String>,
+    },
 }
 
 /// Check an optional ValidCard$ filter against a card from RunParams.
@@ -520,14 +527,21 @@ impl TriggerMode {
                 )
             }
 
-            // ── Attacks trigger (check attacker) ──
-            TriggerMode::Attacks { valid_card } => check_card_filter(
-                valid_card,
-                run_params.attacker,
-                host_card,
-                host_controller,
-                game,
-            ),
+            // ── Attacks trigger (check attacker, optionally alone) ──
+            TriggerMode::Attacks { valid_card, alone } => {
+                if *alone {
+                    if run_params.num_attackers.unwrap_or(0) != 1 {
+                        return false;
+                    }
+                }
+                check_card_filter(
+                    valid_card,
+                    run_params.attacker,
+                    host_card,
+                    host_controller,
+                    game,
+                )
+            }
 
             // ── Attacker blocked/unblocked (check attacker) ──
             TriggerMode::AttackerBlocked { valid_card }
@@ -885,6 +899,34 @@ impl TriggerMode {
                 }
                 // Amount must exactly match the cumulative expend amount
                 run_params.mana_expend_amount == Some(*amount)
+            }
+
+            // ── Exploited (check exploited creature + source) ──
+            TriggerMode::Exploited {
+                valid_card,
+                valid_source,
+            } => {
+                // ValidCard checks the exploited creature
+                if !check_card_filter(
+                    valid_card,
+                    run_params.exploited_card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) {
+                    return false;
+                }
+                // ValidSource checks the exploiter (the card with Exploit)
+                if !check_card_filter(
+                    valid_source,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) {
+                    return false;
+                }
+                true
             }
 
             // ── Player-only triggers (check run_params.player) ──
@@ -1257,7 +1299,11 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         }
         "Attacks" => {
             let valid_card = params.get("ValidCard").cloned();
-            TriggerMode::Attacks { valid_card }
+            let alone = params
+                .get("Alone")
+                .map(|s| s.eq_ignore_ascii_case("True"))
+                .unwrap_or(false);
+            TriggerMode::Attacks { valid_card, alone }
         }
         "DamageDone" => {
             let valid_source = params.get("ValidSource").cloned();
@@ -1716,6 +1762,14 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
                 amount,
             }
         }
+        "Exploited" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_source = params.get("ValidSource").cloned();
+            TriggerMode::Exploited {
+                valid_card,
+                valid_source,
+            }
+        }
         _ => return None,
     };
 
@@ -1847,8 +1901,9 @@ mod tests {
             &mut id,
         ).unwrap();
         assert!(matches!(t.mode, TriggerMode::Attacks { .. }));
-        if let TriggerMode::Attacks { valid_card } = &t.mode {
+        if let TriggerMode::Attacks { valid_card, alone } = &t.mode {
             assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
+            assert!(!alone);
         }
     }
 

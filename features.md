@@ -478,7 +478,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Wither | **Implemented** | `has_wither()` — damage to creatures as -1/-1 counters |
 | Toxic | **Implemented** | `get_toxic_count()` — adds poison counters on combat damage |
 | Protection from X | **Implemented** | `is_protected_from()` — prevents targeting, blocking, damage, attaching |
-| Ward | **Partial** | `get_ward_cost()` — keyword parsed and recognized; counter-unless-pay not yet wired |
+| Ward | **Implemented** | BecomesTarget trigger → counter unless opponent pays cost (`card/mod.rs`, `counter_effect.rs`, `trigger/handler.rs`) |
 | Flashback | **Implemented** | Flashback casting from graveyard in `game_loop.rs`, `card/mod.rs`, `spellability/mod.rs` |
 | Kicker | **Implemented** | Single kicker; `kicked` flag on CardInstance, `+kicked` trigger/effect filter, `Condition$ Kicked` gate, `Count$Kicked` SVar, `KW$` keyword grant in Pump/PumpAll |
 | Storm | **Implemented** | Basic storm copy logic in `game_loop.rs` |
@@ -1004,7 +1004,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Costs | 52 | 26 | 3 | 23 |
 | Events | 58 | 0 | 5 | 53 |
 | Extra Hands | 1 | 0 | 0 | 1 |
-| Keywords | 20 | 4 | 8 | 8 |
+| Keywords | 20 | 4 | 14 | 2 |
 | Mana | 6 | 3 | 1 | 2 |
 | Mulligan | 7 | 3 | 0 | 4 |
 | Phases | 7 | 1 | 3 | 3 |
@@ -1127,29 +1127,15 @@ NewGame, LosesGame, PayLife, ExcessDamageAll, DamageDoneOnceByController, Counte
 
 ### 23.5 Keywords — Missing
 
-**Implemented (51):** Flying, Reach, First Strike, Double Strike, Trample, Deathtouch, Lifelink, Vigilance, Defender, Haste, Flash, Hexproof, Shroud, Hexproof from X, Menace, Fear, Intimidate, Shadow, Skulk, Horsemanship, Indestructible, Infect, Wither, Toxic, Protection, Flashback, Kicker, Storm, Cascade, Buyback, Spectacle, Evoke, Dash, Blitz, Multikicker, Replicate, Entwine, Escalate, Escape, Overload, Madness, Rebound, Suspend, Foretell, Emerge, Prowess, Cycling, Offering, Spree, Strive, ETBReplacement
+**Implemented (79):** Flying, Reach, First Strike, Double Strike, Trample, Deathtouch, Lifelink, Vigilance, Defender, Haste, Flash, Hexproof, Shroud, Hexproof from X, Menace, Fear, Intimidate, Shadow, Skulk, Horsemanship, Indestructible, Infect, Wither, Toxic, Protection, Flashback, Kicker, Storm, Cascade, Buyback, Spectacle, Evoke, Dash, Blitz, Multikicker, Replicate, Entwine, Escalate, Escape, Overload, Madness, Rebound, Suspend, Foretell, Emerge, Prowess, Cycling, Offering, Spree, Strive, ETBReplacement, Equip, Annihilator, Undying, Persist, Afterlife, Exploit, Fabricate, Adapt, Ward, Crew, Embalm, Eternalize, Morph, Megamorph, Bestow, Ninjutsu, Modular, Outlast, Unearth, Exalted, Renown, Flanking, Extort, Bloodthirst, Riot, Unleash
 
 #### High Priority Missing
 
-| Keyword | Description |
-|---------|-------------|
-| Equip | Equipment attachment cost |
-| Morph / Megamorph | Face-down casting |
-| Annihilator | Force sacrifice on attack |
-| Undying | Return with +1/+1 counter |
-| Persist | Return with -1/-1 counter |
-| Bestow | Cast as aura or creature |
-| Embalm / Eternalize | Create token copy from graveyard |
-| Fabricate | +1/+1 counters or tokens |
-| Adapt | +1/+1 counters if none |
-| Crew | Tap creatures to crew vehicle |
-| Ward | Counter unless pay (partially parsed) |
-| Afterlife | Create spirit tokens on death |
-| Exploit | Sacrifice creature for ETB |
+_None remaining — all high-priority keywords implemented._
 
 #### Medium Priority Missing
 
-Ninjutsu, Champion, Devour, Hideaway, Companion, Mutate, Boast, Forage, Landwalk, Banding, Rampage, Flanking, Phasing, Cumulative Upkeep, Echo, Fading, Vanishing, Modular, Dredge, Haunt, Bloodthirst, Graft, Forecast, Retrace, Exalted, Unearth, Living Weapon, Soulbond, Unleash, Extort, Tribute, Outlast, Renown, Myriad, Ascend, Riot
+Champion, Devour, Hideaway, Companion, Mutate, Boast, Forage, Landwalk, Banding, Rampage, Phasing, Cumulative Upkeep, Echo, Fading, Vanishing, Dredge, Haunt, Graft, Forecast, Retrace, Living Weapon, Soulbond, Tribute, Myriad, Ascend
 
 ### 23.6 Static Abilities — Missing
 
@@ -1157,7 +1143,7 @@ Ninjutsu, Champion, Devour, Hideaway, Companion, Mutate, Boast, Forage, Landwalk
 
 #### Medium Priority Missing (23 modes — no Rust code yet)
 
-Devotion, Exhaust, FlipCoinMod, GainLifeRadiation, IgnoreLandwalk, NumLoyaltyAct, SurveilNum, TapPowerValue, TurnPhaseReversed, UntapOtherPlayer, Adapt, ActivateAbilityAsIfHaste, CantBeCopied, CantBecomeMonarch, CantBeSuspected, CantChangeDayTime, CantCrew, CantDiscard, CantPhase, CantPreventDamage, CantTransform, CantVenture, PlotZone
+Exhaust, FlipCoinMod, GainLifeRadiation, IgnoreLandwalk, NumLoyaltyAct, SurveilNum, TapPowerValue, TurnPhaseReversed, UntapOtherPlayer, Adapt, ActivateAbilityAsIfHaste, CantBeCopied, CantBecomeMonarch, CantBeSuspected, CantChangeDayTime, CantCrew, CantDiscard, CantPhase, CantPreventDamage, CantTransform, CantVenture, PlotZone
 
 ### 23.7 Replacement Effects — Missing
 

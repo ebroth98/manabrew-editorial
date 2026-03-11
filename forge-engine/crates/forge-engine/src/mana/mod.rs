@@ -828,7 +828,7 @@ pub fn mana_atom_from_produced(produced: &str) -> Option<u16> {
     }
 }
 
-fn mana_atom_to_color_name(atom: u16) -> Option<&'static str> {
+pub(crate) fn mana_atom_to_color_name(atom: u16) -> Option<&'static str> {
     match atom {
         ManaAtom::WHITE => Some("White"),
         ManaAtom::BLUE => Some("Blue"),
@@ -935,6 +935,79 @@ pub fn mana_letter_to_color_name(letter: &str) -> Option<String> {
         "C" => Some("Colorless".to_string()),
         _ => None,
     }
+}
+
+/// Compute the atoms a ManaReflected ability can produce by inspecting other
+/// permanents on the battlefield.  Used by both `calculate_available_mana` and
+/// `group_sources_by_mana_color` (auto-pay).
+pub(crate) fn compute_reflected_atoms(
+    game: &GameState,
+    player: PlayerId,
+    card_id: CardId,
+    ab: &crate::ability::activated::ActivatedAbility,
+) -> Vec<u16> {
+    let reflect_prop = ab.params.get("ReflectProperty").map(|s| s.as_str()).unwrap_or("Is");
+    let valid = ab.params.get("Valid").map(|s| s.as_str()).unwrap_or("Card");
+    let include_colorless = ab.params.get("ColorOrType").map_or(false, |v| v == "Type");
+    let battlefield = game
+        .cards_in_zone(ZoneType::Battlefield, player)
+        .to_vec();
+    let mut reflected_atoms: Vec<u16> = Vec::new();
+    for other_id in &battlefield {
+        if *other_id == card_id {
+            continue;
+        }
+        let other = game.card(*other_id);
+        let matches = if valid.contains("Land") {
+            other.is_land() && other.controller == player
+        } else {
+            other.controller == player
+        };
+        if !matches {
+            continue;
+        }
+        if reflect_prop == "Produce" {
+            for other_ab in &other.activated_abilities {
+                if other_ab.is_mana_ability {
+                    if let Some(prod) = other_ab.params.get("Produced") {
+                        for atom in produced_to_atoms(prod, &other.chosen_colors) {
+                            if !reflected_atoms.contains(&atom) {
+                                reflected_atoms.push(atom);
+                            }
+                        }
+                    }
+                }
+            }
+            for atom in all_basic_subtype_atoms(other) {
+                if !reflected_atoms.contains(&atom) {
+                    reflected_atoms.push(atom);
+                }
+            }
+            if reflected_atoms.is_empty() {
+                if let Some(atom) = basic_land_mana_atom(other) {
+                    if !reflected_atoms.contains(&atom) {
+                        reflected_atoms.push(atom);
+                    }
+                }
+            }
+        } else {
+            for &atom in &[
+                ManaAtom::WHITE,
+                ManaAtom::BLUE,
+                ManaAtom::BLACK,
+                ManaAtom::RED,
+                ManaAtom::GREEN,
+            ] {
+                if (other.color.mask() as u16) & atom != 0 && !reflected_atoms.contains(&atom) {
+                    reflected_atoms.push(atom);
+                }
+            }
+        }
+    }
+    if include_colorless && !reflected_atoms.contains(&ManaAtom::COLORLESS) {
+        reflected_atoms.push(ManaAtom::COLORLESS);
+    }
+    reflected_atoms
 }
 
 /// Convert a color name ("Green", "Blue", etc.) to its ManaAtom constant.
@@ -1243,7 +1316,36 @@ pub fn calculate_available_mana_excluding(
         let mut added_atoms: Vec<u16> = Vec::new();
         let mut src_mask: u16 = 0;
         for ab in &mana_abilities {
-            if let Some(produced) = ab.params.get("Produced") {
+            // ManaReflected: check what colors other permanents can produce.
+            // For playability purposes, optimistically add all colors that
+            // matching permanents could produce.
+            if ab.params.get("AB").map_or(false, |v| v == "ManaReflected") {
+                let reflected_atoms = compute_reflected_atoms(game, player, card_id, ab);
+                // Resolve Amount parameter (e.g. Incubation Druid produces 3 when adapted).
+                let amount = resolve_mana_ability_amount(game, card_id, player, ab);
+                for &atom in &reflected_atoms {
+                    if !added_atoms.contains(&atom) {
+                        for _ in 0..amount {
+                            avail_add!(available, card_is_snow, atom);
+                        }
+                        added_atoms.push(atom);
+                        src_mask |= atom;
+                        added_any = true;
+                    }
+                }
+                // ManaReflected with Amount > 1 produces multiple mana per activation.
+                // Account for this in source_count so can_pay_source_matching knows
+                // this source can satisfy multiple shard requirements.
+                if amount > 1 && !reflected_atoms.is_empty() {
+                    // We'll add (amount - 1) extra source entries later when we push.
+                    // Store in a local variable to use below.
+                    // (We add 1 normally, plus (amount-1) extras.)
+                    for _ in 0..(amount - 1) {
+                        source_count += 1;
+                        source_colors.push(src_mask);
+                    }
+                }
+            } else if let Some(produced) = ab.params.get("Produced") {
                 if produced == "Combo ColorIdentity" {
                     // Commander Color Identity support: in non-commander games this remains empty.
                     let command_cards = game.cards_in_zone(ZoneType::Command, player).to_vec();
@@ -1319,6 +1421,38 @@ pub fn calculate_available_mana_excluding(
     available.source_colors = Some(source_colors);
 
     available
+}
+
+/// Resolve the Amount parameter of a mana ability for availability checks.
+/// Returns how many mana the ability produces per activation (default 1).
+/// Handles SVar references like `Amount$ IncubationAmount` where the SVar
+/// resolves to a Count$Compare expression.
+fn resolve_mana_ability_amount(
+    game: &GameState,
+    card_id: CardId,
+    player: PlayerId,
+    ab: &crate::ability::activated::ActivatedAbility,
+) -> i32 {
+    let amount_str = match ab.params.get("Amount") {
+        Some(v) if !v.is_empty() => v.clone(),
+        _ => return 1,
+    };
+    // Direct number
+    if let Ok(n) = amount_str.trim().parse::<i32>() {
+        return n.max(1);
+    }
+    // SVar reference: look up in card's svars and resolve
+    let card = game.card(card_id);
+    if let Some(svar_expr) = card.svars.get(amount_str.trim()) {
+        if svar_expr.starts_with("Count$") {
+            return crate::ability::effects::resolve_count_svar(svar_expr, game, card_id, player)
+                .max(1);
+        }
+        if let Ok(n) = svar_expr.trim().parse::<i32>() {
+            return n.max(1);
+        }
+    }
+    1
 }
 
 #[cfg(test)]

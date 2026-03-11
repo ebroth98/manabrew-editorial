@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::{
-    BinaryChoiceKind, MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent,
+    BinaryChoiceKind, GameEntity, MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent,
 };
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
@@ -261,6 +261,8 @@ impl CapturingAgent {
     }
 
     fn record_decision(&self, kind: &str, options: Vec<String>, choice: String) {
+        let rng_count = self.inner.rng_call_count();
+        eprintln!("[decision rng#{} P{} {} {}]", rng_count, self.player_id.0, kind, choice);
         self.shared_decisions.lock().unwrap().push(DecisionRecord {
             turn: self.current_turn,
             phase: self.current_phase.clone(),
@@ -350,6 +352,8 @@ impl PlayerAgent for CapturingAgent {
 
     fn notify_phase_changed(&mut self, phase: forge_foundation::PhaseType) {
         self.current_phase = format!("{:?}", phase);
+        let rng_count = self.inner.rng_call_count();
+        eprintln!("[phase P{} {:?} rng#{}]", self.player_id.0, phase, rng_count);
         self.inner.notify_phase_changed(phase);
     }
 
@@ -449,6 +453,13 @@ impl PlayerAgent for CapturingAgent {
                         }
                         PlayCardMode::Alternative(AlternativeCost::Suspend) => {
                             "Suspend".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Morph)
+                        | PlayCardMode::Alternative(AlternativeCost::Megamorph) => {
+                            "Morph".to_string()
+                        }
+                        PlayCardMode::Alternative(AlternativeCost::Bestow) => {
+                            "Bestow".to_string()
                         }
                         PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
                         PlayCardMode::ForetellExile => "ForetellExile".to_string(),
@@ -766,18 +777,6 @@ impl PlayerAgent for CapturingAgent {
         self.inner.choose_type(player, type_category, valid_types)
     }
 
-    fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> {
-        self.inner.choose_color(player, valid_colors)
-    }
-
-    fn choose_card_name(&mut self, player: PlayerId, valid_names: &[String]) -> Option<String> {
-        self.inner.choose_card_name(player, valid_names)
-    }
-
-    fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> {
-        self.inner.choose_number(player, min, max)
-    }
-
     fn choose_scry(&mut self, player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
         self.inner.choose_scry(player, cards)
     }
@@ -808,7 +807,7 @@ impl PlayerAgent for CapturingAgent {
                 format!("{name}@{}", self.parity_map.id(cid))
             })
             .collect();
-        self.record_verbose_decision(
+        self.record_decision(
             "choose_dig",
             options,
             if picked.is_empty() {
@@ -861,6 +860,37 @@ impl PlayerAgent for CapturingAgent {
             .collect();
         self.record_verbose_decision(
             "choose_cards_for_effect",
+            options,
+            if picked.is_empty() {
+                "PASS".to_string()
+            } else {
+                picked.join(",")
+            },
+        );
+        chosen
+    }
+
+    fn choose_entities_for_effect(
+        &mut self,
+        player: PlayerId,
+        candidates: &[GameEntity],
+        min: usize,
+        max: usize,
+    ) -> Vec<GameEntity> {
+        let chosen = self.inner.choose_entities_for_effect(player, candidates, min, max);
+        let format_entity = |e: &GameEntity| -> String {
+            match e {
+                GameEntity::Player(pid) => format!("Player({})", pid.index()),
+                GameEntity::Card(cid) => {
+                    let name = self.card_name(*cid);
+                    format!("{name}@{}", self.parity_map.id(*cid))
+                }
+            }
+        };
+        let options: Vec<String> = candidates.iter().map(format_entity).collect();
+        let picked: Vec<String> = chosen.iter().map(format_entity).collect();
+        self.record_verbose_decision(
+            "choose_entities_for_effect",
             options,
             if picked.is_empty() {
                 "PASS".to_string()
@@ -1065,6 +1095,36 @@ impl PlayerAgent for CapturingAgent {
         chosen_left
     }
 
+    fn choose_color(&mut self, player: PlayerId, valid_colors: &[String]) -> Option<String> {
+        let chosen = self.inner.choose_color(player, valid_colors);
+        self.record_verbose_decision(
+            "choose_color",
+            valid_colors.to_vec(),
+            chosen.clone().unwrap_or_else(|| "NONE".to_string()),
+        );
+        chosen
+    }
+
+    fn choose_card_name(&mut self, player: PlayerId, valid_names: &[String]) -> Option<String> {
+        let chosen = self.inner.choose_card_name(player, valid_names);
+        self.record_verbose_decision(
+            "choose_card_name",
+            valid_names.to_vec(),
+            chosen.clone().unwrap_or_else(|| "NONE".to_string()),
+        );
+        chosen
+    }
+
+    fn choose_number(&mut self, player: PlayerId, min: i32, max: i32) -> Option<i32> {
+        let chosen = self.inner.choose_number(player, min, max);
+        self.record_verbose_decision(
+            "choose_number",
+            vec![format!("{}..{}", min, max)],
+            chosen.map_or("NONE".to_string(), |v| v.to_string()),
+        );
+        chosen
+    }
+
     fn notify(&mut self, message: &str) {
         if let Some(card_name) = extract_coverage_card(message) {
             self.shared_covered_cards
@@ -1212,7 +1272,11 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     // Aggregates.random() in DiscardEffect Mode$ Random). After shuffling,
     // its state matches Java's MyRandom post-shuffle, so subsequent random
     // effects produce identical results.
-    let game_rng = Rc::new(RefCell::new(JavaRandom::new(config.seed as i64)));
+    let game_rng = Rc::new(RefCell::new({
+        let mut r = JavaRandom::new(config.seed as i64);
+        r.label = "game";
+        r
+    }));
     {
         let mut shuffle_rng = game_rng.borrow_mut();
         for &pid in &game.player_order.clone() {
@@ -1256,7 +1320,11 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     // This is distinct from the game RNG — both sides create a fresh Random(seed)
     // for agent decisions, ensuring the RNG state matches even though the game
     // RNG is consumed differently by each engine's internals.
-    let agent_rng = Rc::new(RefCell::new(JavaRandom::new(config.seed as i64)));
+    let agent_rng = Rc::new(RefCell::new({
+        let mut r = JavaRandom::new(config.seed as i64);
+        r.label = "agent";
+        r
+    }));
 
     // Create deterministic agents — player 0 uses CapturingAgent to collect
     // turn-start snapshots (matching Java's GameEventTurnBegan timing).

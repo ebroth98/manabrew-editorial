@@ -13,7 +13,7 @@ import { useDeckStore } from "@/stores/useDeckStore";
 import { GAME_FORMATS, validateDeck, type GameFormat } from "@/lib/formats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { cn } from "@/lib/utils";
-import { AlertCircle, Check, Shuffle, Swords } from "lucide-react";
+import { AlertCircle, Check, Search, Shuffle, Swords } from "lucide-react";
 
 interface PresetDeckInfo {
   id: string;
@@ -61,6 +61,7 @@ export function CreateGameDialog({
   );
   const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
   const [playerCount, setPlayerCount] = useState(2);
+  const [deckSearch, setDeckSearch] = useState("");
 
   useEffect(() => {
     invoke<PresetDeckInfo[]>("get_preset_decks")
@@ -115,6 +116,19 @@ export function CreateGameDialog({
   }));
 
   const allDecks = [...userDecks, ...presetDeckEntries];
+
+  // Filter decks by search query (matches name or description)
+  const searchLower = deckSearch.toLowerCase();
+  const filteredPresetEntries = searchLower
+    ? presetDeckEntries.filter(
+        (d) =>
+          d.name.toLowerCase().includes(searchLower) ||
+          d.desc?.toLowerCase().includes(searchLower),
+      )
+    : presetDeckEntries;
+  const filteredUserDecks = searchLower
+    ? userDecks.filter((d) => d.name.toLowerCase().includes(searchLower))
+    : userDecks;
 
   // Auto-populate commander when the selected deck changes
   useEffect(() => {
@@ -321,14 +335,33 @@ export function CreateGameDialog({
           {/* Right panel — Deck picker */}
           <div className="flex-1 overflow-y-auto">
 
+            {/* Search bar */}
+            <div className="px-4 pt-4 pb-2 sticky top-0 bg-background z-10">
+              <div className="relative">
+                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  type="text"
+                  placeholder="Filter decks..."
+                  value={deckSearch}
+                  onChange={(e) => setDeckSearch(e.target.value)}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-md border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+                />
+              </div>
+            </div>
+
             {/* Preset decks */}
-            <div className="p-4">
+            <div className="p-4 pt-2">
               <SectionLabel>Preset Decks</SectionLabel>
               <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">
                 Pre-built themed decks — always legal, great for testing mechanics.
               </p>
+              {filteredPresetEntries.length === 0 ? (
+                <p className="text-xs text-muted-foreground italic">
+                  No preset decks match your search.
+                </p>
+              ) : (
               <div className="grid grid-cols-3 gap-2">
-                {presetDeckEntries.map((deck) => {
+                {filteredPresetEntries.map((deck) => {
                   const isSelected = selectedDeck === deck.id;
                   return (
                     <button
@@ -357,6 +390,7 @@ export function CreateGameDialog({
                   );
                 })}
               </div>
+              )}
             </div>
 
             {/* Divider */}
@@ -368,13 +402,13 @@ export function CreateGameDialog({
               <p className="text-[11px] text-muted-foreground mt-0.5 mb-3">
                 Decks you've built in the editor.
               </p>
-              {userDecks.length === 0 ? (
+              {filteredUserDecks.length === 0 ? (
                 <p className="text-xs text-muted-foreground italic">
-                  No saved decks. Build one in the Deck Editor.
+                  {searchLower ? "No saved decks match your search." : "No saved decks. Build one in the Deck Editor."}
                 </p>
               ) : (
                 <div className="grid grid-cols-3 gap-2">
-                  {userDecks.map((d) => {
+                  {filteredUserDecks.map((d) => {
                     const validation = validateDeck(d.deckList.map((c) => c.name), selectedFormat);
                     const isSelected = selectedDeck === d.id;
                     const colorPips = getDeckColors(d.cards);

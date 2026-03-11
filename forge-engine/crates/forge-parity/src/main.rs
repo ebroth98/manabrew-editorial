@@ -226,13 +226,13 @@ fn main() {
         #[cfg(feature = "analyze")]
         {
             run_analyze_only(&cli);
+            return;
         }
         #[cfg(not(feature = "analyze"))]
         {
             eprintln!("[parity] --analyze requires the 'analyze' feature. Build with: cargo build --features analyze");
             std::process::exit(1);
         }
-        return;
     }
 
     if cli.serve || cli.ci {

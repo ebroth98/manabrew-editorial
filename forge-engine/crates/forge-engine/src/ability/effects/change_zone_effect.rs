@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, evaluate_svar, matches_change_type, parse_zone_type, EffectContext};
+use super::{emit_zone_trigger, evaluate_svar, matches_change_type, parse_counter_type, parse_zone_type, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
@@ -232,6 +232,35 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 if tapped {
                     ctx.game.tap(card_id);
                 }
+
+                // Ninjutsu: mark the card for combat entry. The actual combat.declare_attacker
+                // is handled in magic_stack.rs where CombatState is accessible.
+                if sa.param_is_true("Ninjutsu") {
+                    let defender_pid = ctx.game.opponent_of(controller);
+                    ctx.game.card_mut(card_id).attacking_player = Some(defender_pid);
+                }
+
+                // Unearth: grant Haste and clear summoning sickness.
+                // The creature should be exiled at EOT or if it would leave the battlefield,
+                // but for simplicity we grant haste as a pump keyword (clears at cleanup).
+                if sa.param_is_true("Unearth") {
+                    ctx.game.card_mut(card_id).pump_keywords.push("Haste".to_string());
+                    ctx.game.card_mut(card_id).summoning_sick = false;
+                }
+
+                // WithCountersType$: add a counter when entering the battlefield
+                // (e.g. Undying adds P1P1, Persist adds M1M1).
+                // Mirrors Java's ChangeZoneEffect "WithCountersType" parameter.
+                if let Some(counter_type_str) = sa.params.get("WithCountersType") {
+                    let ct = parse_counter_type(counter_type_str);
+                    let amount = sa
+                        .params
+                        .get("WithCountersAmount")
+                        .and_then(|s| s.parse::<i32>().ok())
+                        .unwrap_or(1);
+                    ctx.game.card_mut(card_id).add_counter(&ct, amount);
+                }
+
                 ctx.trigger_handler
                     .register_active_trigger(ctx.game, card_id);
             }

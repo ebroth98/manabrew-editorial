@@ -38,7 +38,16 @@ impl GameLoop {
             .copied()
             .filter(|&cid| {
                 let c = game.card(cid);
-                c.is_land() && !c.tapped
+                if c.tapped {
+                    return false;
+                }
+                // Lands are always tappable for mana.
+                if c.is_land() {
+                    return true;
+                }
+                // Non-land permanents with a mana ability (e.g. Llanowar Elves,
+                // Incubation Druid) are also tappable for mana.
+                c.activated_abilities.iter().any(|ab| ab.is_mana_ability)
             })
             .collect();
 
@@ -49,7 +58,13 @@ impl GameLoop {
             .copied()
             .filter(|&cid| {
                 let c = game.card(cid);
-                if !c.is_land() || !c.tapped {
+                if !c.tapped {
+                    return false;
+                }
+                // Must be a land or a permanent with a mana ability.
+                let has_mana_ability = c.is_land()
+                    || c.activated_abilities.iter().any(|ab| ab.is_mana_ability);
+                if !has_mana_ability {
                     return false;
                 }
                 let atoms = mana::land_mana_atoms(c);

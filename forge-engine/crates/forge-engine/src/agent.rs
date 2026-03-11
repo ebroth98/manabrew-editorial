@@ -5,6 +5,15 @@ use crate::mana::ManaPool;
 use crate::spellability::AlternativeCost;
 use forge_foundation::PhaseType;
 
+/// A game entity that can be a player or a card (permanent).
+/// Used by effects like Proliferate that operate on mixed entity lists.
+/// Mirrors Java's `GameEntity` hierarchy used in `chooseEntitiesForEffect`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GameEntity {
+    Player(PlayerId),
+    Card(CardId),
+}
+
 /// Structured log event delivered to agents for UI/debug rendering.
 #[derive(Debug, Clone)]
 pub struct GameLogEvent {
@@ -564,6 +573,21 @@ pub trait PlayerAgent {
         max: usize,
     ) -> Vec<CardId> {
         valid.iter().copied().take(max).collect()
+    }
+
+    /// Choose game entities (players and/or permanents) for an effect like Proliferate.
+    /// Mirrors Java `chooseEntitiesForEffect(FCollectionView<GameEntity>, ...)`.
+    /// `candidates` contains a mixed list of players and cards in the order Java builds them
+    /// (players first, then permanents).
+    /// Default: pick all candidates.
+    fn choose_entities_for_effect(
+        &mut self,
+        _player: PlayerId,
+        candidates: &[GameEntity],
+        _min: usize,
+        max: usize,
+    ) -> Vec<GameEntity> {
+        candidates.iter().copied().take(max).collect()
     }
 
     /// Choose a single card for hidden-origin zone changes (e.g. library search).

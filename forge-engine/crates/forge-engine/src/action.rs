@@ -145,6 +145,8 @@ impl GameState {
                 let attachments: Vec<CardId> = self.cards[card_id.index()].attachments.clone();
                 for aura_id in attachments {
                     self.cards[aura_id.index()].attached_to = None;
+                    // Bestow: when host leaves, revert aura to creature
+                    self.cards[aura_id.index()].is_bestowed = false;
                 }
                 self.cards[card_id.index()].attachments.clear();
                 // Also detach this card from its host if it was an Aura/Equipment.
@@ -172,6 +174,8 @@ impl GameState {
                 card.summoning_sick = true;
                 card.monstrous = false;
                 card.controller = card.owner;
+                card.face_down = false;
+                card.is_bestowed = false;
                 if !keep_counters {
                     card.counters.clear();
                 }
@@ -407,12 +411,20 @@ impl GameState {
                                 ZoneType::Graveyard
                             };
                         let old_zone = self.card(cid).zone;
-                        self.move_card(cid, final_dest, owner);
+                        // Emit trigger BEFORE move_card so that LKI state
+                        // (counters, keywords) is still available for trigger
+                        // matching.  Persist/Undying check counter conditions
+                        // on the dying card; if we emit after move_card the
+                        // counters are already cleared and the check is wrong.
+                        // flush_waiting_triggers pre-matches while card state
+                        // is intact; the matched results survive the move.
                         if let Some(handler) = trigger_handler.as_deref_mut() {
                             crate::ability::effects::emit_zone_trigger(
                                 handler, cid, old_zone, final_dest,
                             );
+                            handler.flush_waiting_triggers(self);
                         }
+                        self.move_card(cid, final_dest, owner);
                         any_changes = true;
                     } else {
                         // Indestructible — destruction was replaced; creature stays.
@@ -615,6 +627,8 @@ impl GameState {
             self.cards[host_id.index()]
                 .attachments
                 .retain(|&a| a != aura_id);
+            // Bestow: when unattached, revert to a creature
+            self.cards[aura_id.index()].is_bestowed = false;
         }
     }
 

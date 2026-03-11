@@ -33,15 +33,30 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let gains = sa.params.get("Gains").cloned().unwrap_or_default();
 
-    // Check if we need to choose a color/type
-    if gains.contains("chosen color") {
+    // Mirrors Java ProtectEffect: `isChoice = sa.getParam("Gains").contains("Choice")`
+    // Handles both `Gains$ Choice` (Gods Willing) and `Gains$ Protection from chosen color`.
+    let is_choice = gains.contains("Choice") || gains.contains("chosen color");
+
+    if is_choice {
+        // Build the protection choices from `Choices$` parameter.
+        // `AnyColor` expands to the 5 Magic colors.
         let choices = sa
             .params
             .get("Choices")
             .map(|s| {
-                s.split(',')
-                    .map(|c| c.trim().to_string())
-                    .collect::<Vec<_>>()
+                if s.contains("AnyColor") {
+                    vec![
+                        "White".into(),
+                        "Blue".into(),
+                        "Black".into(),
+                        "Red".into(),
+                        "Green".into(),
+                    ]
+                } else {
+                    s.split(',')
+                        .map(|c| c.trim().to_string())
+                        .collect::<Vec<_>>()
+                }
             })
             .unwrap_or_else(|| {
                 vec![

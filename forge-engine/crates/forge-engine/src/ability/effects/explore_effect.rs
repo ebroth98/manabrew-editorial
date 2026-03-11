@@ -115,44 +115,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             );
 
             // Player may put revealed card into graveyard (otherwise it stays on top).
-            // Mirrors Java's ExploreAi.shouldPutInGraveyard() heuristic which evaluates
-            // based on lands in hand, lands on battlefield, and revealed card's CMC.
+            // Java's ExploreEffect calls controller.confirmAction() which in the
+            // harness DeterministicController uses a random boolean (pickBool).
+            // Use confirm_action here to match that RNG-consuming path.
             let card_name = ctx.game.card(top_card).card_name.clone();
-            let revealed_cmc = ctx.game.card(top_card).mana_value();
-            let bf = ctx.game.cards_in_zone(ZoneType::Battlefield, controller);
-            // Java's landsOTB: all mana-producing lands (tapped + untapped)
-            let mana_producing_lands = bf
-                .iter()
-                .filter(|&&cid| ctx.game.card(cid).is_land())
-                .count();
-            // Java's predictedMana: ComputerUtilMana.getAvailableManaSources(ai, false).size()
-            // counts ALL cards with mana abilities from both battlefield AND hand,
-            // regardless of tapped state (checkPlayable=false).
-            let hand = ctx.game.cards_in_zone(ZoneType::Hand, controller);
-            let predicted_mana = bf
-                .iter()
-                .chain(hand.iter())
-                .filter(|&&cid| {
-                    let c = ctx.game.card(cid);
-                    if c.is_land() {
-                        return true;
-                    }
-                    c.activated_abilities.iter().any(|ab| ab.is_mana_ability)
-                })
-                .count();
-            let lands_in_hand = ctx
-                .game
-                .cards_in_zone(ZoneType::Hand, controller)
-                .iter()
-                .filter(|&&cid| ctx.game.card(cid).is_land())
-                .count();
-            let put_in_gy = ctx.agents[controller.index()].choose_explore_put_in_graveyard(
+            let explorer_name = ctx.game.card(explorer_id).card_name.clone();
+            let msg = format!(
+                "Put {} into your graveyard?",
+                card_name
+            );
+            let put_in_gy = ctx.agents[controller.index()].confirm_action(
                 controller,
-                &card_name,
-                revealed_cmc,
-                mana_producing_lands,
-                predicted_mana,
-                lands_in_hand,
+                None,
+                &msg,
+                &[],
+                Some(&explorer_name),
+                Some("Explore"),
             );
 
             if put_in_gy {

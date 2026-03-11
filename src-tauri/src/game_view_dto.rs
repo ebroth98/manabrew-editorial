@@ -107,6 +107,12 @@ pub struct CardDto {
     pub supertypes: Vec<String>,
     pub power: Option<String>,
     pub toughness: Option<String>,
+    /// Base power before any modifiers (for buff/debuff color-coding).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_power: Option<i32>,
+    /// Base toughness before any modifiers (for buff/debuff color-coding).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_toughness: Option<i32>,
     pub text: String,
     pub is_playable: bool,
     pub is_selected: bool,
@@ -125,10 +131,20 @@ pub struct CardDto {
     pub is_double_faced: bool,
     /// True if this card is currently showing its back face.
     pub is_transformed: bool,
+    /// True if this card is face-down (Morph, Manifest).
+    pub is_face_down: bool,
+    /// True if this card is currently bestowed (attached as an Aura).
+    pub is_bestowed: bool,
     /// True if this card is phased out (issue #22).
     pub phased_out: bool,
     /// True if this creature has been exerted (won't untap next untap step).
     pub exerted: bool,
+    /// ID of the card this permanent is attached to (equipment host, enchanted creature).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attached_to: Option<String>,
+    /// IDs of cards attached to this permanent (equipment, auras).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attachment_ids: Vec<String>,
     /// Flashback cost string, if the card has flashback (e.g. "1 R").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flashback_cost: Option<String>,
@@ -204,6 +220,8 @@ pub fn card_to_dto(
 
     let power = card.base_power.map(|_| card.power().to_string());
     let toughness = card.base_toughness.map(|_| card.toughness().to_string());
+    let base_power = card.base_power;
+    let base_toughness = card.base_toughness;
 
     // Collect non-zero counters, using the variant name as key (e.g. "P1P1", "M1M1", "Loyalty")
     let counters: HashMap<String, i32> = card
@@ -230,19 +248,56 @@ pub fn card_to_dto(
         .collect::<Vec<_>>()
         .join("\n");
 
+    // Face-down cards show as nameless 2/2 creatures with no info
+    let morph_pt = forge_engine_core::spellability::MORPH_PT.to_string();
+    let (name, types, subtypes, supertypes, power, toughness, base_power, base_toughness, text, color, mana_cost_str, cmc) =
+        if card.face_down && card.zone == ZoneType::Battlefield {
+            (
+                "Face-down creature".to_string(),
+                vec!["Creature".to_string()],
+                vec![],
+                vec![],
+                Some(morph_pt.clone()),
+                Some(morph_pt),
+                None,
+                None,
+                String::new(),
+                String::new(),
+                String::new(),
+                0,
+            )
+        } else {
+            (
+                card.card_name.clone(),
+                types,
+                subtypes,
+                supertypes,
+                power,
+                toughness,
+                base_power,
+                base_toughness,
+                text,
+                card.color.to_string(),
+                card.mana_cost.to_string(),
+                card.mana_cost.cmc(),
+            )
+        };
+
     CardDto {
         id: card_id_str(cid),
-        name: card.card_name.clone(),
+        name,
         set_code: card.set_code.clone().unwrap_or_default(),
         card_number: String::new(),
-        color: card.color.to_string(),
-        mana_cost: card.mana_cost.to_string(),
-        cmc: card.mana_cost.cmc(),
+        color,
+        mana_cost: mana_cost_str,
+        cmc,
         types,
         subtypes,
         supertypes,
         power,
         toughness,
+        base_power,
+        base_toughness,
         text,
         is_playable: playable_ids.contains(&cid),
         is_selected: false,
@@ -274,6 +329,10 @@ pub fn card_to_dto(
         flashback_cost: card.get_flashback_cost(),
         kicker_cost: card.get_kicker_cost(),
         is_transformed: card.is_transformed,
+        is_face_down: card.face_down,
+        is_bestowed: card.is_bestowed,
+        attached_to: card.attached_to.map(card_id_str),
+        attachment_ids: card.attachments.iter().map(|&aid| card_id_str(aid)).collect(),
         phased_out: card.phased_out,
         exerted: card.exerted,
         effective_mana_cost: {

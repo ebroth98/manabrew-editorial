@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -364,7 +364,7 @@ impl PlayerAgent for InteractiveAgent {
     fn choose_action(
         &mut self,
         player: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
@@ -408,8 +408,8 @@ impl PlayerAgent for InteractiveAgent {
             );
             actions.push(MainPhaseAction::ActivateMana(cid));
         }
-        for &cid in playable {
-            let card = game.card(cid);
+        for &play in playable {
+            let card = game.card(play.card_id);
             let verb = if card.is_land() { "Play" } else { "Cast" };
             println!(
                 "  {}{}{}: {} {}",
@@ -419,7 +419,7 @@ impl PlayerAgent for InteractiveAgent {
                 verb,
                 format_card_with_cost(card)
             );
-            actions.push(MainPhaseAction::Play(cid));
+            actions.push(MainPhaseAction::Play(play));
         }
         for &(cid, ab_idx) in activatable {
             let card = game.card(cid);
@@ -663,7 +663,7 @@ impl PlayerAgent for SimpleAiAgent {
     fn choose_action(
         &mut self,
         _: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         _: &[CardId],
         _: &[CardId],
         _: &[(CardId, usize)],

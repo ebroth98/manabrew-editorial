@@ -23,7 +23,8 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use forge_engine_core::agent::{
-    BinaryChoiceKind, MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
+    BinaryChoiceKind, GameEntity, MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent,
+    TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -98,6 +99,11 @@ impl DeterministicAgent {
             prefer_actions,
             parity_map,
         }
+    }
+
+    /// Get the current RNG call count (for debugging).
+    pub fn rng_call_count(&self) -> u64 {
+        self.rng.borrow().call_count
     }
 
     /// Look up a card name from the cached snapshot.
@@ -182,6 +188,9 @@ impl DeterministicAgent {
             }
             PlayCardMode::Alternative(AlternativeCost::Emerge) => "Emerge",
             PlayCardMode::Alternative(AlternativeCost::Suspend) => "Suspend",
+            PlayCardMode::Alternative(AlternativeCost::Morph)
+            | PlayCardMode::Alternative(AlternativeCost::Megamorph) => "Morph",
+            PlayCardMode::Alternative(AlternativeCost::Bestow) => "Bestow",
             PlayCardMode::GainLifeAlt => "GainLifeAlt",
             PlayCardMode::ForetellExile => "ForetellExile",
         }
@@ -735,12 +744,15 @@ impl PlayerAgent for DeterministicAgent {
         _player: PlayerId,
         valid: &[CardId],
         max: usize,
-        _optional: bool,
+        optional: bool,
     ) -> Vec<CardId> {
         if valid.is_empty() || max == 0 {
             return vec![];
         }
-        gui_repro::pick_many_unique(valid, 0, max, &mut self.rng.borrow_mut())
+        // Java DigEffect: min = (anyNumber || optional) ? 0 : max
+        // When not optional, the player must take exactly `max` cards.
+        let min = if optional { 0 } else { max };
+        gui_repro::pick_many_unique(valid, min, max, &mut self.rng.borrow_mut())
     }
 
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
@@ -792,6 +804,19 @@ impl PlayerAgent for DeterministicAgent {
             return vec![];
         }
         gui_repro::pick_many_unique(valid, min, max, &mut self.rng.borrow_mut())
+    }
+
+    fn choose_entities_for_effect(
+        &mut self,
+        _player: PlayerId,
+        candidates: &[GameEntity],
+        min: usize,
+        max: usize,
+    ) -> Vec<GameEntity> {
+        if candidates.is_empty() {
+            return vec![];
+        }
+        gui_repro::pick_many_unique(candidates, min, max, &mut self.rng.borrow_mut())
     }
 
     fn choose_single_card_for_zone_change(

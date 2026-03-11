@@ -396,6 +396,7 @@ fn unified_diff(rust_trace: &str, java_trace: &str, d1: &str, d2: &str, seed: u6
     let max_lines = rust_lines.len().max(java_lines.len());
     let mut in_diff = false;
     let mut context_before: Vec<String> = Vec::new();
+    #[allow(unused_assignments)]
     let mut diff_start = 0usize;
     let mut diff_lines: Vec<String> = Vec::new();
 

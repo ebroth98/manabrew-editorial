@@ -96,6 +96,7 @@ fn trigger_mode_to_type(mode: &TriggerMode) -> Option<TriggerType> {
         TriggerMode::TapsForMana { .. } => TriggerType::TapsForMana,
         TriggerMode::AbilityActivated { .. } => TriggerType::AbilityActivated,
         TriggerMode::Explored { .. } => TriggerType::Explored,
+        TriggerMode::Exploited { .. } => TriggerType::Exploited,
         TriggerMode::BecomeMonstrous { .. } => TriggerType::BecomeMonstrous,
         TriggerMode::BecomeMonarch { .. } => TriggerType::BecomeMonarch,
         TriggerMode::DamageDealtOnce { .. } => TriggerType::DamageDealtOnce,

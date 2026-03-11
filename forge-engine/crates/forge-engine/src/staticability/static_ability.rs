@@ -86,6 +86,9 @@ pub enum StaticMode {
     OptionalAttackCost,
     /// `Mode$ CantBlockUnless` — blocker must pay a cost to block (War Cadence).
     CantBlockUnless,
+    /// `Mode$ CantBlockBy` — restricts which blockers can block an attacker
+    /// (Flying, Fear, Intimidate, Skulk, or card-specific restrictions).
+    CantBlockBy,
     /// `Mode$ ManaConvert` — spend mana as though it were mana of any color/type.
     ManaConvert,
     /// `Mode$ UnspentMana` — mana of specified type doesn't empty from pool.
@@ -385,6 +388,7 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("CantAttackUnless") => StaticMode::CantAttackUnless,
         Some("OptionalAttackCost") => StaticMode::OptionalAttackCost,
         Some("CantBlockUnless") => StaticMode::CantBlockUnless,
+        Some("CantBlockBy") => StaticMode::CantBlockBy,
         Some("ManaConvert") => StaticMode::ManaConvert,
         Some("UnspentMana") => StaticMode::UnspentMana,
         Some("ManaBurn") => StaticMode::ManaBurn,

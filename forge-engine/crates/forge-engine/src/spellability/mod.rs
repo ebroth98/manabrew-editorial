@@ -33,7 +33,26 @@ pub enum AlternativeCost {
     Foretell,
     Emerge,
     Suspend,
+    /// Cast face-down as a 2/2 creature for {3} (Morph).
+    Morph,
+    /// Cast face-down as a 2/2 creature for {3}, +1/+1 counter on turn face-up (Megamorph).
+    Megamorph,
+    /// Cast as an Aura with enchant creature for the bestow cost.
+    Bestow,
 }
+
+impl AlternativeCost {
+    /// True if this is a morph-style face-down cast (Morph or Megamorph).
+    pub fn is_morph(self) -> bool {
+        matches!(self, AlternativeCost::Morph | AlternativeCost::Megamorph)
+    }
+}
+
+/// Generic mana cost for casting a card face-down via Morph/Megamorph ({3}).
+pub const MORPH_GENERIC_COST: i32 = 3;
+
+/// Power and toughness of a face-down morph creature.
+pub const MORPH_PT: i32 = 2;
 
 // ── SpellAbility (mirrors Java's SpellAbility.java) ──────────────────
 
@@ -108,6 +127,14 @@ impl SpellAbility {
     /// Mirrors Java's `usesTargeting()`: `return targetRestrictions != null`.
     pub fn uses_targeting(&self) -> bool {
         self.target_restrictions.is_some()
+    }
+
+    /// Check if a parameter is set to "True" (case-insensitive).
+    /// Common pattern for boolean params like `Ninjutsu$ True`, `Mega$ True`, etc.
+    pub fn param_is_true(&self, key: &str) -> bool {
+        self.params
+            .get(key)
+            .map_or(false, |v| v.eq_ignore_ascii_case("True"))
     }
 
     /// Get the chosen targets. Mirrors Java's `getTargets()`.
@@ -306,8 +333,12 @@ fn choose_targets_for(
         TargetKind::Player => {
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            // "target player" means any player — including the caster themselves.
-            let valid_players: Vec<PlayerId> = game.alive_players().into_iter().collect();
+            // Filter valid players by ValidTgts: "Opponent" restricts to opponents only,
+            // "Player" means any player including the caster.
+            let is_opponent_only = tr.valid_tgts.iter().any(|v| v.eq_ignore_ascii_case("Opponent"));
+            let valid_players: Vec<PlayerId> = game.alive_players().into_iter()
+                .filter(|&pid| !is_opponent_only || pid != player)
+                .collect();
             sa.target_chosen.target_player = agent.choose_target_player(player, &valid_players);
         }
         TargetKind::Any => {
@@ -515,6 +546,11 @@ impl MagicStack {
         } else {
             None
         }
+    }
+
+    /// Find a stack entry by its source card ID (for Ward — finding the targeting spell).
+    pub fn find_by_source_card(&self, card_id: crate::ids::CardId) -> Option<&StackEntry> {
+        self.entries.iter().find(|e| e.spell_ability.source == Some(card_id))
     }
 }
 

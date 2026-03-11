@@ -13,6 +13,7 @@
     { "name": "Garruk's Companion", "count": 3, "set": "m13" },
     { "name": "Giant Spider", "count": 2, "set": "m14" },
     { "name": "Wall of Ice", "count": 2, "set": "7ed" },
-    { "name": "Craw Wurm", "count": 2, "set": "m11" }
+    { "name": "Craw Wurm", "count": 2, "set": "m11" },
+    { "name": "Short Sword", "count": 2, "set": "dom" }
   ]
 }

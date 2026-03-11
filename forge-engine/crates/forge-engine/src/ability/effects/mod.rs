@@ -465,9 +465,22 @@ fn resolve_effect_with_unless_cost(ctx: &mut EffectContext, sa: &SpellAbility, u
     };
     let cost = parse_cost(unless_cost);
     let payers = resolve_unless_payers(sa, ctx.game);
+    // Java parity: payCostToPreventEffect → payWithDeterministicDecision →
+    // CostPutCounter.visit() always pays from source without calling confirm().
+    // No extra RNG/prompt consumption — just attempt to pay if able.
     let mut already_paid = false;
     for payer in payers {
         if ctx.game.player(payer).has_lost {
+            continue;
+        }
+        if !crate::cost::can_pay_with_ability(
+            &cost,
+            ctx.game,
+            &ctx.mana_pools[payer.index()],
+            source,
+            payer,
+            Some(sa),
+        ) {
             continue;
         }
         if try_pay_unless_cost(ctx, sa, source, payer, &cost) {
@@ -517,21 +530,9 @@ fn try_pay_unless_cost(
         return false;
     }
 
-    let card_name = ctx.game.card(source).card_name.clone();
-    let api = sa.api.as_deref();
-    for part in &cost.parts {
-        let kind = cost_part_kind(part);
-        let msg = format!("Pay {} cost for {}?", kind, card_name);
-        if !ctx.agents[payer.index()].confirm_payment(
-            payer,
-            kind,
-            &msg,
-            Some(&card_name),
-            api,
-        ) {
-            return false;
-        }
-    }
+    // Java parity: UnlessCost payment goes through the CostPayment.payComputerCosts()
+    // visitor pattern which does NOT call confirmPayment for each cost part.
+    // Do NOT call confirm_payment here — it would consume extra agent RNG.
 
     // Pre-check that all cost parts are supported before executing any,
     // to avoid partial side-effects (damage/life loss) that can't be rolled back.
@@ -543,7 +544,8 @@ fn try_pay_unless_cost(
             | CostPart::PayEnergy(_)
             | CostPart::PayShards(_)
             | CostPart::Draw(_)
-            | CostPart::Mill(_) => {}
+            | CostPart::Mill(_)
+            | CostPart::AddCounter { .. } => {}
             _ => {
                 return false;
             }
@@ -613,12 +615,25 @@ fn try_pay_unless_cost(
                     }
                 }
             }
-            _ => unreachable!("pre-checked above"),
+            CostPart::AddCounter {
+                amount,
+                counter_type,
+            } => {
+                // Put counters on the source permanent (e.g. Fabricate UnlessCost).
+                // Mirrors Java CostPutCounter payment.
+                ctx.game.card_mut(source).add_counter(counter_type, *amount);
+            }
+            _ => {
+                // Unsupported UnlessCost part in effect resolution path.
+                return false;
+            }
         }
     }
     true
 }
 
+/// Format a human-readable message for an UnlessCost prompt.
+/// e.g. "AddCounter<2/P1P1>" → "Put 2 +1/+1 counters instead?"
 fn cost_part_kind(part: &CostPart) -> &'static str {
     match part {
         CostPart::Mana(_) => "Mana",
@@ -1067,11 +1082,91 @@ pub fn resolve_count_svar_for_sa(
 
         for &cid in &cards_to_check {
             let card = game.card(cid);
-            if valid_card_matches(filter_str, card, controller) {
+            if valid_card_matches_with_source(filter_str, card, controller, source_id) {
                 count += 1;
             }
         }
         return count;
+    }
+
+    // Count$Devotion.COLOR — count mana symbols of a color among permanents you control.
+    // Mirrors Java's `CardFactoryUtil.xCount()` Devotion case.
+    if let Some(color_str) = expr.strip_prefix("Count$Devotion.") {
+        let color_mask: u16 = match color_str.to_uppercase().as_str() {
+            "W" | "WHITE" => forge_foundation::ManaAtom::WHITE,
+            "U" | "BLUE" => forge_foundation::ManaAtom::BLUE,
+            "B" | "BLACK" => forge_foundation::ManaAtom::BLACK,
+            "R" | "RED" => forge_foundation::ManaAtom::RED,
+            "G" | "GREEN" => forge_foundation::ManaAtom::GREEN,
+            _ => 0,
+        };
+        if color_mask != 0 {
+            let battlefield = game.cards_in_zone(ZoneType::Battlefield, controller);
+            let mut count = 0i32;
+            for &cid in battlefield {
+                let card = game.card(cid);
+                for shard in card.mana_cost.shards() {
+                    if (shard.shard() & color_mask) != 0 {
+                        count += 1;
+                    }
+                }
+            }
+            return count;
+        }
+    }
+
+    // Count$Compare SVAR OPTHRESHOLD.IFTRUE.IFFALSE
+    // e.g. Count$Compare Y GE1.3.1  → if Y >= 1 then 3 else 1
+    if let Some(rest) = expr.strip_prefix("Count$Compare ") {
+        let parts: Vec<&str> = rest.splitn(2, ' ').collect();
+        if parts.len() == 2 {
+            let svar_name = parts[0];
+            let cond_parts: Vec<&str> = parts[1].splitn(3, '.').collect();
+            if cond_parts.len() == 3 {
+                // Resolve the referenced SVar
+                let svar_val = if let Some(svar_expr) = game.card(source_id).svars.get(svar_name) {
+                    if svar_expr.starts_with("Count$") {
+                        resolve_count_svar_for_sa(svar_expr, game, source_id, controller, sa)
+                    } else {
+                        svar_expr.parse::<i32>().unwrap_or(0)
+                    }
+                } else {
+                    svar_name.parse::<i32>().unwrap_or(0)
+                };
+
+                // Parse operator + threshold from cond_parts[0], e.g. "GE1"
+                let cond = cond_parts[0];
+                let (op, threshold) = if let Some(t) = cond.strip_prefix("GE") {
+                    ("GE", t.parse::<i32>().unwrap_or(0))
+                } else if let Some(t) = cond.strip_prefix("GT") {
+                    ("GT", t.parse::<i32>().unwrap_or(0))
+                } else if let Some(t) = cond.strip_prefix("LE") {
+                    ("LE", t.parse::<i32>().unwrap_or(0))
+                } else if let Some(t) = cond.strip_prefix("LT") {
+                    ("LT", t.parse::<i32>().unwrap_or(0))
+                } else if let Some(t) = cond.strip_prefix("EQ") {
+                    ("EQ", t.parse::<i32>().unwrap_or(0))
+                } else if let Some(t) = cond.strip_prefix("NE") {
+                    ("NE", t.parse::<i32>().unwrap_or(0))
+                } else {
+                    ("GE", 0)
+                };
+
+                let result = match op {
+                    "GE" => svar_val >= threshold,
+                    "GT" => svar_val > threshold,
+                    "LE" => svar_val <= threshold,
+                    "LT" => svar_val < threshold,
+                    "EQ" => svar_val == threshold,
+                    "NE" => svar_val != threshold,
+                    _ => false,
+                };
+
+                let if_true = cond_parts[1].parse::<i32>().unwrap_or(0);
+                let if_false = cond_parts[2].parse::<i32>().unwrap_or(0);
+                return if result { if_true } else { if_false };
+            }
+        }
     }
 
     // Count$CardPower — power of the source card
@@ -1093,10 +1188,11 @@ pub fn resolve_count_svar_for_sa(
 }
 
 /// Check if a card matches a validity filter string like "Forest.YouCtrl".
-fn valid_card_matches(
+fn valid_card_matches_with_source(
     filter: &str,
     card: &crate::card::CardInstance,
     controller: PlayerId,
+    source_id: CardId,
 ) -> bool {
     let parts: Vec<&str> = filter.split('.').collect();
     let base_type = parts.first().copied().unwrap_or("");
@@ -1116,19 +1212,71 @@ fn valid_card_matches(
         return false;
     }
 
-    // Check qualifiers
-    for &qual in &parts[1..] {
-        match qual {
-            "YouCtrl" | "YouControl" => {
+    // Check qualifiers (split by '.' and '+')
+    for &dot_qual in &parts[1..] {
+        for sub_qual in dot_qual.split('+') {
+            let sub_qual = sub_qual.trim();
+            if sub_qual.eq_ignore_ascii_case("YouCtrl") || sub_qual.eq_ignore_ascii_case("YouControl") {
                 if card.controller != controller {
                     return false;
                 }
+            } else if sub_qual.eq_ignore_ascii_case("Self") {
+                if card.id != source_id {
+                    return false;
+                }
+            } else if sub_qual.eq_ignore_ascii_case("Other") {
+                // handled by caller if needed
+            } else if sub_qual.starts_with("counters_") {
+                // Parse "counters_GE1_P1P1", "counters_EQ0_P1P1", etc.
+                if !check_counter_qualifier(card, sub_qual) {
+                    return false;
+                }
             }
-            "Other" => {} // handled by caller if needed
-            _ => {}       // ignore unknown qualifiers
         }
     }
     true
+}
+
+/// Check a counter qualifier like "counters_GE1_P1P1".
+fn check_counter_qualifier(card: &crate::card::CardInstance, qual: &str) -> bool {
+    let rest = match qual.strip_prefix("counters_") {
+        Some(r) => r,
+        None => return true,
+    };
+    // Split into OP+THRESHOLD and COUNTER_TYPE, e.g. "GE1_P1P1"
+    let parts: Vec<&str> = rest.splitn(2, '_').collect();
+    if parts.len() != 2 {
+        return true;
+    }
+    let cond = parts[0];
+    let counter_type = crate::ability::effects::parse_counter_type(parts[1]);
+    let count = *card.counters.get(&counter_type).unwrap_or(&0);
+
+    let (op, threshold) = if let Some(t) = cond.strip_prefix("GE") {
+        ("GE", t.parse::<i32>().unwrap_or(0))
+    } else if let Some(t) = cond.strip_prefix("GT") {
+        ("GT", t.parse::<i32>().unwrap_or(0))
+    } else if let Some(t) = cond.strip_prefix("LE") {
+        ("LE", t.parse::<i32>().unwrap_or(0))
+    } else if let Some(t) = cond.strip_prefix("LT") {
+        ("LT", t.parse::<i32>().unwrap_or(0))
+    } else if let Some(t) = cond.strip_prefix("EQ") {
+        ("EQ", t.parse::<i32>().unwrap_or(0))
+    } else if let Some(t) = cond.strip_prefix("NE") {
+        ("NE", t.parse::<i32>().unwrap_or(0))
+    } else {
+        return true;
+    };
+
+    match op {
+        "GE" => count >= threshold,
+        "GT" => count > threshold,
+        "LE" => count <= threshold,
+        "LT" => count < threshold,
+        "EQ" => count == threshold,
+        "NE" => count != threshold,
+        _ => true,
+    }
 }
 
 /// Resolve a Defined$ parameter to a player ID.
@@ -1402,6 +1550,11 @@ pub fn matches_change_type(
             }
             "nonLand" => {
                 if card.is_land() {
+                    return false;
+                }
+            }
+            "attacking" => {
+                if card.attacking_player.is_none() {
                     return false;
                 }
             }

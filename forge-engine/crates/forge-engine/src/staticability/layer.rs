@@ -90,6 +90,17 @@ pub fn apply_continuous_effects(game: &mut GameState) {
         card.cant_block_static = false;
     }
 
+    // ── 1b. Keyword-derived restrictions ────────────────────────────────
+    // Unleash: creatures with Unleash keyword and a +1/+1 counter can't block.
+    for card in game.cards.iter_mut() {
+        if card.zone == ZoneType::Battlefield
+            && card.has_keyword("Unleash")
+            && card.counter_count(&crate::card::CounterType::P1P1) > 0
+        {
+            card.cant_block_static = true;
+        }
+    }
+
     // ── 2. Collect (source_id, static_ability) for every battlefield permanent ──
     // We clone the data we need so the borrow checker lets us mutate later.
     let sources: Vec<(CardId, StaticAbility)> = game
@@ -118,11 +129,28 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             .params
             .get("Affected")
             .or_else(|| sa.params.get("ValidCards"))
+            .or_else(|| sa.params.get("ValidCard"))
             .map(String::as_str)
             .unwrap_or("Creature.YouControl");
-        let targets: Vec<CardId> = if affected_str.eq_ignore_ascii_case("Card.EnchantedBy") {
-            // Aura-like static effects (e.g. Control Magic): affect what this
-            // source is attached to.
+        let targets: Vec<CardId> = if affected_str.eq_ignore_ascii_case("Card.Self")
+            || affected_str.starts_with("Card.Self+")
+        {
+            // Self-referencing static: only affects the source card itself.
+            // e.g. Sightless Ghoul: "S:Mode$ CantBlock | ValidCard$ Card.Self"
+            if source_card.zone == ZoneType::Battlefield {
+                vec![*source_id]
+            } else {
+                vec![]
+            }
+        } else if affected_str.eq_ignore_ascii_case("Card.EnchantedBy")
+            || affected_str.contains(".EquippedBy")
+            || affected_str.contains(".EnchantedBy")
+        {
+            // Aura / Equipment static effects: affect what this source is
+            // attached to.  Java treats EquippedBy and EnchantedBy
+            // identically — both resolve to the entity the source is
+            // attached to.  (e.g. Short Sword: "Creature.EquippedBy",
+            // Control Magic: "Card.EnchantedBy")
             source_card
                 .attached_to
                 .filter(|&cid| game.card(cid).zone == ZoneType::Battlefield)
@@ -228,6 +256,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             // Attack-cost statics are checked at combat time, not continuously.
             StaticMode::CantAttackUnless
             | StaticMode::CantBlockUnless
+            | StaticMode::CantBlockBy
             | StaticMode::OptionalAttackCost => {}
 
             // ETBTapped is a one-time effect applied at zone-change time

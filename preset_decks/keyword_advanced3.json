@@ -1,0 +1,24 @@
+{
+  "label": "Advanced Keywords 3",
+  "desc": "Test Morph, Megamorph, Bestow, Ninjutsu",
+  "color": "text-teal-400",
+  "opponent": "white_aggro",
+  "ai_eligible": false,
+  "order": 18,
+  "cards": [
+    { "name": "Island", "count": 5, "set": "ktk" },
+    { "name": "Swamp", "count": 4, "set": "ktk" },
+    { "name": "Forest", "count": 4, "set": "ktk" },
+    { "name": "Plains", "count": 3, "set": "ths" },
+    { "name": "Rattleclaw Mystic", "count": 2, "set": "ktk" },
+    { "name": "Icefeather Aven", "count": 2, "set": "ktk" },
+    { "name": "Gudul Lurker", "count": 2, "set": "dtk" },
+    { "name": "Ninja of the Deep Hours", "count": 3, "set": "bok" },
+    { "name": "Skullsnatcher", "count": 2, "set": "bok" },
+    { "name": "Nimbus Naiad", "count": 2, "set": "ths" },
+    { "name": "Nyxborn Wolf", "count": 2, "set": "bng" },
+    { "name": "Nyxborn Shieldmate", "count": 2, "set": "jou" },
+    { "name": "Ghostblade Eidolon", "count": 2, "set": "bng" },
+    { "name": "Ruthless Ripper", "count": 2, "set": "ktk" }
+  ]
+}

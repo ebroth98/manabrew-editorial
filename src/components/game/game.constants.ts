@@ -80,6 +80,15 @@ export const PROMPT_LABELS: Record<string, string> = {
   gameOver: "Game Over",
 };
 
+/** Card status badge definitions — label + Tailwind color classes */
+export const CARD_BADGES = {
+  exerted:     { label: "EXERTED",     style: "bg-orange-500/90 text-white" },
+  morph:       { label: "MORPH",       style: "bg-gray-600/90 text-white" },
+  bestow:      { label: "BESTOW",      style: "bg-teal-500/90 text-white" },
+  token:       { label: "TOKEN",       style: "bg-amber-400/90 text-amber-900" },
+  transformed: { label: "TRANSFORMED", style: "bg-purple-500/90 text-white" },
+} as const;
+
 /** Logical footprint of battlefield cards (for FreeBattlefield grid layout) */
 export const CARD_W = 72;
 export const CARD_H = 100;

@@ -12,12 +12,16 @@
     "args": "--deck1 black_control --deck2 zone_change --games 10 --max-turns 30"
   },
   {
-      "name": "tokens",
-      "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 10"
+    "name": "tokens",
+    "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 10"
   },
   {
     "name": "payments",
     "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 10"
+  },
+  {
+    "name": "keyword_advanced",
+    "args": "--deck1 keyword_advanced  --deck2 keyword_advanced --max-turns 40 --games 10 --seed 42"
   },
   {
     "name": "bugfix_regression",

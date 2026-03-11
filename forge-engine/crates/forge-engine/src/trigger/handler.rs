@@ -156,14 +156,15 @@ impl TriggerHandler {
                     continue;
                 }
 
-                if self.can_run_trigger(
+                let can_run = self.can_run_trigger(
                     game,
                     active.card_id,
                     active.trigger_index,
                     host_controller,
                     &event.mode,
                     &event.params,
-                ) {
+                );
+                if can_run {
                     let svar_text = card
                         .svars
                         .get(&trigger.execute)
@@ -179,11 +180,38 @@ impl TriggerHandler {
                     // Propagate trigger target from event params so that
                     // Defined$ TriggeredTarget can resolve in downstream effects.
                     // For DamageDone triggers, this is the player/card dealt damage.
+                    // For Attacks triggers, defending_player is propagated for Annihilator etc.
                     if let Some(pid) = event.params.damage_target_player {
                         sa.target_chosen.target_player = Some(pid);
                     }
+                    if let Some(pid) = event.params.defending_player {
+                        if sa.target_chosen.target_player.is_none() {
+                            sa.target_chosen.target_player = Some(pid);
+                        }
+                    }
                     if let Some(cid) = event.params.damage_target_card {
                         sa.target_chosen.target_card = Some(cid);
+                    }
+                    // For BecomesTarget triggers (Ward), find the targeting spell on
+                    // the stack and set it as the counter target.
+                    if let Some(cause_cid) = event.params.cause_card {
+                        if let Some(entry) = game.stack.find_by_source_card(cause_cid) {
+                            sa.target_chosen.target_stack_entry = Some(entry.id);
+                        }
+                    }
+                    // For Attacks triggers (Exalted): propagate attacker as target_card
+                    // so Defined$ TriggeredAttacker can resolve.
+                    if let Some(attacker_id) = event.params.attacker {
+                        if svar_text.contains("TriggeredAttacker") {
+                            sa.target_chosen.target_card = Some(attacker_id);
+                        }
+                    }
+                    // For Block triggers (Flanking): propagate blocker as target_card
+                    // so Defined$ TriggeredBlocker can resolve.
+                    if let Some(blocker_id) = event.params.blocker {
+                        if svar_text.contains("TriggeredBlocker") {
+                            sa.target_chosen.target_card = Some(blocker_id);
+                        }
                     }
 
                     let entry = StackEntry {
@@ -222,6 +250,11 @@ impl TriggerHandler {
                         sa2.trigger_index = Some(active.trigger_index);
                         if let Some(pid) = event.params.damage_target_player {
                             sa2.target_chosen.target_player = Some(pid);
+                        }
+                        if let Some(pid) = event.params.defending_player {
+                            if sa2.target_chosen.target_player.is_none() {
+                                sa2.target_chosen.target_player = Some(pid);
+                            }
                         }
                         if let Some(cid) = event.params.damage_target_card {
                             sa2.target_chosen.target_card = Some(cid);
@@ -452,6 +485,7 @@ impl TriggerHandler {
             TriggerMode::AttackerBlockedByCreature { .. } => TriggerType::AttackerBlocked,
             TriggerMode::AttackerUnblockedOnce { .. } => TriggerType::AttackerUnblocked,
             TriggerMode::ManaExpend { .. } => TriggerType::ManaExpend,
+            TriggerMode::Exploited { .. } => TriggerType::Exploited,
         };
 
         if trigger_type != *mode {
@@ -482,6 +516,22 @@ impl TriggerHandler {
             // enrage). When combat damage kills the creature, SBAs move it to
             // graveyard before triggers are processed. The trigger was queued
             // while the card was on the battlefield, so we use LKI.
+            ZoneType::Battlefield
+        } else if *mode == TriggerType::Exploited
+            && params.card == Some(host_card)
+            && trigger.active_zones.contains(&ZoneType::Battlefield)
+            && card.zone != ZoneType::Battlefield
+        {
+            // LKI for Exploited triggers: the exploiting creature sacrificed
+            // itself. It was on the battlefield when Exploit fired, so use LKI.
+            ZoneType::Battlefield
+        } else if *mode == TriggerType::Sacrificed
+            && params.card == Some(host_card)
+            && trigger.active_zones.contains(&ZoneType::Battlefield)
+            && card.zone != ZoneType::Battlefield
+        {
+            // LKI for Sacrificed triggers: the creature was on the battlefield
+            // when it was sacrificed, use LKI.
             ZoneType::Battlefield
         } else {
             card.zone

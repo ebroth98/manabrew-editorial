@@ -39,6 +39,7 @@ impl ParityCardMap {
         self.by_card
             .get(&cid)
             .copied()
-            .unwrap_or(u32::MAX.saturating_sub(cid.0))
+            // Use i32::MAX to match Java's Integer.MAX_VALUE fallback for tokens.
+            .unwrap_or((i32::MAX as u32).saturating_sub(cid.0))
     }
 }

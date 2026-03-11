@@ -1,0 +1,26 @@
+{
+  "label": "Advanced Keywords",
+  "desc": "Test Equip, Cycling, Undying, Persist, Afterlife, Exploit, Annihilator, Adapt, Fabricate",
+  "color": "text-purple-400",
+  "opponent": "white_aggro",
+  "ai_eligible": false,
+  "order": 16,
+  "cards": [
+    { "name": "Swamp", "count": 4, "set": "akh" },
+    { "name": "Forest", "count": 4, "set": "akh" },
+    { "name": "Plains", "count": 4, "set": "akh" },
+    { "name": "Island", "count": 4, "set": "akh" },
+    { "name": "Strangleroot Geist", "count": 2, "set": "dka" },
+    { "name": "Safehold Elite", "count": 2, "set": "shm" },
+    { "name": "Geralf's Messenger", "count": 2, "set": "dka" },
+    { "name": "Imperious Oligarch", "count": 2, "set": "rna" },
+    { "name": "Tithe Taker", "count": 2, "set": "rna" },
+    { "name": "Glint-Sleeve Artisan", "count": 2, "set": "kld" },
+    { "name": "Short Sword", "count": 2, "set": "dom" },
+    { "name": "Bonesplitter", "count": 2, "set": "mrd" },
+    { "name": "Gurmag Drowner", "count": 2, "set": "dtk" },
+    { "name": "Incubation Druid", "count": 2, "set": "rna" },
+    { "name": "Stormbound Geist", "count": 2, "set": "dka" },
+    { "name": "Sightless Ghoul", "count": 2, "set": "dka" }
+  ]
+}

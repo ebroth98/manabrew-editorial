@@ -164,6 +164,10 @@ pub enum TriggerType {
     RolledDieOnce,
     /// Mana was expended (cumulative per-turn tracking for Expend mechanic).
     ManaExpend,
+    /// A face-down card was turned face-up (Morph/Megamorph/Manifest).
+    TurnFaceUp,
+    /// A creature was exploited (Exploit keyword).
+    Exploited,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.
@@ -215,10 +219,16 @@ pub struct RunParams {
     pub mana_expend_amount: Option<i32>,
     /// Enlisted card (for TriggerMode::Enlisted).
     pub enlisted: Option<CardId>,
+    /// The spell/ability card that caused the event (for BecomesTarget — the targeting spell).
+    pub cause_card: Option<CardId>,
     /// Coin-flip outcome (true = win/heads).
     pub coin_flip_won: Option<bool>,
     /// Rolled die result (modified).
     pub die_result: Option<i32>,
     /// Number of sides on the rolled die.
     pub die_sides: Option<i32>,
+    /// Number of attackers declared this combat (for Exalted `Alone$ True` check).
+    pub num_attackers: Option<usize>,
+    /// The creature that was exploited (for Exploited trigger).
+    pub exploited_card: Option<CardId>,
 }

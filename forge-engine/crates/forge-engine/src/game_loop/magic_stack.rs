@@ -127,6 +127,20 @@ impl GameLoop {
                         );
                     }
                 }
+
+                // Ninjutsu: add the ninja to combat as an attacker.
+                // The change_zone_effect already set attacking_player; here we
+                // register it in the CombatState so it participates in damage.
+                if entry.spell_ability.param_is_true("Ninjutsu") {
+                    if let Some(source_card) = entry.spell_ability.source {
+                        if game.card(source_card).zone == ZoneType::Battlefield {
+                            if let Some(def_pid) = game.card(source_card).attacking_player {
+                                let defender = crate::combat::DefenderId::Player(def_pid);
+                                self.combat.declare_attacker(source_card, defender);
+                            }
+                        }
+                    }
+                }
             }
         } else if entry.spell_ability.is_copy {
             // Copy of a spell (from Replicate/Storm): resolve effect only, no card movement
@@ -332,6 +346,41 @@ impl GameLoop {
                             remembered_amount: 0,
                         },
                     );
+                }
+
+                // Bestow: attach to a creature as an Aura
+                if alt_cost == Some(crate::spellability::AlternativeCost::Bestow) {
+                    // Find a creature to attach to (agent chooses)
+                    let creatures: Vec<crate::ids::CardId> = game
+                        .cards_in_zone(ZoneType::Battlefield, player)
+                        .iter()
+                        .chain(
+                            game.cards_in_zone(
+                                ZoneType::Battlefield,
+                                game.opponent_of(player),
+                            )
+                            .iter(),
+                        )
+                        .copied()
+                        .filter(|&cid| cid != card_id && game.card(cid).is_creature())
+                        .collect();
+                    if !creatures.is_empty() {
+                        agents[player.index()].snapshot_state(game, &self.mana_pools);
+                        if let Some(target) =
+                            agents[player.index()].choose_sacrifice(player, &creatures)
+                        {
+                            game.card_mut(card_id).is_bestowed = true;
+                            game.attach_to(card_id, target);
+                        }
+                    }
+                }
+
+                // Morph/Megamorph: enter face-down as a 2/2 creature
+                if alt_cost.map_or(false, |ac| ac.is_morph()) {
+                    let c = game.card_mut(card_id);
+                    c.face_down = true;
+                    c.static_set_power = Some(crate::spellability::MORPH_PT);
+                    c.static_set_toughness = Some(crate::spellability::MORPH_PT);
                 }
 
                 // Blitz: grant haste + "dies: draw a card" + sacrifice at EOT

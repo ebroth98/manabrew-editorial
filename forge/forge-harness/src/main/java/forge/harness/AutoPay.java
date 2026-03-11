@@ -1,10 +1,13 @@
 package forge.harness;
 
+import forge.card.MagicColor;
 import forge.card.mana.ManaAtom;
 import forge.card.mana.ManaCost;
 import forge.card.mana.ManaCostShard;
+import forge.game.ability.ApiType;
 import forge.game.card.Card;
 import forge.game.card.CardCollectionView;
+import forge.game.card.CardUtil;
 import forge.game.cost.Cost;
 import forge.game.cost.CostPayment;
 import forge.game.mana.Mana;
@@ -16,6 +19,7 @@ import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
@@ -97,8 +101,8 @@ final class AutoPay {
             final ManaCostBeingPaid unpaid,
             final List<ManaAbilityCandidate> candidates
     ) {
-        for (final ManaCostShard shard : shardPriority(unpaid)) {
-            final ManaAbilityCandidate match = chooseFirstPayingShard(candidates, shard);
+        for (final ManaCostShard shard : shardPriority(unpaid, candidates)) {
+            final ManaAbilityCandidate match = chooseLeastVersatileCandidate(candidates, shard, unpaid);
             if (match != null) {
                 configureExpressChoiceForShard(match.spellAbility, shard);
                 return match;
@@ -107,7 +111,17 @@ final class AutoPay {
         return null;
     }
 
-    private List<ManaCostShard> shardPriority(final ManaCostBeingPaid unpaid) {
+    /**
+     * Build shard payment priority: colored shards first (sorted by fewest
+     * available candidates — most constrained first), then generic.
+     * Mirrors Rust's get_next_shard_to_pay() which sorts by fewest sources.
+     * This eliminates HashMap iteration-order non-determinism from
+     * ManaCostBeingPaid.getUnpaidShards().
+     */
+    private List<ManaCostShard> shardPriority(
+            final ManaCostBeingPaid unpaid,
+            final List<ManaAbilityCandidate> candidates
+    ) {
         final List<ManaCostShard> colored = new ArrayList<>();
         ManaCostShard generic = null;
         final Set<ManaCostShard> seen = new LinkedHashSet<>();
@@ -118,16 +132,18 @@ final class AutoPay {
             if (!seen.add(shard)) {
                 continue;
             }
-            // Separate colored/other shards from generic so colored always
-            // get priority — mirrors Rust's get_shard_to_pay_by_priority
-            // and the original intent in ManaCostBeingPaid ("ManaPartColor
-            // is stored before ManaPartGeneric").
             if (shard == ManaCostShard.GENERIC) {
                 generic = shard;
             } else {
                 colored.add(shard);
             }
         }
+        // Sort colored shards by fewest available candidates (most constrained first).
+        // This matches Rust's get_next_shard_to_pay() and ensures that when paying
+        // e.g. 1WU with a Hallowed Fountain (W/U) + Plains (W), U is paid first
+        // since it has fewer sources, preventing the dual land from being consumed
+        // for W and leaving U unpayable.
+        colored.sort(Comparator.comparingInt(shard -> countCandidatesForShard(candidates, shard)));
         if (generic != null) {
             colored.add(generic);
         } else if (!seen.contains(ManaCostShard.GENERIC)) {
@@ -136,16 +152,78 @@ final class AutoPay {
         return colored;
     }
 
-    private ManaAbilityCandidate chooseFirstPayingShard(
-            final List<ManaAbilityCandidate> candidates,
-            final ManaCostShard shard
-    ) {
+    private int countCandidatesForShard(final List<ManaAbilityCandidate> candidates, final ManaCostShard shard) {
+        int count = 0;
         for (final ManaAbilityCandidate c : candidates) {
             if (canPayShard(c.spellAbility, shard)) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    /**
+     * Choose the first candidate that can pay the given shard, but defer candidates
+     * that are the sole available source for another unpaid colored shard.
+     * Falls back to any valid candidate if all are sole sources.
+     */
+    private ManaAbilityCandidate chooseLeastVersatileCandidate(
+            final List<ManaAbilityCandidate> candidates,
+            final ManaCostShard shard,
+            final ManaCostBeingPaid unpaid
+    ) {
+        ManaAbilityCandidate fallback = null;
+
+        for (final ManaAbilityCandidate c : candidates) {
+            if (!canPayShard(c.spellAbility, shard)) {
+                continue;
+            }
+            if (fallback == null) {
+                fallback = c;
+            }
+            // Check if this candidate is the ONLY source for another unpaid colored shard.
+            // If so, defer it to preserve that source for the other shard.
+            if (!isSoleSourceForOtherShard(c, shard, candidates, unpaid)) {
                 return c;
             }
         }
-        return null;
+        // All valid candidates are sole sources for some other shard — just use the first one.
+        return fallback;
+    }
+
+    private boolean isSoleSourceForOtherShard(
+            final ManaAbilityCandidate candidate,
+            final ManaCostShard currentShard,
+            final List<ManaAbilityCandidate> candidates,
+            final ManaCostBeingPaid unpaid
+    ) {
+        final Set<ManaCostShard> seen = new LinkedHashSet<>();
+        for (final ManaCostShard other : unpaid.getUnpaidShards()) {
+            if (other == currentShard || other == ManaCostShard.GENERIC || other == ManaCostShard.X) {
+                continue;
+            }
+            if (!seen.add(other)) {
+                continue;
+            }
+            if (!canPayShard(candidate.spellAbility, other)) {
+                continue;
+            }
+            // This candidate can pay for 'other' shard — check if it's the only one.
+            int sourcesForOther = 0;
+            for (final ManaAbilityCandidate alt : candidates) {
+                if (canPayShard(alt.spellAbility, other)) {
+                    sourcesForOther++;
+                    if (sourcesForOther > 1) {
+                        break;
+                    }
+                }
+            }
+            if (sourcesForOther <= 1) {
+                // This candidate is the sole source for 'other' shard — defer it.
+                return true;
+            }
+        }
+        return false;
     }
 
     private boolean canPayShard(final SpellAbility manaAbility, final ManaCostShard shard) {
@@ -179,7 +257,12 @@ final class AutoPay {
         if (manaPart == null) {
             return;
         }
-        if (!manaPart.isAnyMana() && !manaPart.isComboMana()) {
+        // ManaReflected abilities have origProduced="1" so isAnyMana()/isComboMana()
+        // return false, but they still produce multiple colors.  Without express
+        // choice, ManaReflectedEffect falls through to controller.chooseColor()
+        // which uses RNG and may pick the wrong color.
+        final boolean isReflected = manaAbility.getApi() == ApiType.ManaReflected;
+        if (!isReflected && !manaPart.isAnyMana() && !manaPart.isComboMana()) {
             return;
         }
         final byte preferred = preferredColorForShard(shard, producedAtoms(manaAbility));
@@ -228,6 +311,13 @@ final class AutoPay {
                 out.add(new ManaAbilityCandidate(manaAbility, sourceOrder++));
             }
         }
+        // Sort candidates so lands are tapped before non-land creatures.
+        // Mirrors Rust's sort_mana_abilities / score_mana_producing_card which
+        // assigns lower scores to lands and higher scores to creatures that can
+        // attack/block.  Without this sort, battlefield insertion order can cause
+        // a creature mana-dork to be tapped for a cost that lands could pay,
+        // leaving the dork unavailable for a later spell that needs its colors.
+        out.sort(Comparator.comparingInt(ManaAbilityCandidate::score));
         return out;
     }
 
@@ -235,6 +325,18 @@ final class AutoPay {
         final List<Byte> out = new ArrayList<>();
         final AbilityManaPart manaPart = manaAbility.getManaPart();
         if (manaPart == null) {
+            return out;
+        }
+        // ManaReflected abilities report origProduced="1" which doesn't map to
+        // any color atom.  Use getReflectableManaColors to determine which colors
+        // the reflected ability can actually produce.
+        if (manaAbility.getApi() == ApiType.ManaReflected) {
+            for (final String colorName : CardUtil.getReflectableManaColors(manaAbility)) {
+                final byte atom = MagicColor.fromName(colorName);
+                if (atom != 0) {
+                    addDistinct(out, atom);
+                }
+            }
             return out;
         }
         final String produced = manaPart.mana(manaAbility);
@@ -276,12 +378,56 @@ final class AutoPay {
 
     private static final class ManaAbilityCandidate {
         private final SpellAbility spellAbility;
-        @SuppressWarnings("unused")
         private final int sourceOrder;
 
         private ManaAbilityCandidate(final SpellAbility spellAbility, final int sourceOrder) {
             this.spellAbility = spellAbility;
             this.sourceOrder = sourceOrder;
+        }
+
+        /**
+         * Score for sorting — lower scores are tapped first.
+         * Mirrors Rust's score_mana_producing_card: lands get a low base
+         * score while creatures add +13 per combat role (attack/block).
+         * This ensures lands are consumed before valuable mana dorks.
+         */
+        int score() {
+            final Card source = spellAbility.getHostCard();
+            int s = 0;
+
+            // Mana ability intrinsic score (mirrors Rust score_mana_ability).
+            final AbilityManaPart manaPart = spellAbility.getManaPart();
+            if (manaPart != null) {
+                if (manaPart.isAnyMana()) {
+                    s += 7;
+                } else {
+                    final String produced = manaPart.mana(spellAbility);
+                    s += produced.split("\\s+").length;
+                    if (!produced.contains("C")) {
+                        s += 1;
+                    }
+                }
+            } else {
+                s += 1;
+            }
+
+            // Cost complexity (tap = +1 per cost part in Rust).
+            if (spellAbility.getPayCosts() != null) {
+                s += spellAbility.getPayCosts().getCostParts().size();
+            }
+
+            // Creatures that can participate in combat are more valuable
+            // and should be preserved — mirrors Rust's +13 per role.
+            if (source.isCreature()) {
+                s += 13; // can_attack equivalent
+                s += 13; // can_block equivalent
+            }
+
+            // Tie-break by battlefield insertion order for determinism.
+            // sourceOrder is a small int, multiply by a tiny factor so it
+            // only breaks ties without overwhelming the primary score.
+            s = s * 1000 + sourceOrder;
+            return s;
         }
     }
 }

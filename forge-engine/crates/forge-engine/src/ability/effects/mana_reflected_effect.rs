@@ -57,13 +57,54 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let restriction = sa.params.get("RestrictValid").cloned();
     let source_is_snow = ctx.game.card(source_id).type_line.is_snow();
 
-    // AI heuristic: pick the color with least mana in pool
-    let pool = &ctx.mana_pools[player.index()];
-    let best_color = available_colors
+    // Sort available colors in WUBRG(C) order to match Java's ColorSet iteration.
+    let wubrg_order: &[u16] = &[
+        ManaAtom::WHITE,
+        ManaAtom::BLUE,
+        ManaAtom::BLACK,
+        ManaAtom::RED,
+        ManaAtom::GREEN,
+        ManaAtom::COLORLESS,
+    ];
+    let mut sorted_colors: Vec<u16> = Vec::new();
+    for &atom in wubrg_order {
+        if available_colors.contains(&atom) {
+            sorted_colors.push(atom);
+        }
+    }
+    if sorted_colors.is_empty() {
+        sorted_colors = available_colors;
+    }
+
+    // Convert to color names and let the agent choose (mirrors Java's chooseColor).
+    let color_names: Vec<String> = sorted_colors
         .iter()
-        .copied()
-        .min_by_key(|&atom| pool.count_color(atom))
-        .unwrap_or(available_colors[0]);
+        .map(|&atom| match atom {
+            ManaAtom::WHITE => "White".to_string(),
+            ManaAtom::BLUE => "Blue".to_string(),
+            ManaAtom::BLACK => "Black".to_string(),
+            ManaAtom::RED => "Red".to_string(),
+            ManaAtom::GREEN => "Green".to_string(),
+            ManaAtom::COLORLESS => "Colorless".to_string(),
+            _ => "Colorless".to_string(),
+        })
+        .collect();
+
+    let best_color = if let Some(chosen_name) =
+        ctx.agents[player.index()].choose_color(player, &color_names)
+    {
+        match chosen_name.as_str() {
+            "White" => ManaAtom::WHITE,
+            "Blue" => ManaAtom::BLUE,
+            "Black" => ManaAtom::BLACK,
+            "Red" => ManaAtom::RED,
+            "Green" => ManaAtom::GREEN,
+            "Colorless" => ManaAtom::COLORLESS,
+            _ => sorted_colors[0],
+        }
+    } else {
+        sorted_colors[0]
+    };
 
     // Produce `amount` mana of the chosen color
     for _ in 0..amount {

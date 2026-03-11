@@ -978,8 +978,8 @@ impl GameLoop {
         player: PlayerId,
         card_id: CardId,
         spell_cost: &crate::cost::Cost,
-        api: Option<&str>,
-        mandatory: bool,
+        _api: Option<&str>,
+        _mandatory: bool,
     ) -> bool {
         let payment_snapshot = self.make_snapshot(game, true);
         let mut payment_ok = true;
@@ -2934,6 +2934,7 @@ impl GameLoop {
                 RunParams {
                     card: Some(target_card),
                     cause_player: Some(player),
+                    cause_card: Some(card_id),
                     ..Default::default()
                 },
                 false,

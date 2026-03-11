@@ -248,7 +248,7 @@ fn parse_target_kind(val: &str) -> TargetKind {
     if val.eq_ignore_ascii_case("Any") {
         return TargetKind::Any;
     }
-    if val.eq_ignore_ascii_case("Player") {
+    if val.eq_ignore_ascii_case("Player") || val.eq_ignore_ascii_case("Opponent") {
         return TargetKind::Player;
     }
     if val.eq_ignore_ascii_case("Spell") {
@@ -532,7 +532,7 @@ fn parse_target_kind_legacy(val: &str) -> TargetKind {
     if val.eq_ignore_ascii_case("Any") {
         return TargetKind::Any;
     }
-    if val.eq_ignore_ascii_case("Player") {
+    if val.eq_ignore_ascii_case("Player") || val.eq_ignore_ascii_case("Opponent") {
         return TargetKind::Player;
     }
     if val.eq_ignore_ascii_case("Spell") {
