@@ -35,6 +35,28 @@ pub struct FieldCluster {
     pub deck_pairs: Option<String>,
 }
 
+/// Normalize a divergence field by replacing array indices with `[*]`.
+fn normalize_field_for_storage(field: &str) -> String {
+    let mut result = String::with_capacity(field.len());
+    let mut in_bracket = false;
+    for c in field.chars() {
+        if c == '[' {
+            result.push('[');
+            in_bracket = true;
+        } else if c == ']' {
+            if in_bracket {
+                result.push('*');
+            }
+            result.push(']');
+            in_bracket = false;
+        } else if !in_bracket {
+            result.push(c);
+        }
+        // skip digits inside brackets
+    }
+    result
+}
+
 /// SQLite-backed storage for parity run records.
 pub struct Storage {
     conn: Connection,
@@ -350,6 +372,42 @@ impl Storage {
 
         let rows = stmt.query_map(params![limit as i64], |row| Self::row_to_record(row))?;
         rows.collect()
+    }
+
+    /// Get recent failures filtered by normalized divergence field.
+    pub fn failures_by_field(&self, field: &str, limit: usize) -> SqlResult<Vec<RunRecord>> {
+        // Normalize the query field: replace [*] back to a SQL LIKE pattern
+        let like_pattern = field
+            .replace("[*]", "[%]")
+            .replace('[', "[")
+            .replace(']', "]");
+        // Actually, simpler: fetch and filter in Rust since normalize is non-trivial in SQL
+        let mut stmt = self.conn.prepare(
+            "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
+                    divergence_count, first_divergence_field, first_divergence_rust,
+                    first_divergence_java, covered_cards, duration_ms, error_message,
+                    rust_trace, java_trace, is_fuzz, timestamp, commit_sha
+             FROM runs
+             WHERE status = 'fail' AND first_divergence_field IS NOT NULL
+             ORDER BY id DESC
+             LIMIT 5000",
+        )?;
+
+        let normalized_target = normalize_field_for_storage(field);
+        let rows = stmt.query_map([], |row| Self::row_to_record(row))?;
+        let mut results = Vec::new();
+        for row in rows {
+            let record = row?;
+            if let Some(ref f) = record.first_divergence_field {
+                if normalize_field_for_storage(f) == normalized_target {
+                    results.push(record);
+                    if results.len() >= limit {
+                        break;
+                    }
+                }
+            }
+        }
+        Ok(results)
     }
 
     /// Get a specific run by ID.

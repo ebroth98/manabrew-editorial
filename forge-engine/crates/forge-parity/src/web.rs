@@ -86,6 +86,8 @@ fn default_limit() -> usize {
 pub struct FailuresQuery {
     #[serde(default = "default_failures_limit")]
     limit: usize,
+    /// Optional filter: only return failures matching this divergence field (normalized).
+    field: Option<String>,
 }
 
 fn default_failures_limit() -> usize {
@@ -432,7 +434,12 @@ async fn failures_handler(
     Query(params): Query<FailuresQuery>,
 ) -> impl IntoResponse {
     let storage = state.storage.lock().unwrap();
-    match storage.recent_failures(params.limit) {
+    let result = if let Some(ref field) = params.field {
+        storage.failures_by_field(field, params.limit)
+    } else {
+        storage.recent_failures(params.limit)
+    };
+    match result {
         Ok(failures) => Json(failures).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
