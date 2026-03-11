@@ -80,6 +80,27 @@ final class AutoPay {
             pool.payManaCostFromPool(unpaid, saBeingPaid, false, spentFromPool);
         }
 
+        // Pay remaining phyrexian shards with life (2 life each).
+        // Matches ComputerUtilMana.payManaCost() phyrexian handling.
+        while (!unpaid.isPaid()) {
+            boolean foundPhyrexian = false;
+            for (final ManaCostShard s : unpaid.getUnpaidShards()) {
+                if (s.isPhyrexian()) {
+                    foundPhyrexian = true;
+                    break;
+                }
+            }
+            if (!foundPhyrexian) {
+                break;
+            }
+            if (!payer.canPayLife(2, false, saBeingPaid)) {
+                break;
+            }
+            unpaid.payPhyrexian();
+            payer.payLife(2, saBeingPaid, false);
+            saBeingPaid.setSpendPhyrexianMana(true);
+        }
+
         final boolean paid = unpaid.isPaid();
         CostPayment.handleOfferings(saBeingPaid, false, paid);
         if (!paid) {
@@ -146,8 +167,6 @@ final class AutoPay {
         colored.sort(Comparator.comparingInt(shard -> countCandidatesForShard(candidates, shard)));
         if (generic != null) {
             colored.add(generic);
-        } else if (!seen.contains(ManaCostShard.GENERIC)) {
-            colored.add(ManaCostShard.GENERIC);
         }
         return colored;
     }

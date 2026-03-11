@@ -179,6 +179,7 @@ effect_dispatch! {
     "Cleanup" => cleanup_effect::resolve,
     "Counter" => counter_effect::resolve,
     "ControlGain" => control_gain_effect::resolve,
+    "GainControl" => control_gain_effect::resolve,
     "Fight" => fight_effect::resolve,
     "Discard" => discard_effect::resolve,
     "Attach" => attach_effect::resolve,
@@ -718,7 +719,7 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "Poison"
     } else if ability.contains("$ Counter") {
         "Counter"
-    } else if ability.contains("ControlGain") {
+    } else if ability.contains("GainControl") || ability.contains("ControlGain") {
         "ControlGain"
     } else if ability.contains("$ Fight") {
         "Fight"

@@ -793,6 +793,18 @@ impl PlayerAgent for DeterministicAgent {
         false
     }
 
+    /// Always pay life for phyrexian mana — matches Java's
+    /// ComputerUtilMana.payManaCost() which auto-pays phyrexian
+    /// shards with life when no colored mana source is available.
+    fn choose_phyrexian_pay_life(
+        &mut self,
+        _player: PlayerId,
+        _color: &str,
+        _card_name: Option<&str>,
+    ) -> bool {
+        true
+    }
+
     fn choose_cards_for_effect(
         &mut self,
         _player: PlayerId,

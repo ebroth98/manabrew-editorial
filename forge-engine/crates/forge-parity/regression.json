@@ -46,5 +46,9 @@
   {
     "name": "equip_action_space (kondas_banner)",
     "args": "--deck1 comprehensive_test --deck2 staticability_test --seed 999 --max-turns 15 --games 3"
+  },
+  {
+    "name": "phyrexian_mana",
+    "args": "--deck1 phyrexian_test --deck2 phyrexian_test --seed 42 --max-turns 10 --games 12"
   }
 ]

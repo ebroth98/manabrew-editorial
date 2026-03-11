@@ -1458,6 +1458,23 @@ impl GameLoop {
             }
         }
 
+        // Return stolen creatures (LoseControl$ EOT) to their original controllers
+        let stolen: Vec<(CardId, crate::ids::PlayerId)> = game
+            .cards
+            .iter()
+            .filter(|c| c.zone == ZoneType::Battlefield && c.original_controller_eot.is_some())
+            .map(|c| (c.id, c.original_controller_eot.unwrap()))
+            .collect();
+        for (card_id, original) in stolen {
+            let current = game.card(card_id).controller;
+            game.cards[card_id.index()].original_controller_eot = None;
+            // Remove granted keywords (e.g. Haste from Act of Aggression)
+            game.cards[card_id.index()].granted_keywords.clear();
+            if current != original {
+                game.change_controller(card_id, original);
+            }
+        }
+
         // Remove damage and reset until-end-of-turn effects on all battlefield permanents
         for i in 0..game.cards.len() {
             if game.cards[i].zone == ZoneType::Battlefield {

@@ -204,6 +204,9 @@ pub struct CardInstance {
     /// Exile this effect when remembered cards become empty after forget logic.
     pub exile_when_no_remembered: bool,
 
+    /// Original controller to restore at end of turn (for `LoseControl$ EOT`).
+    pub original_controller_eot: Option<PlayerId>,
+
     // Double-faced card (DFC) state
     /// True if this card is currently showing its back face.
     pub is_transformed: bool,
@@ -382,6 +385,7 @@ impl CardInstance {
             temp_effect_host: None,
             forget_on_moved_origin: None,
             exile_when_no_remembered: false,
+            original_controller_eot: None,
             is_transformed: false,
             other_part: None,
             set_code: None,

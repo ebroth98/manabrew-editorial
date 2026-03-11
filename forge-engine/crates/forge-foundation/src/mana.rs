@@ -589,6 +589,20 @@ impl ManaCost {
         }
     }
 
+    /// Convert phyrexian shards to their colored equivalents (e.g. {B/P} → {B}).
+    /// Non-phyrexian shards are kept as-is. Generic cost is preserved.
+    pub fn phyrexian_to_colored(&self) -> ManaCost {
+        ManaCost {
+            shards: self
+                .shards
+                .iter()
+                .map(|s| if s.is_phyrexian() { s.to_non_phyrexian() } else { *s })
+                .collect(),
+            generic_cost: self.generic_cost,
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
     pub fn shard_count(&self, which: ManaCostShard) -> usize {
         if which == ManaCostShard::Generic {
             return self.generic_cost as usize;

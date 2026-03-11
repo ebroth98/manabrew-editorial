@@ -39,6 +39,49 @@ fn count_affinity_permanents(
         .count() as i32
 }
 
+/// Apply Delve/Convoke/Improvise/Affinity generic cost reductions.
+fn apply_cost_reductions(
+    game: &GameState,
+    player: PlayerId,
+    card_id: CardId,
+    card: &CardInstance,
+    cost: &forge_foundation::ManaCost,
+) -> forge_foundation::ManaCost {
+    if card.has_keyword("Delve") {
+        let gy_count = game
+            .cards_in_zone(forge_foundation::ZoneType::Graveyard, player)
+            .iter()
+            .filter(|&&cid| cid != card_id)
+            .count() as i32;
+        cost.reduce_generic(gy_count)
+    } else if card.has_keyword("Convoke") {
+        let creature_count = game
+            .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
+            .iter()
+            .filter(|&&cid| {
+                let c = game.card(cid);
+                c.is_creature() && !c.tapped && cid != card_id
+            })
+            .count() as i32;
+        cost.reduce_generic(creature_count)
+    } else if card.has_keyword("Improvise") {
+        let artifact_count = game
+            .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
+            .iter()
+            .filter(|&&cid| {
+                let c = game.card(cid);
+                c.type_line.is_artifact() && !c.tapped && cid != card_id
+            })
+            .count() as i32;
+        cost.reduce_generic(artifact_count)
+    } else if let Some(affinity_type) = get_affinity_type(card) {
+        let count = count_affinity_permanents(game, player, &affinity_type, card_id);
+        cost.reduce_generic(count)
+    } else {
+        cost.clone()
+    }
+}
+
 /// Check a Forge `IsPresent$` condition against the game state for the given player.
 ///
 /// Supported forms:
@@ -162,54 +205,50 @@ impl GameLoop {
                         cost_adj.apply(&card.mana_cost)
                     };
                     let base = base.add(&raise_mana);
-                    // Phyrexian shards can be paid with 2 life each, so strip them
-                    // for the mana affordability check (player can always choose life).
-                    let phyrexian_count =
-                        base.shards().iter().filter(|s| s.is_phyrexian()).count() as i32;
-                    let life_cost = phyrexian_count * 2;
-                    let base = if phyrexian_count > 0 && game.player(player).life >= life_cost {
-                        base.without_phyrexian()
+                    // Phyrexian mana: check AIPhyrexianPayment to determine
+                    // if life payment is allowed for this card. Uses greedy
+                    // simulation matching Java's ComputerUtilMana behavior.
+                    let has_phyrexian =
+                        base.shards().iter().any(|s| s.is_phyrexian());
+                    if has_phyrexian {
+                        let ai_phy_param = card.abilities.iter().find_map(|ab| {
+                            let params = crate::trigger::parse_pipe_params(ab);
+                            params.get("AIPhyrexianPayment").cloned()
+                        });
+                        let phyrexian_life_allowed = match ai_phy_param.as_deref() {
+                            Some("Never") => false,
+                            Some(s) if s.starts_with("OnFatalDamage.") => {
+                                let dmg: i32 = s[14..].parse().unwrap_or(0);
+                                let opp = game.opponent_of(player);
+                                game.player(opp).life <= dmg
+                            }
+                            _ => true,
+                        };
+                        if phyrexian_life_allowed {
+                            available_mana.can_pay_with_phyrexian_life(
+                                &base,
+                                game.player(player).life,
+                            )
+                        } else {
+                            let colored = base.phyrexian_to_colored();
+                            let reduced = apply_cost_reductions(
+                                game, player, card_id, card, &colored,
+                            );
+                            if any_color {
+                                available_mana.can_pay_any_color(&reduced)
+                            } else {
+                                available_mana.can_pay(&reduced)
+                            }
+                        }
                     } else {
-                        base
-                    };
-                    let reduced = if card.has_keyword("Delve") {
-                        let gy_count = game
-                            .cards_in_zone(ZoneType::Graveyard, player)
-                            .iter()
-                            .filter(|&&cid| cid != card_id)
-                            .count() as i32;
-                        base.reduce_generic(gy_count)
-                    } else if card.has_keyword("Convoke") {
-                        let creature_count = game
-                            .cards_in_zone(ZoneType::Battlefield, player)
-                            .iter()
-                            .filter(|&&cid| {
-                                let c = game.card(cid);
-                                c.is_creature() && !c.tapped && cid != card_id
-                            })
-                            .count() as i32;
-                        base.reduce_generic(creature_count)
-                    } else if card.has_keyword("Improvise") {
-                        let artifact_count = game
-                            .cards_in_zone(ZoneType::Battlefield, player)
-                            .iter()
-                            .filter(|&&cid| {
-                                let c = game.card(cid);
-                                c.type_line.is_artifact() && !c.tapped && cid != card_id
-                            })
-                            .count() as i32;
-                        base.reduce_generic(artifact_count)
-                    } else if let Some(affinity_type) = get_affinity_type(&card) {
-                        let count =
-                            count_affinity_permanents(game, player, &affinity_type, card_id);
-                        base.reduce_generic(count)
-                    } else {
-                        base
-                    };
-                    if any_color {
-                        available_mana.can_pay_any_color(&reduced)
-                    } else {
-                        available_mana.can_pay(&reduced)
+                        let reduced = apply_cost_reductions(
+                            game, player, card_id, card, &base,
+                        );
+                        if any_color {
+                            available_mana.can_pay_any_color(&reduced)
+                        } else {
+                            available_mana.can_pay(&reduced)
+                        }
                     }
                 };
 
@@ -1467,64 +1506,71 @@ impl GameLoop {
                 mana_cost
             };
 
-            // ── Phyrexian mana: pay all phyrexian shards with life or mana ──────
-            let mut _phyrexian_life_paid = 0i32;
+            // ── Phyrexian mana: per-shard greedy payment ──────────────────
+            // For each phyrexian shard, try to pay with colored mana first.
+            // If no colored mana source is available, pay 2 life instead.
+            // This is done shard-by-shard, not all-or-nothing.
             let mana_cost = if mana_cost.has_phyrexian() {
-                let phyrexian_count = mana_cost
-                    .shards()
-                    .iter()
-                    .filter(|s| s.is_phyrexian())
-                    .count() as i32;
-                let life_cost = phyrexian_count * 2;
-                agents[player.index()].snapshot_state(game, &self.mana_pools);
-                // Ask once: pay all phyrexian shards with life?
-                let phyrexian_str = mana_cost
-                    .shards()
-                    .iter()
-                    .filter(|s| s.is_phyrexian())
-                    .map(|s| s.short_string())
-                    .collect::<Vec<_>>()
-                    .join(", ");
-                let pay_life = game.player(player).life >= life_cost
-                    && agents[player.index()].choose_phyrexian_pay_life(
-                        player,
-                        &phyrexian_str,
-                        Some(&card_name),
-                    );
-                if pay_life {
-                    _phyrexian_life_paid = life_cost;
-                    let remaining: Vec<forge_foundation::ManaCostShard> = mana_cost
-                        .shards()
-                        .iter()
-                        .filter(|s| !s.is_phyrexian())
-                        .copied()
-                        .collect();
-                    game.player_mut(player).lose_life(life_cost);
+                let available =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                let mut remaining_shards: Vec<forge_foundation::ManaCostShard> = Vec::new();
+                let mut life_to_pay = 0i32;
+                let source_colors = available.source_colors.clone().unwrap_or_default();
+                let mut committed = vec![false; source_colors.len()];
+
+                for shard in mana_cost.shards() {
+                    if shard.is_phyrexian() {
+                        let colored = shard.to_non_phyrexian();
+                        let color_mask = (colored.shard()
+                            & (forge_foundation::ManaAtom::WHITE
+                                | forge_foundation::ManaAtom::BLUE
+                                | forge_foundation::ManaAtom::BLACK
+                                | forge_foundation::ManaAtom::RED
+                                | forge_foundation::ManaAtom::GREEN)) as u16;
+                        let mut best_idx: Option<usize> = None;
+                        let mut best_pop = u32::MAX;
+                        for (i, &src) in source_colors.iter().enumerate() {
+                            if committed[i] {
+                                continue;
+                            }
+                            if (src & color_mask) != 0 {
+                                let pop = src.count_ones();
+                                if pop < best_pop {
+                                    best_idx = Some(i);
+                                    best_pop = pop;
+                                }
+                            }
+                        }
+                        if let Some(idx) = best_idx {
+                            committed[idx] = true;
+                            remaining_shards.push(colored);
+                        } else if game.player(player).life >= life_to_pay + 2 {
+                            life_to_pay += 2;
+                        } else {
+                            remaining_shards.push(colored);
+                        }
+                    } else {
+                        remaining_shards.push(*shard);
+                    }
+                }
+
+                if life_to_pay > 0 {
+                    game.player_mut(player).lose_life(life_to_pay);
                     self.trigger_handler.run_trigger(
                         TriggerType::LifeLost,
                         RunParams {
                             player: Some(player),
-                            life_amount: Some(life_cost),
+                            life_amount: Some(life_to_pay),
                             ..Default::default()
                         },
                         false,
                     );
-                    forge_foundation::ManaCost::from_parts(remaining, mana_cost.generic_cost())
-                } else {
-                    // Pay mana: convert phyrexian shards to their normal color equivalents
-                    let converted: Vec<forge_foundation::ManaCostShard> = mana_cost
-                        .shards()
-                        .iter()
-                        .map(|s| {
-                            if s.is_phyrexian() {
-                                s.to_non_phyrexian()
-                            } else {
-                                *s
-                            }
-                        })
-                        .collect();
-                    forge_foundation::ManaCost::from_parts(converted, mana_cost.generic_cost())
                 }
+
+                forge_foundation::ManaCost::from_parts(
+                    remaining_shards,
+                    mana_cost.generic_cost(),
+                )
             } else {
                 mana_cost
             };

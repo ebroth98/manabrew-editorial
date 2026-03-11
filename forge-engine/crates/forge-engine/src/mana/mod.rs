@@ -587,6 +587,136 @@ impl ManaPool {
         remaining >= generic_count
     }
 
+    /// Check if a cost with phyrexian shards can be paid, allowing phyrexian
+    /// shards to fall back to life payment (2 life each) when no mana source
+    /// is available.
+    ///
+    /// Matches Java's ComputerUtilMana.payManaCost() greedy simulation:
+    /// 1. Try to match phyrexian shards with mana sources (highest priority)
+    /// 2. Unmatched phyrexian shards are paid with life
+    /// 3. Non-phyrexian colored shards must be matched with remaining sources
+    /// 4. Generic cost must be covered by remaining sources
+    pub fn can_pay_with_phyrexian_life(
+        &self,
+        cost: &forge_foundation::ManaCost,
+        player_life: i32,
+    ) -> bool {
+        let sources = match self.source_colors {
+            Some(ref s) => s.as_slice(),
+            None => return self.can_pay(cost), // fallback
+        };
+
+        let mut phyrexian_reqs: Vec<u16> = Vec::new();
+        let mut normal_reqs: Vec<u16> = Vec::new();
+
+        for shard in cost.shards() {
+            if shard.is_x() {
+                continue;
+            }
+            let atoms = shard.shard();
+            let color_mask = atoms
+                & (ManaAtom::WHITE
+                    | ManaAtom::BLUE
+                    | ManaAtom::BLACK
+                    | ManaAtom::RED
+                    | ManaAtom::GREEN);
+            if color_mask != 0 {
+                if shard.is_phyrexian() {
+                    phyrexian_reqs.push(color_mask);
+                } else {
+                    normal_reqs.push(color_mask);
+                }
+            }
+        }
+        let generic_count = cost.generic_cost();
+
+        // Quick check: non-phyrexian requirements + generic must be payable
+        // (phyrexian can always fall back to life)
+        if (sources.len() as i32) < (normal_reqs.len() as i32) + generic_count {
+            return false;
+        }
+
+        let mut committed = vec![false; sources.len()];
+
+        // 1. Greedily match phyrexian shards with mana sources.
+        //    Sort by most constrained first for optimal matching.
+        phyrexian_reqs.sort_by(|a, b| {
+            let count_a = sources.iter().filter(|&&s| (s & a) != 0).count();
+            let count_b = sources.iter().filter(|&&s| (s & b) != 0).count();
+            count_a.cmp(&count_b).then_with(|| a.cmp(b))
+        });
+
+        let mut life_needed = 0i32;
+        for req in &phyrexian_reqs {
+            let mut best_idx: Option<usize> = None;
+            let mut best_pop: u32 = u32::MAX;
+            let mut best_mask: u16 = u16::MAX;
+            for (i, &src) in sources.iter().enumerate() {
+                if committed[i] {
+                    continue;
+                }
+                if (src & req) != 0 {
+                    let pop = src.count_ones();
+                    if pop < best_pop || (pop == best_pop && src < best_mask) {
+                        best_idx = Some(i);
+                        best_pop = pop;
+                        best_mask = src;
+                    }
+                }
+            }
+            match best_idx {
+                Some(idx) => committed[idx] = true,
+                None => life_needed += 2, // fall back to life payment
+            }
+        }
+
+        if life_needed > player_life {
+            return false;
+        }
+
+        // 2. Match non-phyrexian colored shards with remaining sources.
+        normal_reqs.sort_by(|a, b| {
+            let count_a = sources
+                .iter()
+                .enumerate()
+                .filter(|(i, s)| !committed[*i] && (*s & a) != 0)
+                .count();
+            let count_b = sources
+                .iter()
+                .enumerate()
+                .filter(|(i, s)| !committed[*i] && (*s & b) != 0)
+                .count();
+            count_a.cmp(&count_b).then_with(|| a.cmp(b))
+        });
+
+        for req in &normal_reqs {
+            let mut best_idx: Option<usize> = None;
+            let mut best_pop: u32 = u32::MAX;
+            let mut best_mask: u16 = u16::MAX;
+            for (i, &src) in sources.iter().enumerate() {
+                if committed[i] {
+                    continue;
+                }
+                if (src & req) != 0 {
+                    let pop = src.count_ones();
+                    if pop < best_pop || (pop == best_pop && src < best_mask) {
+                        best_idx = Some(i);
+                        best_pop = pop;
+                        best_mask = src;
+                    }
+                }
+            }
+            match best_idx {
+                Some(idx) => committed[idx] = true,
+                None => return false, // can't pay non-phyrexian colored shard
+            }
+        }
+
+        // 3. Check remaining sources cover generic cost
+        let remaining = committed.iter().filter(|&&c| !c).count() as i32;
+        remaining >= generic_count
+    }
+
     /// Pay `extra_generic` additional generic mana from the pool.
     /// Returns true if successful.
     pub fn try_pay_extra_generic(&mut self, extra_generic: i32) -> bool {
