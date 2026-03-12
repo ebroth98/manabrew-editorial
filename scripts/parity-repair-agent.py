@@ -277,7 +277,8 @@ def run_parity_test(deck1: str, deck2: str, seed: int, cwd=None, timeout: int = 
             cmd, cwd=cwd or REPO_ROOT, capture_output=True, text=True,
             timeout=timeout, env=env
         )
-        passed = "PASS" in result.stdout and "FAIL" not in result.stdout
+        # Check exit code: 0 = all passed, non-zero = at least one failure
+        passed = result.returncode == 0
         divergence_field = None if passed else extract_divergence_field(result.stdout)
         return {
             "passed": passed,
