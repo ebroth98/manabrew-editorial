@@ -358,40 +358,50 @@ impl Storage {
     }
 
     /// Get recent failures with divergence details.
-    pub fn recent_failures(&self, limit: usize) -> SqlResult<Vec<RunRecord>> {
-        let mut stmt = self.conn.prepare(
+    pub fn recent_failures(
+        &self,
+        limit: usize,
+        since: Option<&str>,
+    ) -> SqlResult<Vec<RunRecord>> {
+        let since_clause = since
+            .map(|s| format!(" AND timestamp >= '{}'", s.replace('\'', "''")))
+            .unwrap_or_default();
+        let sql = format!(
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
                     rust_trace, java_trace, is_fuzz, timestamp, commit_sha
              FROM runs
-             WHERE status IN ('fail', 'error')
+             WHERE status IN ('fail', 'error'){since_clause}
              ORDER BY id DESC
-             LIMIT ?1",
-        )?;
-
+             LIMIT ?1"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map(params![limit as i64], |row| Self::row_to_record(row))?;
         rows.collect()
     }
 
     /// Get recent failures filtered by normalized divergence field.
-    pub fn failures_by_field(&self, field: &str, limit: usize) -> SqlResult<Vec<RunRecord>> {
-        // Normalize the query field: replace [*] back to a SQL LIKE pattern
-        let like_pattern = field
-            .replace("[*]", "[%]")
-            .replace('[', "[")
-            .replace(']', "]");
-        // Actually, simpler: fetch and filter in Rust since normalize is non-trivial in SQL
-        let mut stmt = self.conn.prepare(
+    pub fn failures_by_field(
+        &self,
+        field: &str,
+        limit: usize,
+        since: Option<&str>,
+    ) -> SqlResult<Vec<RunRecord>> {
+        let since_clause = since
+            .map(|s| format!(" AND timestamp >= '{}'", s.replace('\'', "''")))
+            .unwrap_or_default();
+        let sql = format!(
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
                     rust_trace, java_trace, is_fuzz, timestamp, commit_sha
              FROM runs
-             WHERE status = 'fail' AND first_divergence_field IS NOT NULL
+             WHERE status = 'fail' AND first_divergence_field IS NOT NULL{since_clause}
              ORDER BY id DESC
-             LIMIT 5000",
-        )?;
+             LIMIT 5000"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
 
         let normalized_target = normalize_field_for_storage(field);
         let rows = stmt.query_map([], |row| Self::row_to_record(row))?;
@@ -657,8 +667,12 @@ impl Storage {
 
     /// Get clusters aggregated by divergence field, with total failures and analysis.
     /// Returns one entry per unique field, picking the first non-null LLM analysis found.
-    pub fn get_clusters_by_field(&self) -> SqlResult<Vec<FieldCluster>> {
-        let mut stmt = self.conn.prepare(
+    /// If `since` is provided, only clusters with `last_seen >= since` are included.
+    pub fn get_clusters_by_field(&self, since: Option<&str>) -> SqlResult<Vec<FieldCluster>> {
+        let since_clause = since
+            .map(|s| format!("WHERE last_seen >= '{}'", s.replace('\'', "''")))
+            .unwrap_or_default();
+        let sql = format!(
             "SELECT
                 substr(cluster_key, 1, instr(cluster_key, '|') - 1) as field,
                 SUM(failure_count) as total_failures,
@@ -672,9 +686,11 @@ impl Storage {
                  AND kc2.llm_analysis IS NOT NULL LIMIT 1) as llm_analysis,
                 GROUP_CONCAT(DISTINCT replace(substr(cluster_key, instr(cluster_key, '|') + 1), '+', ' vs ')) as deck_pairs
              FROM known_clusters
+             {since_clause}
              GROUP BY field
-             ORDER BY total_failures DESC",
-        )?;
+             ORDER BY total_failures DESC"
+        );
+        let mut stmt = self.conn.prepare(&sql)?;
         let rows = stmt.query_map([], |row| {
             Ok(FieldCluster {
                 field: row.get(0)?,
@@ -792,7 +808,7 @@ mod tests {
         db.insert_run(1, &make_result(MatchupStatus::Error), 50, false, None)
             .unwrap();
 
-        let failures = db.recent_failures(10).unwrap();
+        let failures = db.recent_failures(10, None).unwrap();
         assert_eq!(failures.len(), 2);
         assert_eq!(failures[0].status, MatchupStatus::Error);
         assert_eq!(failures[1].status, MatchupStatus::Fail);

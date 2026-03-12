@@ -150,7 +150,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
         tokio::spawn(async move {
             let backfill_fields = {
                 let db = backfill_storage.lock().unwrap();
-                db.get_clusters_by_field().unwrap_or_default()
+                db.get_clusters_by_field(None).unwrap_or_default()
             };
             let backfill_count = backfill_fields
                 .iter()
@@ -280,7 +280,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
         // Cache field clusters to avoid repeated DB queries in the loop
         let cached_field_clusters = {
             let db = storage.lock().unwrap();
-            db.get_clusters_by_field().unwrap_or_default()
+            db.get_clusters_by_field(None).unwrap_or_default()
         };
 
         for (field, field_clusters) in &sorted_fields {
@@ -438,7 +438,7 @@ pub async fn run(storage: Arc<Mutex<Storage>>, config: AnalyzerConfig, running: 
                 // Check local DB first for a known issue number (match by normalized field)
                 let local_issue = {
                     let db = storage.lock().unwrap();
-                    db.get_clusters_by_field().ok().and_then(|fields| {
+                    db.get_clusters_by_field(None).ok().and_then(|fields| {
                         fields
                             .iter()
                             .find(|fc| {
@@ -563,7 +563,7 @@ fn build_summary(db: &Storage, config: &AnalyzerConfig) -> Option<PeriodSummary>
         .ok()?;
 
     // Get top failure fields
-    let failures = db.recent_failures(100).ok()?;
+    let failures = db.recent_failures(100, None).ok()?;
     let mut field_counts: HashMap<String, usize> = HashMap::new();
     for f in &failures {
         if let Some(ref field) = f.first_divergence_field {

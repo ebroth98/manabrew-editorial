@@ -88,6 +88,8 @@ pub struct FailuresQuery {
     limit: usize,
     /// Optional filter: only return failures matching this divergence field (normalized).
     field: Option<String>,
+    /// Optional ISO-8601 timestamp; only include failures from this time onwards.
+    since: Option<String>,
 }
 
 fn default_failures_limit() -> usize {
@@ -435,9 +437,9 @@ async fn failures_handler(
 ) -> impl IntoResponse {
     let storage = state.storage.lock().unwrap();
     let result = if let Some(ref field) = params.field {
-        storage.failures_by_field(field, params.limit)
+        storage.failures_by_field(field, params.limit, params.since.as_deref())
     } else {
-        storage.recent_failures(params.limit)
+        storage.recent_failures(params.limit, params.since.as_deref())
     };
     match result {
         Ok(failures) => Json(failures).into_response(),
@@ -488,11 +490,14 @@ fn normalize_field(field: &str) -> String {
     result
 }
 
-async fn clusters_handler(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn clusters_handler(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SinceQuery>,
+) -> impl IntoResponse {
     use crate::storage::FieldCluster;
 
     let storage = state.storage.lock().unwrap();
-    match storage.get_clusters_by_field() {
+    match storage.get_clusters_by_field(params.since.as_deref()) {
         Ok(clusters) => {
             // Aggregate clusters by normalized field name (strip array indices)
             let mut merged: std::collections::BTreeMap<String, FieldCluster> =
