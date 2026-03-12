@@ -225,6 +225,14 @@ def branch_exists(name: str) -> bool:
     return bool(git("branch", "--list", name, check=False).stdout.strip())
 
 
+def abandon_branch(branch_name: str, return_to: str):
+    """Discard all changes and delete a failed attempt branch."""
+    git("checkout", ".", check=False)  # discard modified files
+    git("clean", "-fd", "--", "forge-engine/", check=False)  # remove untracked engine files
+    git("checkout", return_to, check=False)
+    git("branch", "-D", branch_name, check=False)
+
+
 def make_branch_name(field: str, attempt: int = 1) -> str:
     safe = re.sub(r'[^a-zA-Z0-9]', '-', field)
     safe = re.sub(r'-+', '-', safe).strip('-').lower()
@@ -745,6 +753,8 @@ def attempt_repair(cluster: dict, dry_run: bool = False) -> bool:
 
         # Create branch from main (clean slate each attempt)
         git("checkout", "main", check=False)
+        git("checkout", ".", check=False)  # discard any uncommitted changes from previous attempt
+        git("clean", "-fd", "--", "forge-engine/", check=False)  # remove untracked files in engine
         git("checkout", "-b", branch_name)
         _log(f"  ✓ On branch: {branch_name}")
 
@@ -765,8 +775,7 @@ def attempt_repair(cluster: dict, dry_run: bool = False) -> bool:
             error_msg = claude_result.get("stderr", "unknown error")
             _log(f"  ✗ Claude failed: {error_msg}")
             record_attempt(field, attempt, "claude_fail", error_msg)
-            git("checkout", original_branch, check=False)
-            git("branch", "-D", branch_name, check=False)
+            abandon_branch(branch_name, original_branch)
             continue
 
         # 5. Validate: cargo check
@@ -776,8 +785,7 @@ def attempt_repair(cluster: dict, dry_run: bool = False) -> bool:
         if not diff.stdout.strip():
             _log("  ✗ No code changes made")
             record_attempt(field, attempt, "no_changes", "Claude made no code changes")
-            git("checkout", original_branch, check=False)
-            git("branch", "-D", branch_name, check=False)
+            abandon_branch(branch_name, original_branch)
             continue
 
         _log(f"  Changes:\n{diff.stdout}")
@@ -788,8 +796,7 @@ def attempt_repair(cluster: dict, dry_run: bool = False) -> bool:
             error_msg = check["stderr"][:500]
             _log(f"  ✗ Compilation failed:\n{error_msg}")
             record_attempt(field, attempt, "compile_fail", error_msg)
-            git("checkout", original_branch, check=False)
-            git("branch", "-D", branch_name, check=False)
+            abandon_branch(branch_name, original_branch)
             continue
         _log("  ✓ Compiles")
 
@@ -839,8 +846,7 @@ def attempt_repair(cluster: dict, dry_run: bool = False) -> bool:
                     break
             _log(f"  ✗ Fix is ineffective (target field still diverges)")
             record_attempt(field, attempt, "test_fail", error_msg)
-            git("checkout", original_branch, check=False)
-            git("branch", "-D", branch_name, check=False)
+            abandon_branch(branch_name, original_branch)
             continue
 
         if field_fixed_count > 0 and passed_count == 0:
@@ -872,6 +878,7 @@ def attempt_repair(cluster: dict, dry_run: bool = False) -> bool:
 
     # All attempts exhausted
     _log(f"\n  ✗ All {MAX_ATTEMPTS} attempts exhausted for {field}")
+    git("checkout", ".", check=False)  # ensure clean state
     git("checkout", original_branch, check=False)
     return False
 
