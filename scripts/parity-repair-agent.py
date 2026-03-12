@@ -621,6 +621,37 @@ def _log_tool_call(name: str, input_data: dict):
         _log(f"  🔧 {name}: {json.dumps(input_data)[:100]}")
 
 
+# ── Regression test ─────────────────────────────────────────────────────────
+
+REGRESSION_JSON = REPO_ROOT / "forge-engine" / "crates" / "forge-parity" / "regression.json"
+
+
+def _add_regression_test(field: str, passing_test: dict):
+    """Add a regression test entry for a passing seed to regression.json."""
+    try:
+        entries = json.loads(REGRESSION_JSON.read_text()) if REGRESSION_JSON.exists() else []
+    except (json.JSONDecodeError, OSError):
+        entries = []
+
+    safe_name = re.sub(r'[^a-zA-Z0-9_]', '_', field).strip('_').lower()
+    deck1 = passing_test["deck1"]
+    deck2 = passing_test["deck2"]
+    seed = passing_test["seed"]
+
+    # Don't duplicate
+    for e in entries:
+        if safe_name in e.get("name", ""):
+            _log(f"  ℹ Regression test for {safe_name} already exists")
+            return
+
+    entries.append({
+        "name": safe_name,
+        "args": f"--deck1 {deck1} --deck2 {deck2} --seed {seed} --max-turns 15 --games 5",
+    })
+    REGRESSION_JSON.write_text(json.dumps(entries, indent=2) + "\n")
+    _log(f"  ✓ Added regression test: {safe_name} ({deck1} vs {deck2} seed {seed})")
+
+
 # ── PR creation ─────────────────────────────────────────────────────────────
 
 def create_pr(branch: str, cluster: dict, test_results: list[dict],
@@ -860,6 +891,11 @@ def attempt_repair(cluster: dict, dry_run: bool = False) -> bool:
         _log(f"  Regression: {regression['passed']}/{regression['total']} passed ({regression['pass_rate']:.0%})")
         if regression["errors"]:
             _log(f"  Regressions: {', '.join(regression['errors'][:5])}")
+
+        # Add regression test for the passing seed
+        passing_tests = [t for t in test_results if t["passed"]]
+        if passing_tests:
+            _add_regression_test(field, passing_tests[0])
 
         # Commit if needed
         uncommitted = git("status", "--porcelain")
