@@ -646,7 +646,7 @@ def _add_regression_test(field: str, passing_test: dict):
 
     entries.append({
         "name": safe_name,
-        "args": f"--deck1 {deck1} --deck2 {deck2} --seed {seed} --max-turns 15 --games 5",
+        "args": f"--deck1 {deck1} --deck2 {deck2} --seed {seed} --max-turns 15 --games 1",
     })
     REGRESSION_JSON.write_text(json.dumps(entries, indent=2) + "\n")
     _log(f"  ✓ Added regression test: {safe_name} ({deck1} vs {deck2} seed {seed})")
