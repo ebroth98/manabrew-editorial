@@ -432,9 +432,11 @@ impl Storage {
         };
         let sql = format!(
             "SELECT deck1, deck2, COUNT(*) as total,
-                    SUM(CASE WHEN status = 'pass' THEN 1 ELSE 0 END) as passed
+                    SUM(CASE WHEN status = 'pass' THEN 1 ELSE 0 END) as passed,
+                    SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) as failed,
+                    SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
              FROM runs
-             WHERE status != 'error' AND is_fuzz = 0 {since_clause}
+             WHERE is_fuzz = 0 {since_clause}
              GROUP BY deck1, deck2
              ORDER BY deck1, deck2"
         );
@@ -443,6 +445,8 @@ impl Storage {
         let map_row = |row: &rusqlite::Row<'_>| {
             let total: usize = row.get(2)?;
             let passed: usize = row.get(3)?;
+            let failed: usize = row.get(4)?;
+            let errors: usize = row.get(5)?;
             let pass_rate = if total > 0 {
                 passed as f64 / total as f64
             } else {
@@ -453,6 +457,8 @@ impl Storage {
                 deck2: row.get(1)?,
                 total,
                 passed,
+                failed,
+                errors,
                 pass_rate,
             })
         };

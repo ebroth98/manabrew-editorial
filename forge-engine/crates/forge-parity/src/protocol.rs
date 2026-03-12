@@ -325,6 +325,8 @@ pub struct DeckPairStats {
     pub deck2: String,
     pub total: usize,
     pub passed: usize,
+    pub failed: usize,
+    pub errors: usize,
     pub pass_rate: f64,
 }
 

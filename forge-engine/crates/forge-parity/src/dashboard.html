@@ -109,7 +109,16 @@
   .heatmap-wrapper { overflow-x: auto; margin-top: 8px; }
   .heatmap { display: grid; gap: 2px; min-width: max-content; }
   .heatmap-cell { padding: 4px 2px; text-align: center; font-size: 10px; border-radius: 4px;
-    font-weight: 600; min-width: 48px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    font-weight: 600; min-width: 48px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    position: relative; }
+  .heatmap-cell .tooltip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+    transform: translateX(-50%); background: #1c2128; border: 1px solid var(--border);
+    border-radius: 6px; padding: 8px 12px; font-size: 11px; font-weight: 400; color: var(--text);
+    white-space: nowrap; z-index: 100; pointer-events: none; text-align: left;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
+  .heatmap-cell .tooltip::after { content: ''; position: absolute; top: 100%; left: 50%;
+    transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--border); }
+  .heatmap-cell:hover .tooltip { display: block; }
 
   .mono { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; }
   .refresh-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
@@ -120,6 +129,12 @@
     color: var(--text); padding: 4px 8px; font-size: 12px; }
   .failure-row:hover { background: var(--surface); }
   .failure-row:hover td { background: var(--surface); }
+  .failure-cluster { font-size: 11px; color: var(--text-muted); margin-top: 2px; }
+  .failure-cluster .cluster-tag { display: inline-block; background: rgba(88,166,255,0.1);
+    color: var(--accent); padding: 1px 6px; border-radius: 8px; font-size: 10px; font-weight: 600; margin-right: 4px; }
+  .failure-analysis-row td { padding: 0 !important; border-bottom: 1px solid var(--border); }
+  .failure-analysis-inline { background: var(--bg); padding: 8px 14px; font-size: 12px;
+    line-height: 1.6; border-top: 1px dashed var(--border); }
 
   /* ── Cluster cards ───────────────────────────────────── */
   .cluster-cards { display: grid; gap: 12px; }
@@ -333,6 +348,7 @@
 <script>
 let trendChart = null;
 let allFailures = []; // cached for filtering
+let clusterLookup = {}; // normalized field -> cluster with analysis
 const expandedTraces = new Map(); // runId -> {meta, diff} HTML to preserve across refreshes
 let currentTimeRange = 'today'; // today, 24h, 7d, all
 
@@ -600,7 +616,14 @@ async function updateMatrix() {
         if (d1 === d2 && !entry) {
           html += '<div class="heatmap-cell" style="background:#161b22">-</div>';
         } else if (entry) {
-          html += `<div class="heatmap-cell" style="background:${passColor(entry.pass_rate)}" title="${entry.total} games">${pct(entry.pass_rate)}</div>`;
+          html += `<div class="heatmap-cell" style="background:${passColor(entry.pass_rate)}">
+            ${pct(entry.pass_rate)}
+            <div class="tooltip">
+              <strong>${d1}</strong> vs <strong>${d2}</strong><br>
+              <span style="color:var(--green)">${entry.passed} passed</span> · <span style="color:var(--red)">${entry.failed || 0} failed</span> · <span style="color:var(--yellow)">${entry.errors || 0} errors</span><br>
+              ${entry.total} total · ${pct(entry.pass_rate)} pass rate
+            </div>
+          </div>`;
         } else {
           html += '<div class="heatmap-cell" style="background:var(--surface);color:var(--text-muted)">-</div>';
         }
@@ -611,10 +634,22 @@ async function updateMatrix() {
   } catch(e) { console.error('Matrix error:', e); }
 }
 
+function normalizeField(field) {
+  return field.replace(/\[\d+\]/g, '[*]');
+}
+
 async function updateFailures() {
   try {
-    const data = await fetchJson('/api/failures?limit=50');
+    const [data, clusters] = await Promise.all([
+      fetchJson('/api/failures?limit=50'),
+      fetchJson('/api/clusters'),
+    ]);
     allFailures = data;
+    // Build cluster lookup: normalized field -> cluster info
+    clusterLookup = {};
+    for (const c of clusters) {
+      clusterLookup[c.field] = c;
+    }
     // Populate deck pair filter dropdown
     const pairs = [...new Set(data.map(r => r.deck1 + ' vs ' + r.deck2))].sort();
     const sel = document.getElementById('failure-deck-filter');
@@ -635,16 +670,41 @@ function renderFailures() {
     tbody.innerHTML = '<tr><td colspan="8" style="color:var(--text-muted);text-align:center">No failures</td></tr>';
     return;
   }
-  tbody.innerHTML = filtered.map(r => `<tr class="failure-row" data-run-id="${r.id}" style="cursor:pointer" title="Click to view trace">
+  tbody.innerHTML = filtered.map(r => {
+    const normField = r.first_divergence_field ? normalizeField(r.first_divergence_field) : null;
+    const cluster = normField ? clusterLookup[normField] : null;
+    let analysisHtml = '';
+    if (cluster && cluster.llm_analysis) {
+      try {
+        const a = JSON.parse(cluster.llm_analysis);
+        const sev = a.severity || 'medium';
+        analysisHtml = `<tr class="failure-analysis-row" id="analysis-row-${r.id}" style="display:none">
+          <td colspan="8">
+            <div class="failure-analysis-inline">
+              <span class="severity-badge ${sev}" style="margin-right:8px">${sev}</span>
+              <strong style="color:var(--accent)">${a.mechanic}</strong><br>
+              <strong>Root cause:</strong> ${a.root_cause}<br>
+              <span style="color:var(--text-muted)">Files: ${a.files_to_check.join(', ')}</span><br>
+              <span style="color:var(--text-muted)">Repro: <code>${a.repro_command}</code></span>
+            </div>
+          </td>
+        </tr>`;
+      } catch(e) {}
+    }
+    const clusterTag = cluster
+      ? `<div class="failure-cluster"><span class="cluster-tag">${cluster.field}</span>${cluster.total_failures} failures · ${cluster.num_deck_pairs} deck pairs${cluster.llm_analysis ? ' · <a href="#" class="analysis-toggle-link" data-run-id="' + r.id + '" style="color:var(--accent);font-size:10px" onclick="event.stopPropagation();toggleAnalysis(\'' + r.id + '\');return false">analysis</a>' : ''}</div>`
+      : '';
+    return `<tr class="failure-row" data-run-id="${r.id}" style="cursor:pointer" title="Click to view trace">
     <td class="mono">${r.id}</td>
     <td>${r.batch_id}</td>
     <td>${r.deck1}</td>
     <td>${r.deck2}</td>
     <td class="mono">${r.seed}</td>
     <td><span class="badge ${r.status === 'pass' ? 'pass' : r.status === 'fail' ? 'fail' : 'error'}">${r.status}</span>${r.is_fuzz ? ' <span style="background:rgba(210,153,34,0.2);color:var(--yellow);padding:1px 5px;border-radius:8px;font-size:9px;font-weight:600">FUZZ</span>' : ''}</td>
-    <td class="mono">${r.first_divergence_field || r.error_message || '-'}</td>
+    <td class="mono" style="white-space:normal">${r.first_divergence_field || r.error_message || '-'}${clusterTag}</td>
     <td style="color:var(--text-muted)">${r.timestamp.replace('T', ' ').slice(0, 19)}</td>
   </tr>
+  ${analysisHtml}
   <tr class="trace-row" id="trace-row-${r.id}" style="display:none">
     <td colspan="8" style="padding:0">
       <div class="inline-trace" style="background:var(--surface);border-top:1px solid var(--border);padding:8px 12px">
@@ -652,7 +712,8 @@ function renderFailures() {
         <div class="trace-diff" style="font-size:11px;max-height:500px;overflow:auto;font-family:'SF Mono','Menlo','Consolas',monospace;line-height:1.6"></div>
       </div>
     </td>
-  </tr>`).join('');
+  </tr>`;
+  }).join('');
 
   // Attach click handlers and restore expanded traces
   tbody.querySelectorAll('.failure-row').forEach(row => {
@@ -701,6 +762,12 @@ async function toggleTrace(runId) {
   } catch(e) {
     metaEl.innerHTML = `<span style="color:var(--red)">Failed to load trace: ${escapeHtml(e.message)}</span>`;
   }
+}
+
+function toggleAnalysis(runId) {
+  const row = document.getElementById('analysis-row-' + runId);
+  if (!row) return;
+  row.style.display = row.style.display === 'none' ? '' : 'none';
 }
 
 document.getElementById('failure-deck-filter').addEventListener('change', renderFailures);
