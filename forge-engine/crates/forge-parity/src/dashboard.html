@@ -641,8 +641,8 @@ function normalizeField(field) {
 async function updateFailures() {
   try {
     const [data, clusters] = await Promise.all([
-      fetchJson('/api/failures?limit=50'),
-      fetchJson('/api/clusters'),
+      fetchJson('/api/failures?limit=50' + sinceParam('&')),
+      fetchJson('/api/clusters' + sinceParam()),
     ]);
     allFailures = data;
     // Build cluster lookup: normalized field -> cluster info
@@ -780,15 +780,17 @@ function toggleAnalysis(runId) {
 
 document.getElementById('failure-deck-filter').addEventListener('change', renderFailures);
 
-function renderAnalyzedCard(c) {
+function renderAnalyzedCard(c, status) {
   try {
     const a = JSON.parse(c.llm_analysis);
     const sev = a.severity || 'medium';
     const decks = c.deck_pairs ? c.deck_pairs.split(',').slice(0, 5).join(', ') : '';
-    return `<div class="cluster-card">
+    const badge = status ? statusBadge(status) : '';
+    const cardStyle = status === 'resolved' ? 'border-color:var(--green);opacity:0.6' : status === 'untested' ? 'opacity:0.5' : '';
+    return `<div class="cluster-card" style="${cardStyle}">
       <div class="cluster-header">
         <span class="cluster-field">${c.field}</span>
-        <span><span class="cluster-count">${c.total_failures} failures</span><span class="severity-badge ${sev}">${sev}</span></span>
+        <span>${badge} <span class="cluster-count">${c.total_failures} failures</span><span class="severity-badge ${sev}">${sev}</span></span>
       </div>
       <div class="cluster-meta">${c.num_deck_pairs} deck pairs &middot; ${decks}${c.github_issue ? ' &middot; <a href="#" style="color:var(--accent)">issue #' + c.github_issue + '</a>' : ''}</div>
       <div class="cluster-analysis">
@@ -801,26 +803,64 @@ function renderAnalyzedCard(c) {
   } catch(e) { return ''; }
 }
 
-function renderPendingCard(c) {
+function renderPendingCard(c, status) {
   const decks = c.deck_pairs ? c.deck_pairs.split(',').slice(0, 3).join(', ') : '';
-  return `<div class="cluster-card" style="border-color:var(--border);opacity:0.7">
+  const badge = status ? statusBadge(status) : '';
+  const cardStyle = status === 'resolved' ? 'border-color:var(--green);opacity:0.5' : status === 'untested' ? 'opacity:0.4' : 'border-color:var(--border);opacity:0.7';
+  return `<div class="cluster-card" style="${cardStyle}">
     <div class="cluster-header">
       <span class="cluster-field">${c.field}</span>
-      <span class="cluster-count">${c.total_failures} failures</span>
+      <span>${badge} <span class="cluster-count">${c.total_failures} failures</span></span>
     </div>
     <div class="cluster-meta">${c.num_deck_pairs} deck pairs &middot; ${decks}</div>
   </div>`;
 }
 
+function clusterStatus(cluster, activeClusters, activeMatrix) {
+  // Check if this cluster's field appeared in today's failures
+  if (activeClusters.has(cluster.field)) return 'active';
+  // Check if any of this cluster's deck pairs were tested today
+  const pairs = cluster.deck_pairs ? cluster.deck_pairs.split(',').map(s => s.trim()) : [];
+  const anyTested = pairs.some(p => activeMatrix.has(p));
+  if (anyTested) return 'resolved';
+  return 'untested';
+}
+
+function statusBadge(status) {
+  switch (status) {
+    case 'active': return '<span style="background:rgba(248,81,73,0.2);color:var(--red);padding:2px 8px;border-radius:8px;font-size:10px;font-weight:600">ACTIVE</span>';
+    case 'resolved': return '<span style="background:rgba(63,185,80,0.2);color:var(--green);padding:2px 8px;border-radius:8px;font-size:10px;font-weight:600">POSSIBLY RESOLVED</span>';
+    case 'untested': return '<span style="background:rgba(139,148,158,0.2);color:var(--text-muted);padding:2px 8px;border-radius:8px;font-size:10px;font-weight:600">NOT TESTED</span>';
+  }
+}
+
 async function updateClusters() {
   try {
-    const data = await fetchJson('/api/clusters');
+    // Fetch all clusters (historical) + today's active clusters + today's matrix
+    const todayISO = new Date(new Date().setHours(0,0,0,0)).toISOString();
+    const [allClusters, todayClusters, todayMatrix] = await Promise.all([
+      fetchJson('/api/clusters'),
+      fetchJson('/api/clusters?since=' + encodeURIComponent(todayISO)),
+      fetchJson('/api/matrix?since=' + encodeURIComponent(todayISO)),
+    ]);
+
+    // Build lookup sets for today's data
+    const activeClusters = new Set(todayClusters.map(c => c.field));
+    const activeMatrix = new Set();
+    for (const m of todayMatrix) {
+      activeMatrix.add(m.deck1 + ' vs ' + m.deck2);
+      activeMatrix.add(m.deck2 + ' vs ' + m.deck1);
+    }
+
+    // Annotate each cluster with status
+    const data = allClusters.map(c => ({ ...c, _status: clusterStatus(c, activeClusters, activeMatrix) }));
+
     const analyzed = data.filter(c => c.llm_analysis);
     const pending = data.filter(c => !c.llm_analysis);
 
     const analyzedEl = document.getElementById('clusters-analyzed');
     if (analyzed.length > 0) {
-      analyzedEl.innerHTML = '<div class="cluster-cards">' + analyzed.map(renderAnalyzedCard).join('') + '</div>';
+      analyzedEl.innerHTML = '<div class="cluster-cards">' + analyzed.map(c => renderAnalyzedCard(c, c._status)).join('') + '</div>';
     } else {
       analyzedEl.innerHTML = '<p style="color:var(--text-muted);font-size:13px">No fields analyzed yet — start analysis or wait for AI...</p>';
     }
@@ -831,7 +871,7 @@ async function updateClusters() {
     if (pending.length > 0) {
       pendingDetails.style.display = '';
       pendingSummary.textContent = `Pending analysis (${pending.length} divergence fields, ${pending.reduce((s,c) => s + c.total_failures, 0)} total failures)`;
-      pendingEl.innerHTML = '<div class="cluster-cards">' + pending.map(renderPendingCard).join('') + '</div>';
+      pendingEl.innerHTML = '<div class="cluster-cards">' + pending.map(c => renderPendingCard(c, c._status)).join('') + '</div>';
     } else {
       pendingDetails.style.display = 'none';
     }
