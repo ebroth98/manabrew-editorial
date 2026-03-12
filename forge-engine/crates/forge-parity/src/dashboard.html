@@ -109,16 +109,16 @@
   .heatmap-wrapper { overflow-x: auto; margin-top: 8px; }
   .heatmap { display: grid; gap: 2px; min-width: max-content; }
   .heatmap-cell { padding: 4px 2px; text-align: center; font-size: 10px; border-radius: 4px;
-    font-weight: 600; min-width: 48px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-    position: relative; }
-  .heatmap-cell .tooltip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
+    font-weight: 600; min-width: 48px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .heatmap-cell[data-tip] { position: relative; overflow: visible; cursor: default; }
+  .heatmap-cell[data-tip] .tooltip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%;
     transform: translateX(-50%); background: #1c2128; border: 1px solid var(--border);
     border-radius: 6px; padding: 8px 12px; font-size: 11px; font-weight: 400; color: var(--text);
     white-space: nowrap; z-index: 100; pointer-events: none; text-align: left;
     box-shadow: 0 4px 12px rgba(0,0,0,0.4); }
-  .heatmap-cell .tooltip::after { content: ''; position: absolute; top: 100%; left: 50%;
+  .heatmap-cell[data-tip] .tooltip::after { content: ''; position: absolute; top: 100%; left: 50%;
     transform: translateX(-50%); border: 5px solid transparent; border-top-color: var(--border); }
-  .heatmap-cell:hover .tooltip { display: block; }
+  .heatmap-cell[data-tip]:hover .tooltip { display: block; }
 
   .mono { font-family: 'SF Mono', 'Menlo', 'Consolas', monospace; font-size: 12px; }
   .refresh-note { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
@@ -616,7 +616,7 @@ async function updateMatrix() {
         if (d1 === d2 && !entry) {
           html += '<div class="heatmap-cell" style="background:#161b22">-</div>';
         } else if (entry) {
-          html += `<div class="heatmap-cell" style="background:${passColor(entry.pass_rate)}">
+          html += `<div class="heatmap-cell" data-tip style="background:${passColor(entry.pass_rate)}">
             ${pct(entry.pass_rate)}
             <div class="tooltip">
               <strong>${d1}</strong> vs <strong>${d2}</strong><br>
@@ -692,7 +692,7 @@ function renderFailures() {
       } catch(e) {}
     }
     const clusterTag = cluster
-      ? `<div class="failure-cluster"><span class="cluster-tag">${cluster.field}</span>${cluster.total_failures} failures · ${cluster.num_deck_pairs} deck pairs${cluster.llm_analysis ? ' · <a href="#" class="analysis-toggle-link" data-run-id="' + r.id + '" style="color:var(--accent);font-size:10px" onclick="event.stopPropagation();toggleAnalysis(\'' + r.id + '\');return false">analysis</a>' : ''}</div>`
+      ? `<div class="failure-cluster"><span class="cluster-tag">${cluster.field}</span>${cluster.total_failures} failures · ${cluster.num_deck_pairs} deck pairs${cluster.llm_analysis ? ` · <a href="#" class="analysis-toggle-link" data-analysis-run="${r.id}" style="color:var(--accent);font-size:10px">analysis</a>` : ''}</div>`
       : '';
     return `<tr class="failure-row" data-run-id="${r.id}" style="cursor:pointer" title="Click to view trace">
     <td class="mono">${r.id}</td>
@@ -729,6 +729,14 @@ function renderFailures() {
         traceRow.querySelector('.trace-diff').innerHTML = cached.diff;
       }
     }
+  });
+  // Attach analysis toggle handlers (event delegation to avoid inline onclick)
+  tbody.querySelectorAll('.analysis-toggle-link').forEach(link => {
+    link.addEventListener('click', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleAnalysis(link.dataset.analysisRun);
+    });
   });
 }
 
