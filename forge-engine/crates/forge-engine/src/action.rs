@@ -252,6 +252,19 @@ impl GameState {
                 self.zone_mut(ZoneType::Command, controller).remove(eff_id);
                 self.cards[eff_id.index()].zone = ZoneType::None;
             }
+
+            // Return cards exiled by this host via ChangeZoneAll Duration$ UntilHostLeavesPlay
+            // (e.g. Deputy of Detention: exiled permanents return when it leaves).
+            let exiled_by_host: Vec<(CardId, PlayerId)> = self
+                .cards
+                .iter()
+                .filter(|c| c.zone == ZoneType::Exile && c.exiled_by == Some(card_id))
+                .map(|c| (c.id, c.owner))
+                .collect();
+            for (exiled_id, owner) in exiled_by_host {
+                self.cards[exiled_id.index()].exiled_by = None;
+                self.move_card(exiled_id, ZoneType::Battlefield, owner);
+            }
         }
     }
 

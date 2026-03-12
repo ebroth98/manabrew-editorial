@@ -122,7 +122,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `BlockEffect.java` | Force/modify blocking | Not implemented |
 | `BranchEffect.java` | Conditional branching in ability chains | Not implemented |
 | `ChangeZoneEffect.java` | Move card(s) to another zone | **Implemented** (`game_loop.rs` ChangeZone handler: targeted/defined/self, LibraryPosition, Shuffle, Tapped, ChangesZone trigger) |
-| `ChangeZoneAllEffect.java` | Move all matching cards to a zone | **Implemented** (`game_loop.rs`/`change_zone_all_effect.rs`: ValidCards/ChangeType filters, multi-player, triggers, targeted `ChangeType$` clause support incl. `TargetedCard.Self`, `NotDefinedTargeted`, `sharesNameWith Targeted`, `ControlledBy TargetedController`) |
+| `ChangeZoneAllEffect.java` | Move all matching cards to a zone | **Implemented** (`game_loop.rs`/`change_zone_all_effect.rs`: ValidCards/ChangeType filters, multi-player, triggers, targeted `ChangeType$` clause support incl. `TargetedCard.Self`, `NotDefinedTargeted`, `sharesNameWith Targeted`, `ControlledBy TargetedController`; `Duration$ UntilHostLeavesPlay` exile tracking — exiled permanents return to battlefield when the source leaves play, via `CardInstance.exiled_by`) |
 | `CharmEffect.java` | Modal "choose N" charm abilities | **Implemented** — `charm_effect.rs`: `SP$ Charm`, `Choices$ SVar1,...`, `CharmNum$`, `MinCharmNum$`; cast-time mode chaining and target setup mirror Java stack behavior; resolution-time fallback via `TargetKind` dispatch; agent `choose_mode`; TauriAgent `ChooseMode` prompt + `ModeDecision` response; `ChooseModeModal` frontend |
 | `ChooseCardEffect.java` | Choose a card from a set | **Implemented** — `choose_card_effect.rs`: `Amount$`, `ChoiceZone$`, `Choices$` filter, `RememberChosen$`; stores chosen on source card's `chosen_cards`; agent `choose_cards_for_effect()` + TauriAgent `ChooseCardsForEffect` prompt + `ChooseCardsModal` frontend |
 | `ChooseCardNameEffect.java` | Name a card | **Implemented** — `name_card_effect.rs`: `ChooseFromList$`/`ChooseFromDefinedCards$` modes + open naming; stores in `card.named_cards`; agent `choose_card_name`; TauriAgent `ChooseCardName` prompt + `CardNameDecision` response; `ChooseCardNameModal` frontend |
@@ -183,7 +183,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `PoisonEffect.java` | Give poison counters | **Implemented** — `poison_effect.rs`: adds/removes `Num$` poison counters (supports negative values, floors at 0); `Defined$` (Player/Opponent/You) and `ValidTgts$ Player` targeting; `Defined$ Player` applies to all alive players |
 | `ProtectEffect.java` | Grant protection | **Implemented** — `protection_effect.rs`: `Gains$` protection keyword, `Choices$` for color choice; adds to `pump_keywords` |
 | `PumpEffect.java` | +N/+N (or set P/T) until end of turn | **Implemented** (`pump_effect.rs`: single-target power/toughness modifier until EOT) |
-| `PumpAllEffect.java` | Pump all matching creatures | **Implemented** — `pump_all_effect.rs`: `ValidCards$` filter, `NumAtt$`/`NumDef$` (signed, supports negative debuffs), `YouCtrl`/`OppCtrl`; duration = EOT (zeroed by `step_cleanup`) |
+| `PumpAllEffect.java` | Pump all matching creatures | **Implemented** — `pump_all_effect.rs`: `ValidCards$` filter, `NumAtt$`/`NumDef$` (signed, supports negative debuffs), `YouCtrl`/`OppCtrl`; `PumpZone$ Hand` for in-hand pump; `Duration$ Perpetual` for permanent P/T modifiers that persist across zone changes (stored in `perpetual_power_modifier`/`perpetual_toughness_modifier`); default duration = EOT (zeroed by `step_cleanup`) |
 | `RegenerateEffect.java` | Regenerate a permanent | **Implemented** — `regenerate_effect.rs`: adds regeneration shields to target creature; shields consumed instead of destroy (tap + remove damage); shields reset at end of turn |
 | `RevealEffect.java` | Reveal cards | **Partial** — `reveal.rs`: reveals N cards from target hand, notifies all agents; no full interactive UI reveal |
 | `RollDiceEffect.java` | Roll dice | **Implemented** — `roll_dice_effect.rs`: random 1-N (default d20), `ResultSubAbilities$` threshold matching, resolves sub-ability chains |
@@ -260,7 +260,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `PerpetualKeywords.java` | Permanent keyword add/remove | Not implemented |
 | `PerpetualManaCost.java` | Permanent mana cost modifications | Not implemented |
 | `PerpetualNewPT.java` | Permanent P/T set values | Not implemented |
-| `PerpetualPTBoost.java` | Permanent P/T boost | Not implemented |
+| `PerpetualPTBoost.java` | Permanent P/T boost | **Partial** — `perpetual_power_modifier`/`perpetual_toughness_modifier` fields on `CardInstance` persist across zone changes; applied by `PumpAll`/`PumpEffect` with `Duration$ Perpetual`; other perpetual types (keywords, colors, etc.) not implemented |
 | `PerpetualTypes.java` | Permanent card type changes | Not implemented |
 
 ---

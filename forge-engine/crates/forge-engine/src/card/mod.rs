@@ -103,6 +103,10 @@ pub struct CardInstance {
     /// (e.g. Giant Growth).  Reset when leaving the battlefield.
     pub power_modifier: i32,
     pub toughness_modifier: i32,
+    /// Perpetual P/T modifications — persist across zone changes (never reset).
+    /// Applied by `PumpAll` / `Pump` effects with `Duration$ Perpetual`.
+    pub perpetual_power_modifier: i32,
+    pub perpetual_toughness_modifier: i32,
     /// Layer 7b override: set by `SetPower$` / `SetToughness$` continuous effects.
     /// `None` means use `base_power` / `base_toughness` as normal.
     /// Reset to `None` each time [`layer::apply_continuous_effects`] runs.
@@ -203,6 +207,10 @@ pub struct CardInstance {
     pub forget_on_moved_origin: Option<ZoneType>,
     /// Exile this effect when remembered cards become empty after forget logic.
     pub exile_when_no_remembered: bool,
+    /// When this card is in exile, the card that caused it to be exiled here.
+    /// Used for `Duration$ UntilHostLeavesPlay` effects (e.g. Deputy of Detention):
+    /// when `exiled_by` leaves the battlefield, this card returns to its owner's battlefield.
+    pub exiled_by: Option<CardId>,
 
     /// Original controller to restore at end of turn (for `LoseControl$ EOT`).
     pub original_controller_eot: Option<PlayerId>,
@@ -345,6 +353,8 @@ impl CardInstance {
             base_toughness,
             power_modifier: 0,
             toughness_modifier: 0,
+            perpetual_power_modifier: 0,
+            perpetual_toughness_modifier: 0,
             static_set_power: None,
             static_set_toughness: None,
             static_power_modifier: 0,
@@ -385,6 +395,7 @@ impl CardInstance {
             temp_effect_host: None,
             forget_on_moved_origin: None,
             exile_when_no_remembered: false,
+            exiled_by: None,
             original_controller_eot: None,
             is_transformed: false,
             other_part: None,
@@ -1040,6 +1051,7 @@ impl CardInstance {
             .unwrap_or(self.base_power.unwrap_or(0));
         base + self.static_power_modifier
             + self.power_modifier
+            + self.perpetual_power_modifier
             + self.counter_count(&CounterType::P1P1)
             - self.counter_count(&CounterType::M1M1)
     }
@@ -1051,6 +1063,7 @@ impl CardInstance {
             .unwrap_or(self.base_toughness.unwrap_or(0));
         base + self.static_toughness_modifier
             + self.toughness_modifier
+            + self.perpetual_toughness_modifier
             + self.counter_count(&CounterType::P1P1)
             - self.counter_count(&CounterType::M1M1)
     }

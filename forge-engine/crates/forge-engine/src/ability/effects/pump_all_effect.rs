@@ -4,14 +4,16 @@ use super::{matches_valid_cards, parse_param, resolve_numeric_svar, EffectContex
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
-/// `SP$ PumpAll` — modify P/T of all matching permanents until end of turn.
+/// `SP$ PumpAll` — modify P/T of all matching permanents until end of turn (or perpetually).
 ///
 /// Mirrors Java's `PumpAllEffect.java`:
 /// - `NumAtt$` / `NumDef$` specify power/toughness change (signed: "+2", "-2").
 /// - `ValidCards$` selects which permanents are affected.
-/// - Duration is always "until end of turn" (EOT cleanup in `step_cleanup`
-///   zeroes `power_modifier` / `toughness_modifier` on all battlefield creatures).
-///   Perpetual pump is not yet supported.
+/// - `PumpZone$` specifies the zone to look in (default: Battlefield, supports Hand).
+/// - `Duration$ Perpetual` stores the bonus in `perpetual_power_modifier` /
+///   `perpetual_toughness_modifier` so it persists across zone changes.
+/// - Without `Duration$ Perpetual`, uses temporary `power_modifier` / `toughness_modifier`
+///   (zeroed at cleanup by `step_cleanup`).
 ///
 /// Positive values are a pump (Giant Growth effect); negative values are a
 /// debuff (Rising Miasma -2/-2).
@@ -20,6 +22,7 @@ use crate::spellability::SpellAbility;
 /// ```text
 /// A:SP$ PumpAll | ValidCards$ Creature.YouCtrl | NumAtt$ +2 | NumDef$ +2
 /// A:SP$ PumpAll | ValidCards$ Creature | NumAtt$ -2 | NumDef$ -2
+/// DB$ PumpAll | PumpZone$ Hand | ValidCards$ Creature.YouOwn | NumAtt$ +1 | NumDef$ +1 | Duration$ Perpetual
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // parse_param strips leading '+' sign via Rust's i32::from_str which accepts it.
@@ -53,11 +56,25 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or_else(|| "Creature".to_string());
     let activating_player = sa.activating_player;
 
-    // Pass 1 — collect matching battlefield permanents
+    // Determine the zone to look for cards in (default: Battlefield).
+    let pump_zone_str = sa.params.get("PumpZone").map(|s| s.as_str()).unwrap_or("Battlefield");
+    let pump_zone = match pump_zone_str {
+        s if s.eq_ignore_ascii_case("Hand") => ZoneType::Hand,
+        _ => ZoneType::Battlefield,
+    };
+
+    // Perpetual effects persist across zone changes (stored in perpetual_*_modifier).
+    let is_perpetual = sa
+        .params
+        .get("Duration")
+        .map(|d| d.eq_ignore_ascii_case("Perpetual"))
+        .unwrap_or(false);
+
+    // Pass 1 — collect matching cards in the target zone
     let player_ids = ctx.game.player_order.clone();
     let mut to_pump: Vec<CardId> = Vec::new();
     for &pid in &player_ids {
-        let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
+        let zone_cards = ctx.game.cards_in_zone(pump_zone, pid).to_vec();
         for cid in zone_cards {
             if matches_valid_cards(ctx.game.card(cid), &valid_cards_filter, activating_player) {
                 to_pump.push(cid);
@@ -65,9 +82,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 
-    // Pass 2 — apply temporary modifiers (zeroed at cleanup by step_cleanup)
+    // Pass 2 — apply modifiers
     for card_id in to_pump {
-        if ctx.game.card(card_id).zone == ZoneType::Battlefield {
+        if ctx.game.card(card_id).zone != pump_zone {
+            continue; // already moved
+        }
+        if is_perpetual {
+            ctx.game.card_mut(card_id).perpetual_power_modifier += att_bonus;
+            ctx.game.card_mut(card_id).perpetual_toughness_modifier += def_bonus;
+        } else {
             ctx.game.card_mut(card_id).power_modifier += att_bonus;
             ctx.game.card_mut(card_id).toughness_modifier += def_bonus;
             for kw in &keywords {

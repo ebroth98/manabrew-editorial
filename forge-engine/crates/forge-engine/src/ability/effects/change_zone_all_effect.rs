@@ -6,10 +6,10 @@ use crate::spellability::SpellAbility;
 
 fn matches_change_zone_all_filter(
     cid: CardId,
-    sa: &SpellAbility,
     game: &crate::game::GameState,
     filter: &str,
     source_chosen_colors: &[String],
+    effective_target: Option<CardId>,
 ) -> bool {
     if filter.trim().is_empty() {
         return true;
@@ -23,7 +23,7 @@ fn matches_change_zone_all_filter(
         }
 
         let mut clause_ok = true;
-        let targeted = sa.target_chosen.target_card;
+        let targeted = effective_target;
 
         // "+" means AND within a clause.
         for term in clause.split('+') {
@@ -132,6 +132,20 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .map(|src| ctx.game.card(src).chosen_colors.clone())
         .unwrap_or_default();
 
+    // Propagate the parent SA's chosen target for sub-ability chains like Deputy of Detention
+    // (TrigExile Pump → DBChangeZoneAll): the ChangeZoneAll SA itself has no ValidTgts$,
+    // so we fall back to ctx.parent_target_card set by the parent Pump SA.
+    let effective_target = sa.target_chosen.target_card.or(ctx.parent_target_card);
+
+    // For Duration$ UntilHostLeavesPlay, track the source card so we can return
+    // exiled permanents when the source leaves the battlefield (e.g. Deputy of Detention).
+    let until_host_leaves = sa
+        .params
+        .get("Duration")
+        .map(|d| d.eq_ignore_ascii_case("UntilHostLeavesPlay") || d.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT"))
+        .unwrap_or(false);
+    let exile_source = if until_host_leaves { sa.source } else { None };
+
     if let (Some(dest_zone), Some(origin_zone)) = (
         parse_zone_type(destination_str),
         parse_zone_type(origin_str),
@@ -144,10 +158,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             for cid in zone_cards {
                 if matches_change_zone_all_filter(
                     cid,
-                    sa,
                     ctx.game,
                     &valid_cards_filter,
                     &source_chosen_colors,
+                    effective_target,
                 ) {
                     let dest_owner = if dest_zone == ZoneType::Battlefield {
                         sa.activating_player
@@ -165,6 +179,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
             let old_zone = ctx.game.card(card_id).zone;
             ctx.game.move_card(card_id, dest_zone, dest_owner);
+            // Mark cards exiled by a UntilHostLeavesPlay effect so they can return
+            // when the source leaves the battlefield.
+            if dest_zone == ZoneType::Exile {
+                if let Some(src_id) = exile_source {
+                    ctx.game.card_mut(card_id).exiled_by = Some(src_id);
+                }
+            }
             if dest_zone == ZoneType::Battlefield {
                 if tapped {
                     ctx.game.tap(card_id);
@@ -183,7 +204,6 @@ mod tests {
     use crate::card::CardInstance;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
-    use crate::spellability::SpellAbility;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
     #[test]
@@ -218,24 +238,22 @@ mod tests {
         game.move_card(my_land, ZoneType::Battlefield, p0);
 
         let filter = "TargetedCard.Self,Permanent.nonLand+NotDefinedTargeted+sharesNameWith Targeted+ControlledBy TargetedController";
-        let mut sa = SpellAbility::new_simple(None, p0, "DB$ ChangeZoneAll | Origin$ Battlefield");
-        sa.target_chosen.target_card = Some(t1);
 
-        assert!(matches_change_zone_all_filter(t1, &sa, &game, filter, &[]));
-        assert!(matches_change_zone_all_filter(t2, &sa, &game, filter, &[]));
+        assert!(matches_change_zone_all_filter(t1, &game, filter, &[], Some(t1)));
+        assert!(matches_change_zone_all_filter(t2, &game, filter, &[], Some(t1)));
         assert!(!matches_change_zone_all_filter(
             opp_land,
-            &sa,
             &game,
             filter,
-            &[]
+            &[],
+            Some(t1)
         ));
         assert!(!matches_change_zone_all_filter(
             my_land,
-            &sa,
             &game,
             filter,
-            &[]
+            &[],
+            Some(t1)
         ));
     }
 }
