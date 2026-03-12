@@ -200,7 +200,20 @@ public class DeterministicController extends PlayerController {
             if (chosen == null) {
                 return currentAbility.isTargetNumberValid();
             }
-            currentAbility.getTargets().add(chosen);
+
+            // getAllCandidates returns Cards from the Stack zone, but CounterEffect.resolve()
+            // calls getTargetSpells() which filters for SpellAbility instances. Convert the
+            // Card to its corresponding SpellAbility so the counter actually resolves.
+            GameObject toAdd = chosen;
+            if (chosen instanceof Card c && c.isInZone(ZoneType.Stack)) {
+                for (final SpellAbilityStackInstance si : c.getGame().getStack()) {
+                    if (si.getSourceCard() == c) {
+                        toAdd = si.getSpellAbility();
+                        break;
+                    }
+                }
+            }
+            currentAbility.getTargets().add(toAdd);
 
             if (!currentAbility.canAddMoreTarget()) {
                 break;

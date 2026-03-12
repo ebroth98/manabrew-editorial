@@ -558,6 +558,15 @@ impl PlayerAgent for DeterministicAgent {
         Some(attacker)
     }
 
+    fn choose_target_spell(&mut self, _player: PlayerId, valid: &[u32]) -> Option<u32> {
+        if valid.is_empty() {
+            return None;
+        }
+        let target = choice_space::pick_one(valid, &mut self.rng.borrow_mut())?;
+        self.log_decision(&format!("Target spell: stack entry {}", target));
+        Some(target)
+    }
+
     fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
         if valid.is_empty() {
             return None;

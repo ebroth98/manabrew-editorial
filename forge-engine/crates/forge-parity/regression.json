@@ -52,6 +52,10 @@
     "args": "--deck1 phyrexian_test --deck2 phyrexian_test --seed 42 --max-turns 10 --games 12"
   },
   {
+    "name": "counterspell_targeting",
+    "args": "--deck1 trigger_test --deck2 blue_control --seed 1930 --max-turns 8 --games 1"
+  },
+  {
     "name": "poison_infect",
     "args": "--deck1 poison_test --deck2 comprehensive_test --seed 1521 --max-turns 15 --games 1"
   }
