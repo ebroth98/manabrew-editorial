@@ -293,12 +293,86 @@ def run_parity_test(deck1: str, deck2: str, seed: int, cwd=None, timeout: int = 
 
 
 def cargo_check(cwd=None) -> dict:
-    """Run cargo check on forge-engine-core."""
+    """Run cargo check on forge-engine-core and forge-parity."""
     result = subprocess.run(
         ["cargo", "check", "-p", "forge-engine-core"],
         cwd=cwd or REPO_ROOT, capture_output=True, text=True, timeout=300
     )
-    return {"ok": result.returncode == 0, "stderr": result.stderr[-3000:]}
+    if result.returncode != 0:
+        return {"ok": False, "stderr": result.stderr[-3000:]}
+    # Also check parity crate (agent may have modified deterministic_agent.rs)
+    result2 = subprocess.run(
+        ["cargo", "check", "-p", "forge-parity"],
+        cwd=cwd or REPO_ROOT, capture_output=True, text=True, timeout=300
+    )
+    if result2.returncode != 0:
+        return {"ok": False, "stderr": result2.stderr[-3000:]}
+    return {"ok": True, "stderr": ""}
+
+
+def check_antipatterns(diff_text: str) -> list[str]:
+    """Scan a unified diff for known bad patterns. Returns list of issues found."""
+    import re
+    issues = []
+
+    # Only look at added lines (lines starting with +, not +++ header)
+    added_lines = [
+        line[1:]  # strip the leading +
+        for line in diff_text.splitlines()
+        if line.startswith("+") and not line.startswith("+++")
+    ]
+    added_block = "\n".join(added_lines)
+
+    # 1. Functions that unconditionally return None / empty to suppress behavior
+    # e.g., "return None" as the only meaningful line in a new function
+    # Check for new functions where ALL return paths are None
+    none_return_pattern = re.findall(
+        r'fn\s+(\w+).*?\{.*?return\s+None;?\s*\}',
+        added_block, re.DOTALL
+    )
+    for fn_name in none_return_pattern:
+        # Only flag if the function has no other return path
+        if f"Some(" not in added_block.split(fn_name, 1)[-1].split("\n    fn ", 1)[0]:
+            issues.append(
+                f"Function `{fn_name}` unconditionally returns None — "
+                "this suppresses behavior instead of fixing the bug"
+            )
+
+    # 2. Debug eprintln! in non-test code
+    for line in added_lines:
+        stripped = line.strip()
+        if "eprintln!" in stripped and "if self.verbose" not in stripped:
+            # Check it's not inside a test module or gated by verbose
+            if "#[cfg(test)]" not in added_block[:added_block.index(stripped)] if stripped in added_block else True:
+                issues.append(
+                    f"Debug eprintln! found in non-test code: `{stripped[:80]}` — "
+                    "use verbose logging or remove"
+                )
+                break  # one warning is enough
+
+    # 3. Comment-only changes (no actual code modified)
+    non_comment_additions = [
+        l for l in added_lines
+        if l.strip()
+        and not l.strip().startswith("//")
+        and not l.strip().startswith("/*")
+        and not l.strip().startswith("*")
+        and not l.strip().startswith("///")
+    ]
+    if not non_comment_additions and added_lines:
+        issues.append(
+            "Only comments were added — no actual code changes. "
+            "A comment explaining why NOT to do something is not a fix."
+        )
+
+    # 4. Unconditional None return consuming RNG (the exact PR 262 pattern)
+    if "let _consumed" in added_block and "return None" in added_block:
+        issues.append(
+            "Pattern detected: consuming RNG then returning None — "
+            "this matches a Java bug instead of fixing it"
+        )
+
+    return issues
 
 
 def run_regression_sweep(cwd=None) -> dict:
@@ -447,26 +521,56 @@ Treat this as a hint, NOT as ground truth. Verify all file paths and claims inde
 
 1. **Analyze**: Compare the Rust and Java traces to understand WHERE the divergence occurs.
 2. **Find the Java reference**: Look in `forge/forge-game/src/main/java/forge/game/` for the
-   correct behavior. The Java implementation is the source of truth.
+   correct behavior. The Java game engine is the source of truth for game rules.
 3. **Find the Rust code**: Look in `forge-engine/crates/forge-engine/src/` for the corresponding
    Rust implementation.
-4. **Fix**: Modify the Rust code to match the Java behavior. Keep changes minimal and focused.
-5. **Verify compilation**: Run `cargo check -p forge-engine-core` to ensure it compiles.
-6. **Verify parity**: Run this exact command to test:
+4. **Diagnose**: Determine whether the bug is in:
+   - **Rust engine** (most common) — the Rust port doesn't match Java game logic
+   - **Java harness** (`forge/forge-harness/`) — the deterministic test harness has a bug
+     that makes Java behave incorrectly (the game engine is correct but the harness
+     controller makes wrong decisions or stores data incorrectly)
+   - **Rust parity agent** (`forge-engine/crates/forge-parity/src/deterministic_agent.rs`)
+     — the Rust test agent doesn't match the Java harness behavior (e.g., missing RNG
+     calls, wrong selection logic)
+5. **Fix**: Fix the code where the bug actually is.
+   - If the bug is in the Rust engine, fix the engine code.
+   - If the bug is in the Java harness, fix the harness code AND rebuild the JAR:
+     `JAVA_HOME={JAVA_HOME} mvn -pl forge-harness -am -DskipTests package -f forge/pom.xml`
+   - If the bug is in the Rust parity agent, fix the agent code.
+6. **Verify compilation**: Run `cargo check -p forge-engine-core` to ensure it compiles.
+7. **Verify parity**: Run this exact command to test:
    ```
-   JAVA_HOME={JAVA_HOME} cargo run -p forge-parity -- \\
+   JAVA_HOME={JAVA_HOME} cargo run -p forge-parity --bin forge-parity -- \\
      --deck1 {samples[0]['deck1']} --deck2 {samples[0]['deck2']} --seed {samples[0]['seed']} \\
      --java-jar {JAVA_JAR} \\
      --cards-dir {CARDS_DIR}
    ```
-7. If the test passes, stop. If it fails, analyze the new divergence and iterate.
+8. If the test passes, stop. If it fails, analyze the new divergence and iterate.
 
 ## Rules
 - Keep file/interface parity with Java Forge (same structure, same names)
-- Do NOT modify Java files
+- Do NOT modify game engine Java files in `forge/forge-game/` — those are the reference
+- You CAN modify the Java harness in `forge/forge-harness/` if the harness has a bug
+- You CAN modify the Rust parity agent in `forge-engine/crates/forge-parity/src/`
 - Do NOT modify test files unless the test itself is wrong
 - Update `features.md` if you implement or change a feature
 - Make the smallest possible fix — don't refactor unrelated code
+
+## CRITICAL: Anti-Patterns to Avoid
+These are patterns that technically make parity tests pass but are WRONG. Do not do these:
+
+1. **Never make a function return None/empty unconditionally** to suppress behavior.
+   Example of WRONG fix: making `choose_target_spell()` always return `None` so counters
+   never resolve. This "matches" a Java harness bug but breaks the game engine.
+2. **Never add a workaround comment without actual code changes.** If the only change is
+   a comment explaining why NOT to do something, that's not a fix.
+3. **Never add debug print/eprintln! statements** in non-test code. Use existing verbose
+   logging infrastructure if needed.
+4. **Never match a Java bug by breaking Rust.** If Java's harness has a bug that causes
+   incorrect behavior, fix the Java harness — don't make Rust equally broken.
+5. **Verify your fix is semantically correct**: after making it pass, ask yourself "does
+   this fix make the game rule work correctly in BOTH engines, or did I just suppress a
+   feature to match a bug?" If the latter, find and fix the actual bug.
 """
 
     return prompt
@@ -831,6 +935,35 @@ def attempt_repair(cluster: dict, dry_run: bool = False) -> bool:
             abandon_branch(branch_name, original_branch)
             continue
         _log("  ✓ Compiles")
+
+        # 5b. Anti-pattern check: scan the diff for known bad patterns
+        _log("  Running anti-pattern checks...")
+        full_diff = git("diff", "main")
+        antipattern_issues = check_antipatterns(full_diff.stdout)
+        if antipattern_issues:
+            issues_str = "; ".join(antipattern_issues)
+            _log(f"  ✗ Anti-pattern detected: {issues_str}")
+            record_attempt(field, attempt, "antipattern", issues_str)
+            abandon_branch(branch_name, original_branch)
+            continue
+        _log("  ✓ Anti-pattern checks passed")
+
+        # 5c. If Java harness was modified, rebuild the JAR
+        if "forge/forge-harness/" in full_diff.stdout or "forge-harness/" in diff.stdout:
+            _log("  Java harness modified — rebuilding JAR...")
+            jar_build = subprocess.run(
+                ["mvn", "-pl", "forge-harness", "-am", "-DskipTests", "package", "-q"],
+                cwd=REPO_ROOT / "forge",
+                capture_output=True, text=True,
+                env={**os.environ, "JAVA_HOME": JAVA_HOME},
+            )
+            if jar_build.returncode != 0:
+                error_msg = f"JAR rebuild failed: {jar_build.stderr[:300]}"
+                _log(f"  ✗ {error_msg}")
+                record_attempt(field, attempt, "jar_build_fail", error_msg)
+                abandon_branch(branch_name, original_branch)
+                continue
+            _log("  ✓ JAR rebuilt")
 
         # 6. Parity tests on sample failures
         _log(f"\n[6/7] Running parity tests (attempt {attempt})...")
