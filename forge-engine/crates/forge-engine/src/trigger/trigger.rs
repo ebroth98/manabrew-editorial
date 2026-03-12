@@ -1048,6 +1048,13 @@ fn matches_single_valid_card(
         "Instant" => card.type_line.is_instant(),
         "Sorcery" => card.type_line.is_sorcery(),
         "Permanent" => card.is_permanent(),
+        // Player-type filters: players are not cards, so never match.
+        // This prevents triggers like "ValidTarget$ Player" from firing
+        // when the damage target is a creature (e.g. Thrummingbird blocking
+        // an infect creature and its DamageDone trigger incorrectly matching
+        // the creature target as if it were a player).
+        "Player" | "You" | "Opponent" | "Each" | "Any"
+        | "ActivePlayer" | "NonActivePlayer" => false,
         _ => {
             // Try comma-separated types within the type portion (e.g. "Instant,Sorcery")
             if type_part.contains(',') {
