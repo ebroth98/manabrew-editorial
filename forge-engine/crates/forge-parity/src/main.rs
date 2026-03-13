@@ -2258,15 +2258,6 @@ fn run_continuous_mode(cli: &Cli) {
         );
     }
 
-    // Resume from last seed in DB so restarts don't replay the same matchups
-    let resume_seed = db.max_seed().unwrap_or(None).map(|s| s + 1).unwrap_or(cli.seed);
-    if resume_seed != cli.seed {
-        eprintln!(
-            "[parity] Resuming from seed {} (DB max_seed + 1, cli default was {})",
-            resume_seed, cli.seed
-        );
-    }
-
     // Initialize scheduler
     let fuzz_db = if cli.fuzz_per_batch > 0 {
         Some(&data.db)
@@ -2274,7 +2265,20 @@ fn run_continuous_mode(cli: &Cli) {
         None
     };
     let mut scheduler =
-        Scheduler::new(&deck_names, resume_seed, cli.fuzz_per_batch, fuzz_db, false, 1);
+        Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db, false, 1);
+
+    // Resume pair position so the matrix completes all deck combos across restarts.
+    // Seeds replay (cache makes them fast), but we skip to the right pair index.
+    let played = db.total_preset_games().unwrap_or(0);
+    if played > 0 {
+        scheduler.skip(played);
+        eprintln!(
+            "[parity] Resuming from game {} (pair {}/{})",
+            played,
+            played % scheduler.preset_pairs_count(),
+            scheduler.preset_pairs_count()
+        );
+    }
 
     // Spawn Java server
     let server_config = JavaServerConfig {
@@ -2529,27 +2533,30 @@ fn run_serve_mode(cli: &Cli) {
             .store(true, Ordering::Relaxed);
     }
 
-    // Resume from last seed in DB so restarts don't replay the same matchups
-    let resume_seed = db.max_seed().unwrap_or(None).map(|s| s + 1).unwrap_or(cli.seed);
-    if resume_seed != cli.seed {
-        tracing::info!(
-            resume_seed,
-            cli_seed = cli.seed,
-            "Resuming from DB max_seed + 1"
-        );
-    }
-
     let initial_fuzz = cli.fuzz_per_batch > 0;
     let fuzz_db = if initial_fuzz { Some(&data.db) } else { None };
     let initial_fuzz_per_batch = if initial_fuzz { cli.fuzz_per_batch } else { 0 };
     let mut scheduler = Scheduler::new(
         &deck_names,
-        resume_seed,
+        cli.seed,
         initial_fuzz_per_batch,
         fuzz_db,
         dashboard_config.self_matchups.load(Ordering::Relaxed),
         dashboard_config.games_per_matchup.load(Ordering::Relaxed),
     );
+
+    // Resume pair position so the matrix completes all deck combos across restarts.
+    // Seeds replay (cache makes them fast), but we skip to the right pair index.
+    let played = db.total_preset_games().unwrap_or(0);
+    if played > 0 {
+        scheduler.skip(played);
+        tracing::info!(
+            played,
+            pair_index = played % scheduler.preset_pairs_count(),
+            total_pairs = scheduler.preset_pairs_count(),
+            "Resuming matrix from previous session"
+        );
+    }
 
     // Spawn Java server
     let server_config = JavaServerConfig {
@@ -2848,12 +2855,14 @@ fn run_serve_mode(cli: &Cli) {
             let fdb = if fuzz_enabled { Some(&data.db) } else { None };
             scheduler = Scheduler::new(
                 &deck_names,
-                resume_seed + completed as u64,
+                cli.seed,
                 fuzz_per,
                 fdb,
                 self_matchups,
                 games_per_matchup,
             );
+            // Skip to current position in the matrix
+            scheduler.skip(played + completed);
             tracing::info!(
                 games_per_matchup,
                 fuzz_enabled,

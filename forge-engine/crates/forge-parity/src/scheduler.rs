@@ -106,6 +106,19 @@ impl Scheduler {
         }
     }
 
+    /// Advance the scheduler by `n` preset games without generating jobs.
+    /// Used to resume from where the last session left off within the pair cycle.
+    pub fn skip(&mut self, n: usize) {
+        if self.preset_pairs.is_empty() {
+            return;
+        }
+        let full_cycles = n / self.preset_pairs.len();
+        let remainder = n % self.preset_pairs.len();
+        self.batch_id += full_cycles as i64;
+        self.pair_index = remainder;
+        self.seed += n as u64;
+    }
+
     /// Generate the next game job.
     pub fn next_job(&mut self) -> Job {
         // Interleave: after every `fuzz_interval` preset games, insert a fuzz game

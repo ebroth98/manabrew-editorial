@@ -140,12 +140,13 @@ impl Storage {
         Ok(())
     }
 
-    /// Return the maximum seed value stored in the database, or `None` if empty.
-    pub fn max_seed(&self) -> SqlResult<Option<u64>> {
-        let result: Option<i64> = self
-            .conn
-            .query_row("SELECT MAX(seed) FROM runs", [], |row| row.get(0))?;
-        Ok(result.map(|s| s as u64))
+    /// Return the total number of non-fuzz games in the database.
+    pub fn total_preset_games(&self) -> SqlResult<usize> {
+        self.conn.query_row(
+            "SELECT COUNT(*) FROM runs WHERE is_fuzz = 0",
+            [],
+            |r| r.get(0),
+        )
     }
 
     /// Insert a run result into the database.
