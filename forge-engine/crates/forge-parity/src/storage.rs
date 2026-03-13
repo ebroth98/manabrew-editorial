@@ -140,6 +140,14 @@ impl Storage {
         Ok(())
     }
 
+    /// Return the maximum seed value stored in the database, or `None` if empty.
+    pub fn max_seed(&self) -> SqlResult<Option<u64>> {
+        let result: Option<i64> = self
+            .conn
+            .query_row("SELECT MAX(seed) FROM runs", [], |row| row.get(0))?;
+        Ok(result.map(|s| s as u64))
+    }
+
     /// Insert a run result into the database.
     pub fn insert_run(
         &self,

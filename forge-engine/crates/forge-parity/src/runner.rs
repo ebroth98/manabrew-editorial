@@ -155,6 +155,7 @@ fn build_deck_from_spec(
     db: &CardDatabase,
     owner: PlayerId,
     spec: &[(String, usize)],
+    verbose: bool,
 ) {
     for (name, count) in spec {
         match db.get_by_card_name(name) {
@@ -165,7 +166,11 @@ fn build_deck_from_spec(
                     game.move_card(id, ZoneType::Library, owner);
                 }
             }
-            None => eprintln!("[parity] Unknown card '{}' — skipped", name),
+            None => {
+                if verbose {
+                    eprintln!("[parity] Unknown card '{}' — skipped", name);
+                }
+            }
         }
     }
 }
@@ -1243,8 +1248,8 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     let p1 = PlayerId(1);
     let mut game = GameState::new(&["Player1", "Player2"], 20);
 
-    build_deck_from_spec(&mut game, &data.db, p0, &deck1_spec);
-    build_deck_from_spec(&mut game, &data.db, p1, &deck2_spec);
+    build_deck_from_spec(&mut game, &data.db, p0, &deck1_spec, config.verbose);
+    build_deck_from_spec(&mut game, &data.db, p1, &deck2_spec, config.verbose);
 
     let mut game_loop = GameLoop::new(2);
 

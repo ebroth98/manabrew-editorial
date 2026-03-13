@@ -221,6 +221,11 @@ struct Cli {
     /// Directory for the Java output cache (default: .parity-cache)
     #[arg(long, default_value = ".parity-cache")]
     cache_dir: String,
+
+    /// Tracing log level for serve mode (default: warn). Accepts: error, warn, info, debug, trace.
+    /// Can also be set via RUST_LOG env var which takes precedence.
+    #[arg(long, default_value = "warn")]
+    log_level: String,
 }
 
 /// Resolve issue_threshold: CLI flag > env var > default (5)
@@ -2253,6 +2258,15 @@ fn run_continuous_mode(cli: &Cli) {
         );
     }
 
+    // Resume from last seed in DB so restarts don't replay the same matchups
+    let resume_seed = db.max_seed().unwrap_or(None).map(|s| s + 1).unwrap_or(cli.seed);
+    if resume_seed != cli.seed {
+        eprintln!(
+            "[parity] Resuming from seed {} (DB max_seed + 1, cli default was {})",
+            resume_seed, cli.seed
+        );
+    }
+
     // Initialize scheduler
     let fuzz_db = if cli.fuzz_per_batch > 0 {
         Some(&data.db)
@@ -2260,7 +2274,7 @@ fn run_continuous_mode(cli: &Cli) {
         None
     };
     let mut scheduler =
-        Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db, false, 1);
+        Scheduler::new(&deck_names, resume_seed, cli.fuzz_per_batch, fuzz_db, false, 1);
 
     // Spawn Java server
     let server_config = JavaServerConfig {
@@ -2450,7 +2464,7 @@ fn run_serve_mode(cli: &Cli) {
         .with(BufferLayer::new(log_buffer.clone()))
         .with(
             tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&cli.log_level)),
         )
         .init();
 
@@ -2515,12 +2529,22 @@ fn run_serve_mode(cli: &Cli) {
             .store(true, Ordering::Relaxed);
     }
 
+    // Resume from last seed in DB so restarts don't replay the same matchups
+    let resume_seed = db.max_seed().unwrap_or(None).map(|s| s + 1).unwrap_or(cli.seed);
+    if resume_seed != cli.seed {
+        tracing::info!(
+            resume_seed,
+            cli_seed = cli.seed,
+            "Resuming from DB max_seed + 1"
+        );
+    }
+
     let initial_fuzz = cli.fuzz_per_batch > 0;
     let fuzz_db = if initial_fuzz { Some(&data.db) } else { None };
     let initial_fuzz_per_batch = if initial_fuzz { cli.fuzz_per_batch } else { 0 };
     let mut scheduler = Scheduler::new(
         &deck_names,
-        cli.seed,
+        resume_seed,
         initial_fuzz_per_batch,
         fuzz_db,
         dashboard_config.self_matchups.load(Ordering::Relaxed),
@@ -2824,7 +2848,7 @@ fn run_serve_mode(cli: &Cli) {
             let fdb = if fuzz_enabled { Some(&data.db) } else { None };
             scheduler = Scheduler::new(
                 &deck_names,
-                cli.seed + completed as u64,
+                resume_seed + completed as u64,
                 fuzz_per,
                 fdb,
                 self_matchups,

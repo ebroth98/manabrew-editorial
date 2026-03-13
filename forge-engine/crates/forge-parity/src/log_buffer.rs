@@ -13,7 +13,7 @@ use tracing_subscriber::layer::Context;
 use tracing_subscriber::Layer;
 
 /// Maximum number of log entries kept in memory.
-const MAX_ENTRIES: usize = 2000;
+const MAX_ENTRIES: usize = 500;
 
 /// A single structured log entry.
 #[derive(Clone, Serialize)]
@@ -177,10 +177,10 @@ mod tests {
     #[test]
     fn ring_buffer_capacity() {
         let buf = LogBuffer::new();
-        for i in 0..2050 {
+        for i in 0..550 {
             buf.push(Level::INFO, "test", format!("msg {i}"));
         }
-        let entries = buf.recent(3000);
+        let entries = buf.recent(1000);
         assert_eq!(entries.len(), MAX_ENTRIES);
         // Oldest should be msg 50 (first 50 were evicted)
         assert!(entries[0].message.contains("50"));
