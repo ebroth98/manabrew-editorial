@@ -1398,8 +1398,9 @@ fn run_java_compare_and_cache(
     result.covered_cards = rust_trace.covered_cards.clone();
     result.mechanic_signals = rust_trace.mechanic_signals.clone();
 
-    // Cache on pass
-    if result.status == MatchupStatus::Pass {
+    // Cache Java output — Java is deterministic for a given source hash,
+    // so both passes and failures produce the same Java data next time.
+    if result.status != MatchupStatus::Error {
         if let Some(ref cache) = cache {
             let _ = cache.put(
                 &config.deck1,
