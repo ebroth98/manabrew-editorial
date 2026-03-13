@@ -58,5 +58,9 @@
   {
     "name": "poison_infect",
     "args": "--deck1 poison_test --deck2 comprehensive_test --seed 1521 --max-turns 15 --games 1"
+  },
+  {
+    "name": "players____graveyard",
+    "args": "--deck1 cost_reduction_test --deck2 white_static --seed 545 --max-turns 15 --games 1"
   }
 ]

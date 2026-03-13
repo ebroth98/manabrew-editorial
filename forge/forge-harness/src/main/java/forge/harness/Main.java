@@ -249,7 +249,7 @@ public final class Main {
         // Create a shared Random for agent decisions, seeded identically to
         // the Rust side's JavaRandom(seed). Both players share this instance
         // so RNG consumption order matches the Rust agents exactly.
-        Random agentRng = new Random(seed);
+        CountingRandom agentRng = new CountingRandom(seed);
 
         List<RegisteredPlayer> players = new ArrayList<>();
 

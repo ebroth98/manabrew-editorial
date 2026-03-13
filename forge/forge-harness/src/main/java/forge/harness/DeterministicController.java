@@ -63,13 +63,13 @@ public class DeterministicController extends PlayerController {
     private static final boolean DEBUG_ACTIONS = false;
 
     private static final int PREFER_ACTION_WEIGHT = 3;
-    private final Random rng;
+    private final CountingRandom rng;
     private final boolean preferActions;
     private final DeterministicCostPlumbing costPlumbing;
     private final AutoPay autoPay;
     private final DeterministicPlayPlumbing playPlumbing;
 
-    public DeterministicController(Game game, Player p, LobbyPlayer lp, Random rng, boolean preferActions) {
+    public DeterministicController(Game game, Player p, LobbyPlayer lp, CountingRandom rng, boolean preferActions) {
         super(game, p, lp);
         this.rng = rng;
         this.preferActions = preferActions;
@@ -129,8 +129,8 @@ public class DeterministicController extends PlayerController {
         final String choice = idx >= all.size() ? "PASS" : opts.get(idx);
         DecisionLog.logMainAction(player, opts, choice);
         if (DEBUG_ACTIONS) {
-            System.err.printf("[det-java p%d t%d] options=%s idx=%d/%d%n", player.getId(),
-                    getGame().getPhaseHandler().getTurn(), opts, idx, all.size());
+            System.err.printf("[det-java p%d t%d] options=%s idx=%d/%d rng#%d%n", player.getId(),
+                    getGame().getPhaseHandler().getTurn(), opts, idx, all.size(), rng.getCallCount());
         }
         if (idx >= all.size()) {
             return null; // pass
@@ -265,8 +265,8 @@ public class DeterministicController extends PlayerController {
 
             final int roll = ChoiceSpace.pickIndex(2, rng);
             if (DEBUG_ACTIONS) {
-                System.err.printf("[det-java p%d t%d] atk roll %s -> %d%n",
-                    player.getId(), getGame().getPhaseHandler().getTurn(), c.getName(), roll);
+                System.err.printf("[det-java p%d t%d] atk roll %s -> %d rng#%d%n",
+                    player.getId(), getGame().getPhaseHandler().getTurn(), c.getName(), roll, rng.getCallCount());
             }
             String choice = "PASS";
             if (roll == 1) {
@@ -1131,7 +1131,14 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public StaticAbility chooseSingleStaticAbility(String prompt, List<StaticAbility> possibleReplacers) {
-        return ChoiceSpace.pickOne(possibleReplacers, rng);
+        // Do NOT consume RNG here. This method is called during action-space evaluation
+        // (canPlay() checks), not just at resolution time. Consuming RNG here causes
+        // desync with Rust, which selects static abilities algorithmically without
+        // calling any agent callback.
+        if (possibleReplacers == null || possibleReplacers.isEmpty()) {
+            return null;
+        }
+        return possibleReplacers.get(0);
     }
 
     @Override

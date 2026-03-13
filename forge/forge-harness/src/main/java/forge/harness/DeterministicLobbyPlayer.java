@@ -6,21 +6,19 @@ import forge.game.player.IGameEntitiesFactory;
 import forge.game.player.Player;
 import forge.game.player.PlayerController;
 
-import java.util.Random;
-
 /**
  * A LobbyPlayer that creates {@link DeterministicController} instances
  * for cross-engine parity testing. Both controllers share the same
- * {@link Random} instance so that decision RNG consumption is identical
+ * {@link CountingRandom} instance so that decision RNG consumption is identical
  * to the Rust side.
  */
 public class DeterministicLobbyPlayer extends LobbyPlayer implements IGameEntitiesFactory {
 
     /** Shared RNG for agent decisions — same instance across both players. */
-    private final Random rng;
+    private final CountingRandom rng;
     private final boolean preferActions;
 
-    public DeterministicLobbyPlayer(String name, Random rng, boolean preferActions) {
+    public DeterministicLobbyPlayer(String name, CountingRandom rng, boolean preferActions) {
         super(name);
         this.rng = rng;
         this.preferActions = preferActions;

@@ -99,23 +99,32 @@ impl GameLoop {
                         game.player_mut(active).skip_next_draw = false;
                         TurnMachineState::Main1
                     } else {
-                        self.apply_turn_event(
-                            game,
-                            agents,
-                            TurnEvent::EnterPhase {
-                                phase: PhaseType::Draw,
-                                emit_phase_trigger: true,
-                            },
-                        );
-                        self.apply_turn_event(game, agents, TurnEvent::DrawStep);
-                        self.apply_turn_event(
-                            game,
-                            agents,
-                            TurnEvent::PriorityWindow {
-                                is_main_phase: false,
-                            },
-                        );
-                        TurnMachineState::Main1
+                        // Java parity: Java's isSkippingPhase(DRAW) returns true on turn 1
+                        // in a 2-player game, skipping the entire Draw phase (no draw, no
+                        // priority window). Rust skips the draw card itself but was still
+                        // giving a priority window, consuming 2 extra RNG calls on Turn 1.
+                        let skip_draw_phase = game.turn.turn_number == 1 && game.players.len() == 2;
+                        if skip_draw_phase {
+                            TurnMachineState::Main1
+                        } else {
+                            self.apply_turn_event(
+                                game,
+                                agents,
+                                TurnEvent::EnterPhase {
+                                    phase: PhaseType::Draw,
+                                    emit_phase_trigger: true,
+                                },
+                            );
+                            self.apply_turn_event(game, agents, TurnEvent::DrawStep);
+                            self.apply_turn_event(
+                                game,
+                                agents,
+                                TurnEvent::PriorityWindow {
+                                    is_main_phase: false,
+                                },
+                            );
+                            TurnMachineState::Main1
+                        }
                     }
                 }
                 TurnMachineState::Main1 => {
@@ -982,6 +991,10 @@ impl GameLoop {
         // declared attackers.  This allows effects like Watchdog's
         // "Affected$ Creature.attackingYou | AddPower$ -1" to apply correctly.
         apply_continuous_effects(game);
+        // Java parity: PhaseHandler sets givePriorityToPlayer = inCombat() after
+        // declare attackers. In Java, inCombat() returns `combat != null` (true
+        // whenever the combat object exists, regardless of whether attackers were
+        // declared), so priority is always given here.
         self.step_with_priority(game, agents, false);
         if game.game_over {
             self.combat.clear_with_cards(&mut game.cards);
