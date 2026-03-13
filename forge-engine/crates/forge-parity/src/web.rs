@@ -62,6 +62,8 @@ pub struct AppState {
     pub job_queue: Arc<JobQueue>,
     /// Git commit SHA the server was built from.
     pub commit_sha: Option<String>,
+    /// Deck name prefixes to exclude from stats (e.g. "real_").
+    pub exclude_prefixes: Vec<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -411,7 +413,7 @@ async fn stats_handler(
 ) -> impl IntoResponse {
     let uptime = state.start_time.elapsed().as_secs();
     let storage = state.storage.lock().unwrap();
-    match storage.stats(uptime, &state.start_time_iso, params.since.as_deref()) {
+    match storage.stats(uptime, &state.start_time_iso, params.since.as_deref(), &state.exclude_prefixes) {
         Ok(mut stats) => {
             stats.commit_sha = state.commit_sha.clone();
             Json(stats).into_response()

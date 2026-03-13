@@ -559,7 +559,7 @@ fn grew_significantly(cluster: &crate::storage::KnownCluster) -> bool {
 
 fn build_summary(db: &Storage, config: &AnalyzerConfig) -> Option<PeriodSummary> {
     let stats = db
-        .stats(config.summary_interval.as_secs(), "1970-01-01T00:00:00Z", None)
+        .stats(config.summary_interval.as_secs(), "1970-01-01T00:00:00Z", None, &[])
         .ok()?;
 
     // Get top failure fields

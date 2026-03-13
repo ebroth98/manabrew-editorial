@@ -59,6 +59,17 @@ use forge_parity::protocol::{
 use forge_parity::report;
 use forge_parity::runner::{self, available_presets, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
 
+/// Filter out decks matching any of the given prefixes.
+fn filter_decks(decks: Vec<String>, exclude_prefixes: &[String]) -> Vec<String> {
+    if exclude_prefixes.is_empty() {
+        return decks;
+    }
+    decks
+        .into_iter()
+        .filter(|d| !exclude_prefixes.iter().any(|p| d.starts_with(p)))
+        .collect()
+}
+
 /// Truncate a trace string to at most `max_lines` lines to limit memory usage.
 fn truncate_trace(trace: &str, max_lines: usize) -> String {
     let lines: Vec<&str> = trace.lines().collect();
@@ -226,6 +237,11 @@ struct Cli {
     /// Can also be set via RUST_LOG env var which takes precedence.
     #[arg(long, default_value = "warn")]
     log_level: String,
+
+    /// Comma-separated deck name prefixes to exclude from scheduling (default: "real_").
+    /// Decks matching any prefix are skipped in matrix/continuous/serve modes.
+    #[arg(long, value_delimiter = ',', default_value = "real_")]
+    exclude_prefix: Vec<String>,
 }
 
 /// Resolve issue_threshold: CLI flag > env var > default (5)
@@ -1054,10 +1070,12 @@ impl ServerPool {
 fn run_matrix_mode(cli: &Cli) {
     let decks_dir = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
     let seeds = cli.seeds.clone().unwrap_or_else(|| vec![42, 100, 999]);
-    let deck_names: Vec<String> = cli
-        .decks
-        .clone()
-        .unwrap_or_else(|| available_presets(decks_dir));
+    let deck_names: Vec<String> = filter_decks(
+        cli.decks
+            .clone()
+            .unwrap_or_else(|| available_presets(decks_dir)),
+        &cli.exclude_prefix,
+    );
 
     // Validate deck names
     let valid = available_presets(decks_dir);
@@ -2241,10 +2259,13 @@ fn run_continuous_mode(cli: &Cli) {
 
     // Discover preset decks
     let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
-    let deck_names: Vec<String> = match &cli.decks {
-        Some(d) => d.clone(),
-        None => available_presets(dd),
-    };
+    let deck_names: Vec<String> = filter_decks(
+        match &cli.decks {
+            Some(d) => d.clone(),
+            None => available_presets(dd),
+        },
+        &cli.exclude_prefix,
+    );
 
     if deck_names.is_empty() {
         eprintln!("[parity] No preset decks found in {}", dd);
@@ -2506,10 +2527,13 @@ fn run_serve_mode(cli: &Cli) {
 
     // Discover preset decks
     let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
-    let deck_names: Vec<String> = match &cli.decks {
-        Some(d) => d.clone(),
-        None => available_presets(dd),
-    };
+    let deck_names: Vec<String> = filter_decks(
+        match &cli.decks {
+            Some(d) => d.clone(),
+            None => available_presets(dd),
+        },
+        &cli.exclude_prefix,
+    );
 
     if deck_names.is_empty() {
         tracing::error!(dir = dd, "No preset decks found");
@@ -2594,6 +2618,7 @@ fn run_serve_mode(cli: &Cli) {
         logs: log_buffer,
         job_queue: Arc::clone(&job_queue),
         commit_sha,
+        exclude_prefixes: cli.exclude_prefix.clone(),
     });
 
     // Build tokio runtime

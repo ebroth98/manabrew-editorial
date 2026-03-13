@@ -57,6 +57,24 @@ fn normalize_field_for_storage(field: &str) -> String {
     result
 }
 
+/// Build a SQL filter clause that excludes rows where deck1 or deck2 match any prefix.
+fn build_exclude_filter(prefixes: &[String]) -> String {
+    if prefixes.is_empty() {
+        return String::new();
+    }
+    let conditions: Vec<String> = prefixes
+        .iter()
+        .flat_map(|p| {
+            let escaped = p.replace('\'', "''");
+            vec![
+                format!("deck1 NOT LIKE '{}%'", escaped),
+                format!("deck2 NOT LIKE '{}%'", escaped),
+            ]
+        })
+        .collect();
+    format!(" AND {}", conditions.join(" AND "))
+}
+
 /// SQLite-backed storage for parity run records.
 pub struct Storage {
     conn: Connection,
@@ -217,29 +235,33 @@ impl Storage {
         uptime_seconds: u64,
         start_time_iso: &str,
         since: Option<&str>,
+        exclude_prefixes: &[String],
     ) -> SqlResult<ContinuousStats> {
         // Preset-only stats (is_fuzz = 0), optionally filtered by time range
         let time_filter = since
             .map(|s| format!(" AND timestamp >= '{}'", s.replace('\'', "''")))
             .unwrap_or_default();
 
+        // Exclude blacklisted deck prefixes from stats
+        let exclude_filter = build_exclude_filter(exclude_prefixes);
+
         let total: usize = self.conn.query_row(
-            &format!("SELECT COUNT(*) FROM runs WHERE is_fuzz = 0{time_filter}"),
+            &format!("SELECT COUNT(*) FROM runs WHERE is_fuzz = 0{time_filter}{exclude_filter}"),
             [],
             |r| r.get(0),
         )?;
         let passed: usize = self.conn.query_row(
-            &format!("SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 0{time_filter}"),
+            &format!("SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 0{time_filter}{exclude_filter}"),
             [],
             |r| r.get(0),
         )?;
         let failed: usize = self.conn.query_row(
-            &format!("SELECT COUNT(*) FROM runs WHERE status = 'fail' AND is_fuzz = 0{time_filter}"),
+            &format!("SELECT COUNT(*) FROM runs WHERE status = 'fail' AND is_fuzz = 0{time_filter}{exclude_filter}"),
             [],
             |r| r.get(0),
         )?;
         let errors: usize = self.conn.query_row(
-            &format!("SELECT COUNT(*) FROM runs WHERE status = 'error' AND is_fuzz = 0{time_filter}"),
+            &format!("SELECT COUNT(*) FROM runs WHERE status = 'error' AND is_fuzz = 0{time_filter}{exclude_filter}"),
             [],
             |r| r.get(0),
         )?;
@@ -252,7 +274,7 @@ impl Storage {
 
         // Only count preset games from the current session for games/minute
         let session_games: usize = self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE timestamp >= ?1 AND is_fuzz = 0",
+            &format!("SELECT COUNT(*) FROM runs WHERE timestamp >= ?1 AND is_fuzz = 0{exclude_filter}"),
             params![start_time_iso],
             |r| r.get(0),
         )?;
@@ -804,7 +826,7 @@ mod tests {
         db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false, None)
             .unwrap();
 
-        let stats = db.stats(60, "2024-01-01T00:00:00Z", None).unwrap();
+        let stats = db.stats(60, "2024-01-01T00:00:00Z", None, &[]).unwrap();
         assert_eq!(stats.total_games, 3);
         assert_eq!(stats.passed, 2);
         assert_eq!(stats.failed, 1);
