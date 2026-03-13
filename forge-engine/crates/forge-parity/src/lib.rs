@@ -22,6 +22,7 @@ pub mod deck_generator;
 pub mod deterministic_agent;
 pub mod gui_repro;
 pub mod java_bridge;
+pub mod java_cache;
 pub mod java_random;
 pub mod parity_card_map;
 pub mod parity_id;

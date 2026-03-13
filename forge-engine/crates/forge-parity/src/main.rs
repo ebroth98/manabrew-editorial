@@ -47,6 +47,7 @@ use forge_carddb::CardDatabase;
 use forge_parity::card_pool::CardPool;
 use forge_parity::comparator;
 use forge_parity::deck_generator;
+use forge_parity::java_cache::{self, JavaCache};
 use forge_parity::java_bridge::{
     JavaBridge, JavaBridgeConfig, JavaBridgeError, JavaMatchupData, JavaServer, JavaServerConfig,
 };
@@ -212,6 +213,14 @@ struct Cli {
     /// GitHub repo for issues in owner/repo format
     #[arg(long)]
     github_repo: Option<String>,
+
+    /// Disable Java output cache (always run Java)
+    #[arg(long)]
+    no_cache: bool,
+
+    /// Directory for the Java output cache (default: .parity-cache)
+    #[arg(long, default_value = ".parity-cache")]
+    cache_dir: String,
 }
 
 /// Resolve issue_threshold: CLI flag > env var > default (5)
@@ -1121,6 +1130,36 @@ fn run_matrix_mode(cli: &Cli) {
         None
     };
 
+    // Open Java output cache (unless --no-cache).
+    // Source hash covers all Java source + deck definitions — when any of
+    // these change the entire cache is wiped automatically.
+    let java_cache: Option<JavaCache> = if !cli.no_cache && cli.java_jar.is_some() {
+        let project_root = std::env::current_dir().unwrap_or_default();
+        let source_hash = if project_root.join("forge/forge-harness/src").exists() {
+            java_cache::compute_source_hash(&project_root)
+        } else if let Some(ref jar) = cli.java_jar {
+            java_cache::compute_jar_hash(jar).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        match JavaCache::open(std::path::Path::new(&cli.cache_dir), source_hash) {
+            Ok(c) => {
+                eprintln!(
+                    "[parity] Java cache: {} (hash={})",
+                    cli.cache_dir,
+                    c.source_hash()
+                );
+                Some(c)
+            }
+            Err(e) => {
+                eprintln!("[parity] Failed to open Java cache: {} (continuing without)", e);
+                None
+            }
+        }
+    } else {
+        None
+    };
+
     // Two-phase execution: run all Rust games first (very fast), then feed
     // Java servers with streaming comparison. This maximizes Java server
     // utilization — servers are never idle waiting for Rust to finish.
@@ -1162,19 +1201,44 @@ fn run_matrix_mode(cli: &Cli) {
         eprintln!("[parity] Phase 1 complete: all Rust games finished");
     }
 
-    // Phase 2: Run Java games with streaming comparison against Rust results.
-    // Java servers run at 100% utilization since all Rust results are ready.
+    // Phase 2: Compare Rust results against Java output.
+    // Uses cached Java output when available, falling back to live Java.
+    let cache_hits = AtomicUsize::new(0);
+    let cache_misses = AtomicUsize::new(0);
     let results: Vec<MatchupResult> = rust_phase
         .par_iter()
         .map(|(config, rust_result)| {
             let result = match rust_result {
                 Ok(trace) => {
+                    // Check Java cache first
+                    if let Some(ref cache) = java_cache {
+                        if let Some(cached_java) = cache.get(
+                            &config.deck1,
+                            &config.deck2,
+                            config.seed,
+                            config.max_turns,
+                            config.prefer_actions,
+                        ) {
+                            cache_hits.fetch_add(1, Ordering::Relaxed);
+                            let mut result = compare_snapshots(
+                                config,
+                                &trace.snapshots,
+                                &trace.decisions,
+                                &cached_java,
+                            );
+                            result.covered_cards = trace.covered_cards.clone();
+                            result.mechanic_signals = trace.mechanic_signals.clone();
+                            return result;
+                        }
+                        cache_misses.fetch_add(1, Ordering::Relaxed);
+                    }
+
+                    // Cache miss — run Java live and cache the result
                     if let Some(ref pool) = pool {
-                        run_java_streaming_compare_pool(config, trace, pool)
+                        run_java_compare_and_cache(config, trace, pool, &java_cache)
                     } else if let Some(ref jar_path) = cli.java_jar {
                         run_java_streaming_compare_oneshot(config, trace, jar_path)
                     } else {
-                        // No Java — Rust-only result
                         build_rust_only_result(config, trace)
                     }
                 }
@@ -1235,6 +1299,22 @@ fn run_matrix_mode(cli: &Cli) {
         pool.shutdown();
     }
 
+    // Log cache stats
+    let hits = cache_hits.load(Ordering::Relaxed);
+    let misses = cache_misses.load(Ordering::Relaxed);
+    if hits + misses > 0 {
+        eprintln!(
+            "[parity] Java cache: {} hits, {} misses ({:.0}% hit rate)",
+            hits,
+            misses,
+            if hits + misses > 0 {
+                (hits as f64 / (hits + misses) as f64) * 100.0
+            } else {
+                0.0
+            }
+        );
+    }
+
     let passed = results
         .iter()
         .filter(|r| r.status == MatchupStatus::Pass)
@@ -1272,6 +1352,72 @@ fn run_matrix_mode(cli: &Cli) {
 
 /// Run Java via server pool with streaming comparison against pre-computed Rust trace.
 /// Compares each Java snapshot as it arrives, skipping JSON parsing after divergence.
+/// Run Java via pool, compare against Rust trace, and cache the Java output on pass.
+/// Uses a non-streaming run so the full `JavaMatchupData` is available for caching.
+fn run_java_compare_and_cache(
+    config: &RunConfig,
+    rust_trace: &forge_parity::protocol::GameTrace,
+    pool: &ServerPool,
+    cache: &Option<JavaCache>,
+) -> MatchupResult {
+    // Run Java (collect all data — needed for caching)
+    let java_data = match pool.run_matchup_streaming(
+        &config.deck1,
+        &config.deck2,
+        config.seed,
+        config.max_turns,
+        config.prefer_actions,
+        |_, _| true, // collect all snapshots
+    ) {
+        Ok(data) => data,
+        Err(e) => {
+            return MatchupResult {
+                deck1: config.deck1.clone(),
+                deck2: config.deck2.clone(),
+                seed: config.seed,
+                status: MatchupStatus::Error,
+                snapshots_compared: 0,
+                divergence_count: 0,
+                first_divergence: None,
+                error_message: Some(format!("Java server error: {}", e)),
+                trace: None,
+                java_trace: None,
+                covered_cards: rust_trace.covered_cards.clone(),
+                mechanic_signals: rust_trace.mechanic_signals.clone(),
+                finished_turn: None,
+            };
+        }
+    };
+
+    let mut result = compare_snapshots(
+        config,
+        &rust_trace.snapshots,
+        &rust_trace.decisions,
+        &java_data,
+    );
+    result.covered_cards = rust_trace.covered_cards.clone();
+    result.mechanic_signals = rust_trace.mechanic_signals.clone();
+
+    // Cache on pass
+    if result.status == MatchupStatus::Pass {
+        if let Some(ref cache) = cache {
+            let _ = cache.put(
+                &config.deck1,
+                &config.deck2,
+                config.seed,
+                config.max_turns,
+                config.prefer_actions,
+                &java_data,
+            );
+        }
+    }
+
+    result
+}
+
+/// Run Java via server pool with streaming comparison against pre-computed Rust trace.
+/// Compares each Java snapshot as it arrives, skipping JSON parsing after divergence.
+#[allow(dead_code)]
 fn run_java_streaming_compare_pool(
     config: &RunConfig,
     rust_trace: &forge_parity::protocol::GameTrace,
@@ -2060,12 +2206,14 @@ fn run_continuous_mode(cli: &Cli) {
     };
 
     let max_games = cli.max_games.unwrap_or(100);
-    eprintln!(
-        "[parity] Continuous mode: max_games={}, threshold={:.1}%, db={}",
-        max_games,
-        cli.threshold * 100.0,
-        cli.db_path
-    );
+    if cli.verbose {
+        eprintln!(
+            "[parity] Continuous mode: max_games={}, threshold={:.1}%, db={}",
+            max_games,
+            cli.threshold * 100.0,
+            cli.db_path
+        );
+    }
 
     // Open database
     let db = match Storage::open(&cli.db_path) {
@@ -2096,11 +2244,13 @@ fn run_continuous_mode(cli: &Cli) {
         eprintln!("[parity] No preset decks found in {}", dd);
         std::process::exit(1);
     }
-    eprintln!(
-        "[parity] Using {} preset decks: {:?}",
-        deck_names.len(),
-        deck_names
-    );
+    if cli.verbose {
+        eprintln!(
+            "[parity] Using {} preset decks: {:?}",
+            deck_names.len(),
+            deck_names
+        );
+    }
 
     // Initialize scheduler
     let fuzz_db = if cli.fuzz_per_batch > 0 {
@@ -2178,27 +2328,29 @@ fn run_continuous_mode(cli: &Cli) {
         }
 
         // Progress logging
-        let status_char = match result.status {
-            MatchupStatus::Pass => "\x1b[32mPASS\x1b[0m",
-            MatchupStatus::Fail => "\x1b[31mFAIL\x1b[0m",
-            MatchupStatus::Error => "\x1b[33mERROR\x1b[0m",
-        };
-        let current_rate = if passed + failed > 0 {
-            passed as f64 / (passed + failed) as f64
-        } else {
-            0.0
-        };
-        eprintln!(
-            "[parity] [{}/{}] {} vs {} seed={} {} (rate={:.1}%, {}ms)",
-            completed,
-            max_games,
-            short_deck(&job.deck1),
-            short_deck(&job.deck2),
-            job.seed,
-            status_char,
-            current_rate * 100.0,
-            duration_ms
-        );
+        if cli.verbose {
+            let status_char = match result.status {
+                MatchupStatus::Pass => "\x1b[32mPASS\x1b[0m",
+                MatchupStatus::Fail => "\x1b[31mFAIL\x1b[0m",
+                MatchupStatus::Error => "\x1b[33mERROR\x1b[0m",
+            };
+            let current_rate = if passed + failed > 0 {
+                passed as f64 / (passed + failed) as f64
+            } else {
+                0.0
+            };
+            eprintln!(
+                "[parity] [{}/{}] {} vs {} seed={} {} (rate={:.1}%, {}ms)",
+                completed,
+                max_games,
+                short_deck(&job.deck1),
+                short_deck(&job.deck2),
+                job.seed,
+                status_char,
+                current_rate * 100.0,
+                duration_ms
+            );
+        }
     }
 
     server.shutdown();
@@ -2785,10 +2937,12 @@ fn run_analyze_only(cli: &Cli) {
     use std::sync::atomic::AtomicBool;
     use std::sync::Arc;
 
-    eprintln!(
-        "[parity] Analyze-only mode: db={}, poll={}s, summary={}s, threshold={}",
-        cli.db_path, cli.poll_interval, cli.summary_interval, cli.issue_threshold
-    );
+    if cli.verbose {
+        eprintln!(
+            "[parity] Analyze-only mode: db={}, poll={}s, summary={}s, threshold={}",
+            cli.db_path, cli.poll_interval, cli.summary_interval, cli.issue_threshold
+        );
+    }
 
     let db = match Storage::open(&cli.db_path) {
         Ok(db) => db,

@@ -261,8 +261,10 @@ impl CapturingAgent {
     }
 
     fn record_decision(&self, kind: &str, options: Vec<String>, choice: String) {
-        let rng_count = self.inner.rng_call_count();
-        eprintln!("[decision rng#{} P{} {} {}]", rng_count, self.player_id.0, kind, choice);
+        if self.verbose {
+            let rng_count = self.inner.rng_call_count();
+            eprintln!("[decision rng#{} P{} {} {}]", rng_count, self.player_id.0, kind, choice);
+        }
         self.shared_decisions.lock().unwrap().push(DecisionRecord {
             turn: self.current_turn,
             phase: self.current_phase.clone(),
@@ -352,8 +354,10 @@ impl PlayerAgent for CapturingAgent {
 
     fn notify_phase_changed(&mut self, phase: forge_foundation::PhaseType) {
         self.current_phase = format!("{:?}", phase);
-        let rng_count = self.inner.rng_call_count();
-        eprintln!("[phase P{} {:?} rng#{}]", self.player_id.0, phase, rng_count);
+        if self.verbose {
+            let rng_count = self.inner.rng_call_count();
+            eprintln!("[phase P{} {:?} rng#{}]", self.player_id.0, phase, rng_count);
+        }
         self.inner.notify_phase_changed(phase);
     }
 

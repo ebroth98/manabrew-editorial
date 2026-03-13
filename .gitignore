@@ -33,8 +33,9 @@ src-tauri/target/
 # Secrets
 .env
 
-# Parity database
+# Parity database & cache
 parity.db
+.parity-cache/
 
 # Java / Maven
 forge/target/

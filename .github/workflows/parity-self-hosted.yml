@@ -1,4 +1,4 @@
-name: Parity tests go BRRRR
+name: Parity regression
 
 on:
   pull_request:
@@ -25,6 +25,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Restore Java cache
+        uses: actions/cache@v4
+        with:
+          path: .parity-cache
+          key: parity-java-${{ hashFiles('forge/forge-harness/src/**', 'forge/forge-game/src/**', 'forge/forge-core/src/**', 'forge/forge-ai/src/**', 'preset_decks/**') }}
 
       - name: Build Java parity harness JAR
         working-directory: forge

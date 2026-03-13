@@ -38,3 +38,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "json"], optio
 reqwest = { version = "0.12", features = ["json"], optional = true }
 futures = { version = "0.3", optional = true }
 glob = { version = "0.3", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
