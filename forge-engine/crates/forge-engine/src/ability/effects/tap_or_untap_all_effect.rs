@@ -42,7 +42,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let mut cards: Vec<CardId> = Vec::new();
     for &pid in &ctx.game.player_order {
-        for cid in ctx.game.cards_in_zone(ZoneType::Battlefield, pid).iter().copied() {
+        for cid in ctx
+            .game
+            .cards_in_zone(ZoneType::Battlefield, pid)
+            .iter()
+            .copied()
+        {
             if let Some(ref allowed) = restrict_controllers {
                 if !allowed.contains(&ctx.game.card(cid).controller) {
                     continue;

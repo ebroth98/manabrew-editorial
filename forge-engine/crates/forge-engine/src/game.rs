@@ -69,6 +69,12 @@ pub struct GameState {
 
     // Next card ID counter
     next_card_id: u32,
+
+    /// Monotonically increasing counter for zone-entry timestamps.
+    /// Each time a card enters a zone, it gets the next value.
+    /// Used to order same-player triggers by zone entry order,
+    /// matching Java's `Zone.cardList` insertion order.
+    next_zone_timestamp: u64,
 }
 
 impl GameState {
@@ -117,6 +123,7 @@ impl GameState {
             end_combat_requested: false,
             extra_combat_phases: 0,
             next_card_id: 0,
+            next_zone_timestamp: 0,
         }
     }
 
@@ -206,6 +213,15 @@ impl GameState {
             .filter(|&&cid| self.card(cid).is_creature())
             .copied()
             .collect()
+    }
+
+    /// Assign the next zone timestamp to a card, returning the value.
+    /// Called whenever a card enters a new zone to track insertion order.
+    pub fn assign_zone_timestamp(&mut self, card_id: CardId) -> u64 {
+        let ts = self.next_zone_timestamp;
+        self.next_zone_timestamp += 1;
+        self.cards[card_id.index()].zone_timestamp = ts;
+        ts
     }
 
     /// Get all lands on the battlefield for a player.

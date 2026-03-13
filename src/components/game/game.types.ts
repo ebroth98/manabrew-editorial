@@ -139,4 +139,8 @@ export interface RightActionPanelProps {
   snapshots: GameSnapshotEntry[];
   canRestoreSnapshots: boolean;
   onRestoreSnapshot: (checkpointId: number) => void;
+  // Pay mana cost (inline in action panel)
+  payManaCostInfo: { cardName: string; manaCost: string; manaPool: Record<string, number> } | null;
+  onPayManaCost: () => void;
+  onCancelManaCost: () => void;
 }

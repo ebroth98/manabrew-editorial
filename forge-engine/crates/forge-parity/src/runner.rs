@@ -268,7 +268,10 @@ impl CapturingAgent {
     fn record_decision(&self, kind: &str, options: Vec<String>, choice: String) {
         if self.verbose {
             let rng_count = self.inner.rng_call_count();
-            eprintln!("[decision rng#{} P{} {} {}]", rng_count, self.player_id.0, kind, choice);
+            eprintln!(
+                "[decision rng#{} P{} {} {}]",
+                rng_count, self.player_id.0, kind, choice
+            );
         }
         self.shared_decisions.lock().unwrap().push(DecisionRecord {
             turn: self.current_turn,
@@ -312,7 +315,12 @@ impl PlayerAgent for CapturingAgent {
         self.ability_is_mana.clear();
         self.last_game_state = Some(game.clone());
         for c in &game.cards {
-            self.card_names.insert(c.id, c.card_name.clone());
+            let name = if c.face_down {
+                String::new()
+            } else {
+                c.card_name.clone()
+            };
+            self.card_names.insert(c.id, name);
             self.card_is_land.insert(c.id, c.is_land());
             for ab in &c.activated_abilities {
                 self.ability_is_mana
@@ -361,7 +369,10 @@ impl PlayerAgent for CapturingAgent {
         self.current_phase = format!("{:?}", phase);
         if self.verbose {
             let rng_count = self.inner.rng_call_count();
-            eprintln!("[phase P{} {:?} rng#{}]", self.player_id.0, phase, rng_count);
+            eprintln!(
+                "[phase P{} {:?} rng#{}]",
+                self.player_id.0, phase, rng_count
+            );
         }
         self.inner.notify_phase_changed(phase);
     }
@@ -399,9 +410,7 @@ impl PlayerAgent for CapturingAgent {
                 format!("LAND:{}", self.card_name(cid))
             } else {
                 let fb_tag = match play.mode {
-                    PlayCardMode::Alternative(AlternativeCost::Flashback) => {
-                        "[FB]"
-                    }
+                    PlayCardMode::Alternative(AlternativeCost::Flashback) => "[FB]",
                     _ => "",
                 };
                 format!("SPELL:{}{}", self.card_name(cid), fb_tag)
@@ -422,64 +431,69 @@ impl PlayerAgent for CapturingAgent {
                 EntryKind::Ability(cid, ab_idx),
             ));
         }
+        // Sort entries using a concatenated pipe-delimited string key, matching
+        // Java's ParityOrder.actionSortKey() which concatenates fields into a single
+        // string.  Using tuple comparison would differ for multi-digit parity IDs
+        // because tuple compares element-by-element ("1" < "11") while concatenated
+        // string comparison sees "1|" > "11|" (since '|' > '1').
         entries.sort_by(|a, b| {
-            let key = |(label, kind): &(String, EntryKind)| match *kind {
-                EntryKind::Card(cid) => (
-                    label.clone(),
-                    "0".to_string(),
-                    self.parity_map.id(cid.card_id).to_string(),
-                    match cid.mode {
-                        PlayCardMode::Normal => "0".to_string(),
-                        PlayCardMode::Alternative(AlternativeCost::Flashback) => {
-                            "Flashback".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Spectacle) => {
-                            "Spectacle".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Evoke) => {
-                            "Evoke".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Dash) => {
-                            "Dash".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Blitz) => {
-                            "Blitz".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Escape) => {
-                            "Escape".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Overload) => {
-                            "Overload".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Madness) => {
-                            "Madness".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Foretell) => {
-                            "Foretell".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Emerge) => {
-                            "Emerge".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Suspend) => {
-                            "Suspend".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Morph)
-                        | PlayCardMode::Alternative(AlternativeCost::Megamorph) => {
-                            "Morph".to_string()
-                        }
-                        PlayCardMode::Alternative(AlternativeCost::Bestow) => {
-                            "Bestow".to_string()
-                        }
-                        PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
-                        PlayCardMode::ForetellExile => "ForetellExile".to_string(),
-                    },
-                ),
-                EntryKind::Ability(cid, idx) => (
-                    label.clone(),
-                    "1".to_string(),
-                    self.parity_map.id(cid).to_string(),
-                    idx.to_string(),
-                ),
+            let key = |(label, kind): &(String, EntryKind)| -> String {
+                match *kind {
+                    EntryKind::Card(cid) => {
+                        let variant = match cid.mode {
+                            PlayCardMode::Normal => "0".to_string(),
+                            PlayCardMode::Alternative(AlternativeCost::Flashback) => {
+                                "Flashback".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Spectacle) => {
+                                "Spectacle".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Evoke) => {
+                                "Evoke".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Dash) => "Dash".to_string(),
+                            PlayCardMode::Alternative(AlternativeCost::Blitz) => {
+                                "Blitz".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Escape) => {
+                                "Escape".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Overload) => {
+                                "Overload".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Madness) => {
+                                "Madness".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Foretell) => {
+                                "Foretell".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Emerge) => {
+                                "Emerge".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Suspend) => {
+                                "Suspend".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Morph)
+                            | PlayCardMode::Alternative(AlternativeCost::Megamorph) => {
+                                "Morph".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Bestow) => {
+                                "Bestow".to_string()
+                            }
+                            PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
+                            PlayCardMode::ForetellExile => "ForetellExile".to_string(),
+                        };
+                        format!(
+                            "{}|0|{}|{}",
+                            label,
+                            self.parity_map.id(cid.card_id),
+                            variant
+                        )
+                    }
+                    EntryKind::Ability(cid, idx) => {
+                        format!("{}|1|{}|{:05}", label, self.parity_map.id(cid), idx)
+                    }
+                }
             };
             key(a).cmp(&key(b))
         });
@@ -773,6 +787,10 @@ impl PlayerAgent for CapturingAgent {
             .choose_target_any(player, valid_players, valid_cards)
     }
 
+    fn choose_legend_keep(&mut self, player: PlayerId, duplicates: &[CardId]) -> CardId {
+        self.inner.choose_legend_keep(player, duplicates)
+    }
+
     fn choose_sacrifice(&mut self, player: PlayerId, valid: &[CardId]) -> Option<CardId> {
         self.inner.choose_sacrifice(player, valid)
     }
@@ -886,7 +904,9 @@ impl PlayerAgent for CapturingAgent {
         min: usize,
         max: usize,
     ) -> Vec<GameEntity> {
-        let chosen = self.inner.choose_entities_for_effect(player, candidates, min, max);
+        let chosen = self
+            .inner
+            .choose_entities_for_effect(player, candidates, min, max);
         let format_entity = |e: &GameEntity| -> String {
             match e {
                 GameEntity::Player(pid) => format!("Player({})", pid.index()),
@@ -948,9 +968,9 @@ impl PlayerAgent for CapturingAgent {
         max: usize,
         _select_prompt: &str,
     ) -> Vec<CardId> {
-        let chosen = self
-            .inner
-            .choose_cards_for_zone_change(player, valid, min, max, _select_prompt);
+        let chosen =
+            self.inner
+                .choose_cards_for_zone_change(player, valid, min, max, _select_prompt);
         let options: Vec<String> = valid
             .iter()
             .map(|&cid| {

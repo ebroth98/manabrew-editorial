@@ -12,7 +12,11 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let defined = sa.params.get("Defined").map(|s| s.as_str()).unwrap_or("You");
+    let defined = sa
+        .params
+        .get("Defined")
+        .map(|s| s.as_str())
+        .unwrap_or("You");
     let choosers = resolve_defined_players(defined, controller, ctx.game);
 
     let valid_players: Vec<_> = if let Some(choices) = sa.params.get("Choices") {

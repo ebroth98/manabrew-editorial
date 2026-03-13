@@ -174,7 +174,7 @@ interface GameState {
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
   // Actions
-  startGame: (deckList: { name: string, setCode: string }[], formatId?: string, commanderName?: string) => Promise<void>;
+  startGame: (deckList: { name: string, setCode: string }[], formatId?: string, commanderName?: string, opponentDeckList?: { name: string, setCode: string }[]) => Promise<void>;
   startMultiplayerGame: (
     playerNames: string[],
     deckLists: { name: string, setCode: string }[][],
@@ -342,7 +342,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setGameConfig: (config) => set({ gameConfig: config }),
 
-  startGame: async (deckList, formatId, commanderName) => {
+  startGame: async (deckList, formatId, commanderName, opponentDeckList) => {
     try {
       set({ debugInfo: 'Starting game...' });
       const format = formatId ? getFormat(formatId) : undefined;
@@ -353,6 +353,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         deckList: deckList,
         startingLife,
         commanderName: commanderName ?? null,
+        opponentDeckList: opponentDeckList ?? null,
       });
       // Clear old game state so stale gameView/prompts don't bleed into new game
       set({ isGameActive: true, gameLog: [], snapshots: [], gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, debugInfo: `Game started: ${result}. Polling...` });

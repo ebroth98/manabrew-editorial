@@ -1,0 +1,22 @@
+{
+  "label": "Pauper Mono Red Madness",
+  "desc": "Real Pauper deck: Kessig Flamebreather + Madness discard-burn (MisterTwin, 1st Pauper Challenge 2026-03-08)",
+  "color": "text-red-500",
+  "opponent": "real_mono_white_weenie",
+  "ai_eligible": false,
+  "order": 100,
+  "cards": [
+    { "name": "Mountain", "count": 18 },
+    { "name": "Kessig Flamebreather", "count": 4 },
+    { "name": "Guttersnipe", "count": 3 },
+    { "name": "Voldaren Epicure", "count": 4 },
+    { "name": "Sneaky Snacker", "count": 4 },
+    { "name": "Lightning Bolt", "count": 4 },
+    { "name": "Lava Dart", "count": 4 },
+    { "name": "Fiery Temper", "count": 4 },
+    { "name": "Faithless Looting", "count": 4 },
+    { "name": "Fireblast", "count": 3 },
+    { "name": "Grab the Prize", "count": 4 },
+    { "name": "Highway Robbery", "count": 4 }
+  ]
+}

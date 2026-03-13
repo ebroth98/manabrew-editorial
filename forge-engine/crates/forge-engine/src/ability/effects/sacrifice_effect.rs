@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, matches_change_type, EffectContext};
+use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
@@ -26,6 +26,17 @@ fn do_sacrifice(
         return;
     }
     let owner = ctx.game.card(card_id).owner;
+
+    // Capture +1/+1 counter count BEFORE the card moves to graveyard.
+    // Needed for Modular death triggers which move counters to target
+    // artifact creature (CR 702.43b). Counters are cleared during move_card.
+    let lki_p1p1 = *ctx
+        .game
+        .card(card_id)
+        .counters
+        .get(&crate::card::CounterType::P1P1)
+        .unwrap_or(&0);
+
     // Fire Sacrificed trigger
     ctx.trigger_handler.run_trigger(
         TriggerType::Sacrificed,
@@ -37,11 +48,14 @@ fn do_sacrifice(
         false,
     );
     ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
-    emit_zone_trigger(
+    // Use LKI-aware zone trigger so Modular death triggers get the correct
+    // counter count via trigger_remembered_amount.
+    emit_zone_trigger_with_lki_counters(
         ctx.trigger_handler,
         card_id,
         ZoneType::Battlefield,
         ZoneType::Graveyard,
+        lki_p1p1,
     );
     // Fire Exploited trigger when the sacrifice is from the Exploit keyword
     if let Some(source_id) = exploit_source {
@@ -130,27 +144,36 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // When Optional$ True, Java uses choosePermanentsToSacrifice(min=0, max=amount)
         // which allows the player to sacrifice fewer than `amount` creatures.
         // We match this by collecting all chosen cards at once via choose_cards_for_effect.
-        if optional && !sac_valid.eq_ignore_ascii_case("Self") && defined.strip_prefix("carduid_").is_none() {
+        if optional
+            && !sac_valid.eq_ignore_ascii_case("Self")
+            && defined.strip_prefix("carduid_").is_none()
+        {
             let valid: Vec<_> = ctx
                 .game
                 .cards_in_zone(ZoneType::Battlefield, sacrificing_player)
                 .to_vec()
                 .into_iter()
                 .filter(|&cid| matches_change_type(ctx.game.card(cid), &sac_valid, &[]))
-                .filter(|&cid| !crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
-                    &ctx.game.cards,
-                    ctx.game.card(cid),
-                    Some(sa),
-                    false,
-                ))
+                .filter(|&cid| {
+                    !crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
+                        &ctx.game.cards,
+                        ctx.game.card(cid),
+                        Some(sa),
+                        false,
+                    )
+                })
                 .collect();
 
             let min_targets = if is_strict { amount } else { 0 };
             let chosen = if valid.is_empty() {
                 vec![]
             } else {
-                ctx.agents[sacrificing_player.index()]
-                    .choose_cards_for_effect(sacrificing_player, &valid, min_targets, amount)
+                ctx.agents[sacrificing_player.index()].choose_cards_for_effect(
+                    sacrificing_player,
+                    &valid,
+                    min_targets,
+                    amount,
+                )
             };
 
             for card_id in chosen {

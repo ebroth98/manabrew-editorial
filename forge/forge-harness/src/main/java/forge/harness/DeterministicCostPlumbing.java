@@ -778,8 +778,11 @@ final class DeterministicCostPlumbing {
                 sameType = true;
                 type = type.replace(".sharesCreatureTypeWith", "");
             }
+            int totalPowerRequired = -1;
             if (type.contains("+withTotalPowerGE")) {
-                type = type.replaceAll("\\+withTotalPowerGE.*$", "");
+                final String[] parts = type.split("\\+withTotalPowerGE");
+                type = parts[0];
+                totalPowerRequired = Integer.parseInt(parts[1].replaceAll("[^0-9]", ""));
             }
             CardCollection list = CardLists.getValidCards(
                     player.getCardsIn(ZoneType.Battlefield),
@@ -793,6 +796,25 @@ final class DeterministicCostPlumbing {
             list = CardLists.filter(list, ability.isCrew() ? CardPredicates.CAN_CREW : CardPredicates.CAN_TAP);
             if (list.isEmpty()) {
                 return null;
+            }
+            // Crew / withTotalPowerGE: select creatures greedily (highest power first)
+            // until total power meets the threshold, matching the engine's canPay check.
+            if (totalPowerRequired >= 0) {
+                if (CardLists.getTotalPower(list, ability) < totalPowerRequired) {
+                    return null;
+                }
+                // Sort by power descending so we tap fewer creatures.
+                list.sort((a, b) -> b.getNetPower() - a.getNetPower());
+                final CardCollection selected = new CardCollection();
+                int accum = 0;
+                for (final Card c : list) {
+                    selected.add(c);
+                    accum += c.getNetPower();
+                    if (accum >= totalPowerRequired) {
+                        break;
+                    }
+                }
+                return accum >= totalPowerRequired ? PaymentDecision.card(selected) : null;
             }
             final int amount = cost.getAbilityAmount(ability);
             if (sameType) {

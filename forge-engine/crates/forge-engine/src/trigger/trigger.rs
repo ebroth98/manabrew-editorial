@@ -122,6 +122,10 @@ pub enum TriggerMode {
     Transformed {
         valid_card: Option<String>,
     },
+    /// A face-down creature was turned face up (Morph/Megamorph).
+    TurnFaceUp {
+        valid_card: Option<String>,
+    },
     /// An aura/equipment was attached.
     Attached {
         valid_card: Option<String>,
@@ -859,6 +863,7 @@ impl TriggerMode {
             TriggerMode::Taps { valid_card }
             | TriggerMode::Untaps { valid_card }
             | TriggerMode::Transformed { valid_card }
+            | TriggerMode::TurnFaceUp { valid_card }
             | TriggerMode::Attached { valid_card }
             | TriggerMode::Unattached { valid_card }
             | TriggerMode::LandPlayed { valid_card }
@@ -1411,6 +1416,10 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Transformed" => {
             let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Transformed { valid_card }
+        }
+        "TurnFaceUp" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::TurnFaceUp { valid_card }
         }
         "Attached" => {
             let valid_card = params.get("ValidCard").cloned();

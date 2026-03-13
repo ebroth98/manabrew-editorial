@@ -26,6 +26,7 @@ pub mod choose_source_effect;
 pub mod choose_type_effect;
 pub mod cleanup_effect;
 pub mod clone_effect;
+pub mod connive_effect;
 pub mod control_gain_effect;
 pub mod control_gain_variant_effect;
 pub mod copy_permanent_effect;
@@ -220,6 +221,7 @@ effect_dispatch! {
     "ChooseDirection" => choose_direction_effect::resolve,
     "ChooseEvenOdd" => choose_even_odd_effect::resolve,
     "Clone" => clone_effect::resolve,
+    "Connive" => connive_effect::resolve,
     "ControlGainVariant" => control_gain_variant_effect::resolve,
     "RepeatEach" => repeat_each_effect::resolve,
     "Shuffle" => shuffle_effect::resolve,
@@ -723,6 +725,8 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "ControlGain"
     } else if ability.contains("$ Fight") {
         "Fight"
+    } else if ability.contains("$ Connive") {
+        "Connive"
     } else if ability.contains("$ Discard") {
         "Discard"
     } else if ability.contains("$ Attach") {
@@ -991,6 +995,10 @@ pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
             return if sa.kicked { kicked_val } else { normal_val };
         }
     }
+    // Number$N — literal numeric SVar (e.g. "Number$2" set by LoseLife for AFLifeLost)
+    if let Some(rest) = expr.strip_prefix("Number$") {
+        return rest.trim().parse::<i32>().unwrap_or(0);
+    }
     // Fallback: try parsing as integer
     expr.parse::<i32>().unwrap_or(0)
 }
@@ -1022,6 +1030,10 @@ pub fn resolve_count_svar_for_sa(
     sa: &SpellAbility,
 ) -> i32 {
     use forge_foundation::ZoneType;
+
+    if expr == "Count$TriggerRememberAmount" {
+        return sa.trigger_remembered_amount;
+    }
 
     if expr == "Count$Converge" || expr == "Count$Sunburst" {
         return game.card(source_id).sunburst_count();
@@ -1217,7 +1229,9 @@ fn valid_card_matches_with_source(
     for &dot_qual in &parts[1..] {
         for sub_qual in dot_qual.split('+') {
             let sub_qual = sub_qual.trim();
-            if sub_qual.eq_ignore_ascii_case("YouCtrl") || sub_qual.eq_ignore_ascii_case("YouControl") {
+            if sub_qual.eq_ignore_ascii_case("YouCtrl")
+                || sub_qual.eq_ignore_ascii_case("YouControl")
+            {
                 if card.controller != controller {
                     return false;
                 }
@@ -1298,7 +1312,7 @@ pub fn resolve_defined_player(
             let opp = game.opponent_of(controller);
             Some(opp)
         }
-        "DefendingPlayer" => Some(game.opponent_of(controller)),
+        "DefendingPlayer" | "TriggeredDefendingPlayer" => Some(game.opponent_of(controller)),
         _ => None,
     }
 }
@@ -1314,7 +1328,7 @@ pub fn resolve_defined_players(
     match defined {
         "You" => vec![controller],
         "Opponent" | "OpponentCtrl" => vec![game.opponent_of(controller)],
-        "DefendingPlayer" => vec![game.opponent_of(controller)],
+        "DefendingPlayer" | "TriggeredDefendingPlayer" => vec![game.opponent_of(controller)],
         "Each" | "All" | "Player" => game.alive_players(),
         _ => {
             // Fall back to single-player resolution
@@ -1591,6 +1605,29 @@ pub fn emit_zone_trigger(
             card: Some(card_id),
             origin: Some(origin),
             destination: Some(destination),
+            ..Default::default()
+        },
+        false,
+    );
+}
+
+/// Like `emit_zone_trigger` but carries LKI +1/+1 counter count.
+/// Used when a creature with Modular dies so the death trigger can move
+/// the correct number of counters (not just the static Modular:N value).
+pub fn emit_zone_trigger_with_lki_counters(
+    trigger_handler: &mut TriggerHandler,
+    card_id: CardId,
+    origin: ZoneType,
+    destination: ZoneType,
+    lki_p1p1_counters: i32,
+) {
+    trigger_handler.run_trigger(
+        TriggerType::ChangesZone,
+        RunParams {
+            card: Some(card_id),
+            origin: Some(origin),
+            destination: Some(destination),
+            lki_p1p1_counters: Some(lki_p1p1_counters),
             ..Default::default()
         },
         false,

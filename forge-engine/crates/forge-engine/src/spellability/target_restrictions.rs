@@ -160,9 +160,9 @@ impl TargetRestrictions {
 }
 
 fn has_other_qualifier(filter: &str) -> bool {
-    filter
-        .split(|c| c == '.' || c == '+')
-        .any(|part| part.eq_ignore_ascii_case("Other") || part.eq_ignore_ascii_case("StrictlyOther"))
+    filter.split(|c| c == '.' || c == '+').any(|part| {
+        part.eq_ignore_ascii_case("Other") || part.eq_ignore_ascii_case("StrictlyOther")
+    })
 }
 
 fn is_other_filter_self_hit(

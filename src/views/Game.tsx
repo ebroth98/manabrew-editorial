@@ -33,6 +33,20 @@ import {
 import { cn } from "@/lib/utils";
 import { Navigate, useLocation } from "react-router-dom";
 
+/** Prompt types where hover card preview is allowed (no modal overlay). */
+const HOVER_ALLOWED_PROMPTS = new Set([
+  "chooseAction",
+  "chooseAttackers",
+  "chooseBlockers",
+  "chooseTargetPlayer",
+  "chooseTargetCard",
+  "chooseTargetAny",
+  "chooseTargetCardFromZone",
+  "chooseTargetSpell",
+  "payManaCost",
+  "gameOver",
+]);
+
 export default function Game() {
   const {
     gameView,
@@ -193,7 +207,7 @@ export default function Game() {
     dismissHover,
     handleFlipCard,
     handleHoverCard,
-  } = useCardHover([viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen]);
+  } = useCardHover([viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen, abilityPickerState]);
 
   // Hand drag-to-play
   const battlefieldContainerRef = useRef<HTMLDivElement>(null);
@@ -549,11 +563,27 @@ export default function Game() {
                           ? (card) => {
                               const abilities = (currentPrompt?.activatableAbilityIds ?? [])
                                 .filter((a) => a.cardId === card.id);
-                              if (abilities.length > 1) {
+                              const isManaSource = (currentPrompt?.tappableLandIds ?? []).includes(card.id);
+                              const hasManaAbility = isManaSource && !card.types.includes("Land");
+                              // If the card has both a mana ability and non-mana abilities
+                              // (e.g. Incubation Druid: tap for mana + Adapt), show the
+                              // picker so the player can choose which ability to use.
+                              if (abilities.length > 1 || (abilities.length >= 1 && hasManaAbility)) {
+                                const pickerAbilities = hasManaAbility
+                                  ? [
+                                      {
+                                        cardId: card.id,
+                                        abilityIndex: -1,
+                                        description: "{T}: Tap for mana",
+                                        isManaAbility: true,
+                                      },
+                                      ...abilities,
+                                    ]
+                                  : abilities;
                                 setAbilityPickerState({
                                   cardId: card.id,
                                   cardName: card.name,
-                                  abilities,
+                                  abilities: pickerAbilities,
                                 });
                               } else if (abilities.length === 1) {
                                 activateAbility(card.id, abilities[0].abilityIndex);
@@ -655,6 +685,17 @@ export default function Game() {
                 promptType === "chooseBlockers")
             }
             onRestoreSnapshot={restoreSnapshot}
+            payManaCostInfo={
+              promptType === "payManaCost" && currentPrompt?.manaCost != null
+                ? {
+                    cardName: currentPrompt.cardName ?? "Spell",
+                    manaCost: currentPrompt.manaCost,
+                    manaPool: currentPrompt.gameView?.players?.[0]?.manaPool ?? {},
+                  }
+                : null
+            }
+            onPayManaCost={payManaCost}
+            onCancelManaCost={cancelManaCost}
           />
       </div>
 
@@ -680,7 +721,14 @@ export default function Game() {
         onTargetSpell={(spellId) => { targetSpell(spellId); setSpellStackModalOpen(false); }}
         onCloseStack={() => setSpellStackModalOpen(false)}
         abilityPickerState={abilityPickerState}
-        onSelectAbility={(ability) => { activateAbility(abilityPickerState!.cardId, ability.abilityIndex); setAbilityPickerState(null); }}
+        onSelectAbility={(ability) => {
+          if (ability.abilityIndex === -1) {
+            tapLand(abilityPickerState!.cardId);
+          } else {
+            activateAbility(abilityPickerState!.cardId, ability.abilityIndex);
+          }
+          setAbilityPickerState(null);
+        }}
         onCancelAbilityPicker={() => setAbilityPickerState(null)}
         onMulliganDecision={mulliganDecision}
         onMulliganPutBackDecision={mulliganPutBackDecision}
@@ -702,8 +750,6 @@ export default function Game() {
         onDamageOrderDecision={(orderedBlockerIds) => respond({ type: "damageAssignmentOrderDecision", orderedBlockerIds })}
         onPayCombatCost={payCombatCost}
         onDeclineCombatCost={declineCombatCost}
-        onPayManaCost={payManaCost}
-        onCancelManaCost={cancelManaCost}
         onDelveDecision={delveDecision}
         onConvokeDecision={convokeDecision}
         onImproviseDecision={improviseDecision}
@@ -781,12 +827,12 @@ export default function Game() {
         )}
 
       {/* ── Hover card preview ────────────────────────────── */}
+      {/* Hide when any overlay modal is open or a modal-based prompt is active.
+          Allow-list approach: only show the preview for prompt types that do NOT
+          open a modal (battlefield interaction, targeting, inline panel prompts). */}
       {hoveredCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && !spellStackModalOpen &&
-       promptType !== "choosePhyrexian" && promptType !== "chooseKicker" && promptType !== "chooseBuyback" &&
-       promptType !== "chooseMultikicker" && promptType !== "chooseReplicate" &&
-       promptType !== "chooseAlternativeCost" && promptType !== "chooseMode" &&
-       promptType !== "chooseOptionalTrigger" &&
-       promptType !== "mulligan" && promptType !== "mulliganPutBack" && (
+       !abilityPickerState &&
+       (!promptType || HOVER_ALLOWED_PROMPTS.has(promptType)) && (
         <CardPreview
           card={hoveredCard}
           mouseX={mousePos.x}

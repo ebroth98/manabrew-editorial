@@ -304,6 +304,10 @@ pub struct CardInstance {
     /// True once Renown has triggered (creature dealt combat damage to a player).
     /// Mirrors Java `Card.isRenowned()`.
     pub is_renowned: bool,
+    /// Monotonically increasing timestamp set each time the card enters a zone.
+    /// Used to order same-player triggers by zone entry order, matching
+    /// Java's `Zone.cardList` insertion order used by `forEachCardInGame`.
+    pub zone_timestamp: u64,
 }
 
 impl CardInstance {
@@ -432,6 +436,7 @@ impl CardInstance {
             enlisted_this_combat: false,
             activations_this_game: std::collections::BTreeMap::new(),
             is_renowned: false,
+            zone_timestamp: 0,
         };
 
         // Generate intrinsic abilities from card properties (mirrors Java CardFactoryUtil)
@@ -536,11 +541,12 @@ impl CardInstance {
 
         // Crew: K:Crew:N → AB$ Animate (tap creatures with total power ≥N).
         // Mirrors Java CardFactoryUtil lines 3820-3835.
+        // Uses tapXType<Any/Creature.Other+withTotalPowerGE{N}> matching Java's format.
         for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
             if let Some(n_str) = kw.strip_prefix("Crew:") {
                 let n = n_str.trim();
                 let ab_text = format!(
-                    "AB$ Animate | Cost$ tapXType<{}/Creature.Other> | Defined$ Self | Types$ Artifact,Creature | Secondary$ True | SpellDescription$ Crew {}",
+                    "AB$ Animate | Cost$ tapXType<Any/Creature.Other+withTotalPowerGE{{{}}}> | Defined$ Self | Types$ Artifact,Creature | Secondary$ True | SpellDescription$ Crew {}",
                     n, n
                 );
                 let next_idx = self.activated_abilities.len();
@@ -595,6 +601,17 @@ impl CardInstance {
             if let Some(sa) = parse_static_ability(raw) {
                 self.static_abilities.push(sa);
             }
+        }
+
+        // Morph / Megamorph: mark card as castable face-down for {3}.
+        // The actual casting logic is in game_action_util (playable check + cost handling).
+        if self
+            .keywords
+            .iter()
+            .chain(self.granted_keywords.iter())
+            .any(|k| k.starts_with("Morph:") || k.starts_with("Megamorph:"))
+        {
+            self.has_morph = true;
         }
     }
 
@@ -654,6 +671,25 @@ impl CardInstance {
                         .entry("TrigAnnihilator".to_string())
                         .or_insert_with(|| {
                             format!("DB$ Sacrifice | Defined$ TriggeredDefendingPlayer | SacValid$ Permanent | Amount$ {n_str}")
+                        });
+                }
+            }
+
+            // Afflict N: when this creature becomes blocked, defending player loses N life.
+            // Mirrors Java CardFactoryUtil lines 695-708.
+            if let Some(n_str) = kw.strip_prefix("Afflict:") {
+                if n_str.parse::<i32>().is_ok() {
+                    let raw = format!(
+                        "Mode$ AttackerBlocked | ValidCard$ Card.Self | TriggerZones$ Battlefield | Secondary$ True | Execute$ TrigAfflict | TriggerDescription$ Afflict {n_str}"
+                    );
+                    if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
+                        trig.execute = "TrigAfflict".to_string();
+                        self.triggers.push(trig);
+                    }
+                    self.svars
+                        .entry("TrigAfflict".to_string())
+                        .or_insert_with(|| {
+                            format!("DB$ LoseLife | Defined$ TriggeredDefendingPlayer | LifeAmount$ {n_str}")
                         });
                 }
             }
@@ -721,7 +757,8 @@ impl CardInstance {
                 self.svars
                     .entry("TrigExploit".to_string())
                     .or_insert_with(|| {
-                        "DB$ Sacrifice | SacValid$ Creature | Optional$ True | Exploit$ True".to_string()
+                        "DB$ Sacrifice | SacValid$ Creature | Optional$ True | Exploit$ True"
+                            .to_string()
                     });
             }
 
@@ -753,9 +790,14 @@ impl CardInstance {
 
             // Modular N: enters with N +1/+1 counters; when it dies, move its +1/+1
             // counters to target artifact creature.
-            // Mirrors Java CardFactoryUtil lines 1579-1596.
+            // Mirrors Java CardFactoryUtil lines 1579-1596 & 2425-2436.
             if let Some(n_str) = kw.strip_prefix("Modular:") {
-                if n_str.parse::<i32>().is_ok() {
+                if let Ok(n) = n_str.parse::<i32>() {
+                    // ETB counters: set on the card instance so they're added as a
+                    // replacement effect when entering the battlefield (not a trigger,
+                    // because 0/0 creatures would die to SBA before triggers resolve).
+                    self.etb_counters_p1p1 += n;
+
                     // Death trigger: move counters to target artifact creature
                     let raw = format!(
                         "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self | TriggerZones$ Battlefield | Execute$ TrigModular | TriggerDescription$ Modular {n_str}"
@@ -765,18 +807,21 @@ impl CardInstance {
                         trig.optional = true;
                         self.triggers.push(trig);
                     }
-                    // Put N +1/+1 counters on target artifact creature.
+                    // Put +1/+1 counters on target artifact creature.
                     // Uses SP$ Charm with a single mode so the charm system handles
                     // target selection via choose_target_card.
+                    // CounterNum$ uses the static Modular N value as default.
+                    // At resolution time, if trigger_remembered_amount > 0
+                    // (set by LKI counter capture in the death path), that
+                    // value overrides the static N — mirroring Java's
+                    // `TriggeredCard$CardCounters.P1P1` (CR 702.43b).
                     self.svars
                         .entry("TrigModular".to_string())
-                        .or_insert_with(|| {
-                            "SP$ Charm | Choices$ ModularMove".to_string()
-                        });
+                        .or_insert_with(|| "SP$ Charm | Choices$ ModularMove".to_string());
                     self.svars
                         .entry("ModularMove".to_string())
                         .or_insert_with(|| {
-                            format!("DB$ PutCounter | Defined$ Targeted | CounterType$ P1P1 | CounterNum$ {n_str} | ValidTgts$ Creature.Artifact | SpellDescription$ Put {n_str} +1/+1 counter(s) on target artifact creature")
+                            format!("DB$ PutCounter | Defined$ Targeted | CounterType$ P1P1 | CounterNum$ {n_str} | Modular$ true | ValidTgts$ Creature.Artifact | SpellDescription$ Put +1/+1 counter(s) on target artifact creature")
                         });
                 }
             }
@@ -794,9 +839,7 @@ impl CardInstance {
                 }
                 self.svars
                     .entry("TrigWard".to_string())
-                    .or_insert_with(|| {
-                        format!("DB$ Counter | UnlessCost$ {cost_str}")
-                    });
+                    .or_insert_with(|| format!("DB$ Counter | UnlessCost$ {cost_str}"));
             }
 
             // Exalted — whenever a creature you control attacks alone, it gets +1/+1 until EOT.
@@ -810,7 +853,8 @@ impl CardInstance {
                 self.svars
                     .entry("TrigExalted".to_string())
                     .or_insert_with(|| {
-                        "DB$ Pump | Defined$ TriggeredAttacker | NumAtt$ +1 | NumDef$ +1".to_string()
+                        "DB$ Pump | Defined$ TriggeredAttacker | NumAtt$ +1 | NumDef$ +1"
+                            .to_string()
                     });
             }
 
@@ -866,9 +910,7 @@ impl CardInstance {
                     });
                 self.svars
                     .entry("ExtortGain".to_string())
-                    .or_insert_with(|| {
-                        "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string()
-                    });
+                    .or_insert_with(|| "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string());
             }
 
             // Bloodthirst N — if an opponent was dealt damage this turn, this creature
@@ -901,9 +943,7 @@ impl CardInstance {
                 }
                 self.svars
                     .entry("TrigRiot".to_string())
-                    .or_insert_with(|| {
-                        "SP$ Charm | Choices$ RiotCounter,RiotHaste".to_string()
-                    });
+                    .or_insert_with(|| "SP$ Charm | Choices$ RiotCounter,RiotHaste".to_string());
                 self.svars
                     .entry("RiotCounter".to_string())
                     .or_insert_with(|| {
@@ -928,7 +968,8 @@ impl CardInstance {
                 self.svars
                     .entry("TrigUnleash".to_string())
                     .or_insert_with(|| {
-                        "DB$ PutCounter | Defined$ Self | CounterType$ P1P1 | CounterNum$ 1".to_string()
+                        "DB$ PutCounter | Defined$ Self | CounterType$ P1P1 | CounterNum$ 1"
+                            .to_string()
                     });
             }
         }
@@ -1341,7 +1382,7 @@ impl CardInstance {
     }
 
     /// Generic keyword cost parser — looks for "Keyword:cost" in keywords vec.
-    fn get_keyword_cost(&self, keyword: &str) -> Option<String> {
+    pub fn get_keyword_cost(&self, keyword: &str) -> Option<String> {
         let prefix = format!("{}:", keyword);
         for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
             if let Some(cost) = kw.strip_prefix(&prefix) {

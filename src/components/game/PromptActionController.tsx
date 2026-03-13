@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui/button";
+import { TextWithMana } from "@/components/game/TextWithMana";
+import { ManaPool } from "@/components/game/ManaPool";
 import type { PromptActionType, CombatAssignment } from "./game.types";
 import { PROMPT_BUTTON_COLUMN, PROMPT_HINT, BUTTON_ATTACK, BUTTON_CONFIRM_BLOCKS } from "./game.styles";
 import { Sword, TimerOff } from "lucide-react";
@@ -18,6 +20,10 @@ interface PromptActionControllerProps {
   blockAssignments: CombatAssignment[];
   onDeclareBlockers: (assignments: CombatAssignment[]) => void;
   onOpenStack: () => void;
+  // Pay mana cost
+  payManaCostInfo?: { cardName: string; manaCost: string; manaPool: Record<string, number> } | null;
+  onPayManaCost?: () => void;
+  onCancelManaCost?: () => void;
 }
 
 export function PromptActionController({
@@ -35,6 +41,9 @@ export function PromptActionController({
   blockAssignments,
   onDeclareBlockers,
   onOpenStack,
+  payManaCostInfo,
+  onPayManaCost,
+  onCancelManaCost,
 }: PromptActionControllerProps) {
   if (isPassingUntilEot) {
     const label = isMyTurn ? "End Turn (F6)" : "Pass Until Your Turn (F6)";
@@ -145,6 +154,33 @@ export function PromptActionController({
     case "chooseTargetCardFromZone":
       return <p className={PROMPT_HINT}>Select a highlighted target on the battlefield or in the selector.</p>;
 
+    case "payManaCost":
+      return (
+        <div className={PROMPT_BUTTON_COLUMN}>
+          {payManaCostInfo && (
+            <>
+              <p className="text-xs text-muted-foreground">
+                Cast <span className="font-semibold text-foreground">{payManaCostInfo.cardName}</span>{" "}
+                for <TextWithMana text={payManaCostInfo.manaCost} manaSize="sm" />
+              </p>
+              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>Mana pool:</span>
+                <ManaPool pool={payManaCostInfo.manaPool} />
+              </div>
+              <p className="text-[11px] text-muted-foreground/70">
+                Tap lands to generate mana, then click Pay.
+              </p>
+            </>
+          )}
+          <Button size="sm" onClick={onPayManaCost} disabled={isWaitingForResponse}>
+            Pay
+          </Button>
+          <Button size="sm" variant="outline" onClick={onCancelManaCost} disabled={isWaitingForResponse}>
+            Cancel
+          </Button>
+        </div>
+      );
+
     case "chooseMode":
     case "chooseOptionalTrigger":
     case "chooseKicker":
@@ -157,7 +193,6 @@ export function PromptActionController({
     case "dig":
     case "chooseDiscard":
     case "payCombatCost":
-    case "payManaCost":
     case "chooseColor":
     case "chooseType":
     case "chooseNumber":

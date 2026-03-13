@@ -196,6 +196,10 @@ public class DeterministicController extends PlayerController {
                 return currentAbility.isTargetNumberValid();
             }
 
+            // Sort valid targets canonically (players first by index, then cards by name+parityId)
+            // to ensure deterministic cross-engine parity regardless of internal iteration order.
+            valid.sort(Comparator.comparing(ParityOrder::targetSortKey));
+
             final GameEntity chosen = ChoiceSpace.pickOne(valid, rng);
             if (chosen == null) {
                 return currentAbility.isTargetNumberValid();
@@ -383,7 +387,9 @@ public class DeterministicController extends PlayerController {
     @Override
     public CardCollectionView chooseCardsForEffect(CardCollectionView sourceList, SpellAbility sa,
             String title, int min, int max, boolean isOptional, Map<String, Object> params) {
-        return ChoiceSpace.pickManyCards(sourceList, min, max, rng);
+        // Sort cards canonically for deterministic cross-engine parity
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(sourceList));
+        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
     }
 
     @Override
@@ -403,7 +409,8 @@ public class DeterministicController extends PlayerController {
             }
             final CardCollection remaining = new CardCollection(pool);
             remaining.removeAll(chosen);
-            final Card pick = ChoiceSpace.pickOne((List<Card>) remaining, rng);
+            final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(remaining));
+            final Card pick = ChoiceSpace.pickOne(sorted, rng);
             if (pick != null) {
                 chosen.add(pick);
             }
@@ -419,6 +426,8 @@ public class DeterministicController extends PlayerController {
             reveal(delayedReveal);
         }
         final List<T> pool = new ArrayList<>(optionList);
+        // Sort pool canonically for deterministic cross-engine parity (matches Rust sort).
+        pool.sort(Comparator.comparing(ParityOrder::targetSortKey));
         final int count = ChoiceSpace.pickCount(min, max, pool.size(), rng);
         final List<T> selected = new ArrayList<>(count);
         for (int i = 0; i < count && !pool.isEmpty(); i++) {
@@ -468,13 +477,15 @@ public class DeterministicController extends PlayerController {
     @Override
     public CardCollectionView choosePermanentsToSacrifice(SpellAbility sa, int min, int max,
             CardCollectionView validTargets, String message) {
-        return ChoiceSpace.pickManyCards(validTargets, min, max, rng);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(validTargets));
+        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
     }
 
     @Override
     public CardCollectionView choosePermanentsToDestroy(SpellAbility sa, int min, int max,
             CardCollectionView validTargets, String message) {
-        return ChoiceSpace.pickManyCards(validTargets, min, max, rng);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(validTargets));
+        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
     }
 
     // ── Zone Change (Search/Tutor) ──────────────────────────────────
@@ -484,18 +495,21 @@ public class DeterministicController extends PlayerController {
             SpellAbility sa, CardCollection fetchList, DelayedReveal delayedReveal,
             String selectPrompt, boolean isOptional, Player decider) {
         if (delayedReveal != null) reveal(delayedReveal);
-        return ChoiceSpace.pickOne((List<Card>) fetchList, rng);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId((List<Card>) fetchList);
+        return ChoiceSpace.pickOne(sorted, rng);
     }
 
     @Override
     public CardCollection chooseCardsToDiscardFrom(Player playerDiscard, SpellAbility sa,
             CardCollection validCards, int min, int max) {
-        return ChoiceSpace.pickManyCards(validCards, min, max, rng);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(validCards));
+        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
     }
 
     @Override
     public CardCollection chooseCardsToDiscardToMaximumHandSize(int numDiscard) {
-        return ChoiceSpace.pickManyCards(player.getCardsIn(ZoneType.Hand), numDiscard, numDiscard, rng);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(player.getCardsIn(ZoneType.Hand)));
+        return ChoiceSpace.pickManyCards(new CardCollection(sorted), numDiscard, numDiscard, rng);
     }
 
     // ── Scry / Surveil / Library Manipulation ───────────────────────
@@ -920,12 +934,14 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public CardCollectionView chooseCardsToDiscardUnlessType(int min, CardCollectionView hand, String param, SpellAbility sa) {
-        return ChoiceSpace.pickManyCards(hand, min, min, rng);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(hand));
+        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, min, rng);
     }
 
     @Override
     public CardCollectionView chooseCardsToDelve(int genericAmount, CardCollection grave) {
-        return ChoiceSpace.pickManyCards(grave, 0, Math.min(genericAmount, grave.size()), rng);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(grave));
+        return ChoiceSpace.pickManyCards(new CardCollection(sorted), 0, Math.min(genericAmount, grave.size()), rng);
     }
 
     @Override
@@ -943,7 +959,8 @@ public class DeterministicController extends PlayerController {
         }
         final int cap = maxReduction == null ? untappedCards.size() : Math.max(0, Math.min(maxReduction, untappedCards.size()));
         final int count = ChoiceSpace.pickCount(0, cap, untappedCards.size(), rng);
-        final CardCollection pool = new CardCollection(untappedCards);
+        final List<Card> sortedUntapped = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(untappedCards));
+        final CardCollection pool = new CardCollection(sortedUntapped);
         for (int i = 0; i < count && !pool.isEmpty(); i++) {
             final Card chosen = pool.remove(ChoiceSpace.pickIndex(pool.size(), rng));
             out.put(chosen, ManaCostShard.GENERIC);
@@ -956,8 +973,9 @@ public class DeterministicController extends PlayerController {
         if (cards == null || cards.isEmpty()) {
             return new ArrayList<>();
         }
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(cards);
         final List<Card> out = new ArrayList<>();
-        for (final Card card : cards) {
+        for (final Card card : sorted) {
             if (ChoiceSpace.pickBool(rng)) {
                 out.add(card);
             }
@@ -967,7 +985,8 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public CardCollectionView chooseCardsToRevealFromHand(int min, int max, CardCollectionView valid) {
-        return ChoiceSpace.pickManyCards(valid, min, max, rng);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(valid));
+        return ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
     }
 
     @Override
@@ -1211,7 +1230,8 @@ public class DeterministicController extends PlayerController {
         if (delayedReveal != null) {
             reveal(delayedReveal);
         }
-        final CardCollection chosen = ChoiceSpace.pickManyCards(fetchList, min, max, rng);
+        final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(fetchList));
+        final CardCollection chosen = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
         return new ArrayList<>(chosen);
     }
 

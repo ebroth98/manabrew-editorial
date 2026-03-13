@@ -44,6 +44,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         is_creature_spell: original.is_creature_spell,
         is_permanent_spell: original.is_permanent_spell,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
 
     ctx.game.stack.push(copy_entry);

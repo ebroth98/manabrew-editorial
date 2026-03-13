@@ -49,14 +49,18 @@ fn snapshot_player(game: &GameState, pid: PlayerId) -> PlayerSnapshot {
     let player = game.player(pid);
 
     // Battlefield cards with full details
-    let mut battlefield: Vec<CardSnapshot> = game
-        .cards_in_zone(ZoneType::Battlefield, pid)
+    let bf_cards = game.cards_in_zone(ZoneType::Battlefield, pid);
+    let mut battlefield: Vec<CardSnapshot> = bf_cards
         .iter()
         .map(|&cid| {
             let card = game.card(cid);
             let counters = snapshot_counters(card);
             CardSnapshot {
-                name: card.card_name.clone(),
+                name: if card.face_down {
+                    String::new()
+                } else {
+                    card.card_name.clone()
+                },
                 tapped: card.tapped,
                 power: if card.is_creature() {
                     Some(card.power())
@@ -75,7 +79,24 @@ fn snapshot_player(game: &GameState, pid: PlayerId) -> PlayerSnapshot {
             }
         })
         .collect();
-    battlefield.sort_by(|a, b| a.name.cmp(&b.name));
+    battlefield.sort_by(|a, b| {
+        a.name
+            .cmp(&b.name)
+            .then_with(|| a.power.cmp(&b.power))
+            .then_with(|| a.toughness.cmp(&b.toughness))
+            .then_with(|| {
+                // Compare counters using Java TreeMap.toString() format so sort
+                // order matches Java's `Comparator.comparing(... counters.toString())`.
+                // Java format: "{key1=val1, key2=val2}" (BTreeMap order, comma-space separated).
+                let a_str = counters_to_java_string(&a.counters);
+                let b_str = counters_to_java_string(&b.counters);
+                a_str.cmp(&b_str)
+            })
+            .then_with(|| a.tapped.cmp(&b.tapped))
+            .then_with(|| a.damage.cmp(&b.damage))
+            .then_with(|| a.summoning_sick.cmp(&b.summoning_sick))
+            .then_with(|| a.controller.cmp(&b.controller))
+    });
 
     // Other zones: sorted card names
     let mut graveyard: Vec<String> = game
@@ -115,6 +136,19 @@ fn snapshot_player(game: &GameState, pid: PlayerId) -> PlayerSnapshot {
         exile,
         library_size,
     }
+}
+
+/// Format a counter map as Java's `TreeMap.toString()`, e.g. `"{-1/-1=1, +1/+1=2}"` or `"{}"`.
+/// BTreeMap iteration is already sorted by key, matching Java's TreeMap.
+fn counters_to_java_string(counters: &BTreeMap<String, i32>) -> String {
+    if counters.is_empty() {
+        return "{}".to_string();
+    }
+    let entries: Vec<String> = counters
+        .iter()
+        .map(|(k, v)| format!("{}={}", k, v))
+        .collect();
+    format!("{{{}}}", entries.join(", "))
 }
 
 /// Convert counter map to sorted string-keyed map for deterministic comparison.

@@ -28,7 +28,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(card_id).zone != ZoneType::Battlefield {
             continue;
         }
-        let should_tap = if sa.params.get("Toggle").map(|s| s == "True").unwrap_or(false) {
+        let should_tap = if sa
+            .params
+            .get("Toggle")
+            .map(|s| s == "True")
+            .unwrap_or(false)
+        {
             !ctx.game.card(card_id).tapped
         } else {
             let prompt = format!("Tap or untap {}?", ctx.game.card(card_id).card_name);

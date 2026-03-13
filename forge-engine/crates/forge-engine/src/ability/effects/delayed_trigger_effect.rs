@@ -89,6 +89,7 @@ fn trigger_mode_to_type(mode: &TriggerMode) -> Option<TriggerType> {
         TriggerMode::Taps { .. } => TriggerType::Taps,
         TriggerMode::Untaps { .. } => TriggerType::Untaps,
         TriggerMode::Transformed { .. } => TriggerType::Transformed,
+        TriggerMode::TurnFaceUp { .. } => TriggerType::TurnFaceUp,
         TriggerMode::Attached { .. } => TriggerType::Attached,
         TriggerMode::Unattached { .. } => TriggerType::Unattached,
         TriggerMode::LandPlayed { .. } => TriggerType::LandPlayed,

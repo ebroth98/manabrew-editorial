@@ -51,7 +51,7 @@ impl GameLoop {
 
             // Check SBA before any player gets priority
             loop {
-                if !game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler)) {
+                if !super::check_sba(game, &mut self.trigger_handler, agents) {
                     break;
                 }
             }
@@ -135,10 +135,8 @@ impl GameLoop {
                         // restrictions) — treat as a pass to prevent infinite retry loops.
                         crate::agent::notify_all_agents(
                             agents,
-                            crate::agent::GameLogEvent::warning(
-                                "Card play failed",
-                            )
-                            .with_player(priority_player),
+                            crate::agent::GameLogEvent::warning("Card play failed")
+                                .with_player(priority_player),
                         );
                         passed_count += 1;
                         priority_player = game.next_player(priority_player);
@@ -299,10 +297,31 @@ impl GameLoop {
                         });
                         continue;
                     }
-                    self.with_shared_state_mutation(game, agents, |this, game, agents| {
-                        this.activate_ability(game, agents, priority_player, card_id, ability_idx);
-                    });
-                    passed_count = 0;
+                    let activated =
+                        self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                            this.activate_ability(
+                                game,
+                                agents,
+                                priority_player,
+                                card_id,
+                                ability_idx,
+                            )
+                        });
+                    if activated {
+                        // Process triggers immediately after ability activation so
+                        // they go on the stack above the ability (mirroring the
+                        // Play arm and Java's addAndUnfreeze behaviour).
+                        self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                            this.process_triggers(game, agents);
+                        });
+                        passed_count = 0;
+                    } else {
+                        // Activation failed (e.g. payment declined, targets invalid).
+                        // Match Java's behaviour: the player retains priority and
+                        // gets to choose again (Java's do-while loops back to
+                        // chooseSpellAbilityToPlay for the same player).  Do NOT
+                        // change passed_count or priority_player.
+                    }
                 }
             }
         }

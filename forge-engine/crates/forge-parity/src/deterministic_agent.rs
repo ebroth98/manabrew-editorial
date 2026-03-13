@@ -169,23 +169,15 @@ impl DeterministicAgent {
     fn play_option_sort_text(play: PlayOption) -> &'static str {
         match play.mode {
             PlayCardMode::Normal => "0",
-            PlayCardMode::Alternative(AlternativeCost::Flashback) => {
-                "Flashback"
-            }
-            PlayCardMode::Alternative(AlternativeCost::Spectacle) => {
-                "Spectacle"
-            }
+            PlayCardMode::Alternative(AlternativeCost::Flashback) => "Flashback",
+            PlayCardMode::Alternative(AlternativeCost::Spectacle) => "Spectacle",
             PlayCardMode::Alternative(AlternativeCost::Evoke) => "Evoke",
             PlayCardMode::Alternative(AlternativeCost::Dash) => "Dash",
             PlayCardMode::Alternative(AlternativeCost::Blitz) => "Blitz",
             PlayCardMode::Alternative(AlternativeCost::Escape) => "Escape",
-            PlayCardMode::Alternative(AlternativeCost::Overload) => {
-                "Overload"
-            }
+            PlayCardMode::Alternative(AlternativeCost::Overload) => "Overload",
             PlayCardMode::Alternative(AlternativeCost::Madness) => "Madness",
-            PlayCardMode::Alternative(AlternativeCost::Foretell) => {
-                "Foretell"
-            }
+            PlayCardMode::Alternative(AlternativeCost::Foretell) => "Foretell",
             PlayCardMode::Alternative(AlternativeCost::Emerge) => "Emerge",
             PlayCardMode::Alternative(AlternativeCost::Suspend) => "Suspend",
             PlayCardMode::Alternative(AlternativeCost::Morph)
@@ -264,7 +256,14 @@ impl PlayerAgent for DeterministicAgent {
         let card_names: Vec<(CardId, String)> = game
             .cards
             .iter()
-            .map(|c| (c.id, c.card_name.clone()))
+            .map(|c| {
+                let name = if c.face_down {
+                    String::new()
+                } else {
+                    c.card_name.clone()
+                };
+                (c.id, name)
+            })
             .collect();
         let card_is_land: Vec<(CardId, bool)> =
             game.cards.iter().map(|c| (c.id, c.is_land())).collect();
@@ -327,8 +326,9 @@ impl PlayerAgent for DeterministicAgent {
                     .map(|(card_id, idx)| ActionChoice::Ability(card_id, idx)),
             )
             .collect();
-        let choices =
-            choice_space::sort_native(&choices, |a, b| self.action_sort_key(a).cmp(&self.action_sort_key(b)));
+        let choices = choice_space::sort_native(&choices, |a, b| {
+            self.action_sort_key(a).cmp(&self.action_sort_key(b))
+        });
         if choices.is_empty() {
             self.log_decision("Main phase: PASS (no non-mana actions)");
             return MainPhaseAction::Pass;
@@ -580,7 +580,15 @@ impl PlayerAgent for DeterministicAgent {
         if valid.is_empty() {
             return None;
         }
-        let target = choice_space::pick_one(valid, &mut self.rng.borrow_mut())?;
+        // Sort valid targets by (card_name, parity_id) for deterministic cross-engine parity,
+        // matching the canonical sort used for attackers, blockers, and main-phase actions.
+        let sorted = choice_space::sort_native(valid, |a, b| {
+            let an = self.card_name(*a);
+            let bn = self.card_name(*b);
+            an.cmp(&bn)
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        let target = choice_space::pick_one(&sorted, &mut self.rng.borrow_mut())?;
         self.log_decision(&format!("Target card: {}", self.card_name(target)));
         Some(target)
     }
@@ -600,8 +608,15 @@ impl PlayerAgent for DeterministicAgent {
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
     ) -> TargetChoice {
-        // Build unified list in engine-provided order.
-        let total = valid_players.len() + valid_cards.len();
+        // Sort valid card targets by (card_name, parity_id) for deterministic cross-engine parity.
+        let sorted_cards = choice_space::sort_native(valid_cards, |a, b| {
+            let an = self.card_name(*a);
+            let bn = self.card_name(*b);
+            an.cmp(&bn)
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+
+        let total = valid_players.len() + sorted_cards.len();
 
         if total == 0 {
             self.log_decision("Target any: NONE");
@@ -615,7 +630,7 @@ impl PlayerAgent for DeterministicAgent {
             TargetChoice::Player(pid)
         } else {
             let card_idx = idx - valid_players.len();
-            let cid = valid_cards[card_idx];
+            let cid = sorted_cards[card_idx];
             self.log_decision(&format!("Target any: Card {}", self.card_name(cid)));
             TargetChoice::Card(cid)
         }
@@ -705,18 +720,40 @@ impl PlayerAgent for DeterministicAgent {
 
     // ── Fixed overrides that sort alphabetically (matching Java) but use no RNG ──
 
+    fn choose_legend_keep(&mut self, _player: PlayerId, duplicates: &[CardId]) -> CardId {
+        // Sort by (card_name, parity_id) for deterministic cross-engine parity.
+        let sorted = choice_space::sort_native(duplicates, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        choice_space::pick_one(&sorted, &mut self.rng.borrow_mut()).unwrap_or(duplicates[0])
+    }
+
     fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
         if valid.is_empty() {
             return None;
         }
-        choice_space::pick_one(valid, &mut self.rng.borrow_mut())
+        // Sort by (card_name, parity_id) for deterministic cross-engine parity.
+        let sorted = choice_space::sort_native(valid, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        choice_space::pick_one(&sorted, &mut self.rng.borrow_mut())
     }
 
     fn choose_discard(&mut self, _player: PlayerId, hand: &[CardId], num: usize) -> Vec<CardId> {
         if hand.is_empty() || num == 0 {
             return vec![];
         }
-        gui_repro::pick_many_unique(hand, num, num, &mut self.rng.borrow_mut())
+        // Sort by (card_name, parity_id) for deterministic cross-engine parity.
+        let sorted = choice_space::sort_native(hand, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        gui_repro::pick_many_unique(&sorted, num, num, &mut self.rng.borrow_mut())
     }
 
     fn choose_random_discard(
@@ -761,7 +798,13 @@ impl PlayerAgent for DeterministicAgent {
         // Java DigEffect: min = (anyNumber || optional) ? 0 : max
         // When not optional, the player must take exactly `max` cards.
         let min = if optional { 0 } else { max };
-        gui_repro::pick_many_unique(valid, min, max, &mut self.rng.borrow_mut())
+        // Sort by (card_name, parity_id) for deterministic cross-engine parity.
+        let sorted = choice_space::sort_native(valid, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        gui_repro::pick_many_unique(&sorted, min, max, &mut self.rng.borrow_mut())
     }
 
     fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
@@ -824,7 +867,13 @@ impl PlayerAgent for DeterministicAgent {
         if valid.is_empty() {
             return vec![];
         }
-        gui_repro::pick_many_unique(valid, min, max, &mut self.rng.borrow_mut())
+        // Sort valid cards by (card_name, parity_id) for deterministic cross-engine parity.
+        let sorted = choice_space::sort_native(valid, |a, b| {
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
+        });
+        gui_repro::pick_many_unique(&sorted, min, max, &mut self.rng.borrow_mut())
     }
 
     fn choose_entities_for_effect(
@@ -837,7 +886,18 @@ impl PlayerAgent for DeterministicAgent {
         if candidates.is_empty() {
             return vec![];
         }
-        gui_repro::pick_many_unique(candidates, min, max, &mut self.rng.borrow_mut())
+        // Sort entities canonically: players first (by id), cards second (by name + parity_id).
+        let mut sorted = candidates.to_vec();
+        sorted.sort_by(|a, b| {
+            let key = |e: &GameEntity| -> (u8, String, u32) {
+                match e {
+                    GameEntity::Player(pid) => (0, format!("P{}", pid.0), 0),
+                    GameEntity::Card(cid) => (1, self.card_name(*cid), self.parity_map.id(*cid)),
+                }
+            };
+            key(a).cmp(&key(b))
+        });
+        gui_repro::pick_many_unique(&sorted, min, max, &mut self.rng.borrow_mut())
     }
 
     fn choose_single_card_for_zone_change(

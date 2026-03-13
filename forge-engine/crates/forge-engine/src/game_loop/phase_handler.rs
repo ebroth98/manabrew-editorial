@@ -1,5 +1,5 @@
-use super::*;
 use super::game_action::CostPaymentContext;
+use super::*;
 use crate::card::CounterType;
 
 impl GameLoop {
@@ -340,7 +340,9 @@ impl GameLoop {
         let mut processed_any = false;
 
         for card_id in permanents {
-            if game.card(card_id).zone != ZoneType::Battlefield || game.card(card_id).controller != active {
+            if game.card(card_id).zone != ZoneType::Battlefield
+                || game.card(card_id).controller != active
+            {
                 continue;
             }
 
@@ -645,12 +647,18 @@ impl GameLoop {
         // Java parity: optional attack costs (Exert/Enlist) are chosen immediately
         // after attackers are declared and before CantAttackUnless payments.
         {
-            let declared_attackers: Vec<CardId> =
-                chosen_attackers.iter().map(|(attacker, _)| *attacker).collect();
-            let mut optional_exert_by_attacker: std::collections::HashMap<CardId, Vec<(i32, String)>> =
-                std::collections::HashMap::new();
-            let mut optional_enlist_by_attacker: std::collections::HashMap<CardId, Vec<(i32, String)>> =
-                std::collections::HashMap::new();
+            let declared_attackers: Vec<CardId> = chosen_attackers
+                .iter()
+                .map(|(attacker, _)| *attacker)
+                .collect();
+            let mut optional_exert_by_attacker: std::collections::HashMap<
+                CardId,
+                Vec<(i32, String)>,
+            > = std::collections::HashMap::new();
+            let mut optional_enlist_by_attacker: std::collections::HashMap<
+                CardId,
+                Vec<(i32, String)>,
+            > = std::collections::HashMap::new();
 
             for &attacker in &declared_attackers {
                 let static_abilities = game.card(attacker).static_abilities.clone();
@@ -664,13 +672,19 @@ impl GameLoop {
                     let parsed = crate::cost::parse_cost(cost_raw);
                     for part in parsed.parts {
                         match part {
-                            crate::cost::CostPart::Exert { amount, type_filter } => {
+                            crate::cost::CostPart::Exert {
+                                amount,
+                                type_filter,
+                            } => {
                                 optional_exert_by_attacker
                                     .entry(attacker)
                                     .or_default()
                                     .push((amount, type_filter));
                             }
-                            crate::cost::CostPart::Enlist { amount, type_filter } => {
+                            crate::cost::CostPart::Enlist {
+                                amount,
+                                type_filter,
+                            } => {
                                 optional_enlist_by_attacker
                                     .entry(attacker)
                                     .or_default()
@@ -1009,7 +1023,8 @@ impl GameLoop {
             let attacker_card_ids: Vec<CardId> =
                 self.combat.attackers.iter().map(|(a, _)| *a).collect();
             let available_blockers = combat::get_available_blockers(game, defending);
-            let legal_blockers = combat::filter_legal_blockers(game, &attacker_card_ids, &available_blockers);
+            let legal_blockers =
+                combat::filter_legal_blockers(game, &attacker_card_ids, &available_blockers);
             let has_any_legal_blocker = !legal_blockers.is_empty();
 
             if has_any_legal_blocker {
@@ -1171,14 +1186,11 @@ impl GameLoop {
                 }
             }
 
-            self.step_with_priority(game, agents, false);
-            if game.game_over {
-                self.combat.clear_with_cards(&mut game.cards);
-                game.turn.combat_block_assignments.clear();
-                return;
-            }
-
-            // Fire BlockersDeclared batch trigger
+            // Fire BlockersDeclared batch trigger before the priority
+            // window so these triggers are on the stack when players
+            // receive priority (CR 509.4). Mirrors Java's
+            // declareBlockersTurnBasedAction() which fires all block
+            // triggers before mainLoopStep() gives priority.
             self.trigger_handler.run_trigger(
                 TriggerType::BlockersDeclared,
                 RunParams::default(),
@@ -1186,13 +1198,14 @@ impl GameLoop {
             );
 
             // Fire AttackerBlocked / AttackerUnblocked triggers
-            for &(attacker_id, _) in &self.combat.attackers.clone() {
+            for &(attacker_id, defender_id) in &self.combat.attackers.clone() {
                 if self.combat.is_blocked(attacker_id) {
                     self.trigger_handler.run_trigger(
                         TriggerType::AttackerBlocked,
                         RunParams {
                             attacker: Some(attacker_id),
                             card: Some(attacker_id),
+                            defending_player: Some(defender_id.controlling_player(game)),
                             ..Default::default()
                         },
                         false,
@@ -1208,6 +1221,13 @@ impl GameLoop {
                         false,
                     );
                 }
+            }
+
+            self.step_with_priority(game, agents, false);
+            if game.game_over {
+                self.combat.clear_with_cards(&mut game.cards);
+                game.turn.combat_block_assignments.clear();
+                return;
             }
         }
 
@@ -1245,7 +1265,7 @@ impl GameLoop {
 
             // SBA between damage steps
             loop {
-                if !game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler)) {
+                if !super::check_sba(game, &mut self.trigger_handler, agents) {
                     break;
                 }
             }
@@ -1286,7 +1306,7 @@ impl GameLoop {
 
             // SBA after combat
             loop {
-                if !game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler)) {
+                if !super::check_sba(game, &mut self.trigger_handler, agents) {
                     break;
                 }
             }
@@ -1659,6 +1679,9 @@ impl GameLoop {
                     is_creature_spell: is_creature,
                     is_permanent_spell: is_permanent,
                     cast_from_zone: Some(ZoneType::Exile),
+                    optional_trigger_decider: None,
+                    optional_trigger_description: None,
+                    optional_trigger_source_name: None,
                 };
 
                 game.stack.push(entry);

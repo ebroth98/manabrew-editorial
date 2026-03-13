@@ -15,7 +15,7 @@
     "android": "tauri android dev",
     "ios-build": "tauri ios build",
     "android-build": "tauri android build",
-    "build:harness": "cd forge && mvn -pl forge-harness -am package -DskipTests",
+    "build:harness": "cd forge && mvn -pl forge-harness -am package -DskipTests && cd .. && bash scripts/check-harness.sh --update-checksum",
     "parity": "node scripts/parity.mjs",
     "parity:test": "bash scripts/check-harness.sh && cargo run -p forge-parity --bin forge-parity -- --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar"
   },

@@ -15,8 +15,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or("P1P1");
     let counter_type = parse_counter_type(counter_type_str);
     // Support SVar references for CounterNum (e.g. Count$Kicked.4.0 for kicker cards)
-    let count = parse_param(&sa.ability_text, "CounterNum$ ")
+    let mut count = parse_param(&sa.ability_text, "CounterNum$ ")
         .unwrap_or_else(|| resolve_numeric_svar(ctx.game, sa, "CounterNum", 1));
+    // Modular death triggers: override the static Modular N with the
+    // actual LKI +1/+1 counter count from the dying creature (CR 702.43b).
+    // trigger_remembered_amount is set by the death path's LKI capture.
+    if sa.params.get("Modular").map_or(false, |v| v == "true") && sa.trigger_remembered_amount > 0 {
+        count = sa.trigger_remembered_amount;
+    }
 
     // Resolve the controller of this ability (for Defined$ You etc.)
     let controller = sa
@@ -42,19 +48,27 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 
-    // Resolve target card based on Defined$ parameter.
-    let defined = sa
-        .params
-        .get("Defined")
-        .map(|s| s.as_str())
-        .unwrap_or("Self");
-    let target_id = match defined {
-        // Java AbilityUtils "TriggeredTarget*" / "Targeted" resolve from actual
-        // target choices only; if no target was chosen (e.g. TargetMin$ 0), they
-        // resolve to empty and do nothing.
-        "TriggeredTarget" | "TriggeredTargetLKICopy" => sa.target_chosen.target_card,
-        "Targeted" => sa.target_chosen.target_card,
-        "Self" | _ => sa.source,
+    // Resolve target card: mirror Java's getDefinedEntitiesOrTargeted().
+    // When the SA uses targeting (ValidTgts$), use the chosen target.
+    // Otherwise fall back to the Defined$ parameter (default "Self").
+    let uses_targeting = sa.params.contains_key("ValidTgts");
+    let target_id = if uses_targeting && !sa.params.contains_key("Defined") {
+        // Targeting mode — use the actual chosen target (Necropede death trigger, etc.)
+        sa.target_chosen.target_card
+    } else {
+        let defined = sa
+            .params
+            .get("Defined")
+            .map(|s| s.as_str())
+            .unwrap_or("Self");
+        match defined {
+            // Java AbilityUtils "TriggeredTarget*" / "Targeted" resolve from actual
+            // target choices only; if no target was chosen (e.g. TargetMin$ 0), they
+            // resolve to empty and do nothing.
+            "TriggeredTarget" | "TriggeredTargetLKICopy" => sa.target_chosen.target_card,
+            "Targeted" => sa.target_chosen.target_card,
+            "Self" | _ => sa.source,
+        }
     };
 
     let Some(card_id) = target_id else { return };
@@ -239,11 +253,17 @@ mod tests {
         );
 
         super::resolve(&mut ctx, &sa);
-        assert_eq!(ctx.game.card(clay_golem).counter_count(&CounterType::P1P1), 4);
+        assert_eq!(
+            ctx.game.card(clay_golem).counter_count(&CounterType::P1P1),
+            4
+        );
         assert!(ctx.game.card(clay_golem).monstrous);
 
         super::resolve(&mut ctx, &sa);
-        assert_eq!(ctx.game.card(clay_golem).counter_count(&CounterType::P1P1), 4);
+        assert_eq!(
+            ctx.game.card(clay_golem).counter_count(&CounterType::P1P1),
+            4
+        );
         assert!(ctx.game.card(clay_golem).monstrous);
     }
 

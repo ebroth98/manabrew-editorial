@@ -75,6 +75,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 card.static_set_power = None;
                 card.static_set_toughness = None;
 
+                // Remove the synthetic morph turn-face-up ability
+                card.activated_abilities
+                    .retain(|ab| !ab.ability_text.contains("Mode$ TurnFaceUp"));
+
                 // Megamorph: add a +1/+1 counter when turning face-up
                 if sa.param_is_true("Mega") {
                     card.add_counter(&crate::card::CounterType::P1P1, 1);

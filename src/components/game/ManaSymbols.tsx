@@ -31,7 +31,9 @@ export function parseManaSymbols(cost: string): string[] {
 }
 
 function symbolUrl(symbol: string): string {
-  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
+  // Scryfall SVG filenames strip slashes: {W/U} → WU.svg, {2/W} → 2W.svg, {W/P} → WP.svg
+  const filename = symbol.replace(/\//g, "");
+  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(filename)}.svg`;
 }
 
 interface ManaSymbolsProps {

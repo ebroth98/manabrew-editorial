@@ -1,6 +1,9 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, evaluate_svar, matches_change_type, parse_counter_type, parse_zone_type, EffectContext};
+use super::{
+    emit_zone_trigger, evaluate_svar, matches_change_type, parse_counter_type, parse_zone_type,
+    EffectContext,
+};
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
@@ -244,7 +247,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 // The creature should be exiled at EOT or if it would leave the battlefield,
                 // but for simplicity we grant haste as a pump keyword (clears at cleanup).
                 if sa.param_is_true("Unearth") {
-                    ctx.game.card_mut(card_id).pump_keywords.push("Haste".to_string());
+                    ctx.game
+                        .card_mut(card_id)
+                        .pump_keywords
+                        .push("Haste".to_string());
                     ctx.game.card_mut(card_id).summoning_sick = false;
                 }
 

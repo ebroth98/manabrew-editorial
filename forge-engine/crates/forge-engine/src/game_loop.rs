@@ -399,6 +399,23 @@ impl GameLoop {
     }
 }
 
+/// Helper: run SBA with trigger handler and legend-rule agent callback.
+/// Mirrors Java's GameAction.checkStateEffects() + handleLegendRule() which
+/// delegates the "keep which legendary?" choice to the player controller.
+fn check_sba(
+    game: &mut GameState,
+    trigger_handler: &mut TriggerHandler,
+    agents: &mut [Box<dyn PlayerAgent>],
+) -> bool {
+    let mut legend_fn = |player: PlayerId, ids: &[CardId]| -> CardId {
+        agents[player.index()].choose_legend_keep(player, ids)
+    };
+    game.check_state_based_actions_with_triggers(
+        Some(trigger_handler),
+        Some(&mut legend_fn),
+    )
+}
+
 mod action_space;
 mod game_action;
 mod game_action_util;
@@ -918,6 +935,9 @@ mod tests {
             is_creature_spell: true,
             is_permanent_spell: true,
             cast_from_zone: Some(ZoneType::Hand),
+            optional_trigger_decider: None,
+            optional_trigger_description: None,
+            optional_trigger_source_name: None,
         });
 
         let mut gl = GameLoop::new(2);

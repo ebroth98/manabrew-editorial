@@ -133,6 +133,65 @@ See [`forge-engine/README.md`](forge-engine/README.md) for engine architecture a
 2. Broadcast/spectator mode
 3. ~~Tauri desktop shell~~ — Done
 
+## Syncing with Upstream Forge
+
+This project is a fork of [Card-Forge/forge](https://github.com/Card-Forge/forge). The Java source in `forge/` serves as the reference implementation. Periodically pull upstream changes to stay current with new cards, rules fixes, and engine improvements.
+
+### One-time setup
+
+```bash
+git remote add upstream https://github.com/Card-Forge/forge.git
+```
+
+Verify it's configured:
+
+```bash
+git remote -v
+# origin    https://github.com/<your-org>/xmage.git (fetch)
+# upstream  https://github.com/Card-Forge/forge.git (fetch)
+```
+
+### Pulling upstream changes
+
+```bash
+git fetch upstream
+git checkout main
+git merge upstream/master --allow-unrelated-histories
+```
+
+Resolve any conflicts (typically limited to `forge/` — the Rust engine, frontend, and preset decks are our own code and won't conflict). The `forge/forge-harness/` module is ours and doesn't exist upstream, so it merges cleanly.
+
+### Reviewing engine changes
+
+After merging, check what changed in the Java engine that might need porting to Rust:
+
+```bash
+# Changes in the core game engine
+git diff HEAD~1...HEAD -- forge/forge-game/src/main/java/forge/game/
+
+# Changes in AI logic
+git diff HEAD~1...HEAD -- forge/forge-ai/src/main/java/forge/ai/
+
+# Changes in card scripts (new cards, fixes)
+git diff HEAD~1...HEAD -- forge/forge-gui/res/cardsfolder/
+
+# Summary of changed files only
+git diff HEAD~1...HEAD --stat -- forge/forge-game/ forge/forge-ai/ forge/forge-gui/res/cardsfolder/
+```
+
+### What to look for
+
+| Upstream area | Local counterpart | Action needed |
+|---|---|---|
+| `forge-game/` (rules engine) | `forge-engine/crates/forge-engine/` | Port rule changes to Rust |
+| `forge-ai/` (AI logic) | `src-tauri/src/ai_agent.rs` | Update AI behavior if relevant |
+| `forge-gui/res/cardsfolder/` (card scripts) | Parsed by `forge-carddb` at runtime | Usually automatic — new cards just work if the ability types are already implemented |
+| `forge-game/` API changes | `forge/forge-harness/` | Update harness if parity tests break |
+
+### Recommended cadence
+
+Monthly manual pulls work well. Automated daily syncing creates noise since most upstream changes are card-level (new cards, script fixes) that work automatically. Pull sooner if you know a relevant engine change landed.
+
 ## License
 
 GPL-3.0 — same as [Forge](https://github.com/Card-Forge/forge).

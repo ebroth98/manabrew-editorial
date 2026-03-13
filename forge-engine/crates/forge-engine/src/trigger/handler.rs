@@ -65,7 +65,8 @@ pub struct TriggerHandler {
     /// Triggers that were matched early (before SBA) and are waiting to be
     /// placed on the stack. This ensures triggers from creatures that die to
     /// SBA (e.g. Raptor Hatchling's enrage) are not lost.
-    pre_matched_triggers: Vec<(PendingTrigger, PlayerId)>,
+    /// Tuple: (PendingTrigger, controller, zone_timestamp of source card).
+    pre_matched_triggers: Vec<(PendingTrigger, PlayerId, u64)>,
 }
 
 impl TriggerHandler {
@@ -108,35 +109,42 @@ impl TriggerHandler {
     /// The caller (game_loop) handles OptionalDecider$ prompting.
     pub fn run_waiting_triggers(&mut self, game: &GameState) -> Vec<PendingTrigger> {
         // Start with any triggers that were pre-matched (flushed before SBA).
-        let mut entries: Vec<(PendingTrigger, PlayerId)> =
+        let mut entries: Vec<(PendingTrigger, PlayerId, u64)> =
             std::mem::take(&mut self.pre_matched_triggers);
 
         if self.waiting_triggers.is_empty() && self.delayed_triggers.is_empty() {
             if entries.is_empty() {
                 return Vec::new();
             }
-            // Only have pre-matched — apply APNAP ordering and return.
+            // Only have pre-matched — apply APNAP + zone timestamp ordering.
             let active_player = game.active_player();
-            entries.sort_by_key(|(_, controller)| if *controller == active_player { 0 } else { 1 });
-            return entries.into_iter().map(|(pending, _)| pending).collect();
+            entries.sort_by_key(|(_, controller, ts)| {
+                (if *controller == active_player { 0u8 } else { 1 }, *ts)
+            });
+            return entries.into_iter().map(|(pending, _, _)| pending).collect();
         }
 
         // Match any remaining waiting triggers (those fired after the flush).
         entries.extend(self.match_waiting_triggers(game));
 
-        // APNAP ordering: active player's triggers first
+        // APNAP ordering: active player's triggers first.
+        // Within the same player, order by zone_timestamp (older cards first),
+        // matching Java's forEachCardInGame() which iterates by Zone.cardList
+        // insertion order.
         let active_player = game.active_player();
-        entries.sort_by_key(|(_, controller)| if *controller == active_player { 0 } else { 1 });
+        entries.sort_by_key(|(_, controller, ts)| {
+            (if *controller == active_player { 0u8 } else { 1 }, *ts)
+        });
 
-        entries.into_iter().map(|(pending, _)| pending).collect()
+        entries.into_iter().map(|(pending, _, _)| pending).collect()
     }
 
     /// Drain `waiting_triggers`, match them against active and delayed triggers,
     /// and return the matched entries.  This is the core matching logic shared by
     /// both `flush_waiting_triggers` and `run_waiting_triggers`.
-    fn match_waiting_triggers(&mut self, game: &GameState) -> Vec<(PendingTrigger, PlayerId)> {
+    fn match_waiting_triggers(&mut self, game: &GameState) -> Vec<(PendingTrigger, PlayerId, u64)> {
         let waiting = std::mem::take(&mut self.waiting_triggers);
-        let mut entries: Vec<(PendingTrigger, PlayerId)> = Vec::new();
+        let mut entries: Vec<(PendingTrigger, PlayerId, u64)> = Vec::new();
 
         for event in &waiting {
             // Check each active trigger
@@ -184,8 +192,15 @@ impl TriggerHandler {
                     if let Some(pid) = event.params.damage_target_player {
                         sa.target_chosen.target_player = Some(pid);
                     }
+                    // Only propagate defending_player when the SVar actually
+                    // references it (Annihilator, DefendingPlayer, etc.).
+                    // Blindly setting it breaks effects like Smuggler's Copter's
+                    // loot that use Defined$ You (controller) rather than the
+                    // defending player.
                     if let Some(pid) = event.params.defending_player {
-                        if sa.target_chosen.target_player.is_none() {
+                        if sa.target_chosen.target_player.is_none()
+                            && svar_text.contains("DefendingPlayer")
+                        {
                             sa.target_chosen.target_player = Some(pid);
                         }
                     }
@@ -214,28 +229,44 @@ impl TriggerHandler {
                         }
                     }
 
+                    // For death triggers (Modular), propagate the LKI +1/+1
+                    // counter count so CounterNum$ ModularX can resolve via
+                    // Count$TriggerRememberAmount.  Mirrors Java's
+                    // `TriggeredCard$CardCounters.P1P1` lookup.
+                    if let Some(lki_p1p1) = event.params.lki_p1p1_counters {
+                        if trigger.execute.contains("Modular") || svar_text.contains("Modular") {
+                            sa.trigger_remembered_amount = lki_p1p1;
+                        }
+                    }
+
                     let entry = StackEntry {
                         id: 0,
                         spell_ability: sa,
                         is_creature_spell: false,
                         is_permanent_spell: false,
                         cast_from_zone: None,
+                        optional_trigger_decider: None,
+                        optional_trigger_description: None,
+                        optional_trigger_source_name: None,
                     };
+                    // A trigger is optional if it has OptionalDecider$ OR if its
+                    // execute SVar has a non-mandatory, non-zero cost.  Mirrors Java's
+                    // Trigger.isOptional() which checks both the trigger flag and cost.
+                    // E.g. Smuggler's Copter loot "Cost$ Draw<1/You>" → optional.
                     let trigger_cost_optional = entry
                         .spell_ability
                         .pay_costs
                         .as_ref()
                         .map(|c| !c.mandatory && !c.is_zero_cost())
                         .unwrap_or(false);
-                    let pending_optional = trigger.optional || trigger_cost_optional;
-
                     let pending = PendingTrigger {
                         entry,
-                        optional: pending_optional,
+                        optional: trigger.optional || trigger_cost_optional,
                         decider: host_controller,
                         description: trigger.description.clone(),
                     };
-                    entries.push((pending, host_controller));
+                    let source_ts = card.zone_timestamp;
+                    entries.push((pending, host_controller, source_ts));
                     let extra = crate::staticability::static_ability_panharmonicon::extra_triggers(
                         game,
                         active.card_id,
@@ -265,6 +296,9 @@ impl TriggerHandler {
                             is_creature_spell: false,
                             is_permanent_spell: false,
                             cast_from_zone: None,
+                            optional_trigger_decider: None,
+                            optional_trigger_description: None,
+                            optional_trigger_source_name: None,
                         };
                         let trigger_cost_optional = extra_entry
                             .spell_ability
@@ -272,15 +306,15 @@ impl TriggerHandler {
                             .as_ref()
                             .map(|c| !c.mandatory && !c.is_zero_cost())
                             .unwrap_or(false);
-                        let pending_optional = trigger.optional || trigger_cost_optional;
                         entries.push((
                             PendingTrigger {
                                 entry: extra_entry,
-                                optional: pending_optional,
+                                optional: trigger.optional || trigger_cost_optional,
                                 decider: host_controller,
                                 description: trigger.description.clone(),
                             },
                             host_controller,
+                            source_ts,
                         ));
                     }
                 }
@@ -316,6 +350,9 @@ impl TriggerHandler {
                     is_creature_spell: false,
                     is_permanent_spell: false,
                     cast_from_zone: None,
+                    optional_trigger_decider: None,
+                    optional_trigger_description: None,
+                    optional_trigger_source_name: None,
                 };
                 let pending = PendingTrigger {
                     entry,
@@ -323,7 +360,8 @@ impl TriggerHandler {
                     decider: delayed.controller,
                     description: String::new(),
                 };
-                entries.push((pending, delayed.controller));
+                let delayed_ts = game.card(delayed.source_card).zone_timestamp;
+                entries.push((pending, delayed.controller, delayed_ts));
                 fired_indices.push(idx);
             }
 
@@ -424,6 +462,7 @@ impl TriggerHandler {
             TriggerMode::Taps { .. } => TriggerType::Taps,
             TriggerMode::Untaps { .. } => TriggerType::Untaps,
             TriggerMode::Transformed { .. } => TriggerType::Transformed,
+            TriggerMode::TurnFaceUp { .. } => TriggerType::TurnFaceUp,
             TriggerMode::Attached { .. } => TriggerType::Attached,
             TriggerMode::Unattached { .. } => TriggerType::Unattached,
             TriggerMode::LandPlayed { .. } => TriggerType::LandPlayed,
@@ -541,9 +580,26 @@ impl TriggerHandler {
         }
 
         // performTest
-        trigger
+        if !trigger
             .mode
             .perform_test(params, game, host_card, host_controller)
+        {
+            return false;
+        }
+
+        // ── ActivatorThisTurnCast$ condition ──────────────────────────
+        // Mirrors Java's TriggerSpellAbilityCast.checkActivatorThisTurnCast():
+        // "EQ2" means the activating player must have cast exactly 2 spells
+        // this turn (including the one triggering).
+        if let Some(cond) = trigger.params.get("ActivatorThisTurnCast") {
+            let caster = params.spell_controller.unwrap_or(host_controller);
+            let count = game.player(caster).spells_cast_this_turn;
+            if !compare_count_condition(count, cond) {
+                return false;
+            }
+        }
+
+        true
     }
 
     pub fn suppress_mode(&mut self, mode: TriggerType) {
@@ -558,5 +614,26 @@ impl TriggerHandler {
 impl Default for TriggerHandler {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Parse conditions like "EQ2", "GE3", "LT1" used by ActivatorThisTurnCast$
+/// and similar trigger parameters. Mirrors Java's `Expressions.compare()`.
+fn compare_count_condition(count: i32, cond: &str) -> bool {
+    let cond = cond.trim();
+    if let Some(n_str) = cond.strip_prefix("EQ") {
+        count == n_str.trim().parse::<i32>().unwrap_or(0)
+    } else if let Some(n_str) = cond.strip_prefix("GE") {
+        count >= n_str.trim().parse::<i32>().unwrap_or(0)
+    } else if let Some(n_str) = cond.strip_prefix("GT") {
+        count > n_str.trim().parse::<i32>().unwrap_or(0)
+    } else if let Some(n_str) = cond.strip_prefix("LE") {
+        count <= n_str.trim().parse::<i32>().unwrap_or(0)
+    } else if let Some(n_str) = cond.strip_prefix("LT") {
+        count < n_str.trim().parse::<i32>().unwrap_or(0)
+    } else if let Some(n_str) = cond.strip_prefix("NE") {
+        count != n_str.trim().parse::<i32>().unwrap_or(0)
+    } else {
+        true // Unknown condition — allow trigger
     }
 }

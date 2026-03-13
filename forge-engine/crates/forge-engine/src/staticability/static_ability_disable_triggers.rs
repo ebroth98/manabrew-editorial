@@ -187,6 +187,7 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::Taps { .. } => "Taps",
         crate::trigger::TriggerMode::Untaps { .. } => "Untaps",
         crate::trigger::TriggerMode::Transformed { .. } => "Transformed",
+        crate::trigger::TriggerMode::TurnFaceUp { .. } => "TurnFaceUp",
         crate::trigger::TriggerMode::Attached { .. } => "Attached",
         crate::trigger::TriggerMode::Unattached { .. } => "Unattached",
         crate::trigger::TriggerMode::LandPlayed { .. } => "LandPlayed",

@@ -335,24 +335,30 @@ fn choose_targets_for(
             let agent = &mut agents[player.index()];
             // Filter valid players by ValidTgts: "Opponent" restricts to opponents only,
             // "Player" means any player including the caster.
-            let is_opponent_only = tr.valid_tgts.iter().any(|v| v.eq_ignore_ascii_case("Opponent"));
-            let valid_players: Vec<PlayerId> = game.alive_players().into_iter()
+            let is_opponent_only = tr
+                .valid_tgts
+                .iter()
+                .any(|v| v.eq_ignore_ascii_case("Opponent"));
+            let valid_players: Vec<PlayerId> = game
+                .alive_players()
+                .into_iter()
                 .filter(|&pid| !is_opponent_only || pid != player)
                 .collect();
             sa.target_chosen.target_player = agent.choose_target_player(player, &valid_players);
         }
         TargetKind::Any => {
-            let valid_players: Vec<PlayerId> = if target_restrictions::any_target_allows_players(
-                &tr.valid_tgts,
-            ) {
-                game.alive_players().into_iter().collect()
-            } else {
-                Vec::new()
-            };
+            let valid_players: Vec<PlayerId> =
+                if target_restrictions::any_target_allows_players(&tr.valid_tgts) {
+                    game.alive_players().into_iter().collect()
+                } else {
+                    Vec::new()
+                };
             let mut valid_cards: Vec<CardId> =
                 target_restrictions::get_all_candidates_any_filtered(game, &tr.valid_tgts, player)
                     .into_iter()
-                    .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
+                    .filter(|&cid| {
+                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
+                    })
                     .collect();
             valid_cards =
                 crate::staticability::static_ability_must_target::filter_must_target_cards(
@@ -384,14 +390,13 @@ fn choose_targets_for(
                 filter.as_deref(),
                 player,
             );
-            let mut valid: Vec<CardId> = target_restrictions::apply_other_source_filter(
-                base,
-                filter.as_deref(),
-                sa.source,
-            )
-            .into_iter()
-            .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
-            .collect();
+            let mut valid: Vec<CardId> =
+                target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
+                    .into_iter()
+                    .filter(|&cid| {
+                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
+                    })
+                    .collect();
             valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
                 game, sa, valid,
             );
@@ -405,14 +410,13 @@ fn choose_targets_for(
                 filter.as_deref(),
                 player,
             );
-            let mut valid: Vec<CardId> = target_restrictions::apply_other_source_filter(
-                base,
-                filter.as_deref(),
-                sa.source,
-            )
-            .into_iter()
-            .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
-            .collect();
+            let mut valid: Vec<CardId> =
+                target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
+                    .into_iter()
+                    .filter(|&cid| {
+                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
+                    })
+                    .collect();
             valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
                 game, sa, valid,
             );
@@ -488,6 +492,17 @@ pub struct StackEntry {
     pub is_permanent_spell: bool,
     /// The zone the spell was cast from (for Flashback exile-on-resolve).
     pub cast_from_zone: Option<ZoneType>,
+    /// If this is an optional trigger, the player who decides whether to
+    /// accept or decline.  Mirrors Java's WrappedAbility `decider` field.
+    /// The confirmation prompt fires at resolution time (not when pushed).
+    #[serde(default)]
+    pub optional_trigger_decider: Option<PlayerId>,
+    /// Description text shown to the deciding player for optional triggers.
+    #[serde(default)]
+    pub optional_trigger_description: Option<String>,
+    /// Source card name for optional trigger prompts.
+    #[serde(default)]
+    pub optional_trigger_source_name: Option<String>,
 }
 
 /// The game stack. Spells and abilities are added to the top and resolve LIFO.
@@ -550,7 +565,9 @@ impl MagicStack {
 
     /// Find a stack entry by its source card ID (for Ward — finding the targeting spell).
     pub fn find_by_source_card(&self, card_id: crate::ids::CardId) -> Option<&StackEntry> {
-        self.entries.iter().find(|e| e.spell_ability.source == Some(card_id))
+        self.entries
+            .iter()
+            .find(|e| e.spell_ability.source == Some(card_id))
     }
 }
 

@@ -208,8 +208,7 @@ impl GameLoop {
                     // Phyrexian mana: check AIPhyrexianPayment to determine
                     // if life payment is allowed for this card. Uses greedy
                     // simulation matching Java's ComputerUtilMana behavior.
-                    let has_phyrexian =
-                        base.shards().iter().any(|s| s.is_phyrexian());
+                    let has_phyrexian = base.shards().iter().any(|s| s.is_phyrexian());
                     if has_phyrexian {
                         let ai_phy_param = card.abilities.iter().find_map(|ab| {
                             let params = crate::trigger::parse_pipe_params(ab);
@@ -225,15 +224,12 @@ impl GameLoop {
                             _ => true,
                         };
                         if phyrexian_life_allowed {
-                            available_mana.can_pay_with_phyrexian_life(
-                                &base,
-                                game.player(player).life,
-                            )
+                            available_mana
+                                .can_pay_with_phyrexian_life(&base, game.player(player).life)
                         } else {
                             let colored = base.phyrexian_to_colored();
-                            let reduced = apply_cost_reductions(
-                                game, player, card_id, card, &colored,
-                            );
+                            let reduced =
+                                apply_cost_reductions(game, player, card_id, card, &colored);
                             if any_color {
                                 available_mana.can_pay_any_color(&reduced)
                             } else {
@@ -241,9 +237,7 @@ impl GameLoop {
                             }
                         }
                     } else {
-                        let reduced = apply_cost_reductions(
-                            game, player, card_id, card, &base,
-                        );
+                        let reduced = apply_cost_reductions(game, player, card_id, card, &base);
                         if any_color {
                             available_mana.can_pay_any_color(&reduced)
                         } else {
@@ -255,10 +249,9 @@ impl GameLoop {
                 // Spectacle: alt cost if opponent lost life this turn
                 let spectacle_ok = if let Some(spec_cost_str) = card.get_spectacle_cost() {
                     let opp = game.opponent_of(player);
-                    let adjusted =
-                        cost_adj
-                            .apply(&forge_foundation::ManaCost::parse(&spec_cost_str))
-                            .add(&raise_mana);
+                    let adjusted = cost_adj
+                        .apply(&forge_foundation::ManaCost::parse(&spec_cost_str))
+                        .add(&raise_mana);
                     game.player(opp).life_lost_this_turn > 0 && available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -266,10 +259,9 @@ impl GameLoop {
 
                 // Evoke: alt cost for creatures
                 let evoke_ok = if let Some(evoke_cost_str) = card.get_evoke_cost() {
-                    let adjusted =
-                        cost_adj
-                            .apply(&forge_foundation::ManaCost::parse(&evoke_cost_str))
-                            .add(&raise_mana);
+                    let adjusted = cost_adj
+                        .apply(&forge_foundation::ManaCost::parse(&evoke_cost_str))
+                        .add(&raise_mana);
                     available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -277,10 +269,9 @@ impl GameLoop {
 
                 // Dash: alt cost
                 let dash_ok = if let Some(dash_cost_str) = card.get_dash_cost() {
-                    let adjusted =
-                        cost_adj
-                            .apply(&forge_foundation::ManaCost::parse(&dash_cost_str))
-                            .add(&raise_mana);
+                    let adjusted = cost_adj
+                        .apply(&forge_foundation::ManaCost::parse(&dash_cost_str))
+                        .add(&raise_mana);
                     available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -288,10 +279,9 @@ impl GameLoop {
 
                 // Blitz: alt cost
                 let blitz_ok = if let Some(blitz_cost_str) = card.get_blitz_cost() {
-                    let adjusted =
-                        cost_adj
-                            .apply(&forge_foundation::ManaCost::parse(&blitz_cost_str))
-                            .add(&raise_mana);
+                    let adjusted = cost_adj
+                        .apply(&forge_foundation::ManaCost::parse(&blitz_cost_str))
+                        .add(&raise_mana);
                     available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -299,10 +289,9 @@ impl GameLoop {
 
                 // Overload: alt cost
                 let overload_ok = if let Some(ovl_cost_str) = card.get_overload_cost() {
-                    let adjusted =
-                        cost_adj
-                            .apply(&forge_foundation::ManaCost::parse(&ovl_cost_str))
-                            .add(&raise_mana);
+                    let adjusted = cost_adj
+                        .apply(&forge_foundation::ManaCost::parse(&ovl_cost_str))
+                        .add(&raise_mana);
                     available_mana.can_pay(&adjusted)
                 } else {
                     false
@@ -547,6 +536,22 @@ impl GameLoop {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::ForetellExile,
+                            });
+                        }
+                        if morph_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Morph,
+                                ),
+                            });
+                        }
+                        if bestow_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Bestow,
+                                ),
                             });
                         }
                     }
@@ -866,7 +871,8 @@ impl GameLoop {
                         is_morph_facedown = true;
                     }
                     crate::spellability::AlternativeCost::Suspend => {
-                        if let Some((suspend_cost, counters)) = game.card(card_id).get_suspend_cost()
+                        if let Some((suspend_cost, counters)) =
+                            game.card(card_id).get_suspend_cost()
                         {
                             if game.card(card_id).zone != ZoneType::Hand {
                                 return None;
@@ -1511,8 +1517,7 @@ impl GameLoop {
             // If no colored mana source is available, pay 2 life instead.
             // This is done shard-by-shard, not all-or-nothing.
             let mana_cost = if mana_cost.has_phyrexian() {
-                let available =
-                    mana::calculate_available_mana(self.pool(player), game, player);
+                let available = mana::calculate_available_mana(self.pool(player), game, player);
                 let mut remaining_shards: Vec<forge_foundation::ManaCostShard> = Vec::new();
                 let mut life_to_pay = 0i32;
                 let source_colors = available.source_colors.clone().unwrap_or_default();
@@ -1526,7 +1531,8 @@ impl GameLoop {
                                 | forge_foundation::ManaAtom::BLUE
                                 | forge_foundation::ManaAtom::BLACK
                                 | forge_foundation::ManaAtom::RED
-                                | forge_foundation::ManaAtom::GREEN)) as u16;
+                                | forge_foundation::ManaAtom::GREEN))
+                            as u16;
                         let mut best_idx: Option<usize> = None;
                         let mut best_pop = u32::MAX;
                         for (i, &src) in source_colors.iter().enumerate() {
@@ -1567,10 +1573,7 @@ impl GameLoop {
                     );
                 }
 
-                forge_foundation::ManaCost::from_parts(
-                    remaining_shards,
-                    mana_cost.generic_cost(),
-                )
+                forge_foundation::ManaCost::from_parts(remaining_shards, mana_cost.generic_cost())
             } else {
                 mana_cost
             };
@@ -1798,7 +1801,11 @@ impl GameLoop {
             } else if is_bestow {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Bestow);
             } else if is_morph_facedown {
-                let is_mega = game.card(card_id).keywords.iter().any(|k| k.starts_with("Megamorph:"));
+                let is_mega = game
+                    .card(card_id)
+                    .keywords
+                    .iter()
+                    .any(|k| k.starts_with("Megamorph:"));
                 sa.alt_cost = Some(if is_mega {
                     crate::spellability::AlternativeCost::Megamorph
                 } else {
@@ -2255,28 +2262,14 @@ impl GameLoop {
             // Pay additional costs from SP$ line (e.g. sacrifice a creature).
             let spell_cost = Self::parse_spell_cost(&abilities_for_spell);
             if let Some(ref sc) = spell_cost {
-                if !self.pay_additional_costs(
-                    game,
-                    agents,
-                    player,
-                    card_id,
-                    sc,
-                    None,
-                    sc.mandatory,
-                ) {
+                if !self.pay_additional_costs(game, agents, player, card_id, sc, None, sc.mandatory)
+                {
                     return None;
                 }
             }
             if let Some(ref rc) = raise_cost {
-                if !self.pay_additional_costs(
-                    game,
-                    agents,
-                    player,
-                    card_id,
-                    rc,
-                    None,
-                    rc.mandatory,
-                ) {
+                if !self.pay_additional_costs(game, agents, player, card_id, rc, None, rc.mandatory)
+                {
                     return None;
                 }
             }
@@ -2371,6 +2364,9 @@ impl GameLoop {
                 is_creature_spell: is_creature,
                 is_permanent_spell: is_permanent,
                 cast_from_zone: cast_zone,
+                optional_trigger_decider: None,
+                optional_trigger_description: None,
+                optional_trigger_source_name: None,
             };
 
             game.stack.push(entry.clone());
@@ -2585,6 +2581,9 @@ impl GameLoop {
                     is_creature_spell: is_creature,
                     is_permanent_spell: is_permanent,
                     cast_from_zone: Some(ZoneType::Exile),
+                    optional_trigger_decider: None,
+                    optional_trigger_description: None,
+                    optional_trigger_source_name: None,
                 };
                 game.stack.push(entry);
                 self.log_stack_push(&card_name, &game.player(player).name);

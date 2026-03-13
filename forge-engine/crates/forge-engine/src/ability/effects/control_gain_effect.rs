@@ -48,7 +48,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Schedule controller return at end of turn if LoseControl$ EOT
-    if sa.params.get("LoseControl").map(|v| v == "EOT").unwrap_or(false) {
+    if sa
+        .params
+        .get("LoseControl")
+        .map(|v| v == "EOT")
+        .unwrap_or(false)
+    {
         ctx.game.card_mut(target_card).original_controller_eot = Some(old_controller);
     }
 

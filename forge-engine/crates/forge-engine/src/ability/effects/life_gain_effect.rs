@@ -1,11 +1,11 @@
-use super::{parse_param, resolve_defined_player, EffectContext};
+use super::{resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let amount = parse_param(&sa.ability_text, "LifeAmount$ ").unwrap_or(1);
+    let amount = resolve_numeric_svar(ctx.game, sa, "LifeAmount", 1);
     let target = sa
         .params
         .get("Defined")

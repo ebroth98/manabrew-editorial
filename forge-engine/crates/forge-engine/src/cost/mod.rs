@@ -106,7 +106,13 @@ pub enum CostPart {
     /// Return permanents to owner's hand as cost. Mirrors CostReturn.
     Return { amount: i32, type_filter: String },
     /// Tap other permanents of a type as cost (tapXType<n/filter>). Mirrors CostTapType.
-    TapType { amount: i32, type_filter: String },
+    /// When `min_total_power` is Some(N), tap any number of creatures whose total power >= N
+    /// (used by Crew). When None, tap exactly `amount` matching permanents.
+    TapType {
+        amount: i32,
+        type_filter: String,
+        min_total_power: Option<i32>,
+    },
     /// Untap permanents as cost. Mirrors CostUntap.
     Untap,
     /// Untap other permanents of a type as cost (untapYType<n/filter>). Mirrors CostUntapType.
@@ -540,15 +546,29 @@ pub fn parse_cost(raw: &str) -> Cost {
                 });
             }
         } else if token.starts_with("tapXType<") {
-            // tapXType<amount/filter[/desc]>
+            // tapXType<amount/filter[/desc]> or tapXType<Any/filter+withTotalPowerGE{N}>
             if let Some(inner) = token
                 .strip_prefix("tapXType<")
                 .and_then(|s| s.strip_suffix('>'))
             {
                 let (amount, filter) = parse_amount_filter(inner);
+                // Check for +withTotalPowerGE{N} suffix on the filter
+                let (final_filter, min_total_power) =
+                    if let Some(idx) = filter.find("+withTotalPowerGE") {
+                        let power_str = &filter[idx + "+withTotalPowerGE".len()..];
+                        let power: i32 = power_str
+                            .trim_start_matches('{')
+                            .trim_end_matches('}')
+                            .parse()
+                            .unwrap_or(0);
+                        (filter[..idx].to_string(), Some(power))
+                    } else {
+                        (filter, None)
+                    };
                 parts.push(CostPart::TapType {
                     amount,
-                    type_filter: filter,
+                    type_filter: final_filter,
+                    min_total_power,
                 });
             }
         } else if token.starts_with("untapYType<") {
@@ -1508,9 +1528,19 @@ fn can_pay_inner(
             CostPart::TapType {
                 amount,
                 type_filter,
+                min_total_power,
             } => {
                 let targets = get_tap_type_targets(game, player, type_filter, source);
-                if (targets.len() as i32) < *amount {
+                if let Some(power_threshold) = min_total_power {
+                    // Crew: check total power of all valid targets >= threshold
+                    let total_power: i32 = targets
+                        .iter()
+                        .map(|&cid| game.card(cid).power())
+                        .sum();
+                    if total_power < *power_threshold {
+                        return false;
+                    }
+                } else if (targets.len() as i32) < *amount {
                     return false;
                 }
             }
@@ -2213,9 +2243,29 @@ mod tests {
             CostPart::TapType {
                 amount,
                 type_filter,
+                min_total_power,
             } => {
                 assert_eq!(*amount, 2);
                 assert_eq!(type_filter, "Creature");
+                assert_eq!(*min_total_power, None);
+            }
+            _ => panic!("expected TapType cost part"),
+        }
+    }
+
+    #[test]
+    fn parse_tap_type_with_total_power() {
+        let cost = parse_cost("tapXType<Any/Creature.Other+withTotalPowerGE{3}>");
+        assert_eq!(cost.parts.len(), 1);
+        match &cost.parts[0] {
+            CostPart::TapType {
+                amount,
+                type_filter,
+                min_total_power,
+            } => {
+                assert_eq!(*amount, 1); // "Any" defaults to 1
+                assert_eq!(type_filter, "Creature.Other");
+                assert_eq!(*min_total_power, Some(3));
             }
             _ => panic!("expected TapType cost part"),
         }

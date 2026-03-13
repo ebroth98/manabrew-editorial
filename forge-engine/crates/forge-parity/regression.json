@@ -24,6 +24,10 @@
     "args": "--deck1 keyword_advanced  --deck2 keyword_advanced --max-turns 40 --games 10 --seed 42"
   },
   {
+    "name": "keyword_advanced2",
+    "args": "--deck1 keyword_advanced2  --deck2 keyword_advanced2 --max-turns 40 --games 10 --seed 42"
+  },
+  {
     "name": "bugfix_regression",
     "args": "--deck1 bugfix_regression --deck2 bugfix_regression --max-turns 20 --seed 42 --games 5"
   },

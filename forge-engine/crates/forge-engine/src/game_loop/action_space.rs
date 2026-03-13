@@ -62,8 +62,8 @@ impl GameLoop {
                     return false;
                 }
                 // Must be a land or a permanent with a mana ability.
-                let has_mana_ability = c.is_land()
-                    || c.activated_abilities.iter().any(|ab| ab.is_mana_ability);
+                let has_mana_ability =
+                    c.is_land() || c.activated_abilities.iter().any(|ab| ab.is_mana_ability);
                 if !has_mana_ability {
                     return false;
                 }

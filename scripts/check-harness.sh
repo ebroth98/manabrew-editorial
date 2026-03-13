@@ -27,8 +27,11 @@ JAR_PATH="$PROJECT_ROOT/forge/forge-harness/target/forge-harness-jar-with-depend
 CHECKSUM_FILE="$PROJECT_ROOT/forge/forge-harness/target/.harness-sources-checksum"
 
 CHECK_ONLY=false
+UPDATE_CHECKSUM=false
 if [[ "${1:-}" == "--check" ]]; then
     CHECK_ONLY=true
+elif [[ "${1:-}" == "--update-checksum" ]]; then
+    UPDATE_CHECKSUM=true
 fi
 
 # Directories containing Java sources that affect the harness
@@ -119,7 +122,13 @@ rebuild() {
 }
 
 # Main
-if is_stale; then
+if $UPDATE_CHECKSUM; then
+    # Just update the stored checksum without rebuilding (for use after manual builds)
+    checksum="$(compute_checksum)"
+    mkdir -p "$(dirname "$CHECKSUM_FILE")"
+    echo "$checksum" > "$CHECKSUM_FILE"
+    echo "harness: checksum updated"
+elif is_stale; then
     if $CHECK_ONLY; then
         exit 1
     fi

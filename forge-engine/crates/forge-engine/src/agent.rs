@@ -412,6 +412,15 @@ pub trait PlayerAgent {
         false
     }
 
+    /// Choose which legendary permanent to keep when the legend rule applies.
+    /// `duplicates` contains all legendaries with the same name controlled by this player.
+    /// Returns the CardId of the one to keep; the rest are sacrificed.
+    /// Mirrors Java's `chooseSingleEntityForEffect` for InternalLegendaryRule.
+    /// Default: keep the first one.
+    fn choose_legend_keep(&mut self, _player: PlayerId, duplicates: &[CardId]) -> CardId {
+        duplicates[0]
+    }
+
     /// Choose whether an optional triggered ability fires.
     /// `description` is the trigger text shown to the player.
     /// `card_name` is the name of the source card (for UI display).

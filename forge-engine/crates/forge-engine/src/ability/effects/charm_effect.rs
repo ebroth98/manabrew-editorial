@@ -7,8 +7,8 @@ use crate::spellability::target_restrictions::{
     get_all_battlefield_permanents_filtered, get_all_candidates_creature_filtered,
     get_all_candidates_spells, get_valid_cards_in_zone, TargetKind,
 };
-use crate::trigger::parse_pipe_params;
 use crate::spellability::{build_spell_ability, SpellAbility};
+use crate::trigger::parse_pipe_params;
 
 /// `SP$ Charm` — modal spell: player chooses N effects from a list.
 ///
@@ -139,6 +139,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Build the mode's SpellAbility (recursively includes SubAbility$ chain)
         let mut mode_sa = build_spell_ability(ctx.game, source_id, mode_text, player);
         mode_sa.source = Some(source_id);
+        // Propagate trigger context from parent SA to mode SA so that
+        // effects like Modular can read trigger_remembered_amount.
+        mode_sa.trigger_remembered_amount = sa.trigger_remembered_amount;
 
         // Walk the sub-ability chain: set targets then resolve each node
         let mut cur_opt: Option<SpellAbility> = Some(mode_sa);
@@ -250,12 +253,16 @@ pub fn make_choices_precast(
 
     game.card_mut(source_id).chosen_modes = Some(chosen_indices.clone());
     sa.sub_ability = None;
+    let parent_trigger_remembered = sa.trigger_remembered_amount;
     for idx in chosen_indices {
         if idx >= mode_texts.len() {
             continue;
         }
         let mut mode_sa = build_spell_ability(game, source_id, &mode_texts[idx], player);
         mode_sa.source = Some(source_id);
+        // Propagate trigger context from parent SA so effects like Modular
+        // can access trigger_remembered_amount at resolution time.
+        mode_sa.trigger_remembered_amount = parent_trigger_remembered;
         append_subability(sa, mode_sa);
     }
 
@@ -296,7 +303,10 @@ pub(crate) fn can_make_choices_precast(
         .and_then(|s| {
             s.parse().ok().or_else(|| {
                 // If not a plain integer, try resolving as an SVar from the source card.
-                game.card(source_id).svars.get(s.trim()).and_then(|v| v.parse().ok())
+                game.card(source_id)
+                    .svars
+                    .get(s.trim())
+                    .and_then(|v| v.parse().ok())
             })
         })
         .unwrap_or(1);
@@ -304,7 +314,10 @@ pub(crate) fn can_make_choices_precast(
         .get("MinCharmNum")
         .and_then(|s| {
             s.parse().ok().or_else(|| {
-                game.card(source_id).svars.get(s.trim()).and_then(|v| v.parse().ok())
+                game.card(source_id)
+                    .svars
+                    .get(s.trim())
+                    .and_then(|v| v.parse().ok())
             })
         })
         .unwrap_or(charm_num);
@@ -465,13 +478,8 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
             let filter = filter.clone();
             let mut valid = Vec::new();
             for &pid in &ctx.game.player_order.clone() {
-                let zone_cards = get_valid_cards_in_zone(
-                    ctx.game,
-                    zone,
-                    pid,
-                    filter.as_deref(),
-                    mode_sa.source,
-                );
+                let zone_cards =
+                    get_valid_cards_in_zone(ctx.game, zone, pid, filter.as_deref(), mode_sa.source);
                 valid.extend(zone_cards);
             }
             if let Some(card) =
@@ -483,23 +491,27 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
 
         // Generic fallback: use valid_tgts[0] with matches_valid_cards for battlefield
         TargetKind::Any => {
-            let valid_players = if crate::spellability::target_restrictions::any_target_allows_players(&tr.valid_tgts) {
-                ctx.game.alive_players()
-            } else {
-                Vec::new()
-            };
-            let valid_cards = crate::spellability::target_restrictions::get_all_candidates_any_filtered(
-                ctx.game,
-                &tr.valid_tgts,
-                player,
-            )
-            .into_iter()
-            .filter(|&cid| {
-                crate::spellability::target_restrictions::can_be_targeted_by_sa(
-                    ctx.game, cid, player, mode_sa,
+            let valid_players =
+                if crate::spellability::target_restrictions::any_target_allows_players(
+                    &tr.valid_tgts,
+                ) {
+                    ctx.game.alive_players()
+                } else {
+                    Vec::new()
+                };
+            let valid_cards =
+                crate::spellability::target_restrictions::get_all_candidates_any_filtered(
+                    ctx.game,
+                    &tr.valid_tgts,
+                    player,
                 )
-            })
-            .collect::<Vec<_>>();
+                .into_iter()
+                .filter(|&cid| {
+                    crate::spellability::target_restrictions::can_be_targeted_by_sa(
+                        ctx.game, cid, player, mode_sa,
+                    )
+                })
+                .collect::<Vec<_>>();
             let choice =
                 ctx.agents[player.index()].choose_target_any(player, &valid_players, &valid_cards);
             match choice {

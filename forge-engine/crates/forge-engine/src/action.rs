@@ -74,6 +74,10 @@ impl GameState {
         // Update card's zone
         self.cards[card_id.index()].zone = dest_zone;
 
+        // Assign a zone timestamp so same-player triggers are ordered by
+        // zone entry order (matching Java's Zone.cardList insertion order).
+        self.assign_zone_timestamp(card_id);
+
         // Reset state on zone change
         match dest_zone {
             ZoneType::Battlefield => {
@@ -327,14 +331,17 @@ impl GameState {
 
     /// Check and apply state-based actions. Returns true if any were applied.
     pub fn check_state_based_actions(&mut self) -> bool {
-        self.check_state_based_actions_with_triggers(None)
+        self.check_state_based_actions_with_triggers(None, None)
     }
 
     /// Check and apply state-based actions. Returns true if any were applied.
     /// If provided, emits ChangesZone triggers for SBA zone moves.
+    /// `legend_keep_fn` — optional callback for legend rule: given (player, duplicates),
+    /// returns the CardId to keep.  Mirrors Java's `chooseSingleEntityForEffect`.
     pub fn check_state_based_actions_with_triggers(
         &mut self,
         mut trigger_handler: Option<&mut TriggerHandler>,
+        mut legend_keep_fn: Option<&mut dyn FnMut(PlayerId, &[CardId]) -> CardId>,
     ) -> bool {
         let mut any_changes = false;
 
@@ -432,8 +439,16 @@ impl GameState {
                         // flush_waiting_triggers pre-matches while card state
                         // is intact; the matched results survive the move.
                         if let Some(handler) = trigger_handler.as_deref_mut() {
-                            crate::ability::effects::emit_zone_trigger(
-                                handler, cid, old_zone, final_dest,
+                            // Capture +1/+1 counters for LKI (Modular death
+                            // triggers).  Counters are still present since we
+                            // emit before move_card.
+                            let lki_p1p1 = *self
+                                .card(cid)
+                                .counters
+                                .get(&crate::card::CounterType::P1P1)
+                                .unwrap_or(&0);
+                            crate::ability::effects::emit_zone_trigger_with_lki_counters(
+                                handler, cid, old_zone, final_dest, lki_p1p1,
                             );
                             handler.flush_waiting_triggers(self);
                         }
@@ -488,7 +503,17 @@ impl GameState {
                 if ids.len() <= 1 {
                     continue;
                 }
-                for cid in ids.into_iter().skip(1) {
+                // Choose which to keep: delegate to callback (mirrors Java's
+                // chooseSingleEntityForEffect), or default to first in zone order.
+                let keep = if let Some(ref mut chooser) = legend_keep_fn {
+                    chooser(pid, &ids)
+                } else {
+                    ids[0]
+                };
+                for cid in ids {
+                    if cid == keep {
+                        continue;
+                    }
                     let owner = self.card(cid).owner;
                     let old_zone = self.card(cid).zone;
                     self.move_card(cid, ZoneType::Graveyard, owner);
@@ -657,6 +682,7 @@ impl GameState {
         }
 
         self.cards[card_id.index()].zone = ZoneType::Library;
+        self.assign_zone_timestamp(card_id);
         self.zone_mut(ZoneType::Library, owner)
             .add_to_bottom(card_id);
     }

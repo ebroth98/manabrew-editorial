@@ -180,8 +180,12 @@ pub fn compute_cost_adjustment_with_targets(
                     _ => {} // "Player" or unknown → applies to all
                 }
             } else {
-                // Default: applies to controller only
-                if source.controller != caster {
+                // Default for ReduceCost/SetCost: applies to controller only.
+                // Default for IncreaseCost: applies to ALL players (e.g. Thalia,
+                // Guardian of Thraben — "Noncreature spells cost {1} more to cast").
+                if !is_reduce && !is_set_cost {
+                    // IncreaseCost without Activator$ → universal effect
+                } else if source.controller != caster {
                     continue;
                 }
             }
@@ -515,8 +519,8 @@ pub fn compute_raise_cost_parts_with_targets(
                     }
                     _ => {}
                 }
-            } else if source.controller != caster {
-                continue;
+            } else {
+                // IncreaseCost without Activator$ → universal effect (e.g. Thalia)
             }
 
             if let Some(valid_card) = st_ab.params.get("ValidCard") {

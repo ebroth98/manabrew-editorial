@@ -301,6 +301,36 @@ pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner
     }
 }
 
+/// Build the opponent deck configured for a given preset id.
+///
+/// Reads the preset's `opponent` field and loads that deck for `owner`.
+/// Falls back to a random AI-eligible deck if the preset or opponent is missing.
+pub fn build_preset_opponent(game: &mut GameState, preset_id: &str, owner: PlayerId) {
+    let preset = get_preset_by_id(preset_id);
+    match preset.and_then(|p| p.opponent.as_deref()) {
+        Some("random") => {
+            let ai_cards = random_ai_deck_cards();
+            build_deck_from_entries(game, owner, ai_cards);
+        }
+        Some(opp_id) => {
+            if let Some(opp) = get_preset_by_id(opp_id) {
+                build_deck_from_entries(game, owner, &opp.cards);
+            } else {
+                eprintln!(
+                    "[preset_decks] Unknown opponent '{}', using random AI deck",
+                    opp_id
+                );
+                let ai_cards = random_ai_deck_cards();
+                build_deck_from_entries(game, owner, ai_cards);
+            }
+        }
+        None => {
+            let ai_cards = random_ai_deck_cards();
+            build_deck_from_entries(game, owner, ai_cards);
+        }
+    }
+}
+
 /// Pick a random deck from all AI-eligible presets.
 fn random_ai_deck_cards() -> &'static Vec<DeckCardEntry> {
     static EMPTY_DECK: OnceLock<Vec<DeckCardEntry>> = OnceLock::new();

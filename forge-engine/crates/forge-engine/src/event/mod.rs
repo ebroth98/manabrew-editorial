@@ -231,4 +231,7 @@ pub struct RunParams {
     pub num_attackers: Option<usize>,
     /// The creature that was exploited (for Exploited trigger).
     pub exploited_card: Option<CardId>,
+    /// LKI +1/+1 counter count on a card that just left the battlefield.
+    /// Used by Modular triggers to know how many counters to move.
+    pub lki_p1p1_counters: Option<i32>,
 }

@@ -34,13 +34,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             keys.sort_by(|a, b| format!("{:?}", a).cmp(&format!("{:?}", b)));
             keys.into_iter().next()
         });
-    let Some(counter_type) = counter_type else { return };
+    let Some(counter_type) = counter_type else {
+        return;
+    };
 
-    let can_add = !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
-        &ctx.game.cards,
-        ctx.game.card(target_id),
-        &counter_type,
-    );
+    let can_add =
+        !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+            &ctx.game.cards,
+            ctx.game.card(target_id),
+            &counter_type,
+        );
     let can_remove = ctx.game.card(target_id).counter_count(&counter_type) > 0;
     if !can_add && !can_remove {
         return;
@@ -65,7 +68,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     if put_counter {
-        ctx.game.card_mut(target_id).add_counter(&counter_type, amount);
+        ctx.game
+            .card_mut(target_id)
+            .add_counter(&counter_type, amount);
         ctx.trigger_handler.run_trigger(
             crate::event::TriggerType::CounterAdded,
             crate::event::RunParams {
@@ -78,7 +83,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             false,
         );
     } else {
-        ctx.game.card_mut(target_id)
+        ctx.game
+            .card_mut(target_id)
             .remove_counter(&counter_type, amount);
         ctx.trigger_handler.run_trigger(
             crate::event::TriggerType::CounterRemoved,

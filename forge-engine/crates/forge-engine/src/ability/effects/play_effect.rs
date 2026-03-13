@@ -61,6 +61,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         is_creature_spell: is_creature,
         is_permanent_spell: is_permanent,
         cast_from_zone: cast_zone,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
 
     // Push onto stack

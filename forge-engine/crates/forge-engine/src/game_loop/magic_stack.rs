@@ -1,5 +1,6 @@
-use super::*;
 use super::game_action::CostPaymentContext;
+use super::*;
+use crate::spellability::TargetKind;
 
 impl GameLoop {
     fn effect_kind_for_sa(sa: &SpellAbility) -> String {
@@ -46,12 +47,75 @@ impl GameLoop {
         if entry.spell_ability.is_copy {
             self.resolve_spell_effect(game, agents, &entry);
             apply_continuous_effects(game);
-            game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
+            super::check_sba(game, &mut self.trigger_handler, agents);
+            self.process_triggers(game, agents);
+            return;
+        }
+
+        // Fizzle check — mirrors Java's MagicStack.hasFizzled() (CR 608.2b).
+        // A spell or ability is countered by game rules if ALL of its targets
+        // are illegal on resolution. Walk the SA chain; if every targeting node
+        // has only invalid targets, the whole thing fizzles.
+        if Self::has_fizzled(&entry.spell_ability, game) {
+            crate::agent::notify_all_agents(
+                agents,
+                crate::agent::GameLogEvent::warning(format!(
+                    "{} fizzles (all targets invalid)",
+                    stack_item_name
+                ))
+                .with_player(entry.spell_ability.activating_player),
+            );
+            // CR 608.2b: A countered spell is still put into its owner's
+            // graveyard (or exile for flashback/escape). Only triggers and
+            // activated abilities have no physical card to move.
+            if !entry.spell_ability.is_trigger
+                && !entry.spell_ability.is_activated
+                && !entry.spell_ability.is_copy
+            {
+                if let Some(card_id) = entry.spell_ability.source {
+                    let owner = game.card(card_id).owner;
+                    let dest = if entry.spell_ability.alt_cost
+                        == Some(crate::spellability::AlternativeCost::Flashback)
+                        || entry.spell_ability.alt_cost
+                            == Some(crate::spellability::AlternativeCost::Escape)
+                    {
+                        ZoneType::Exile
+                    } else {
+                        ZoneType::Graveyard
+                    };
+                    game.move_card(card_id, dest, owner);
+                }
+            }
+            apply_continuous_effects(game);
+            super::check_sba(game, &mut self.trigger_handler, agents);
             self.process_triggers(game, agents);
             return;
         }
 
         if entry.spell_ability.is_trigger || entry.spell_ability.is_activated {
+            // Optional trigger confirmation — mirrors Java's WrappedAbility.resolve()
+            // calling confirmTrigger() FIRST, before cost payment or effect resolution.
+            // This happens at resolution time, AFTER the trigger has been on the stack
+            // and priority has passed.
+            if let Some(decider) = entry.optional_trigger_decider {
+                let description = entry.optional_trigger_description.as_deref().unwrap_or("");
+                let source_name = entry.optional_trigger_source_name.as_deref();
+                let api = entry.spell_ability.api.as_deref();
+                let accepted = agents[decider.index()].choose_optional_trigger(
+                    decider,
+                    description,
+                    source_name,
+                    api,
+                );
+                if !accepted {
+                    // Player declined — trigger does nothing
+                    apply_continuous_effects(game);
+                    super::check_sba(game, &mut self.trigger_handler, agents);
+                    self.process_triggers(game, agents);
+                    return;
+                }
+            }
+
             // Check if the triggered/activated ability has a mana cost that must be paid.
             // Mirrors Java's trigger resolution: if Cost$ is present, the player pays
             // when the ability resolves. If they can't pay, the ability does nothing.
@@ -79,9 +143,7 @@ impl GameLoop {
                     ) {
                         // Can't pay the cost — ability fizzles
                         apply_continuous_effects(game);
-                        game.check_state_based_actions_with_triggers(Some(
-                            &mut self.trigger_handler,
-                        ));
+                        super::check_sba(game, &mut self.trigger_handler, agents);
                         self.process_triggers(game, agents);
                         return;
                     }
@@ -96,14 +158,13 @@ impl GameLoop {
                         CostPaymentContext::TriggerResolve,
                     ) {
                         apply_continuous_effects(game);
-                        game.check_state_based_actions_with_triggers(Some(
-                            &mut self.trigger_handler,
-                        ));
+                        super::check_sba(game, &mut self.trigger_handler, agents);
                         self.process_triggers(game, agents);
                         return;
                     }
                 }
             }
+
             // Triggered/activated ability: resolve the effect
             self.resolve_spell_effect(game, agents, &entry);
             // Fire Cycled trigger if this was a cycling ability
@@ -355,11 +416,8 @@ impl GameLoop {
                         .cards_in_zone(ZoneType::Battlefield, player)
                         .iter()
                         .chain(
-                            game.cards_in_zone(
-                                ZoneType::Battlefield,
-                                game.opponent_of(player),
-                            )
-                            .iter(),
+                            game.cards_in_zone(ZoneType::Battlefield, game.opponent_of(player))
+                                .iter(),
                         )
                         .copied()
                         .filter(|&cid| cid != card_id && game.card(cid).is_creature())
@@ -377,10 +435,29 @@ impl GameLoop {
 
                 // Morph/Megamorph: enter face-down as a 2/2 creature
                 if alt_cost.map_or(false, |ac| ac.is_morph()) {
+                    let is_mega = alt_cost == Some(crate::spellability::AlternativeCost::Megamorph);
                     let c = game.card_mut(card_id);
                     c.face_down = true;
                     c.static_set_power = Some(crate::spellability::MORPH_PT);
                     c.static_set_toughness = Some(crate::spellability::MORPH_PT);
+
+                    // Add "turn face up" activated ability (morph cost → SetState TurnFaceUp).
+                    // This is a game rule, not a card ability — face-down morph creatures
+                    // can always be turned face up by paying the morph cost.
+                    let morph_cost = c
+                        .get_keyword_cost(if is_mega { "Megamorph" } else { "Morph" })
+                        .unwrap_or_else(|| "3".to_string());
+                    let mega_param = if is_mega { " | Mega$ True" } else { "" };
+                    let ab_text = format!(
+                        "AB$ SetState | Cost$ {} | Mode$ TurnFaceUp{}",
+                        morph_cost, mega_param
+                    );
+                    let ab_index = c.activated_abilities.len();
+                    if let Some(parsed) =
+                        crate::ability::activated::parse_activated_ability(&ab_text, ab_index)
+                    {
+                        c.activated_abilities.push(parsed);
+                    }
                 }
 
                 // Blitz: grant haste + "dies: draw a card" + sacrifice at EOT
@@ -475,7 +552,7 @@ impl GameLoop {
 
         // Continuous effects might change after resolution
         apply_continuous_effects(game);
-        game.check_state_based_actions_with_triggers(Some(&mut self.trigger_handler));
+        super::check_sba(game, &mut self.trigger_handler, agents);
 
         // Process triggers that may have fired during resolution
         self.process_triggers(game, agents);
@@ -519,6 +596,132 @@ impl GameLoop {
             parent_target_card = sa.target_chosen.target_card;
             current = sa.get_sub_ability();
         }
+    }
+
+    /// Check whether a spell/ability should fizzle (CR 608.2b).
+    /// Mirrors Java's `MagicStack.hasFizzled()`.
+    ///
+    /// Walks the SpellAbility chain. If every targeting node has only invalid
+    /// targets, the whole spell/ability is countered by game rules.
+    /// Returns `false` if no node uses targeting at all.
+    fn has_fizzled(sa: &SpellAbility, game: &GameState) -> bool {
+        let result = Self::has_fizzled_inner(sa, game, None);
+        // Java: `return fizzle != null && fizzle;`
+        result.unwrap_or(false)
+    }
+
+    /// Recursive helper mirroring Java's `hasFizzled(sa, source, fizzle)`.
+    /// Returns `Option<bool>`:
+    ///   `None`        = no targeting node seen in chain yet
+    ///   `Some(true)`  = all targeting nodes have only invalid targets
+    ///   `Some(false)` = at least one valid target found somewhere
+    fn has_fizzled_inner(
+        sa: &SpellAbility,
+        game: &GameState,
+        mut fizzle: Option<bool>,
+    ) -> Option<bool> {
+        if sa.uses_targeting() {
+            // Check if we actually have any chosen targets (mirrors Java's
+            // `!sa.isZeroTargets()` — Rust stores at most one target per slot
+            // so having any slot filled means non-zero targets)
+            let has_any_chosen = sa.target_chosen.target_card.is_some()
+                || sa.target_chosen.target_player.is_some()
+                || sa.target_chosen.target_stack_entry.is_some();
+
+            if has_any_chosen {
+                // This node uses targeting and has chosen targets — fizzling
+                // is now possible.
+                if fizzle.is_none() {
+                    fizzle = Some(true);
+                }
+
+                // Check each chosen target. If ANY is still valid, fizzle = false.
+                // Mirrors Java's for loop over `sa.getTargets()`.
+
+                if let Some(target_card_id) = sa.target_chosen.target_card {
+                    if Self::is_card_target_valid(sa, target_card_id, game) {
+                        fizzle = Some(false);
+                    }
+                }
+
+                if let Some(target_player_id) = sa.target_chosen.target_player {
+                    if Self::is_player_target_valid(target_player_id, game) {
+                        fizzle = Some(false);
+                    }
+                }
+
+                if let Some(target_stack_id) = sa.target_chosen.target_stack_entry {
+                    if game.stack.find_by_id(target_stack_id).is_some() {
+                        fizzle = Some(false);
+                    }
+                }
+
+                // CantFizzle param (e.g. Gilded Drake) overrides fizzle
+                if sa.params.contains_key("CantFizzle") {
+                    fizzle = Some(false);
+                }
+            }
+        }
+
+        // Recurse into sub-abilities — mirrors Java's:
+        //   if (sa.getSubAbility() != null)
+        //       fizzle = hasFizzled(sa.getSubAbility(), source, fizzle);
+        if let Some(sub) = sa.get_sub_ability() {
+            fizzle = Self::has_fizzled_inner(sub, game, fizzle);
+        }
+
+        fizzle
+    }
+
+    /// Check if a card target is still valid at resolution time.
+    /// The card must still be in a zone that makes it a legal target:
+    /// - For Battlefield targets (Creature/Permanent/Any): must be on battlefield
+    /// - For CardInZone targets: must be in the specified zone
+    /// - The card must also still be targetable (hexproof etc.)
+    fn is_card_target_valid(sa: &SpellAbility, target_card_id: CardId, game: &GameState) -> bool {
+        // Check if card index is valid
+        if target_card_id.index() >= game.cards.len() {
+            return false;
+        }
+
+        let card = game.card(target_card_id);
+
+        // Determine expected zone from target restrictions
+        let expected_zone = if let Some(ref tr) = sa.target_restrictions {
+            match &tr.target_kind {
+                TargetKind::Creature(_) | TargetKind::Permanent(_) | TargetKind::Any => {
+                    Some(ZoneType::Battlefield)
+                }
+                TargetKind::CardInZone { zone, .. } => Some(*zone),
+                _ => Some(ZoneType::Battlefield), // default
+            }
+        } else {
+            Some(ZoneType::Battlefield) // default
+        };
+
+        // Card must be in the expected zone
+        if let Some(zone) = expected_zone {
+            if card.zone != zone {
+                return false;
+            }
+        }
+
+        // Card must still be targetable (hexproof, shroud, protection, etc.)
+        // Use the activating player as the source controller
+        crate::spellability::target_restrictions::can_be_targeted_by_sa(
+            game,
+            target_card_id,
+            sa.activating_player,
+            sa,
+        )
+    }
+
+    /// Check if a player target is still valid (player must still be alive).
+    fn is_player_target_valid(target_player_id: PlayerId, game: &GameState) -> bool {
+        if target_player_id.index() >= game.players.len() {
+            return false;
+        }
+        !game.player(target_player_id).has_lost
     }
 
     /// Resolve a single effect line by delegating to the effects module.

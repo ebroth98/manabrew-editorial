@@ -18,31 +18,53 @@ impl GameLoop {
                 .player(pt.entry.spell_ability.activating_player)
                 .name
                 .clone();
-            if pt.optional {
-                // Prompt the deciding player, passing the SA's API type so AI agents
-                // can make informed decisions (e.g. Java's PumpAi declines optional
-                // non-targeted pump triggers).
-                let api = pt.entry.spell_ability.api.as_deref();
-                let accepted = agents[pt.decider.index()].choose_optional_trigger(
-                    pt.decider,
-                    &pt.description,
-                    Some(&source_name),
-                    api,
-                );
-                if !accepted {
-                    continue; // Player declined the optional trigger
+
+            // ── Mirrors Java's trigger processing order ──
+            // In Java (deterministic harness), the flow is:
+            //   1. prepareSingleSaDeterministic:
+            //      a. CharmEffect.makeChoices(sa) — select charm modes
+            //      b. sa.setupTargets() — pick targets for the chosen mode
+            //      (consumes RNG for mode selection + target selection)
+            //   2. playStackDeterministic: adds trigger to stack
+            //   3. WrappedAbility.resolve(): confirmTrigger (consumes RNG for ACCEPT/DECLINE)
+            //
+            // We must match this RNG consumption order:
+            //   charm mode selection → target setup → [stack] → optional confirm at resolution.
+
+            // For Charm-type triggers (e.g. Modular uses SP$ Charm | Choices$ ModularMove),
+            // select the charm mode BEFORE target setup, so that setupTargets can find
+            // targets on the chosen sub-ability.  Mirrors Java's CharmEffect.makeChoices().
+            if pt.entry.spell_ability.api.as_deref() == Some("Charm") {
+                if !crate::ability::effects::charm_effect::make_choices_precast(
+                    game,
+                    agents,
+                    &mut pt.entry.spell_ability,
+                ) {
+                    continue; // No valid charm modes — drop the trigger
                 }
             }
 
             // Set up trigger targets via the shared SpellAbility targeting path.
-            // This mirrors Java's controller flow (`chooseTargetsFor`), including
-            // optional target semantics (e.g. TargetMin$ 0 may choose no target).
+            // This mirrors Java's `prepareSingleSaDeterministic` → `setupTargets()`,
+            // which happens BEFORE the trigger is put on the stack.
+            // If target setup fails (no valid targets), the trigger is silently
+            // dropped — matching Java's behavior.
             if !pt
                 .entry
                 .spell_ability
                 .setup_targets(game, agents, &self.mana_pools)
             {
                 continue;
+            }
+
+            // For optional triggers, store the decider info on the StackEntry.
+            // The actual ACCEPT/DECLINE prompt happens at resolution time
+            // (in resolve_stack), matching Java's WrappedAbility.resolve() →
+            // confirmTrigger() flow.
+            if pt.optional {
+                pt.entry.optional_trigger_decider = Some(pt.decider);
+                pt.entry.optional_trigger_description = Some(pt.description.clone());
+                pt.entry.optional_trigger_source_name = Some(source_name.clone());
             }
 
             let trigger_mode = pt

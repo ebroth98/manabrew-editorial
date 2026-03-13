@@ -1,9 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
 import { useGameStore } from "@/stores/useGameStore";
-import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
-import { Button } from "@/components/ui/button";
-import { Swords } from "lucide-react";
+import { DeckVsSelector } from "@/components/lobby/DeckVsSelector";
 import Game from "./Game";
 import type { PlayerDeckInfo } from "@/types/server";
 
@@ -19,7 +17,6 @@ interface MultiplayerLocationState {
 export default function Play() {
   const location = useLocation();
   const { isGameActive, startGame, startMultiplayerGame, setMultiplayerState } = useGameStore();
-  const [dialogOpen, setDialogOpen] = useState(false);
   const multiplayerStarted = useRef(false);
 
   const mpState = location.state as MultiplayerLocationState | null;
@@ -58,26 +55,12 @@ export default function Play() {
     );
   }
 
-  // Single-player: show deck selection
+  // Single-player: fighting-game style deck selector
   return (
-    <div className="flex flex-col items-center justify-center h-full gap-6">
-      <div className="text-center space-y-2">
-        <h1 className="text-3xl font-bold">Play vs AI</h1>
-        <p className="text-muted-foreground">
-          Choose a deck and battle a random AI opponent — completely offline.
-        </p>
-      </div>
-      <Button size="lg" className="gap-2" onClick={() => setDialogOpen(true)}>
-        <Swords className="h-5 w-5" />
-        New Game
-      </Button>
-      <CreateGameDialog
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-        onStart={(cardNames, formatId, commanderName) => {
-          startGame(cardNames, formatId, commanderName);
-        }}
-      />
-    </div>
+    <DeckVsSelector
+      onStart={(playerDeck, opponentDeck) => {
+        startGame(playerDeck, undefined, undefined, opponentDeck);
+      }}
+    />
   );
 }

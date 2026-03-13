@@ -48,6 +48,9 @@ export function RightActionPanel({
   snapshots,
   canRestoreSnapshots,
   onRestoreSnapshot,
+  payManaCostInfo,
+  onPayManaCost,
+  onCancelManaCost,
 }: RightActionPanelProps) {
   const visibleLog = gameLog.filter((entry) => entry.entryType !== "rule");
   const typeLabel: Record<GameLogEntryType, string> = {
@@ -222,6 +225,9 @@ export function RightActionPanel({
                 blockAssignments={blockAssignments}
                 onDeclareBlockers={onDeclareBlockers}
                 onOpenStack={onOpenStack}
+                payManaCostInfo={payManaCostInfo}
+                onPayManaCost={onPayManaCost}
+                onCancelManaCost={onCancelManaCost}
               />
             </div>
           </>

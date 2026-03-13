@@ -66,6 +66,8 @@ public final class ParityOrder {
         if (sa.isAlternativeCost(AlternativeCost.Madness)) return "Madness";
         if (sa.isAlternativeCost(AlternativeCost.Foretold)) return "Foretell";
         if (sa.isAlternativeCost(AlternativeCost.Emerge)) return "Emerge";
+        if (sa.isCastFaceDown()) return "Morph";
+        if (sa.isAlternativeCost(AlternativeCost.Bestow)) return "Bestow";
         return "0";
     }
 
@@ -91,6 +93,19 @@ public final class ParityOrder {
             idx++;
         }
         return Integer.MAX_VALUE;
+    }
+
+    /**
+     * Sort key for target candidates (GameEntity: Player or Card).
+     * Players sort first (by index), cards sort second (by name + parityId).
+     */
+    public static String targetSortKey(final GameEntity e) {
+        if (e instanceof Card) {
+            Card c = (Card) e;
+            return "1|" + c.getName() + "|" + String.format("%05d", ParityCardMap.parityId(c));
+        }
+        // Player — sort by index (name or ID)
+        return "0|" + e.getName();
     }
 
     public static List<GameEntity> sortDefenders(final List<GameEntity> defenders) {

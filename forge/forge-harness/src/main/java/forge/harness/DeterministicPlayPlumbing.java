@@ -3,6 +3,7 @@ package forge.harness;
 import forge.ai.ComputerUtilCost;
 import forge.game.Game;
 import forge.game.GameActionUtil;
+import forge.game.ability.AbilityKey;
 import forge.game.ability.AbilityUtils;
 import forge.game.ability.ApiType;
 import forge.game.ability.effects.CharmEffect;
@@ -13,10 +14,16 @@ import forge.game.player.Player;
 import forge.game.spellability.Spell;
 import forge.game.spellability.SpellAbility;
 import forge.game.spellability.TargetChoices;
+import forge.game.trigger.Trigger;
+import forge.game.trigger.TriggerHandler;
+import forge.game.trigger.TriggerType;
+import forge.game.trigger.TriggerWaiting;
 import forge.game.zone.Zone;
 import forge.game.zone.ZoneType;
 
+import java.lang.reflect.Field;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Deterministic cast/payment plumbing extracted from {@link DeterministicController}.
@@ -134,6 +141,23 @@ final class DeterministicPlayPlumbing {
         game.getStack().freezeStack(sa);
 
         if (costPlumbing.payWithDeterministicDecision(cost, sa, false)) {
+            // Fix for LTB trigger collection during frozen stack.
+            // When a card is sacrificed as a cost while the stack is frozen, its
+            // LTB (leaves-the-battlefield) triggers are registered in activeTriggers
+            // via registerActiveLTBTrigger using an LKI copy from lastStateBattlefield.
+            // However, the waiting trigger's runParams contain a *different* LKI copy
+            // (created by changeZone). When collectTriggerForWaiting runs later (inside
+            // addAndUnfreeze -> push -> resetActiveTriggers), Card.Self matching uses
+            // object identity and fails because the two LKI copies are different objects
+            // with the same card ID. This causes modular death triggers (and similar
+            // LTB triggers) to be silently lost.
+            //
+            // Fix: patch the CardLKI (and Card) references in the waiting trigger's
+            // runParams to point to the same Java object as the active LTB trigger's
+            // host card. This makes the engine's own collectTriggerForWaiting ->
+            // performTest -> Card.Self check succeed via object identity.
+            fixLTBCardIdentity(game, sa);
+
             game.getStack().addAndUnfreeze(sa);
             if (sa.getSplicedCards() != null && !sa.getSplicedCards().isEmpty()) {
                 game.getAction().reveal(sa.getSplicedCards(), ai, true, "Computer reveals spliced cards from ");
@@ -150,7 +174,101 @@ final class DeterministicPlayPlumbing {
                 csa.setSkip(true);
             }
         }
+        // Mirror HumanPlaySpellAbility: unfreeze the stack when cost payment
+        // fails. Without this, the stack stays frozen from the freezeStack()
+        // call at line 141 and the primaryAbility reference lingers, causing
+        // subsequent addAndUnfreeze() calls to skip unfreezing because
+        // primaryAbility doesn't match the new ability.
+        game.getStack().unfreezeStack();
         return false;
+    }
+
+    /**
+     * Fix LKI object identity for LTB triggers in waiting trigger runParams.
+     *
+     * This works around a Java engine bug where Card.Self matching fails during
+     * collectTriggerForWaiting because the LKI copy in the trigger's runParams
+     * (from changeZone) is a different Java object than the LKI copy used as the
+     * trigger's host card (from lastStateBattlefield/registerActiveLTBTrigger).
+     *
+     * Instead of pre-collecting triggers (which causes timing issues), we patch
+     * the CardLKI reference in runParams to point to the same Java object as the
+     * active LTB trigger's host. This lets the engine's own collectTriggerForWaiting
+     * (called inside addAndUnfreeze -> push -> resetActiveTriggers) succeed via
+     * its normal Card.Self object identity check.
+     */
+    @SuppressWarnings("unchecked")
+    private static void fixLTBCardIdentity(final Game game, final SpellAbility sourceSA) {
+        try {
+            final TriggerHandler th = game.getTriggerHandler();
+
+            final Field wtField = TriggerHandler.class.getDeclaredField("waitingTriggers");
+            wtField.setAccessible(true);
+            final List<TriggerWaiting> waitingTriggers = (List<TriggerWaiting>) wtField.get(th);
+
+            final Field atField = TriggerHandler.class.getDeclaredField("activeTriggers");
+            atField.setAccessible(true);
+            final List<Trigger> activeTriggers = (List<Trigger>) atField.get(th);
+
+            if (waitingTriggers.isEmpty() || activeTriggers.isEmpty()) {
+                return;
+            }
+
+            for (final TriggerWaiting wt : waitingTriggers) {
+                if (wt.getTriggers() != null) {
+                    continue; // already collected
+                }
+
+                if (wt.getMode() != TriggerType.ChangesZone) {
+                    continue;
+                }
+
+                final Map<AbilityKey, Object> runParams = wt.getParams();
+                if (!"Battlefield".equals(runParams.get(AbilityKey.Origin))) {
+                    continue;
+                }
+
+                final Card cardLKI = (Card) runParams.get(AbilityKey.CardLKI);
+                if (cardLKI == null) {
+                    continue;
+                }
+
+                // Look for an active LTB trigger whose host has the same card ID
+                // but is a different Java object (the bug scenario).
+                for (final Trigger t : activeTriggers) {
+                    if (t.getMode() != TriggerType.ChangesZone) {
+                        continue;
+                    }
+                    final Card trigHost = t.getHostCard();
+                    if (trigHost.getId() != cardLKI.getId()) {
+                        continue;
+                    }
+                    // Only fix if these are different Java objects with the same ID
+                    if (trigHost == cardLKI) {
+                        continue;
+                    }
+                    // Only fix Card.Self triggers — these are the ones that fail
+                    // due to object identity in CardProperty.java
+                    if (!t.hasParam("ValidCard") || !t.getParam("ValidCard").startsWith("Card.Self")) {
+                        continue;
+                    }
+
+                    // Patch the runParams so CardLKI points to the trigger host.
+                    // When collectTriggerForWaiting runs later, performTest will
+                    // call matchesValidParam("ValidCard", moved) where moved is
+                    // now the same object as source — Card.Self check passes.
+                    runParams.put(AbilityKey.CardLKI, trigHost);
+                    final Card cardParam = (Card) runParams.get(AbilityKey.Card);
+                    if (cardParam != null && cardParam.getId() == trigHost.getId() && cardParam != trigHost) {
+                        runParams.put(AbilityKey.Card, trigHost);
+                    }
+                    break; // only one fix needed per waiting trigger
+                }
+            }
+        } catch (NoSuchFieldException | IllegalAccessException e) {
+            // If reflection fails, silently continue — the triggers will be processed
+            // through the normal (buggy) path, which is the existing behavior.
+        }
     }
 
     boolean prepareSingleSaDeterministic(final Card host, final SpellAbility sa, final boolean isMandatory) {
@@ -166,9 +284,24 @@ final class DeterministicPlayPlumbing {
     }
 
     void orderAndPlaySimultaneousSa(List<SpellAbility> activePlayerSAs, final Game game) {
+        // Sort simultaneous triggers deterministically by host card zone-entry
+        // timestamp, with trigger ID as tiebreaker.  The engine's
+        // TriggerWaiting stores triggers in a HashMap which does not preserve
+        // insertion order; re-sorting here in the harness avoids modifying the
+        // engine's TriggerWaiting.java while matching the Rust engine's
+        // zone_timestamp ordering.
+        activePlayerSAs.sort((a, b) -> {
+            long tsA = a.getHostCard().getGameTimestamp();
+            long tsB = b.getHostCard().getGameTimestamp();
+            if (tsA != tsB) return Long.compare(tsA, tsB);
+            int idA = a.isTrigger() ? a.getTrigger().getId() : -1;
+            int idB = b.isTrigger() ? b.getTrigger().getId() : -1;
+            return Integer.compare(idA, idB);
+        });
         for (final SpellAbility sa : activePlayerSAs) {
             if (sa.isTrigger() && !sa.isCopied()) {
-                if (prepareSingleSaDeterministic(sa.getHostCard(), sa, true)) {
+                boolean prepared = prepareSingleSaDeterministic(sa.getHostCard(), sa, true);
+                if (prepared) {
                     playStackDeterministic(sa, payer, game);
                 }
             } else {
@@ -203,4 +336,5 @@ final class DeterministicPlayPlumbing {
         }
         return true;
     }
+
 }

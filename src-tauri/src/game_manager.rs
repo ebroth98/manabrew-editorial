@@ -23,7 +23,7 @@ use crate::multiplayer_controller::{
     spawn_remote_prompt_forwarder, spawn_snapshot_forwarder,
 };
 use crate::preset_decks::{
-    build_ai_opponent, build_custom_deck, build_preset_deck_for_player, build_preset_decks,
+    build_ai_opponent, build_custom_deck, build_preset_deck_for_player, build_preset_opponent,
     is_preset_id, CardIdentity,
 };
 use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
@@ -62,6 +62,7 @@ impl GameManager {
         deck_list: Vec<CardIdentity>,
         starting_life: i32,
         commander_name: Option<String>,
+        opponent_deck_list: Option<Vec<CardIdentity>>,
     ) -> Result<String, String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
 
@@ -103,6 +104,7 @@ impl GameManager {
                     deck,
                     starting_life,
                     commander_name,
+                    opponent_deck_list,
                     prompt_tx,
                     response_rx,
                     notify_tx,
@@ -163,9 +165,10 @@ impl GameManager {
             // Unblock the game thread with a no-op
             let session_guard = self.session.lock().map_err(|e| e.to_string())?;
             if let Some(session) = session_guard.as_ref() {
-                let _ = session
-                    .response_tx
-                    .send(PlayerAction::PlayCard { card_id: None, mode: None });
+                let _ = session.response_tx.send(PlayerAction::PlayCard {
+                    card_id: None,
+                    mode: None,
+                });
             }
             return Ok(());
         }
@@ -385,6 +388,7 @@ fn run_game(
     deck_list: Vec<CardIdentity>,
     starting_life: i32,
     commander_name: Option<String>,
+    opponent_deck_list: Option<Vec<CardIdentity>>,
     prompt_tx: mpsc::Sender<AgentPrompt>,
     response_rx: mpsc::Receiver<PlayerAction>,
     notify_tx: mpsc::Sender<GameLogEntryDto>,
@@ -395,14 +399,26 @@ fn run_game(
 
     let mut game = GameState::new(&["You", "AI Opponent"], starting_life);
 
-    // Build human player deck: if a single preset ID is given, use that;
-    // otherwise build a custom deck from the card name list.
+    // Build human player deck
     if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
-        build_preset_decks(&mut game, &deck_list[0].name, p0, p1);
+        build_preset_deck_for_player(&mut game, &deck_list[0].name, p0);
     } else {
-        // Custom deck: build human player deck from card names sent by the frontend.
         build_custom_deck(&mut game, p0, &deck_list);
-        // AI always plays red burn as a simple opponent.
+    }
+
+    // Build AI opponent deck: use user-chosen opponent if provided,
+    // otherwise fall back to the preset's configured opponent or random.
+    if let Some(ref opp_deck) = opponent_deck_list {
+        if opp_deck.len() == 1 && is_preset_id(&opp_deck[0].name) {
+            build_preset_deck_for_player(&mut game, &opp_deck[0].name, p1);
+        } else {
+            build_custom_deck(&mut game, p1, opp_deck);
+        }
+    } else if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
+        // Legacy behavior: use the preset's configured opponent
+        let preset_id = &deck_list[0].name;
+        build_preset_opponent(&mut game, preset_id, p1);
+    } else {
         build_ai_opponent(&mut game, p1);
     }
 

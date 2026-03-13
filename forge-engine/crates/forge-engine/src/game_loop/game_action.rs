@@ -128,6 +128,18 @@ impl GameLoop {
 
         for card_id in battlefield {
             let card = game.card(card_id);
+            // Face-down creatures only expose morph turn-face-up ability (game rule).
+            // All other abilities are hidden while face-down.
+            if card.face_down {
+                for ab in &card.activated_abilities {
+                    if ab.ability_text.contains("Mode$ TurnFaceUp") {
+                        if can_activate(card_id, ab) {
+                            result.push((card_id, ab.ability_index));
+                        }
+                    }
+                }
+                continue;
+            }
             for ab in &card.activated_abilities {
                 // Skip abilities with ActivationZone$ Hand — they're for hand, not battlefield
                 if ab
@@ -198,6 +210,9 @@ impl GameLoop {
     }
 
     /// Activate an ability on a permanent.
+    /// Activate an ability. Returns `true` if the ability was successfully
+    /// activated (costs paid, placed on stack / resolved). Returns `false` if
+    /// the activation failed (e.g. payment declined, targets invalid).
     pub(crate) fn activate_ability(
         &mut self,
         game: &mut GameState,
@@ -205,7 +220,7 @@ impl GameLoop {
         player: PlayerId,
         card_id: CardId,
         ability_idx: usize,
-    ) {
+    ) -> bool {
         // Clone the ability data we need before mutating game
         let ab = {
             let card = game.card(card_id);
@@ -217,14 +232,73 @@ impl GameLoop {
 
         let ab = match ab {
             Some(ab) => ab,
-            None => return,
+            None => return false,
         };
 
         if ab.is_mana_ability {
             self.resolve_mana_ability(game, agents, player, card_id, &ab);
+            true
+        } else if ab.ability_text.contains("Mode$ TurnFaceUp") {
+            // Morph face-up is a special action (CR 702.36e): doesn't use the stack,
+            // can't be responded to. Pay the cost and resolve immediately.
+            self.resolve_morph_face_up(game, agents, player, card_id, &ab)
         } else {
-            self.activate_ability_on_stack(game, agents, player, card_id, &ab);
+            self.activate_ability_on_stack(game, agents, player, card_id, &ab)
         }
+    }
+
+    /// Morph turn face up: pay the morph cost and resolve immediately
+    /// (special action per CR 702.36e — doesn't use the stack).
+    fn resolve_morph_face_up(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        card_id: CardId,
+        ab: &crate::ability::activated::ActivatedAbility,
+    ) -> bool {
+        // Pay costs
+        let api = ab.params.get("AB").map(String::as_str);
+        if !self.pay_ability_cost(
+            game,
+            agents,
+            player,
+            card_id,
+            &ab.cost,
+            api,
+            ab.cost.mandatory,
+            CostPaymentContext::ActivatedAbility,
+        ) {
+            return false;
+        }
+
+        // Build the spell ability and resolve effect immediately (no stack)
+        let sa = crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
+        let entry = StackEntry {
+            id: 0,
+            spell_ability: sa,
+            is_creature_spell: false,
+            is_permanent_spell: false,
+            cast_from_zone: None,
+            optional_trigger_decider: None,
+            optional_trigger_description: None,
+            optional_trigger_source_name: None,
+        };
+        self.resolve_spell_effect(game, agents, &entry);
+
+        let card_name = game.card(card_id).card_name.clone();
+        crate::agent::notify_all_agents(
+            agents,
+            crate::agent::GameLogEvent::action(format!("Morph face-up: {}", card_name))
+                .with_player(player)
+                .with_source_card(card_id),
+        );
+
+        // Apply continuous effects and SBA after the face-up
+        crate::staticability::layer::apply_continuous_effects(game);
+        super::check_sba(game, &mut self.trigger_handler, agents);
+        self.process_triggers(game, agents);
+        true
     }
 
     /// Pay life and fire the LifeLost trigger.
@@ -429,15 +503,8 @@ impl GameLoop {
         // mutating any game state. This avoids partially paid costs when a later
         // cost part is declined.
         for part in cost.parts.iter() {
-            if !self.confirm_cost_part_payment(
-                game,
-                agents,
-                player,
-                card_id,
-                part,
-                api,
-                mandatory,
-            ) {
+            if !self.confirm_cost_part_payment(game, agents, player, card_id, part, api, mandatory)
+            {
                 return false;
             }
         }
@@ -592,8 +659,17 @@ impl GameLoop {
                 CostPart::TapType {
                     amount,
                     type_filter,
+                    min_total_power,
                 } => {
-                    self.pay_tap_type_cost(game, agents, player, card_id, type_filter, *amount);
+                    self.pay_tap_type_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                        *min_total_power,
+                    );
                 }
                 CostPart::UntapType {
                     amount,
@@ -1072,8 +1148,17 @@ impl GameLoop {
                 CostPart::TapType {
                     amount,
                     type_filter,
+                    min_total_power,
                 } => {
-                    self.pay_tap_type_cost(game, agents, player, card_id, type_filter, *amount);
+                    self.pay_tap_type_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                        *min_total_power,
+                    );
                 }
                 CostPart::UntapType {
                     amount,
@@ -1707,13 +1792,12 @@ impl GameLoop {
             return false;
         }
 
-        let selected = agents[player.index()].choose_cards_for_effect(
-            player,
-            &valid,
-            0,
-            valid.len(),
-        );
-        let chosen: Vec<CardId> = selected.into_iter().filter(|cid| valid.contains(cid)).collect();
+        let selected =
+            agents[player.index()].choose_cards_for_effect(player, &valid, 0, valid.len());
+        let chosen: Vec<CardId> = selected
+            .into_iter()
+            .filter(|cid| valid.contains(cid))
+            .collect();
 
         let total_mv: i32 = chosen
             .iter()
@@ -1783,6 +1867,11 @@ impl GameLoop {
                 .choose_sacrifice(player, &foods)
                 .unwrap_or(foods[0]);
             let owner = game.card(chosen).owner;
+            let lki_p1p1 = *game
+                .card(chosen)
+                .counters
+                .get(&crate::card::CounterType::P1P1)
+                .unwrap_or(&0);
             self.trigger_handler.run_trigger(
                 TriggerType::Sacrificed,
                 RunParams {
@@ -1793,11 +1882,12 @@ impl GameLoop {
                 false,
             );
             game.move_card(chosen, ZoneType::Graveyard, owner);
-            crate::ability::effects::emit_zone_trigger(
+            crate::ability::effects::emit_zone_trigger_with_lki_counters(
                 &mut self.trigger_handler,
                 chosen,
                 ZoneType::Battlefield,
                 ZoneType::Graveyard,
+                lki_p1p1,
             );
         } else if !foods.is_empty() {
             // Let the chooser pick between food + graveyard cards. Food means sacrifice path.
@@ -1806,6 +1896,11 @@ impl GameLoop {
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &combined) {
                 if foods.contains(&chosen) {
                     let owner = game.card(chosen).owner;
+                    let lki_p1p1 = *game
+                        .card(chosen)
+                        .counters
+                        .get(&crate::card::CounterType::P1P1)
+                        .unwrap_or(&0);
                     self.trigger_handler.run_trigger(
                         TriggerType::Sacrificed,
                         RunParams {
@@ -1816,11 +1911,12 @@ impl GameLoop {
                         false,
                     );
                     game.move_card(chosen, ZoneType::Graveyard, owner);
-                    crate::ability::effects::emit_zone_trigger(
+                    crate::ability::effects::emit_zone_trigger_with_lki_counters(
                         &mut self.trigger_handler,
                         chosen,
                         ZoneType::Battlefield,
                         ZoneType::Graveyard,
+                        lki_p1p1,
                     );
                 } else {
                     // Graveyard path: exile chosen + two more.
@@ -2348,6 +2444,8 @@ impl GameLoop {
     }
 
     /// Tap `amount` other permanents matching `type_filter` as cost.
+    /// When `min_total_power` is Some(N), tap creatures greedily until total power >= N (Crew).
+    /// Otherwise tap exactly `amount` matching permanents.
     /// Mirrors Java's `CostTapType.doListPayment()`.
     pub(crate) fn pay_tap_type_cost(
         &mut self,
@@ -2357,23 +2455,47 @@ impl GameLoop {
         source: CardId,
         type_filter: &str,
         amount: i32,
+        min_total_power: Option<i32>,
     ) {
-        for _ in 0..amount {
-            let valid = cost::get_tap_type_targets(game, player, type_filter, source);
-            if valid.is_empty() {
-                break;
-            }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
-                game.tap(chosen);
+        if let Some(power_threshold) = min_total_power {
+            // Crew: greedily select creatures by descending power until threshold met.
+            let mut valid = cost::get_tap_type_targets(game, player, type_filter, source);
+            valid.sort_by(|&a, &b| game.card(b).power().cmp(&game.card(a).power()));
+            let mut accum = 0;
+            for &cid in &valid {
+                if accum >= power_threshold {
+                    break;
+                }
+                game.tap(cid);
+                accum += game.card(cid).power();
                 self.trigger_handler.run_trigger(
                     TriggerType::Taps,
                     RunParams {
-                        card: Some(chosen),
+                        card: Some(cid),
                         player: Some(player),
                         ..Default::default()
                     },
                     false,
                 );
+            }
+        } else {
+            for _ in 0..amount {
+                let valid = cost::get_tap_type_targets(game, player, type_filter, source);
+                if valid.is_empty() {
+                    break;
+                }
+                if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                    game.tap(chosen);
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Taps,
+                        RunParams {
+                            card: Some(chosen),
+                            player: Some(player),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
             }
         }
     }
@@ -2567,6 +2689,13 @@ impl GameLoop {
                     continue;
                 }
                 let owner = game.card(chosen).owner;
+                // Capture +1/+1 counter count BEFORE move_card clears counters.
+                // Needed for Modular death triggers (CR 702.43b).
+                let lki_p1p1 = *game
+                    .card(chosen)
+                    .counters
+                    .get(&crate::card::CounterType::P1P1)
+                    .unwrap_or(&0);
                 // Fire Sacrificed trigger before moving
                 self.trigger_handler.run_trigger(
                     TriggerType::Sacrificed,
@@ -2578,11 +2707,12 @@ impl GameLoop {
                     false,
                 );
                 game.move_card(chosen, ZoneType::Graveyard, owner);
-                crate::ability::effects::emit_zone_trigger(
+                crate::ability::effects::emit_zone_trigger_with_lki_counters(
                     &mut self.trigger_handler,
                     chosen,
                     ZoneType::Battlefield,
                     ZoneType::Graveyard,
+                    lki_p1p1,
                 );
             }
         }
@@ -2910,7 +3040,7 @@ impl GameLoop {
         player: PlayerId,
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
-    ) {
+    ) -> bool {
         let ability_text = ab.ability_text.clone();
 
         // Build full SpellAbility chain (including SubAbility$ links) and choose targets.
@@ -2921,10 +3051,10 @@ impl GameLoop {
         if sa.api.as_deref() == Some("Charm")
             && !crate::ability::effects::charm_effect::make_choices_precast(game, agents, &mut sa)
         {
-            return;
+            return false;
         }
         if !sa.setup_targets(game, agents, &self.mana_pools) {
-            return;
+            return false;
         }
 
         // Fire BecomesTarget trigger if a card was targeted
@@ -2971,7 +3101,7 @@ impl GameLoop {
             adjusted_cost.mandatory,
             CostPaymentContext::ActivatedAbility,
         ) {
-            return;
+            return false;
         }
 
         // Track activation count (for PowerUp once-per-game)
@@ -2990,6 +3120,9 @@ impl GameLoop {
             is_creature_spell: false,
             is_permanent_spell: false,
             cast_from_zone: None,
+            optional_trigger_decider: None,
+            optional_trigger_description: None,
+            optional_trigger_source_name: None,
         };
         game.stack.push(entry);
         self.log_stack_push(&format!("{} ability", card_name), &game.player(player).name);
@@ -3019,6 +3152,7 @@ impl GameLoop {
             },
             false,
         );
+        true
     }
 }
 

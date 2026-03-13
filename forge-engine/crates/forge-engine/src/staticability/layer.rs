@@ -83,8 +83,11 @@ pub fn apply_continuous_effects(game: &mut GameState) {
     for card in game.cards.iter_mut() {
         card.static_power_modifier = 0;
         card.static_toughness_modifier = 0;
-        card.static_set_power = None;
-        card.static_set_toughness = None;
+        // Preserve face-down morph P/T override (2/2); only reset for face-up cards.
+        if !card.face_down {
+            card.static_set_power = None;
+            card.static_set_toughness = None;
+        }
         card.granted_keywords.clear();
         card.cant_attack_static = false;
         card.cant_block_static = false;

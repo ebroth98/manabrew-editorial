@@ -13,7 +13,7 @@ import { ChooseCardNameModal } from "@/components/game/ChooseCardNameModal";
 import { DamageOrderModal } from "@/components/game/DamageOrderModal";
 import { ReorderLibraryModal } from "@/components/game/ReorderLibraryModal";
 import { PayCombatCostModal } from "@/components/game/PayCombatCostModal";
-import { PayManaCostModal } from "@/components/game/PayManaCostModal";
+
 import { AbilityPickerModal } from "@/components/game/AbilityPickerModal";
 import { SpecifyManaComboModal } from "@/components/game/SpecifyManaComboModal";
 import { MulliganModal } from "@/components/game/MulliganModal";
@@ -67,9 +67,7 @@ interface GameModalsProps {
   // Pay combat cost
   onPayCombatCost: () => void;
   onDeclineCombatCost: () => void;
-  // Pay mana cost
-  onPayManaCost: () => void;
-  onCancelManaCost: () => void;
+
   // Delve / Convoke
   onDelveDecision: (cardIds: string[]) => void;
   onConvokeDecision: (cardIds: string[]) => void;
@@ -125,8 +123,6 @@ export function GameModals({
   onDamageOrderDecision,
   onPayCombatCost,
   onDeclineCombatCost,
-  onPayManaCost,
-  onCancelManaCost,
   onDelveDecision,
   onConvokeDecision,
   onImproviseDecision,
@@ -365,15 +361,7 @@ export function GameModals({
         />
       )}
 
-      {promptType === "payManaCost" && currentPrompt?.manaCost != null && (
-        <PayManaCostModal
-          cardName={currentPrompt.cardName ?? "Spell"}
-          manaCost={currentPrompt.manaCost}
-          manaPool={currentPrompt.gameView?.players?.[0]?.manaPool ?? {}}
-          onPay={onPayManaCost}
-          onCancel={onCancelManaCost}
-        />
-      )}
+
       {promptType === "specifyManaCombo" && currentPrompt?.availableColors != null && currentPrompt?.amount != null && (
         <SpecifyManaComboModal
           availableColors={currentPrompt.availableColors}

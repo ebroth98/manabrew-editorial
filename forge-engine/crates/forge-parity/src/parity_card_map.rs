@@ -1,12 +1,23 @@
 use std::collections::HashMap;
+use std::sync::Mutex;
 
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_foundation::ZoneType;
 
-#[derive(Clone, Default)]
+/// Maps engine-internal card IDs to stable, cross-engine parity IDs.
+///
+/// Deck cards are assigned sequential IDs (1, 2, 3, ...) at game start from the
+/// opening hand + library.  Cards created mid-game (tokens, copies, detached
+/// effects) are assigned the next sequential ID on first access, so both engines
+/// produce identical parity IDs as long as they encounter cards in the same order.
 pub struct ParityCardMap {
+    inner: Mutex<ParityCardMapInner>,
+}
+
+struct ParityCardMapInner {
     by_card: HashMap<CardId, u32>,
+    next: u32,
 }
 
 impl ParityCardMap {
@@ -32,14 +43,22 @@ impl ParityCardMap {
             }
         }
 
-        Self { by_card }
+        Self {
+            inner: Mutex::new(ParityCardMapInner { by_card, next }),
+        }
     }
 
+    /// Return the stable parity ID for `cid`.  If this card has not been seen
+    /// before (e.g. a token or copy created mid-game), a new sequential ID is
+    /// assigned automatically.
     pub fn id(&self, cid: CardId) -> u32 {
-        self.by_card
-            .get(&cid)
-            .copied()
-            // Use i32::MAX to match Java's Integer.MAX_VALUE fallback for tokens.
-            .unwrap_or((i32::MAX as u32).saturating_sub(cid.0))
+        let mut inner = self.inner.lock().unwrap();
+        if let Some(&id) = inner.by_card.get(&cid) {
+            return id;
+        }
+        let id = inner.next;
+        inner.next += 1;
+        inner.by_card.insert(cid, id);
+        id
     }
 }

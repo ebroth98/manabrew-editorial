@@ -13,15 +13,24 @@ import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 
-/** Native-engine card-id to cross-engine parity-id mapping. */
+/**
+ * Native-engine card-id to cross-engine parity-id mapping.
+ *
+ * <p>Deck cards are assigned sequential IDs (1, 2, 3, ...) at game start from
+ * the opening hand + library.  Cards created mid-game (tokens, copies, detached
+ * effects) are assigned the next sequential ID on first access, so both engines
+ * produce identical parity IDs as long as they encounter cards in the same order.
+ */
 public final class ParityCardMap {
     private static final Map<Integer, Integer> CARD_TO_PARITY = new HashMap<>();
+    private static int nextParityId = 1;
     private static boolean initialized = false;
 
     private ParityCardMap() {}
 
     public static synchronized void reset() {
         CARD_TO_PARITY.clear();
+        nextParityId = 1;
         initialized = false;
     }
 
@@ -29,30 +38,36 @@ public final class ParityCardMap {
         if (initialized || game == null) {
             return;
         }
-        int next = 1;
         final List<Player> players = new ArrayList<>(game.getRegisteredPlayers());
         players.sort(Comparator.comparingInt(Player::getId));
 
         for (final Player p : players) {
             for (final Card c : p.getCardsIn(ZoneType.Hand)) {
                 if (!CARD_TO_PARITY.containsKey(c.getId())) {
-                    CARD_TO_PARITY.put(c.getId(), next++);
+                    CARD_TO_PARITY.put(c.getId(), nextParityId++);
                 }
             }
             for (final Card c : p.getCardsIn(ZoneType.Library)) {
                 if (!CARD_TO_PARITY.containsKey(c.getId())) {
-                    CARD_TO_PARITY.put(c.getId(), next++);
+                    CARD_TO_PARITY.put(c.getId(), nextParityId++);
                 }
             }
         }
         initialized = true;
     }
 
-    public static int parityId(final Card c) {
+    public static synchronized int parityId(final Card c) {
         if (c == null) {
             return Integer.MAX_VALUE;
         }
-        return CARD_TO_PARITY.getOrDefault(c.getId(), Integer.MAX_VALUE - c.getId());
+        final Integer existing = CARD_TO_PARITY.get(c.getId());
+        if (existing != null) {
+            return existing;
+        }
+        // Auto-assign next sequential parity ID for tokens / copies / effects
+        final int id = nextParityId++;
+        CARD_TO_PARITY.put(c.getId(), id);
+        return id;
     }
 
     public static List<String> disambiguateCards(

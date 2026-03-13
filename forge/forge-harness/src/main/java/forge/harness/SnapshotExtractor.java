@@ -91,7 +91,23 @@ public final class SnapshotExtractor {
 
         // Battlefield — full card snapshots sorted alphabetically
         List<Card> bfCards = new ArrayList<>(p.getCardsIn(ZoneType.Battlefield));
-        bfCards.sort(Comparator.comparing(Card::getName));
+        bfCards.sort(Comparator.<Card, String>comparing(Card::getName)
+                .thenComparingInt(c -> c.isCreature() ? c.getNetPower() : 0)
+                .thenComparingInt(c -> c.isCreature() ? c.getNetToughness() : 0)
+                .thenComparing(c -> {
+                    // Deterministic counter string matching Rust BTreeMap order
+                    TreeMap<String, Integer> counters = new TreeMap<>();
+                    for (Map.Entry<CounterType, Integer> entry : c.getCounters().entrySet()) {
+                        if (entry.getValue() > 0) {
+                            counters.put(counterTypeName(entry.getKey()), entry.getValue());
+                        }
+                    }
+                    return counters.toString();
+                })
+                .thenComparing(Card::isTapped)
+                .thenComparingInt(Card::getDamage)
+                .thenComparing(Card::hasSickness)
+                .thenComparingInt(c -> playerIndex(game, c.getController())));
         List<Map<String, Object>> battlefield = new ArrayList<>();
         for (Card c : bfCards) {
             battlefield.add(snapshotCard(game, c));

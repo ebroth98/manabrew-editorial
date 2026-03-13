@@ -39,8 +39,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             break;
         }
 
-        let chosen =
-            ctx.agents[controller.index()].choose_cards_for_effect(controller, &valid, 0, valid.len());
+        let chosen = ctx.agents[controller.index()].choose_cards_for_effect(
+            controller,
+            &valid,
+            0,
+            valid.len(),
+        );
         for cid in chosen {
             let prompt = format!(
                 "Add or remove time counter on {}?",
