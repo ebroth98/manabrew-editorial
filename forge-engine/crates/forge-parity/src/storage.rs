@@ -140,13 +140,17 @@ impl Storage {
         Ok(())
     }
 
-    /// Return the total number of non-fuzz games in the database.
-    pub fn total_preset_games(&self) -> SqlResult<usize> {
-        self.conn.query_row(
-            "SELECT COUNT(*) FROM runs WHERE is_fuzz = 0",
-            [],
-            |r| r.get(0),
-        )
+    /// Return the (deck1, deck2) of the most recently inserted non-fuzz game.
+    pub fn last_preset_pair(&self) -> SqlResult<Option<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT deck1, deck2 FROM runs WHERE is_fuzz = 0 ORDER BY id DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query([])?;
+        if let Some(row) = rows.next()? {
+            Ok(Some((row.get(0)?, row.get(1)?)))
+        } else {
+            Ok(None)
+        }
     }
 
     /// Insert a run result into the database.

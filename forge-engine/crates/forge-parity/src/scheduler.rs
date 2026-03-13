@@ -106,17 +106,21 @@ impl Scheduler {
         }
     }
 
-    /// Advance the scheduler by `n` preset games without generating jobs.
-    /// Used to resume from where the last session left off within the pair cycle.
-    pub fn skip(&mut self, n: usize) {
-        if self.preset_pairs.is_empty() {
-            return;
+    /// Resume the scheduler to the pair that comes after `(deck1, deck2)`.
+    /// Seeds are NOT advanced — they restart from `start_seed` so the Java cache hits.
+    /// Returns true if the pair was found and the scheduler was repositioned.
+    pub fn resume_after(&mut self, deck1: &str, deck2: &str) -> bool {
+        // Find the pair in our list
+        if let Some(idx) = self
+            .preset_pairs
+            .iter()
+            .position(|(d1, d2)| d1 == deck1 && d2 == deck2)
+        {
+            self.pair_index = (idx + 1) % self.preset_pairs.len();
+            true
+        } else {
+            false
         }
-        let full_cycles = n / self.preset_pairs.len();
-        let remainder = n % self.preset_pairs.len();
-        self.batch_id += full_cycles as i64;
-        self.pair_index = remainder;
-        self.seed += n as u64;
     }
 
     /// Generate the next game job.

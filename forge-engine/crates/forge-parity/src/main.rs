@@ -2267,17 +2267,12 @@ fn run_continuous_mode(cli: &Cli) {
     let mut scheduler =
         Scheduler::new(&deck_names, cli.seed, cli.fuzz_per_batch, fuzz_db, false, 1);
 
-    // Resume pair position so the matrix completes all deck combos across restarts.
-    // Seeds replay (cache makes them fast), but we skip to the right pair index.
-    let played = db.total_preset_games().unwrap_or(0);
-    if played > 0 {
-        scheduler.skip(played);
-        eprintln!(
-            "[parity] Resuming from game {} (pair {}/{})",
-            played,
-            played % scheduler.preset_pairs_count(),
-            scheduler.preset_pairs_count()
-        );
+    // Resume from the last pair played so the matrix completes across restarts.
+    // Seeds restart from cli.seed so the Java cache gives instant hits.
+    if let Ok(Some((d1, d2))) = db.last_preset_pair() {
+        if scheduler.resume_after(&d1, &d2) {
+            eprintln!("[parity] Resuming after {} vs {}", d1, d2);
+        }
     }
 
     // Spawn Java server
@@ -2545,17 +2540,16 @@ fn run_serve_mode(cli: &Cli) {
         dashboard_config.games_per_matchup.load(Ordering::Relaxed),
     );
 
-    // Resume pair position so the matrix completes all deck combos across restarts.
-    // Seeds replay (cache makes them fast), but we skip to the right pair index.
-    let played = db.total_preset_games().unwrap_or(0);
-    if played > 0 {
-        scheduler.skip(played);
-        tracing::info!(
-            played,
-            pair_index = played % scheduler.preset_pairs_count(),
-            total_pairs = scheduler.preset_pairs_count(),
-            "Resuming matrix from previous session"
-        );
+    // Resume from the last pair played so the matrix completes across restarts.
+    // Seeds restart from cli.seed so the Java cache gives instant hits.
+    if let Ok(Some((d1, d2))) = db.last_preset_pair() {
+        if scheduler.resume_after(&d1, &d2) {
+            tracing::info!(
+                last_deck1 = %d1,
+                last_deck2 = %d2,
+                "Resuming matrix after last played pair"
+            );
+        }
     }
 
     // Spawn Java server
@@ -2861,8 +2855,13 @@ fn run_serve_mode(cli: &Cli) {
                 self_matchups,
                 games_per_matchup,
             );
-            // Skip to current position in the matrix
-            scheduler.skip(played + completed);
+            // Resume from last pair played
+            {
+                let storage = app_state.storage.lock().unwrap();
+                if let Ok(Some((d1, d2))) = storage.last_preset_pair() {
+                    scheduler.resume_after(&d1, &d2);
+                }
+            }
             tracing::info!(
                 games_per_matchup,
                 fuzz_enabled,
