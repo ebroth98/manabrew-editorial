@@ -563,7 +563,7 @@ fn build_summary(db: &Storage, config: &AnalyzerConfig) -> Option<PeriodSummary>
         .ok()?;
 
     // Get top failure fields
-    let failures = db.recent_failures(100, None).ok()?;
+    let failures = db.recent_failures(100, None, &[]).ok()?;
     let mut field_counts: HashMap<String, usize> = HashMap::new();
     for f in &failures {
         if let Some(ref field) = f.first_divergence_field {

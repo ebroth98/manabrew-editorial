@@ -427,7 +427,7 @@ async fn trend_handler(
     Query(params): Query<TrendQuery>,
 ) -> impl IntoResponse {
     let storage = state.storage.lock().unwrap();
-    match storage.trend(&params.bucket, params.limit, params.since.as_deref()) {
+    match storage.trend(&params.bucket, params.limit, params.since.as_deref(), &state.exclude_prefixes) {
         Ok(trend) => Json(trend).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
@@ -439,9 +439,9 @@ async fn failures_handler(
 ) -> impl IntoResponse {
     let storage = state.storage.lock().unwrap();
     let result = if let Some(ref field) = params.field {
-        storage.failures_by_field(field, params.limit, params.since.as_deref())
+        storage.failures_by_field(field, params.limit, params.since.as_deref(), &state.exclude_prefixes)
     } else {
-        storage.recent_failures(params.limit, params.since.as_deref())
+        storage.recent_failures(params.limit, params.since.as_deref(), &state.exclude_prefixes)
     };
     match result {
         Ok(failures) => Json(failures).into_response(),
@@ -454,7 +454,7 @@ async fn matrix_handler(
     Query(params): Query<SinceQuery>,
 ) -> impl IntoResponse {
     let storage = state.storage.lock().unwrap();
-    match storage.deck_pair_matrix(params.since.as_deref()) {
+    match storage.deck_pair_matrix(params.since.as_deref(), &state.exclude_prefixes) {
         Ok(matrix) => Json(matrix).into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }

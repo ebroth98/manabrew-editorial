@@ -338,6 +338,7 @@ impl Storage {
         bucket: &str,
         limit: usize,
         since: Option<&str>,
+        exclude_prefixes: &[String],
     ) -> SqlResult<Vec<TrendPoint>> {
         let format_str = match bucket {
             "day" => "%Y-%m-%d",
@@ -349,6 +350,7 @@ impl Storage {
         } else {
             ""
         };
+        let exclude_filter = build_exclude_filter(exclude_prefixes);
 
         let sql = format!(
             "SELECT
@@ -358,7 +360,7 @@ impl Storage {
                 SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) as failed,
                 SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
              FROM runs
-             WHERE is_fuzz = 0 {since_clause}
+             WHERE is_fuzz = 0 {since_clause}{exclude_filter}
              GROUP BY bucket
              ORDER BY bucket DESC
              LIMIT ?1"
@@ -397,17 +399,19 @@ impl Storage {
         &self,
         limit: usize,
         since: Option<&str>,
+        exclude_prefixes: &[String],
     ) -> SqlResult<Vec<RunRecord>> {
         let since_clause = since
             .map(|s| format!(" AND timestamp >= '{}'", s.replace('\'', "''")))
             .unwrap_or_default();
+        let exclude_filter = build_exclude_filter(exclude_prefixes);
         let sql = format!(
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
                     rust_trace, java_trace, is_fuzz, timestamp, commit_sha
              FROM runs
-             WHERE status IN ('fail', 'error'){since_clause}
+             WHERE status IN ('fail', 'error'){since_clause}{exclude_filter}
              ORDER BY id DESC
              LIMIT ?1"
         );
@@ -422,17 +426,19 @@ impl Storage {
         field: &str,
         limit: usize,
         since: Option<&str>,
+        exclude_prefixes: &[String],
     ) -> SqlResult<Vec<RunRecord>> {
         let since_clause = since
             .map(|s| format!(" AND timestamp >= '{}'", s.replace('\'', "''")))
             .unwrap_or_default();
+        let exclude_filter = build_exclude_filter(exclude_prefixes);
         let sql = format!(
             "SELECT id, batch_id, deck1, deck2, seed, status, snapshots_compared,
                     divergence_count, first_divergence_field, first_divergence_rust,
                     first_divergence_java, covered_cards, duration_ms, error_message,
                     rust_trace, java_trace, is_fuzz, timestamp, commit_sha
              FROM runs
-             WHERE status = 'fail' AND first_divergence_field IS NOT NULL{since_clause}
+             WHERE status = 'fail' AND first_divergence_field IS NOT NULL{since_clause}{exclude_filter}
              ORDER BY id DESC
              LIMIT 5000"
         );
@@ -469,19 +475,20 @@ impl Storage {
     }
 
     /// Get pass rate heatmap by deck pair.
-    pub fn deck_pair_matrix(&self, since: Option<&str>) -> SqlResult<Vec<DeckPairStats>> {
+    pub fn deck_pair_matrix(&self, since: Option<&str>, exclude_prefixes: &[String]) -> SqlResult<Vec<DeckPairStats>> {
         let since_clause = if since.is_some() {
             "AND timestamp >= ?1"
         } else {
             ""
         };
+        let exclude_filter = build_exclude_filter(exclude_prefixes);
         let sql = format!(
             "SELECT deck1, deck2, COUNT(*) as total,
                     SUM(CASE WHEN status = 'pass' THEN 1 ELSE 0 END) as passed,
                     SUM(CASE WHEN status = 'fail' THEN 1 ELSE 0 END) as failed,
                     SUM(CASE WHEN status = 'error' THEN 1 ELSE 0 END) as errors
              FROM runs
-             WHERE is_fuzz = 0 {since_clause}
+             WHERE is_fuzz = 0 {since_clause}{exclude_filter}
              GROUP BY deck1, deck2
              ORDER BY deck1, deck2"
         );
@@ -843,7 +850,7 @@ mod tests {
         db.insert_run(1, &make_result(MatchupStatus::Error), 50, false, None)
             .unwrap();
 
-        let failures = db.recent_failures(10, None).unwrap();
+        let failures = db.recent_failures(10, None, &[]).unwrap();
         assert_eq!(failures.len(), 2);
         assert_eq!(failures[0].status, MatchupStatus::Error);
         assert_eq!(failures[1].status, MatchupStatus::Fail);
@@ -869,7 +876,7 @@ mod tests {
         db.insert_run(1, &make_result(MatchupStatus::Fail), 200, false, None)
             .unwrap();
 
-        let matrix = db.deck_pair_matrix(None).unwrap();
+        let matrix = db.deck_pair_matrix(None, &[]).unwrap();
         assert_eq!(matrix.len(), 1);
         assert_eq!(matrix[0].total, 2);
         assert_eq!(matrix[0].passed, 1);
