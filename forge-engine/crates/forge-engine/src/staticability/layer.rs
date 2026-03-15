@@ -127,6 +127,14 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             }
         }
 
+        // CharacteristicDefining statics always affect only the host card.
+        // Mirrors Java StaticAbilityContinuous.getAffectedCards() line 1036.
+        let is_cda = sa
+            .params
+            .get("CharacteristicDefining")
+            .map(|v| v.eq_ignore_ascii_case("True"))
+            .unwrap_or(false);
+
         // Determine which cards are affected by this static ability.
         let affected_str = sa
             .params
@@ -135,7 +143,14 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             .or_else(|| sa.params.get("ValidCard"))
             .map(String::as_str)
             .unwrap_or("Creature.YouControl");
-        let targets: Vec<CardId> = if affected_str.eq_ignore_ascii_case("Card.Self")
+        let targets: Vec<CardId> = if is_cda {
+            // CDAs always affect only the source card itself.
+            if source_card.zone == ZoneType::Battlefield {
+                vec![*source_id]
+            } else {
+                vec![]
+            }
+        } else if affected_str.eq_ignore_ascii_case("Card.Self")
             || affected_str.starts_with("Card.Self+")
         {
             // Self-referencing static: only affects the source card itself.
@@ -215,8 +230,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                             });
                         }
                         Layer::SetPT => {
-                            let sp = sa.params.get("SetPower").and_then(|s| s.parse().ok());
-                            let st = sa.params.get("SetToughness").and_then(|s| s.parse().ok());
+                            let sp = resolve_set_pt_param(game, &sa, *source_id, "SetPower");
+                            let st = resolve_set_pt_param(game, &sa, *source_id, "SetToughness");
                             pending.push(PendingEffect {
                                 layer,
                                 target,
@@ -546,6 +561,49 @@ pub fn get_etb_unless_reveal_cost(card: &crate::card::CardInstance) -> Option<(i
             }
         }
     }
+    None
+}
+
+/// Resolve a SetPower/SetToughness parameter that may be an integer literal or
+/// an SVar reference (e.g. "X" → SVar:X:Count$Valid Creature.ChosenType).
+/// Mirrors Java `AbilityUtils.calculateAmount(hostCard, param, stAb)`.
+fn resolve_set_pt_param(
+    game: &GameState,
+    sa: &StaticAbility,
+    source_id: CardId,
+    param_name: &str,
+) -> Option<i32> {
+    let val_str = sa.params.get(param_name)?;
+
+    // Try direct integer parse first
+    if let Ok(n) = val_str.trim().parse::<i32>() {
+        return Some(n);
+    }
+
+    // It's an SVar reference — look it up on the source card
+    let source = game.card(source_id);
+    if let Some(svar_expr) = source.svars.get(val_str.trim()) {
+        if svar_expr.starts_with("Count$") {
+            return Some(crate::ability::effects::resolve_count_svar(
+                svar_expr,
+                game,
+                source_id,
+                source.controller,
+            ));
+        }
+        // Simple SVar evaluation (e.g. Number$2)
+        return Some(
+            crate::ability::effects::evaluate_svar(
+                svar_expr,
+                &crate::spellability::SpellAbility::new_simple(
+                    Some(source_id),
+                    source.controller,
+                    "",
+                ),
+            ),
+        );
+    }
+
     None
 }
 

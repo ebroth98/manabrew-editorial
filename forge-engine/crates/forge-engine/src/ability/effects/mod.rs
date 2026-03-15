@@ -533,9 +533,11 @@ fn try_pay_unless_cost(
         return false;
     }
 
-    // Java parity: UnlessCost payment goes through the CostPayment.payComputerCosts()
-    // visitor pattern which does NOT call confirmPayment for each cost part.
-    // Do NOT call confirm_payment here — it would consume extra agent RNG.
+    // Java parity: UnlessCost payment goes through CostPayment.payComputerCosts()
+    // with DeterministicCostDecision, which calls confirm() on certain cost parts.
+    // confirm() skips the prompt if isSpellPaymentContext(ability) is true.
+    // Mirrors Java's DeterministicCostPlumbing.isSpellPaymentContext().
+    let spell_context = is_spell_payment_context(sa, ctx.game);
 
     // Pre-check that all cost parts are supported before executing any,
     // to avoid partial side-effects (damage/life loss) that can't be rolled back.
@@ -551,6 +553,50 @@ fn try_pay_unless_cost(
             | CostPart::AddCounter { .. } => {}
             _ => {
                 return false;
+            }
+        }
+    }
+
+    // Java parity: DeterministicCostDecision.confirm() calls confirmPayment()
+    // for certain cost parts when NOT in a spell payment context.
+    // If the agent declines, the entire UnlessCost payment fails.
+    if !spell_context {
+        for part in &cost.parts {
+            let should_ask = match part {
+                // Java: CostDamage.visit() → confirm(cost, true)
+                CostPart::DamageYou(_) => true,
+                // Java: CostPayLife.visit() → confirm(cost, !isMandatory())
+                // UnlessCost is never mandatory
+                CostPart::PayLife(_) => true,
+                // Java: CostDraw.visit() → confirm(cost, true)
+                CostPart::Draw(_) => true,
+                // Java: CostMill.visit() → confirm(cost, true)
+                CostPart::Mill(_) => true,
+                // Java: CostAddMana.visit() → confirm(cost, true)
+                CostPart::AddMana { .. } => true,
+                // Java: CostPayEnergy, CostPayShards, CostPutCounter, CostPartMana → no confirm
+                _ => false,
+            };
+            if should_ask {
+                let card_name = sa
+                    .source
+                    .map(|cid| ctx.game.card(cid).card_name.clone());
+                let api = sa.api.as_deref();
+                let kind = unless_cost_part_kind(part);
+                let message = format!(
+                    "Pay {} cost for {}?",
+                    kind,
+                    card_name.as_deref().unwrap_or("unknown")
+                );
+                if !ctx.agents[payer.index()].confirm_payment(
+                    payer,
+                    kind,
+                    &message,
+                    card_name.as_deref(),
+                    api,
+                ) {
+                    return false;
+                }
             }
         }
     }
@@ -633,6 +679,179 @@ fn try_pay_unless_cost(
         }
     }
     true
+}
+
+/// Pay the merged cumulative upkeep cost. Mirrors Java's payCostToPreventEffect
+/// flow for cumulative upkeep in SacrificeEffect. Supports FlipCoin, Mill, Mana,
+/// and other standard cost parts.
+pub(super) fn try_pay_cumulative_upkeep(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    source: CardId,
+    payer: PlayerId,
+    cost: &Cost,
+) -> bool {
+    // Check payability
+    if !crate::cost::can_pay_with_ability(
+        cost,
+        ctx.game,
+        &ctx.mana_pools[payer.index()],
+        source,
+        payer,
+        Some(sa),
+    ) {
+        return false;
+    }
+
+    // Cumulative upkeep is never a spell context — always confirm
+    for part in &cost.parts {
+        let should_ask = match part {
+            CostPart::DamageYou(_) => true,
+            CostPart::PayLife(_) => true,
+            CostPart::Draw(_) => true,
+            CostPart::Mill(_) => true,
+            CostPart::AddMana { .. } => true,
+            // Java: CostFlipCoin.visit() → confirm(cost, true)
+            CostPart::FlipCoin(_) => true,
+            _ => false,
+        };
+        if should_ask {
+            let card_name = ctx.game.card(source).card_name.clone();
+            let api = sa.api.as_deref();
+            let kind = unless_cost_part_kind(part);
+            let message = format!("Pay {} cost for {}?", kind, card_name);
+            let result = ctx.agents[payer.index()].confirm_payment(
+                payer,
+                kind,
+                &message,
+                Some(&card_name),
+                api,
+            );
+            if !result {
+                return false;
+            }
+        }
+    }
+
+    // Pay each cost part
+    for part in &cost.parts {
+        match part {
+            CostPart::FlipCoin(amount) => {
+                let resolved_amount =
+                    crate::cost::resolve_dynamic_amount(ctx.game, source, payer, *amount);
+                for _ in 0..resolved_amount {
+                    let source_name = ctx.game.card(source).card_name.clone();
+                    let called_heads = ctx.agents[payer.index()].choose_binary(
+                        payer,
+                        "Call the coin flip",
+                        crate::agent::BinaryChoiceKind::HeadsOrTails,
+                        None,
+                        Some(&source_name),
+                        None,
+                    );
+                    let is_heads = ctx.rng.next_int(2) == 0;
+                    let won = called_heads == is_heads;
+                    ctx.trigger_handler.run_trigger(
+                        TriggerType::FlippedCoin,
+                        RunParams {
+                            player: Some(payer),
+                            coin_flip_won: Some(won),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                }
+            }
+            CostPart::DamageYou(amount) => {
+                ctx.game.deal_damage_to_player(payer, *amount);
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::DamageDone,
+                    RunParams {
+                        damage_target_player: Some(payer),
+                        damage_amount: Some(*amount),
+                        is_combat_damage: Some(false),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+            CostPart::PayLife(amount) => {
+                ctx.game.player_mut(payer).lose_life(*amount);
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::LifeLost,
+                    RunParams {
+                        player: Some(payer),
+                        life_amount: Some(*amount),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
+            CostPart::Mana(mana_cost) => {
+                let _ = ctx.mana_pools[payer.index()].try_pay(mana_cost);
+            }
+            CostPart::Mill(amount) => {
+                for _ in 0..*amount {
+                    if let Some(top) = ctx.game.zone_mut(ZoneType::Library, payer).take_top() {
+                        ctx.game.move_card(top, ZoneType::Graveyard, payer);
+                        ctx.trigger_handler.run_trigger(
+                            TriggerType::Milled,
+                            RunParams {
+                                card: Some(top),
+                                player: Some(payer),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                        emit_zone_trigger(
+                            &mut ctx.trigger_handler,
+                            top,
+                            ZoneType::Library,
+                            ZoneType::Graveyard,
+                        );
+                    }
+                }
+            }
+            CostPart::AddCounter {
+                amount,
+                counter_type,
+            } => {
+                ctx.game.card_mut(source).add_counter(counter_type, *amount);
+            }
+            _ => {
+                // Unsupported cost part
+                return false;
+            }
+        }
+    }
+    true
+}
+
+/// Mirrors Java's `DeterministicCostPlumbing.isSpellPaymentContext()`.
+/// Returns true if the SA represents a spell being cast (not a trigger/activated ability).
+fn is_spell_payment_context(sa: &SpellAbility, game: &GameState) -> bool {
+    if sa.is_spell {
+        return true;
+    }
+    if let Some(cid) = sa.source {
+        let card = game.card(cid);
+        if card.type_line.is_instant() || card.type_line.is_sorcery() {
+            return true;
+        }
+    }
+    false
+}
+
+/// Cost part kind label for UnlessCost confirm_payment prompts.
+fn unless_cost_part_kind(part: &CostPart) -> &'static str {
+    match part {
+        CostPart::DamageYou(_) => "DamageYou",
+        CostPart::PayLife(_) => "PayLife",
+        CostPart::Draw(_) => "Draw",
+        CostPart::Mill(_) => "Mill",
+        CostPart::AddMana { .. } => "AddMana",
+        _ => "Cost",
+    }
 }
 
 /// Format a human-readable message for an UnlessCost prompt.
@@ -1093,9 +1312,16 @@ pub fn resolve_count_svar_for_sa(
                 .collect()
         };
 
+        let chosen_type = game.card(source_id).chosen_type.clone();
         for &cid in &cards_to_check {
             let card = game.card(cid);
-            if valid_card_matches_with_source(filter_str, card, controller, source_id) {
+            if valid_card_matches_with_source(
+                filter_str,
+                card,
+                controller,
+                source_id,
+                chosen_type.as_deref(),
+            ) {
                 count += 1;
             }
         }
@@ -1206,6 +1432,7 @@ fn valid_card_matches_with_source(
     card: &crate::card::CardInstance,
     controller: PlayerId,
     source_id: CardId,
+    chosen_type: Option<&str>,
 ) -> bool {
     let parts: Vec<&str> = filter.split('.').collect();
     let base_type = parts.first().copied().unwrap_or("");
@@ -1241,6 +1468,13 @@ fn valid_card_matches_with_source(
                 }
             } else if sub_qual.eq_ignore_ascii_case("Other") {
                 // handled by caller if needed
+            } else if sub_qual.eq_ignore_ascii_case("ChosenType") {
+                // Card must have the source card's chosen creature type as a subtype.
+                // Mirrors Java CardTraitBase.isValid() ChosenType qualifier.
+                match chosen_type {
+                    Some(ct) if card.type_line.has_subtype(ct) => {}
+                    _ => return false,
+                }
             } else if sub_qual.starts_with("counters_") {
                 // Parse "counters_GE1_P1P1", "counters_EQ0_P1P1", etc.
                 if !check_counter_qualifier(card, sub_qual) {

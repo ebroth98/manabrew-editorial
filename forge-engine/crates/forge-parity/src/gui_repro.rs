@@ -31,8 +31,10 @@ pub fn choose_type(valid_types: &[String], rng: &mut JavaRandom) -> Option<Strin
     if valid_types.is_empty() {
         None
     } else {
-        let idx = choice_space::pick_index(valid_types.len(), rng);
-        valid_types.get(idx).cloned()
+        let mut sorted = valid_types.to_vec();
+        sorted.sort();
+        let idx = choice_space::pick_index(sorted.len(), rng);
+        sorted.get(idx).cloned()
     }
 }
 

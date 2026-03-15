@@ -1,0 +1,49 @@
+//! Sacrifice permanents as a cost. Mirrors Java's `CostSacrifice`.
+//!
+//! Java's `CostSacrifice` extends `CostPartWithList` and uses `doListPayment()`
+//! to call `game.getAction().sacrifice()`. The LKI/card tracking lists are
+//! managed by the `CostPartWithList` base class.
+//!
+//! NOTE: Payability check is in `can_pay_inner()` in `mod.rs` (the central dispatcher).
+
+use forge_foundation::ZoneType;
+
+use crate::game::GameState;
+use crate::ids::{CardId, PlayerId};
+
+/// Execute the sacrifice cost payment.
+/// Mirrors Java's `CostSacrifice.doListPayment()` → `game.getAction().sacrifice()`.
+///
+/// For "CARDNAME" sacrifice, moves the source to graveyard.
+/// For typed sacrifice, the caller must have already selected cards via the agent.
+///
+/// NOTE: Trigger firing (Sacrificed) must be handled by the caller since it
+/// requires access to the trigger handler.
+pub fn pay_as_decided_self(game: &mut GameState, source: CardId, player: PlayerId) -> bool {
+    let owner = game.card(source).owner;
+    game.move_card(source, ZoneType::Graveyard, owner);
+    let _ = player;
+    // TODO: Fire Sacrificed trigger — currently done by caller in game_action.rs
+    true
+}
+
+/// Execute typed sacrifice (non-self).
+/// Cards to sacrifice are passed in as `cards` (already selected by agent).
+/// Mirrors Java's `CostSacrifice.doListPayment()`.
+pub fn pay_as_decided_cards(
+    game: &mut GameState,
+    cards: &[CardId],
+    _player: PlayerId,
+) -> bool {
+    for &cid in cards {
+        let owner = game.card(cid).owner;
+        game.move_card(cid, ZoneType::Graveyard, owner);
+        // TODO: Fire Sacrificed trigger per card
+    }
+    true
+}
+
+/// Hash keys for LKI/card tracking lists.
+/// Mirrors Java's `CostSacrifice.getHashForLKIList()` / `getHashForCardList()`.
+pub const HASH_LKI: &str = "Sacrificed";
+pub const HASH_CARDS: &str = "SacrificedCards";

@@ -120,6 +120,31 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
                 .into_iter()
                 .collect()
+        } else if defined.eq_ignore_ascii_case("ExiledWith") {
+            // Cards exiled with this source card, tracked via two mechanisms:
+            // 1. exiled_by field (set by ChangeZoneAll Duration$ UntilHostLeavesPlay)
+            // 2. remembered_cards on the source (set by BeholdExile cost)
+            if let Some(source_id) = sa.source {
+                let mut result: Vec<_> = ctx.game
+                    .cards
+                    .iter()
+                    .filter(|c| c.zone == origin_zone && c.exiled_by == Some(source_id))
+                    .map(|c| c.id)
+                    .collect();
+                // Also check source's remembered_cards for BeholdExile tracking
+                let remembered: Vec<_> = ctx.game
+                    .card(source_id)
+                    .remembered_cards
+                    .iter()
+                    .copied()
+                    .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
+                    .filter(|cid| !result.contains(cid))
+                    .collect();
+                result.extend(remembered);
+                result
+            } else {
+                Vec::new()
+            }
         } else if defined.eq_ignore_ascii_case("Remembered") {
             if let Some(source_id) = sa.source {
                 ctx.game

@@ -1,3 +1,46 @@
+pub mod cost_add_mana;
+pub mod cost_adjustment;
+pub mod cost_behold;
+pub mod cost_blight;
+pub mod cost_choose_color;
+pub mod cost_choose_creature_type;
+pub mod cost_collect_evidence;
+pub mod cost_damage;
+pub mod cost_discard;
+pub mod cost_draw;
+pub mod cost_enlist;
+pub mod cost_exert;
+pub mod cost_exile;
+pub mod cost_exile_ctrl_or_grave;
+pub mod cost_exile_from_stack;
+pub mod cost_exiled_move_to_grave;
+pub mod cost_flip_coin;
+pub mod cost_forage;
+pub mod cost_gain_control;
+pub mod cost_gain_life;
+pub mod cost_mill;
+pub mod cost_pay_energy;
+pub mod cost_pay_life;
+pub mod cost_pay_shards;
+pub mod cost_payment;
+pub mod cost_promise_gift;
+pub mod cost_put_card_to_lib;
+pub mod cost_put_counter;
+pub mod cost_remove_any_counter;
+pub mod cost_return;
+pub mod cost_reveal;
+pub mod cost_reveal_chosen;
+pub mod cost_roll_dice;
+pub mod cost_sacrifice;
+pub mod cost_sub_counter;
+pub mod cost_tap;
+pub mod cost_tap_type;
+pub mod cost_unattach;
+pub mod cost_untap;
+pub mod cost_untap_type;
+pub mod cost_waterbend;
+pub mod payment_decision;
+
 use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
@@ -984,6 +1027,12 @@ fn split_cost_tokens(raw: &str) -> Vec<&str> {
     tokens
 }
 
+/// Check if a card matches a type filter string.
+/// Thin wrapper around `matches_change_type` for use by individual cost modules.
+pub fn matches_type_filter(game: &GameState, cid: CardId, type_filter: &str) -> bool {
+    matches_change_type(game.card(cid), type_filter, &[])
+}
+
 /// Find valid sacrifice targets on the battlefield for a player, filtered by type.
 /// Mirrors Java's `CostSacrifice.getMaxAmountX()` + `CardLists.getValidCards()`.
 pub fn get_sacrifice_targets(game: &GameState, player: PlayerId, type_filter: &str) -> Vec<CardId> {
@@ -1067,6 +1116,7 @@ pub fn get_enlist_targets(game: &GameState, player: PlayerId) -> Vec<CardId> {
             // where isSick() is false for creatures with haste.
             c.is_creature()
                 && !c.tapped
+                && !c.phased_out
                 && (!c.summoning_sick || c.has_haste())
                 && c.attacking_player.is_none()
         })
@@ -1315,7 +1365,8 @@ fn can_pay_inner(
     for part in &cost.parts {
         match part {
             CostPart::Tap => {
-                if card.tapped {
+                // Mirrors Java's CostTap.canPay() → source.canTap() && !source.isAbilitySick()
+                if card.tapped || card.phased_out {
                     return false;
                 }
                 if card.is_creature() && card.summoning_sick && !card.has_haste() {
@@ -1323,7 +1374,15 @@ fn can_pay_inner(
                 }
             }
             CostPart::Untap => {
-                if !card.tapped {
+                // Mirrors Java's CostUntap.canPay() → source.canUntap() && !source.isAbilitySick()
+                if !card.tapped || card.phased_out {
+                    return false;
+                }
+                if card.is_creature() && card.summoning_sick && !card.has_haste() {
+                    return false;
+                }
+                // Stun counters prevent untapping
+                if *card.counters.get(&CounterType::Named("STUN".to_string())).unwrap_or(&0) > 0 {
                     return false;
                 }
             }
@@ -1352,9 +1411,27 @@ fn can_pay_inner(
                     if card.zone != ZoneType::Battlefield {
                         return false;
                     }
+                    // Mirrors Java's canBeSacrificedBy()
+                    if cant_sacrifice(&static_source_cards, card, ability, true) {
+                        return false;
+                    }
+                } else if type_filter.eq_ignore_ascii_case("All") {
+                    // Java: "All" requires every matching card canBeSacrificedBy
+                    let targets = get_sacrifice_targets(game, player, type_filter);
+                    if targets.iter().any(|&cid| {
+                        cant_sacrifice(&static_source_cards, game.card(cid), ability, true)
+                    }) {
+                        return false;
+                    }
                 } else {
                     let targets = get_sacrifice_targets(game, player, type_filter);
-                    if (targets.len() as i32) < *amount {
+                    let valid = targets
+                        .iter()
+                        .filter(|&&cid| {
+                            !cant_sacrifice(&static_source_cards, game.card(cid), ability, true)
+                        })
+                        .count() as i32;
+                    if valid < *amount {
                         return false;
                     }
                 }
@@ -1400,7 +1477,8 @@ fn can_pay_inner(
                 amount,
                 counter_type,
             } => {
-                if card.zone != ZoneType::Battlefield {
+                // Mirrors Java's CostRemoveCounter.canPay(): !source.isPhasedOut()
+                if card.zone != ZoneType::Battlefield || card.phased_out {
                     return false;
                 }
                 if card.counter_count(counter_type) < *amount {
@@ -1423,6 +1501,10 @@ fn can_pay_inner(
                 }
                 if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
                     if card.zone != *from {
+                        return false;
+                    }
+                    // Mirrors Java: CantExile static ability check on self-exile
+                    if cant_exile(&static_source_cards, card, ability, true) {
                         return false;
                     }
                 } else {
@@ -1579,11 +1661,23 @@ fn can_pay_inner(
                 // Mirrors Java CostDamage.canPay() — always returns true.
                 // The player may die as a state-based action after payment; that's legal.
             }
-            CostPart::Draw(_) => {
-                // Drawing is always possible (library may be empty but that's a loss condition)
+            CostPart::Draw(amount) => {
+                // Mirrors Java's CostDraw.canPay() → p.canDrawAmount(c)
+                let resolved = resolve_dynamic_amount(game, source, player, *amount);
+                let allowed = crate::staticability::static_ability_cant_draw::can_draw_amount(
+                    game, player, resolved,
+                );
+                if allowed < resolved {
+                    return false;
+                }
             }
-            CostPart::Mill(_) => {
-                // Same as draw: always considered payable
+            CostPart::Mill(amount) => {
+                // Mirrors Java's CostMill.canPay(): amount < library.size() (strict <)
+                let resolved = resolve_dynamic_amount(game, source, player, *amount);
+                let lib_size = game.zone(ZoneType::Library, player).len() as i32;
+                if lib_size <= resolved {
+                    return false;
+                }
             }
             CostPart::Reveal {
                 amount,
@@ -1651,7 +1745,13 @@ fn can_pay_inner(
                 }
             }
             CostPart::GainLife(_) => {
-                // Opponent gaining life is always payable
+                // Mirrors Java's CostGainLife.canPay() → opponent.canGainLife()
+                let opponent = game.opponent_of(player);
+                if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_gain_life(
+                    game, opponent,
+                ) {
+                    return false;
+                }
             }
             CostPart::GainControl {
                 amount,

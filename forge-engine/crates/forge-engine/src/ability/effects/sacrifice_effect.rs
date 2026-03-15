@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
+use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
@@ -73,6 +74,63 @@ fn do_sacrifice(
 }
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    // ── Cumulative Upkeep ────────────────────────────────────────────────
+    // Mirrors Java SacrificeEffect lines 52-75: when CumulativeUpkeep$ is set,
+    // add an Age counter, build merged cost (base cost × age counters),
+    // ask player to pay, sacrifice if not paid.
+    if let Some(cum_cost_str) = sa.params.get("CumulativeUpkeep").cloned() {
+        let source_id = match sa.source {
+            Some(cid) if ctx.game.card(cid).zone == ZoneType::Battlefield => cid,
+            _ => return,
+        };
+        let controller = ctx.game.card(source_id).controller;
+
+        // 1. Add Age counter (mirrors Java host.addCounter(CounterEnumType.AGE, 1, ...))
+        ctx.game.card_mut(source_id).add_counter(&CounterType::Age, 1);
+
+        // 2. Count age counters to determine how many times to pay
+        let n = ctx
+            .game
+            .card(source_id)
+            .counters
+            .get(&CounterType::Age)
+            .copied()
+            .unwrap_or(0) as usize;
+
+        // 3. Build merged cost: N copies of the base cost
+        //    Mirrors Java Cost.mergeTo(cumCost, n, sa)
+        let base_cost = crate::cost::parse_cost(&cum_cost_str);
+        let mut merged_parts = Vec::new();
+        for _ in 0..n {
+            merged_parts.extend(base_cost.parts.clone());
+        }
+        let merged_cost = crate::cost::Cost {
+            parts: merged_parts,
+            has_tap: false,
+            mandatory: false,
+        };
+
+        // 4. Pay the merged cost (payCostToPreventEffect flow)
+        let paid = super::try_pay_cumulative_upkeep(ctx, sa, source_id, controller, &merged_cost);
+
+        // 5. Fire PayCumulativeUpkeep trigger
+        ctx.trigger_handler.run_trigger(
+            TriggerType::PayCumulativeUpkeep,
+            RunParams {
+                card: Some(source_id),
+                cumulative_upkeep_paid: Some(paid),
+                ..Default::default()
+            },
+            false,
+        );
+
+        // 6. If not paid, sacrifice
+        if !paid {
+            do_sacrifice(ctx, sa, source_id, controller, None);
+        }
+        return;
+    }
+
     let sac_valid = sa
         .params
         .get("SacValid")

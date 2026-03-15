@@ -168,6 +168,8 @@ pub enum TriggerType {
     TurnFaceUp,
     /// A creature was exploited (Exploit keyword).
     Exploited,
+    /// Cumulative upkeep was paid (or not). Mirrors Java TriggerType.PayCumulativeUpkeep.
+    PayCumulativeUpkeep,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.
@@ -234,4 +236,6 @@ pub struct RunParams {
     /// LKI +1/+1 counter count on a card that just left the battlefield.
     /// Used by Modular triggers to know how many counters to move.
     pub lki_p1p1_counters: Option<i32>,
+    /// Whether cumulative upkeep was paid (for PayCumulativeUpkeep trigger).
+    pub cumulative_upkeep_paid: Option<bool>,
 }

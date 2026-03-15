@@ -2,85 +2,9 @@ use super::*;
 use forge_foundation::mana::ManaAtom;
 
 use crate::card::CardInstance;
-
-/// Extract the affinity type from a card's keywords (e.g. "Affinity:Artifact" → "Artifact").
-fn get_affinity_type(card: &CardInstance) -> Option<String> {
-    for kw in card.keywords.iter().chain(card.granted_keywords.iter()) {
-        if let Some(typ) = kw.strip_prefix("Affinity:") {
-            return Some(typ.to_string());
-        }
-    }
-    None
-}
-
-/// Count permanents matching an affinity type on the battlefield.
-fn count_affinity_permanents(
-    game: &GameState,
-    player: PlayerId,
-    affinity_type: &str,
-    exclude_card: CardId,
-) -> i32 {
-    game.cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
-        .iter()
-        .filter(|&&cid| {
-            if cid == exclude_card {
-                return false;
-            }
-            let c = game.card(cid);
-            match affinity_type {
-                "Artifact" => c.type_line.is_artifact(),
-                "Creature" => c.is_creature(),
-                "Enchantment" => c.type_line.is_enchantment(),
-                "Land" => c.is_land(),
-                "Planeswalker" => c.type_line.is_planeswalker(),
-                other => c.type_line.has_subtype(other),
-            }
-        })
-        .count() as i32
-}
-
-/// Apply Delve/Convoke/Improvise/Affinity generic cost reductions.
-fn apply_cost_reductions(
-    game: &GameState,
-    player: PlayerId,
-    card_id: CardId,
-    card: &CardInstance,
-    cost: &forge_foundation::ManaCost,
-) -> forge_foundation::ManaCost {
-    if card.has_keyword("Delve") {
-        let gy_count = game
-            .cards_in_zone(forge_foundation::ZoneType::Graveyard, player)
-            .iter()
-            .filter(|&&cid| cid != card_id)
-            .count() as i32;
-        cost.reduce_generic(gy_count)
-    } else if card.has_keyword("Convoke") {
-        let creature_count = game
-            .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
-            .iter()
-            .filter(|&&cid| {
-                let c = game.card(cid);
-                c.is_creature() && !c.tapped && cid != card_id
-            })
-            .count() as i32;
-        cost.reduce_generic(creature_count)
-    } else if card.has_keyword("Improvise") {
-        let artifact_count = game
-            .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
-            .iter()
-            .filter(|&&cid| {
-                let c = game.card(cid);
-                c.type_line.is_artifact() && !c.tapped && cid != card_id
-            })
-            .count() as i32;
-        cost.reduce_generic(artifact_count)
-    } else if let Some(affinity_type) = get_affinity_type(card) {
-        let count = count_affinity_permanents(game, player, &affinity_type, card_id);
-        cost.reduce_generic(count)
-    } else {
-        cost.clone()
-    }
-}
+use crate::cost::cost_adjustment::{
+    apply_cost_reductions, count_affinity_permanents, get_affinity_type,
+};
 
 /// Check a Forge `IsPresent$` condition against the game state for the given player.
 ///
@@ -168,14 +92,14 @@ impl GameLoop {
 
                 // Apply cost reduction/increase from static abilities
                 let cost_adj =
-                    crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                    crate::cost::cost_adjustment::compute_cost_adjustment(
                         game,
                         card,
                         player,
                         ZoneType::Hand,
                     );
                 let raise_cost =
-                    crate::staticability::static_ability_cost_change::compute_raise_cost_parts(
+                    crate::cost::cost_adjustment::compute_raise_cost_parts(
                         game,
                         card,
                         player,
@@ -615,7 +539,7 @@ impl GameLoop {
                         mana::calculate_available_mana(self.pool(player), game, player);
                     let foretell_mc = forge_foundation::ManaCost::parse(&foretell_cost_str);
                     let cost_adj =
-                        crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                        crate::cost::cost_adjustment::compute_cost_adjustment(
                             game,
                             card,
                             player,
@@ -662,7 +586,7 @@ impl GameLoop {
                 }
                 let tax = card.commander_cast_count as i32 * 2;
                 let cost_adj =
-                    crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                    crate::cost::cost_adjustment::compute_cost_adjustment(
                         game,
                         card,
                         player,
@@ -1102,14 +1026,14 @@ impl GameLoop {
             // ── Cost reduction / increase from static abilities ──────────
             let cast_zone = game.card(card_id).zone;
             let cost_adj =
-                crate::staticability::static_ability_cost_change::compute_cost_adjustment(
+                crate::cost::cost_adjustment::compute_cost_adjustment(
                     game,
                     game.card(card_id),
                     player,
                     cast_zone,
                 );
             let raise_cost =
-                crate::staticability::static_ability_cost_change::compute_raise_cost_parts(
+                crate::cost::cost_adjustment::compute_raise_cost_parts(
                     game,
                     game.card(card_id),
                     player,
@@ -1475,22 +1399,30 @@ impl GameLoop {
             let x_count = mana_cost.count_x();
             let x_value;
             let mana_cost = if x_count > 0 {
-                // Compute max X: available mana minus non-X cost minus commander tax
+                // Compute max X iteratively, mirroring Java's
+                // ComputerUtilMana.determineLeftoverMana(): try X=1,2,...
+                // until canPayManaCost fails, then return the last payable X.
+                // This correctly handles multi-color sources that inflate
+                // pool.total() but can only produce one mana per activation.
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
                 let non_x_cost = mana_cost.without_x();
-                let mut test_pool = available_mana.clone();
-                let non_x_affordable = test_pool.try_pay(&non_x_cost);
-                let remaining_after_non_x = if non_x_affordable {
-                    (test_pool.total() - commander_tax).max(0) as u32
-                } else {
-                    0
-                };
-                // Each X shard costs 1 generic per unit of X
-                let max_x = if x_count > 0 {
-                    remaining_after_non_x / x_count as u32
-                } else {
-                    0
+                let max_x = {
+                    let mut x: u32 = 0;
+                    loop {
+                        let extra_generic =
+                            ((x + 1) * x_count as u32) as i32 + commander_tax;
+                        let full_cost =
+                            non_x_cost.add(&forge_foundation::ManaCost::generic(extra_generic));
+                        if !available_mana.can_pay(&full_cost) {
+                            break;
+                        }
+                        x += 1;
+                        if x >= 99 {
+                            break;
+                        }
+                    }
+                    x
                 };
                 let name = game.card(card_id).card_name.clone();
                 agents[player.index()].snapshot_state(game, &self.mana_pools);
@@ -1872,6 +1804,13 @@ impl GameLoop {
             let pool_size_before = self.pool(player).total();
 
             // ── Mana payment: interactive (human) or auto-tap (AI) ──
+            // TODO(cost_payment): Replace this is_human branch with a unified flow via
+            // CostPayment + agent.decide_cost_part(). In Java, CostPartMana.payAsDecided()
+            // calls player.getController().payManaCost() which is abstract — HumanPlay
+            // does the interactive loop, PlayerControllerAi calls ComputerUtilMana.
+            // The Rust equivalent should call agent.pay_mana_cost() (interactive) or
+            // mana::pay_mana_cost_auto() (auto-tap) based on agent.pays_right_after_decision().
+            // See cost/cost_payment.rs for the CostPayment orchestrator skeleton.
             let is_human = agents[player.index()].is_human();
             if is_human {
                 // Interactive mana payment loop — mirrors combat cost payment pattern
@@ -2049,7 +1988,10 @@ impl GameLoop {
                 // AI deterministic auto-pay: preserve full state so failed payment
                 // cannot leave partial taps or partial pool mutations behind.
                 let mana_payment_snapshot = self.make_snapshot(game, true);
-                let tapped = match mana::pay_mana_cost_auto(
+                let mut chooser = |valid: &[CardId]| -> Option<CardId> {
+                    agents[player.index()].choose_sacrifice(player, valid)
+                };
+                let tapped = match mana::pay_mana_cost_auto_with_chooser(
                     game,
                     self.pool_mut(player),
                     player,
@@ -2058,6 +2000,7 @@ impl GameLoop {
                     commander_tax,
                     &payment_ctx,
                     any_color_conversion,
+                    Some(&mut chooser),
                 ) {
                     Some(tapped) => tapped,
                     None => {

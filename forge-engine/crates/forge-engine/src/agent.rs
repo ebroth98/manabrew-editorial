@@ -1,4 +1,6 @@
 use crate::combat::DefenderId;
+use crate::cost::payment_decision::PaymentDecision;
+use crate::cost::CostPart;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
@@ -760,8 +762,53 @@ pub trait PlayerAgent {
 
     /// Returns true if this agent represents a human player (interactive UI).
     /// Human players get interactive mana payment instead of auto-tap.
+    /// DEPRECATED: Use `pays_right_after_decision()` instead. This method exists
+    /// only for backward compatibility during the refactor to the visitor/decision
+    /// pattern (CostPayment). New code should not branch on `is_human()`.
     fn is_human(&self) -> bool {
         false
+    }
+
+    /// Decide how to pay a single cost part.
+    /// Mirrors Java's `ICostVisitor<PaymentDecision>` visitor pattern — each
+    /// `CostPart` variant corresponds to a Java `CostXxx.accept(visitor)` call.
+    /// Returns `Some(PaymentDecision)` if the agent can/will pay, `None` to cancel.
+    ///
+    /// Default: automatic decision for simple cost parts (tap, untap, numeric costs).
+    /// Agents should override for costs requiring player choice (sacrifice, discard, etc.).
+    fn decide_cost_part(
+        &mut self,
+        _player: PlayerId,
+        _source: CardId,
+        _cost_part: &CostPart,
+        _game: &GameState,
+    ) -> Option<PaymentDecision> {
+        // TODO: Implement default decisions per CostPart variant,
+        // mirroring Java's AiCostDecision / HumanCostDecision visit() methods.
+        // For now, return None (cancel) for all — callers still use the old code path.
+        None
+    }
+
+    /// Whether this agent pays each cost part immediately after deciding (true)
+    /// or batches all decisions first, then pays (false).
+    ///
+    /// Mirrors Java's `CostDecisionMakerBase.paysRightAfterDecision()`:
+    /// - `HumanCostDecision` returns `true` (sequential decide-then-pay per part)
+    /// - `AiCostDecision` returns `false` (batch all decisions, then pay all)
+    ///
+    /// This controls which flow `CostPayment` uses:
+    /// - `true`  → `CostPayment::pay_cost()` (Java's `payCost()`)
+    /// - `false` → `CostPayment::pay_computer_costs()` (Java's `payComputerCosts()`)
+    fn pays_right_after_decision(&self) -> bool {
+        false
+    }
+
+    /// Reorder cost parts before payment (for human players to choose payment order).
+    /// Mirrors Java's `PlayerController.orderCosts(List<CostPart>)`.
+    ///
+    /// Default: return as-is (AI agents don't reorder).
+    fn order_cost_parts(&mut self, parts: Vec<CostPart>) -> Vec<CostPart> {
+        parts
     }
 
     /// Specify mana color distribution for combo/any mana production.

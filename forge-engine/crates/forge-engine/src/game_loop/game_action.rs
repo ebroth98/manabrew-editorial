@@ -536,21 +536,28 @@ impl GameLoop {
                             CostPart::Sacrifice { type_filter, .. } if type_filter == "CARDNAME"
                         )
                     });
+                    // Use sacrifice chooser callback to match Java's
+                    // choosePermanentsToSacrifice RNG path during auto-tap.
+                    let mut chooser = |valid: &[CardId]| -> Option<CardId> {
+                        agents[player.index()].choose_sacrifice(player, valid)
+                    };
                     let tapped = if reuses_reserved_source {
-                        mana::auto_tap_lands_allow_reserved_source_reuse(
+                        mana::auto_tap_lands_allow_reserved_source_reuse_with_chooser(
                             game,
                             &mut self.mana_pools[player.index()],
                             player,
                             mana_cost,
                             Some(card_id),
+                            &mut chooser,
                         )
                     } else {
-                        mana::auto_tap_lands(
+                        mana::auto_tap_lands_with_chooser(
                             game,
                             &mut self.mana_pools[player.index()],
                             player,
                             mana_cost,
                             Some(card_id),
+                            &mut chooser,
                         )
                     };
                     self.emit_tap_for_mana_triggers(player, &tapped);
@@ -2297,6 +2304,11 @@ impl GameLoop {
     }
 
     /// Behold as a cost (optionally exile revealed cards).
+    ///
+    /// Mirrors Java's `DeterministicCostPlumbing.visit(CostBehold)` which uses
+    /// `chooseCardsForEffect` (not `choose_sacrifice`). For ChosenType filters,
+    /// Java does two separate calls: pick 1 first, filter by shared creature
+    /// type, then pick `amount` from the filtered set.
     pub(crate) fn pay_behold_cost(
         &mut self,
         game: &mut GameState,
@@ -2307,8 +2319,7 @@ impl GameLoop {
         amount: i32,
         exile: bool,
     ) {
-        let mut already_chosen: Vec<CardId> = Vec::new();
-        for _ in 0..amount {
+        let build_pool = |game: &GameState| -> Vec<CardId> {
             let mut valid: Vec<CardId> = game
                 .cards_in_zone(ZoneType::Hand, player)
                 .iter()
@@ -2319,35 +2330,76 @@ impl GameLoop {
                 if cid == source {
                     return false;
                 }
-                (type_filter == "Card"
+                type_filter == "Card"
                     || type_filter.is_empty()
                     || crate::ability::effects::matches_change_type(
                         game.card(cid),
                         type_filter,
                         &[],
-                    ))
-                    && !already_chosen.contains(&cid)
+                    )
             });
-            if type_filter.ends_with("ChosenType") && !already_chosen.is_empty() {
-                let first = already_chosen[0];
-                valid.retain(|&cid| shares_creature_type(game, first, cid));
+            valid
+        };
+
+        let chosen_cards = if type_filter.ends_with("ChosenType") {
+            // Java two-phase approach: pick 1 first, then pick `amount` from
+            // cards sharing a creature type with the first pick.
+            let pool = build_pool(game);
+            if pool.is_empty() {
+                return;
             }
-            if valid.is_empty() {
-                break;
+            let first_pick =
+                agents[player.index()].choose_cards_for_effect(player, &pool, 1, 1);
+            if first_pick.is_empty() {
+                return;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
-                already_chosen.push(chosen);
-                if exile {
-                    let origin = game.card(chosen).zone;
-                    let owner = game.card(chosen).owner;
-                    game.move_card(chosen, ZoneType::Exile, owner);
-                    crate::ability::effects::emit_zone_trigger(
-                        &mut self.trigger_handler,
-                        chosen,
-                        origin,
-                        ZoneType::Exile,
-                    );
-                }
+            let first = first_pick[0];
+            let same_type: Vec<CardId> = pool
+                .into_iter()
+                .filter(|&cid| shares_creature_type(game, first, cid))
+                .collect();
+            if (same_type.len() as i32) < amount {
+                return;
+            }
+            agents[player.index()].choose_cards_for_effect(
+                player,
+                &same_type,
+                amount as usize,
+                amount as usize,
+            )
+        } else {
+            // Non-ChosenType: pick `amount` cards at once.
+            let pool = build_pool(game);
+            if pool.is_empty() {
+                return;
+            }
+            agents[player.index()].choose_cards_for_effect(
+                player,
+                &pool,
+                amount as usize,
+                amount as usize,
+            )
+        };
+
+        for chosen in chosen_cards {
+            if exile {
+                let origin = game.card(chosen).zone;
+                let owner = game.card(chosen).owner;
+                game.move_card(chosen, ZoneType::Exile, owner);
+                // Track the exile-with relationship so "Defined$ ExiledWith"
+                // can find this card later (e.g. Champions of the Shoal's
+                // leave-battlefield trigger returns the exiled card to hand).
+                // We do NOT use `exiled_by` here because that field is reserved
+                // for ChangeZoneAll Duration$ UntilHostLeavesPlay effects which
+                // auto-return to battlefield in move_card.  BeholdExile cards
+                // have their own dedicated leave-trigger to handle the return.
+                game.card_mut(source).add_remembered_card(chosen);
+                crate::ability::effects::emit_zone_trigger(
+                    &mut self.trigger_handler,
+                    chosen,
+                    origin,
+                    ZoneType::Exile,
+                );
             }
         }
     }

@@ -912,9 +912,10 @@ impl PlayerAgent for DeterministicAgent {
                 .cmp(&self.card_name(*b))
                 .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
         });
-        self.choose_cards_for_effect(player, &sorted, 1, 1)
+        let result = self.choose_cards_for_effect(player, &sorted, 1, 1)
             .into_iter()
-            .next()
+            .next();
+        result
     }
 
     fn choose_cards_for_zone_change(

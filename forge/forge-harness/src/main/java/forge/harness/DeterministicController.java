@@ -648,6 +648,7 @@ public class DeterministicController extends PlayerController {
     public String chooseSomeType(String kindOfType, SpellAbility sa, Collection<String> validTypes, boolean isOptional) {
         if (validTypes == null || validTypes.isEmpty()) return "";
         List<String> values = new ArrayList<>(validTypes);
+        Collections.sort(values);
         return values.get(ChoiceSpace.pickIndex(values.size(), rng));
     }
 

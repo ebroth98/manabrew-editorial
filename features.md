@@ -302,54 +302,54 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 |-----------|---------|:-------------------:|
 | `Cost.java` | Cost container: parses cost strings, holds cost parts | **Partial** (`cost/mod.rs` parse_cost + spell cost extraction from SP$ lines) |
 | `CostPartMana.java` | Mana portion of costs | **Implemented** (`mana_pool.rs` try_pay) |
-| `CostPayment.java` | Cost payment orchestration | **Partial** (`game_loop.rs` pay_ability_cost + pay_additional_costs; Java-parity `confirm_payment` gates specific optional/branching cost parts; `Cost` now parses/carries `Mandatory` and trigger-cost optionality honors non-mandatory, non-zero costs; failed multi-part payments now transactionally roll back via `GameSnapshot` restore) |
-| `CostPart.java` | Abstract base for cost components | **Partial** (`cost/mod.rs` CostPart enum now covers Java parse tokens, with some behavioral edge-cases still approximate) |
+| `CostPayment.java` | Cost payment orchestration | **Partial** (`cost/cost_payment.rs`: `CostPayment` struct with `pay_cost()` + `pay_computer_costs()` matching Java's two flows; `pay_as_decided()` dispatches all CostPart variants to individual `cost_*.rs` modules; `refund_payment()` with per-part refund (Tap/Untap/SubCounter/AddCounter/PayEnergy/PayShards/PayLife/ChooseColor); legacy path still in `game_loop.rs` pay_ability_cost + pay_additional_costs; Java-parity `confirm_payment` gates specific optional/branching cost parts; `Cost` now parses/carries `Mandatory` and trigger-cost optionality honors non-mandatory, non-zero costs; failed multi-part payments now transactionally roll back via `GameSnapshot` restore) |
+| `CostPart.java` | Abstract base for cost components | **Partial** (`cost/mod.rs` CostPart enum + 39 individual `cost/cost_*.rs` modules mirroring Java's CostXxx classes with `can_pay()`/`pay_as_decided()`/`refund()` functions; `can_pay_inner` dispatch in mod.rs; `pay_as_decided` dispatch still in `game_action.rs`) |
 | `CostPartWithList.java` | Cost part tracking affected cards | Not implemented |
 | `CostPartWithTrigger.java` | Cost part that fires triggers | Not implemented |
-| `CostTap.java` | Tap as cost | **Implemented** (`CostPart::Tap` in `cost/mod.rs`) |
-| `CostUntap.java` | Untap as cost | **Implemented** (`CostPart::Untap` in `cost/mod.rs`, `Q` token) |
-| `CostSacrifice.java` | Sacrifice as cost | **Implemented** (`cost/mod.rs` get_sacrifice_targets, `game_loop.rs` pay_sacrifice_cost) |
-| `CostPayLife.java` | Pay life as cost | **Implemented** (`CostPart::PayLife`, `PayLife<n>` token) |
-| `CostPayEnergy.java` | Pay energy counters | **Implemented** (`CostPart::PayEnergy`, `PayEnergy<n>` token; energy tracked on `PlayerState`) |
-| `CostPayShards.java` | Pay shard tokens | **Implemented** (`CostPart::PayShards`; `PlayerState.mana_shards`; paid in `game_action.rs`) |
-| `CostDiscard.java` | Discard as cost | **Implemented** (`CostPart::Discard`, `Discard<n/filter>` token) |
-| `CostExile.java` | Exile as cost | **Implemented** (`CostPart::Exile`, `Exile<n/filter>` / `ExileFromHand<>` / `ExileFromGrave<>` / `ExileFromTop<>`; includes `CantExile` static-ability legality in can-pay/payment paths) |
+| `CostTap.java` | Tap as cost | **Implemented** (`cost/cost_tap.rs` + `CostPart::Tap` in `cost/mod.rs`; summoning sickness + phased_out checks) |
+| `CostUntap.java` | Untap as cost | **Implemented** (`cost/cost_untap.rs` + `CostPart::Untap` in `cost/mod.rs`, `Q` token; summoning sickness + stun counter + phased_out checks) |
+| `CostSacrifice.java` | Sacrifice as cost | **Implemented** (`cost/cost_sacrifice.rs` + `cost/mod.rs` get_sacrifice_targets, `game_loop.rs` pay_sacrifice_cost; `CantSacrifice` static ability filter on self + typed targets + All) |
+| `CostPayLife.java` | Pay life as cost | **Implemented** (`cost/cost_pay_life.rs` + `CostPart::PayLife`, `PayLife<n>` token; `CantPayLife` static ability check; correct `life >= amount` threshold) |
+| `CostPayEnergy.java` | Pay energy counters | **Implemented** (`cost/cost_pay_energy.rs` + `CostPart::PayEnergy`, `PayEnergy<n>` token; energy tracked on `PlayerState`) |
+| `CostPayShards.java` | Pay shard tokens | **Implemented** (`cost/cost_pay_shards.rs` + `CostPart::PayShards`; `PlayerState.mana_shards`; paid in `game_action.rs`) |
+| `CostDiscard.java` | Discard as cost | **Implemented** (`cost/cost_discard.rs` + `CostPart::Discard`, `Discard<n/filter>` token) |
+| `CostExile.java` | Exile as cost | **Implemented** (`cost/cost_exile.rs` + `CostPart::Exile`, `Exile<n/filter>` / `ExileFromHand<>` / `ExileFromGrave<>` / `ExileFromTop<>`; `CantExile` static-ability filter on all targets + hand self-exclusion) |
 | `CostExileFromStack.java` | Exile from stack as cost | **Implemented** (`CostPart::ExileFromStack`; Java-style clause normalization into `matches_valid_cards`, exact stack-entry selection via `choose_target_spell`, and source exile in `game_action.rs`) |
 | `CostDamage.java` | Deal damage to self as cost | **Implemented** (`CostPart::DamageYou`, `DamageYou<n>` token) |
-| `CostDraw.java` | Draw as cost | **Implemented** (`CostPart::Draw`, `Draw<n>` token) |
+| `CostDraw.java` | Draw as cost | **Implemented** (`CostPart::Draw`, `Draw<n>` token; `CantDraw` static ability check via `can_draw_amount`) |
 | `CostMill.java` | Mill as cost | **Implemented** (`CostPart::Mill`, `Mill<n>` token) |
 | `CostReturn.java` | Return to hand as cost | **Implemented** (`CostPart::Return`, `Return<n/filter>` token) |
 | `CostReveal.java` | Reveal as cost | **Implemented** (`CostPart::Reveal`, `Reveal<n/filter>` token; no-op state change) |
 | `CostPutCounter.java` | Put counter as cost | **Implemented** (`CostPart::AddCounter`, `AddCounter<n/type>` token) |
-| `CostRemoveCounter.java` | Remove counter as cost | **Implemented** (`CostPart::SubCounter`, `SubCounter<n/type/CARDNAME>` token) |
+| `CostRemoveCounter.java` | Remove counter as cost | **Implemented** (`CostPart::SubCounter`, `SubCounter<n/type/CARDNAME>` token; phased_out check) |
 | `CostRemoveAnyCounter.java` | Remove any counter as cost | **Implemented** (`CostPart::RemoveAnyCounter`, `RemoveAnyCounter<n/type/filter>` token) |
 | `CostTapType.java` | Tap matching permanent as cost | **Implemented** (`CostPart::TapType`, `tapXType<n/filter>` token) |
 | `CostUntapType.java` | Untap matching permanent as cost | **Implemented** (`CostPart::UntapType`, `untapYType<n/filter>` token) |
-| `CostGainLife.java` | Opponent gains life as cost | **Implemented** (`CostPart::GainLife`, `GainLife<n>` token) |
+| `CostGainLife.java` | Opponent gains life as cost | **Implemented** (`CostPart::GainLife`, `GainLife<n>` token; `CantGainLife` static ability check) |
 | `CostGainControl.java` | Give control as cost | **Implemented** (`CostPart::GainControl`, `GainControl<n/filter>` token; calls `change_controller`) |
 | `CostFlipCoin.java` | Flip coin as cost | **Implemented** (`CostPart::FlipCoin`; RNG/call handling + `FlippedCoin` trigger fire in `game_action.rs`) |
 | `CostRollDice.java` | Roll dice as cost | **Implemented** (`CostPart::RollDice`; cost-time roll + result SVar write + `RolledDie`/`RolledDieOnce` trigger fire) |
 | `CostExert.java` | Exert as cost | **Implemented** (`CostPart::Exert`, `Exert<>` token; sets `card.exerted` flag) |
-| `CostEnlist.java` | Enlist as cost | **Implemented** (`CostPart::Enlist`; Java-style `Enlist<1/CARDNAME/creature>` parsing, enlist target selection/tap, attacker gets enlisted creature's power until end of turn, Enlisted trigger) |
-| `CostForage.java` | Forage as cost | **Implemented** (`CostPart::Forage`; strict graveyard-3 exile vs Food sacrifice payment + Forage trigger) |
-| `CostCollectEvidence.java` | Collect evidence as cost | **Implemented** (`CostPart::CollectEvidence`; strict MV-threshold exile payment + CollectEvidence trigger) |
+| `CostEnlist.java` | Enlist as cost | **Implemented** (`CostPart::Enlist`; Java-style `Enlist<1/CARDNAME/creature>` parsing, enlist target selection/tap, attacker gets enlisted creature's power until end of turn, Enlisted trigger; phased_out + attacking_player checks) |
+| `CostForage.java` | Forage as cost | **Implemented** (`CostPart::Forage`; strict graveyard-3 exile vs Food sacrifice payment + Forage trigger; `CantExile` filter on GY cards + `CantSacrifice` filter on Food) |
+| `CostCollectEvidence.java` | Collect evidence as cost | **Implemented** (`CostPart::CollectEvidence`; strict MV-threshold exile payment + CollectEvidence trigger; `CantExile` filter on graveyard cards) |
 | `CostChooseColor.java` | Choose color as cost | **Implemented** (`CostPart::ChooseColor`; stores chosen colors on source card) |
 | `CostChooseCreatureType.java` | Choose creature type as cost | **Implemented** (`CostPart::ChooseCreatureType`; stores chosen type on source card) |
 | `CostPutCardToLib.java` | Put card to library as cost | **Implemented** (`CostPart::PutCardToLib`; hand/grave/same-grave/battlefield variants) |
 | `CostAddMana.java` | Add mana to pool as cost | **Implemented** — `CostPart::AddMana` in `cost/mod.rs`, parsed as `AddMana<amount/type>`, paid in `game_action.rs` |
 | `CostWaterbend.java` | Waterbend cost (tap artifacts/creatures to help pay) | **Implemented** — `CostPart::Waterbend` in `cost/mod.rs`, reuses Convoke agent for creature/artifact tapping |
 | `CostUnattach.java` | Unattach as cost | **Implemented** (`CostPart::Unattach`, `Unattach<>` token; calls `game.detach()`) |
-| `CostAdjustment.java` | Cost increase/decrease logic | **Implemented** (`ReduceCost`/`RaiseCost`/`SetCost` statics via `static_ability_cost_change.rs`; supports `Color$`, `IgnoreGeneric$`, `IsPresent$`/`PresentZone$`, `EffectZone$`, `MinMana$`, `Activator$`, `ValidCard$`, `CheckSVar$`/`SVarCompare$`, `OnlyFirstSpell$`, `Relative$`, `UpTo$`, `RaiseTo$` (Trinisphere), `ValidTarget$`, `ValidSpell$`, `Condition$` (PlayerTurn/Metalcraft/Delirium)) |
+| `CostAdjustment.java` | Cost increase/decrease logic | **Implemented** (`cost/cost_adjustment.rs`; `ReduceCost`/`RaiseCost`/`SetCost` statics; supports `Color$`, `IgnoreGeneric$`, `IsPresent$`/`PresentZone$`, `EffectZone$`, `MinMana$`, `Activator$`, `ValidCard$`, `CheckSVar$`/`SVarCompare$`, `OnlyFirstSpell$`, `Relative$`, `UpTo$`, `RaiseTo$` (Trinisphere), `ValidTarget$`, `ValidSpell$`, `Condition$` (PlayerTurn/Metalcraft/Delirium), `ForEachShard$`) |
 | `CostBlight.java` | Blight as cost | **Implemented** (`CostPart::Blight`; applies -1/-1 counter payment, including `X`/dynamic amount resolution) |
 | `CostBehold.java` | Behold as cost | **Implemented** (`CostPart::Behold` with reveal path over hand/battlefield) |
 | `CostBeholdExile.java` | Behold exile variant | **Implemented** (`CostPart::Behold { exile: true }`) |
 | `CostPromiseGift.java` | Promise a gift as cost | **Implemented** (`CostPart::PromiseGift`; stores `promised_gift` on source card) |
 | `CostRevealChosen.java` | Reveal chosen card as cost | **Implemented** (`CostPart::RevealChosen`; chosen value + chooser-controller checked in can-pay, reveal state set on payment) |
 | `CostExiledMoveToGrave.java` | Move exiled to graveyard as cost | **Implemented** (`CostPart::ExiledMoveToGrave`, `ExiledMoveToGrave<n/filter>` token) |
-| `CostDecisionMakerBase.java` | Base for AI cost decisions | Not implemented |
-| `ICostVisitor.java` | Visitor pattern for costs | Not implemented |
+| `CostDecisionMakerBase.java` | Base for AI cost decisions | **Partial** (`agent.rs`: `decide_cost_part()`, `pays_right_after_decision()`, `order_cost_parts()` trait methods on `PlayerAgent` mirror Java's `CostDecisionMakerBase` + `ICostVisitor`; default implementations are stubs with TODOs) |
+| `ICostVisitor.java` | Visitor pattern for costs | **Partial** (mapped to `PlayerAgent::decide_cost_part()` — Rust uses `match` on `CostPart` enum instead of Java's visitor class hierarchy; see `agent.rs`) |
 | `IndividualCostPaymentInstance.java` | Per-cost-part payment instance | Not implemented |
-| `PaymentDecision.java` | Cost payment decision record | Not implemented |
+| `PaymentDecision.java` | Cost payment decision record | **Implemented** (`cost/payment_decision.rs`: `PaymentDecision` enum with `Number`, `Cards`, `Type`, `Colors`, `None` variants + factory methods) |
 | `package-info.java` | Package doc | N/A |
 
 ---

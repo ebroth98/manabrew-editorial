@@ -223,6 +223,22 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
         ANSI_RESET
     ));
 
+    // Print failed seeds for easy re-run
+    let failed_seeds: Vec<String> = report
+        .results
+        .iter()
+        .filter(|r| r.status != MatchupStatus::Pass)
+        .map(|r| r.seed.to_string())
+        .collect();
+    if !failed_seeds.is_empty() {
+        out.push_str(&format!(
+            "{}Failed seeds: {}{}\n",
+            ANSI_RED,
+            failed_seeds.join(", "),
+            ANSI_RESET
+        ));
+    }
+
     out
 }
 

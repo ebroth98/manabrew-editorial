@@ -131,18 +131,16 @@ impl GameLoop {
                         });
                         passed_count = 0;
                     } else {
-                        // Cast/setup failed (e.g. auto-tap heuristic failure, mana
-                        // restrictions) — treat as a pass to prevent infinite retry loops.
+                        // Cast/setup failed (e.g. no legal targets, auto-tap heuristic
+                        // failure, mana restrictions).  Match Java's behaviour: the
+                        // player retains priority and gets to choose again (Java's
+                        // do-while loops back to chooseSpellAbilityToPlay for the same
+                        // player).  Do NOT change passed_count or priority_player.
                         crate::agent::notify_all_agents(
                             agents,
                             crate::agent::GameLogEvent::warning("Card play failed")
                                 .with_player(priority_player),
                         );
-                        passed_count += 1;
-                        priority_player = game.next_player(priority_player);
-                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
-                            game.turn.priority_player = priority_player;
-                        });
                     }
                 }
                 MainPhaseAction::ActivateMana(land_id) => {

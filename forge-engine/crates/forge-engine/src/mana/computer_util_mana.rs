@@ -31,6 +31,14 @@ impl ManaAbilityRef {
     }
 }
 
+/// Optional callback for choosing which permanent to sacrifice during mana
+/// ability cost payment.  When `None`, the engine picks the first target after
+/// sorting by (card_name, card_id) — a deterministic fallback.  When `Some`,
+/// the callback is invoked with the sorted list of valid targets and should
+/// return the chosen card (mirrors Java's `choosePermanentsToSacrifice`
+/// which uses the harness RNG).
+pub type SacrificeChooser<'a> = &'a mut dyn FnMut(&[CardId]) -> Option<CardId>;
+
 /// Auto-tap lands to produce the required mana.
 /// Mirrors harness AutoPay flow used by parity tests: collect currently playable
 /// mana abilities in battlefield order, choose the first legal source for the
@@ -42,7 +50,7 @@ pub fn auto_tap_lands(
     cost: &ManaCost,
     current_spell: Option<CardId>,
 ) -> Vec<CardId> {
-    auto_tap_lands_internal(game, pool, player, cost, current_spell, false)
+    auto_tap_lands_internal(game, pool, player, cost, current_spell, false, None)
 }
 
 pub fn auto_tap_lands_allow_reserved_source_reuse(
@@ -52,7 +60,31 @@ pub fn auto_tap_lands_allow_reserved_source_reuse(
     cost: &ManaCost,
     current_spell: Option<CardId>,
 ) -> Vec<CardId> {
-    auto_tap_lands_internal(game, pool, player, cost, current_spell, true)
+    auto_tap_lands_internal(game, pool, player, cost, current_spell, true, None)
+}
+
+/// Auto-tap with an explicit sacrifice chooser callback for parity with Java's
+/// `choosePermanentsToSacrifice` RNG path.
+pub fn auto_tap_lands_with_chooser(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    sacrifice_chooser: SacrificeChooser<'_>,
+) -> Vec<CardId> {
+    auto_tap_lands_internal(game, pool, player, cost, current_spell, false, Some(sacrifice_chooser))
+}
+
+pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    sacrifice_chooser: SacrificeChooser<'_>,
+) -> Vec<CardId> {
+    auto_tap_lands_internal(game, pool, player, cost, current_spell, true, Some(sacrifice_chooser))
 }
 
 fn auto_tap_lands_internal(
@@ -62,6 +94,7 @@ fn auto_tap_lands_internal(
     cost: &ManaCost,
     current_spell: Option<CardId>,
     allow_reserved_source_reuse: bool,
+    mut sacrifice_chooser: Option<SacrificeChooser<'_>>,
 ) -> Vec<CardId> {
     let mut tapped_lands: Vec<CardId> = Vec::new();
 
@@ -120,6 +153,7 @@ fn auto_tap_lands_internal(
             &sa_payment,
             current_spell,
             allow_reserved_source_reuse,
+            &mut sacrifice_chooser,
         ) {
             break;
         }
@@ -268,6 +302,7 @@ fn pay_non_tap_mana_ability_costs(
     ma: &ManaAbilityRef,
     reserved_source: Option<CardId>,
     allow_reserved_source_reuse: bool,
+    sacrifice_chooser: &mut Option<SacrificeChooser<'_>>,
 ) -> bool {
     let Some(ab_idx) = ma.ability_index else {
         return true;
@@ -322,9 +357,20 @@ fn pay_non_tap_mana_ability_costs(
                     if targets.len() < required {
                         return false;
                     }
-                    for cid in targets.into_iter().take(required) {
-                        let owner = game.card(cid).owner;
-                        game.move_card(cid, ZoneType::Graveyard, owner);
+                    // Use the sacrifice chooser callback when available (parity
+                    // with Java's choosePermanentsToSacrifice which uses RNG).
+                    // Otherwise fall back to deterministic first-by-index.
+                    for _ in 0..required {
+                        let chosen = if let Some(ref mut chooser) = sacrifice_chooser {
+                            chooser(&targets)
+                        } else {
+                            targets.first().copied()
+                        };
+                        if let Some(cid) = chosen {
+                            targets.retain(|&c| c != cid);
+                            let owner = game.card(cid).owner;
+                            game.move_card(cid, ZoneType::Graveyard, owner);
+                        }
                     }
                 }
             }

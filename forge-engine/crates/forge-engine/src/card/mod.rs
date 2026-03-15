@@ -972,6 +972,25 @@ impl CardInstance {
                             .to_string()
                     });
             }
+
+            // Cumulative upkeep — at the beginning of your upkeep, put an age counter
+            // on this permanent, then sacrifice it unless you pay its upkeep cost for
+            // each age counter on it.
+            // Mirrors Java CardFactoryUtil lines 960-976: generates a Phase trigger
+            // with a Sacrifice effect that has CumulativeUpkeep$ param.
+            if let Some(rest) = kw.strip_prefix("Cumulative upkeep:") {
+                let cost_spec = rest.split(':').next().unwrap_or(rest);
+                let raw = "Mode$ Phase | Phase$ Upkeep | ValidPlayer$ You | TriggerZones$ Battlefield | TriggerDescription$ Cumulative upkeep";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigCumulativeUpkeep".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigCumulativeUpkeep".to_string())
+                    .or_insert_with(|| {
+                        format!("DB$ Sacrifice | SacValid$ Self | CumulativeUpkeep$ {cost_spec}")
+                    });
+            }
         }
     }
 
@@ -1040,6 +1059,37 @@ impl CardInstance {
             let prefixed = format!("S$ {}", raw);
             if let Some(sa) = parse_static_ability(&prefixed) {
                 card.static_abilities.push(sa);
+            }
+        }
+
+        // OptionalAttackCost with Exert + Trigger$: register an Exerted trigger
+        // so the trigger handler fires the SVar when the creature is exerted.
+        // Mirrors Java's OptionalCostAttack creating a triggered ability from
+        // the Trigger$ parameter when the exert cost is paid.
+        {
+            let mut next_trig_id = card.triggers.len() as u32;
+            for sa in &card.static_abilities {
+                if sa.mode != crate::staticability::StaticMode::OptionalAttackCost {
+                    continue;
+                }
+                let has_exert = sa
+                    .params
+                    .get("Cost")
+                    .map(|c| c.contains("Exert"))
+                    .unwrap_or(false);
+                let trigger_svar = sa.params.get("Trigger").cloned();
+                if has_exert {
+                    if let Some(svar_name) = trigger_svar {
+                        let raw = format!(
+                            "Mode$ Exerted | ValidCard$ Card.Self | Execute$ {} | TriggerZones$ Battlefield",
+                            svar_name
+                        );
+                        if let Some(mut trig) = parse_trigger(&raw, &mut next_trig_id) {
+                            trig.execute = svar_name;
+                            card.triggers.push(trig);
+                        }
+                    }
+                }
             }
         }
 
