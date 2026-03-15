@@ -853,8 +853,7 @@ impl GameLoop {
                     }
                 }
                 CostPart::ChooseCreatureType(_) => {
-                    let valid_types =
-                        crate::ability::effects::choose_type_effect::default_creature_types();
+                    let valid_types = crate::game::TypeRegistry::creature_types().to_vec();
                     if let Some(chosen) =
                         agents[player.index()].choose_type(player, "Creature", &valid_types)
                     {
@@ -1340,8 +1339,7 @@ impl GameLoop {
                     }
                 }
                 CostPart::ChooseCreatureType(_) => {
-                    let valid_types =
-                        crate::ability::effects::choose_type_effect::default_creature_types();
+                    let valid_types = crate::game::TypeRegistry::creature_types().to_vec();
                     if let Some(chosen) =
                         agents[player.index()].choose_type(player, "Creature", &valid_types)
                     {
@@ -2348,8 +2346,7 @@ impl GameLoop {
             if pool.is_empty() {
                 return;
             }
-            let first_pick =
-                agents[player.index()].choose_cards_for_effect(player, &pool, 1, 1);
+            let first_pick = agents[player.index()].choose_cards_for_effect(player, &pool, 1, 1);
             if first_pick.is_empty() {
                 return;
             }

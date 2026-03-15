@@ -1,4 +1,5 @@
 use super::EffectContext;
+use crate::game::TypeRegistry;
 use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseType` — the activating player chooses a creature type, card type, etc.
@@ -26,7 +27,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         vt.split(',').map(|s| s.trim().to_string()).collect()
     } else {
         match type_category.as_str() {
-            "Creature" => default_creature_types(),
+            "Creature" => TypeRegistry::creature_types().to_vec(),
             "Land" => vec![
                 "Plains".into(),
                 "Island".into(),
@@ -61,110 +62,4 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             source.chosen_type_revealed = false;
         }
     }
-}
-
-/// Default creature types for ChooseType (common types used in MTG).
-pub fn default_creature_types() -> Vec<String> {
-    vec![
-        "Advisor",
-        "Angel",
-        "Ape",
-        "Archer",
-        "Assassin",
-        "Avatar",
-        "Beast",
-        "Berserker",
-        "Bird",
-        "Boar",
-        "Cat",
-        "Centaur",
-        "Cleric",
-        "Construct",
-        "Crab",
-        "Demon",
-        "Dinosaur",
-        "Djinn",
-        "Dog",
-        "Dragon",
-        "Drake",
-        "Druid",
-        "Dwarf",
-        "Elemental",
-        "Elephant",
-        "Elf",
-        "Faerie",
-        "Fish",
-        "Fox",
-        "Frog",
-        "Fungus",
-        "Giant",
-        "Gnome",
-        "Goblin",
-        "God",
-        "Golem",
-        "Griffin",
-        "Horror",
-        "Human",
-        "Hydra",
-        "Illusion",
-        "Imp",
-        "Insect",
-        "Jellyfish",
-        "Knight",
-        "Lizard",
-        "Merfolk",
-        "Minotaur",
-        "Monk",
-        "Mutant",
-        "Myr",
-        "Ninja",
-        "Noble",
-        "Ogre",
-        "Orc",
-        "Otter",
-        "Ox",
-        "Pegasus",
-        "Phoenix",
-        "Pilot",
-        "Pirate",
-        "Plant",
-        "Praetor",
-        "Rat",
-        "Rebel",
-        "Rogue",
-        "Salamander",
-        "Samurai",
-        "Scout",
-        "Serpent",
-        "Shade",
-        "Shaman",
-        "Shapeshifter",
-        "Skeleton",
-        "Sliver",
-        "Snake",
-        "Soldier",
-        "Sphinx",
-        "Spider",
-        "Spirit",
-        "Squirrel",
-        "Thopter",
-        "Treefolk",
-        "Troll",
-        "Turtle",
-        "Unicorn",
-        "Vampire",
-        "Vedalken",
-        "Viashino",
-        "Wall",
-        "Warrior",
-        "Werewolf",
-        "Wizard",
-        "Wolf",
-        "Wolverine",
-        "Wurm",
-        "Zombie",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect()
 }

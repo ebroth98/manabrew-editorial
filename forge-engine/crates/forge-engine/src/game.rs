@@ -18,6 +18,67 @@ pub struct ExtraTurn {
     pub skip_untap: bool,
 }
 
+/// Global registry of type lists loaded from `TypeLists.txt`.
+///
+/// Mirrors Java's `CardType.Constant.CREATURE_TYPES` etc., populated once by
+/// `FModel.loadDynamicGamedata()` → `CardType.Helper.parseTypes()`.
+///
+/// Call [`TypeRegistry::load`] once at startup with the contents of
+/// `TypeLists.txt`. All subsequent calls to [`TypeRegistry::creature_types`]
+/// return the loaded data without any per-game copying.
+pub struct TypeRegistry;
+
+static CREATURE_TYPES: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+
+impl TypeRegistry {
+    /// Load creature types from the raw contents of `TypeLists.txt`.
+    ///
+    /// Parses the `[CreatureTypes]` section. Each line is either `TypeName` or
+    /// `TypeName:PluralName`; only the singular (left of `:`) is kept.
+    ///
+    /// Mirrors Java's `FileSection.parseSections()` + `CardType.Helper.parseTypes()`.
+    ///
+    /// This must be called once before any game starts. Subsequent calls are
+    /// silently ignored (first write wins).
+    pub fn load(type_lists_content: &str) {
+        let _ = CREATURE_TYPES.set(Self::parse_creature_types(type_lists_content));
+    }
+
+    /// Return the loaded creature types.
+    ///
+    /// # Panics
+    /// Panics if [`TypeRegistry::load`] has not been called.
+    pub fn creature_types() -> &'static [String] {
+        CREATURE_TYPES.get().expect(
+            "TypeRegistry: creature types not loaded. \
+             Call TypeRegistry::load() with the contents of TypeLists.txt before starting a game.",
+        )
+    }
+
+    fn parse_creature_types(content: &str) -> Vec<String> {
+        let mut in_creature_section = false;
+        let mut types = Vec::new();
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if line.starts_with('[') && line.ends_with(']') {
+                in_creature_section = &line[1..line.len() - 1] == "CreatureTypes";
+                continue;
+            }
+            if in_creature_section {
+                // "TypeName" or "TypeName:PluralName" — keep singular only
+                let singular = line.split(':').next().unwrap_or(line);
+                if !singular.is_empty() {
+                    types.push(singular.to_string());
+                }
+            }
+        }
+        types
+    }
+}
+
 /// The complete, serializable game state.
 /// All game entities live here — nothing holds references, everything uses IDs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
