@@ -78,6 +78,9 @@ fn push_effect_entry(
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 }
@@ -115,6 +118,9 @@ fn test_bounce_to_hand() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 
@@ -163,6 +169,9 @@ fn test_exile_permanent() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 
@@ -206,6 +215,9 @@ fn test_reanimate() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 
@@ -256,6 +268,9 @@ fn test_raise_dead() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 
@@ -311,6 +326,9 @@ fn test_change_zone_all_board_wipe() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 
@@ -371,6 +389,9 @@ fn test_sacrifice_self() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 
@@ -420,6 +441,9 @@ fn test_sacrifice_all_creatures() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 
@@ -483,6 +507,9 @@ fn test_sacrifice_each_player() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 
@@ -544,6 +571,9 @@ fn test_tuck_to_library_bottom() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 

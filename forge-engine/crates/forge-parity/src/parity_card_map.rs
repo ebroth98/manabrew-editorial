@@ -20,6 +20,17 @@ struct ParityCardMapInner {
     next: u32,
 }
 
+impl Default for ParityCardMap {
+    fn default() -> Self {
+        Self {
+            inner: Mutex::new(ParityCardMapInner {
+                by_card: HashMap::new(),
+                next: 1,
+            }),
+        }
+    }
+}
+
 impl ParityCardMap {
     pub fn from_opening_state(game: &GameState) -> Self {
         let mut by_card: HashMap<CardId, u32> = HashMap::new();

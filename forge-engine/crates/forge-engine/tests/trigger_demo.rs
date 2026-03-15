@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -226,7 +226,7 @@ impl PlayerAgent for VerboseAgent {
     fn choose_action(
         &mut self,
         _: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         _: &[CardId],
         _: &[CardId],
         _: &[(CardId, usize)],

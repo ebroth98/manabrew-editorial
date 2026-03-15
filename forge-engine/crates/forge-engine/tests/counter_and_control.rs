@@ -6,7 +6,7 @@ use forge_engine_core::ability::effects::{resolve_effect, EffectContext};
 /// 2. Control effects properly change controller of permanents
 ///
 /// These features were identified as broken in PR #37's priority system implementation.
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -30,7 +30,7 @@ impl PlayerAgent for PassAgent {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        _playable: &[CardId],
+        _playable: &[PlayOption],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
@@ -187,6 +187,9 @@ fn test_counterspell_moves_to_graveyard() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 

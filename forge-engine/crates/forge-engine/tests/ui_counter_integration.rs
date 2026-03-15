@@ -1,7 +1,7 @@
 /// Integration test to verify counterspell and priority system works end-to-end
 /// This validates that the UI components (chooseTargetSpell, stack rendering, priority passing)
 /// have proper backend support
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayCardMode, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -34,7 +34,7 @@ impl PlayerAgent for CounterspellAgent {
     fn choose_action(
         &mut self,
         player: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
@@ -44,19 +44,16 @@ impl PlayerAgent for CounterspellAgent {
         match self.step {
             1 => {
                 // Turn 1: Play first playable card (should be a land)
-                if let Some(&card) = playable.first() {
-                    MainPhaseAction::Play(card)
+                if let Some(&opt) = playable.first() {
+                    MainPhaseAction::Play(opt)
                 } else {
                     MainPhaseAction::Pass
                 }
             }
             2 => {
                 // Later turn: Cast Counterspell if available
-                if let Some(&card) = playable.iter().find(|&&cid| {
-                    // Find Counterspell by name (simplified)
-                    true // In real scenario, we'd check card name
-                }) {
-                    MainPhaseAction::Play(card)
+                if let Some(&opt) = playable.first() {
+                    MainPhaseAction::Play(opt)
                 } else {
                     MainPhaseAction::Pass
                 }
@@ -218,6 +215,9 @@ fn test_counterspell_targeting_flow() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     let bolt_entry_id = game.stack.push(bolt_entry);
     assert_eq!(game.stack.len(), 1, "Lightning Bolt should be on stack");
@@ -296,6 +296,9 @@ fn test_priority_passing_during_counter_war() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     let bolt_stack_id = game.stack.push(entry);
 
@@ -339,6 +342,9 @@ fn test_valid_counter_target_filtering() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     let spell_stack_id = game.stack.push(entry);
 

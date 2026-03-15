@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -55,7 +55,7 @@ impl PlayerAgent for ScriptedAgent {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
@@ -412,7 +412,7 @@ fn full_game_runs() {
         fn choose_action(
             &mut self,
             _: PlayerId,
-            playable: &[CardId],
+            playable: &[PlayOption],
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
@@ -722,6 +722,9 @@ fn mulldrifter_etb_draws_two_cards() {
         is_creature_spell: true,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
 
@@ -780,6 +783,9 @@ fn soul_warden_gains_life_on_other_creature_etb() {
         is_creature_spell: true,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
@@ -815,6 +821,9 @@ fn soul_warden_does_not_trigger_on_self_etb() {
         is_creature_spell: true,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game.stack.push(entry);
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
@@ -911,7 +920,7 @@ fn upkeep_trigger_fires_each_turn() {
         fn choose_action(
             &mut self,
             _: PlayerId,
-            _: &[CardId],
+            _: &[PlayOption],
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
@@ -1014,7 +1023,7 @@ fn full_game_with_triggers_runs() {
         fn choose_action(
             &mut self,
             _: PlayerId,
-            playable: &[CardId],
+            playable: &[PlayOption],
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
@@ -1170,7 +1179,7 @@ fn llanowar_elves_taps_for_mana() {
         fn choose_action(
             &mut self,
             _: PlayerId,
-            playable: &[CardId],
+            playable: &[PlayOption],
             _tappable: &[CardId],
             _untappable: &[CardId],
             activatable: &[(CardId, usize)],
@@ -1187,8 +1196,8 @@ fn llanowar_elves_taps_for_mana() {
                 }
                 2 => {
                     // Second: cast Grizzly Bears (should now be playable)
-                    if let Some(&cid) = playable.first() {
-                        MainPhaseAction::Play(cid)
+                    if let Some(&opt) = playable.first() {
+                        MainPhaseAction::Play(opt)
                     } else {
                         MainPhaseAction::Pass
                     }
@@ -1296,7 +1305,7 @@ fn summoning_sick_creature_cant_tap() {
         fn choose_action(
             &mut self,
             _: PlayerId,
-            _playable: &[CardId],
+            _playable: &[PlayOption],
             _tappable: &[CardId],
             _untappable: &[CardId],
             activatable: &[(CardId, usize)],
@@ -1388,7 +1397,7 @@ fn prodigal_sorcerer_pings_opponent() {
         fn choose_action(
             &mut self,
             _: PlayerId,
-            _playable: &[CardId],
+            _playable: &[PlayOption],
             _tappable: &[CardId],
             _untappable: &[CardId],
             activatable: &[(CardId, usize)],
@@ -1497,7 +1506,7 @@ fn sakura_tribe_elder_fetches_land() {
         fn choose_action(
             &mut self,
             _: PlayerId,
-            _playable: &[CardId],
+            _playable: &[PlayOption],
             _tappable: &[CardId],
             _untappable: &[CardId],
             activatable: &[(CardId, usize)],

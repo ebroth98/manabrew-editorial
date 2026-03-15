@@ -1,6 +1,6 @@
 /// Test for Control Magic (2UU) - Enchant creature, you control enchanted creature
 /// This tests static control gain from auras - demonstrates the missing layer 2 implementation
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -25,7 +25,7 @@ impl PlayerAgent for PassAgent {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        _playable: &[CardId],
+        _playable: &[PlayOption],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],

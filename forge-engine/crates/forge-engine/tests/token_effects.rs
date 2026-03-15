@@ -77,6 +77,9 @@ fn push_activated_entry(
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     });
 }
 

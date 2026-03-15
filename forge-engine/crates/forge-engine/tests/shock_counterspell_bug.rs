@@ -1,6 +1,6 @@
 /// Reproduces the bug: Counterspell resolves but Shock still deals damage
 /// This should NOT happen - countered spells should never resolve
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -41,7 +41,7 @@ impl PlayerAgent for ShockTestAgent {
     fn choose_action(
         &mut self,
         player: PlayerId,
-        playable: &[CardId],
+        playable: &[PlayOption],
         tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
@@ -54,11 +54,11 @@ impl PlayerAgent for ShockTestAgent {
             // Alice: Cast Counterspell to counter Shock
             match self.step {
                 1 => {
-                    if let Some(&counterspell) = playable.iter().find(|&&cid| {
-                        let card = game.card(cid);
+                    if let Some(&opt) = playable.iter().find(|opt| {
+                        let card = game.card(opt.card_id);
                         card.card_name == "Counterspell"
                     }) {
-                        MainPhaseAction::Play(counterspell)
+                        MainPhaseAction::Play(opt)
                     } else {
                         MainPhaseAction::Pass
                     }
@@ -69,11 +69,11 @@ impl PlayerAgent for ShockTestAgent {
             // Bob: Cast Shock at Alice
             match self.step {
                 1 => {
-                    if let Some(&shock) = playable.iter().find(|&&cid| {
-                        let card = game.card(cid);
+                    if let Some(&opt) = playable.iter().find(|opt| {
+                        let card = game.card(opt.card_id);
                         card.card_name == "Shock"
                     }) {
-                        MainPhaseAction::Play(shock)
+                        MainPhaseAction::Play(opt)
                     } else {
                         MainPhaseAction::Pass
                     }
@@ -258,6 +258,9 @@ fn test_counterspell_should_stop_damage() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     let shock_stack_id = game.stack.push(shock_entry);
     println!("Shock placed on stack with ID: {}", shock_stack_id);
@@ -286,6 +289,9 @@ fn test_counterspell_should_stop_damage() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     let counter_id = game.stack.push(counter_entry);
     println!("Counterspell placed on stack with ID: {}", counter_id);

@@ -1,6 +1,6 @@
 /// Test for Cancel (1UU) - should counter any spell including creature spells
 /// This tests the fix for the TargetType$ Spell + ValidTgts$ Card combination
-use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -25,7 +25,7 @@ impl PlayerAgent for PassAgent {
     fn choose_action(
         &mut self,
         _player: PlayerId,
-        _playable: &[CardId],
+        _playable: &[PlayOption],
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
@@ -159,6 +159,9 @@ fn test_target_type_filter() {
         is_creature_spell: true,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     let entry_id = game.stack.push(entry);
 
@@ -178,6 +181,9 @@ fn test_target_type_filter() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     let entry_id2 = game.stack.push(entry2);
     assert_eq!(entry_id2, 1, "Second stack entry should have ID 1");
@@ -209,6 +215,9 @@ fn test_target_type_filter() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     game2.stack.push(entry);
 
@@ -237,6 +246,9 @@ fn test_cancel_counters_creature_spell() {
         is_creature_spell: true,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     let creature_spell_id = game.stack.push(entry);
 
@@ -259,8 +271,8 @@ fn test_cancel_counters_creature_spell() {
             "SP$ Counter | TargetType$ Spell | ValidTgts$ Card",
         ),
         target_type_filter: Some("Spell".to_string()),
-        min_targets: 1,
-        max_targets: 1,
+        min_targets: "1".to_string(),
+        max_targets: "1".to_string(),
         tgt_zone: vec![ZoneType::Battlefield],
     });
 
@@ -316,6 +328,9 @@ fn test_cancel_counters_noncreature_spell() {
         is_creature_spell: false,
         is_permanent_spell: false,
         cast_from_zone: None,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
     let instant_spell_id = game.stack.push(entry);
 
@@ -338,8 +353,8 @@ fn test_cancel_counters_noncreature_spell() {
             "SP$ Counter | TargetType$ Spell | ValidTgts$ Card",
         ),
         target_type_filter: Some("Spell".to_string()),
-        min_targets: 1,
-        max_targets: 1,
+        min_targets: "1".to_string(),
+        max_targets: "1".to_string(),
         tgt_zone: vec![ZoneType::Battlefield],
     });
 
