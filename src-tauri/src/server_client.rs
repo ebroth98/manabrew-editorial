@@ -171,16 +171,41 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
     {
         if let Some(kind) = state.get("kind").and_then(|v| v.as_str()) {
             if kind == "response" {
-                // Route to game manager (host only) — don't emit to frontend
                 let gm: tauri::State<'_, crate::game_manager::GameManager> =
                     app.state::<crate::game_manager::GameManager>();
                 gm.route_remote_response(state);
                 return;
             } else if kind == "prompt" {
-                // Emit as a specialized event for non-host game rendering
                 let _ = app.emit("game:remote_prompt", state);
                 return;
+            } else if kind == "log" {
+                if let Some(entry) = state.get("entry") {
+                    let _ = app.emit("game:log", entry);
+                }
+                return;
+            } else if kind == "snapshot" {
+                if let Some(entry) = state.get("entry") {
+                    let _ = app.emit("game:snapshot", entry);
+                }
+                return;
             }
+        }
+    }
+
+    if let ServerMessage::Error { code, message } = msg {
+        if code == "not_in_room" {
+            if let Some(gm) = app.try_state::<crate::game_manager::GameManager>() {
+                if let Err(e) = gm.end_game() {
+                    eprintln!("[server] failed to end game after not_in_room: {}", e);
+                }
+            }
+            let _ = app.emit(
+                "game:forced_end",
+                serde_json::json!({
+                    "reason": "not_in_room",
+                    "message": message,
+                }),
+            );
         }
     }
 
@@ -236,9 +261,16 @@ fn emit_server_message(app: &AppHandle, msg: &ServerMessage) {
         ServerMessage::GameStarted {
             room_id,
             player_order,
+            player_decks,
+            starting_life,
         } => (
             "server:game_started",
-            serde_json::json!({ "room_id": room_id, "player_order": player_order }),
+            serde_json::json!({
+                "room_id": room_id,
+                "player_order": player_order,
+                "player_decks": player_decks,
+                "starting_life": starting_life,
+            }),
         ),
         ServerMessage::StateUpdate { from_player, state } => (
             "server:state_update",

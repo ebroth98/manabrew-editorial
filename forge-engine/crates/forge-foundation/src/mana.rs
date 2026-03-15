@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::color::ColorSet;
+use crate::color::{Color, ColorSet};
 
 /// Bitmask constants for mana atoms, matching Java `ManaAtom`.
 /// Each bit represents a property of a mana symbol.
@@ -23,6 +23,19 @@ impl ManaAtom {
         Self::WHITE | Self::BLUE | Self::BLACK | Self::RED | Self::GREEN;
     pub const ALL_MANA_TYPES: u16 = Self::ALL_MANA_COLORS | Self::COLORLESS;
     pub const COLORS_SUPERPOSITION: u16 = Self::ALL_MANA_COLORS;
+
+    /// Convert a color name (lowercase) to its atom bitmask.
+    pub fn from_name(name: &str) -> u16 {
+        match name {
+            "white" | "w" => Self::WHITE,
+            "blue" | "u" => Self::BLUE,
+            "black" | "b" => Self::BLACK,
+            "red" | "r" => Self::RED,
+            "green" | "g" => Self::GREEN,
+            "colorless" | "c" => Self::COLORLESS,
+            _ => 0,
+        }
+    }
 
     pub fn from_char(c: char) -> u16 {
         match c.to_ascii_uppercase() {
@@ -234,6 +247,29 @@ impl ManaCostShard {
         (self.shard() & ManaAtom::OR_2_LIFE) != 0
     }
 
+    /// Convert a Phyrexian shard to its non-Phyrexian color equivalent.
+    /// E.g. WhitePhyrexian → White, BlackGreenPhyrexian → BlackGreen.
+    pub fn to_non_phyrexian(self) -> ManaCostShard {
+        match self {
+            Self::WhitePhyrexian => Self::White,
+            Self::BluePhyrexian => Self::Blue,
+            Self::BlackPhyrexian => Self::Black,
+            Self::RedPhyrexian => Self::Red,
+            Self::GreenPhyrexian => Self::Green,
+            Self::BlackGreenPhyrexian => Self::BlackGreen,
+            Self::BlackRedPhyrexian => Self::BlackRed,
+            Self::GreenBluePhyrexian => Self::GreenBlue,
+            Self::GreenWhitePhyrexian => Self::GreenWhite,
+            Self::RedGreenPhyrexian => Self::RedGreen,
+            Self::RedWhitePhyrexian => Self::RedWhite,
+            Self::BlueBlackPhyrexian => Self::BlueBlack,
+            Self::BlueRedPhyrexian => Self::BlueRed,
+            Self::WhiteBlackPhyrexian => Self::WhiteBlack,
+            Self::WhiteBluePhyrexian => Self::WhiteBlue,
+            other => other,
+        }
+    }
+
     pub fn is_snow(self) -> bool {
         (self.shard() & ManaAtom::IS_SNOW) != 0
     }
@@ -405,14 +441,56 @@ impl ManaCost {
             if let Ok(n) = token.parse::<i32>() {
                 generic_cost += n;
             } else {
-                if let Some(shard) = ManaCostShard::parse_non_generic(token) {
-                    if shard != ManaCostShard::Generic {
-                        if shard == ManaCostShard::X {
-                            has_x = true;
+                // Forge can encode colored pips as adjacent symbols (e.g. "BR"
+                // means "{B}{R}"), while hybrid/phyrexian/colorless-hybrid
+                // symbols are slash-separated (e.g. "B/R", "W/P", "2/W").
+                if token.contains('/') {
+                    if let Some(shard) = ManaCostShard::parse_non_generic(token) {
+                        if shard != ManaCostShard::Generic {
+                            if shard == ManaCostShard::X {
+                                has_x = true;
+                            }
+                            shards.push(shard);
                         }
-                        shards.push(shard);
+                        // If it parsed to Generic, it was a numeric handled above
                     }
-                    // If it parsed to Generic, it was a numeric handled above
+                } else {
+                    // First try parsing the whole token as a single shard.
+                    // In Forge card files, adjacent color chars like "BR" mean
+                    // hybrid {B/R}, not separate {B}{R} (which would be "B R").
+                    let whole = ManaCostShard::parse_non_generic(token);
+                    if let Some(shard) = whole {
+                        if shard.is_multi_color() || shard.is_phyrexian() {
+                            // Hybrid shard (e.g. "BR" → BlackRed) or phyrexian (e.g. "GP" → GreenPhyrexian)
+                            shards.push(shard);
+                        } else {
+                            // Mono-color or other — fall back to per-character
+                            // so "WW" correctly becomes two White shards.
+                            for c in token.chars() {
+                                let sym = c.to_ascii_uppercase().to_string();
+                                if let Some(shard) = ManaCostShard::parse_non_generic(&sym) {
+                                    if shard != ManaCostShard::Generic {
+                                        if shard == ManaCostShard::X {
+                                            has_x = true;
+                                        }
+                                        shards.push(shard);
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        for c in token.chars() {
+                            let sym = c.to_ascii_uppercase().to_string();
+                            if let Some(shard) = ManaCostShard::parse_non_generic(&sym) {
+                                if shard != ManaCostShard::Generic {
+                                    if shard == ManaCostShard::X {
+                                        has_x = true;
+                                    }
+                                    shards.push(shard);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -477,11 +555,145 @@ impl ManaCost {
         self.shards.iter().any(|s| s.is_phyrexian())
     }
 
+    /// Build a ManaCost from explicit shards and generic cost.
+    pub fn from_parts(shards: Vec<ManaCostShard>, generic_cost: i32) -> ManaCost {
+        ManaCost {
+            shards,
+            generic_cost,
+            has_no_cost: false,
+        }
+    }
+
+    /// Return a copy of this cost with all X shards removed.
+    /// Used to compute the non-X portion for affordability checks.
+    pub fn without_x(&self) -> ManaCost {
+        ManaCost {
+            shards: self.shards.iter().filter(|s| !s.is_x()).copied().collect(),
+            generic_cost: self.generic_cost,
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
+    /// Return a copy of this cost with all Phyrexian shards removed.
+    /// Used for playability checks — Phyrexian shards can always be paid with 2 life.
+    pub fn without_phyrexian(&self) -> ManaCost {
+        ManaCost {
+            shards: self
+                .shards
+                .iter()
+                .filter(|s| !s.is_phyrexian())
+                .copied()
+                .collect(),
+            generic_cost: self.generic_cost,
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
+    /// Convert phyrexian shards to their colored equivalents (e.g. {B/P} → {B}).
+    /// Non-phyrexian shards are kept as-is. Generic cost is preserved.
+    pub fn phyrexian_to_colored(&self) -> ManaCost {
+        ManaCost {
+            shards: self
+                .shards
+                .iter()
+                .map(|s| if s.is_phyrexian() { s.to_non_phyrexian() } else { *s })
+                .collect(),
+            generic_cost: self.generic_cost,
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
     pub fn shard_count(&self, which: ManaCostShard) -> usize {
         if which == ManaCostShard::Generic {
             return self.generic_cost as usize;
         }
         self.shards.iter().filter(|s| **s == which).count()
+    }
+
+    /// Add another mana cost to this one, returning the combined cost.
+    pub fn add(&self, other: &ManaCost) -> ManaCost {
+        Self::combine(self, other)
+    }
+
+    /// Reduce the generic portion of this cost by `amount` (floor at 0).
+    /// Used for Emerge (cost reduced by sacrificed creature's mana value).
+    pub fn reduce_generic(&self, amount: i32) -> ManaCost {
+        ManaCost {
+            shards: self.shards.clone(),
+            generic_cost: (self.generic_cost - amount).max(0),
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
+    /// Return a copy with the generic cost set to the given value.
+    pub fn with_generic(&self, generic: i32) -> ManaCost {
+        ManaCost {
+            shards: self.shards.clone(),
+            generic_cost: generic.max(0),
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
+    /// Check if this cost has a mono-color shard matching the given ManaAtom.
+    pub fn has_color_shard(&self, atom: u16) -> bool {
+        self.shards.iter().any(|s| {
+            s.is_mono_color()
+                && !s.is_phyrexian()
+                && (s.shard() & ManaAtom::COLORS_SUPERPOSITION) == atom
+        })
+    }
+
+    /// Remove one mono-color shard matching the given ManaAtom. Returns new cost.
+    pub fn remove_color_shard(&self, atom: u16) -> ManaCost {
+        let mut shards = self.shards.clone();
+        if let Some(pos) = shards.iter().position(|s| {
+            s.is_mono_color()
+                && !s.is_phyrexian()
+                && (s.shard() & ManaAtom::COLORS_SUPERPOSITION) == atom
+        }) {
+            shards.remove(pos);
+        }
+        ManaCost {
+            shards,
+            generic_cost: self.generic_cost,
+            has_no_cost: self.has_no_cost,
+        }
+    }
+
+    /// Remove up to `count` colored shards matching `color` from this cost.
+    /// If `ignore_generic` is true, only removes colored shards (never converts to generic reduction).
+    /// If `ignore_generic` is false and fewer matching shards exist than `count`, the remainder
+    /// reduces the generic portion instead.
+    pub fn reduce_color(&self, color: Color, count: i32, ignore_generic: bool) -> ManaCost {
+        let mut shards = self.shards.clone();
+        let mut remaining = count;
+        let color_mask = color.mask() as u16;
+
+        // Remove matching mono-color shards
+        let mut i = 0;
+        while i < shards.len() && remaining > 0 {
+            let shard_colors = shards[i].shard() & ManaAtom::COLORS_SUPERPOSITION;
+            // Match mono-color shards of this exact color (not hybrid/phyrexian)
+            if shard_colors == color_mask && shards[i].is_mono_color() && !shards[i].is_phyrexian()
+            {
+                shards.remove(i);
+                remaining -= 1;
+            } else {
+                i += 1;
+            }
+        }
+
+        let generic_cost = if !ignore_generic && remaining > 0 {
+            (self.generic_cost - remaining).max(0)
+        } else {
+            self.generic_cost
+        };
+
+        ManaCost {
+            shards,
+            generic_cost,
+            has_no_cost: self.has_no_cost,
+        }
     }
 
     pub fn combine(a: &ManaCost, b: &ManaCost) -> ManaCost {
@@ -492,11 +704,6 @@ impl ManaCost {
             generic_cost: a.generic_cost + b.generic_cost,
             has_no_cost: false,
         }
-    }
-
-    /// Add another mana cost to this one, returning the combined cost.
-    pub fn add(&self, other: &ManaCost) -> ManaCost {
-        Self::combine(self, other)
     }
 }
 
@@ -571,10 +778,48 @@ mod tests {
     }
 
     #[test]
+    fn parse_adjacent_multicolor_as_hybrid() {
+        // In Forge card files, "BR" (single token) means hybrid {B/R},
+        // while separate pips would be written as "B R".
+        let cost = ManaCost::parse("2 BR");
+        assert_eq!(cost.generic_cost(), 2);
+        assert_eq!(cost.shards(), &[ManaCostShard::BlackRed]);
+        assert_eq!(cost.cmc(), 3); // 2 generic + 1 hybrid
+    }
+
+    #[test]
+    fn parse_separate_pips_not_hybrid() {
+        // Space-separated "B R" means two separate color pips
+        let cost = ManaCost::parse("2 B R");
+        assert_eq!(cost.generic_cost(), 2);
+        assert_eq!(cost.shards(), &[ManaCostShard::Black, ManaCostShard::Red]);
+        assert_eq!(cost.cmc(), 4); // 2 generic + B + R
+    }
+
+    #[test]
+    fn parse_repeated_same_color_not_hybrid() {
+        // "WW" = two White pips (not hybrid)
+        let cost = ManaCost::parse("WW");
+        assert_eq!(cost.shards(), &[ManaCostShard::White, ManaCostShard::White]);
+        assert_eq!(cost.cmc(), 2);
+    }
+
+    #[test]
     fn parse_phyrexian() {
+        // Slash-separated format (e.g. "W/P")
         let cost = ManaCost::parse("W/P");
         assert!(cost.has_phyrexian());
         assert_eq!(cost.cmc(), 1);
+        // Adjacent format from card files (e.g. "GP")
+        let cost2 = ManaCost::parse("GP");
+        assert!(cost2.has_phyrexian());
+        assert_eq!(cost2.cmc(), 1);
+        assert_eq!(cost2.shards().len(), 1);
+        // Multi-shard: "1 BP BP" (Dismember)
+        let cost3 = ManaCost::parse("1 BP BP");
+        assert!(cost3.has_phyrexian());
+        assert_eq!(cost3.shards().len(), 2);
+        assert_eq!(cost3.generic_cost(), 1);
     }
 
     #[test]

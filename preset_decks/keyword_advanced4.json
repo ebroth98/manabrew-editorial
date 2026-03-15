@@ -1,0 +1,24 @@
+{
+  "label": "Advanced Keywords 4",
+  "desc": "Test Outlast, Exalted, Renown, Flanking, Extort, Bloodthirst, Riot, Unleash, Unearth",
+  "color": "text-amber-400",
+  "opponent": "white_aggro",
+  "ai_eligible": false,
+  "order": 19,
+  "cards": [
+    { "name": "Plains", "count": 4, "set": "rtr" },
+    { "name": "Swamp", "count": 4, "set": "rtr" },
+    { "name": "Mountain", "count": 4, "set": "rtr" },
+    { "name": "Forest", "count": 3, "set": "rtr" },
+    { "name": "Ainok Bond-Kin", "count": 2, "set": "ktk" },
+    { "name": "Noble Hierarch", "count": 2, "set": "con" },
+    { "name": "Topan Freeblade", "count": 2, "set": "ori" },
+    { "name": "Suq'Ata Lancer", "count": 2, "set": "tsp" },
+    { "name": "Tithe Drinker", "count": 2, "set": "dgm" },
+    { "name": "Vampire Lacerator", "count": 2, "set": "zen" },
+    { "name": "Gruul Spellbreaker", "count": 2, "set": "rna" },
+    { "name": "Rakdos Cackler", "count": 2, "set": "rtr" },
+    { "name": "Hellspark Elemental", "count": 2, "set": "con" },
+    { "name": "Dregscape Zombie", "count": 2, "set": "ala" }
+  ]
+}

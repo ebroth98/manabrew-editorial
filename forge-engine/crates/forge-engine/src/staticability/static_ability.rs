@@ -49,6 +49,53 @@ pub enum StaticMode {
     /// `Mode$ IncreaseCost` — increase the mana cost of matching spells.
     IncreaseCost,
 
+    /// `Mode$ SetCost` — raise cost to a minimum (Trinisphere). Used with `RaiseTo$`.
+    SetCost,
+    CantTarget,
+    CantAttach,
+    MustAttack,
+    MustBlock,
+    Panharmonicon,
+    CantGainLosePayLife,
+    CantDraw,
+    CantExile,
+    CantSacrifice,
+    CantRegenerate,
+    DisableTriggers,
+    CantPutCounter,
+    CastWithFlash,
+    BlockRestrict,
+    AttackRestrict,
+    CanAttackDefender,
+    IgnoreHexproof,
+    IgnoreShroud,
+    IgnoreLegendRule,
+    MustTarget,
+    AssignCombatDamageAsUnblocked,
+    AssignNoCombatDamage,
+    CombatDamageToughness,
+    NoCleanupDamage,
+    InfectDamage,
+    WitherDamage,
+    ColorlessDamageSource,
+    CountersRemain,
+    MaxCounter,
+    /// `Mode$ CantAttackUnless` — attacker must pay a cost to attack (Propaganda, Ghostly Prison).
+    CantAttackUnless,
+    /// `Mode$ OptionalAttackCost` — optional attack payment like Exert/Enlist.
+    OptionalAttackCost,
+    /// `Mode$ CantBlockUnless` — blocker must pay a cost to block (War Cadence).
+    CantBlockUnless,
+    /// `Mode$ CantBlockBy` — restricts which blockers can block an attacker
+    /// (Flying, Fear, Intimidate, Skulk, or card-specific restrictions).
+    CantBlockBy,
+    /// `Mode$ ManaConvert` — spend mana as though it were mana of any color/type.
+    ManaConvert,
+    /// `Mode$ UnspentMana` — mana of specified type doesn't empty from pool.
+    UnspentMana,
+    /// `Mode$ ManaBurn` — losing unspent mana causes life loss (Yurlok of Scorch Thrash).
+    ManaBurn,
+
     /// Any mode not yet recognised — stored but not applied.
     Other(String),
 }
@@ -158,6 +205,13 @@ pub struct CardFilter {
     pub required_color: Option<ColorSet>,
     /// Only match colorless cards (`Colorless` qualifier).
     pub colorless_only: bool,
+    /// Only match creatures currently attacking the source's controller
+    /// (`attackingYou` qualifier, e.g. Watchdog).
+    pub attacking_you: bool,
+    /// Only match cards with this exact name (`named<CardName>` qualifier).
+    pub card_name: Option<String>,
+    /// Only match token permanents.
+    pub token_only: bool,
 }
 
 impl CardFilter {
@@ -195,6 +249,11 @@ impl CardFilter {
             "Red" => f.required_color = Some(ColorSet::RED),
             "Green" => f.required_color = Some(ColorSet::GREEN),
             "Colorless" => f.colorless_only = true,
+            "attackingYou" => f.attacking_you = true,
+            "token" | "Token" => f.token_only = true,
+            s if s.starts_with("named") => {
+                f.card_name = Some(s["named".len()..].to_string());
+            }
             s => {
                 // Unknown tokens are treated as subtype filters (e.g. "Goblin").
                 if f.subtype.is_none() {
@@ -233,6 +292,17 @@ impl CardFilter {
             }
         }
         if self.colorless_only && !card.color.is_colorless() {
+            return false;
+        }
+        if self.attacking_you && card.attacking_player != Some(source.controller) {
+            return false;
+        }
+        if let Some(ref name) = self.card_name {
+            if card.card_name != *name {
+                return false;
+            }
+        }
+        if self.token_only && !card.is_token {
             return false;
         }
         true
@@ -284,7 +354,48 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("ETBTapped") => StaticMode::ETBTapped,
         Some("CantBeCast") => StaticMode::CantBeCast,
         Some("ReduceCost") => StaticMode::ReduceCost,
-        Some("IncreaseCost") => StaticMode::IncreaseCost,
+        Some("IncreaseCost") | Some("RaiseCost") => StaticMode::IncreaseCost,
+        Some("SetCost") => StaticMode::SetCost,
+        Some("CantTarget") => StaticMode::CantTarget,
+        Some("CantAttach") => StaticMode::CantAttach,
+        Some("MustAttack") => StaticMode::MustAttack,
+        Some("MustBlock") => StaticMode::MustBlock,
+        Some("Panharmonicon") => StaticMode::Panharmonicon,
+        Some("CantGainLosePayLife") => StaticMode::CantGainLosePayLife,
+        Some("CantDraw") => StaticMode::CantDraw,
+        Some("CantExile") => StaticMode::CantExile,
+        Some("CantSacrifice") => StaticMode::CantSacrifice,
+        Some("CantRegenerate") => StaticMode::CantRegenerate,
+        Some("DisableTriggers") => StaticMode::DisableTriggers,
+        Some("CantPutCounter") => StaticMode::CantPutCounter,
+        Some("CastWithFlash") => StaticMode::CastWithFlash,
+        Some("BlockRestrict") => StaticMode::BlockRestrict,
+        Some("AttackRestrict") => StaticMode::AttackRestrict,
+        Some("CanAttackDefender") => StaticMode::CanAttackDefender,
+        Some("IgnoreHexproof") => StaticMode::IgnoreHexproof,
+        Some("IgnoreShroud") => StaticMode::IgnoreShroud,
+        Some("IgnoreLegendRule") => StaticMode::IgnoreLegendRule,
+        Some("MustTarget") => StaticMode::MustTarget,
+        Some("AssignCombatDamageAsUnblocked") => StaticMode::AssignCombatDamageAsUnblocked,
+        Some("AssignNoCombatDamage") => StaticMode::AssignNoCombatDamage,
+        Some("CombatDamageToughness") => StaticMode::CombatDamageToughness,
+        Some("NoCleanupDamage") => StaticMode::NoCleanupDamage,
+        Some("InfectDamage") => StaticMode::InfectDamage,
+        Some("WitherDamage") => StaticMode::WitherDamage,
+        Some("ColorlessDamageSource") => StaticMode::ColorlessDamageSource,
+        Some("CountersRemain") => StaticMode::CountersRemain,
+        Some("MaxCounter") => StaticMode::MaxCounter,
+        Some("CantAttackUnless") => StaticMode::CantAttackUnless,
+        Some("OptionalAttackCost") => StaticMode::OptionalAttackCost,
+        Some("CantBlockUnless") => StaticMode::CantBlockUnless,
+        Some("CantBlockBy") => StaticMode::CantBlockBy,
+        Some("ManaConvert") => StaticMode::ManaConvert,
+        Some("UnspentMana") => StaticMode::UnspentMana,
+        Some("ManaBurn") => StaticMode::ManaBurn,
+        Some("CantGainLife") => StaticMode::Other("CantGainLife".to_string()),
+        Some("CantLoseLife") => StaticMode::Other("CantLoseLife".to_string()),
+        Some("CantChangeLife") => StaticMode::Other("CantChangeLife".to_string()),
+        Some("CantPayLife") => StaticMode::Other("CantPayLife".to_string()),
         Some(other) => StaticMode::Other(other.to_string()),
         None => return None,
     };

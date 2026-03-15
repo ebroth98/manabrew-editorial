@@ -1,0 +1,24 @@
+{
+  "label": "Pauper Mono White Weenie",
+  "desc": "Real Pauper deck: Kor Skyfisher + Battle Screech white aggro (billsive, 2nd Pauper Challenge 2026-03-08)",
+  "color": "text-amber-200",
+  "opponent": "real_mono_red_madness",
+  "ai_eligible": false,
+  "order": 101,
+  "cards": [
+    { "name": "Plains", "count": 19 },
+    { "name": "Idyllic Grange", "count": 2 },
+    { "name": "Thraben Inspector", "count": 4 },
+    { "name": "Novice Inspector", "count": 4 },
+    { "name": "Lunarch Veteran", "count": 4 },
+    { "name": "Kor Skyfisher", "count": 4 },
+    { "name": "Raffine's Informant", "count": 4 },
+    { "name": "Militia Bugler", "count": 3 },
+    { "name": "Battle Screech", "count": 4 },
+    { "name": "Thraben Charm", "count": 4 },
+    { "name": "Guardians' Pledge", "count": 2 },
+    { "name": "Prismatic Strands", "count": 3 },
+    { "name": "Ramosian Rally", "count": 1 },
+    { "name": "Leonardo, Big Brother", "count": 4 }
+  ]
+}

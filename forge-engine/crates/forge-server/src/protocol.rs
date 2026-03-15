@@ -1,6 +1,22 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CardIdentity {
+    pub name: String,
+    pub set_code: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PlayerDeckInfo {
+    pub username: String,
+    pub deck_name: String,
+    pub deck_list: Vec<CardIdentity>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commander_name: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
     Authenticate {
@@ -26,6 +42,12 @@ pub enum ClientMessage {
 
     SetReady {
         ready: bool,
+    },
+
+    SetDeckSelection {
+        deck_name: String,
+        deck_list: Vec<CardIdentity>,
+        commander_name: Option<String>,
     },
 
     StartGame,
@@ -93,6 +115,8 @@ pub enum ServerMessage {
     GameStarted {
         room_id: String,
         player_order: Vec<String>,
+        player_decks: Vec<PlayerDeckInfo>,
+        starting_life: i32,
     },
 
     StateUpdate {
@@ -128,6 +152,8 @@ pub struct RoomPlayerInfo {
     pub username: String,
     pub ready: bool,
     pub connected: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_deck_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

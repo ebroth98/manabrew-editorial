@@ -8,6 +8,8 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
+.yarn/
+.yarnrc.yml
 dist
 dist-ssr
 *.local
@@ -28,9 +30,17 @@ dist-ssr
 forge-engine/target/
 src-tauri/target/
 
+# Secrets
+.env
+
+# Parity database & cache
+parity.db
+.parity-cache/
+
 # Java / Maven
 forge/target/
 forge/**/target/
 *.class
 *.jar
 *.war
+.mvn/

@@ -8,6 +8,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::agent::GameLogEvent;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
@@ -40,9 +41,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let ability_text = abilities.first().cloned().unwrap_or_default();
     let mut spell_sa = build_spell_ability(ctx.game, card_id, &ability_text, controller);
     spell_sa.is_spell = true;
+    if let Some(cost) = spell_sa.pay_costs.as_mut() {
+        // Java PlayEffect forces mandatory payment in non-optional branches.
+        cost.mandatory = true;
+    }
 
     // Choose targets if the spell needs them
     spell_sa.setup_targets(ctx.game, ctx.agents, ctx.mana_pools);
+    let chosen_target = spell_sa.target_chosen.target_card;
 
     let is_creature = ctx.game.card(card_id).is_creature();
     let is_permanent = ctx.game.card(card_id).is_permanent();
@@ -55,6 +61,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         is_creature_spell: is_creature,
         is_permanent_spell: is_permanent,
         cast_from_zone: cast_zone,
+        optional_trigger_decider: None,
+        optional_trigger_description: None,
+        optional_trigger_source_name: None,
     };
 
     // Push onto stack
@@ -77,5 +86,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         false,
     );
 
-    ctx.agents[controller.index()].notify(&format!("Rebound: cast {}", card_name));
+    let mut event = GameLogEvent::stack(format!("Rebound: cast {}", card_name))
+        .with_player(controller)
+        .with_source_card(card_id);
+    if let Some(target_id) = chosen_target {
+        event = event.with_target_card(target_id);
+    }
+    crate::agent::notify_all_agents(ctx.agents, event);
 }

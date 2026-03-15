@@ -95,6 +95,12 @@ public final class ImageKeys {
     public static void clearMissingCards() {
         missingCards.clear();
     }
+    /** Clear all image caches to reclaim memory in long-running headless mode. */
+    public static void clearCaches() {
+        cachedCards.clear();
+        cachedContent.clear();
+        missingCards.clear();
+    }
     public static File getCachedCardsFile(String key) {
         return cachedCards.get(key);
     }

@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, matches_change_type, EffectContext};
+use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
@@ -17,7 +17,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for &pid in &player_ids {
         let zone_cards = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).to_vec();
         for cid in zone_cards {
-            if matches_change_type(ctx.game.card(cid), &valid_cards_filter) {
+            if matches_change_type(ctx.game.card(cid), &valid_cards_filter, &[]) {
                 to_sacrifice.push(cid);
             }
         }
@@ -29,6 +29,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         let controller = ctx.game.card(card_id).controller;
         let owner = ctx.game.card(card_id).owner;
+        // Capture +1/+1 counter count before move (for Modular death triggers)
+        let lki_p1p1 = *ctx
+            .game
+            .card(card_id)
+            .counters
+            .get(&crate::card::CounterType::P1P1)
+            .unwrap_or(&0);
         // Fire Sacrificed trigger
         ctx.trigger_handler.run_trigger(
             TriggerType::Sacrificed,
@@ -40,11 +47,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             false,
         );
         ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
-        emit_zone_trigger(
+        emit_zone_trigger_with_lki_counters(
             ctx.trigger_handler,
             card_id,
             ZoneType::Battlefield,
             ZoneType::Graveyard,
+            lki_p1p1,
         );
     }
 }

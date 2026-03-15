@@ -1,7 +1,9 @@
 pub mod card_property;
+pub mod damage_history;
 
 use std::collections::{BTreeMap, HashMap};
 
+use forge_carddb::CardRules;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +11,40 @@ use crate::ability::activated::{parse_activated_ability, ActivatedAbility};
 use crate::ids::{CardId, PlayerId};
 use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::staticability::{parse_static_ability, StaticAbility};
-use crate::trigger::Trigger;
+use crate::trigger::{parse_trigger, Trigger};
+
+/// Parse `Mode$ AlternativeCost | Cost$ GainLife<N/...> | IsPresent$ ...` from a
+/// static ability raw string and return `Some("AltCostGainLife:N:condition")` keyword.
+fn parse_gainlife_alt_cost_keyword(raw: &str) -> Option<String> {
+    if !raw.contains("AlternativeCost") {
+        return None;
+    }
+    let life_amount = raw.split('|').find_map(|part| {
+        let p = part.trim();
+        if let Some(rest) = p.strip_prefix("Cost$") {
+            let cost = rest.trim();
+            if let Some(inner) = cost
+                .strip_prefix("GainLife<")
+                .and_then(|s| s.split('>').next())
+            {
+                let n = inner
+                    .split('/')
+                    .next()
+                    .and_then(|s| s.trim().parse::<i32>().ok())?;
+                return Some(n);
+            }
+        }
+        None
+    })?;
+    let condition = raw
+        .split('|')
+        .find_map(|part| {
+            let p = part.trim();
+            p.strip_prefix("IsPresent$").map(|s| s.trim().to_string())
+        })
+        .unwrap_or_default();
+    Some(format!("AltCostGainLife:{}:{}", life_amount, condition))
+}
 
 /// Stores alternate-face characteristics for double-faced cards (DFCs).
 /// The `transform()` method swaps `CardInstance` fields with these values.
@@ -26,6 +61,15 @@ pub struct CardOtherPart {
     pub abilities: Vec<String>,
     pub triggers: Vec<Trigger>,
     pub svars: BTreeMap<String, String>,
+}
+
+/// Saved pre-animate state for AnimateEffect, restored at cleanup.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AnimateState {
+    pub original_type_line: CardTypeLine,
+    pub original_base_power: Option<i32>,
+    pub original_base_toughness: Option<i32>,
+    pub original_color: ColorSet,
 }
 
 /// A card instance in a game. This is the mutable game-state representation,
@@ -59,6 +103,10 @@ pub struct CardInstance {
     /// (e.g. Giant Growth).  Reset when leaving the battlefield.
     pub power_modifier: i32,
     pub toughness_modifier: i32,
+    /// Perpetual P/T modifications — persist across zone changes (never reset).
+    /// Applied by `PumpAll` / `Pump` effects with `Duration$ Perpetual`.
+    pub perpetual_power_modifier: i32,
+    pub perpetual_toughness_modifier: i32,
     /// Layer 7b override: set by `SetPower$` / `SetToughness$` continuous effects.
     /// `None` means use `base_power` / `base_toughness` as normal.
     /// Reset to `None` each time [`layer::apply_continuous_effects`] runs.
@@ -73,7 +121,12 @@ pub struct CardInstance {
     pub tapped: bool,
     pub flipped: bool,
     pub face_down: bool,
+    /// True if this card has Morph or Megamorph and can be cast face-down for {3}.
+    pub has_morph: bool,
+    /// True if this card is currently bestowed (attached as an Aura via Bestow).
+    pub is_bestowed: bool,
     pub summoning_sick: bool,
+    pub exerted: bool,
     pub damage: i32,
 
     // Counters
@@ -139,8 +192,28 @@ pub struct CardInstance {
     // Memory for "Remember" parameters
     /// Cards remembered by this card (for RememberCountered, etc.)
     pub remembered_cards: Vec<CardId>,
+    /// Players remembered by this card (for Player.IsRemembered checks).
+    pub remembered_players: Vec<PlayerId>,
     /// CMC values remembered by this card
     pub remembered_cmc: Vec<i32>,
+    /// Source card that created this effect card (for Card.EffectSource checks).
+    pub effect_source: Option<CardId>,
+    /// True if this temporary effect expires at end of turn cleanup.
+    pub temp_effect_until_eot: bool,
+    /// Host card this temporary effect is linked to; when host leaves the
+    /// battlefield, this effect expires.
+    pub temp_effect_host: Option<CardId>,
+    /// Forget remembered cards when they move from this origin zone.
+    pub forget_on_moved_origin: Option<ZoneType>,
+    /// Exile this effect when remembered cards become empty after forget logic.
+    pub exile_when_no_remembered: bool,
+    /// When this card is in exile, the card that caused it to be exiled here.
+    /// Used for `Duration$ UntilHostLeavesPlay` effects (e.g. Deputy of Detention):
+    /// when `exiled_by` leaves the battlefield, this card returns to its owner's battlefield.
+    pub exiled_by: Option<CardId>,
+
+    /// Original controller to restore at end of turn (for `LoseControl$ EOT`).
+    pub original_controller_eot: Option<PlayerId>,
 
     // Double-faced card (DFC) state
     /// True if this card is currently showing its back face.
@@ -151,10 +224,90 @@ pub struct CardInstance {
     /// Optional set code (e.g., "M21") for specific printings.
     pub set_code: Option<String>,
 
+    // Phase-out state (issue #22, Phases effect).
+    pub phased_out: bool,
+
+    // Regeneration shields (issue #22, Regenerate effect).
+    // Decremented instead of destroying; resets at end of turn.
+    pub regeneration_shields: i32,
+
     /// Whether this permanent was kicked when cast.
     /// Mirrors Java `Card.isKicked()`. Stored on the card so triggers
     /// with `ValidCard$ Card.Self+kicked` can check it after resolution.
     pub kicked: bool,
+    /// Whether this permanent has become monstrous.
+    /// Mirrors Java `Card.isMonstrous()`. Resets when the permanent changes zones.
+    pub monstrous: bool,
+
+    /// Colors chosen by ChooseColorEffect (stored for later reference by other effects).
+    pub chosen_colors: Vec<String>,
+    /// Cards chosen by ChooseCardEffect (stored for later reference by other effects).
+    pub chosen_cards: Vec<CardId>,
+
+    /// Saved state for AnimateEffect — restored during step_cleanup.
+    pub animate_state: Option<AnimateState>,
+
+    // ── Issue #53: High-priority effect fields ──────────────────────────
+    /// Type chosen by ChooseType effect (e.g. "Goblin", "Artifact").
+    pub chosen_type: Option<String>,
+    /// Card names chosen by NameCard effect.
+    pub named_cards: Vec<String>,
+    /// Number chosen by ChooseNumber effect.
+    pub chosen_number: Option<i32>,
+    /// Player chosen by ChoosePlayer effect.
+    pub chosen_player: Option<PlayerId>,
+    /// Controller who made the chosen-player choice.
+    pub chosen_player_controller: Option<PlayerId>,
+    /// Controller who made the chosen-type choice.
+    pub chosen_type_controller: Option<PlayerId>,
+    /// Whether the chosen player has been revealed.
+    pub chosen_player_revealed: bool,
+    /// Whether the chosen type has been revealed.
+    pub chosen_type_revealed: bool,
+    /// Opponent chosen for PromiseGift cost.
+    pub promised_gift: Option<PlayerId>,
+    /// True if detained — can't attack, block, or activate abilities. Clears at controller's next turn.
+    pub detained: bool,
+    /// Set during combat to the player this creature is attacking; None if not attacking.
+    pub attacking_player: Option<PlayerId>,
+    /// Player who goaded this creature. Goaded creature must attack but can't attack goader.
+    pub goaded_by: Option<PlayerId>,
+    /// Damage prevention shields (decremented when damage would be dealt). Resets at EOT.
+    pub damage_prevention: i32,
+    /// True if this creature must block if able.
+    pub must_block: bool,
+    /// Spell cards encoded/ciphered onto this creature.
+    pub encoded_cards: Vec<CardId>,
+    /// Cards that dealt damage to this creature this turn (for DamagedBy trigger filters).
+    /// Mirrors Java `CardDamageHistory.getDamageReceivedThisTurn()`.
+    pub damage_sources_this_turn: Vec<CardId>,
+    /// Damage history tracking (attacks, blocks, damage dealt).
+    /// Mirrors Java `CardDamageHistory`.
+    #[serde(skip)]
+    pub damage_history: damage_history::DamageHistory,
+    /// Specific cards this creature must block (set by effects like Lure variants).
+    pub must_block_cards: Vec<CardId>,
+    /// +1/+1 counters to add on ETB (from mana that adds counters, e.g. Guildmages' Forum).
+    pub etb_counters_p1p1: i32,
+    /// Bitmask of colors of mana spent to cast this spell (for Sunburst/Converge).
+    /// Uses ManaAtom bit flags (W=1, U=2, B=4, R=8, G=16).
+    pub colors_spent_to_cast: u16,
+    /// Pre-selected charm/mode indices (for Spree — modes chosen before payment).
+    /// If `Some`, charm_effect should use these instead of asking the player again.
+    pub chosen_modes: Option<Vec<usize>>,
+    /// Number of extra targets paid for via Strive (0 = no extra targets).
+    pub strive_extra_targets: u32,
+    /// Set when this creature enlisted another creature in the current combat.
+    pub enlisted_this_combat: bool,
+    /// Per-ability activation count this game (for PowerUp once-per-game restriction).
+    pub activations_this_game: std::collections::BTreeMap<usize, u32>,
+    /// True once Renown has triggered (creature dealt combat damage to a player).
+    /// Mirrors Java `Card.isRenowned()`.
+    pub is_renowned: bool,
+    /// Monotonically increasing timestamp set each time the card enters a zone.
+    /// Used to order same-player triggers by zone entry order, matching
+    /// Java's `Zone.cardList` insertion order used by `forEachCardInGame`.
+    pub zone_timestamp: u64,
 }
 
 impl CardInstance {
@@ -191,7 +344,7 @@ impl CardInstance {
             .filter_map(|raw| parse_static_ability(raw))
             .collect();
 
-        CardInstance {
+        let mut card = CardInstance {
             id,
             card_name,
             owner,
@@ -204,6 +357,8 @@ impl CardInstance {
             base_toughness,
             power_modifier: 0,
             toughness_modifier: 0,
+            perpetual_power_modifier: 0,
+            perpetual_toughness_modifier: 0,
             static_set_power: None,
             static_set_toughness: None,
             static_power_modifier: 0,
@@ -211,7 +366,10 @@ impl CardInstance {
             tapped: false,
             flipped: false,
             face_down: false,
+            has_morph: false,
+            is_bestowed: false,
             summoning_sick: true,
+            exerted: false,
             damage: 0,
             counters: HashMap::new(),
             keywords,
@@ -234,12 +392,741 @@ impl CardInstance {
             attached_to: None,
             attachments: Vec::new(),
             remembered_cards: Vec::new(),
+            remembered_players: Vec::new(),
             remembered_cmc: Vec::new(),
+            effect_source: None,
+            temp_effect_until_eot: false,
+            temp_effect_host: None,
+            forget_on_moved_origin: None,
+            exile_when_no_remembered: false,
+            exiled_by: None,
+            original_controller_eot: None,
             is_transformed: false,
             other_part: None,
             set_code: None,
+            phased_out: false,
+            regeneration_shields: 0,
             kicked: false,
+            monstrous: false,
+            chosen_colors: Vec::new(),
+            chosen_cards: Vec::new(),
+            animate_state: None,
+            chosen_type: None,
+            named_cards: Vec::new(),
+            chosen_number: None,
+            chosen_player: None,
+            chosen_player_controller: None,
+            chosen_type_controller: None,
+            chosen_player_revealed: false,
+            chosen_type_revealed: false,
+            promised_gift: None,
+            detained: false,
+            attacking_player: None,
+            goaded_by: None,
+            damage_prevention: 0,
+            must_block: false,
+            encoded_cards: Vec::new(),
+            damage_sources_this_turn: Vec::new(),
+            damage_history: damage_history::DamageHistory::default(),
+            must_block_cards: Vec::new(),
+            etb_counters_p1p1: 0,
+            colors_spent_to_cast: 0,
+            chosen_modes: None,
+            strive_extra_targets: 0,
+            enlisted_this_combat: false,
+            activations_this_game: std::collections::BTreeMap::new(),
+            is_renowned: false,
+            zone_timestamp: 0,
+        };
+
+        // Generate intrinsic abilities from card properties (mirrors Java CardFactoryUtil)
+        card.generate_basic_land_mana_abilities();
+        card.generate_keyword_abilities();
+        card.generate_keyword_triggers();
+        card
+    }
+
+    /// Generate intrinsic mana abilities for basic land subtypes (Plains → {W}, etc.).
+    /// Mirrors Java's `CardFactoryUtil.addIntrinsicAbilities()`.
+    fn generate_basic_land_mana_abilities(&mut self) {
+        const SUBTYPE_MANA: &[(&str, &str, &str)] = &[
+            ("Plains", "W", "Add {W}."),
+            ("Island", "U", "Add {U}."),
+            ("Swamp", "B", "Add {B}."),
+            ("Mountain", "R", "Add {R}."),
+            ("Forest", "G", "Add {G}."),
+        ];
+        for &(subtype, letter, desc) in SUBTYPE_MANA {
+            if self.type_line.has_subtype(subtype) {
+                let already_produces = self.activated_abilities.iter().any(|ab| {
+                    ab.is_mana_ability && ab.params.get("Produced").map_or(false, |p| p == letter)
+                });
+                if !already_produces {
+                    let raw = format!(
+                        "AB$ Mana | Cost$ T | Produced$ {} | SpellDescription$ {}",
+                        letter, desc
+                    );
+                    let idx = self.abilities.len();
+                    self.abilities.push(raw.clone());
+                    if let Some(ab) = parse_activated_ability(&raw, idx) {
+                        self.activated_abilities.push(ab);
+                    }
+                }
+            }
         }
+    }
+
+    /// Generate activated abilities from keywords (e.g. Cycling → AB$ Draw).
+    /// Mirrors Java's `CardFactoryUtil.setupKeywordedAbilities()`.
+    fn generate_keyword_abilities(&mut self) {
+        // Cycling: K:Cycling:{cost} → AB$ Draw | Cost$ {cost} Discard<1/CARDNAME> | ActivationZone$ Hand
+        if let Some(cycling_cost) = self.get_keyword_cost("Cycling") {
+            let ab_text = format!(
+                "AB$ Draw | Cost$ {} Discard<1/CARDNAME> | ActivationZone$ Hand | NumCards$ 1 | Defined$ You",
+                cycling_cost
+            );
+            let next_idx = self.activated_abilities.len();
+            if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                self.activated_abilities.push(ab);
+            }
+        }
+
+        // Equip: K:Equip:{cost}[...]
+        // Forge keyword payload can include optional suffix data; we only need
+        // the activation cost + default target filter to mirror Java baseline.
+        if let Some(equip_raw) = self.get_keyword_cost("Equip") {
+            let payload = equip_raw
+                .split(":::")
+                .next()
+                .unwrap_or(equip_raw.as_str())
+                .trim();
+            let mut parts = payload.split(':');
+            let equip_cost = parts.next().unwrap_or(payload).trim();
+            let target_filter = parts
+                .next()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("Creature.YouCtrl");
+            if !equip_cost.is_empty() {
+                let ab_text = format!(
+                    "AB$ Attach | Cost$ {} | ValidTgts$ {} | SorcerySpeed$ True | SpellDescription$ Equip {}",
+                    equip_cost, target_filter, equip_cost
+                );
+                let next_idx = self.activated_abilities.len();
+                if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                    self.activated_abilities.push(ab);
+                }
+            }
+        }
+
+        // Adapt: K:Adapt:N:cost → AB$ PutCounter with Adapt$ True gate.
+        // Mirrors Java CardFactoryUtil lines 2665-2684.
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(rest) = kw.strip_prefix("Adapt:") {
+                let parts: Vec<&str> = rest.splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    let magnitude = parts[0].trim();
+                    let mana_cost = parts[1].trim();
+                    let ab_text = format!(
+                        "AB$ PutCounter | Cost$ {} | Adapt$ True | CounterNum$ {} | CounterType$ P1P1 | StackDescription$ SpellDescription | SpellDescription$ Adapt {}",
+                        mana_cost, magnitude, magnitude
+                    );
+                    let next_idx = self.activated_abilities.len();
+                    if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                        self.activated_abilities.push(ab);
+                    }
+                }
+            }
+        }
+
+        // Crew: K:Crew:N → AB$ Animate (tap creatures with total power ≥N).
+        // Mirrors Java CardFactoryUtil lines 3820-3835.
+        // Uses tapXType<Any/Creature.Other+withTotalPowerGE{N}> matching Java's format.
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(n_str) = kw.strip_prefix("Crew:") {
+                let n = n_str.trim();
+                let ab_text = format!(
+                    "AB$ Animate | Cost$ tapXType<Any/Creature.Other+withTotalPowerGE{{{}}}> | Defined$ Self | Types$ Artifact,Creature | Secondary$ True | SpellDescription$ Crew {}",
+                    n, n
+                );
+                let next_idx = self.activated_abilities.len();
+                if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                    self.activated_abilities.push(ab);
+                }
+            }
+        }
+
+        // Embalm: K:Embalm:cost → AB$ CopyPermanent from graveyard.
+        // Mirrors Java CardFactoryUtil lines 2879-2891.
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(cost_str) = kw.strip_prefix("Embalm:") {
+                let cost = cost_str.trim();
+                let ab_text = format!(
+                    "AB$ CopyPermanent | Cost$ {} ExileFromGrave<1/CARDNAME> | ActivationZone$ Graveyard | SorcerySpeed$ True | Defined$ Self | SetColor$ White | AddTypes$ Zombie | SpellDescription$ Embalm",
+                    cost
+                );
+                let next_idx = self.activated_abilities.len();
+                if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                    self.activated_abilities.push(ab);
+                }
+            }
+        }
+
+        // Eternalize: K:Eternalize:cost → AB$ CopyPermanent from graveyard as 4/4.
+        // Mirrors Java CardFactoryUtil lines 3023-3052.
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(cost_str) = kw.strip_prefix("Eternalize:") {
+                let cost = cost_str.trim();
+                let ab_text = format!(
+                    "AB$ CopyPermanent | Cost$ {} ExileFromGrave<1/CARDNAME> | ActivationZone$ Graveyard | SorcerySpeed$ True | Defined$ Self | SetColor$ Black | SetPower$ 4 | SetToughness$ 4 | AddTypes$ Zombie | SpellDescription$ Eternalize",
+                    cost
+                );
+                let next_idx = self.activated_abilities.len();
+                if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                    self.activated_abilities.push(ab);
+                }
+            }
+        }
+
+        // Enlist: K:Enlist -> intrinsic optional attack cost static ability.
+        // Java builds: Mode$ OptionalAttackCost | Cost$ Enlist<1/CARDNAME/creature> ...
+        // Rust cost parser normalizes this and the combat loop applies the enlist payment.
+        if self
+            .keywords
+            .iter()
+            .chain(self.granted_keywords.iter())
+            .any(|k| k.eq_ignore_ascii_case("Enlist"))
+        {
+            let raw = "S:Mode$ OptionalAttackCost | ValidCard$ Card.Self | Cost$ Enlist<1/CARDNAME/creature> | Secondary$ True";
+            if let Some(sa) = parse_static_ability(raw) {
+                self.static_abilities.push(sa);
+            }
+        }
+
+        // Morph / Megamorph: mark card as castable face-down for {3}.
+        // The actual casting logic is in game_action_util (playable check + cost handling).
+        if self
+            .keywords
+            .iter()
+            .chain(self.granted_keywords.iter())
+            .any(|k| k.starts_with("Morph:") || k.starts_with("Megamorph:"))
+        {
+            self.has_morph = true;
+        }
+    }
+
+    /// Generate triggered abilities from keywords (e.g. Prowess, Bushido, Annihilator, etc.).
+    /// Mirrors Java's `CardFactoryUtil.setupKeywordedTriggers()`.
+    pub fn generate_keyword_triggers(&mut self) {
+        let mut next_id = self.triggers.len() as u32;
+
+        for kw in self.keywords.clone() {
+            // Prowess: +1/+1 when you cast a noncreature spell
+            if kw == "Prowess" {
+                let raw = "Mode$ SpellCast | ValidCard$ Card.nonCreature | ValidActivatingPlayer$ You | Execute$ TrigProwess | TriggerZones$ Battlefield | TriggerDescription$ Prowess";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigProwess".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigProwess".to_string())
+                    .or_insert_with(|| {
+                        "DB$ Pump | Defined$ Self | NumAtt$ 1 | NumDef$ 1".to_string()
+                    });
+            }
+
+            // Bushido N: +N/+N when blocking or becoming blocked
+            if let Some(n_str) = kw.strip_prefix("Bushido:") {
+                if n_str.parse::<i32>().is_ok() {
+                    let raw1 = format!("Mode$ Blocks | ValidCard$ Card.Self | Execute$ TrigBushido | TriggerZones$ Battlefield | TriggerDescription$ Bushido {n_str}");
+                    if let Some(mut trig) = parse_trigger(&raw1, &mut next_id) {
+                        trig.execute = "TrigBushido".to_string();
+                        self.triggers.push(trig);
+                    }
+                    let raw2 = format!("Mode$ AttackerBlocked | ValidCard$ Card.Self | Execute$ TrigBushido | TriggerZones$ Battlefield | TriggerDescription$ Bushido {n_str}");
+                    if let Some(mut trig) = parse_trigger(&raw2, &mut next_id) {
+                        trig.execute = "TrigBushido".to_string();
+                        self.triggers.push(trig);
+                    }
+                    self.svars
+                        .entry("TrigBushido".to_string())
+                        .or_insert_with(|| {
+                            format!("DB$ Pump | Defined$ Self | NumAtt$ {n_str} | NumDef$ {n_str}")
+                        });
+                }
+            }
+
+            // Annihilator N: when this creature attacks, defending player sacrifices N permanents.
+            // Mirrors Java CardFactoryUtil lines 723-736.
+            if let Some(n_str) = kw.strip_prefix("Annihilator:") {
+                if n_str.parse::<i32>().is_ok() {
+                    let raw = format!(
+                        "Mode$ Attacks | ValidCard$ Card.Self | Execute$ TrigAnnihilator | TriggerZones$ Battlefield | TriggerDescription$ Annihilator {n_str}"
+                    );
+                    if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
+                        trig.execute = "TrigAnnihilator".to_string();
+                        self.triggers.push(trig);
+                    }
+                    self.svars
+                        .entry("TrigAnnihilator".to_string())
+                        .or_insert_with(|| {
+                            format!("DB$ Sacrifice | Defined$ TriggeredDefendingPlayer | SacValid$ Permanent | Amount$ {n_str}")
+                        });
+                }
+            }
+
+            // Afflict N: when this creature becomes blocked, defending player loses N life.
+            // Mirrors Java CardFactoryUtil lines 695-708.
+            if let Some(n_str) = kw.strip_prefix("Afflict:") {
+                if n_str.parse::<i32>().is_ok() {
+                    let raw = format!(
+                        "Mode$ AttackerBlocked | ValidCard$ Card.Self | TriggerZones$ Battlefield | Secondary$ True | Execute$ TrigAfflict | TriggerDescription$ Afflict {n_str}"
+                    );
+                    if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
+                        trig.execute = "TrigAfflict".to_string();
+                        self.triggers.push(trig);
+                    }
+                    self.svars
+                        .entry("TrigAfflict".to_string())
+                        .or_insert_with(|| {
+                            format!("DB$ LoseLife | Defined$ TriggeredDefendingPlayer | LifeAmount$ {n_str}")
+                        });
+                }
+            }
+
+            // Undying: when this creature dies, if it had no +1/+1 counters, return it
+            // to the battlefield with a +1/+1 counter.
+            // Mirrors Java CardFactoryUtil lines 1965-1974.
+            if kw == "Undying" {
+                let raw = "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self+counters_EQ0_P1P1 | TriggerZones$ Battlefield | Execute$ TrigUndying | TriggerDescription$ Undying";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigUndying".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigUndying".to_string())
+                    .or_insert_with(|| {
+                        "DB$ ChangeZone | Defined$ TriggeredNewCardLKICopy | Origin$ Graveyard | Destination$ Battlefield | WithCountersType$ P1P1".to_string()
+                    });
+            }
+
+            // Persist: when this creature dies, if it had no -1/-1 counters, return it
+            // to the battlefield with a -1/-1 counter.
+            // Mirrors Java CardFactoryUtil lines 1663-1672.
+            if kw == "Persist" {
+                let raw = "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self+counters_EQ0_M1M1 | TriggerZones$ Battlefield | Execute$ TrigPersist | TriggerDescription$ Persist";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigPersist".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigPersist".to_string())
+                    .or_insert_with(|| {
+                        "DB$ ChangeZone | Defined$ TriggeredNewCardLKICopy | Origin$ Graveyard | Destination$ Battlefield | WithCountersType$ M1M1".to_string()
+                    });
+            }
+
+            // Afterlife N: when this creature dies, create N 1/1 white and black Spirit
+            // creature tokens with flying.
+            // Mirrors Java CardFactoryUtil lines 709-722.
+            if let Some(n_str) = kw.strip_prefix("Afterlife:") {
+                if n_str.parse::<i32>().is_ok() {
+                    let raw = format!(
+                        "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self | TriggerZones$ Battlefield | Execute$ TrigAfterlife | TriggerDescription$ Afterlife {n_str}"
+                    );
+                    if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
+                        trig.execute = "TrigAfterlife".to_string();
+                        self.triggers.push(trig);
+                    }
+                    self.svars
+                        .entry("TrigAfterlife".to_string())
+                        .or_insert_with(|| {
+                            format!("DB$ Token | TokenAmount$ {n_str} | TokenScript$ wb_1_1_spirit_flying")
+                        });
+                }
+            }
+
+            // Exploit: when this creature enters the battlefield, you may sacrifice a creature.
+            // Mirrors Java CardFactoryUtil lines 1104-1113.
+            if kw == "Exploit" {
+                let raw = "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigExploit | TriggerDescription$ Exploit";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigExploit".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigExploit".to_string())
+                    .or_insert_with(|| {
+                        "DB$ Sacrifice | SacValid$ Creature | Optional$ True | Exploit$ True"
+                            .to_string()
+                    });
+            }
+
+            // Fabricate N: when this creature enters the battlefield, choose either
+            // N +1/+1 counters on it or create N 1/1 Servo tokens.
+            // Mirrors Java CardFactoryUtil lines 1132-1151.
+            // Java uses DB$ Token with UnlessCost$ AddCounter<N/P1P1> | UnlessPayer$ You:
+            // default is tokens, unless the controller "pays" by putting counters instead.
+            if let Some(n_str) = kw.strip_prefix("Fabricate:") {
+                if n_str.parse::<i32>().is_ok() {
+                    let raw = format!(
+                        "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigFabricate | Secondary$ True | TriggerDescription$ Fabricate {n_str}"
+                    );
+                    if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
+                        trig.execute = "TrigFabricate".to_string();
+                        self.triggers.push(trig);
+                    }
+                    self.svars
+                        .entry("TrigFabricate".to_string())
+                        .or_insert_with(|| {
+                            format!(
+                                "DB$ Token | TokenAmount$ {n_str} | TokenScript$ c_1_1_a_servo \
+                                 | UnlessCost$ AddCounter<{n_str}/P1P1> | UnlessPayer$ You \
+                                 | SpellDescription$ Fabricate {n_str}"
+                            )
+                        });
+                }
+            }
+
+            // Modular N: enters with N +1/+1 counters; when it dies, move its +1/+1
+            // counters to target artifact creature.
+            // Mirrors Java CardFactoryUtil lines 1579-1596 & 2425-2436.
+            if let Some(n_str) = kw.strip_prefix("Modular:") {
+                if let Ok(n) = n_str.parse::<i32>() {
+                    // ETB counters: set on the card instance so they're added as a
+                    // replacement effect when entering the battlefield (not a trigger,
+                    // because 0/0 creatures would die to SBA before triggers resolve).
+                    self.etb_counters_p1p1 += n;
+
+                    // Death trigger: move counters to target artifact creature
+                    let raw = format!(
+                        "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self | TriggerZones$ Battlefield | Execute$ TrigModular | TriggerDescription$ Modular {n_str}"
+                    );
+                    if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
+                        trig.execute = "TrigModular".to_string();
+                        trig.optional = true;
+                        self.triggers.push(trig);
+                    }
+                    // Put +1/+1 counters on target artifact creature.
+                    // Uses SP$ Charm with a single mode so the charm system handles
+                    // target selection via choose_target_card.
+                    // CounterNum$ uses the static Modular N value as default.
+                    // At resolution time, if trigger_remembered_amount > 0
+                    // (set by LKI counter capture in the death path), that
+                    // value overrides the static N — mirroring Java's
+                    // `TriggeredCard$CardCounters.P1P1` (CR 702.43b).
+                    self.svars
+                        .entry("TrigModular".to_string())
+                        .or_insert_with(|| "SP$ Charm | Choices$ ModularMove".to_string());
+                    self.svars
+                        .entry("ModularMove".to_string())
+                        .or_insert_with(|| {
+                            format!("DB$ PutCounter | Defined$ Targeted | CounterType$ P1P1 | CounterNum$ {n_str} | Modular$ true | ValidTgts$ Creature.Artifact | SpellDescription$ Put +1/+1 counter(s) on target artifact creature")
+                        });
+                }
+            }
+
+            // Ward:{cost} — when this permanent becomes the target of a spell or ability
+            // an opponent controls, counter that spell/ability unless its controller pays {cost}.
+            // Mirrors Java CardFactoryUtil lines 2055-2069.
+            // The opponent is prompted via confirm_action to pay the Ward cost;
+            // if they decline, the spell is countered.
+            if let Some(cost_str) = kw.strip_prefix("Ward:") {
+                let raw = "Mode$ BecomesTarget | ValidCard$ Card.Self | Execute$ TrigWard | TriggerZones$ Battlefield | TriggerDescription$ Ward";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigWard".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigWard".to_string())
+                    .or_insert_with(|| format!("DB$ Counter | UnlessCost$ {cost_str}"));
+            }
+
+            // Exalted — whenever a creature you control attacks alone, it gets +1/+1 until EOT.
+            // Mirrors Java CardFactoryUtil lines 1094-1103.
+            if kw == "Exalted" {
+                let raw = "Mode$ Attacks | ValidCard$ Creature.YouCtrl | Alone$ True | Execute$ TrigExalted | TriggerZones$ Battlefield | TriggerDescription$ Exalted";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigExalted".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigExalted".to_string())
+                    .or_insert_with(|| {
+                        "DB$ Pump | Defined$ TriggeredAttacker | NumAtt$ +1 | NumDef$ +1"
+                            .to_string()
+                    });
+            }
+
+            // Renown N — when this creature deals combat damage to a player, if it's not
+            // renowned, put N +1/+1 counters on it and it becomes renowned.
+            // Mirrors Java CardFactoryUtil lines 1744-1756.
+            if let Some(n_str) = kw.strip_prefix("Renown:") {
+                if n_str.parse::<i32>().is_ok() {
+                    let raw = format!(
+                        "Mode$ DamageDone | ValidSource$ Card.Self | ValidTarget$ Player | CombatDamage$ True | Execute$ TrigRenown | TriggerZones$ Battlefield | TriggerDescription$ Renown {n_str}"
+                    );
+                    if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
+                        trig.execute = "TrigRenown".to_string();
+                        self.triggers.push(trig);
+                    }
+                    self.svars
+                        .entry("TrigRenown".to_string())
+                        .or_insert_with(|| {
+                            format!("DB$ PutCounter | Defined$ Self | CounterType$ P1P1 | CounterNum$ {n_str} | Renown$ True")
+                        });
+                }
+            }
+
+            // Flanking — when this creature becomes blocked by a creature without flanking,
+            // the blocking creature gets -1/-1 until end of turn.
+            // Mirrors Java CardFactoryUtil lines 1194-1205.
+            if kw == "Flanking" {
+                let raw = "Mode$ AttackerBlockedByCreature | ValidBlocked$ Card.Self | ValidCard$ Creature.withoutFlanking | Execute$ TrigFlanking | TriggerZones$ Battlefield | TriggerDescription$ Flanking";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigFlanking".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigFlanking".to_string())
+                    .or_insert_with(|| {
+                        "DB$ Pump | Defined$ TriggeredBlocker | NumAtt$ -1 | NumDef$ -1".to_string()
+                    });
+            }
+
+            // Extort — whenever you cast a spell, you may drain 1 life from each opponent.
+            // Mirrors Java CardFactoryUtil lines 1114-1131.
+            if kw == "Extort" {
+                let raw = "Mode$ SpellCast | ValidActivatingPlayer$ You | Execute$ TrigExtort | TriggerZones$ Battlefield | TriggerDescription$ Extort";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigExtort".to_string();
+                    trig.optional = true;
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigExtort".to_string())
+                    .or_insert_with(|| {
+                        "DB$ LoseLife | Defined$ Player.Opponent | LifeAmount$ 1 | SubAbility$ ExtortGain".to_string()
+                    });
+                self.svars
+                    .entry("ExtortGain".to_string())
+                    .or_insert_with(|| "DB$ GainLife | Defined$ You | LifeAmount$ 1".to_string());
+            }
+
+            // Bloodthirst N — if an opponent was dealt damage this turn, this creature
+            // enters the battlefield with N additional +1/+1 counters.
+            // Mirrors Java CardFactoryUtil lines 2164-2182.
+            if let Some(n_str) = kw.strip_prefix("Bloodthirst:") {
+                if n_str.parse::<i32>().is_ok() {
+                    let raw = format!(
+                        "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigBloodthirst | TriggerDescription$ Bloodthirst {n_str}"
+                    );
+                    if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
+                        trig.execute = "TrigBloodthirst".to_string();
+                        self.triggers.push(trig);
+                    }
+                    self.svars
+                        .entry("TrigBloodthirst".to_string())
+                        .or_insert_with(|| {
+                            format!("DB$ PutCounter | Defined$ Self | CounterType$ P1P1 | CounterNum$ {n_str} | Bloodthirst$ True")
+                        });
+                }
+            }
+
+            // Riot — when this creature enters the battlefield, choose: +1/+1 counter or haste.
+            // Mirrors Java CardFactoryUtil lines 2518-2524.
+            if kw == "Riot" {
+                let raw = "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigRiot | TriggerDescription$ Riot";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigRiot".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigRiot".to_string())
+                    .or_insert_with(|| "SP$ Charm | Choices$ RiotCounter,RiotHaste".to_string());
+                self.svars
+                    .entry("RiotCounter".to_string())
+                    .or_insert_with(|| {
+                        "DB$ PutCounter | Defined$ Self | CounterType$ P1P1 | CounterNum$ 1 | SpellDescription$ Put a +1/+1 counter on this creature".to_string()
+                    });
+                self.svars
+                    .entry("RiotHaste".to_string())
+                    .or_insert_with(|| {
+                        "DB$ Pump | Defined$ Self | KW$ Haste | SpellDescription$ This creature gains haste".to_string()
+                    });
+            }
+
+            // Unleash — this creature enters the battlefield with a +1/+1 counter on it.
+            // It can't block as long as it has a +1/+1 counter on it.
+            // Mirrors Java CardFactoryUtil lines 2571-2576.
+            if kw == "Unleash" {
+                let raw = "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigUnleash | TriggerDescription$ Unleash";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigUnleash".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigUnleash".to_string())
+                    .or_insert_with(|| {
+                        "DB$ PutCounter | Defined$ Self | CounterType$ P1P1 | CounterNum$ 1"
+                            .to_string()
+                    });
+            }
+
+            // Cumulative upkeep — at the beginning of your upkeep, put an age counter
+            // on this permanent, then sacrifice it unless you pay its upkeep cost for
+            // each age counter on it.
+            // Mirrors Java CardFactoryUtil lines 960-976: generates a Phase trigger
+            // with a Sacrifice effect that has CumulativeUpkeep$ param.
+            if let Some(rest) = kw.strip_prefix("Cumulative upkeep:") {
+                let cost_spec = rest.split(':').next().unwrap_or(rest);
+                let raw = "Mode$ Phase | Phase$ Upkeep | ValidPlayer$ You | TriggerZones$ Battlefield | TriggerDescription$ Cumulative upkeep";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigCumulativeUpkeep".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigCumulativeUpkeep".to_string())
+                    .or_insert_with(|| {
+                        format!("DB$ Sacrifice | SacValid$ Self | CumulativeUpkeep$ {cost_spec}")
+                    });
+            }
+        }
+    }
+
+    /// Construct a `CardInstance` from a `CardRules` definition.
+    /// This is the single entry point for creating game-ready cards from the
+    /// card database. Mirrors Java's `CardFactory.readCard()` + `CardFactoryUtil`.
+    ///
+    /// Handles:
+    /// - Base stats (name, mana cost, type line, color, P/T, keywords, abilities)
+    /// - Trigger parsing (T: lines) including SpellCastOrCopy → SpellCopied duplication
+    /// - Static ability parsing (S: lines) with alternative cost keyword conversion
+    /// - Replacement effect parsing (R: lines)
+    /// - SVars
+    /// - Double-faced card back face setup
+    /// - Intrinsic mana abilities (basic land subtypes)
+    /// - Keyword-generated abilities and triggers (Cycling, Prowess, Bushido)
+    pub fn from_rules(rules: &CardRules, owner: PlayerId) -> Self {
+        let face = &rules.main_part;
+        let mut next_trigger_id = 0u32;
+
+        // Parse triggers from T: lines
+        let mut triggers: Vec<Trigger> = Vec::new();
+        let mut spell_cast_or_copy_raw: Vec<String> = Vec::new();
+        for raw in &face.triggers {
+            if let Some(trig) = parse_trigger(raw, &mut next_trigger_id) {
+                triggers.push(trig);
+                if raw.contains("Mode$ SpellCastOrCopy") {
+                    spell_cast_or_copy_raw.push(raw.clone());
+                }
+            }
+        }
+        // Duplicate SpellCastOrCopy triggers as SpellCopied (for Magecraft)
+        for raw in &spell_cast_or_copy_raw {
+            let converted = raw.replace("Mode$ SpellCastOrCopy", "Mode$ SpellCopied");
+            if let Some(trig) = parse_trigger(&converted, &mut next_trigger_id) {
+                triggers.push(trig);
+            }
+        }
+
+        let mut card = CardInstance::new(
+            CardId(0),
+            face.name.clone(),
+            owner,
+            face.type_line.clone(),
+            face.mana_cost.clone(),
+            face.resolved_color(),
+            face.int_power,
+            face.int_toughness,
+            face.keywords.clone(),
+            face.abilities.clone(),
+        );
+
+        // Append card-text triggers to keyword-generated ones (from generate_keyword_triggers)
+        card.triggers.extend(triggers);
+        // Merge card-text SVars (keyword-generated SVars already set by constructor)
+        for (k, v) in &face.svars {
+            card.svars.entry(k.clone()).or_insert_with(|| v.clone());
+        }
+
+        // Parse static abilities from S: lines
+        for raw in &face.static_abilities {
+            // Convert Mode$ AlternativeCost | Cost$ GainLife<N> to keyword for runtime detection
+            if let Some(kw) = parse_gainlife_alt_cost_keyword(raw) {
+                card.keywords.push(kw);
+            }
+            let prefixed = format!("S$ {}", raw);
+            if let Some(sa) = parse_static_ability(&prefixed) {
+                card.static_abilities.push(sa);
+            }
+        }
+
+        // OptionalAttackCost with Exert + Trigger$: register an Exerted trigger
+        // so the trigger handler fires the SVar when the creature is exerted.
+        // Mirrors Java's OptionalCostAttack creating a triggered ability from
+        // the Trigger$ parameter when the exert cost is paid.
+        {
+            let mut next_trig_id = card.triggers.len() as u32;
+            for sa in &card.static_abilities {
+                if sa.mode != crate::staticability::StaticMode::OptionalAttackCost {
+                    continue;
+                }
+                let has_exert = sa
+                    .params
+                    .get("Cost")
+                    .map(|c| c.contains("Exert"))
+                    .unwrap_or(false);
+                let trigger_svar = sa.params.get("Trigger").cloned();
+                if has_exert {
+                    if let Some(svar_name) = trigger_svar {
+                        let raw = format!(
+                            "Mode$ Exerted | ValidCard$ Card.Self | Execute$ {} | TriggerZones$ Battlefield",
+                            svar_name
+                        );
+                        if let Some(mut trig) = parse_trigger(&raw, &mut next_trig_id) {
+                            trig.execute = svar_name;
+                            card.triggers.push(trig);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Parse replacement effects from R: lines
+        for raw in &face.replacements {
+            let prefixed = format!("R$ {}", raw);
+            if let Some(re) = parse_replacement_effect(&prefixed) {
+                card.replacement_effects.push(re);
+            }
+        }
+
+        // Double-faced cards
+        if rules.split_type.is_dual_faced() {
+            if let Some(ref back_face) = rules.other_part {
+                let mut back_trigger_id = 0u32;
+                let back_triggers: Vec<_> = back_face
+                    .triggers
+                    .iter()
+                    .filter_map(|raw| parse_trigger(raw, &mut back_trigger_id))
+                    .collect();
+
+                card.other_part = Some(CardOtherPart {
+                    name: back_face.name.clone(),
+                    type_line: back_face.type_line.clone(),
+                    mana_cost: back_face.mana_cost.clone(),
+                    color: back_face.resolved_color(),
+                    base_power: back_face.int_power,
+                    base_toughness: back_face.int_toughness,
+                    keywords: back_face.keywords.clone(),
+                    abilities: back_face.abilities.clone(),
+                    triggers: back_triggers,
+                    svars: back_face.svars.clone(),
+                });
+            }
+        }
+
+        card
     }
 
     /// Effective power, accounting for all layer effects and counters.
@@ -255,8 +1142,9 @@ impl CardInstance {
             .unwrap_or(self.base_power.unwrap_or(0));
         base + self.static_power_modifier
             + self.power_modifier
-            + self.counter_count(CounterType::P1P1)
-            - self.counter_count(CounterType::M1M1)
+            + self.perpetual_power_modifier
+            + self.counter_count(&CounterType::P1P1)
+            - self.counter_count(&CounterType::M1M1)
     }
 
     /// Effective toughness, accounting for all layer effects and counters.
@@ -266,8 +1154,9 @@ impl CardInstance {
             .unwrap_or(self.base_toughness.unwrap_or(0));
         base + self.static_toughness_modifier
             + self.toughness_modifier
-            + self.counter_count(CounterType::P1P1)
-            - self.counter_count(CounterType::M1M1)
+            + self.perpetual_toughness_modifier
+            + self.counter_count(&CounterType::P1P1)
+            - self.counter_count(&CounterType::M1M1)
     }
 
     pub fn lethal_damage(&self) -> bool {
@@ -288,6 +1177,24 @@ impl CardInstance {
 
     /// Check whether this card has a keyword — intrinsically, granted by a
     /// continuous static effect (Layer 6), or temporarily from a pump effect.
+    /// Count distinct colors of mana spent to cast this spell (for Sunburst/Converge).
+    pub fn sunburst_count(&self) -> i32 {
+        use forge_foundation::mana::ManaAtom;
+        let mut count = 0;
+        for &bit in &[
+            ManaAtom::WHITE,
+            ManaAtom::BLUE,
+            ManaAtom::BLACK,
+            ManaAtom::RED,
+            ManaAtom::GREEN,
+        ] {
+            if (self.colors_spent_to_cast & bit) != 0 {
+                count += 1;
+            }
+        }
+        count
+    }
+
     pub fn has_keyword(&self, kw: &str) -> bool {
         self.keywords.iter().any(|k| k.eq_ignore_ascii_case(kw))
             || self
@@ -384,11 +1291,167 @@ impl CardInstance {
         self.has_keyword("Wither")
     }
 
+    pub fn has_prowess(&self) -> bool {
+        self.has_keyword("Prowess")
+    }
+
+    // ── Keyword cost helpers (pattern: "Keyword:cost_string") ────────
+
+    /// Get buyback cost (e.g. "Buyback:2" → Some("2")).
+    pub fn get_buyback_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Buyback")
+    }
+
+    /// Get spectacle cost (e.g. "Spectacle:B R" → Some("B R")).
+    pub fn get_spectacle_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Spectacle")
+    }
+
+    /// Get GainLife alternative cost info.
+    ///
+    /// Stored as keyword `AltCostGainLife:N:IsPresent` where N is the life amount
+    /// and IsPresent is the condition string (e.g. `Forest.YouCtrl`).
+    /// Returns `Some((life_amount, condition))` if present.
+    pub fn get_gainlife_alt_cost(&self) -> Option<(i32, String)> {
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(rest) = kw.strip_prefix("AltCostGainLife:") {
+                let mut parts = rest.splitn(2, ':');
+                let amount = parts
+                    .next()
+                    .and_then(|s| s.parse::<i32>().ok())
+                    .unwrap_or(0);
+                let condition = parts.next().unwrap_or("").to_string();
+                return Some((amount, condition));
+            }
+        }
+        None
+    }
+
+    /// Get evoke cost (e.g. "Evoke:2 B" → Some("2 B")).
+    pub fn get_evoke_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Evoke")
+    }
+
+    /// Get bestow cost (e.g. "Bestow:3 G G" → Some("3 G G")).
+    pub fn get_bestow_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Bestow")
+    }
+
+    /// Get dash cost (e.g. "Dash:1 R" → Some("1 R")).
+    pub fn get_dash_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Dash")
+    }
+
+    /// Get blitz cost (e.g. "Blitz:1 R" → Some("1 R")).
+    pub fn get_blitz_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Blitz")
+    }
+
+    /// Get multikicker cost (e.g. "Multikicker:1 G" → Some("1 G")).
+    pub fn get_multikicker_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Multikicker")
+    }
+
+    /// Get replicate cost (e.g. "Replicate:U" → Some("U")).
+    pub fn get_replicate_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Replicate")
+    }
+
+    /// Get entwine cost (e.g. "Entwine:2" → Some("2")).
+    pub fn get_entwine_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Entwine")
+    }
+
+    /// Get escalate cost (e.g. "Escalate:1" → Some("1")).
+    pub fn get_escalate_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Escalate")
+    }
+
+    /// Get escape cost and exile count (e.g. "Escape:1 B B:4" → Some(("1 B B", 4))).
+    pub fn get_escape_cost(&self) -> Option<(String, i32)> {
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(rest) = kw.strip_prefix("Escape:") {
+                // Format: "mana_cost:exile_count"
+                if let Some(colon_pos) = rest.rfind(':') {
+                    let mana = rest[..colon_pos].trim().to_string();
+                    let exile = rest[colon_pos + 1..].trim().parse().unwrap_or(0);
+                    return Some((mana, exile));
+                }
+            }
+        }
+        None
+    }
+
+    /// Get overload cost (e.g. "Overload:3 R" → Some("3 R")).
+    pub fn get_overload_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Overload")
+    }
+
+    /// Get madness cost (e.g. "Madness:1 R" → Some("1 R")).
+    pub fn get_madness_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Madness")
+    }
+
+    /// Get strive cost (e.g. "Strive:1 W" → Some("1 W")).
+    pub fn get_strive_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Strive")
+    }
+
+    /// Check if card has Rebound keyword.
+    pub fn has_rebound(&self) -> bool {
+        self.has_keyword("Rebound")
+    }
+
+    /// Get suspend cost and time counters (e.g. "Suspend:1 U:3" → Some(("1 U", 3))).
+    pub fn get_suspend_cost(&self) -> Option<(String, i32)> {
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(rest) = kw.strip_prefix("Suspend:") {
+                if let Some(colon_pos) = rest.rfind(':') {
+                    let mana = rest[..colon_pos].trim().to_string();
+                    let counters = rest[colon_pos + 1..].trim().parse().unwrap_or(0);
+                    return Some((mana, counters));
+                }
+            }
+        }
+        None
+    }
+
+    /// Get foretell cost (e.g. "Foretell:W W" → Some("W W")).
+    pub fn get_foretell_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Foretell")
+    }
+
+    /// Get emerge cost (e.g. "Emerge:5 U U" → Some("5 U U")).
+    pub fn get_emerge_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Emerge")
+    }
+
+    /// Get offering type (e.g. "Offering:Snake" → Some("Snake")).
+    pub fn get_offering_type(&self) -> Option<String> {
+        self.get_keyword_cost("Offering")
+    }
+
+    /// Generic keyword cost parser — looks for "Keyword:cost" in keywords vec.
+    pub fn get_keyword_cost(&self, keyword: &str) -> Option<String> {
+        let prefix = format!("{}:", keyword);
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(cost) = kw.strip_prefix(&prefix) {
+                return Some(cost.to_string());
+            }
+        }
+        None
+    }
+
     /// Check "Hexproof from <color>" variants (e.g. "Hexproof from blue").
     pub fn has_hexproof_from(&self, color: &str) -> bool {
         let target = format!("Hexproof from {}", color);
-        self.keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
-            || self.granted_keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
+        self.keywords
+            .iter()
+            .any(|k| k.eq_ignore_ascii_case(&target))
+            || self
+                .granted_keywords
+                .iter()
+                .any(|k| k.eq_ignore_ascii_case(&target))
     }
 
     /// Get Ward cost (e.g. "Ward:2" → Some("2"), "Ward:{U}" → Some("{U}")).
@@ -413,22 +1476,12 @@ impl CardInstance {
 
     /// Get Flashback cost (e.g. "Flashback:2 R" → Some("2 R")).
     pub fn get_flashback_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Flashback:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
+        self.get_keyword_cost("Flashback")
     }
 
     /// Get Kicker cost (e.g. "Kicker:W" → Some("W")).
     pub fn get_kicker_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Kicker:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
+        self.get_keyword_cost("Kicker")
     }
 
     /// Whether this card has the Storm keyword.
@@ -441,186 +1494,6 @@ impl CardInstance {
         self.has_keyword("Cascade")
     }
 
-    /// Whether this card has the Prowess keyword.
-    pub fn has_prowess(&self) -> bool {
-        self.has_keyword("Prowess")
-    }
-
-    /// Whether this card has the Rebound keyword.
-    pub fn has_rebound(&self) -> bool {
-        self.has_keyword("Rebound")
-    }
-
-    /// Get Buyback cost (e.g. "Buyback:2" → Some("2")).
-    pub fn get_buyback_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Buyback:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Spectacle cost (e.g. "Spectacle:B R" → Some("B R")).
-    pub fn get_spectacle_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Spectacle:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Evoke cost (e.g. "Evoke:2 B" → Some("2 B")).
-    pub fn get_evoke_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Evoke:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Dash cost (e.g. "Dash:1 R" → Some("1 R")).
-    pub fn get_dash_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Dash:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Blitz cost (e.g. "Blitz:1 R" → Some("1 R")).
-    pub fn get_blitz_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Blitz:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Multikicker cost (e.g. "Multikicker:1 G" → Some("1 G")).
-    pub fn get_multikicker_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Multikicker:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Replicate cost (e.g. "Replicate:U" → Some("U")).
-    pub fn get_replicate_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Replicate:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Entwine cost (e.g. "Entwine:2" → Some("2")).
-    pub fn get_entwine_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Entwine:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Escalate cost (e.g. "Escalate:1" → Some("1")).
-    pub fn get_escalate_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Escalate:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Escape cost and exile count (e.g. "Escape:1 B B:4" → Some(("1 B B", 4))).
-    pub fn get_escape_cost(&self) -> Option<(String, i32)> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(rest) = kw.strip_prefix("Escape:") {
-                // Format: "mana_cost:exile_count" e.g. "1 B B:4"
-                if let Some(last_colon) = rest.rfind(':') {
-                    let mana = rest[..last_colon].to_string();
-                    let exile = rest[last_colon + 1..].parse::<i32>().unwrap_or(0);
-                    return Some((mana, exile));
-                }
-            }
-        }
-        None
-    }
-
-    /// Get Overload cost (e.g. "Overload:3 U U" → Some("3 U U")).
-    pub fn get_overload_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Overload:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Madness cost (e.g. "Madness:1 R" → Some("1 R")).
-    pub fn get_madness_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Madness:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Strive cost (e.g. "Strive:1 W" → Some("1 W")).
-    pub fn get_strive_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Strive:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Suspend cost and time counters (e.g. "Suspend:2:1 U" → Some(("1 U", 2))).
-    pub fn get_suspend_cost(&self) -> Option<(String, i32)> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(rest) = kw.strip_prefix("Suspend:") {
-                // Format: "time_counters:mana_cost" e.g. "2:1 U"
-                if let Some(colon) = rest.find(':') {
-                    let counters = rest[..colon].parse::<i32>().unwrap_or(0);
-                    let mana = rest[colon + 1..].to_string();
-                    return Some((mana, counters));
-                }
-            }
-        }
-        None
-    }
-
-    /// Get Foretell cost (e.g. "Foretell:1 W" → Some("1 W")).
-    pub fn get_foretell_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Foretell:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
-    /// Get Emerge cost (e.g. "Emerge:5 U U" → Some("5 U U")).
-    pub fn get_emerge_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Emerge:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
-    }
-
     /// Converted mana cost (mana value).
     pub fn mana_value(&self) -> i32 {
         self.mana_cost.cmc()
@@ -629,8 +1502,13 @@ impl CardInstance {
     /// Check "Protection from <quality>" (e.g. "Protection from red").
     pub fn has_protection_from(&self, quality: &str) -> bool {
         let target = format!("Protection from {}", quality);
-        self.keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
-            || self.granted_keywords.iter().any(|k| k.eq_ignore_ascii_case(&target))
+        self.keywords
+            .iter()
+            .any(|k| k.eq_ignore_ascii_case(&target))
+            || self
+                .granted_keywords
+                .iter()
+                .any(|k| k.eq_ignore_ascii_case(&target))
     }
 
     /// Get all "Protection from X" values this card has.
@@ -650,15 +1528,51 @@ impl CardInstance {
     pub fn is_protected_from(&self, source: &CardInstance) -> bool {
         for prot in self.get_protections() {
             match prot.as_str() {
-                "white" => if source.color.has_white() { return true; },
-                "blue" => if source.color.has_blue() { return true; },
-                "black" => if source.color.has_black() { return true; },
-                "red" => if source.color.has_red() { return true; },
-                "green" => if source.color.has_green() { return true; },
-                "colorless" => if source.color.is_colorless() { return true; },
-                "artifacts" => if source.type_line.is_artifact() { return true; },
-                "creatures" => if source.type_line.is_creature() { return true; },
-                "enchantments" => if source.type_line.is_enchantment() { return true; },
+                "white" => {
+                    if source.color.has_white() {
+                        return true;
+                    }
+                }
+                "blue" => {
+                    if source.color.has_blue() {
+                        return true;
+                    }
+                }
+                "black" => {
+                    if source.color.has_black() {
+                        return true;
+                    }
+                }
+                "red" => {
+                    if source.color.has_red() {
+                        return true;
+                    }
+                }
+                "green" => {
+                    if source.color.has_green() {
+                        return true;
+                    }
+                }
+                "colorless" => {
+                    if source.color.is_colorless() {
+                        return true;
+                    }
+                }
+                "artifacts" => {
+                    if source.type_line.is_artifact() {
+                        return true;
+                    }
+                }
+                "creatures" => {
+                    if source.type_line.is_creature() {
+                        return true;
+                    }
+                }
+                "enchantments" => {
+                    if source.type_line.is_enchantment() {
+                        return true;
+                    }
+                }
                 _ => {}
             }
         }
@@ -670,6 +1584,7 @@ impl CardInstance {
             && !self.tapped
             && !self.has_defender()
             && !self.cant_attack_static
+            && !self.detained
             && (self.has_haste() || !self.summoning_sick)
             && self.zone == ZoneType::Battlefield
     }
@@ -678,6 +1593,7 @@ impl CardInstance {
         self.is_creature()
             && !self.tapped
             && !self.cant_block_static
+            && !self.detained
             && self.zone == ZoneType::Battlefield
     }
 
@@ -689,17 +1605,17 @@ impl CardInstance {
         true
     }
 
-    pub fn counter_count(&self, ct: CounterType) -> i32 {
-        *self.counters.get(&ct).unwrap_or(&0)
+    pub fn counter_count(&self, ct: &CounterType) -> i32 {
+        *self.counters.get(ct).unwrap_or(&0)
     }
 
-    pub fn add_counter(&mut self, ct: CounterType, count: i32) {
-        let entry = self.counters.entry(ct).or_insert(0);
+    pub fn add_counter(&mut self, ct: &CounterType, count: i32) {
+        let entry = self.counters.entry(ct.clone()).or_insert(0);
         *entry += count;
     }
 
-    pub fn remove_counter(&mut self, ct: CounterType, count: i32) {
-        let entry = self.counters.entry(ct).or_insert(0);
+    pub fn remove_counter(&mut self, ct: &CounterType, count: i32) {
+        let entry = self.counters.entry(ct.clone()).or_insert(0);
         *entry = (*entry - count).max(0);
     }
 
@@ -711,6 +1627,7 @@ impl CardInstance {
         self.has_deathtouch_damage = false;
         self.entered_battlefield_this_turn = true;
         self.attacked_this_turn = false;
+        self.damage_sources_this_turn.clear();
     }
 
     /// Reset per-turn state at start of turn.
@@ -718,6 +1635,7 @@ impl CardInstance {
         self.entered_battlefield_this_turn = false;
         self.attacked_this_turn = false;
         self.has_deathtouch_damage = false;
+        self.damage_sources_this_turn.clear();
         if self.zone == ZoneType::Battlefield {
             self.summoning_sick = false;
         }
@@ -772,10 +1690,13 @@ impl CardInstance {
 }
 
 /// Counter types commonly used in MTG.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+/// Note: `Copy` is intentionally absent because the `Named(String)` variant
+/// holds heap-allocated data. Use `.clone()` when an owned copy is needed.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum CounterType {
     P1P1,
     M1M1,
+    Poison,
     Loyalty,
     Charge,
     Quest,
@@ -790,7 +1711,10 @@ pub enum CounterType {
     Level,
     Lore,
     Page,
-    // Add more as needed
+    Dream,
+    /// Catch-all for counter types not in the enum (e.g. SUPPLY, VERSE, LUCK).
+    /// Stored as uppercase name for consistent comparison.
+    Named(String),
 }
 
 #[cfg(test)]
@@ -815,7 +1739,7 @@ mod tests {
         assert_eq!(card.power(), 2);
         assert_eq!(card.toughness(), 2);
 
-        card.add_counter(CounterType::P1P1, 1);
+        card.add_counter(&CounterType::P1P1, 1);
         assert_eq!(card.power(), 3);
         assert_eq!(card.toughness(), 3);
     }

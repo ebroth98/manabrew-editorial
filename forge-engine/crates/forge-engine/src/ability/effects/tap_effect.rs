@@ -1,0 +1,161 @@
+use forge_foundation::ZoneType;
+
+use super::EffectContext;
+use crate::event::{RunParams, TriggerType};
+use crate::ids::CardId;
+use crate::spellability::SpellAbility;
+
+/// Resolve `SP$ Tap` — tap target permanent(s).
+///
+/// Mirrors Java `TapEffect.java`.
+///
+/// # Card script examples
+/// ```text
+/// A:SP$ Tap | ValidTgts$ Creature | TgtPrompt$ Select target creature to tap
+/// A:SP$ Tap | Defined$ Self
+/// A:SP$ Tap | Defined$ Self | ETB$ True
+/// A:SP$ Tap | ValidTgts$ Creature | RememberTapped$ True
+/// ```
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let controller = sa.activating_player;
+    let etb = sa.params.get("ETB").is_some();
+    let remember_tapped = sa.params.get("RememberTapped").is_some();
+    let always_remember = sa.params.get("AlwaysRemember").is_some();
+
+    // Targeted: use the chosen target card.
+    if let Some(target_card) = sa.target_chosen.target_card {
+        if ctx.game.card(target_card).zone == ZoneType::Battlefield {
+            tap_card(
+                ctx,
+                target_card,
+                controller,
+                etb,
+                remember_tapped,
+                always_remember,
+                sa.source,
+            );
+        }
+        return;
+    }
+
+    // Java TapEffect uses getTargetCards(sa): for targeting SAs with zero chosen
+    // targets (e.g. TargetMin$ 0 and player picked none), this resolves to an
+    // empty set and does nothing. Do not fall back to Self in that case.
+    if sa.uses_targeting() {
+        return;
+    }
+
+    // Non-targeting Tap effects default to Self.
+    if let Some(source) = sa.source {
+        if ctx.game.card(source).zone == ZoneType::Battlefield {
+            tap_card(
+                ctx,
+                source,
+                controller,
+                etb,
+                remember_tapped,
+                always_remember,
+                sa.source,
+            );
+        }
+    }
+}
+
+fn tap_card(
+    ctx: &mut EffectContext,
+    card_id: CardId,
+    controller: crate::ids::PlayerId,
+    etb: bool,
+    remember_tapped: bool,
+    always_remember: bool,
+    source: Option<CardId>,
+) {
+    let was_untapped = !ctx.game.card(card_id).tapped;
+
+    if etb {
+        // ETB: directly set tapped without firing trigger
+        ctx.game.card_mut(card_id).tapped = true;
+    } else {
+        let tapped = ctx.game.tap(card_id);
+        if tapped {
+            ctx.trigger_handler.run_trigger(
+                TriggerType::Taps,
+                RunParams {
+                    card: Some(card_id),
+                    player: Some(controller),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+    }
+
+    // RememberTapped / AlwaysRemember
+    if (remember_tapped && was_untapped) || always_remember {
+        if let Some(src) = source {
+            ctx.game.card_mut(src).remembered_cards.push(card_id);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+    use std::collections::HashMap;
+
+    use crate::ability::effects::EffectContext;
+    use crate::agent::PassAgent;
+    use crate::card::CardInstance;
+    use crate::game::GameState;
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::ManaPool;
+    use crate::spellability::SpellAbility;
+    use crate::trigger::handler::TriggerHandler;
+
+    fn make_creature(game: &mut GameState, owner: PlayerId) -> CardId {
+        let c = CardInstance::new(
+            CardId(0),
+            "Bear".into(),
+            owner,
+            CardTypeLine::parse("Creature - Bear"),
+            ManaCost::parse("1 G"),
+            ColorSet::GREEN,
+            Some(2),
+            Some(2),
+            vec![],
+            vec![],
+        );
+        game.create_card(c)
+    }
+
+    #[test]
+    fn tap_effect_taps_target() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        let c1 = make_creature(&mut game, p0);
+        game.move_card(c1, ZoneType::Battlefield, p0);
+        assert!(!game.card(c1).tapped);
+
+        let mut sa = SpellAbility::new_simple(None, p0, "SP$ Tap | ValidTgts$ Creature");
+        sa.target_chosen.target_card = Some(c1);
+
+        let mut th = TriggerHandler::new();
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut mp = vec![ManaPool::default(), ManaPool::default()];
+        let templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = EffectContext {
+            game: &mut game,
+            agents: &mut agents,
+            trigger_handler: &mut th,
+            token_templates: &templates,
+            mana_pools: &mut mp,
+            parent_target_card: None,
+            rng: &mut rng_adapter,
+        };
+        super::resolve(&mut ctx, &sa);
+
+        assert!(ctx.game.card(c1).tapped);
+    }
+}

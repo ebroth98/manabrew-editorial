@@ -1,11 +1,15 @@
 mod ai_agent;
 mod card_db;
 mod commands;
+mod game_log_event;
 mod game_manager;
+mod game_snapshot_event;
 mod game_view_dto;
+mod ids_codec;
+mod multiplayer_controller;
+mod network;
 mod preset_decks;
 mod prompt;
-mod remote_agent;
 mod server_client;
 mod server_commands;
 mod tauri_agent;
@@ -23,6 +27,7 @@ pub fn run() {
             commands::start_game,
             commands::respond,
             commands::end_game,
+            commands::restore_snapshot,
             commands::get_prompt,
             commands::get_preset_decks,
             server_commands::server_connect,
@@ -33,6 +38,7 @@ pub fn run() {
             server_commands::server_join_room,
             server_commands::server_leave_room,
             server_commands::server_set_ready,
+            server_commands::server_set_deck_selection,
             server_commands::server_start_game,
             server_commands::server_respond,
             commands::start_multiplayer_game,

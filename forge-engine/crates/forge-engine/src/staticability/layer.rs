@@ -35,6 +35,7 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::replacement::replacement_effect::ReplacementType;
 use crate::staticability::{CardFilter, Layer, StaticAbility, StaticMode};
 
 // ── Effect collection ────────────────────────────────────────────────────────
@@ -82,11 +83,25 @@ pub fn apply_continuous_effects(game: &mut GameState) {
     for card in game.cards.iter_mut() {
         card.static_power_modifier = 0;
         card.static_toughness_modifier = 0;
-        card.static_set_power = None;
-        card.static_set_toughness = None;
+        // Preserve face-down morph P/T override (2/2); only reset for face-up cards.
+        if !card.face_down {
+            card.static_set_power = None;
+            card.static_set_toughness = None;
+        }
         card.granted_keywords.clear();
         card.cant_attack_static = false;
         card.cant_block_static = false;
+    }
+
+    // ── 1b. Keyword-derived restrictions ────────────────────────────────
+    // Unleash: creatures with Unleash keyword and a +1/+1 counter can't block.
+    for card in game.cards.iter_mut() {
+        if card.zone == ZoneType::Battlefield
+            && card.has_keyword("Unleash")
+            && card.counter_count(&crate::card::CounterType::P1P1) > 0
+        {
+            card.cant_block_static = true;
+        }
     }
 
     // ── 2. Collect (source_id, static_ability) for every battlefield permanent ──
@@ -104,16 +119,56 @@ pub fn apply_continuous_effects(game: &mut GameState) {
     for (source_id, sa) in &sources {
         let source_card = &game.cards[source_id.index()];
 
+        // IsPresent$ — conditional activation (e.g. "Card.Self+untapped").
+        // If the condition is not met, skip this static ability entirely.
+        if let Some(_is_present) = sa.params.get("IsPresent") {
+            if !check_is_present(game, *source_id, sa) {
+                continue;
+            }
+        }
+
+        // CharacteristicDefining statics always affect only the host card.
+        // Mirrors Java StaticAbilityContinuous.getAffectedCards() line 1036.
+        let is_cda = sa
+            .params
+            .get("CharacteristicDefining")
+            .map(|v| v.eq_ignore_ascii_case("True"))
+            .unwrap_or(false);
+
         // Determine which cards are affected by this static ability.
         let affected_str = sa
             .params
             .get("Affected")
             .or_else(|| sa.params.get("ValidCards"))
+            .or_else(|| sa.params.get("ValidCard"))
             .map(String::as_str)
             .unwrap_or("Creature.YouControl");
-        let targets: Vec<CardId> = if affected_str.eq_ignore_ascii_case("Card.EnchantedBy") {
-            // Aura-like static effects (e.g. Control Magic): affect what this
-            // source is attached to.
+        let targets: Vec<CardId> = if is_cda {
+            // CDAs always affect only the source card itself.
+            if source_card.zone == ZoneType::Battlefield {
+                vec![*source_id]
+            } else {
+                vec![]
+            }
+        } else if affected_str.eq_ignore_ascii_case("Card.Self")
+            || affected_str.starts_with("Card.Self+")
+        {
+            // Self-referencing static: only affects the source card itself.
+            // e.g. Sightless Ghoul: "S:Mode$ CantBlock | ValidCard$ Card.Self"
+            if source_card.zone == ZoneType::Battlefield {
+                vec![*source_id]
+            } else {
+                vec![]
+            }
+        } else if affected_str.eq_ignore_ascii_case("Card.EnchantedBy")
+            || affected_str.contains(".EquippedBy")
+            || affected_str.contains(".EnchantedBy")
+        {
+            // Aura / Equipment static effects: affect what this source is
+            // attached to.  Java treats EquippedBy and EnchantedBy
+            // identically — both resolve to the entity the source is
+            // attached to.  (e.g. Short Sword: "Creature.EquippedBy",
+            // Control Magic: "Card.EnchantedBy")
             source_card
                 .attached_to
                 .filter(|&cid| game.card(cid).zone == ZoneType::Battlefield)
@@ -175,8 +230,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                             });
                         }
                         Layer::SetPT => {
-                            let sp = sa.params.get("SetPower").and_then(|s| s.parse().ok());
-                            let st = sa.params.get("SetToughness").and_then(|s| s.parse().ok());
+                            let sp = resolve_set_pt_param(game, &sa, *source_id, "SetPower");
+                            let st = resolve_set_pt_param(game, &sa, *source_id, "SetToughness");
                             pending.push(PendingEffect {
                                 layer,
                                 target,
@@ -215,6 +270,12 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                     game.cards[target.index()].cant_block_static = true;
                 }
             }
+
+            // Attack-cost statics are checked at combat time, not continuously.
+            StaticMode::CantAttackUnless
+            | StaticMode::CantBlockUnless
+            | StaticMode::CantBlockBy
+            | StaticMode::OptionalAttackCost => {}
 
             // ETBTapped is a one-time effect applied at zone-change time
             // (see `apply_etb_tapped`), not a continuous effect.
@@ -314,6 +375,236 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
             return; // once tapped, no need to check further sources
         }
     }
+
+    // ── Second pass: check replacement effects for ReplaceWith$ ETBTapped ──
+    // Many cards (e.g. Path of Ancestry, Temple of Mystery) use:
+    //   R:Event$ Moved | Destination$ Battlefield | ValidCard$ Card.Self | ReplaceWith$ ETBTapped
+    // Extrinsic sources (e.g. Kismet) may use broader ValidCard filters.
+    let repl_sources: Vec<(CardId, String)> = game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+        .flat_map(|c| {
+            c.replacement_effects.iter().filter_map(move |re| {
+                if re.event == ReplacementType::Moved
+                    && re.params.get("ReplaceWith").map(|s| s.as_str()) == Some("ETBTapped")
+                    && re.params.get("Destination").map(|s| s.as_str()) == Some("Battlefield")
+                    && re.active_in_zone(ZoneType::Battlefield)
+                {
+                    let filter = re
+                        .params
+                        .get("ValidCard")
+                        .cloned()
+                        .unwrap_or_else(|| "Card.Self".to_string());
+                    Some((c.id, filter))
+                } else {
+                    None
+                }
+            })
+        })
+        .collect();
+
+    for (source_id, filter_str) in repl_sources {
+        let tapped = if filter_str == "Card.Self" || filter_str.is_empty() {
+            source_id == entering_card
+        } else {
+            let source = &game.cards[source_id.index()];
+            let filter = CardFilter::parse(&filter_str);
+            filter.matches(&game.cards[entering_card.index()], source)
+        };
+
+        if tapped {
+            game.cards[entering_card.index()].tapped = true;
+            return;
+        }
+    }
+}
+
+/// Check if a card has a shock-land-style "enters tapped unless you pay life" effect.
+///
+/// Looks for `R:Event$ Moved | Destination$ Battlefield | ReplaceWith$ <SVar>`
+/// where the SVar is `DB$ Tap | ETB$ True | UnlessCost$ PayLife<N>`.
+///
+/// Returns `Some(life_cost)` if found (e.g. `Some(2)` for shock lands), `None` otherwise.
+/// Called from `play_card` / `resolve_stack` where agents are available for prompting.
+pub fn get_etb_unless_life_cost(card: &crate::card::CardInstance) -> Option<i32> {
+    for re in &card.replacement_effects {
+        if re.event != ReplacementType::Moved {
+            continue;
+        }
+        if re.params.get("Destination").map(|s| s.as_str()) != Some("Battlefield") {
+            continue;
+        }
+        if let Some(svar_name) = re.params.get("ReplaceWith") {
+            if svar_name == "ETBTapped" {
+                continue;
+            }
+            if let Some(svar_val) = card.svars.get(svar_name) {
+                if svar_val.contains("DB$ Tap") && svar_val.contains("ETB$ True") {
+                    // Parse life cost from "UnlessCost$ PayLife<N>"
+                    if let Some(pos) = svar_val.find("PayLife<") {
+                        let after = &svar_val[pos + 8..]; // skip "PayLife<"
+                        if let Some(end) = after.find('>') {
+                            if let Ok(n) = after[..end].parse::<i32>() {
+                                return Some(n);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Check the `IsPresent$` condition for a static ability.
+///
+/// Supported forms:
+/// - `"Card.Self+untapped"` — the source card must be untapped
+/// - `"Card.Self+tapped"` — the source card must be tapped
+/// - `"Card.Self"` — always true (source on battlefield is implied)
+/// - General forms (e.g. `"Permanent.namedBrothers Yamazaki"`) — count
+///   matching cards on the battlefield and compare against `PresentCompare$`.
+///
+/// Mirrors Java `StaticAbility.checkConditions()` → `isPresent$` handling.
+fn check_is_present(game: &GameState, source_id: CardId, sa: &StaticAbility) -> bool {
+    let condition = match sa.params.get("IsPresent") {
+        Some(c) => c.as_str(),
+        None => return true,
+    };
+
+    let parts: Vec<&str> = condition.split('+').collect();
+    let base = parts.first().copied().unwrap_or("");
+
+    // For "Card.Self" forms, check the source card itself.
+    if base == "Card.Self" || base.eq_ignore_ascii_case("card.self") {
+        let card = game.card(source_id);
+        for &qualifier in &parts[1..] {
+            match qualifier.to_lowercase().as_str() {
+                "untapped" => {
+                    if card.tapped {
+                        return false;
+                    }
+                }
+                "tapped" => {
+                    if !card.tapped {
+                        return false;
+                    }
+                }
+                _ => {} // Unknown qualifiers are ignored for now
+            }
+        }
+        return true;
+    }
+
+    // General IsPresent$ — count matching cards on the battlefield using CardFilter
+    // and compare against PresentCompare$ (defaults to GE1).
+    let filter = CardFilter::parse(condition);
+    let source_card = game.card(source_id);
+    let count = game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield && filter.matches(c, source_card))
+        .count() as i32;
+
+    let cmp = sa
+        .params
+        .get("PresentCompare")
+        .map(String::as_str)
+        .unwrap_or("GE1");
+    match cmp {
+        "EQ0" => count == 0,
+        "EQ1" => count == 1,
+        "EQ2" => count == 2,
+        "GE1" => count >= 1,
+        "GE2" => count >= 2,
+        "LE1" => count <= 1,
+        _ => count >= 1,
+    }
+}
+
+/// Check if a card has a "enters tapped unless you reveal a <type> from hand" effect.
+///
+/// Looks for `R:Event$ Moved | Destination$ Battlefield | ReplaceWith$ <SVar>`
+/// where the SVar is `DB$ Tap | ETB$ True | UnlessCost$ Reveal<N/Filter>`.
+///
+/// Returns `Some((n, filter))` if found (e.g. `Some((1, "Merfolk"))` for Wanderwine Hub).
+pub fn get_etb_unless_reveal_cost(card: &crate::card::CardInstance) -> Option<(i32, String)> {
+    for re in &card.replacement_effects {
+        if re.event != ReplacementType::Moved {
+            continue;
+        }
+        if re.params.get("Destination").map(|s| s.as_str()) != Some("Battlefield") {
+            continue;
+        }
+        if let Some(svar_name) = re.params.get("ReplaceWith") {
+            if svar_name == "ETBTapped" {
+                continue;
+            }
+            if let Some(svar_val) = card.svars.get(svar_name) {
+                if svar_val.contains("DB$ Tap") && svar_val.contains("ETB$ True") {
+                    // Parse reveal cost from "UnlessCost$ Reveal<N/Filter>"
+                    if let Some(pos) = svar_val.find("Reveal<") {
+                        let after = &svar_val[pos + 7..]; // skip "Reveal<"
+                        if let Some(end) = after.find('>') {
+                            let inner = &after[..end]; // "1/Merfolk" or "1/Filter"
+                            let mut parts = inner.splitn(2, '/');
+                            let n = parts
+                                .next()
+                                .and_then(|s| s.trim().parse::<i32>().ok())
+                                .unwrap_or(1);
+                            let filter = parts.next().unwrap_or("").trim().to_string();
+                            return Some((n, filter));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Resolve a SetPower/SetToughness parameter that may be an integer literal or
+/// an SVar reference (e.g. "X" → SVar:X:Count$Valid Creature.ChosenType).
+/// Mirrors Java `AbilityUtils.calculateAmount(hostCard, param, stAb)`.
+fn resolve_set_pt_param(
+    game: &GameState,
+    sa: &StaticAbility,
+    source_id: CardId,
+    param_name: &str,
+) -> Option<i32> {
+    let val_str = sa.params.get(param_name)?;
+
+    // Try direct integer parse first
+    if let Ok(n) = val_str.trim().parse::<i32>() {
+        return Some(n);
+    }
+
+    // It's an SVar reference — look it up on the source card
+    let source = game.card(source_id);
+    if let Some(svar_expr) = source.svars.get(val_str.trim()) {
+        if svar_expr.starts_with("Count$") {
+            return Some(crate::ability::effects::resolve_count_svar(
+                svar_expr,
+                game,
+                source_id,
+                source.controller,
+            ));
+        }
+        // Simple SVar evaluation (e.g. Number$2)
+        return Some(
+            crate::ability::effects::evaluate_svar(
+                svar_expr,
+                &crate::spellability::SpellAbility::new_simple(
+                    Some(source_id),
+                    source.controller,
+                    "",
+                ),
+            ),
+        );
+    }
+
+    None
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────
@@ -651,6 +942,34 @@ mod tests {
         assert!(
             !game.card(id).tapped,
             "Normal creature should not enter tapped"
+        );
+    }
+
+    #[test]
+    fn etb_tapped_via_replacement_effect() {
+        let mut game = new_game();
+        let alice = PlayerId(0);
+
+        // A land with R:Event$ Moved replacement effect (like Path of Ancestry).
+        let card = CardInstance::new(
+            CardId(0),
+            "PathOfAncestry".to_string(),
+            alice,
+            CardTypeLine::parse("Land"),
+            ManaCost::parse(""),
+            ColorSet::from_mask(0),
+            None,
+            None,
+            vec![],
+            vec!["R:Event$ Moved | Destination$ Battlefield | ValidCard$ Card.Self | ReplaceWith$ ETBTapped | Description$ ~ enters tapped.".to_string()],
+        );
+        let id = game.create_card(card);
+        game.move_card(id, ZoneType::Battlefield, alice);
+        apply_etb_tapped(&mut game, id);
+
+        assert!(
+            game.card(id).tapped,
+            "Card with ReplaceWith$ ETBTapped replacement should enter tapped"
         );
     }
 }

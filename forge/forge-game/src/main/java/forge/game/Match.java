@@ -213,6 +213,9 @@ public class Match {
                 newLibrary.add(card);
             }
         }
+        // Sort by card name for deterministic pre-shuffle ordering (CardPool uses
+        // ConcurrentHashMap whose iteration order is not guaranteed).
+        newLibrary.sort(java.util.Comparator.comparing(Card::getName));
         library.setCards(newLibrary);
     }
 

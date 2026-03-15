@@ -12,56 +12,100 @@ use crate::spellability::SpellAbility;
 /// If the condition passes, transforms the source DFC card to its other face.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let mode = sa.params.get("Mode").map(String::as_str).unwrap_or("");
-    if mode != "Transform" {
-        return; // Only Transform mode is implemented.
-    }
 
     let source_id = match sa.source {
         Some(id) => id,
         None => return,
     };
 
-    // Evaluate optional condition.
-    if let Some(cond_defined) = sa.params.get("ConditionDefined") {
-        if cond_defined.eq_ignore_ascii_case("Remembered") {
-            let cond_present = sa
-                .params
-                .get("ConditionPresent")
-                .cloned()
-                .unwrap_or_default();
-            let cond_compare = sa
-                .params
-                .get("ConditionCompare")
-                .cloned()
-                .unwrap_or_default();
+    match mode {
+        "Transform" => {
+            // Evaluate optional condition.
+            if let Some(cond_defined) = sa.params.get("ConditionDefined") {
+                if cond_defined.eq_ignore_ascii_case("Remembered") {
+                    let cond_present = sa
+                        .params
+                        .get("ConditionPresent")
+                        .cloned()
+                        .unwrap_or_default();
+                    let cond_compare = sa
+                        .params
+                        .get("ConditionCompare")
+                        .cloned()
+                        .unwrap_or_default();
 
-            let remembered: Vec<CardId> = ctx.game.card(source_id).remembered_cards.clone();
-            let match_count = remembered
-                .iter()
-                .filter(|&&cid| matches_type_filter(ctx, cid, &cond_present))
-                .count();
+                    let remembered: Vec<CardId> = ctx.game.card(source_id).remembered_cards.clone();
+                    let match_count = remembered
+                        .iter()
+                        .filter(|&&cid| matches_type_filter(ctx, cid, &cond_present))
+                        .count();
 
-            if !evaluate_compare(&cond_compare, match_count) {
-                return; // Condition not met.
+                    if !evaluate_compare(&cond_compare, match_count) {
+                        return; // Condition not met.
+                    }
+                }
+            }
+
+            // Perform the transform.
+            ctx.game.card_mut(source_id).transform();
+
+            // Fire Transformed trigger
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::Transformed,
+                crate::event::RunParams {
+                    card: Some(source_id),
+                    ..Default::default()
+                },
+                false,
+            );
+
+            // Re-scan active triggers so the new face's trigger list takes effect.
+            ctx.trigger_handler.reset_active_triggers(ctx.game);
+        }
+        "Flip" => {
+            // Toggle the flipped state.
+            let card = ctx.game.card_mut(source_id);
+            card.flipped = !card.flipped;
+        }
+        "TurnFaceUp" => {
+            let card = ctx.game.card_mut(source_id);
+            if card.face_down {
+                card.face_down = false;
+                // Restore original P/T by clearing the face-down overrides
+                card.static_set_power = None;
+                card.static_set_toughness = None;
+
+                // Remove the synthetic morph turn-face-up ability
+                card.activated_abilities
+                    .retain(|ab| !ab.ability_text.contains("Mode$ TurnFaceUp"));
+
+                // Megamorph: add a +1/+1 counter when turning face-up
+                if sa.param_is_true("Mega") {
+                    card.add_counter(&crate::card::CounterType::P1P1, 1);
+                }
+
+                // Fire TurnFaceUp trigger
+                ctx.trigger_handler.run_trigger(
+                    crate::event::TriggerType::TurnFaceUp,
+                    crate::event::RunParams {
+                        card: Some(source_id),
+                        ..Default::default()
+                    },
+                    false,
+                );
+
+                // Re-scan active triggers for the revealed card
+                ctx.trigger_handler.reset_active_triggers(ctx.game);
             }
         }
+        "TurnFaceDown" => {
+            let card = ctx.game.card_mut(source_id);
+            if !card.face_down {
+                card.face_down = true;
+            }
+        }
+        _ => {} // Unknown mode — silently skip
     }
-
-    // Perform the transform.
-    ctx.game.card_mut(source_id).transform();
-
-    // Fire Transformed trigger
-    ctx.trigger_handler.run_trigger(
-        crate::event::TriggerType::Transformed,
-        crate::event::RunParams {
-            card: Some(source_id),
-            ..Default::default()
-        },
-        false,
-    );
-
-    // Re-scan active triggers so the new face's trigger list takes effect.
-    ctx.trigger_handler.reset_active_triggers(ctx.game);
 }
 
 /// Check if a card matches a comma-separated type filter (OR semantics).

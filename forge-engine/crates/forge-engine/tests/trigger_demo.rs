@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
@@ -219,7 +220,7 @@ impl VerboseAgent {
 }
 
 impl PlayerAgent for VerboseAgent {
-    fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+    fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
         true
     }
     fn choose_action(
@@ -236,8 +237,16 @@ impl PlayerAgent for VerboseAgent {
             .map(MainPhaseAction::Play)
             .unwrap_or(MainPhaseAction::Pass)
     }
-    fn choose_attackers(&mut self, _: PlayerId, available: &[CardId]) -> Vec<CardId> {
-        available.to_vec()
+    fn choose_attackers(
+        &mut self,
+        _: PlayerId,
+        available: &[CardId],
+        possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
+        available
+            .iter()
+            .map(|&a| (a, possible_defenders[0]))
+            .collect()
     }
     fn choose_blockers(
         &mut self,
@@ -400,16 +409,15 @@ fn trigger_demo_game() {
     let mut game_loop = GameLoop::new(2);
     let mut rng = rand::rngs::StdRng::seed_from_u64(12345);
 
-    // Shuffle and draw opening hands
-    game_loop.setup(&mut game, &mut rng);
-
-    println!("  Opening hands drawn (7 cards each).");
-    println!();
-
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
         Box::new(VerboseAgent::new("Alice")),
         Box::new(VerboseAgent::new("Bob")),
     ];
+
+    game_loop.setup(&mut game, &mut agents, &mut rng);
+
+    println!("  Opening hands drawn (7 cards each).");
+    println!();
 
     // Play up to 15 turns
     let max_turns = 15;

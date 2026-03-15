@@ -1,0 +1,14 @@
+{
+  "label": "Combat Costs & Lure",
+  "desc": "Tests attack costs (Propaganda, Ghostly Prison) — opponent has Propaganda so human must pay to attack",
+  "color": "text-blue-400",
+  "opponent": "propaganda_defense",
+  "order": 50,
+  "cards": [
+    { "name": "Grizzly Bears", "count": 4 },
+    { "name": "Llanowar Elves", "count": 4 },
+    { "name": "Elvish Mystic", "count": 4 },
+    { "name": "Giant Growth", "count": 4 },
+    { "name": "Forest", "count": 24 }
+  ]
+}

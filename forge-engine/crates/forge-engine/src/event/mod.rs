@@ -59,6 +59,8 @@ pub enum TriggerType {
     AbilityActivated,
     /// A creature explored.
     Explored,
+    /// A creature became monstrous.
+    BecomeMonstrous,
     /// A player became the monarch.
     BecomeMonarch,
     /// Damage was dealt to a player/creature for the first time this turn.
@@ -69,8 +71,105 @@ pub enum TriggerType {
     Exiled,
     /// A token was created.
     TokenCreated,
-    /// A spell was copied (Storm, Replicate, etc.) — for Magecraft triggers.
+    /// A spell was copied (Storm, Replicate, etc.) — used by Magecraft.
     SpellCopied,
+    /// A player took the initiative.
+    TakeInitiative,
+    /// A permanent phased out.
+    PhasedOut,
+    /// A permanent phased in.
+    PhasedIn,
+    // ── New trigger types (issue #54) ──
+    /// All attackers declared at once (batch).
+    AttackersDeclared,
+    /// All blockers declared at once (batch).
+    BlockersDeclared,
+    /// A card changed zones (batch/all variant).
+    ChangesZoneAll,
+    /// A permanent changed controller.
+    ChangesController,
+    /// A turn began.
+    TurnBegin,
+    /// Damage done once (first-time batch).
+    DamageDoneOnce,
+    /// Any spell cast (all players).
+    SpellCastAll,
+    /// Any player lost life (all players).
+    LifeLostAll,
+    /// Counter added once (batch).
+    CounterAddedOnce,
+    /// Any card discarded (all players).
+    DiscardedAll,
+    /// A permanent sacrificed once (batch).
+    SacrificedOnce,
+    /// A card was cycled.
+    Cycled,
+    /// Always fires (every phase).
+    Always,
+    /// Fires immediately when registered.
+    Immediate,
+    /// A player surveilled.
+    Surveil,
+    /// A player scried.
+    Scry,
+    /// A card was foretold.
+    Foretell,
+    /// A player searched their library.
+    SearchedLibrary,
+    /// A player shuffled their library.
+    Shuffled,
+    /// Mana was added to a player's pool.
+    ManaAdded,
+    /// A token was created (batch).
+    TokenCreatedOnce,
+    /// Any permanent tapped (all).
+    TapAll,
+    /// Any permanent untapped (all).
+    UntapAll,
+    /// A permanent became a target (batch).
+    BecomesTargetOnce,
+    /// An attacker was blocked by a specific creature.
+    AttackerBlockedByCreature,
+    /// An attacker was blocked (batch).
+    AttackerBlockedOnce,
+    /// An attacker was unblocked (batch).
+    AttackerUnblockedOnce,
+    /// Any spell cast (batch).
+    SpellCastOnce,
+    /// A spell of a specific type was cast.
+    SpellCastOfType,
+    /// Damage dealt (all instances).
+    DamageAll,
+    /// Damage was prevented (batch).
+    DamagePreventedOnce,
+    /// Excess damage dealt.
+    ExcessDamage,
+    /// Any player gained life (all players).
+    LifeGainedAll,
+    /// A counter was removed (batch).
+    CounterRemovedOnce,
+    /// A creature was exerted.
+    Exerted,
+    /// A player collected evidence.
+    CollectEvidence,
+    /// A player foraged.
+    Forage,
+    /// A creature enlisted another creature.
+    Enlisted,
+    /// A player flipped a coin.
+    FlippedCoin,
+    /// A player rolled a die.
+    RolledDie,
+    /// A player completed a die-roll action.
+    RolledDieOnce,
+    /// Mana was expended (cumulative per-turn tracking for Expend mechanic).
+    ManaExpend,
+    /// A face-down card was turned face-up (Morph/Megamorph/Manifest).
+    TurnFaceUp,
+    /// A creature was exploited (Exploit keyword).
+    Exploited,
+    /// Cumulative upkeep was paid (or not). Mirrors Java TriggerType.PayCumulativeUpkeep.
+    PayCumulativeUpkeep,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.
@@ -111,4 +210,32 @@ pub struct RunParams {
     pub counter_type: Option<String>,
     /// Number of counters added/removed.
     pub counter_amount: Option<i32>,
+    // ── New fields (issue #54) ──
+    /// Batch of attacker IDs (for AttackersDeclared).
+    pub attacker_ids: Option<Vec<CardId>>,
+    /// Batch of blocker IDs (for BlockersDeclared).
+    pub blocker_ids: Option<Vec<CardId>>,
+    /// Original controller before a control change.
+    pub original_controller: Option<PlayerId>,
+    /// Cumulative mana expend amount (for ManaExpend trigger).
+    pub mana_expend_amount: Option<i32>,
+    /// Enlisted card (for TriggerMode::Enlisted).
+    pub enlisted: Option<CardId>,
+    /// The spell/ability card that caused the event (for BecomesTarget — the targeting spell).
+    pub cause_card: Option<CardId>,
+    /// Coin-flip outcome (true = win/heads).
+    pub coin_flip_won: Option<bool>,
+    /// Rolled die result (modified).
+    pub die_result: Option<i32>,
+    /// Number of sides on the rolled die.
+    pub die_sides: Option<i32>,
+    /// Number of attackers declared this combat (for Exalted `Alone$ True` check).
+    pub num_attackers: Option<usize>,
+    /// The creature that was exploited (for Exploited trigger).
+    pub exploited_card: Option<CardId>,
+    /// LKI +1/+1 counter count on a card that just left the battlefield.
+    /// Used by Modular triggers to know how many counters to move.
+    pub lki_p1p1_counters: Option<i32>,
+    /// Whether cumulative upkeep was paid (for PayCumulativeUpkeep trigger).
+    pub cumulative_upkeep_paid: Option<bool>,
 }

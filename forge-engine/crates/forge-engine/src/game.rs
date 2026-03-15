@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
@@ -9,6 +9,14 @@ use crate::phase::TurnState;
 use crate::player::PlayerState;
 use crate::spellability::MagicStack;
 use crate::zone::{Zone, ZoneKey};
+
+/// An extra turn entry — tracks who gets the turn and any modifications.
+#[derive(Debug, Clone)]
+pub struct ExtraTurn {
+    pub player: PlayerId,
+    /// If true, the untap step is skipped during this extra turn.
+    pub skip_untap: bool,
+}
 
 /// The complete, serializable game state.
 /// All game entities live here — nothing holds references, everything uses IDs.
@@ -35,8 +43,38 @@ pub struct GameState {
     pub game_over: bool,
     pub winner: Option<PlayerId>,
 
+    // Extra turns queue — players who get extra turns (issue #22, AddTurn effect).
+    // After cleanup, the game pops from here instead of advancing to the next player.
+    #[serde(skip)]
+    pub extra_turns: VecDeque<ExtraTurn>,
+
+    // Fog — prevent all combat damage this turn (issue #22, Fog effect).
+    // Reset at end of turn cleanup.
+    pub prevent_all_combat_damage: bool,
+
+    // Monarch designation (issue #22, BecomeMonarch effect).
+    pub monarch: Option<PlayerId>,
+
+    // Initiative holder (issue #22, TakeInitiative effect).
+    pub initiative_holder: Option<PlayerId>,
+
+    // End turn requested — skip remaining phases, jump to cleanup (issue #22, EndTurn effect).
+    pub end_turn_requested: bool,
+
+    // End combat requested — skip remaining combat steps (issue #22, EndCombatPhase effect).
+    pub end_combat_requested: bool,
+
+    // Extra combat phases to insert after current combat (issue #22, AddPhase effect).
+    pub extra_combat_phases: u32,
+
     // Next card ID counter
     next_card_id: u32,
+
+    /// Monotonically increasing counter for zone-entry timestamps.
+    /// Each time a card enters a zone, it gets the next value.
+    /// Used to order same-player triggers by zone entry order,
+    /// matching Java's `Zone.cardList` insertion order.
+    next_zone_timestamp: u64,
 }
 
 impl GameState {
@@ -77,7 +115,15 @@ impl GameState {
             player_order,
             game_over: false,
             winner: None,
+            extra_turns: VecDeque::new(),
+            prevent_all_combat_damage: false,
+            monarch: None,
+            initiative_holder: None,
+            end_turn_requested: false,
+            end_combat_requested: false,
+            extra_combat_phases: 0,
             next_card_id: 0,
+            next_zone_timestamp: 0,
         }
     }
 
@@ -167,6 +213,15 @@ impl GameState {
             .filter(|&&cid| self.card(cid).is_creature())
             .copied()
             .collect()
+    }
+
+    /// Assign the next zone timestamp to a card, returning the value.
+    /// Called whenever a card enters a new zone to track insertion order.
+    pub fn assign_zone_timestamp(&mut self, card_id: CardId) -> u64 {
+        let ts = self.next_zone_timestamp;
+        self.next_zone_timestamp += 1;
+        self.cards[card_id.index()].zone_timestamp = ts;
+        ts
     }
 
     /// Get all lands on the battlefield for a player.

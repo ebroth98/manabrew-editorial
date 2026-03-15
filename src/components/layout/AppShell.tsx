@@ -1,14 +1,13 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { usePanelRef } from "react-resizable-panels";
 import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
-import { useConnectionStore } from "@/stores/useConnectionStore";
-import { useAuthStore } from "@/stores/useAuthStore";
 import { useServerStore } from "@/stores/useServerStore";
-import { useTheme } from "next-themes";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { Button } from "@/components/ui/button";
-import { Sun, Moon, Menu } from "lucide-react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDragToggle } from "@/hooks/useDragToggle";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -24,12 +23,19 @@ const statusColors: Record<string, string> = {
 };
 
 export function AppShell() {
-  const { status, serverAddress } = useConnectionStore();
-  const { user } = useAuthStore();
-  const { theme, setTheme } = useTheme();
+  const { connected, connecting, error } = useServerStore();
+  const { serverHost, serverPort } = usePreferencesStore();
   const sidebarRef = usePanelRef();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const setupListeners = useServerStore((s) => s.setupListeners);
+  const status = connecting
+    ? "CONNECTING"
+    : connected
+      ? "CONNECTED"
+      : error
+        ? "ERROR"
+        : "DISCONNECTED";
+  const serverAddress = `${serverHost}:${serverPort}`;
 
   // Register Tauri event listeners at app level so they're always active
   useEffect(() => {
@@ -49,45 +55,37 @@ export function AppShell() {
     }
   }
 
+  const expandSidebar = useCallback(() => {
+    const panel = sidebarRef.current;
+    if (panel?.isCollapsed()) {
+      panel.expand();
+      setSidebarCollapsed(false);
+    }
+  }, [sidebarRef]);
+
+  const collapseSidebar = useCallback(() => {
+    const panel = sidebarRef.current;
+    if (panel && !panel.isCollapsed()) {
+      panel.collapse();
+      setSidebarCollapsed(true);
+    }
+  }, [sidebarRef]);
+
+  const onDragMouseDown = useDragToggle(
+    expandSidebar,
+    collapseSidebar,
+    "right",
+  );
+
   return (
     <div className="h-screen flex flex-col overflow-hidden">
-      <header className="h-14 border-b flex items-center justify-between px-4 shrink-0 bg-card">
-        <div className="flex items-center gap-2">
-          {/* Hamburger — only on desktop where the sidebar lives */}
-          <Button
-            size="icon"
-            variant="ghost"
-            className="hidden md:flex h-8 w-8 shrink-0"
-            onClick={toggleSidebar}
-            title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-          >
-            <Menu className="h-4 w-4" />
-          </Button>
-          <h1 className="text-xl font-semibold">Bardidina Magica Client</h1>
-        </div>
-        <div className="flex items-center gap-3">
-          {user && (
-            <span className="text-sm text-muted-foreground">
-              {user.username}
-            </span>
-          )}
-          <Button
-            size="icon"
-            variant="ghost"
-            className="h-8 w-8"
-            onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            title="Toggle theme"
-          >
-            <Sun className="h-4 w-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
-            <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
-          </Button>
-        </div>
-      </header>
-
-      <ResizablePanelGroup orientation="horizontal" className="flex-1 min-h-0">
+      <ResizablePanelGroup
+        orientation="horizontal"
+        className="relative flex-1 min-h-0"
+      >
         <ResizablePanel
           panelRef={sidebarRef}
-          defaultSize={100}
+          defaultSize={260}
           minSize={14}
           maxSize={300}
           collapsible
@@ -97,14 +95,34 @@ export function AppShell() {
           <Sidebar />
         </ResizablePanel>
         <ResizableHandle withHandle className="hidden md:flex" />
-        <ResizablePanel minSize={40}>
+        <ResizablePanel minSize={40} className="relative">
+          <div className="hidden md:block absolute left-0 top-1/2 -translate-y-1/2 z-30 group">
+            <Button
+              size="icon"
+              variant="ghost"
+              className={cn(
+                "h-24 w-4 rounded-r-md rounded-l-none border border-l-0 border-border bg-card/90 px-0",
+                "translate-x-[-9px] group-hover:translate-x-0 group-hover:w-6 group-hover:h-28 transition-all duration-150",
+                "hover:bg-card",
+              )}
+              onClick={toggleSidebar}
+              onMouseDown={onDragMouseDown}
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {sidebarCollapsed ? (
+                <ChevronRight className="h-3 w-3" />
+              ) : (
+                <ChevronLeft className="h-3 w-3" />
+              )}
+            </Button>
+          </div>
           <main className="h-full overflow-auto p-4">
             <Outlet />
           </main>
         </ResizablePanel>
       </ResizablePanelGroup>
 
-      <footer className="h-8 border-t flex items-center px-4 shrink-0 bg-muted text-xs text-muted-foreground gap-4">
+      <footer className="h-8 border-t flex items-center px-4 shrink-0 bg-secondary text-xs text-muted-foreground gap-4">
         <span
           className={cn(
             "flex items-center gap-1",

@@ -1,0 +1,18 @@
+{
+  "label": "Token Swarm",
+  "desc": "Soldiers + Goblins + Token creators",
+  "color": "text-amber-400",
+  "opponent": "red_burn",
+  "ai_eligible": true,
+  "order": 6,
+  "cards": [
+    { "name": "Plains", "count": 8, "set": "akh" },
+    { "name": "Mountain", "count": 8, "set": "akh" },
+    { "name": "Raise the Alarm", "count": 4, "set": "m15" },
+    { "name": "Krenko's Command", "count": 4, "set": "m13" },
+    { "name": "Dragon Fodder", "count": 4, "set": "ktk" },
+    { "name": "Savannah Lions", "count": 4, "set": "m10" },
+    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
+    { "name": "Shock", "count": 4, "set": "m21" }
+  ]
+}

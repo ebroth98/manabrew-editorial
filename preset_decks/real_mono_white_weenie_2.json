@@ -1,0 +1,24 @@
+{
+  "label": "Pauper White Weenie (Boros splash)",
+  "desc": "Real Pauper deck: Kor Skyfisher + Boros Garrison white weenie variant (Natalino_91, 5-0 Pauper League 2026-03-08)",
+  "color": "text-amber-300",
+  "opponent": "real_mono_red_madness",
+  "ai_eligible": false,
+  "order": 104,
+  "cards": [
+    { "name": "Plains", "count": 16 },
+    { "name": "Boros Garrison", "count": 3 },
+    { "name": "Idyllic Grange", "count": 1 },
+    { "name": "Thraben Inspector", "count": 4 },
+    { "name": "Novice Inspector", "count": 4 },
+    { "name": "Lunarch Veteran", "count": 4 },
+    { "name": "Kor Skyfisher", "count": 4 },
+    { "name": "Raffine's Informant", "count": 4 },
+    { "name": "Militia Bugler", "count": 4 },
+    { "name": "Leonardo, Big Brother", "count": 3 },
+    { "name": "Battle Screech", "count": 4 },
+    { "name": "Thraben Charm", "count": 4 },
+    { "name": "Guardians' Pledge", "count": 3 },
+    { "name": "Prismatic Strands", "count": 2 }
+  ]
+}

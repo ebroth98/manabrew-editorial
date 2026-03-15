@@ -1,0 +1,25 @@
+{
+  "label": "Pauper Mono Black Sacrifice",
+  "desc": "Real Pauper deck: Carrion Feeder + Mortician Beetle aristocrats (airplay, 5-0 Pauper League 2026-03-07)",
+  "color": "text-gray-400",
+  "opponent": "real_pauper_elves",
+  "ai_eligible": false,
+  "order": 103,
+  "cards": [
+    { "name": "Swamp", "count": 16 },
+    { "name": "Carrion Feeder", "count": 4 },
+    { "name": "Mortician Beetle", "count": 3 },
+    { "name": "Nested Shambler", "count": 4 },
+    { "name": "Shambling Ghast", "count": 4 },
+    { "name": "Infestation Sage", "count": 4 },
+    { "name": "Bloodthrone Vampire", "count": 3 },
+    { "name": "Perigee Beckoner", "count": 4 },
+    { "name": "Troll of Khazad-dum", "count": 3 },
+    { "name": "Village Rites", "count": 4 },
+    { "name": "Supernatural Stamina", "count": 4 },
+    { "name": "Dark Ritual", "count": 2 },
+    { "name": "Exhume", "count": 3 },
+    { "name": "Essence Harvest", "count": 1 },
+    { "name": "Rite of Consumption", "count": 1 }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "label": "Zone Change",
+  "desc": "Bounce + Reanimate + Sacrifice",
+  "color": "text-indigo-400",
+  "opponent": "green_stompy",
+  "ai_eligible": true,
+  "order": 5,
+  "cards": [
+    { "name": "Swamp", "count": 12, "set": "akh" },
+    { "name": "Island", "count": 4, "set": "akh" },
+    { "name": "Unsummon", "count": 4, "set": "m14" },
+    { "name": "Boomerang", "count": 2, "set": "3ed" },
+    { "name": "Raise Dead", "count": 13, "set": "m13" },
+    { "name": "Diabolic Edict", "count": 3, "set": "te" },
+    { "name": "Innocent Blood", "count": 3, "set": "od" },
+    { "name": "Typhoid Rats", "count": 4, "set": "isd" },
+    { "name": "Vampire Nighthawk", "count": 3, "set": "m13" },
+    { "name": "Doom Blade", "count": 2, "set": "m14" }
+  ]
+}

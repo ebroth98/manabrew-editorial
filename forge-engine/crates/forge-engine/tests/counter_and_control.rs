@@ -8,6 +8,7 @@ use forge_engine_core::ability::effects::{resolve_effect, EffectContext};
 /// These features were identified as broken in PR #37's priority system implementation.
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
@@ -17,7 +18,12 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 struct PassAgent;
 
 impl PlayerAgent for PassAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        _player: PlayerId,
+        _hand: &[CardId],
+        _mulligan_count: u32,
+    ) -> bool {
         true
     }
 
@@ -32,7 +38,12 @@ impl PlayerAgent for PassAgent {
         MainPhaseAction::Pass
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId]) -> Vec<CardId> {
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        _available: &[CardId],
+        _possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
         Vec::new()
     }
 
@@ -208,6 +219,7 @@ fn test_counterspell_moves_to_graveyard() {
     let mut game_loop = GameLoop::new(2);
     let mut pass_agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
 
+    let mut rng_adapter = forge_engine_core::game_rng::ThreadRngAdapter;
     let mut ctx = EffectContext {
         game: &mut game,
         agents: &mut pass_agents,
@@ -215,6 +227,7 @@ fn test_counterspell_moves_to_graveyard() {
         token_templates: &game_loop.token_templates,
         mana_pools: &mut game_loop.mana_pools,
         parent_target_card: None,
+        rng: &mut rng_adapter,
     };
 
     // Resolve the counter effect
@@ -285,6 +298,7 @@ fn test_control_gain_with_untap() {
     let mut game_loop = GameLoop::new(2);
     let mut pass_agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
 
+    let mut rng_adapter = forge_engine_core::game_rng::ThreadRngAdapter;
     let mut ctx = EffectContext {
         game: &mut game,
         agents: &mut pass_agents,
@@ -292,6 +306,7 @@ fn test_control_gain_with_untap() {
         token_templates: &game_loop.token_templates,
         mana_pools: &mut game_loop.mana_pools,
         parent_target_card: None,
+        rng: &mut rng_adapter,
     };
 
     // Resolve the control effect

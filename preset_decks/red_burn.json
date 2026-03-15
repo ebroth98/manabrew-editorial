@@ -1,0 +1,16 @@
+{
+  "label": "Red Burn",
+  "desc": "Bolts + Shocks + Ogres + Giants",
+  "color": "text-red-500",
+  "opponent": "green_stompy",
+  "ai_eligible": true,
+  "order": 0,
+  "cards": [
+    { "name": "Mountain", "count": 17, "set": "akh" },
+    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
+    { "name": "Shock", "count": 4, "set": "m21" },
+    { "name": "Gray Ogre", "count": 3, "set": "7ed" },
+    { "name": "Hill Giant", "count": 3, "set": "m14" },
+    { "name": "Guttersnipe", "count": 3, "set": "rtr" }
+  ]
+}

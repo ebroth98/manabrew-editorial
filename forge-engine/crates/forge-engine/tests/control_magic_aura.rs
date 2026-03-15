@@ -2,6 +2,7 @@
 /// This tests static control gain from auras - demonstrates the missing layer 2 implementation
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
@@ -12,7 +13,12 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 struct PassAgent;
 
 impl PlayerAgent for PassAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        _player: PlayerId,
+        _hand: &[CardId],
+        _mulligan_count: u32,
+    ) -> bool {
         true
     }
 
@@ -35,7 +41,12 @@ impl PlayerAgent for PassAgent {
         None
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId]) -> Vec<CardId> {
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        _available: &[CardId],
+        _possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
         Vec::new()
     }
 

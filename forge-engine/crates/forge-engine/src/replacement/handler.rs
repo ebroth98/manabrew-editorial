@@ -10,6 +10,7 @@
 
 use forge_foundation::ZoneType;
 
+use crate::card::CounterType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::replacement::{ReplacementEffect, ReplacementLayer, ReplacementResult};
@@ -35,6 +36,8 @@ pub enum ReplacementEvent {
         amount: i32,
         /// The card dealing the damage, if known.
         source: Option<CardId>,
+        /// Whether this is combat damage.
+        is_combat: bool,
     },
 
     /// Damage is being dealt to a player.
@@ -43,6 +46,8 @@ pub enum ReplacementEvent {
         amount: i32,
         /// The card dealing the damage, if known.
         source: Option<CardId>,
+        /// Whether this is combat damage.
+        is_combat: bool,
     },
 
     /// A permanent is being destroyed (lethal damage or destroy effect).
@@ -53,6 +58,36 @@ pub enum ReplacementEvent {
         card: CardId,
         origin: ZoneType,
         destination: ZoneType,
+    },
+
+    /// A player is gaining life.
+    GainLife { player: PlayerId, amount: i32 },
+
+    /// Token(s) are being created.
+    CreateToken { player: PlayerId, count: i32 },
+
+    /// Counter(s) are being added to a permanent.
+    AddCounter {
+        target: CardId,
+        counter_type: CounterType,
+        count: i32,
+    },
+
+    /// A player is losing the game.
+    GameLoss { player: PlayerId },
+
+    /// A player is winning the game.
+    GameWin { player: PlayerId },
+
+    /// A spell is being countered.
+    Counter { card: CardId },
+
+    /// Mana is being produced (for doublers like Mirari's Wake, Nyxbloom Ancient).
+    /// `mana` is the produced mana string (e.g. "G" or "U U") that may be modified.
+    ProduceMana {
+        source: CardId,
+        activator: PlayerId,
+        mana: String,
     },
 }
 
@@ -109,8 +144,8 @@ fn run_layer(
     // In a full implementation, the affected player would choose among multiple
     // effects in the same layer (CR 616.1).  For this framework we auto-select
     // the first effect (deterministic timestamp order).
-    let (_source_card_id, ref effect) = effects[0];
-    execute_effect(effect, event)
+    let (source_card_id, ref effect) = effects[0];
+    execute_effect(game, source_card_id, effect, event)
 }
 
 /// Collect all `(source_card_id, effect)` pairs that apply to `event` in `layer`.
@@ -163,6 +198,37 @@ fn collect_effects(
                     let moving_card = &game.cards[moving_id.index()];
                     re.can_replace_moved(*origin, *destination, moving_card, card)
                 }
+
+                ReplacementEvent::GainLife { player, .. } => {
+                    re.can_replace_gain_life(*player, card)
+                }
+
+                ReplacementEvent::CreateToken { player, .. } => {
+                    re.can_replace_create_token(*player, card)
+                }
+
+                ReplacementEvent::AddCounter { target, .. } => {
+                    let target_card = &game.cards[target.index()];
+                    re.can_replace_add_counter(target_card, card)
+                }
+
+                ReplacementEvent::GameLoss { player } => re.can_replace_game_loss(*player, card),
+
+                ReplacementEvent::GameWin { player } => re.can_replace_game_win(*player, card),
+
+                ReplacementEvent::Counter { card: target_id } => {
+                    let target_card = &game.cards[target_id.index()];
+                    re.can_replace_counter(target_card, card)
+                }
+
+                ReplacementEvent::ProduceMana {
+                    source: source_id,
+                    activator,
+                    ..
+                } => {
+                    let source_card = &game.cards[source_id.index()];
+                    re.can_replace_produce_mana(source_card, *activator, card)
+                }
             };
 
             if applies {
@@ -177,7 +243,12 @@ fn collect_effects(
 /// Execute a single replacement effect, mutating the event parameters.
 ///
 /// Mirrors `ReplacementHandler.executeReplacement()`.
-fn execute_effect(effect: &ReplacementEffect, event: &mut ReplacementEvent) -> ReplacementResult {
+fn execute_effect(
+    game: &GameState,
+    card_id: CardId,
+    effect: &ReplacementEffect,
+    event: &mut ReplacementEvent,
+) -> ReplacementResult {
     match event {
         ReplacementEvent::Draw { .. } => {
             // Prevent$ True or Skip$ True → skip the draw.
@@ -239,6 +310,181 @@ fn execute_effect(effect: &ReplacementEffect, event: &mut ReplacementEvent) -> R
                 if let Some(z) = new_zone {
                     *destination = z;
                     return ReplacementResult::Updated;
+                }
+            }
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::GainLife { amount, .. } => {
+            if effect
+                .params
+                .get("Prevent")
+                .map(|s| s == "True")
+                .unwrap_or(false)
+            {
+                *amount = 0;
+                return ReplacementResult::Skipped;
+            }
+            if let Some(replace) = effect.params.get("ReplaceWith") {
+                if replace == "GainDouble" {
+                    *amount *= 2;
+                    return ReplacementResult::Updated;
+                }
+            }
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::CreateToken { count, .. } => {
+            if let Some(replace) = effect.params.get("ReplaceWith") {
+                if replace == "DoubleToken" {
+                    *count *= 2;
+                    return ReplacementResult::Updated;
+                }
+            }
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::AddCounter { count, .. } => {
+            if let Some(replace) = effect.params.get("ReplaceWith") {
+                match replace.as_str() {
+                    "AddOneMoreCounter" | "AddOneMoreCounters" => {
+                        *count += 1;
+                        return ReplacementResult::Updated;
+                    }
+                    "AddTwiceCounters" | "DoubleCounters" => {
+                        *count *= 2;
+                        return ReplacementResult::Updated;
+                    }
+                    _ => {}
+                }
+            }
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::GameLoss { .. } => {
+            // CantHappen layer prevents the game loss (e.g. Platinum Angel).
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::GameWin { .. } => {
+            // CantHappen layer prevents the game win.
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::Counter { .. } => {
+            // CantHappen layer prevents countering (e.g. "can't be countered").
+            ReplacementResult::Replaced
+        }
+
+        ReplacementEvent::ProduceMana { mana, .. } => {
+            // Mirrors Java ReplaceManaEffect.resolve().
+            // Priority: ReplaceMana > ReplaceType > ReplaceColor > ReplaceAmount/ReplaceWith
+            fn color_word_to_short(s: &str) -> String {
+                match s.to_lowercase().as_str() {
+                    "white" | "w" => "W".into(),
+                    "blue" | "u" => "U".into(),
+                    "black" | "b" => "B".into(),
+                    "red" | "r" => "R".into(),
+                    "green" | "g" => "G".into(),
+                    "colorless" | "c" => "C".into(),
+                    _ => s.to_uppercase(),
+                }
+            }
+
+            if let Some(replace_mana) = effect.params.get("ReplaceMana") {
+                // Replace entire mana string (type + amount)
+                let replacement = if replace_mana == "Any" {
+                    // AI: pick least available color — simple fallback to W
+                    "W".to_string()
+                } else {
+                    color_word_to_short(replace_mana)
+                };
+                *mana = replacement;
+                return ReplacementResult::Updated;
+            } else if let Some(replace_type) = effect.params.get("ReplaceType") {
+                // Replace ALL mana colors+colorless with the specified color
+                let color = if replace_type == "Any" {
+                    "W".to_string() // AI fallback
+                } else {
+                    color_word_to_short(replace_type)
+                };
+                // Replace every mana symbol (W/U/B/R/G/C) with the target color
+                let replaced: Vec<&str> = mana.split_whitespace().collect();
+                let new_parts: Vec<String> = replaced.iter().map(|_| color.clone()).collect();
+                *mana = new_parts.join(" ");
+                return ReplacementResult::Updated;
+            } else if let Some(replace_color) = effect.params.get("ReplaceColor") {
+                // Replace colored mana only (not colorless) with specified color
+                let color = if replace_color == "Chosen" {
+                    // Use host card's chosen color
+                    let host_card = &game.cards[card_id.index()];
+                    host_card
+                        .chosen_colors
+                        .first()
+                        .map(|c| color_word_to_short(c))
+                        .unwrap_or_else(|| "W".into())
+                } else {
+                    color_word_to_short(replace_color)
+                };
+                let replace_only = effect
+                    .params
+                    .get("ReplaceOnly")
+                    .map(|s| color_word_to_short(s));
+                let colored = ["W", "U", "B", "R", "G"];
+                let replaced: Vec<String> = mana
+                    .split_whitespace()
+                    .map(|tok| {
+                        if let Some(ref only) = replace_only {
+                            if tok == only {
+                                color.clone()
+                            } else {
+                                tok.to_string()
+                            }
+                        } else if colored.contains(&tok) {
+                            color.clone()
+                        } else {
+                            tok.to_string()
+                        }
+                    })
+                    .collect();
+                *mana = replaced.join(" ");
+                return ReplacementResult::Updated;
+            } else if let Some(replace_with) = effect.params.get("ReplaceWith") {
+                // ReplaceAmount via SVar name convention
+                let multiplier =
+                    if replace_with.contains("Triple") || replace_with.contains("Thrice") {
+                        3usize
+                    } else if replace_with.contains("Twice") || replace_with.contains("Double") {
+                        2usize
+                    } else {
+                        effect
+                            .params
+                            .get("ReplaceAmount")
+                            .and_then(|s| s.parse::<usize>().ok())
+                            .unwrap_or(2)
+                    };
+
+                if multiplier > 1 {
+                    let parts: Vec<&str> = mana.split_whitespace().collect();
+                    let mut repeated = Vec::new();
+                    for _ in 0..multiplier {
+                        repeated.extend_from_slice(&parts);
+                    }
+                    *mana = repeated.join(" ");
+                    return ReplacementResult::Updated;
+                }
+            } else if let Some(amount) = effect.params.get("ReplaceAmount") {
+                // Direct ReplaceAmount$ N
+                if let Ok(multiplier) = amount.parse::<usize>() {
+                    if multiplier > 1 {
+                        let parts: Vec<&str> = mana.split_whitespace().collect();
+                        let mut repeated = Vec::new();
+                        for _ in 0..multiplier {
+                            repeated.extend_from_slice(&parts);
+                        }
+                        *mana = repeated.join(" ");
+                        return ReplacementResult::Updated;
+                    }
                 }
             }
             ReplacementResult::Replaced
@@ -366,6 +612,7 @@ mod tests {
             target: alice,
             amount: 5,
             source: None,
+            is_combat: false,
         };
         let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::Prevented);
@@ -394,6 +641,7 @@ mod tests {
             target: alice,
             amount: 0,
             source: None,
+            is_combat: false,
         };
         let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
@@ -418,6 +666,7 @@ mod tests {
             target: target_creature,
             amount: 3,
             source: None,
+            is_combat: false,
         };
         let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::Prevented);

@@ -10,6 +10,8 @@ prevent future agents from having the same issue.
 
 - Never push directly on main, always create a feature branch and a relative pr
 - never automatically push any sort of code wait for an explicit push command
+- always reference STYLE_GUIDELINES.md for any kind of ui work
+
 
 ## Feature implementation
 Whenever you implement a feature, or modify, make sure to always keep logical, naming, and file parity, with the java counterpart in forge/forge-game/ or forge/forge-core.

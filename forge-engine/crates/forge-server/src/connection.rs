@@ -20,6 +20,9 @@ type WsSender = futures_util::stream::SplitSink<
 type WsReceiver =
     futures_util::stream::SplitStream<tokio_tungstenite::WebSocketStream<tokio::net::TcpStream>>;
 
+const HEARTBEAT_INTERVAL: Duration = Duration::from_secs(25);
+const READ_IDLE_TIMEOUT: Duration = Duration::from_secs(90);
+
 /// Background task: drains channel and writes to the WebSocket sink.
 async fn write_loop(mut rx: mpsc::UnboundedReceiver<Message>, mut sink: WsSender) {
     while let Some(msg) = rx.recv().await {
@@ -128,7 +131,7 @@ pub async fn handle_connection(
     let (sink, mut receiver) = ws_stream.split();
     let (tx, rx) = mpsc::unbounded_channel();
 
-    tokio::spawn(write_loop(rx, sink));
+    let write_task = tokio::spawn(write_loop(rx, sink));
 
     let (player_id, username, reconnected, generation) =
         match authenticate(&mut receiver, &tx, &state).await {
@@ -155,11 +158,35 @@ pub async fn handle_connection(
         );
     }
 
-    while let Some(frame) = receiver.next().await {
-        let frame = match frame {
-            Ok(f) => f,
-            Err(e) => {
+    let heartbeat_tx = tx.clone();
+    let heartbeat_task = tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(HEARTBEAT_INTERVAL);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+        loop {
+            ticker.tick().await;
+            if heartbeat_tx.send(Message::Ping(Vec::new().into())).is_err() {
+                break;
+            }
+        }
+    });
+
+    loop {
+        let frame = match tokio::time::timeout(READ_IDLE_TIMEOUT, receiver.next()).await {
+            Ok(Some(Ok(f))) => f,
+            Ok(Some(Err(e))) => {
                 warn!("[recv] read error from '{}': {}", username, e);
+                break;
+            }
+            Ok(None) => {
+                info!("[recv] '{}' stream closed", username);
+                break;
+            }
+            Err(_) => {
+                warn!(
+                    "[recv] idle timeout from '{}' (no frames for {}s)",
+                    username,
+                    READ_IDLE_TIMEOUT.as_secs()
+                );
                 break;
             }
         };
@@ -189,12 +216,23 @@ pub async fn handle_connection(
                 debug!("[recv] '{}' ping", username);
                 let _ = tx.send(Message::Pong(data));
             }
+            Message::Pong(_) => {
+                debug!("[recv] '{}' pong", username);
+            }
             _ => {}
         }
     }
 
     info!("[disconnect] '{}' (id={})", username, &player_id[..8]);
     mark_disconnected(&state, &player_id, generation);
+
+    // Tear down background tasks after we have marked the player disconnected.
+    // Do not wait on write_loop via channel close: sender clones are stored in
+    // ServerState for reconnection, so rx may never close on abrupt disconnects.
+    heartbeat_task.abort();
+    drop(tx);
+    write_task.abort();
+    let _ = write_task.await;
     Ok(())
 }
 
@@ -245,7 +283,6 @@ async fn authenticate(
                 return Err(ServerError::AuthFailed("Empty username".into()));
             }
 
-            // Check for reconnection
             if let Some((existing_pid, room_id, old_gen)) =
                 state.find_disconnected_by_username(&username)
             {
@@ -263,7 +300,6 @@ async fn authenticate(
                     player.generation = new_gen;
                 }
 
-                // Send AuthResult to the reconnecting client FIRST
                 let reply = ServerMessage::AuthResult {
                     success: true,
                     player_id: Some(existing_pid.clone()),
@@ -272,7 +308,6 @@ async fn authenticate(
                 };
                 send_msg(sender, &reply);
 
-                // Then update room state and notify others
                 if let Some(rid) = &room_id {
                     if let Some(mut room) = state.rooms.get_mut(rid) {
                         room.set_connected(&existing_pid, true);
@@ -299,6 +334,74 @@ async fn authenticate(
                 }
 
                 return Ok((existing_pid, username, true, new_gen));
+            }
+
+            // If a "connected" entry exists but its outbound channel is already closed,
+            // it is stale and can be safely released before duplicate-username rejection.
+            if let Some((existing_pid, existing_gen, sender_closed)) =
+                state.find_connected_by_username(&username)
+            {
+                if sender_closed {
+                    warn!(
+                        "[auth] stale connected session detected for '{}' (id={}) -- forcing cleanup",
+                        username,
+                        &existing_pid[..8.min(existing_pid.len())]
+                    );
+                    mark_disconnected(state, &existing_pid, existing_gen);
+
+                    if let Some((reclaim_pid, room_id, old_gen)) =
+                        state.find_disconnected_by_username(&username)
+                    {
+                        let new_gen = old_gen + 1;
+                        info!(
+                            "[auth] reclaiming session for '{}' (id={}, gen={})",
+                            username,
+                            &reclaim_pid[..8],
+                            new_gen
+                        );
+
+                        if let Some(mut player) = state.players.get_mut(&reclaim_pid) {
+                            player.sender = sender.clone();
+                            player.connected = true;
+                            player.generation = new_gen;
+                        }
+
+                        let reply = ServerMessage::AuthResult {
+                            success: true,
+                            player_id: Some(reclaim_pid.clone()),
+                            reconnected: Some(true),
+                            error: None,
+                        };
+                        send_msg(sender, &reply);
+
+                        if let Some(rid) = &room_id {
+                            if let Some(mut room) = state.rooms.get_mut(rid) {
+                                room.set_connected(&reclaim_pid, true);
+                            }
+
+                            broadcast_to_room_except(
+                                state,
+                                &reclaim_pid,
+                                rid,
+                                &ServerMessage::PlayerConnected {
+                                    username: username.clone(),
+                                },
+                            );
+
+                            if let Some(room) = state.rooms.get(rid) {
+                                broadcast_to_room(
+                                    state,
+                                    rid,
+                                    &ServerMessage::RoomUpdate {
+                                        room: room.to_room_info(),
+                                    },
+                                );
+                            }
+                        }
+
+                        return Ok((reclaim_pid, username, true, new_gen));
+                    }
+                }
             }
 
             // TODO: Per ora username unique quindi n'se po' ripetere
@@ -548,10 +651,52 @@ fn handle_client_message(
             }
         }
 
+        ClientMessage::SetDeckSelection {
+            deck_name,
+            deck_list,
+            commander_name,
+        } => {
+            info!(
+                "[lobby] '{}' selected deck '{}' ({} cards)",
+                username,
+                deck_name,
+                deck_list.len()
+            );
+            match lobby::set_deck_selection_sync(
+                state,
+                player_id,
+                deck_name,
+                deck_list,
+                commander_name,
+            ) {
+                Ok(room_id) => {
+                    if let Some(room) = state.rooms.get(&room_id) {
+                        broadcast_to_room(
+                            state,
+                            &room_id,
+                            &ServerMessage::RoomUpdate {
+                                room: room.to_room_info(),
+                            },
+                        );
+                    }
+                }
+                Err(e) => {
+                    warn!("[lobby] '{}' set deck failed: {}", username, e);
+                    send_msg(
+                        sender,
+                        &ServerMessage::Error {
+                            code: e.code().into(),
+                            message: e.to_string(),
+                        },
+                    );
+                }
+            }
+        }
+
         ClientMessage::StartGame => {
             info!("[game] '{}' starting game", username);
             match lobby::start_game_sync(state, player_id) {
-                Ok((room_id, player_order)) => {
+                Ok((room_id, player_order, player_decks, starting_life)) => {
                     info!(
                         "[game] game started in room {} | order: {:?}",
                         &room_id[..8],
@@ -563,6 +708,8 @@ fn handle_client_message(
                         &ServerMessage::GameStarted {
                             room_id: room_id.clone(),
                             player_order,
+                            player_decks,
+                            starting_life,
                         },
                     );
                 }
@@ -666,50 +813,38 @@ fn mark_disconnected(state: &Arc<ServerState>, player_id: &str, our_generation: 
     };
 
     if let Some(rid) = &room_id {
-        // Check the room status to decide behavior
         let room_status = state.rooms.get(rid).map(|r| r.status.clone());
 
         match room_status {
             Some(RoomStatus::InGame) => {
-                // InGame: preserve session for reconnection
-                let all_disconnected = {
-                    if let Some(mut room) = state.rooms.get_mut(rid) {
-                        room.set_connected(player_id, false);
-                        room.all_disconnected()
-                    } else {
-                        return;
-                    }
-                };
-
-                if all_disconnected {
-                    info!(
-                        "[cleanup] all players disconnected from in-game room {} -- removing",
-                        &rid[..8]
-                    );
-                    if let Some((_, room)) = state.rooms.remove(rid) {
-                        for slot in &room.players {
-                            state.players.remove(&slot.player_id);
-                        }
-                    }
+                // InGame: always preserve session for reconnection.
+                if let Some(mut room) = state.rooms.get_mut(rid) {
+                    room.set_connected(player_id, false);
                 } else {
-                    info!("[disconnect] '{}' marked disconnected in in-game room {} (session preserved)", username, &rid[..8]);
+                    return;
+                }
+
+                info!(
+                    "[disconnect] '{}' marked disconnected in in-game room {} (session preserved)",
+                    username,
+                    &rid[..8]
+                );
+                broadcast_to_room(
+                    state,
+                    rid,
+                    &ServerMessage::PlayerDisconnected {
+                        username: username.clone(),
+                    },
+                );
+
+                if let Some(room) = state.rooms.get(rid) {
                     broadcast_to_room(
                         state,
                         rid,
-                        &ServerMessage::PlayerDisconnected {
-                            username: username.clone(),
+                        &ServerMessage::RoomUpdate {
+                            room: room.to_room_info(),
                         },
                     );
-
-                    if let Some(room) = state.rooms.get(rid) {
-                        broadcast_to_room(
-                            state,
-                            rid,
-                            &ServerMessage::RoomUpdate {
-                                room: room.to_room_info(),
-                            },
-                        );
-                    }
                 }
             }
             Some(RoomStatus::Lobby) => {
@@ -729,7 +864,6 @@ fn mark_disconnected(state: &Arc<ServerState>, player_id: &str, our_generation: 
                     }
                 };
 
-                // Clear room_id before removing player entry
                 if let Some(mut player) = state.players.get_mut(player_id) {
                     player.room_id = None;
                 }
@@ -741,7 +875,6 @@ fn mark_disconnected(state: &Arc<ServerState>, player_id: &str, our_generation: 
                     );
                     state.rooms.remove(rid);
                 } else {
-                    // Notify remaining players
                     broadcast_to_room(
                         state,
                         rid,
@@ -761,12 +894,10 @@ fn mark_disconnected(state: &Arc<ServerState>, player_id: &str, our_generation: 
                     }
                 }
 
-                // Free the username
                 info!("[cleanup] '{}' removed (disconnected from lobby)", username);
                 state.players.remove(player_id);
             }
             None => {
-                // Room disappeared, just clean up the player
                 info!("[cleanup] '{}' removed (room no longer exists)", username);
                 state.players.remove(player_id);
             }
@@ -813,6 +944,7 @@ fn client_msg_type(msg: &ClientMessage) -> &'static str {
         ClientMessage::JoinRoom { .. } => "JoinRoom",
         ClientMessage::LeaveRoom => "LeaveRoom",
         ClientMessage::SetReady { .. } => "SetReady",
+        ClientMessage::SetDeckSelection { .. } => "SetDeckSelection",
         ClientMessage::StartGame => "StartGame",
         ClientMessage::BroadcastState { .. } => "BroadcastState",
         ClientMessage::TurnChange { .. } => "TurnChange",

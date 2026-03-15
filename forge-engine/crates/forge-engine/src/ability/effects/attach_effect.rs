@@ -24,6 +24,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     {
         return;
     }
+    if crate::staticability::static_ability_cant_attach::cant_attach(
+        &ctx.game.cards,
+        ctx.game.card(aura_id),
+        ctx.game.card(target),
+        false,
+    ) {
+        return;
+    }
 
     ctx.game.attach_to(aura_id, target);
 

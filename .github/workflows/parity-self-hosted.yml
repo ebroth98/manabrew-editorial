@@ -1,0 +1,103 @@
+name: Parity regression
+
+on:
+  pull_request:
+    paths:
+      - "forge/**"
+      - "forge-engine/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/parity-self-hosted.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity-regression:
+    runs-on: self-hosted
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Restore Java cache
+        uses: actions/cache@v4
+        with:
+          path: .parity-cache
+          key: parity-java-${{ hashFiles('forge/forge-harness/src/**', 'forge/forge-game/src/**', 'forge/forge-core/src/**', 'forge/forge-ai/src/**', 'preset_decks/**') }}
+
+      - name: Build Java parity harness JAR
+        working-directory: forge
+        run: mvn -pl forge-harness -am -DskipTests package
+
+      - name: Build forge-parity (serve + CI client)
+        run: cargo build -p forge-parity --features serve --release
+
+      - name: Start parity server
+        run: |
+          ./target/release/forge-parity \
+            --ci --serve --port 8080 --verbose \
+            --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar \
+            --db-path parity-ci.db \
+            > parity-server.log 2>&1 &
+          echo $! > server.pid
+          echo "Server PID: $(cat server.pid)"
+
+      - name: Wait for server health
+        run: ./target/release/parity-ci health --server http://localhost:8080
+
+      - name: Submit regression jobs
+        id: submit
+        run: |
+          BATCH_ID=$(./target/release/parity-ci submit \
+            --server http://localhost:8080 \
+            --file forge-engine/crates/forge-parity/regression.json)
+          echo "batch_id=$BATCH_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Poll for results
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./target/release/parity-ci poll \
+            --server http://localhost:8080 \
+            --batch-id ${{ steps.submit.outputs.batch_id }} \
+            --repo ${{ github.repository }} \
+            --pr ${{ github.event.pull_request.number || '0' }}
+
+      - name: Stop server
+        if: always()
+        run: |
+          if [ -f server.pid ]; then
+            PID=$(cat server.pid)
+            echo "Stopping server (PID $PID)"
+            kill $PID 2>/dev/null || true
+            sleep 2
+            kill -9 $PID 2>/dev/null || true
+            rm -f server.pid
+          fi
+          echo "=== Server log (last 50 lines) ==="
+          tail -50 parity-server.log 2>/dev/null || true
+
+      - name: Upload parity database
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-ci-db
+          path: parity-ci.db
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload server log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-server-log
+          path: parity-server.log
+          if-no-files-found: ignore
+          retention-days: 7

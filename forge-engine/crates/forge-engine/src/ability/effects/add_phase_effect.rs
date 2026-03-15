@@ -1,0 +1,74 @@
+use super::{parse_param, EffectContext};
+use crate::spellability::SpellAbility;
+
+/// Resolve `SP$ AddPhase` — add extra combat (or main) phases to the current turn.
+///
+/// Mirrors Java `AddPhaseEffect.java`.
+/// Increments `game.extra_combat_phases`. The game loop inserts extra
+/// Combat→Main2 cycles after the normal combat phase.
+///
+/// # Card script examples
+/// ```text
+/// A:SP$ AddPhase | ExtraPhase$ Combat | Amount$ 1
+/// A:SP$ AddPhase | ExtraPhase$ Combat | Amount$ 2
+/// ```
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let extra_phase = sa
+        .params
+        .get("ExtraPhase")
+        .map(|s| s.as_str())
+        .unwrap_or("Combat");
+
+    let amount = parse_param(&sa.ability_text, "Amount$ ").unwrap_or(1) as u32;
+
+    match extra_phase {
+        "Combat" | "BeginCombat" => {
+            ctx.game.extra_combat_phases += amount;
+        }
+        _ => {
+            // Only extra combat phases are supported for now
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use crate::ability::effects::EffectContext;
+    use crate::agent::PassAgent;
+    use crate::game::GameState;
+    use crate::ids::PlayerId;
+    use crate::mana::ManaPool;
+    use crate::spellability::SpellAbility;
+    use crate::trigger::handler::TriggerHandler;
+
+    #[test]
+    fn add_extra_combat_phase() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        assert_eq!(game.extra_combat_phases, 0);
+
+        let sa =
+            SpellAbility::new_simple(None, p0, "SP$ AddPhase | ExtraPhase$ Combat | Amount$ 1");
+
+        let mut th = TriggerHandler::new();
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut mp = vec![ManaPool::default(), ManaPool::default()];
+        let templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = EffectContext {
+            game: &mut game,
+            agents: &mut agents,
+            trigger_handler: &mut th,
+            token_templates: &templates,
+            mana_pools: &mut mp,
+            parent_target_card: None,
+            rng: &mut rng_adapter,
+        };
+        super::resolve(&mut ctx, &sa);
+
+        assert_eq!(ctx.game.extra_combat_phases, 1);
+    }
+}

@@ -1,0 +1,17 @@
+{
+  "label": "Dual Lands",
+  "desc": "Shock lands + City of Brass + Multicolor",
+  "color": "text-emerald-500",
+  "opponent": "red_burn",
+  "ai_eligible": false,
+  "order": 27,
+  "cards": [
+    { "name": "City of Brass", "count": 12, "set": "c21" },
+    { "name": "Breeding Pool", "count": 4, "set": "rna" },
+    { "name": "Hallowed Fountain", "count": 4, "set": "rna" },
+    { "name": "Coiling Oracle", "count": 4, "set": "dis" },
+    { "name": "Deputy of Detention", "count": 2, "set": "rna" },
+    { "name": "Mulldrifter", "count": 4, "set": "c15" },
+    { "name": "Colossal Dreadmaw", "count": 4, "set": "rix" }
+  ]
+}

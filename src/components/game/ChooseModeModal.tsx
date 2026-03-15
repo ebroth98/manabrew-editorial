@@ -1,10 +1,13 @@
-import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Modal } from "@/components/game/Modal";
+import { TextWithMana } from "@/components/game/TextWithMana";
 import { cn } from "@/lib/utils";
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
+import { MODAL_CARD_THUMBNAIL, MODAL_FOOTER_BETWEEN } from "./game.styles";
 
 interface ChooseModeModalProps {
   /** Human-readable descriptions for each available mode (0-indexed). */
@@ -27,7 +30,7 @@ export function ChooseModeModal({
 }: ChooseModeModalProps) {
   const { data: imageUrl } = useCardImage(cardName ?? "");
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  
+
   // If exactly 1 must be picked and max 1 can be picked, auto-confirm on click.
   const isAutoConfirm = maxChoices === 1 && minChoices === 1;
   const showCheckboxes = maxChoices > 1;
@@ -53,7 +56,7 @@ export function ChooseModeModal({
       onConfirm([idx]);
       return;
     }
-    
+
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(idx)) {
@@ -70,79 +73,60 @@ export function ChooseModeModal({
     });
   }
 
-  // Keyboard: Enter confirms; Escape is intentionally blocked.
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Enter" && canConfirm && !isAutoConfirm) {
-        e.preventDefault();
-        handleConfirm();
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [canConfirm, isAutoConfirm, handleConfirm]);
+  useModalKeyboard(
+    { onEnter: canConfirm && !isAutoConfirm ? handleConfirm : undefined },
+    [canConfirm, isAutoConfirm, handleConfirm],
+  );
 
   const subtitle =
     minChoices === maxChoices
       ? `Choose ${minChoices} mode${minChoices !== 1 ? "s" : ""}`
       : `Choose ${minChoices}–${maxChoices} modes`;
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="choose-mode-title"
-    >
-      <div
-        ref={dialogRef}
-        tabIndex={-1}
-        className="bg-card border rounded-xl shadow-2xl flex flex-col w-full max-w-md mx-4 outline-none animate-in fade-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b">
-          <div className="flex items-center gap-3">
-            {imageUrl && (
-              <CardImageThumbnail
-                imageUrl={imageUrl}
-                cardName={cardName ?? "Source card"}
-                className="w-[60px] h-[84px] rounded-md object-cover shrink-0 shadow-md"
-              />
-            )}
-            <div>
-              <h2
-                id="choose-mode-title"
-                className="font-semibold text-base"
-              >
-                Choose Mode
-              </h2>
-              {cardName && <p className="text-xs text-muted-foreground font-medium">{cardName}</p>}
-              <p className="text-xs text-muted-foreground">{subtitle}</p>
+  return (
+    <Modal maxWidth="max-w-md" maxHeight="" className="outline-none">
+      <div ref={dialogRef} tabIndex={-1} className="outline-none" role="dialog" aria-modal="true" aria-labelledby="choose-mode-title">
+        <Modal.Header>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {imageUrl && (
+                <CardImageThumbnail
+                  imageUrl={imageUrl}
+                  cardName={cardName ?? "Source card"}
+                  className={MODAL_CARD_THUMBNAIL}
+                />
+              )}
+              <div>
+                <h2
+                  id="choose-mode-title"
+                  className="font-semibold text-base"
+                >
+                  Choose Mode
+                </h2>
+                {cardName && <p className="text-xs text-muted-foreground font-medium">{cardName}</p>}
+                <p className="text-xs text-muted-foreground">{subtitle}</p>
+              </div>
             </div>
+            {!isAutoConfirm && (
+              <Badge variant={canConfirm ? "default" : "secondary"} aria-live="polite">
+                {selected.size} / {maxChoices} selected
+              </Badge>
+            )}
           </div>
-          {!isAutoConfirm && (
-            <Badge variant={canConfirm ? "default" : "secondary"} aria-live="polite">
-              {selected.size} / {maxChoices} selected
-            </Badge>
-          )}
-        </div>
+        </Modal.Header>
 
-        {/* Instructions */}
-        <div className="px-4 py-2 bg-blue-50 dark:bg-blue-950/20 border-b">
-          <p className="text-sm font-semibold text-blue-700 dark:text-blue-400 text-center">
-            {isAutoConfirm
-              ? "Click a mode to resolve it."
-              : "Select the modes you want to resolve, then confirm."}
-          </p>
-        </div>
+        <Modal.Instructions>
+          {isAutoConfirm
+            ? "Click a mode to resolve it."
+            : "Select the modes you want to resolve, then confirm."}
+        </Modal.Instructions>
 
         {/* Mode list */}
         <div className="p-4 flex flex-col gap-2 max-h-[60vh] overflow-y-auto" role="group" aria-label="Available modes">
           {options.map((desc, idx) => {
             const isSelected = selected.has(idx);
             const isDisabled = !isAutoConfirm && !isSelected && selected.size >= maxChoices && maxChoices > 1;
-            
+
             return (
               <button
                 key={idx}
@@ -176,7 +160,7 @@ export function ChooseModeModal({
                       )}
                     </span>
                   )}
-                  <span className="leading-tight">{desc}</span>
+                  <span className="leading-tight"><TextWithMana text={desc} /></span>
                 </span>
               </button>
             );
@@ -185,7 +169,7 @@ export function ChooseModeModal({
 
         {/* Footer — only shown when we don't auto-confirm */}
         {!isAutoConfirm && (
-          <div className="flex justify-between items-center px-4 py-3 border-t bg-muted/10 rounded-b-xl gap-2">
+          <div className={MODAL_FOOTER_BETWEEN}>
             <span className="text-xs text-muted-foreground text-left leading-tight max-w-[200px]">
               {minChoices === 0 ? "Choosing a mode is optional." : `You must select at least ${minChoices}.`}
             </span>
@@ -200,7 +184,6 @@ export function ChooseModeModal({
           </div>
         )}
       </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }

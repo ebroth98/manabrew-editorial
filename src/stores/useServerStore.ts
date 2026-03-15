@@ -5,6 +5,8 @@ import type {
   RoomInfo,
   PlayerInfo,
   GameFormat,
+  CardIdentity,
+  PlayerDeckInfo,
   AuthResultPayload,
   RoomListPayload,
   PlayerListPayload,
@@ -31,6 +33,8 @@ interface ServerState {
 
   gameStarted: boolean;
   playerOrder: string[];
+  playerDecks: PlayerDeckInfo[];
+  startingLife: number;
 
   connect(host: string, port: number, username: string, password: string): Promise<void>;
   disconnect(): Promise<void>;
@@ -40,6 +44,7 @@ interface ServerState {
   joinRoom(roomId: string): Promise<void>;
   leaveRoom(): Promise<void>;
   setReady(ready: boolean): Promise<void>;
+  setDeckSelection(deckName: string, deckList: CardIdentity[], commanderName?: string): Promise<void>;
   startGame(): Promise<void>;
 
   setupListeners(): () => void;
@@ -56,6 +61,8 @@ export const useServerStore = create<ServerState>()((set, get) => ({
   players: [],
   gameStarted: false,
   playerOrder: [],
+  playerDecks: [],
+  startingLife: 20,
 
   async connect(host, port, username, password) {
     set({ username, connecting: true, error: null });
@@ -75,6 +82,8 @@ export const useServerStore = create<ServerState>()((set, get) => ({
       currentRoom: null,
       gameStarted: false,
       playerOrder: [],
+      playerDecks: [],
+      startingLife: 20,
       rooms: [],
       players: [],
     });
@@ -104,6 +113,10 @@ export const useServerStore = create<ServerState>()((set, get) => ({
 
   async setReady(ready) {
     await invoke('server_set_ready', { ready });
+  },
+
+  async setDeckSelection(deckName, deckList, commanderName) {
+    await invoke('server_set_deck_selection', { deckName, deckList, commanderName: commanderName ?? null });
   },
 
   async startGame() {
@@ -187,13 +200,25 @@ export const useServerStore = create<ServerState>()((set, get) => ({
           set({
             gameStarted: true,
             playerOrder: e.payload.player_order,
+            playerDecks: e.payload.player_decks,
+            startingLife: e.payload.starting_life,
           });
         }),
       );
 
       unlisteners.push(
-        await listen<ServerErrorPayload>('server:error', () => {
-          // Errors handled by individual callers or shown in UI
+        await listen<ServerErrorPayload>('server:error', (e) => {
+          console.error('[server] error:', e.payload.code, e.payload.message);
+          if (e.payload.code === 'not_in_room') {
+            set({
+              currentRoom: null,
+              gameStarted: false,
+              playerOrder: [],
+              playerDecks: [],
+              startingLife: 20,
+            });
+            void get().listRooms();
+          }
         }),
       );
 
@@ -207,6 +232,8 @@ export const useServerStore = create<ServerState>()((set, get) => ({
             currentRoom: null,
             gameStarted: false,
             playerOrder: [],
+            playerDecks: [],
+            startingLife: 20,
             rooms: [],
             players: [],
           });

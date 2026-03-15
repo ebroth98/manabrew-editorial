@@ -13,6 +13,10 @@ export interface Card {
   supertypes: string[];
   power?: string;
   toughness?: string;
+  /** Base power before modifiers (for buff/debuff color-coding). */
+  basePower?: number;
+  /** Base toughness before modifiers (for buff/debuff color-coding). */
+  baseToughness?: number;
   text: string;
   imageUrl?: string;
   isPlayable: boolean;
@@ -32,10 +36,24 @@ export interface Card {
   isDoubleFaced?: boolean;
   /** True if this card is currently showing its back face. */
   isTransformed?: boolean;
+  /** True if this card is face-down (Morph, Manifest). */
+  isFaceDown?: boolean;
+  /** True if this card is currently bestowed (attached as an Aura via Bestow). */
+  isBestowed?: boolean;
+  /** ID of the card this permanent is attached to (equipment host, enchanted creature). */
+  attachedTo?: string;
+  /** IDs of cards attached to this permanent (equipment, auras). */
+  attachmentIds?: string[];
+  /** True if this card is phased out (treated as not on battlefield). */
+  phasedOut?: boolean;
+  /** True if this creature has been exerted (won't untap next untap step). */
+  exerted?: boolean;
   /** Flashback cost string if the card has flashback (e.g. "1 R"). */
   flashbackCost?: string;
   /** Kicker cost string if the card has kicker (e.g. "W"). */
   kickerCost?: string;
+  /** Effective mana cost after static ability reductions/increases. Only set when different from manaCost. */
+  effectiveManaCost?: string;
 }
 
 export interface Deck {
@@ -59,6 +77,8 @@ export interface Player {
   manaPool: Record<string, number>; // W, U, B, R, G, C
   /** Commander damage received: source card id → total damage. */
   commanderDamage?: Record<string, number>;
+  /** Energy counters (Kaladesh block). */
+  energyCounters?: number;
 }
 
 export interface Table {
@@ -82,6 +102,7 @@ export interface GameView {
   gameId: string; // UUID
   turn: number;
   step: string; // Phase/Step name
+  combatAssignments?: CombatAssignment[];
   activePlayerId: string; // UUID
   priorityPlayerId: string; // UUID
   players: Player[];
@@ -98,6 +119,15 @@ export interface GameView {
   opponentCommandZone?: Card[];
   gameOver?: boolean;
   winnerId?: string | null;
+  /** The player who is the current monarch. */
+  monarchId?: string | null;
+  /** The player who holds the initiative. */
+  initiativeHolderId?: string | null;
+}
+
+export interface CombatAssignment {
+  blockerId: string;
+  attackerId: string;
 }
 
 export interface StackObject {
@@ -105,6 +135,13 @@ export interface StackObject {
   sourceId: string; // UUID
   name: string;
   text: string;
+}
+
+export interface ActivatableAbilityInfo {
+  cardId: string;
+  abilityIndex: number;
+  description: string;
+  isManaAbility: boolean;
 }
 
 export interface ClientCallback {

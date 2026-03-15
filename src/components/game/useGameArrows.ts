@@ -29,6 +29,8 @@ export interface UseGameArrowsOptions {
   attackerIds: string[];
   /** Block assignments the human player has declared so far. */
   blockAssignments: BlockAssignment[];
+  /** Authoritative blocker assignments from the game snapshot. */
+  combatAssignments: BlockAssignment[];
   /** Creature IDs the human player has selected as attackers (chooseAttackers). */
   pendingAttackers: string[];
   /** The human player's ID (for "attacker → me" arrows). */
@@ -82,6 +84,7 @@ function buildArrows(
     promptType,
     attackerIds,
     blockAssignments,
+    combatAssignments,
     pendingAttackers,
     myPlayerId,
     opponentPlayerId,
@@ -118,6 +121,21 @@ function buildArrows(
           type: "block",
         });
       }
+    }
+  }
+
+  // Persist block arrows after declaration using authoritative combat snapshot data.
+  for (const { blockerId, attackerId } of combatAssignments) {
+    const from = cardCenter(container, blockerId);
+    const to = cardCenter(container, attackerId);
+    if (from && to) {
+      arrows.push({
+        fromX: from.x,
+        fromY: from.y,
+        toX: to.x,
+        toY: to.y,
+        type: "block",
+      });
     }
   }
 
@@ -158,6 +176,7 @@ export function useGameArrows(opts: UseGameArrowsOptions): ArrowDef[] {
     promptType,
     attackerIds,
     blockAssignments,
+    combatAssignments,
     pendingAttackers,
     myPlayerId,
     opponentPlayerId,
@@ -178,6 +197,7 @@ export function useGameArrows(opts: UseGameArrowsOptions): ArrowDef[] {
           promptType,
           attackerIds,
           blockAssignments,
+          combatAssignments,
           pendingAttackers,
           myPlayerId,
           opponentPlayerId,
@@ -196,6 +216,7 @@ export function useGameArrows(opts: UseGameArrowsOptions): ArrowDef[] {
     promptType,
     attackerIds,
     blockAssignments,
+    combatAssignments,
     pendingAttackers,
     myPlayerId,
     opponentPlayerId,

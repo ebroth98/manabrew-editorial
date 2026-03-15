@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `ScryEffect.java`.
@@ -17,6 +18,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
 
+    if sa.params.contains_key("Optional") {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let accepted = ctx.agents[target.index()].confirm_action(
+            target,
+            None,
+            "Do you want to scry?",
+            &[],
+            source_name,
+            Some("Scry"),
+        );
+        if !accepted {
+            return;
+        }
+    }
+
     let lib_len = ctx.game.cards_in_zone(ZoneType::Library, target).len();
     if lib_len == 0 || num == 0 {
         return;
@@ -25,12 +41,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let count = num.min(lib_len);
 
     // Take top N cards off the library (index 0 = bottom, last = top).
-    let top_n: Vec<_> = {
+    let mut top_n: Vec<_> = {
         let zone = ctx.game.zone_mut(ZoneType::Library, target);
         let len = zone.cards.len();
         // Take the last `count` cards (top of library).
         zone.cards.split_off(len - count)
     };
+    // Reverse to match Java's iteration order (top-to-bottom).
+    // Java's `getCardsIn(Library, n)` returns cards starting from index 0 (top)
+    // downward, so the deterministic agent must consume RNG in the same order.
+    top_n.reverse();
 
     // Let UI agents pre-build card info for the revealed cards.
     ctx.agents[target.index()].on_library_peek(ctx.game, &top_n);
@@ -56,9 +76,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         zone.cards.insert(0, id);
     }
     // Put remaining top cards back on top (append to end).
-    for &id in &top {
+    // `top` is in top-to-bottom order (from the reversed top_n), so iterate
+    // in reverse to restore original library order (last push = actual top).
+    for &id in top.iter().rev() {
         zone.cards.push(id);
     }
+
+    // Fire Scry trigger
+    ctx.trigger_handler.run_trigger(
+        TriggerType::Scry,
+        RunParams {
+            player: Some(target),
+            ..Default::default()
+        },
+        false,
+    );
 }
 
 #[cfg(test)]
@@ -68,6 +100,7 @@ mod tests {
     use crate::ability::effects::EffectContext;
     use crate::agent::{PassAgent, PlayerAgent};
     use crate::card::CardInstance;
+    use crate::combat::DefenderId;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -94,20 +127,25 @@ mod tests {
     /// Agent that always puts all cards on the bottom.
     struct BottomAllAgent;
     impl PlayerAgent for BottomAllAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(
             &mut self,
             _: PlayerId,
-            _: &[CardId],
+            _: &[crate::agent::PlayOption],
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
         ) -> crate::agent::MainPhaseAction {
             crate::agent::MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             vec![]
         }
         fn choose_blockers(
@@ -164,6 +202,7 @@ mod tests {
             vec![Box::new(BottomAllAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
             agents: &mut agents,
@@ -171,6 +210,7 @@ mod tests {
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
+            rng: &mut rng_adapter,
         };
 
         super::resolve(&mut ctx, &sa);
@@ -196,6 +236,7 @@ mod tests {
         let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
             agents: &mut agents,
@@ -203,6 +244,7 @@ mod tests {
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
+            rng: &mut rng_adapter,
         };
 
         super::resolve(&mut ctx, &sa);

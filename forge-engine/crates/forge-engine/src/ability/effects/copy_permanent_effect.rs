@@ -1,3 +1,4 @@
+use forge_foundation::color::ColorSet;
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
@@ -6,53 +7,126 @@ use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    // Clone a targeted permanent onto the battlefield under the controller's control.
+    // Clone a permanent onto the battlefield under the controller's control.
     // Mirrors Java CopyPermanentEffect.
-    // Supports: PumpKeywords$ (extra keywords on the copy).
-    if let Some(original_id) = sa.target_chosen.target_card {
-        if ctx.game.card(original_id).zone == ZoneType::Battlefield {
-            let original = ctx.game.card(original_id).clone();
+    // Supports: Defined$, SetColor$, AddTypes$, PumpKeywords$.
 
-            let mut copy = CardInstance::new(
-                CardId(0),
-                original.card_name.clone(),
-                sa.activating_player,
-                original.type_line.clone(),
-                original.mana_cost.clone(),
-                original.color,
-                original.base_power,
-                original.base_toughness,
-                original.keywords.clone(),
-                original.abilities.clone(),
-            );
-            copy.triggers = original.triggers.clone();
-            copy.svars = original.svars.clone();
-            copy.static_abilities = original.static_abilities.clone();
-            copy.replacement_effects = original.replacement_effects.clone();
-            // Copies are tokens for zone-change purposes (cease to exist off battlefield).
-            copy.is_token = true;
+    // Resolve the card to copy: Defined$ first, then targeting.
+    let original_id = resolve_original(sa);
+    let Some(original_id) = original_id else {
+        return;
+    };
 
-            // Apply PumpKeywords$ (e.g. "Haste" added temporarily to the copy).
-            if let Some(pump_kws) = sa.params.get("PumpKeywords") {
-                for kw in pump_kws.split(',') {
-                    let kw = kw.trim().to_string();
-                    if !kw.is_empty() {
-                        copy.keywords.push(kw);
-                    }
-                }
+    // For targeted copies, require the original on the battlefield.
+    // For Defined$ Self (Embalm/Eternalize), the card may be in any zone.
+    let is_defined = sa.params.contains_key("Defined");
+    if !is_defined && ctx.game.card(original_id).zone != ZoneType::Battlefield {
+        return;
+    }
+
+    let original = ctx.game.card(original_id).clone();
+
+    let mut copy = CardInstance::new(
+        CardId(0),
+        original.card_name.clone(),
+        sa.activating_player,
+        original.type_line.clone(),
+        original.mana_cost.clone(),
+        original.color,
+        original.base_power,
+        original.base_toughness,
+        original.keywords.clone(),
+        original.abilities.clone(),
+    );
+    copy.triggers = original.triggers.clone();
+    copy.svars = original.svars.clone();
+    copy.static_abilities = original.static_abilities.clone();
+    copy.replacement_effects = original.replacement_effects.clone();
+    // Copies are tokens for zone-change purposes (cease to exist off battlefield).
+    copy.is_token = true;
+
+    // Apply SetColor$ (e.g. Embalm sets color to White).
+    if let Some(set_color) = sa.params.get("SetColor") {
+        copy.color = ColorSet::from_names(set_color);
+    }
+
+    // Apply AddTypes$ (e.g. Embalm adds "Zombie").
+    if let Some(add_types) = sa.params.get("AddTypes") {
+        for t in add_types.split(" & ") {
+            let t = t.trim();
+            if !t.is_empty() && !copy.type_line.subtypes.contains(&t.to_string()) {
+                copy.type_line.subtypes.push(t.to_string());
             }
-
-            let copy_id = ctx.game.create_card(copy);
-            ctx.game
-                .move_card(copy_id, ZoneType::Battlefield, sa.activating_player);
-            ctx.trigger_handler
-                .register_active_trigger(ctx.game, copy_id);
-            emit_zone_trigger(
-                ctx.trigger_handler,
-                copy_id,
-                ZoneType::None,
-                ZoneType::Battlefield,
-            );
         }
     }
+
+    // Apply SetPower$/SetToughness$ (e.g. Eternalize sets to 4/4).
+    if let Some(p) = sa
+        .params
+        .get("SetPower")
+        .and_then(|v| v.parse::<i32>().ok())
+    {
+        copy.base_power = Some(p);
+    }
+    if let Some(t) = sa
+        .params
+        .get("SetToughness")
+        .and_then(|v| v.parse::<i32>().ok())
+    {
+        copy.base_toughness = Some(t);
+    }
+
+    // Apply PumpKeywords$ (e.g. "Haste" added temporarily to the copy).
+    if let Some(pump_kws) = sa.params.get("PumpKeywords") {
+        for kw in pump_kws.split(',') {
+            let kw = kw.trim().to_string();
+            if !kw.is_empty() {
+                copy.keywords.push(kw);
+            }
+        }
+    }
+
+    // Apply AddKeywords$ (e.g. additional keywords on the copy).
+    if let Some(add_kws) = sa.params.get("AddKeywords") {
+        for kw in add_kws.split(" & ") {
+            let kw = kw.trim().to_string();
+            if !kw.is_empty() {
+                copy.keywords.push(kw);
+            }
+        }
+    }
+
+    // Strip mana cost for Embalm/Eternalize copies (they have no mana cost).
+    if sa
+        .params
+        .get("SetManaCost")
+        .map_or(false, |v| v == "0" || v.is_empty())
+    {
+        copy.mana_cost = forge_foundation::mana::ManaCost::no_cost();
+    }
+
+    let copy_id = ctx.game.create_card(copy);
+    ctx.game
+        .move_card(copy_id, ZoneType::Battlefield, sa.activating_player);
+    ctx.trigger_handler
+        .register_active_trigger(ctx.game, copy_id);
+    emit_zone_trigger(
+        ctx.trigger_handler,
+        copy_id,
+        ZoneType::None,
+        ZoneType::Battlefield,
+    );
+}
+
+fn resolve_original(sa: &SpellAbility) -> Option<CardId> {
+    // Check Defined$ parameter first.
+    if let Some(defined) = sa.params.get("Defined") {
+        match defined.as_str() {
+            "Self" => return sa.source,
+            "ParentTarget" => return sa.target_chosen.target_card,
+            _ => {}
+        }
+    }
+    // Fall back to targeting.
+    sa.target_chosen.target_card
 }

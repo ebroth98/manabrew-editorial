@@ -14,7 +14,10 @@
     "ios": "tauri ios dev",
     "android": "tauri android dev",
     "ios-build": "tauri ios build",
-    "android-build": "tauri android build"
+    "android-build": "tauri android build",
+    "build:harness": "cd forge && mvn -pl forge-harness -am package -DskipTests && cd .. && bash scripts/check-harness.sh --update-checksum",
+    "parity": "node scripts/parity.mjs",
+    "parity:test": "bash scripts/check-harness.sh && cargo run -p forge-parity --bin forge-parity -- --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -37,7 +40,7 @@
     "next-themes": "^0.4.6",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
-    "react-hook-form": "^7.71.1",
+    "react-hook-form": "^7.71.2",
     "react-resizable-panels": "^4.6.4",
     "react-router-dom": "^7.13.0",
     "sonner": "^2.0.7",

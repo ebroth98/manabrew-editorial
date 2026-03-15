@@ -6,6 +6,7 @@ import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { useQuery } from "@tanstack/react-query";
 import { getCardByName } from "@/api/scryfall";
+import { FLASH_CARD_SIZE } from "./game.styles";
 
 interface CardPreviewProps {
   card: Card;
@@ -14,8 +15,7 @@ interface CardPreviewProps {
   showBackFace?: boolean;
 }
 
-const CARD_W = 240;
-const CARD_H = 336; // 5:7 ratio
+const { w: CARD_W, h: CARD_H } = FLASH_CARD_SIZE;
 
 /**
  * Floating card preview rendered into document.body via portal.
@@ -111,7 +111,18 @@ export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: Card
               <div className="flex justify-between items-start">
                 <span className="font-bold text-sm leading-tight">{currentCardName}</span>
                 {!hasDoubleFace && (
-                  <ManaSymbols cost={card.manaCost} size="md" />
+                  card.effectiveManaCost ? (
+                    <div className="flex flex-col items-end">
+                      <span className="line-through opacity-50">
+                        <ManaSymbols cost={card.manaCost} size="md" />
+                      </span>
+                      <span className="bg-green-500/20 rounded px-0.5">
+                        <ManaSymbols cost={card.effectiveManaCost} size="md" />
+                      </span>
+                    </div>
+                  ) : (
+                    <ManaSymbols cost={card.manaCost} size="md" />
+                  )
                 )}
               </div>
               {!hasDoubleFace && (

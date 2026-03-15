@@ -1,0 +1,30 @@
+{
+  "label": "Showcase",
+  "desc": "All mechanics sampler (Grixis)",
+  "color": "text-fuchsia-400",
+  "opponent": "random",
+  "ai_eligible": false,
+  "order": 11,
+  "cards": [
+    { "name": "Island", "count": 7, "set": "akh" },
+    { "name": "Swamp", "count": 6, "set": "akh" },
+    { "name": "Mountain", "count": 4, "set": "akh" },
+    { "name": "Lightning Bolt", "count": 2, "set": "m11" },
+    { "name": "Shock", "count": 2, "set": "m21" },
+    { "name": "Counterspell", "count": 2, "set": "mma" },
+    { "name": "Unsummon", "count": 2, "set": "m14" },
+    { "name": "Dragon Fodder", "count": 2, "set": "ktk" },
+    { "name": "Preordain", "count": 2, "set": "m11" },
+    { "name": "Notion Rain", "count": 2, "set": "grn" },
+    { "name": "Ransack the Lab", "count": 2, "set": "mh1" },
+    { "name": "Mind Rot", "count": 2, "set": "m14" },
+    { "name": "Thought Scour", "count": 2, "set": "dka" },
+    { "name": "Raise Dead", "count": 2, "set": "m13" },
+    { "name": "Severed Strands", "count": 2, "set": "grn" },
+    { "name": "Control Magic", "count": 1, "set": "mma" },
+    { "name": "Prey Upon", "count": 2, "set": "isd" },
+    { "name": "Typhoid Rats", "count": 2, "set": "isd" },
+    { "name": "Vampire Nighthawk", "count": 2, "set": "m13" },
+    { "name": "Mulldrifter", "count": 2, "set": "mma" }
+  ]
+}

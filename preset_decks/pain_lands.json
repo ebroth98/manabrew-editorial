@@ -1,0 +1,18 @@
+{
+  "label": "Pain Lands",
+  "desc": "Multi-ability mana + Big creatures",
+  "color": "text-emerald-400",
+  "opponent": "red_burn",
+  "ai_eligible": false,
+  "order": 25,
+  "cards": [
+    { "name": "Forest", "count": 6, "set": "akh" },
+    { "name": "Island", "count": 6, "set": "akh" },
+    { "name": "Yavimaya Coast", "count": 4, "set": "ori" },
+    { "name": "Llanowar Elves", "count": 4, "set": "m19" },
+    { "name": "Colossal Dreadmaw", "count": 4, "set": "rix" },
+    { "name": "Air Elemental", "count": 4, "set": "m20" },
+    { "name": "Arcanis the Omnipotent", "count": 2, "set": "10e" },
+    { "name": "Mulldrifter", "count": 4, "set": "c15" }
+  ]
+}

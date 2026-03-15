@@ -10,17 +10,23 @@ use forge_engine_core::ids::{CardId, PlayerId};
 use forge_foundation::ZoneType;
 
 use rand::SeedableRng;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 
-use crate::ai_agent::SimpleAiAgent;
+use crate::ai_agent::spawn_ai_prompt_responder;
 use crate::card_db::{card_rules_to_instance, get_token_db};
+use crate::game_log_event::GameLogEntryDto;
+use crate::game_snapshot_event::GameSnapshotEventDto;
 use crate::game_view_dto::GameViewDto;
+use crate::ids_codec::player_slot;
+use crate::multiplayer_controller::{
+    parse_remote_response, spawn_engine_prompt_forwarder, spawn_notify_forwarder,
+    spawn_remote_prompt_forwarder, spawn_snapshot_forwarder,
+};
 use crate::preset_decks::{
-    build_ai_opponent, build_custom_deck, build_preset_decks, is_preset_id, CardIdentity,
+    build_ai_opponent, build_custom_deck, build_preset_deck_for_player, build_preset_opponent,
+    is_preset_id, CardIdentity,
 };
 use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
-use crate::remote_agent::RemotePlayerAgent;
-use crate::server_client::ServerClient;
 use crate::tauri_agent::TauriAgent;
 
 pub struct GameManager {
@@ -35,6 +41,7 @@ pub struct GameSession {
     pub remote_response_txs: HashMap<usize, mpsc::Sender<PlayerAction>>,
     pub thread_handle: Option<thread::JoinHandle<()>>,
     pub is_multiplayer: bool,
+    pub is_host: bool,
 }
 
 impl GameManager {
@@ -55,6 +62,7 @@ impl GameManager {
         deck_list: Vec<CardIdentity>,
         starting_life: i32,
         commander_name: Option<String>,
+        opponent_deck_list: Option<Vec<CardIdentity>>,
     ) -> Result<String, String> {
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
 
@@ -75,40 +83,14 @@ impl GameManager {
         // Channels
         let (prompt_tx, prompt_rx) = mpsc::channel::<AgentPrompt>();
         let (response_tx, response_rx) = mpsc::channel::<PlayerAction>();
-        let (notify_tx, notify_rx) = mpsc::channel::<String>();
+        let (notify_tx, notify_rx) = mpsc::channel::<GameLogEntryDto>();
+        let (snapshot_tx, snapshot_rx) = mpsc::channel::<GameSnapshotEventDto>();
 
         let response_tx_clone = response_tx.clone();
 
-        // Prompt forwarder thread: reads prompts, stores latest, and emits Tauri events
-        let app_prompt = app.clone();
-        let latest_prompt = self.latest_prompt.clone();
-        thread::spawn(move || {
-            eprintln!("[prompt_fwd] Prompt forwarder started");
-            while let Ok(prompt) = prompt_rx.recv() {
-                eprintln!("[prompt_fwd] Got prompt, storing and emitting...");
-                if let Ok(mut lp) = latest_prompt.lock() {
-                    *lp = Some(prompt.clone());
-                }
-                match app_prompt.emit("game:prompt", &prompt) {
-                    Ok(()) => eprintln!("[prompt_fwd] Event emitted OK"),
-                    Err(e) => eprintln!("[prompt_fwd] Event emit FAILED: {}", e),
-                }
-            }
-            eprintln!("[prompt_fwd] Prompt forwarder ended (channel closed)");
-        });
-
-        // Notify forwarder thread
-        let app_notify = app.clone();
-        thread::spawn(move || {
-            let window = app_notify.get_webview_window("main");
-            while let Ok(msg) = notify_rx.recv() {
-                let _ = if let Some(ref w) = window {
-                    w.emit("game:log", &msg)
-                } else {
-                    app_notify.emit("game:log", &msg)
-                };
-            }
-        });
+        spawn_engine_prompt_forwarder(app.clone(), self.latest_prompt.clone(), prompt_rx);
+        spawn_notify_forwarder(app.clone(), notify_rx, None);
+        spawn_snapshot_forwarder(app.clone(), snapshot_rx, None);
 
         // Game thread
         let handle = thread::spawn(move || {
@@ -122,9 +104,11 @@ impl GameManager {
                     deck,
                     starting_life,
                     commander_name,
+                    opponent_deck_list,
                     prompt_tx,
                     response_rx,
                     notify_tx,
+                    snapshot_tx,
                 );
             }));
             match result {
@@ -148,6 +132,7 @@ impl GameManager {
             remote_response_txs: HashMap::new(),
             thread_handle: Some(handle),
             is_multiplayer: false,
+            is_host: true,
         });
 
         Ok(game_id)
@@ -158,57 +143,8 @@ impl GameManager {
             // Build a synthetic game-over prompt using the last known game view
             let game_view = {
                 let lp = self.latest_prompt.lock().map_err(|e| e.to_string())?;
-                let base_view = lp.as_ref().and_then(|p| match &p.inner {
-                    AgentPromptInner::ChooseAction { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseAttackers { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseBlockers { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseTargetPlayer { game_view, .. } => {
-                        Some(game_view.clone())
-                    }
-                    AgentPromptInner::ChooseTargetCard { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseTargetAny { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseTargetCardFromZone { game_view, .. } => {
-                        Some(game_view.clone())
-                    }
-                    AgentPromptInner::Mulligan { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::GameOver { game_view } => Some(game_view.clone()),
-                    AgentPromptInner::StateUpdate { game_view } => Some(game_view.clone()),
-                    AgentPromptInner::Scry { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::Surveil { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::Dig { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseDiscard { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseTargetSpell { game_view, .. } => {
-                        Some(game_view.clone())
-                    }
-                    AgentPromptInner::ChooseMode { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseOptionalTrigger { game_view, .. } => {
-                        Some(game_view.clone())
-                    }
-                    AgentPromptInner::ChooseKicker { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseBuyback { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseMultikicker { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseReplicate { game_view, .. } => Some(game_view.clone()),
-                    AgentPromptInner::ChooseAlternativeCost { game_view, .. } => Some(game_view.clone()),
-                });
-                let mut view = base_view.unwrap_or_else(|| GameViewDto {
-                    game_id: String::new(),
-                    turn: 0,
-                    step: "main1".into(),
-                    active_player_id: String::new(),
-                    priority_player_id: String::new(),
-                    players: vec![],
-                    my_hand: vec![],
-                    battlefield: vec![],
-                    stack: vec![],
-                    exile: vec![],
-                    graveyard: vec![],
-                    opponent_graveyard: vec![],
-                    opponent_exile: vec![],
-                    my_command_zone: vec![],
-                    opponent_command_zone: vec![],
-                    game_over: false,
-                    winner_id: None,
-                });
+                let base_view = lp.as_ref().map(|p| p.inner.game_view().clone());
+                let mut view = base_view.unwrap_or_else(|| GameViewDto::empty(String::new()));
                 let opponent_id = view
                     .players
                     .iter()
@@ -229,9 +165,10 @@ impl GameManager {
             // Unblock the game thread with a no-op
             let session_guard = self.session.lock().map_err(|e| e.to_string())?;
             if let Some(session) = session_guard.as_ref() {
-                let _ = session
-                    .response_tx
-                    .send(PlayerAction::PlayCard { card_id: None });
+                let _ = session.response_tx.send(PlayerAction::PlayCard {
+                    card_id: None,
+                    mode: None,
+                });
             }
             return Ok(());
         }
@@ -266,15 +203,23 @@ impl GameManager {
         &self,
         app: AppHandle,
         player_names: Vec<String>,
-        host_player_index: usize,
+        deck_lists: Vec<Vec<CardIdentity>>,
+        engine_player_index: usize,
+        local_is_host: bool,
         starting_life: i32,
     ) -> Result<String, String> {
         let num_players = player_names.len();
         if num_players < 2 {
             return Err("Need at least 2 players".into());
         }
-        if host_player_index >= num_players {
-            return Err("Invalid host player index".into());
+        if engine_player_index >= num_players {
+            return Err("Invalid engine player index".into());
+        }
+        if deck_lists.len() != num_players {
+            return Err("Deck list count must match player count".into());
+        }
+        if deck_lists.iter().any(|deck| deck.is_empty()) {
+            return Err("All players must have a selected deck".into());
         }
 
         let mut session_guard = self.session.lock().map_err(|e| e.to_string())?;
@@ -288,15 +233,22 @@ impl GameManager {
             *lp = None;
         }
 
+        // Multiplayer is single-engine authoritative; non-host peers run relay-only.
+        // Host identity is provided by the client from lobby state.
+        if !local_is_host {
+            return Ok("relay-only".into());
+        }
+
         let game_id = format!("game-{}", uuid_simple());
         let game_id_clone = game_id.clone();
 
-        // Host player channels (TauriAgent)
-        let (host_prompt_tx, host_prompt_rx) = mpsc::channel::<AgentPrompt>();
-        let (host_response_tx, host_response_rx) = mpsc::channel::<PlayerAction>();
-        let (host_notify_tx, notify_rx) = mpsc::channel::<String>();
+        // Engine-local player channels (TauriAgent)
+        let (engine_prompt_tx, engine_prompt_rx) = mpsc::channel::<AgentPrompt>();
+        let (engine_response_tx, engine_response_rx) = mpsc::channel::<PlayerAction>();
+        let (engine_notify_tx, notify_rx) = mpsc::channel::<GameLogEntryDto>();
+        let (engine_snapshot_tx, snapshot_rx) = mpsc::channel::<GameSnapshotEventDto>();
 
-        let host_response_tx_clone = host_response_tx.clone();
+        let engine_response_tx_clone = engine_response_tx.clone();
 
         // Remote players: shared prompt channel and per-player response channels
         let (remote_prompt_tx, remote_prompt_rx) = mpsc::channel::<(usize, AgentPrompt)>();
@@ -304,7 +256,7 @@ impl GameManager {
         let mut remote_response_rxs: Vec<(usize, mpsc::Receiver<PlayerAction>)> = Vec::new();
 
         for i in 0..num_players {
-            if i != host_player_index {
+            if i != engine_player_index {
                 let (resp_tx, resp_rx) = mpsc::channel::<PlayerAction>();
                 remote_response_txs.insert(i, resp_tx);
                 remote_response_rxs.push((i, resp_rx));
@@ -312,63 +264,29 @@ impl GameManager {
         }
 
         // Keep clones for the game thread (which builds agents internally)
-        let game_host_prompt_tx = host_prompt_tx.clone();
+        let game_engine_prompt_tx = engine_prompt_tx.clone();
         let game_remote_prompt_tx = remote_prompt_tx.clone();
 
         // Drop extra senders so forwarders terminate when the game thread ends
-        drop(host_prompt_tx);
+        drop(engine_prompt_tx);
         drop(remote_prompt_tx);
 
-        // Host prompt forwarder (same as single-player)
-        let app_prompt = app.clone();
-        let latest_prompt = self.latest_prompt.clone();
-        thread::spawn(move || {
-            eprintln!("[prompt_fwd] Host prompt forwarder started");
-            while let Ok(prompt) = host_prompt_rx.recv() {
-                if let Ok(mut lp) = latest_prompt.lock() {
-                    *lp = Some(prompt.clone());
-                }
-                let _ = app_prompt.emit("game:prompt", &prompt);
-            }
-            eprintln!("[prompt_fwd] Host prompt forwarder ended");
-        });
-
-        // Notify forwarder
-        let app_notify = app.clone();
-        thread::spawn(move || {
-            let window = app_notify.get_webview_window("main");
-            while let Ok(msg) = notify_rx.recv() {
-                let _ = if let Some(ref w) = window {
-                    w.emit("game:log", &msg)
-                } else {
-                    app_notify.emit("game:log", &msg)
-                };
-            }
-        });
-
-        // Remote prompt forwarder: reads (player_index, prompt) and broadcasts via server
-        let app_remote = app.clone();
-        thread::spawn(move || {
-            eprintln!("[remote_fwd] Remote prompt forwarder started");
-            while let Ok((player_index, prompt)) = remote_prompt_rx.recv() {
-                let envelope = serde_json::json!({
-                    "kind": "prompt",
-                    "forPlayer": format!("player-{}", player_index),
-                    "prompt": prompt,
-                });
-                let msg = serde_json::json!({
-                    "type": "BroadcastState",
-                    "state": envelope,
-                });
-                if let Some(client) = app_remote.try_state::<ServerClient>() {
-                    let _ = client.send(&msg.to_string());
-                }
-            }
-            eprintln!("[remote_fwd] Remote prompt forwarder ended");
-        });
+        spawn_engine_prompt_forwarder(app.clone(), self.latest_prompt.clone(), engine_prompt_rx);
+        spawn_notify_forwarder(
+            app.clone(),
+            notify_rx,
+            Some(player_slot(engine_player_index)),
+        );
+        spawn_snapshot_forwarder(
+            app.clone(),
+            snapshot_rx,
+            Some(player_slot(engine_player_index)),
+        );
+        spawn_remote_prompt_forwarder(app.clone(), remote_prompt_rx);
 
         // Game thread
         let player_name_strs = player_names.clone();
+        let selected_deck_lists = deck_lists.clone();
         let handle = thread::spawn(move || {
             eprintln!(
                 "[game_thread] Starting multiplayer game: {} with {} players",
@@ -378,11 +296,13 @@ impl GameManager {
                 run_multiplayer_game(
                     game_id_clone.clone(),
                     player_name_strs,
-                    host_player_index,
+                    selected_deck_lists,
+                    engine_player_index,
                     starting_life,
-                    game_host_prompt_tx,
-                    host_response_rx,
-                    host_notify_tx,
+                    game_engine_prompt_tx,
+                    engine_response_rx,
+                    engine_notify_tx,
+                    engine_snapshot_tx,
                     game_remote_prompt_tx,
                     remote_response_rxs,
                 );
@@ -404,10 +324,11 @@ impl GameManager {
 
         *session_guard = Some(GameSession {
             game_id: game_id.clone(),
-            response_tx: host_response_tx_clone,
+            response_tx: engine_response_tx_clone,
             remote_response_txs,
             thread_handle: Some(handle),
             is_multiplayer: true,
+            is_host: local_is_host,
         });
 
         Ok(game_id)
@@ -415,36 +336,10 @@ impl GameManager {
 
     /// Route a response from a remote player to the appropriate agent's channel.
     pub fn route_remote_response(&self, state: &serde_json::Value) {
-        let from_player = match state.get("fromPlayer").and_then(|v| v.as_str()) {
-            Some(s) => s,
-            None => {
-                eprintln!("[route] Missing fromPlayer in response envelope");
-                return;
-            }
-        };
-
-        // Parse "player-N" → N
-        let player_index: usize = match from_player
-            .strip_prefix("player-")
-            .and_then(|n| n.parse().ok())
-        {
-            Some(idx) => idx,
-            None => {
-                eprintln!("[route] Invalid fromPlayer: {}", from_player);
-                return;
-            }
-        };
-
-        let action: PlayerAction = match state.get("action") {
-            Some(v) => match serde_json::from_value(v.clone()) {
-                Ok(a) => a,
-                Err(e) => {
-                    eprintln!("[route] Failed to deserialize action: {}", e);
-                    return;
-                }
-            },
-            None => {
-                eprintln!("[route] Missing action in response envelope");
+        let (player_index, action) = match parse_remote_response(state) {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("[route] {}", e);
                 return;
             }
         };
@@ -464,6 +359,22 @@ impl GameManager {
             }
         }
     }
+
+    pub fn restore_snapshot(&self, checkpoint_id: u64) -> Result<(), String> {
+        let session_guard = self.session.lock().map_err(|e| e.to_string())?;
+        if let Some(session) = session_guard.as_ref() {
+            if session.is_multiplayer && !session.is_host {
+                return Err("Only the host can restore snapshots".into());
+            }
+            session
+                .response_tx
+                .send(PlayerAction::RestoreSnapshot { checkpoint_id })
+                .map_err(|e| format!("Game thread not responding: {}", e))?;
+            Ok(())
+        } else {
+            Err("No active game session".into())
+        }
+    }
 }
 
 fn uuid_simple() -> String {
@@ -477,23 +388,37 @@ fn run_game(
     deck_list: Vec<CardIdentity>,
     starting_life: i32,
     commander_name: Option<String>,
+    opponent_deck_list: Option<Vec<CardIdentity>>,
     prompt_tx: mpsc::Sender<AgentPrompt>,
     response_rx: mpsc::Receiver<PlayerAction>,
-    notify_tx: mpsc::Sender<String>,
+    notify_tx: mpsc::Sender<GameLogEntryDto>,
+    snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
 ) {
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
 
     let mut game = GameState::new(&["You", "AI Opponent"], starting_life);
 
-    // Build human player deck: if a single preset ID is given, use that;
-    // otherwise build a custom deck from the card name list.
+    // Build human player deck
     if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
-        build_preset_decks(&mut game, &deck_list[0].name, p0, p1);
+        build_preset_deck_for_player(&mut game, &deck_list[0].name, p0);
     } else {
-        // Custom deck: build human player deck from card names sent by the frontend.
         build_custom_deck(&mut game, p0, &deck_list);
-        // AI always plays red burn as a simple opponent.
+    }
+
+    // Build AI opponent deck: use user-chosen opponent if provided,
+    // otherwise fall back to the preset's configured opponent or random.
+    if let Some(ref opp_deck) = opponent_deck_list {
+        if opp_deck.len() == 1 && is_preset_id(&opp_deck[0].name) {
+            build_preset_deck_for_player(&mut game, &opp_deck[0].name, p1);
+        } else {
+            build_custom_deck(&mut game, p1, opp_deck);
+        }
+    } else if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
+        // Legacy behavior: use the preset's configured opponent
+        let preset_id = &deck_list[0].name;
+        build_preset_opponent(&mut game, preset_id, p1);
+    } else {
         build_ai_opponent(&mut game, p1);
     }
 
@@ -510,17 +435,27 @@ fn run_game(
         }
     }
 
-    let human = TauriAgent::new(
+    let human = TauriAgent::new_local(
         p0,
         game_id.clone(),
         prompt_tx.clone(),
         response_rx,
         notify_tx,
+        snapshot_tx,
     );
-    let ai = SimpleAiAgent;
+
+    let (ai_prompt_tx, ai_prompt_rx) = mpsc::channel::<AgentPrompt>();
+    let (ai_response_tx, ai_response_rx) = mpsc::channel::<PlayerAction>();
+    spawn_ai_prompt_responder(ai_prompt_rx, ai_response_tx);
+    let ai = TauriAgent::new_ai(p1, game_id.clone(), ai_prompt_tx, ai_response_rx);
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(human), Box::new(ai)];
     let mut game_loop = GameLoop::new(2);
+    if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
+        game_loop.game_log.set_enabled(true);
+    }
+    game_loop.experimental_restore_snapshot =
+        std::env::var("FORGE_ENGINE_RESTORE_SNAPSHOT").is_ok();
 
     // Register token templates so the engine can instantiate tokens by script name.
     // Uses a placeholder owner (p0); the actual owner/controller is set at creation time.
@@ -532,7 +467,7 @@ fn run_game(
 
     let mut rng = rand::rngs::StdRng::from_entropy();
 
-    let winner = game_loop.run(&mut game, &mut agents, &mut rng, 50);
+    let winner = game_loop.run(&mut game, &mut agents, &mut rng, 5000);
 
     // Send final game-over prompt
     let final_view = GameViewDto::from_engine(&game, &game_loop.mana_pools, p0, &game_id, &[], &[]);
@@ -549,11 +484,13 @@ fn run_game(
 fn run_multiplayer_game(
     game_id: String,
     player_names: Vec<String>,
-    host_player_index: usize,
+    deck_lists: Vec<Vec<CardIdentity>>,
+    engine_player_index: usize,
     starting_life: i32,
-    host_prompt_tx: mpsc::Sender<AgentPrompt>,
-    host_response_rx: mpsc::Receiver<PlayerAction>,
-    host_notify_tx: mpsc::Sender<String>,
+    engine_prompt_tx: mpsc::Sender<AgentPrompt>,
+    engine_response_rx: mpsc::Receiver<PlayerAction>,
+    engine_notify_tx: mpsc::Sender<GameLogEntryDto>,
+    engine_snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
     remote_prompt_tx: mpsc::Sender<(usize, AgentPrompt)>,
     remote_response_rxs: Vec<(usize, mpsc::Receiver<PlayerAction>)>,
 ) {
@@ -562,13 +499,14 @@ fn run_multiplayer_game(
     let mut game = GameState::new(&name_refs, starting_life);
 
     // Build agents inside the thread (avoids Send issues with trait objects).
-    let host_pid = PlayerId(host_player_index as u32);
-    let mut host_agent: Option<Box<dyn PlayerAgent>> = Some(Box::new(TauriAgent::new(
-        host_pid,
+    let engine_pid = PlayerId(engine_player_index as u32);
+    let mut engine_agent: Option<Box<dyn PlayerAgent>> = Some(Box::new(TauriAgent::new_local(
+        engine_pid,
         game_id.clone(),
-        host_prompt_tx.clone(),
-        host_response_rx,
-        host_notify_tx,
+        engine_prompt_tx.clone(),
+        engine_response_rx,
+        engine_notify_tx,
+        engine_snapshot_tx,
     )));
 
     let mut remote_rx_map: HashMap<usize, mpsc::Receiver<PlayerAction>> =
@@ -576,27 +514,35 @@ fn run_multiplayer_game(
 
     let mut agents: Vec<Box<dyn PlayerAgent>> = Vec::with_capacity(num_players);
     for i in 0..num_players {
-        if i == host_player_index {
-            agents.push(host_agent.take().unwrap());
+        if i == engine_player_index {
+            agents.push(engine_agent.take().unwrap());
         } else {
             let pid = PlayerId(i as u32);
             let resp_rx = remote_rx_map
                 .remove(&i)
                 .expect("Missing response rx for remote player");
             let agent =
-                RemotePlayerAgent::new(pid, i, game_id.clone(), remote_prompt_tx.clone(), resp_rx);
+                TauriAgent::new_relay(pid, i, game_id.clone(), remote_prompt_tx.clone(), resp_rx);
             agents.push(Box::new(agent));
         }
     }
 
-    // For now, all players get the red burn preset deck.
-    // Deck selection for multiplayer will be added later.
     for i in 0..num_players {
         let pid = PlayerId(i as u32);
-        build_ai_opponent(&mut game, pid);
+        let deck_list = &deck_lists[i];
+        if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
+            build_preset_deck_for_player(&mut game, &deck_list[0].name, pid);
+        } else {
+            build_custom_deck(&mut game, pid, deck_list);
+        }
     }
 
     let mut game_loop = GameLoop::new(num_players);
+    if std::env::var("FORGE_ENGINE_GAME_LOG").is_err() {
+        game_loop.game_log.set_enabled(true);
+    }
+    game_loop.experimental_restore_snapshot =
+        std::env::var("FORGE_ENGINE_RESTORE_SNAPSHOT").is_ok();
 
     let p0 = PlayerId(0);
     let token_db = get_token_db();
@@ -607,22 +553,22 @@ fn run_multiplayer_game(
 
     let mut rng = rand::rngs::StdRng::from_entropy();
 
-    let _winner = game_loop.run(&mut game, &mut agents, &mut rng, 50);
+    let _winner = game_loop.run(&mut game, &mut agents, &mut rng, 5000);
 
-    // Send final game-over prompt to the host
-    let host_pid = PlayerId(host_player_index as u32);
-    let host_final_view =
-        GameViewDto::from_engine(&game, &game_loop.mana_pools, host_pid, &game_id, &[], &[]);
-    let _ = host_prompt_tx.send(AgentPrompt {
+    // Send final game-over prompt to the engine-local player.
+    let engine_pid = PlayerId(engine_player_index as u32);
+    let engine_final_view =
+        GameViewDto::from_engine(&game, &game_loop.mana_pools, engine_pid, &game_id, &[], &[]);
+    let _ = engine_prompt_tx.send(AgentPrompt {
         display_events: vec![],
         inner: AgentPromptInner::GameOver {
-            game_view: host_final_view,
+            game_view: engine_final_view,
         },
     });
 
     // Send final game-over prompt to each remote player
     for i in 0..num_players {
-        if i == host_player_index {
+        if i == engine_player_index {
             continue;
         }
         let pid = PlayerId(i as u32);

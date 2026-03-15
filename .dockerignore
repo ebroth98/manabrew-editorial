@@ -1,0 +1,35 @@
+# Git & CI
+.git/
+.github/
+.gitignore
+
+# Rust build artifacts
+target/
+src-tauri/target/
+
+# Node / Tauri dev artifacts
+node_modules/
+dist/
+
+# IDE & OS
+.DS_Store
+*.swp
+.idea/
+.vscode/
+
+# Database & logs
+parity.db
+*.log
+
+# Documentation (not needed in image)
+*.md
+
+# Unused forge modules (not needed for forge-harness build)
+forge/forge-gui-desktop/
+forge/forge-gui-mobile/
+forge/forge-gui-mobile-dev/
+forge/forge-gui-ios/
+forge/forge-gui-android/
+forge/forge-installer/
+forge/forge-lda/
+forge/adventure-editor/

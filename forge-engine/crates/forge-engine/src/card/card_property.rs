@@ -14,8 +14,9 @@ use crate::ids::PlayerId;
 /// and combined dot-separated filters (e.g. "OppCtrl.nonBlack").
 /// Mirrors Java's `CardProperty.cardHasProperty()` with dot-separated qualifiers.
 pub fn card_has_property(card: &CardInstance, filter: &str, source_controller: PlayerId) -> bool {
-    // Handle dot-separated compound filters (e.g. "OppCtrl.nonBlack")
-    for part in filter.split('.') {
+    // Handle compound filters separated by '.' or '+' (e.g. "OppCtrl.nonBlack", "nonLand+OppCtrl")
+    // Both separators mean AND — all parts must match.
+    for part in filter.split(|c| c == '.' || c == '+') {
         if !matches_single_property(card, part, source_controller) {
             return false;
         }
@@ -31,14 +32,67 @@ fn matches_single_property(
     source_controller: PlayerId,
 ) -> bool {
     match property {
+        // Inclusive type checks (mirrors Java Card.isValid type token before dot).
+        "Card" | "card" => true,
+        "Permanent" => card.is_permanent(),
+        "Creature" => card.is_creature(),
+        "Land" => card.is_land(),
+        "Instant" => card.type_line.is_instant(),
+        "Sorcery" => card.type_line.is_sorcery(),
+        "Artifact" => card.type_line.is_artifact(),
+        "Enchantment" => card.type_line.is_enchantment(),
+        "Planeswalker" => card.type_line.is_planeswalker(),
         "OppCtrl" => card.controller != source_controller,
         "YouCtrl" => card.controller == source_controller,
+        "YouDontCtrl" => card.controller != source_controller,
+        // Combat qualifier used by scripts such as Stalking Leonin
+        // (`ValidTgts$ Creature.attackingYou`): card must currently be
+        // attacking the source controller.
+        "attackingYou" => card.attacking_player == Some(source_controller),
         "Other" => true, // "Other" means "not self" — handled at call site
+        // Type-based filters
+        "nonLand" => !card.type_line.is_land(),
+        "nonCreature" => !card.is_creature(),
+        "nonArtifact" => !card.type_line.is_artifact(),
         _ => {
             let lower = property.to_ascii_lowercase();
+            if let Some(rest) = lower.strip_prefix("cmcge") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() >= n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("cmcgt") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() > n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("cmcle") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() <= n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("cmclt") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() < n;
+                }
+                return false;
+            }
+            if let Some(rest) = lower.strip_prefix("cmceq") {
+                if let Ok(n) = rest.parse::<i32>() {
+                    return card.mana_cost.cmc() == n;
+                }
+                return false;
+            }
             if let Some(color_name) = lower.strip_prefix("non") {
                 let excluded = ColorSet::from_names(color_name);
                 !card.color.shares_color_with(excluded)
+            } else if let Some(keyword) = property.strip_prefix("without") {
+                !card.has_keyword(keyword)
+            } else if let Some(keyword) = property.strip_prefix("with") {
+                card.has_keyword(keyword)
             } else {
                 // No recognized property — match everything
                 true
@@ -127,5 +181,55 @@ mod tests {
         let caster = PlayerId(0);
         // OppCtrl.nonBlack → opponent controls + not black → true for green creature
         assert!(card_has_property(&card, "OppCtrl.nonBlack", caster));
+    }
+
+    #[test]
+    fn creature_you_ctrl_requires_creature_type() {
+        use crate::ids::CardId;
+
+        let sorcery = CardInstance::new(
+            CardId(2),
+            "Innocent Blood".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Sorcery"),
+            ManaCost::parse("B"),
+            ColorSet::BLACK,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+
+        assert!(!card_has_property(
+            &sorcery,
+            "Creature.YouCtrl",
+            PlayerId(0)
+        ));
+    }
+
+    #[test]
+    fn cmc_comparators() {
+        use crate::ids::CardId;
+
+        let creature = CardInstance::new(
+            CardId(3),
+            "Hill Giant".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Creature - Giant"),
+            ManaCost::parse("3 R"),
+            ColorSet::RED,
+            Some(3),
+            Some(3),
+            vec![],
+            vec![],
+        );
+
+        assert!(card_has_property(&creature, "cmcGE3", PlayerId(0)));
+        assert!(card_has_property(&creature, "cmcGT2", PlayerId(0)));
+        assert!(card_has_property(&creature, "cmcLE4", PlayerId(0)));
+        assert!(card_has_property(&creature, "cmcLT5", PlayerId(0)));
+        assert!(card_has_property(&creature, "cmcEQ4", PlayerId(0)));
+        assert!(!card_has_property(&creature, "cmcGE5", PlayerId(0)));
+        assert!(!card_has_property(&creature, "cmcEQ3", PlayerId(0)));
     }
 }

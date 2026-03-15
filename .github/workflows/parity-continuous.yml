@@ -1,0 +1,61 @@
+name: Continuous Parity
+
+on:
+  schedule:
+    # Run nightly at 3:00 AM UTC
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      max_games:
+        description: "Number of games to run"
+        default: "100"
+        type: string
+      threshold:
+        description: "Pass rate threshold (0.0-1.0)"
+        default: "0.90"
+        type: string
+      fuzz_per_batch:
+        description: "Fuzz games per preset batch (0 to disable)"
+        default: "0"
+        type: string
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  continuous-parity:
+    runs-on: self-hosted
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Java parity harness JAR
+        working-directory: forge
+        run: mvn -pl forge-harness -am -DskipTests package
+
+      - name: Build forge-parity with storage feature
+        run: cargo build -p forge-parity --features storage --release
+
+      - name: Run continuous parity
+        run: |
+          MAX_GAMES="${{ inputs.max_games || '100' }}"
+          THRESHOLD="${{ inputs.threshold || '0.90' }}"
+          FUZZ_PER_BATCH="${{ inputs.fuzz_per_batch || '0' }}"
+
+          cargo run -p forge-parity --bin forge-parity --features storage --release -- \
+            --continuous \
+            --max-games "$MAX_GAMES" \
+            --threshold "$THRESHOLD" \
+            --fuzz-per-batch "$FUZZ_PER_BATCH" \
+            --db-path parity-ci.db \
+            --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar
+
+      - name: Upload parity database
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-db-${{ github.run_id }}
+          path: parity-ci.db
+          retention-days: 30

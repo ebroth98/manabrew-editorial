@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{emit_zone_trigger, matches_valid_cards, EffectContext};
+use super::{emit_zone_trigger_with_lki_counters, matches_valid_cards, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
@@ -57,6 +57,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue;
         }
         let owner = ctx.game.card(card_id).owner;
+        // Capture +1/+1 counter count before move (for Modular death triggers)
+        let lki_p1p1 = *ctx
+            .game
+            .card(card_id)
+            .counters
+            .get(&crate::card::CounterType::P1P1)
+            .unwrap_or(&0);
         ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
         ctx.trigger_handler.run_trigger(
             TriggerType::Destroyed,
@@ -66,11 +73,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             },
             false,
         );
-        emit_zone_trigger(
+        emit_zone_trigger_with_lki_counters(
             ctx.trigger_handler,
             card_id,
             ZoneType::Battlefield,
             ZoneType::Graveyard,
+            lki_p1p1,
         );
     }
 }
@@ -111,6 +119,7 @@ mod tests {
         trigger_handler: &'a mut TriggerHandler,
         mana_pools: &'a mut Vec<ManaPool>,
         token_templates: &'a HashMap<String, CardInstance>,
+        rng: &'a mut dyn crate::game_rng::GameRng,
     ) -> EffectContext<'a> {
         EffectContext {
             game,
@@ -119,6 +128,7 @@ mod tests {
             token_templates,
             mana_pools,
             parent_target_card: None,
+            rng,
         }
     }
 
@@ -142,7 +152,15 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
-        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates);
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = make_ctx(
+            &mut game,
+            &mut agents,
+            &mut th,
+            &mut mp,
+            &templates,
+            &mut rng_adapter,
+        );
         super::resolve(&mut ctx, &sa);
 
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Battlefield, p0).len(), 0);
@@ -170,7 +188,15 @@ mod tests {
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
-        let mut ctx = make_ctx(&mut game, &mut agents, &mut th, &mut mp, &templates);
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = make_ctx(
+            &mut game,
+            &mut agents,
+            &mut th,
+            &mut mp,
+            &templates,
+            &mut rng_adapter,
+        );
         super::resolve(&mut ctx, &sa);
 
         // One creature destroyed, indestructible one stays

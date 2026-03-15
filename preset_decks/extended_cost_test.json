@@ -1,0 +1,23 @@
+{
+  "label": "Extended Costs",
+  "desc": "Buyback + Evoke + Madness + Rebound + Dash",
+  "color": "text-orange-500",
+  "opponent": "red_burn",
+  "ai_eligible": false,
+  "order": 21,
+  "cards": [
+    { "name": "Mountain", "count": 8, "set": "akh" },
+    { "name": "Island", "count": 6, "set": "akh" },
+    { "name": "Swamp", "count": 3, "set": "akh" },
+    { "name": "Whispers of the Muse", "count": 3, "set": "tmp" },
+    { "name": "Mulldrifter", "count": 3, "set": "mma" },
+    { "name": "Fiery Temper", "count": 3, "set": "tor" },
+    { "name": "Staggershock", "count": 3, "set": "roe" },
+    { "name": "Goblin Heelcutter", "count": 3, "set": "frf" },
+    { "name": "Gigadrowse", "count": 3, "set": "gpt" },
+    { "name": "Mizzium Mortars", "count": 2, "set": "rtr" },
+    { "name": "Skewer the Critics", "count": 3, "set": "rna" },
+    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
+    { "name": "Shock", "count": 3, "set": "m21" }
+  ]
+}

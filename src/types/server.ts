@@ -1,5 +1,10 @@
 export type GameFormat = 'Standard' | 'Commander';
 
+export interface CardIdentity {
+  name: string;
+  setCode: string;
+}
+
 export interface RoomInfo {
   room_id: string;
   room_name: string;
@@ -14,6 +19,14 @@ export interface RoomPlayerInfo {
   username: string;
   ready: boolean;
   connected: boolean;
+  selected_deck_name?: string;
+}
+
+export interface PlayerDeckInfo {
+  username: string;
+  deck_name: string;
+  deck_list: CardIdentity[];
+  commander_name?: string;
 }
 
 export interface PlayerInfo {
@@ -69,6 +82,8 @@ export interface ReadyChangedPayload {
 export interface GameStartedPayload {
   room_id: string;
   player_order: string[];
+  player_decks: PlayerDeckInfo[];
+  starting_life: number;
 }
 
 export interface StateUpdatePayload {

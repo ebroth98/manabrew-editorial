@@ -1,0 +1,17 @@
+{
+  "label": "White Static",
+  "desc": "Anthems + Indestructible",
+  "color": "text-yellow-200",
+  "opponent": "green_stompy",
+  "ai_eligible": true,
+  "order": 4,
+  "cards": [
+    { "name": "Plains", "count": 16, "set": "akh" },
+    { "name": "Glorious Anthem", "count": 3, "set": "m14" },
+    { "name": "Honor of the Pure", "count": 3, "set": "m11" },
+    { "name": "Darksteel Myr", "count": 3, "set": "som" },
+    { "name": "Savannah Lions", "count": 4, "set": "m10" },
+    { "name": "White Knight", "count": 4, "set": "m10" },
+    { "name": "Serra Angel", "count": 3, "set": "m21" }
+  ]
+}

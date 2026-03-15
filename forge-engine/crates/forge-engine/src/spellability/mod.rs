@@ -5,6 +5,7 @@ use std::collections::BTreeMap;
 
 use serde::{Deserialize, Serialize};
 
+use crate::ability::effects::resolve_defined_players;
 use crate::agent::{PlayerAgent, TargetChoice};
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
@@ -16,8 +17,9 @@ use forge_foundation::ZoneType;
 pub use target_choices::TargetChoices;
 pub use target_restrictions::{TargetKind, TargetRestrictions};
 
-/// Alternative cost used to cast a spell (Flashback, Escape, etc.).
-/// Mirrors Java's `SpellAbility.getAlternativeCost()`.
+/// Alternative casting costs — mirrors Java's `OptionalCost` / `AlternativeCost`.
+/// Tracks how a spell was cast so resolution can apply the correct behaviour
+/// (e.g. Evoke → sacrifice on ETB, Dash → haste + bounce, Flashback → exile on resolve).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum AlternativeCost {
     Flashback,
@@ -30,7 +32,27 @@ pub enum AlternativeCost {
     Madness,
     Foretell,
     Emerge,
+    Suspend,
+    /// Cast face-down as a 2/2 creature for {3} (Morph).
+    Morph,
+    /// Cast face-down as a 2/2 creature for {3}, +1/+1 counter on turn face-up (Megamorph).
+    Megamorph,
+    /// Cast as an Aura with enchant creature for the bestow cost.
+    Bestow,
 }
+
+impl AlternativeCost {
+    /// True if this is a morph-style face-down cast (Morph or Megamorph).
+    pub fn is_morph(self) -> bool {
+        matches!(self, AlternativeCost::Morph | AlternativeCost::Megamorph)
+    }
+}
+
+/// Generic mana cost for casting a card face-down via Morph/Megamorph ({3}).
+pub const MORPH_GENERIC_COST: i32 = 3;
+
+/// Power and toughness of a face-down morph creature.
+pub const MORPH_PT: i32 = 2;
 
 // ── SpellAbility (mirrors Java's SpellAbility.java) ──────────────────
 
@@ -46,6 +68,9 @@ pub struct SpellAbility {
     pub source: Option<CardId>,
     /// The player who activated/cast this. Mirrors Java's `activatingPlayer`.
     pub activating_player: PlayerId,
+    /// The player who chooses this ability's targets. Mirrors Java's
+    /// `targetingPlayer` field.
+    pub targeting_player: Option<PlayerId>,
     /// The raw ability text (pipe-delimited params).
     pub ability_text: String,
     /// Parsed pipe-delimited parameters.
@@ -73,20 +98,28 @@ pub struct SpellAbility {
     pub trigger_source: Option<CardId>,
     /// Index into card.triggers for intervening-if recheck.
     pub trigger_index: Option<usize>,
-    /// Alternative cost used (Flashback, etc.). `None` for normal casting.
+    /// Alternative cost used to cast this spell (Flashback, Spectacle, Evoke, Dash, etc.).
     pub alt_cost: Option<AlternativeCost>,
     /// Whether the kicker cost was paid.
     pub kicked: bool,
-    /// Whether this is a copy (e.g. from Storm). Copies have no physical card.
-    pub is_copy: bool,
-    /// Whether the buyback cost was paid.
+    /// Whether buyback was paid (spell returns to hand on resolve).
     pub buyback_paid: bool,
-    /// Whether the spell was overloaded (Overload alternative cost).
+    /// Whether this spell is overloaded (targets all valid instead of one).
     pub overloaded: bool,
-    /// How many times the multikicker cost was paid.
+    /// Whether this spell is a copy (created by Storm, Replicate, etc.).
+    pub is_copy: bool,
+    /// Number of times the kicker/multikicker cost was paid.
     pub kick_count: u32,
-    /// How many times the replicate cost was paid.
+    /// Number of times the replicate cost was paid.
     pub replicate_count: u32,
+    /// Whether a generic optional additional cost was paid.
+    pub optional_generic_cost_paid: bool,
+    /// Sum of integer values remembered on the trigger that spawned this
+    /// ability (Java: TriggerRememberAmount / sa.getTriggerRemembered()).
+    pub trigger_remembered_amount: i32,
+    /// The value chosen for X in the mana cost (e.g. Fireball X=5 means 5 damage).
+    /// Mirrors Java's `SpellAbility.getXManaCostPaid()`.
+    pub x_mana_cost_paid: u32,
 }
 
 impl SpellAbility {
@@ -94,6 +127,14 @@ impl SpellAbility {
     /// Mirrors Java's `usesTargeting()`: `return targetRestrictions != null`.
     pub fn uses_targeting(&self) -> bool {
         self.target_restrictions.is_some()
+    }
+
+    /// Check if a parameter is set to "True" (case-insensitive).
+    /// Common pattern for boolean params like `Ninjutsu$ True`, `Mega$ True`, etc.
+    pub fn param_is_true(&self, key: &str) -> bool {
+        self.params
+            .get(key)
+            .map_or(false, |v| v.eq_ignore_ascii_case("True"))
     }
 
     /// Get the chosen targets. Mirrors Java's `getTargets()`.
@@ -135,6 +176,7 @@ impl SpellAbility {
         // Walk self, then sub_ability chain — mirrors Java's do/while
         if self.uses_targeting() {
             self.clear_targets();
+            self.targeting_player = choose_targeting_player(self, game, agents);
             if !choose_targets_for(self, game, agents, mana_pools) {
                 return false;
             }
@@ -145,6 +187,7 @@ impl SpellAbility {
         while let Some(sa) = current {
             if sa.uses_targeting() {
                 sa.clear_targets();
+                sa.targeting_player = choose_targeting_player(sa, game, agents);
                 if !choose_targets_for(sa, game, agents, mana_pools) {
                     return false;
                 }
@@ -170,6 +213,7 @@ impl SpellAbility {
             api,
             source,
             activating_player: player,
+            targeting_player: None,
             ability_text: ability_text.to_string(),
             params,
             target_restrictions,
@@ -183,11 +227,14 @@ impl SpellAbility {
             trigger_index: None,
             alt_cost: None,
             kicked: false,
-            is_copy: false,
             buyback_paid: false,
             overloaded: false,
+            is_copy: false,
             kick_count: 0,
             replicate_count: 0,
+            optional_generic_cost_paid: false,
+            trigger_remembered_amount: 0,
+            x_mana_cost_paid: 0,
         }
     }
 }
@@ -227,6 +274,7 @@ pub fn build_spell_ability(
         api,
         source: Some(card_id),
         activating_player: player,
+        targeting_player: None,
         ability_text: ability_text.to_string(),
         params,
         target_restrictions,
@@ -240,11 +288,14 @@ pub fn build_spell_ability(
         trigger_index: None,
         alt_cost: None,
         kicked: false,
-        is_copy: false,
         buyback_paid: false,
         overloaded: false,
+        is_copy: false,
         kick_count: 0,
         replicate_count: 0,
+        optional_generic_cost_paid: false,
+        trigger_remembered_amount: 0,
+        x_mana_cost_paid: 0,
     }
 }
 
@@ -262,7 +313,16 @@ fn choose_targets_for(
         None => return true,
     };
 
-    let player = sa.activating_player;
+    let player = sa.targeting_player.unwrap_or(sa.activating_player);
+
+    // Spells with TargetMin$ 0 (e.g. Fireball) can be cast with zero targets.
+    // Java's DeterministicController skips setupDeterministicTargets when
+    // isTargetNumberValid() is already true (min=0, 0 targets), consuming no RNG.
+    // We must match by returning early without calling any agent choose method.
+    let min_targets = tr.get_min_targets(game, sa);
+    if min_targets <= 0 {
+        return true;
+    }
 
     if !tr.has_candidates(game, player, sa.source) {
         return false;
@@ -273,50 +333,107 @@ fn choose_targets_for(
         TargetKind::Player => {
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            // "target player" means any player — including the caster themselves.
-            let valid_players: Vec<PlayerId> = game.alive_players().into_iter().collect();
+            // Filter valid players by ValidTgts: "Opponent" restricts to opponents only,
+            // "Player" means any player including the caster.
+            let is_opponent_only = tr
+                .valid_tgts
+                .iter()
+                .any(|v| v.eq_ignore_ascii_case("Opponent"));
+            let valid_players: Vec<PlayerId> = game
+                .alive_players()
+                .into_iter()
+                .filter(|&pid| !is_opponent_only || pid != player)
+                .collect();
             sa.target_chosen.target_player = agent.choose_target_player(player, &valid_players);
         }
         TargetKind::Any => {
-            // "any target" includes all alive players (the caster too) and all creatures.
-            let valid_players: Vec<PlayerId> = game.alive_players().into_iter().collect();
-            let valid_creatures: Vec<CardId> =
-                target_restrictions::get_all_candidates_creatures(game)
+            let valid_players: Vec<PlayerId> =
+                if target_restrictions::any_target_allows_players(&tr.valid_tgts) {
+                    game.alive_players().into_iter().collect()
+                } else {
+                    Vec::new()
+                };
+            let mut valid_cards: Vec<CardId> =
+                target_restrictions::get_all_candidates_any_filtered(game, &tr.valid_tgts, player)
                     .into_iter()
                     .filter(|&cid| {
-                        target_restrictions::can_be_targeted_by(game, cid, player, sa.source)
+                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
                     })
                     .collect();
+            valid_cards =
+                crate::staticability::static_ability_must_target::filter_must_target_cards(
+                    game,
+                    sa,
+                    valid_cards,
+                );
+            let valid_players =
+                if crate::staticability::static_ability_must_target::must_target_cards_required(
+                    game,
+                    sa,
+                    &valid_cards,
+                ) {
+                    Vec::new()
+                } else {
+                    valid_players
+                };
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            match agent.choose_target_any(player, &valid_players, &valid_creatures) {
+            match agent.choose_target_any(player, &valid_players, &valid_cards) {
                 TargetChoice::Player(pid) => sa.target_chosen.target_player = Some(pid),
                 TargetChoice::Card(cid) => sa.target_chosen.target_card = Some(cid),
                 TargetChoice::None => {}
             }
         }
         TargetKind::Creature(ref filter) => {
-            let valid: Vec<CardId> =
-                target_restrictions::get_all_candidates_creature_filtered(
-                    game,
-                    filter.as_deref(),
-                    player,
-                )
-                .into_iter()
-                .filter(|&cid| {
-                    target_restrictions::can_be_targeted_by(game, cid, player, sa.source)
-                })
-                .collect();
+            let base = target_restrictions::get_all_candidates_creature_filtered(
+                game,
+                filter.as_deref(),
+                player,
+            );
+            let mut valid: Vec<CardId> =
+                target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
+                    .into_iter()
+                    .filter(|&cid| {
+                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
+                    })
+                    .collect();
+            valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
+                game, sa, valid,
+            );
+            agents[player.index()].snapshot_state(game, mana_pools);
+            let agent = &mut agents[player.index()];
+            sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
+        }
+        TargetKind::Permanent(ref filter) => {
+            let base = target_restrictions::get_all_battlefield_permanents_filtered(
+                game,
+                filter.as_deref(),
+                player,
+            );
+            let mut valid: Vec<CardId> =
+                target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
+                    .into_iter()
+                    .filter(|&cid| {
+                        target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
+                    })
+                    .collect();
+            valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
+                game, sa, valid,
+            );
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
         }
         TargetKind::CardInZone { zone, filter } => {
-            let valid = target_restrictions::get_valid_cards_in_zone(
+            let mut valid = target_restrictions::get_valid_cards_in_zone(
                 game,
                 *zone,
                 player,
                 filter.as_deref(),
+                sa.source,
+            );
+            valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
+                game, sa, valid,
             );
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
@@ -344,6 +461,22 @@ fn choose_targets_for(
     true
 }
 
+fn choose_targeting_player(
+    sa: &SpellAbility,
+    game: &GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+) -> Option<PlayerId> {
+    if let Some(defined) = sa.params.get("TargetingPlayer") {
+        let candidates = resolve_defined_players(defined, sa.activating_player, game);
+        if candidates.is_empty() {
+            return None;
+        }
+        return agents[sa.activating_player.index()]
+            .choose_target_player(sa.activating_player, &candidates);
+    }
+    Some(sa.activating_player)
+}
+
 // ── StackEntry (mirrors Java's SpellAbilityStackInstance) ────────────
 
 /// An entry on the game stack (spell or ability waiting to resolve).
@@ -359,6 +492,17 @@ pub struct StackEntry {
     pub is_permanent_spell: bool,
     /// The zone the spell was cast from (for Flashback exile-on-resolve).
     pub cast_from_zone: Option<ZoneType>,
+    /// If this is an optional trigger, the player who decides whether to
+    /// accept or decline.  Mirrors Java's WrappedAbility `decider` field.
+    /// The confirmation prompt fires at resolution time (not when pushed).
+    #[serde(default)]
+    pub optional_trigger_decider: Option<PlayerId>,
+    /// Description text shown to the deciding player for optional triggers.
+    #[serde(default)]
+    pub optional_trigger_description: Option<String>,
+    /// Source card name for optional trigger prompts.
+    #[serde(default)]
+    pub optional_trigger_source_name: Option<String>,
 }
 
 /// The game stack. Spells and abilities are added to the top and resolve LIFO.
@@ -404,6 +548,11 @@ impl MagicStack {
         self.entries.iter()
     }
 
+    /// Find a stack entry by ID without removing it.
+    pub fn find_by_id(&self, id: u32) -> Option<&StackEntry> {
+        self.entries.iter().find(|e| e.id == id)
+    }
+
     /// Remove and return the stack entry with the given ID (for Counter effects).
     /// Returns `None` if no entry with that ID exists.
     pub fn remove_by_id(&mut self, id: u32) -> Option<StackEntry> {
@@ -412,6 +561,13 @@ impl MagicStack {
         } else {
             None
         }
+    }
+
+    /// Find a stack entry by its source card ID (for Ward — finding the targeting spell).
+    pub fn find_by_source_card(&self, card_id: crate::ids::CardId) -> Option<&StackEntry> {
+        self.entries
+            .iter()
+            .find(|e| e.spell_ability.source == Some(card_id))
     }
 }
 

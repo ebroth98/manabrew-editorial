@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, parse_param, resolve_defined_player, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `SurveilEffect.java`.
@@ -16,6 +17,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Defined")
         .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
+
+    if sa.params.contains_key("Optional") {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let accepted = ctx.agents[target.index()].confirm_action(
+            target,
+            None,
+            "Do you want to surveil?",
+            &[],
+            source_name,
+            Some("Surveil"),
+        );
+        if !accepted {
+            return;
+        }
+    }
 
     let lib_len = ctx.game.cards_in_zone(ZoneType::Library, target).len();
     if lib_len == 0 || num == 0 {
@@ -59,6 +75,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for &id in &keep_top {
         ctx.game.zone_mut(ZoneType::Library, target).cards.push(id);
     }
+
+    // Fire Surveil trigger
+    ctx.trigger_handler.run_trigger(
+        TriggerType::Surveil,
+        RunParams {
+            player: Some(target),
+            ..Default::default()
+        },
+        false,
+    );
 }
 
 #[cfg(test)]
@@ -68,6 +94,7 @@ mod tests {
     use crate::ability::effects::EffectContext;
     use crate::agent::{PassAgent, PlayerAgent};
     use crate::card::CardInstance;
+    use crate::combat::DefenderId;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -94,20 +121,25 @@ mod tests {
     /// Agent that puts all surveiled cards into graveyard.
     struct GraveyardAllAgent;
     impl PlayerAgent for GraveyardAllAgent {
-        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId]) -> bool {
+        fn mulligan_decision(&mut self, _: PlayerId, _: &[CardId], _: u32) -> bool {
             true
         }
         fn choose_action(
             &mut self,
             _: PlayerId,
-            _: &[CardId],
+            _: &[crate::agent::PlayOption],
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
         ) -> crate::agent::MainPhaseAction {
             crate::agent::MainPhaseAction::Pass
         }
-        fn choose_attackers(&mut self, _: PlayerId, _: &[CardId]) -> Vec<CardId> {
+        fn choose_attackers(
+            &mut self,
+            _: PlayerId,
+            _: &[CardId],
+            _: &[DefenderId],
+        ) -> Vec<(CardId, DefenderId)> {
             vec![]
         }
         fn choose_blockers(
@@ -162,6 +194,7 @@ mod tests {
             vec![Box::new(GraveyardAllAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
             agents: &mut agents,
@@ -169,6 +202,7 @@ mod tests {
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
+            rng: &mut rng_adapter,
         };
 
         super::resolve(&mut ctx, &sa);
@@ -191,6 +225,7 @@ mod tests {
         let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
         let token_templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
             agents: &mut agents,
@@ -198,6 +233,7 @@ mod tests {
             token_templates: &token_templates,
             mana_pools: &mut mana_pools,
             parent_target_card: None,
+            rng: &mut rng_adapter,
         };
 
         super::resolve(&mut ctx, &sa);

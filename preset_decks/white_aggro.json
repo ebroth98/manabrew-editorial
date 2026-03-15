@@ -1,0 +1,15 @@
+{
+  "label": "White Aggro",
+  "desc": "Lions + Knights + Angels",
+  "color": "text-yellow-100",
+  "opponent": "black_control",
+  "ai_eligible": true,
+  "order": 2,
+  "cards": [
+    { "name": "Plains", "count": 17, "set": "akh" },
+    { "name": "Savannah Lions", "count": 4, "set": "m10" },
+    { "name": "White Knight", "count": 3, "set": "m10" },
+    { "name": "Serra Angel", "count": 3, "set": "m21" },
+    { "name": "Soul Warden", "count": 3, "set": "m11" }
+  ]
+}

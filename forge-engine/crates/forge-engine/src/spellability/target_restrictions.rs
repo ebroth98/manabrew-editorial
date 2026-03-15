@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::card::card_property;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::spellability::SpellAbility;
 
 /// What kinds of targets a spell can select.
 /// Mirrors Java's `TargetRestrictions.getValidTgts()` parsed target types.
@@ -23,6 +24,9 @@ pub enum TargetKind {
     Any,
     /// Creature with optional filter (e.g. "ValidTgts$ Creature.nonBlack")
     Creature(Option<String>),
+    /// Any permanent on the battlefield with optional filter
+    /// (e.g. "ValidTgts$ Permanent.nonLand+OppCtrl")
+    Permanent(Option<String>),
     /// Card in a specific zone with optional filter (e.g. Raise Dead from graveyard)
     CardInZone {
         zone: ZoneType,
@@ -45,10 +49,12 @@ pub struct TargetRestrictions {
     pub target_kind: TargetKind,
     /// Additional target type filter (e.g. "Spell" from TargetType$ parameter)
     pub target_type_filter: Option<String>,
-    /// Minimum number of targets (default 1)
-    pub min_targets: i32,
-    /// Maximum number of targets (default 1)
-    pub max_targets: i32,
+    /// Minimum number of targets expression (default "1").
+    /// Mirrors Java storing raw `TargetMin` and resolving dynamically.
+    pub min_targets: String,
+    /// Maximum number of targets expression (default "1").
+    /// Mirrors Java storing raw `TargetMax` and resolving dynamically.
+    pub max_targets: String,
     /// Zones to search for targets (default [Battlefield])
     pub tgt_zone: Vec<ZoneType>,
 }
@@ -62,15 +68,16 @@ impl TargetRestrictions {
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
-        let mut target_kind = parse_target_kind(&valid_tgts[0]);
+        let origin_zone = params.get("Origin").and_then(|v| parse_zone_type(v));
+        let mut target_kind = parse_target_kind_enhanced(&valid_tgts[0], origin_zone);
         let min_targets = params
             .get("TargetMin")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1);
+            .cloned()
+            .unwrap_or_else(|| "1".to_string());
         let max_targets = params
             .get("TargetMax")
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(1);
+            .cloned()
+            .unwrap_or_else(|| "1".to_string());
 
         // Parse TargetType$ parameter if present (used by counterspells)
         let target_type_filter = params.get("TargetType").cloned();
@@ -106,22 +113,29 @@ impl TargetRestrictions {
             TargetKind::None => true,
             // "target player" = any alive player (including the caster themselves).
             TargetKind::Player => !game.alive_players().is_empty(),
-            // "any target" = any alive player or any creature on the battlefield.
+            // "any target" fallback: derive player/card candidates from ValidTgts.
             TargetKind::Any => {
-                if !game.alive_players().is_empty() {
+                if any_target_allows_players(&self.valid_tgts) && !game.alive_players().is_empty() {
                     return true;
                 }
-                get_all_candidates_creatures(game)
+                get_all_candidates_any_filtered(game, &self.valid_tgts, player)
                     .into_iter()
                     .any(|cid| can_be_targeted_by(game, cid, player, source_card))
             }
             TargetKind::Creature(ref filter) => {
                 get_all_candidates_creature_filtered(game, filter.as_deref(), player)
                     .into_iter()
+                    .filter(|&cid| !is_other_filter_self_hit(filter.as_deref(), source_card, cid))
+                    .any(|cid| can_be_targeted_by(game, cid, player, source_card))
+            }
+            TargetKind::Permanent(ref filter) => {
+                get_all_battlefield_permanents_filtered(game, filter.as_deref(), player)
+                    .into_iter()
+                    .filter(|&cid| !is_other_filter_self_hit(filter.as_deref(), source_card, cid))
                     .any(|cid| can_be_targeted_by(game, cid, player, source_card))
             }
             TargetKind::CardInZone { zone, filter } => {
-                has_valid_target_in_zone(game, player, *zone, filter.as_deref())
+                has_valid_target_in_zone(game, player, *zone, filter.as_deref(), source_card)
             }
             TargetKind::Spell => {
                 // If we have a TargetType$ filter, apply it
@@ -133,6 +147,67 @@ impl TargetRestrictions {
             }
         }
     }
+
+    /// Resolve Java-style `TargetMin` expression for this SA.
+    pub fn get_min_targets(&self, game: &GameState, sa: &SpellAbility) -> i32 {
+        resolve_target_count_expr(&self.min_targets, game, sa)
+    }
+
+    /// Resolve Java-style `TargetMax` expression for this SA.
+    pub fn get_max_targets(&self, game: &GameState, sa: &SpellAbility) -> i32 {
+        resolve_target_count_expr(&self.max_targets, game, sa)
+    }
+}
+
+fn has_other_qualifier(filter: &str) -> bool {
+    filter.split(|c| c == '.' || c == '+').any(|part| {
+        part.eq_ignore_ascii_case("Other") || part.eq_ignore_ascii_case("StrictlyOther")
+    })
+}
+
+fn is_other_filter_self_hit(
+    filter: Option<&str>,
+    source_card: Option<CardId>,
+    candidate: CardId,
+) -> bool {
+    match (filter, source_card) {
+        (Some(f), Some(src)) if src == candidate => has_other_qualifier(f),
+        _ => false,
+    }
+}
+
+/// Remove `Other`/`StrictlyOther` self-targets from candidate lists.
+/// Mirrors Java `Other` semantics in valid target filters.
+pub fn apply_other_source_filter(
+    candidates: Vec<CardId>,
+    filter: Option<&str>,
+    source_card: Option<CardId>,
+) -> Vec<CardId> {
+    candidates
+        .into_iter()
+        .filter(|&cid| !is_other_filter_self_hit(filter, source_card, cid))
+        .collect()
+}
+
+/// Resolve a target-count expression like `1`, `X`, or `Count$...`.
+/// Mirrors Java `TargetRestrictions.getMinTargets/getMaxTargets` via
+/// `AbilityUtils.calculateAmount(...)`.
+fn resolve_target_count_expr(expr: &str, game: &GameState, sa: &SpellAbility) -> i32 {
+    if let Ok(n) = expr.trim().parse::<i32>() {
+        return n;
+    }
+    if let Some(stripped) = expr.trim().strip_prefix('+') {
+        if let Ok(n) = stripped.parse::<i32>() {
+            return n;
+        }
+    }
+
+    // Reuse shared numeric/SVar resolver by injecting a temporary param.
+    let mut sa_tmp = sa.clone();
+    sa_tmp
+        .params
+        .insert("__target_count__".to_string(), expr.to_string());
+    crate::ability::effects::resolve_numeric_svar(game, &sa_tmp, "__target_count__", 1)
 }
 
 /// Check if there are valid spells on the stack matching the TargetType$ filter.
@@ -173,7 +248,7 @@ fn parse_target_kind(val: &str) -> TargetKind {
     if val.eq_ignore_ascii_case("Any") {
         return TargetKind::Any;
     }
-    if val.eq_ignore_ascii_case("Player") {
+    if val.eq_ignore_ascii_case("Player") || val.eq_ignore_ascii_case("Opponent") {
         return TargetKind::Player;
     }
     if val.eq_ignore_ascii_case("Spell") {
@@ -186,6 +261,14 @@ fn parse_target_kind(val: &str) -> TargetKind {
         }
         let filter = filter.strip_prefix('.').unwrap_or(filter);
         return TargetKind::Creature(Some(filter.to_string()));
+    }
+    if val.starts_with("Permanent") {
+        let filter = val.strip_prefix("Permanent").unwrap();
+        if filter.is_empty() {
+            return TargetKind::Permanent(None);
+        }
+        let filter = filter.strip_prefix('.').unwrap_or(filter);
+        return TargetKind::Permanent(Some(filter.to_string()));
     }
     // Fallback: treat as "Any" if unrecognized
     TargetKind::Any
@@ -227,11 +310,20 @@ pub fn has_candidates_in_chain(
     ability: &str,
     source: Option<CardId>,
 ) -> bool {
-    if !has_candidates(game, player, ability, source) {
-        return false;
+    let params = crate::trigger::parse_pipe_params(ability);
+    if let Some(tr) = TargetRestrictions::new(&params) {
+        let min_targets = if let Some(card_id) = source {
+            let sa = crate::spellability::build_spell_ability(game, card_id, ability, player);
+            tr.get_min_targets(game, &sa)
+        } else {
+            let sa = SpellAbility::new_simple(None, player, ability);
+            tr.get_min_targets(game, &sa)
+        };
+        if min_targets > 0 && !tr.has_candidates(game, player, source) {
+            return false;
+        }
     }
 
-    let params = crate::trigger::parse_pipe_params(ability);
     if let Some(sub_svar_name) = params.get("SubAbility") {
         if let Some(card_id) = source {
             if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name) {
@@ -253,13 +345,59 @@ pub fn can_be_targeted_by(
     source_controller: PlayerId,
     source_card: Option<CardId>,
 ) -> bool {
+    can_be_targeted_by_internal(game, target_id, source_controller, source_card, None)
+}
+
+pub fn can_be_targeted_by_sa(
+    game: &GameState,
+    target_id: CardId,
+    source_controller: PlayerId,
+    source_sa: &SpellAbility,
+) -> bool {
+    can_be_targeted_by_internal(
+        game,
+        target_id,
+        source_controller,
+        source_sa.source,
+        Some(source_sa),
+    )
+}
+
+fn can_be_targeted_by_internal(
+    game: &GameState,
+    target_id: CardId,
+    source_controller: PlayerId,
+    source_card: Option<CardId>,
+    source_sa: Option<&SpellAbility>,
+) -> bool {
     let target = game.card(target_id);
+    let source_card_ref = source_card.map(|id| game.card(id));
+    if crate::staticability::static_ability_cant_target::cant_target(
+        &game.cards,
+        target,
+        source_controller,
+        source_card_ref,
+        source_sa,
+    ) {
+        return false;
+    }
     // Shroud: can't be targeted by anyone
-    if target.has_shroud() {
+    let ignore_shroud = crate::staticability::static_ability_ignore_hexproof_shroud::ignore_shroud(
+        &game.cards,
+        target,
+        source_controller,
+    );
+    if target.has_shroud() && !ignore_shroud {
         return false;
     }
     // Hexproof: can't be targeted by opponents
-    if target.has_hexproof() && target.controller != source_controller {
+    let ignore_hexproof =
+        crate::staticability::static_ability_ignore_hexproof_shroud::ignore_hexproof(
+            &game.cards,
+            target,
+            source_controller,
+        );
+    if target.has_hexproof() && target.controller != source_controller && !ignore_hexproof {
         return false;
     }
     if let Some(src_id) = source_card {
@@ -268,14 +406,11 @@ pub fn can_be_targeted_by(
         if target.controller != source_controller {
             for color in &["white", "blue", "black", "red", "green"] {
                 if target.has_hexproof_from(color) {
-                    let has_color = match *color {
-                        "white" => src.color.has_white(),
-                        "blue" => src.color.has_blue(),
-                        "black" => src.color.has_black(),
-                        "red" => src.color.has_red(),
-                        "green" => src.color.has_green(),
-                        _ => false,
-                    };
+                    let has_color = crate::staticability::static_ability_colorless_damage_source::source_has_color(
+                        &game.cards,
+                        src,
+                        color,
+                    );
                     if has_color {
                         return false;
                     }
@@ -283,7 +418,9 @@ pub fn can_be_targeted_by(
             }
         }
         // Protection: can't be targeted by matching sources
-        if target.is_protected_from(src) {
+        if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+            &game.cards, target, src,
+        ) {
             return false;
         }
     }
@@ -321,6 +458,34 @@ pub fn get_all_candidates_creature_filtered(
     }
 }
 
+/// Get all permanents on the battlefield (any player).
+pub fn get_all_battlefield_permanents(game: &GameState) -> Vec<CardId> {
+    let mut permanents = Vec::new();
+    for &pid in &game.player_order {
+        for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
+            permanents.push(cid);
+        }
+    }
+    permanents
+}
+
+/// Get battlefield permanents matching an optional filter (e.g. "nonLand+OppCtrl").
+/// Similar to `get_all_candidates_creature_filtered` but for any permanent type.
+pub fn get_all_battlefield_permanents_filtered(
+    game: &GameState,
+    filter: Option<&str>,
+    source_controller: PlayerId,
+) -> Vec<CardId> {
+    let all = get_all_battlefield_permanents(game);
+    match filter {
+        None => all,
+        Some(f) => all
+            .into_iter()
+            .filter(|&cid| card_property::card_has_property(game.card(cid), f, source_controller))
+            .collect(),
+    }
+}
+
 // ── Zone-aware targeting for cards like Raise Dead ───────────────────
 
 /// Parse a zone type string ("Graveyard", "Hand", "Battlefield", etc.)
@@ -345,21 +510,13 @@ fn parse_target_kind_enhanced(val: &str, origin_zone: Option<ZoneType>) -> Targe
     // Handle the special case of CardInZone targeting first
     if let Some(zone) = origin_zone {
         if zone != ZoneType::Battlefield {
-            // If we have a non-battlefield origin, this is zone targeting
-            // The filter might be in the ValidTgts$ (e.g., "Creature.YouCtrl")
-            let filter = if val.starts_with("Creature") {
-                let filter_part = val.strip_prefix("Creature").unwrap();
-                let filter_part = filter_part.strip_prefix('.').unwrap_or(filter_part);
-                if filter_part.is_empty() {
-                    None
-                } else {
-                    Some(filter_part.to_string())
-                }
-            } else if val.contains('.') {
-                // Handle formats like "Creature.YouCtrl" directly
-                Some(val.to_string())
-            } else {
+            // If we have a non-battlefield origin, this is zone targeting.
+            // Keep the full ValidTgts token (e.g., "Creature.YouCtrl"), mirroring
+            // Java's Card.isValid(type.properties) flow.
+            let filter = if val.is_empty() {
                 None
+            } else {
+                Some(val.to_string())
             };
             return TargetKind::CardInZone { zone, filter };
         }
@@ -375,7 +532,7 @@ fn parse_target_kind_legacy(val: &str) -> TargetKind {
     if val.eq_ignore_ascii_case("Any") {
         return TargetKind::Any;
     }
-    if val.eq_ignore_ascii_case("Player") {
+    if val.eq_ignore_ascii_case("Player") || val.eq_ignore_ascii_case("Opponent") {
         return TargetKind::Player;
     }
     if val.eq_ignore_ascii_case("Spell") {
@@ -389,6 +546,14 @@ fn parse_target_kind_legacy(val: &str) -> TargetKind {
         let filter = filter.strip_prefix('.').unwrap_or(filter);
         return TargetKind::Creature(Some(filter.to_string()));
     }
+    if val.starts_with("Permanent") {
+        let filter = val.strip_prefix("Permanent").unwrap();
+        if filter.is_empty() {
+            return TargetKind::Permanent(None);
+        }
+        let filter = filter.strip_prefix('.').unwrap_or(filter);
+        return TargetKind::Permanent(Some(filter.to_string()));
+    }
     // Fallback: treat as "Any" if unrecognized
     TargetKind::Any
 }
@@ -399,6 +564,7 @@ pub fn get_valid_cards_in_zone(
     zone: ZoneType,
     player: PlayerId,
     filter: Option<&str>,
+    source_card: Option<CardId>,
 ) -> Vec<CardId> {
     let zone_cards = game.cards_in_zone(zone, player).to_vec();
 
@@ -406,6 +572,7 @@ pub fn get_valid_cards_in_zone(
         None => zone_cards,
         Some(f) => zone_cards
             .into_iter()
+            .filter(|&cid| !is_other_filter_self_hit(Some(f), source_card, cid))
             .filter(|&cid| card_property::card_has_property(game.card(cid), f, player))
             .collect(),
     }
@@ -417,14 +584,55 @@ pub fn get_all_candidates_spells(game: &GameState) -> Vec<u32> {
     game.stack.iter().map(|e| e.id).collect()
 }
 
+fn token_allows_player_targets(token: &str) -> bool {
+    let t = token.trim().to_ascii_lowercase();
+    t == "any" || t.contains("player") || t == "you" || t == "opponent"
+}
+
+/// Whether this `TargetKind::Any` restriction may target players.
+pub fn any_target_allows_players(valid_tgts: &[String]) -> bool {
+    valid_tgts.iter().any(|t| token_allows_player_targets(t))
+}
+
+/// Candidate battlefield cards for `TargetKind::Any`, derived from `ValidTgts`.
+pub fn get_all_candidates_any_filtered(
+    game: &GameState,
+    valid_tgts: &[String],
+    source_controller: PlayerId,
+) -> Vec<CardId> {
+    if valid_tgts
+        .iter()
+        .any(|t| t.trim().eq_ignore_ascii_case("Any"))
+    {
+        return get_all_candidates_creatures(game);
+    }
+
+    let mut candidates = Vec::new();
+    for &pid in &game.player_order {
+        for &cid in game.cards_in_zone(ZoneType::Battlefield, pid) {
+            if valid_tgts.iter().any(|raw| {
+                let token = raw.trim();
+                if token_allows_player_targets(token) {
+                    return false;
+                }
+                card_property::card_has_property(game.card(cid), token, source_controller)
+            }) {
+                candidates.push(cid);
+            }
+        }
+    }
+    candidates
+}
+
 /// Check if there are valid targets in a specific zone.
 pub fn has_valid_target_in_zone(
     game: &GameState,
     player: PlayerId,
     zone: ZoneType,
     filter: Option<&str>,
+    source_card: Option<CardId>,
 ) -> bool {
-    !get_valid_cards_in_zone(game, zone, player, filter).is_empty()
+    !get_valid_cards_in_zone(game, zone, player, filter, source_card).is_empty()
 }
 
 #[cfg(test)]
@@ -484,13 +692,63 @@ mod tests {
         params.insert("ValidTgts".into(), "Creature.OppCtrl".into());
         let tr = TargetRestrictions::new(&params).unwrap();
         assert_eq!(tr.target_kind, TargetKind::Creature(Some("OppCtrl".into())));
-        assert_eq!(tr.min_targets, 1);
-        assert_eq!(tr.max_targets, 1);
+        assert_eq!(tr.min_targets, "1");
+        assert_eq!(tr.max_targets, "1");
+    }
+
+    #[test]
+    fn target_restrictions_from_params_graveyard_origin() {
+        let mut params = BTreeMap::new();
+        params.insert("Origin".into(), "Graveyard".into());
+        params.insert("ValidTgts".into(), "Creature.YouCtrl".into());
+        let tr = TargetRestrictions::new(&params).unwrap();
+        assert_eq!(
+            tr.target_kind,
+            TargetKind::CardInZone {
+                zone: ZoneType::Graveyard,
+                filter: Some("Creature.YouCtrl".into()),
+            }
+        );
     }
 
     #[test]
     fn no_valid_tgts_returns_none() {
         let params = BTreeMap::new();
         assert!(TargetRestrictions::new(&params).is_none());
+    }
+
+    #[test]
+    fn has_candidates_in_chain_allows_zero_target_subability() {
+        use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
+
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        let mut card = crate::card::CardInstance::new(
+            CardId(0),
+            "Valley Rally".to_string(),
+            p0,
+            CardTypeLine::parse("Instant"),
+            ManaCost::parse("2 R"),
+            ColorSet::RED,
+            None,
+            None,
+            vec![],
+            vec![
+                "SP$ PumpAll | ValidCards$ Creature.YouCtrl | NumAtt$ +2 | SubAbility$ DBPump"
+                    .to_string(),
+            ],
+        );
+        card.svars.insert(
+            "DBPump".to_string(),
+            "DB$ Pump | ValidTgts$ Creature.YouCtrl | TargetMin$ X | TargetMax$ X | KW$ First Strike"
+                .to_string(),
+        );
+        card.svars
+            .insert("X".to_string(), "Count$PromisedGift.1.0".to_string());
+        let card_id = game.create_card(card);
+        game.move_card(card_id, ZoneType::Hand, p0);
+
+        let ability = game.card(card_id).abilities[0].clone();
+        assert!(has_candidates_in_chain(&game, p0, &ability, Some(card_id)));
     }
 }

@@ -1,7 +1,7 @@
 use forge_foundation::PhaseType;
 use serde::{Deserialize, Serialize};
 
-use crate::ids::PlayerId;
+use crate::ids::{CardId, PlayerId};
 
 /// Tracks the current turn state: whose turn, which phase, turn number.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -15,6 +15,8 @@ pub struct TurnState {
     // Combat tracking
     pub combat_attackers_declared: bool,
     pub combat_blockers_declared: bool,
+    /// Authoritative blocker -> attacker assignments for the current combat.
+    pub combat_block_assignments: Vec<(CardId, CardId)>,
 
     // Per-turn flags
     pub drawn_for_turn: bool,
@@ -30,6 +32,7 @@ impl TurnState {
             num_players,
             combat_attackers_declared: false,
             combat_blockers_declared: false,
+            combat_block_assignments: vec![],
             drawn_for_turn: false,
         }
     }
@@ -44,6 +47,7 @@ impl TurnState {
             self.turn_number += 1;
             self.combat_attackers_declared = false;
             self.combat_blockers_declared = false;
+            self.combat_block_assignments.clear();
             self.drawn_for_turn = false;
         }
 
@@ -51,6 +55,7 @@ impl TurnState {
         if self.phase == PhaseType::CombatBegin {
             self.combat_attackers_declared = false;
             self.combat_blockers_declared = false;
+            self.combat_block_assignments.clear();
         }
 
         turn_ended
@@ -65,6 +70,7 @@ impl TurnState {
             self.turn_number += 1;
             self.combat_attackers_declared = false;
             self.combat_blockers_declared = false;
+            self.combat_block_assignments.clear();
             self.drawn_for_turn = false;
         }
     }

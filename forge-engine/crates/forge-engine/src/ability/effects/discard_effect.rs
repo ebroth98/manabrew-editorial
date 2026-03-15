@@ -28,12 +28,40 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         controller // default: self
     };
 
-    // Ask agent to choose which cards to discard
     let hand: Vec<_> = ctx
         .game
         .cards_in_zone(ZoneType::Hand, target_player)
         .to_vec();
-    let to_discard = ctx.agents[target_player.index()].choose_discard(target_player, &hand, num);
+
+    if sa.params.contains_key("Optional") {
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let accepted = ctx.agents[target_player.index()].confirm_action(
+            target_player,
+            None,
+            "Do you want to discard?",
+            &[],
+            source_name,
+            Some("Discard"),
+        );
+        if !accepted {
+            return;
+        }
+    }
+
+    // Mode$ Random — discard at random (e.g. Hypnotic Specter).
+    // Mirrors Java's DiscardEffect which calls Aggregates.random() bypassing the controller.
+    // We route through the agent's choose_random_discard so deterministic agents can
+    // use their seeded RNG for parity testing.
+    let is_random = sa
+        .params
+        .get("Mode")
+        .map_or(false, |m| m.eq_ignore_ascii_case("Random"));
+
+    let to_discard = if is_random {
+        ctx.agents[target_player.index()].choose_random_discard(target_player, &hand, num)
+    } else {
+        ctx.agents[target_player.index()].choose_discard(target_player, &hand, num)
+    };
 
     for card_id in to_discard {
         if ctx.game.card(card_id).zone == ZoneType::Hand {
@@ -51,6 +79,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     ZoneType::Hand,
                     ZoneType::Exile,
                 );
+                // Mark the card so get_playable_cards can detect it as castable via madness.
+                // We use face_down = false to keep it revealed (madness is exile face-up).
+                // The actual casting from exile with madness cost is handled by
+                // get_playable_cards (checks exile for madness) and play_card (detects madness).
+                ctx.game
+                    .card_mut(card_id)
+                    .granted_keywords
+                    .push("MadnessExiled".to_string());
             } else {
                 ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
                 emit_zone_trigger(

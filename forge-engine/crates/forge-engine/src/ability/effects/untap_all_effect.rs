@@ -91,16 +91,13 @@ mod tests {
         assert!(game.card(l1).tapped);
         assert!(game.card(l2).tapped);
 
-        let sa = SpellAbility::new_simple(
-            None,
-            p0,
-            "A:SP$ UntapAll | ValidCards$ Land.YouCtrl",
-        );
+        let sa = SpellAbility::new_simple(None, p0, "A:SP$ UntapAll | ValidCards$ Land.YouCtrl");
         let mut th = TriggerHandler::new();
         let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
             vec![Box::new(PassAgent), Box::new(PassAgent)];
         let mut mp = vec![ManaPool::default(), ManaPool::default()];
         let templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
             agents: &mut agents,
@@ -108,6 +105,7 @@ mod tests {
             token_templates: &templates,
             mana_pools: &mut mp,
             parent_target_card: None,
+            rng: &mut rng_adapter,
         };
         super::resolve(&mut ctx, &sa);
 

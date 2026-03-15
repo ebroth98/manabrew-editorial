@@ -1,20 +1,34 @@
-import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
+import { Modal } from "@/components/game/Modal";
 import { useEffect, useRef, useCallback } from "react";
+import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
+import { MODAL_CARD_IMAGE } from "./game.styles";
 
 interface ChooseOptionalTriggerModalProps {
   /** Human-readable description of the triggered ability. */
   description: string;
   /** Name of the source card (for displaying card image). */
   cardName?: string;
+  /** Prompt context (optional_trigger, confirm_action, confirm_payment, choose_binary). */
+  promptKind?: string;
+  /** Optional labels for [decline, accept] buttons. */
+  optionLabels?: string[];
+  /** Optional mode metadata for confirm_action prompts. */
+  mode?: string;
+  /** Optional API metadata for confirm_action prompts. */
+  api?: string;
   onConfirm: (accept: boolean) => void;
 }
 
 export function ChooseOptionalTriggerModal({
   description,
   cardName,
+  promptKind,
+  optionLabels,
+  mode,
+  api,
   onConfirm,
 }: ChooseOptionalTriggerModalProps) {
   const { data: imageUrl } = useCardImage(cardName ?? "");
@@ -26,80 +40,81 @@ export function ChooseOptionalTriggerModal({
 
   const handleAccept = useCallback(() => onConfirm(true), [onConfirm]);
   const handleDecline = useCallback(() => onConfirm(false), [onConfirm]);
+  const declineLabel = optionLabels?.[0] ?? "Decline";
+  const acceptLabel = optionLabels?.[1] ?? "Accept";
+  const isGenericConfirm = promptKind === "confirm_action";
+  const isPaymentConfirm = promptKind === "confirm_payment";
+  const isBinaryChoice = promptKind === "choose_binary";
+  const title = isGenericConfirm
+    ? "Confirm Action"
+    : isPaymentConfirm
+      ? "Confirm Payment"
+      : isBinaryChoice
+        ? "Choose One"
+        : "Optional Trigger";
+  const subtitle = isGenericConfirm
+    ? "Confirm whether to apply this optional action."
+    : isPaymentConfirm
+      ? "Confirm whether to pay this cost."
+      : isBinaryChoice
+        ? "Choose one of the two options."
+        : "Do you want this ability to trigger?";
+  const metaBits = [mode, api].filter(Boolean).join(" • ");
 
-  // Keyboard: Enter accepts, Escape declines.
-  useEffect(() => {
-    function handleKey(e: KeyboardEvent) {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        handleAccept();
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        handleDecline();
-      }
-    }
-    window.addEventListener("keydown", handleKey);
-    return () => window.removeEventListener("keydown", handleKey);
-  }, [handleAccept, handleDecline]);
+  useModalKeyboard(
+    { onEnter: handleAccept, onEscape: handleDecline },
+    [handleAccept, handleDecline],
+  );
 
-  return createPortal(
-    <div
-      className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="optional-trigger-title"
-    >
+  return (
+    <Modal maxWidth="max-w-md" maxHeight="">
       <div
         ref={dialogRef}
         tabIndex={-1}
-        className="bg-card border rounded-xl shadow-2xl flex flex-col w-full max-w-md mx-4 outline-none animate-in fade-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
+        className="outline-none"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="optional-trigger-title"
       >
-        {/* Header */}
-        <div className="px-4 py-3 border-b">
-          <h2
-            id="optional-trigger-title"
-            className="font-semibold text-base"
-          >
-            Optional Trigger
+        <Modal.Header>
+          <h2 id="optional-trigger-title" className="font-semibold text-base">
+            {title}
           </h2>
           <p className="text-xs text-muted-foreground">
-            Do you want this ability to trigger?
+            {subtitle}
           </p>
-        </div>
+          {metaBits && <p className="text-[11px] text-muted-foreground">{metaBits}</p>}
+        </Modal.Header>
 
-        {/* Description + card image */}
         <div className="px-4 py-4 flex gap-3">
           {imageUrl && (
             <CardImageThumbnail
               imageUrl={imageUrl}
               cardName={cardName ?? "Source card"}
-              className="w-[120px] h-[168px] rounded-lg object-cover shrink-0 shadow-md"
+              className={MODAL_CARD_IMAGE}
             />
           )}
           <p className="text-sm leading-relaxed self-center">{description || "A triggered ability would trigger. Do you want it to?"}</p>
         </div>
 
-        {/* Footer */}
-        <div className="flex justify-end gap-2 px-4 py-3 border-t bg-muted/10 rounded-b-xl">
+        <Modal.Footer>
           <Button
             variant="outline"
             size="sm"
             onClick={handleDecline}
             className="min-w-[80px]"
           >
-            Decline
+            {declineLabel}
           </Button>
           <Button
             size="sm"
             onClick={handleAccept}
             className="min-w-[80px]"
           >
-            Accept
+            {acceptLabel}
           </Button>
-        </div>
+        </Modal.Footer>
       </div>
-    </div>,
-    document.body,
+    </Modal>
   );
 }

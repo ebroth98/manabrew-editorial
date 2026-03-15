@@ -1,0 +1,21 @@
+{
+  "label": "Poison Test",
+  "desc": "Infect creatures + Pump spells",
+  "color": "text-lime-400",
+  "opponent": "white_aggro",
+  "ai_eligible": false,
+  "order": 16,
+  "cards": [
+    { "name": "Forest", "count": 10, "set": "akh" },
+    { "name": "Swamp", "count": 7, "set": "akh" },
+    { "name": "Glistener Elf", "count": 4, "set": "nph" },
+    { "name": "Plague Stinger", "count": 3, "set": "som" },
+    { "name": "Blighted Agent", "count": 3, "set": "nph" },
+    { "name": "Ichorclaw Myr", "count": 3, "set": "som" },
+    { "name": "Cystbearer", "count": 3, "set": "som" },
+    { "name": "Rot Wolf", "count": 3, "set": "mbs" },
+    { "name": "Necropede", "count": 2, "set": "som" },
+    { "name": "Ichor Rats", "count": 3, "set": "som" },
+    { "name": "Giant Growth", "count": 4, "set": "m11" }
+  ]
+}

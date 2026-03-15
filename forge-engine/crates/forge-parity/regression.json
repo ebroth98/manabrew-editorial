@@ -1,0 +1,70 @@
+[
+  {
+    "name": "3-seed matrix (7 decks)",
+    "args": "--matrix --seeds 42,100,999 --decks red_burn,green_stompy,white_aggro,black_control,trigger_expanded,comprehensive_test,staticability_test --max-turns 10"
+  },
+  {
+    "name": "basic_red_vs_green",
+    "args": "--deck1 red_burn --deck2 green_stompy --games 10 --max-turns 30"
+  },
+  {
+    "name": "basic_black_control_vs_zone_change",
+    "args": "--deck1 black_control --deck2 zone_change --games 10 --max-turns 30"
+  },
+  {
+    "name": "tokens",
+    "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 10"
+  },
+  {
+    "name": "payments",
+    "args": "--deck1 confirm_payment_test --deck2 confirm_payment_test --max-turns 40 --seed 42 --games 20"
+  },
+  {
+    "name": "keyword_advanced",
+    "args": "--deck1 keyword_advanced  --deck2 keyword_advanced --max-turns 40 --games 10 --seed 42"
+  },
+  {
+    "name": "keyword_advanced2",
+    "args": "--deck1 keyword_advanced2  --deck2 keyword_advanced2 --max-turns 40 --games 10 --seed 42"
+  },
+  {
+    "name": "bugfix_regression",
+    "args": "--deck1 bugfix_regression --deck2 bugfix_regression --max-turns 20 --seed 42 --games 5"
+  },
+  {
+    "name": "charm_double_execution",
+    "args": "--deck1 comprehensive_test --deck2 comprehensive_test --seed 42 --max-turns 15 --games 5"
+  },
+  {
+    "name": "land_etb_triggers (temple_of_mystery_scry)",
+    "args": "--deck1 staticability_test --deck2 red_burn --seed 42 --max-turns 15 --games 5"
+  },
+  {
+    "name": "cast_with_flash (winding_canyons)",
+    "args": "--deck1 staticability_test --deck2 red_burn --seed 100 --max-turns 15 --games 5"
+  },
+  {
+    "name": "attack_restrict_reprompt (crawlspace)",
+    "args": "--deck1 staticability_test --deck2 white_aggro --seed 999 --max-turns 15 --games 3"
+  },
+  {
+    "name": "equip_action_space (kondas_banner)",
+    "args": "--deck1 comprehensive_test --deck2 staticability_test --seed 999 --max-turns 15 --games 3"
+  },
+  {
+    "name": "phyrexian_mana",
+    "args": "--deck1 phyrexian_test --deck2 phyrexian_test --seed 42 --max-turns 10 --games 12"
+  },
+  {
+    "name": "counterspell_targeting",
+    "args": "--deck1 trigger_test --deck2 blue_control --seed 1930 --max-turns 8 --games 1"
+  },
+  {
+    "name": "poison_infect",
+    "args": "--deck1 poison_test --deck2 comprehensive_test --seed 1521 --max-turns 15 --games 1"
+  },
+  {
+    "name": "players____graveyard",
+    "args": "--deck1 cost_reduction_test --deck2 white_static --seed 545 --max-turns 15 --games 1"
+  }
+]

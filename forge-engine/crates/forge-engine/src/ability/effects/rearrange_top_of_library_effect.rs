@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
+use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// Mirrors the `RearrangeTopOfLibrary` API used by cards like Ponder.
@@ -33,11 +34,24 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let count = num.min(lib_len);
 
     // Take top N cards (last `count` elements).
-    let top_n: Vec<_> = {
+    let mut top_n: Vec<_> = {
         let zone = ctx.game.zone_mut(ZoneType::Library, target);
         let len = zone.cards.len();
         zone.cards.split_off(len - count)
     };
+
+    // Reverse to present in top-first order, matching Java's getTopXCardsFromLibrary
+    // which returns [top, 2nd, 3rd, ...]. Rust's split_off gives [3rd, 2nd, top].
+    // The agent convention (shared with Java) is: last element = will go on top.
+    // Java's moveToLibrary(card, 0) loop reverses the returned list (first card
+    // ends up deepest, last card on top). Rust's push loop does the same (last
+    // element pushed = end of Vec = top). By reversing the input, both agents
+    // see the same card order, and "keep original" produces the same result.
+    top_n.reverse();
+
+    // Let the agent see the cards before reordering.
+    ctx.agents[sa.activating_player.index()].snapshot_state(ctx.game, ctx.mana_pools);
+    ctx.agents[sa.activating_player.index()].on_library_peek(ctx.game, &top_n);
 
     // Ask the agent to reorder the cards.
     let reordered = ctx.agents[sa.activating_player.index()]
@@ -52,17 +66,34 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         };
 
     // Put cards back on top (append to end = top of library).
+    // Convention: last element in put_back = top of library, matching Java's
+    // moveToLibrary(card, 0) loop where the last card iterated ends up on top.
     for &id in &put_back {
         ctx.game.zone_mut(ZoneType::Library, target).cards.push(id);
     }
 
-    // Handle optional shuffle (default: no shuffle).
+    // Handle optional shuffle.
     if may_shuffle {
-        let wants_shuffle =
-            ctx.agents[sa.activating_player.index()].choose_may_shuffle(sa.activating_player);
+        let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
+        let wants_shuffle = ctx.agents[sa.activating_player.index()].confirm_action(
+            sa.activating_player,
+            None,
+            "Do you want to shuffle the library?",
+            &[],
+            source_name,
+            Some("RearrangeTopOfLibrary"),
+        );
         if wants_shuffle {
-            let mut rng = rand::thread_rng();
-            ctx.game.shuffle_library(target, &mut rng);
+            let lib = ctx.game.zone_mut(ZoneType::Library, target);
+            ctx.rng.shuffle_cards(&mut lib.cards);
+            ctx.trigger_handler.run_trigger(
+                TriggerType::Shuffled,
+                RunParams {
+                    player: Some(target),
+                    ..Default::default()
+                },
+                false,
+            );
         }
     }
 }

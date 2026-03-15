@@ -1,15 +1,34 @@
-use super::{parse_param, resolve_defined_player, EffectContext};
+use super::{resolve_defined_player, resolve_numeric_svar, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let amount = parse_param(&sa.ability_text, "LifeAmount$ ").unwrap_or(1);
+    let amount = resolve_numeric_svar(ctx.game, sa, "LifeAmount", 1);
+    // Mirror Java getTargetPlayers(): targeted player first, then Defined, then activator.
     let target = sa
-        .params
-        .get("Defined")
-        .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
+        .target_chosen
+        .target_player
+        .or_else(|| {
+            sa.params
+                .get("Defined")
+                .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
+        })
         .unwrap_or(sa.activating_player);
+    if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(
+        ctx.game, target,
+    ) {
+        return;
+    }
     ctx.game.player_mut(target).lose_life(amount);
+
+    // Set AFLifeLost SVar on source card so chained sub-abilities (e.g. GainLife) can read it.
+    // Mirrors Java's `sa.setSVar("AFLifeLost", "Number$" + lifeLost)`.
+    if let Some(source_id) = sa.source {
+        ctx.game
+            .card_mut(source_id)
+            .svars
+            .insert("AFLifeLost".to_string(), format!("Number${}", amount));
+    }
 
     // Fire LifeLost trigger
     ctx.trigger_handler.run_trigger(

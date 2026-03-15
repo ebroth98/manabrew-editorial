@@ -4,6 +4,19 @@ import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
+import { KeywordChips } from "@/components/game/CardKeywords";
+import { isCreature, isLethalDamage } from "./game.utils";
+import { CARD_BADGES } from "./game.constants";
+import { CARD_BANNER_CONTAINER, CARD_BANNER_TEXT } from "./game.styles";
+
+/** Top-center status badge overlay for a card (Exerted, Morph, Bestow, etc.) */
+function CardBadge({ label, style }: { label: string; style: string }) {
+  return (
+    <div className={CARD_BANNER_CONTAINER}>
+      <span className={cn(CARD_BANNER_TEXT, style)}>{label}</span>
+    </div>
+  );
+}
 
 interface CardProps {
   card: CardType;
@@ -13,56 +26,6 @@ interface CardProps {
   isHovered?: boolean;
   onFlip?: () => void;
   showBackFace?: boolean;
-}
-
-function isCreature(card: CardType) {
-  return card.types?.some((t) => t.toLowerCase() === "creature");
-}
-
-function isLethalDamage(card: CardType) {
-  if (!card.damage || !card.toughness) return false;
-  const toughness = parseInt(card.toughness, 10);
-  return !isNaN(toughness) && card.damage >= toughness;
-}
-
-/** Render a keyword chip — if it contains a colon, the part after is a mana cost. */
-function KeywordChip({ kw }: { kw: string }) {
-  const colonIdx = kw.indexOf(":");
-  if (colonIdx === -1) {
-    // Simple keyword like "Flying", "Trample"
-    return (
-      <span className="text-[9px] font-bold uppercase bg-black/60 text-white px-1 py-0.5 rounded leading-none">
-        {kw}
-      </span>
-    );
-  }
-  // Cost keyword like "Buyback:5", "Dash:2 R", "Spectacle:R"
-  const label = kw.slice(0, colonIdx);
-  const cost = kw.slice(colonIdx + 1);
-  return (
-    <span className="inline-flex items-center gap-0.5 text-[9px] font-bold uppercase bg-black/60 text-white px-1 py-0.5 rounded leading-none">
-      {label}
-      <ManaSymbols cost={cost} size="sm" />
-    </span>
-  );
-}
-
-function KeywordChips({ keywords }: { keywords: string[] }) {
-  if (!keywords || keywords.length === 0) return null;
-  const visible = keywords.slice(0, 4);
-  const hidden = keywords.length - visible.length;
-  return (
-    <div className="absolute top-1 left-1 right-1 flex flex-wrap gap-0.5 z-10">
-      {visible.map((kw) => (
-        <KeywordChip key={kw} kw={kw} />
-      ))}
-      {hidden > 0 && (
-        <span className="text-[9px] font-bold bg-black/60 text-white px-1 py-0.5 rounded leading-none">
-          +{hidden}
-        </span>
-      )}
-    </div>
-  );
 }
 
 export function Card({
@@ -88,6 +51,20 @@ export function Card({
   const lethal = isLethalDamage(card);
   const onBattlefield = card.zoneId === "battlefield";
 
+  // P/T color-coding: green if buffed above base, red if debuffed
+  const ptColor = (() => {
+    if (lethal) return "bg-red-600 text-white";
+    if (card.basePower == null || card.power == null) return "bg-black/70 text-white";
+    const currentP = parseInt(card.power, 10);
+    const currentT = parseInt(card.toughness ?? "0", 10);
+    const buffed = currentP > card.basePower || currentT > (card.baseToughness ?? 0);
+    const debuffed = currentP < card.basePower || currentT < (card.baseToughness ?? 0);
+    if (buffed && !debuffed) return "bg-green-700 text-white";
+    if (debuffed && !buffed) return "bg-red-700 text-white";
+    if (buffed && debuffed) return "bg-amber-700 text-white";
+    return "bg-black/70 text-white";
+  })();
+
   return (
     <div
       className={cn(
@@ -98,9 +75,9 @@ export function Card({
           card.summoningSick &&
           onBattlefield &&
           "ring-2 ring-dashed ring-gray-400",
+        card.phasedOut && "opacity-30 grayscale",
         className,
       )}
-      title={card.name}
       onClick={onClick}
     >
       {imageUrl && !hasError ? (
@@ -112,21 +89,18 @@ export function Card({
             onError={() => setHasError(true)}
             loading="lazy"
           />
-          {/* Token / Transformed indicator — top-center banner */}
-          {(card.isToken || card.isTransformed) && (
-            <div className="absolute top-0 left-0 right-0 flex justify-center z-20 pointer-events-none">
-              <span
-                className={cn(
-                  "text-[8px] font-bold px-1.5 py-0.5 rounded-b leading-none",
-                  card.isTransformed
-                    ? "bg-purple-500/90 text-white"
-                    : "bg-amber-400/90 text-amber-900",
-                )}
-              >
-                {card.isTransformed ? "TRANSFORMED" : "TOKEN"}
-              </span>
-            </div>
-          )}
+          {/* Status badge — only the highest-priority one shows */}
+          {card.exerted ? (
+            <CardBadge {...CARD_BADGES.exerted} />
+          ) : card.isFaceDown ? (
+            <CardBadge {...CARD_BADGES.morph} />
+          ) : card.isBestowed ? (
+            <CardBadge {...CARD_BADGES.bestow} />
+          ) : card.isTransformed ? (
+            <CardBadge {...CARD_BADGES.transformed} />
+          ) : card.isToken ? (
+            <CardBadge {...CARD_BADGES.token} />
+          ) : null}
           {/* Keyword chips — all zones */}
           {card.keywords && card.keywords.length > 0 && (
             <KeywordChips keywords={card.keywords} />
@@ -145,7 +119,7 @@ export function Card({
               <span
                 className={cn(
                   "text-[10px] font-bold px-1 py-0.5 rounded leading-none",
-                  lethal ? "bg-red-600 text-white" : "bg-black/70 text-white",
+                  ptColor,
                 )}
               >
                 {card.power}/{card.toughness}
@@ -170,14 +144,25 @@ export function Card({
                   className={cn(
                     "text-[8px] font-bold px-1 py-0.5 rounded leading-none",
                     card.isTransformed
-                      ? "bg-purple-500/90 text-white"
-                      : "bg-amber-400/90 text-amber-900",
+                      ? CARD_BADGES.transformed.style
+                      : CARD_BADGES.token.style,
                   )}
                 >
-                  {card.isTransformed ? "TRANSFORMED" : "TOKEN"}
+                  {card.isTransformed ? CARD_BADGES.transformed.label : CARD_BADGES.token.label}
                 </span>
               )}
-              <ManaSymbols cost={card.manaCost} size="sm" />
+              {card.effectiveManaCost ? (
+                <div className="flex flex-col items-end">
+                  <span className="line-through opacity-50">
+                    <ManaSymbols cost={card.manaCost} size="sm" />
+                  </span>
+                  <span className="bg-green-500/20 rounded px-0.5">
+                    <ManaSymbols cost={card.effectiveManaCost} size="sm" />
+                  </span>
+                </div>
+              ) : (
+                <ManaSymbols cost={card.manaCost} size="sm" />
+              )}
             </div>
           </div>
           <div className="flex-1 flex items-center justify-center px-1">
@@ -201,7 +186,15 @@ export function Card({
               <span
                 className={cn(
                   "font-bold text-sm shrink-0",
-                  lethal && "text-red-500",
+                  lethal
+                    ? "text-red-500"
+                    : card.basePower != null &&
+                        parseInt(card.power, 10) > card.basePower
+                      ? "text-green-400"
+                      : card.basePower != null &&
+                          parseInt(card.power, 10) < card.basePower
+                        ? "text-red-400"
+                        : "",
                 )}
               >
                 {card.power}/{card.toughness}

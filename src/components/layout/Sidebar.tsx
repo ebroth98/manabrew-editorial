@@ -1,33 +1,24 @@
-import { NavLink, useNavigate } from "react-router-dom";
+import { NavLink } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useGameStore } from "@/stores/useGameStore";
 import {
   Home,
   Gamepad2,
   Layers,
   BookMarked,
   Settings,
-  LogOut,
   Swords,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useAuthStore } from "@/stores/useAuthStore";
-import { useConnectionStore } from "@/stores/useConnectionStore";
-import { wsClient } from "@/api/websocket";
+import iconSvg from "@/assets/icon.svg";
+import { useTheme } from "next-themes";
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export function Sidebar({ className }: SidebarProps) {
-  const navigate = useNavigate();
-  const { logout } = useAuthStore();
-  const { setStatus, setServerAddress } = useConnectionStore();
-
-  function handleDisconnect() {
-    wsClient.disconnect();
-    setStatus("DISCONNECTED");
-    setServerAddress("");
-    logout();
-    navigate("/login");
-  }
+  const isGameActive = useGameStore((s) => s.isGameActive);
+  const { theme } = useTheme();
+  const isLight = theme === "light";
 
   return (
     <div
@@ -38,9 +29,16 @@ export function Sidebar({ className }: SidebarProps) {
     >
       <div className="flex-1 space-y-4 py-4">
         <div className="px-3 py-2">
-          <h2 className="mb-2 px-4 text-lg font-semibold tracking-tight">
-            Bardidina Magica
-          </h2>
+          <div className="mb-2 px-4 flex items-center gap-2">
+            <img
+              src={iconSvg}
+              alt="Logo"
+              className={"h-12 w-12 " + (isLight ? "" : "dark:invert")}
+            />
+            <h2 className="text-lg font-semibold tracking-tight">
+              Bardidina Magica
+            </h2>
+          </div>
           <div className="space-y-1">
             <NavLink to="/play">
               {({ isActive }) => (
@@ -104,29 +102,31 @@ export function Sidebar({ className }: SidebarProps) {
             Settings
           </h2>
           <div className="space-y-1">
-            <NavLink to="/settings">
-              {({ isActive }) => (
-                <Button
-                  variant={isActive ? "secondary" : "ghost"}
-                  className="w-full justify-start"
-                >
-                  <Settings className="mr-2 h-4 w-4" />
-                  Preferences
-                </Button>
-              )}
-            </NavLink>
+            {isGameActive ? (
+              <Button
+                variant="ghost"
+                className="w-full justify-start"
+                disabled
+                title="Preferences are unavailable during an active game"
+              >
+                <Settings className="mr-2 h-4 w-4" />
+                Preferences
+              </Button>
+            ) : (
+              <NavLink to="/settings">
+                {({ isActive }) => (
+                  <Button
+                    variant={isActive ? "secondary" : "ghost"}
+                    className="w-full justify-start"
+                  >
+                    <Settings className="mr-2 h-4 w-4" />
+                    Preferences
+                  </Button>
+                )}
+              </NavLink>
+            )}
           </div>
         </div>
-      </div>
-      <div className="px-3 py-4 border-t">
-        <Button
-          variant="ghost"
-          className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-100"
-          onClick={handleDisconnect}
-        >
-          <LogOut className="mr-2 h-4 w-4" />
-          Disconnect
-        </Button>
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ import { toast } from "sonner";
 import { useAuthStore } from "@/stores/useAuthStore";
 import { useConnectionStore } from "@/stores/useConnectionStore";
 import { wsClient } from "@/api/websocket";
+import iconSvg from "@/assets/icon.svg";
 
 const formSchema = z.object({
   serverAddress: z.string().min(1, "Server address is required"),
@@ -93,6 +94,9 @@ export default function Login() {
     <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-900 p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
+          <div className="flex justify-center mb-2">
+            <img src={iconSvg} alt="Logo" className="h-24 w-24 dark:invert" />
+          </div>
           <CardTitle className="text-2xl text-center">
             Bardidina Magica Client
           </CardTitle>

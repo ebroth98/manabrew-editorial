@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { GameView, Card } from '@/types/xmage';
+import type { GameView, Card, ActivatableAbilityInfo } from '@/types/xmage';
 import { getFormat } from '@/lib/formats';
+import { normalizeGameLogPayload, type GameLogEntry } from '@/types/gameLog';
+import { normalizeSnapshotPayload, type GameSnapshotEntry } from '@/types/gameSnapshot';
 
 interface DisplayEvent {
   kind: string;
@@ -15,11 +17,13 @@ interface DisplayEvent {
   turnNumber?: number;
 }
 
-interface AgentPrompt {
+export interface AgentPrompt {
   type: string;
   gameView: GameView;
   displayEvents?: DisplayEvent[];
   playableCardIds?: string[];
+  /** All play options with modes (normal, spectacle, evoke, etc.) */
+  playableOptions?: { cardId: string; mode: string; modeLabel: string }[];
   handCardIds?: string[];
   availableAttackerIds?: string[];
   attackerIds?: string[];
@@ -50,6 +54,16 @@ interface AgentPrompt {
   maxChoices?: number;
   /** chooseOptionalTrigger: trigger description text */
   description?: string;
+  /** chooseOptionalTrigger: context tag (optional_trigger | confirm_action) */
+  promptKind?: string;
+  /** chooseOptionalTrigger: optional labels for decline/accept buttons */
+  optionLabels?: string[];
+  /** chooseOptionalTrigger/confirmAction: optional mode metadata */
+  mode?: string;
+  /** chooseOptionalTrigger/confirmAction: optional API metadata */
+  api?: string;
+  /** choosePhyrexian: the phyrexian shard string (e.g. "W/P") */
+  phyrexianColor?: string;
   /** chooseKicker: the kicker cost string */
   kickerCost?: string;
   /** Source card name for displaying card image in modals */
@@ -62,6 +76,66 @@ interface AgentPrompt {
   maxKicks?: number;
   /** chooseReplicate: max number of replicates */
   maxReplicates?: number;
+  /** chooseColor: valid color choices */
+  validColors?: string[];
+  /** chooseType: category of type to choose */
+  typeCategory?: string;
+  /** chooseType: valid type choices */
+  validTypes?: string[];
+  /** chooseNumber: minimum value */
+  min?: number;
+  /** chooseNumber: maximum value */
+  max?: number;
+  /** chooseCardName: valid card name choices */
+  validNames?: string[];
+  /** chooseAction: activated abilities on battlefield permanents */
+  activatableAbilityIds?: ActivatableAbilityInfo[];
+  /** mulligan: how many mulligans taken so far */
+  mulliganCount?: number;
+  /** mulliganPutBack: how many cards must be put on the bottom */
+  count?: number;
+  /** chooseAttackers: possible defenders (players and planeswalkers) */
+  possibleDefenderIds?: { id: string; label: string }[];
+  /** chooseDamageAssignmentOrder: the attacker card ID */
+  attackerId?: string;
+  /** chooseDamageAssignmentOrder: blocker IDs to order */
+  blockerIds?: string[];
+  /** chooseDamageAssignmentOrder: blocker CardDto info */
+  blockerCards?: Card[];
+  /** payManaCost: the card being cast */
+  cardId?: string;
+  /** payManaCost: card display name */
+  cardName?: string;
+  /** payManaCost: mana cost string (e.g. "{2}{R}") */
+  manaCost?: string;
+  /** chooseDelve/chooseConvoke: remaining cost string */
+  remainingCost?: string;
+  /** chooseDelve: max cards to exile */
+  maxCards?: number;
+  /** payCombatCost: attacker card ID */
+  attackerIdForCost?: string;
+  /** payCombatCost: attacker display name */
+  attackerName?: string;
+  /** payCombatCost: mana pool total available */
+  manaPoolTotal?: number;
+  /** specifyManaCombo: available color letters */
+  availableColors?: string[];
+  /** specifyManaCombo: total mana to distribute */
+  amount?: number;
+  /** exploreDecision: name of the revealed card */
+  revealedCardName?: string;
+  /** exploreDecision: card DTO for the revealed card */
+  revealedCard?: Card;
+  /** chooseExertAttackers / chooseEnlistAttackers: attacker card IDs */
+  attackerCardIds?: string[];
+  /** chooseExertAttackers / chooseEnlistAttackers: attacker card DTOs */
+  attackerCards?: Card[];
+  /** reorderLibrary: cards to reorder */
+  reorderCards?: Card[];
+  /** reorderLibrary: card IDs to reorder */
+  reorderCardIds?: string[];
+  /** helpPayAssist: max generic mana the assisting player can pay */
+  maxGeneric?: number;
 }
 
 interface GameConfig {
@@ -80,7 +154,8 @@ interface DeferredSnapshot {
 interface GameState {
   gameView: GameView | null;
   currentPrompt: AgentPrompt | null;
-  gameLog: string[];
+  gameLog: GameLogEntry[];
+  snapshots: GameSnapshotEntry[];
   isGameActive: boolean;
   debugInfo: string;
   /** Queue of deferred snapshots waiting for flash animation. */
@@ -99,19 +174,27 @@ interface GameState {
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
   // Actions
-  startGame: (deckList: { name: string, setCode: string }[], formatId?: string, commanderName?: string) => Promise<void>;
-  startMultiplayerGame: (playerNames: string[], hostPlayerIndex: number, startingLife: number) => Promise<void>;
+  startGame: (deckList: { name: string, setCode: string }[], formatId?: string, commanderName?: string, opponentDeckList?: { name: string, setCode: string }[]) => Promise<void>;
+  startMultiplayerGame: (
+    playerNames: string[],
+    deckLists: { name: string, setCode: string }[][],
+    enginePlayerIndex: number,
+    localIsHost: boolean,
+    startingLife: number
+  ) => Promise<void>;
   respond: (action: Record<string, unknown>) => Promise<void>;
-  castSpell: (cardId: string) => void;
+  castSpell: (cardId: string, mode?: string) => void;
   passPriority: () => void;
-  declareAttackers: (attackerIds: string[]) => void;
+  declareAttackers: (attackerIds: string[], defenderId?: string) => void;
   declareBlockers: (assignments: { blockerId: string; attackerId: string }[]) => void;
   targetPlayer: (playerId: string | null) => void;
   targetCard: (cardId: string | null) => void;
   targetAny: (target: { kind: string; playerId?: string; cardId?: string }) => void;
   mulliganDecision: (keep: boolean) => void;
+  mulliganPutBackDecision: (cardIds: string[]) => void;
   tapLand: (cardId: string) => void;
   untapLand: (cardId: string) => void;
+  activateAbility: (cardId: string, abilityIndex: number) => void;
   scryDecision: (bottomCardIds: string[]) => void;
   surveilDecision: (graveyardCardIds: string[]) => void;
   digDecision: (chosenCardIds: string[]) => void;
@@ -119,11 +202,75 @@ interface GameState {
   targetSpell: (spellId: string | null) => void;
   modeDecision: (chosenIndices: number[]) => void;
   optionalTriggerDecision: (accept: boolean) => void;
+  colorDecision: (color: string | null) => void;
+  chooseCardsDecision: (chosenCardIds: string[]) => void;
+  typeDecision: (chosenType: string | null) => void;
+  numberDecision: (chosenNumber: number | null) => void;
+  cardNameDecision: (chosenName: string | null) => void;
+  payCombatCost: () => void;
+  declineCombatCost: () => void;
+  payManaCost: () => void;
+  cancelManaCost: () => void;
+  delveDecision: (chosenCardIds: string[]) => void;
+  convokeDecision: (chosenCardIds: string[]) => void;
+  improviseDecision: (chosenCardIds: string[]) => void;
+  manaComboDecision: (chosenColors: string[]) => void;
+  exploreDecision: (putInGraveyard: boolean) => void;
+  exertDecision: (chosenAttackerIds: string[]) => void;
+  enlistDecision: (chosenAttackerIds: string[]) => void;
+  reorderLibraryDecision: (orderedCardIds: string[]) => void;
+  assistDecision: (amountToPay: number) => void;
   concede: () => void;
   endGame: () => Promise<void>;
   setMultiplayerState: (isMultiplayer: boolean, isHost: boolean, myPlayerSlot: string | null) => void;
+  restoreSnapshot: (checkpointId: number) => Promise<void>;
   setupListeners: () => Promise<() => void>;
 }
+
+/** Prompt types the UI knows how to render a modal/interaction for. */
+const HANDLED_PROMPT_TYPES = new Set([
+  "stateUpdate",
+  "gameOver",
+  "mulligan",
+  "mulliganPutBack",
+  "chooseAction",
+  "chooseAttackers",
+  "chooseBlockers",
+  "chooseTargetCard",
+  "chooseTargetCardFromZone",
+  "chooseTargetPlayer",
+  "chooseTargetAny",
+  "chooseTargetSpell",
+  "chooseMode",
+  "chooseOptionalTrigger",
+  "choosePhyrexian",
+  "chooseKicker",
+  "chooseBuyback",
+  "chooseMultikicker",
+  "chooseReplicate",
+  "chooseAlternativeCost",
+  "chooseColor",
+  "chooseCardsForEffect",
+  "chooseType",
+  "chooseNumber",
+  "chooseCardName",
+  "chooseDiscard",
+  "chooseDamageAssignmentOrder",
+  "payCombatCost",
+  "payManaCost",
+  "chooseDelve",
+  "chooseConvoke",
+  "chooseImprovise",
+  "specifyManaCombo",
+  "scry",
+  "surveil",
+  "dig",
+  "chooseExertAttackers",
+  "chooseEnlistAttackers",
+  "reorderLibrary",
+  "exploreDecision",
+  "helpPayAssist",
+]);
 
 function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial<GameState>) => void, get: () => GameState) {
   const displayEvents = [...(prompt.displayEvents ?? [])];
@@ -134,6 +281,20 @@ function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial
   // stateUpdate prompts only carry a gameView + display events — they should
   // NOT replace the currentPrompt (the active player decision).
   const isStateUpdate = prompt.type === "stateUpdate";
+
+  // DEV warning: detect prompt types the UI doesn't handle (engine takes a default/arbitrary action)
+  if (!isStateUpdate && !HANDLED_PROMPT_TYPES.has(prompt.type)) {
+    const cardName = prompt.sourceCardName ?? prompt.cardName ?? prompt.attackerName ?? "unknown";
+    const details = JSON.stringify(prompt, null, 2);
+    const devMsg = `[DEV] Unhandled prompt "${prompt.type}" for card "${cardName}" — engine takes default action\n${details}`;
+    console.warn(devMsg, prompt);
+    const devEntry: import("@/types/gameLog").GameLogEntry = {
+      message: devMsg,
+      entryType: "warning",
+      timestampMs: Date.now(),
+    };
+    set({ gameLog: [...get().gameLog.slice(-99), devEntry] });
+  }
 
   if (displayEvents.length > 0 && currentGameView !== null) {
     // Enqueue this snapshot — the flash processor will play the events then apply the state.
@@ -166,6 +327,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   gameView: null,
   currentPrompt: null,
   gameLog: [],
+  snapshots: [],
   isGameActive: false,
   debugInfo: '',
   deferredQueue: [],
@@ -180,7 +342,7 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setGameConfig: (config) => set({ gameConfig: config }),
 
-  startGame: async (deckList, formatId, commanderName) => {
+  startGame: async (deckList, formatId, commanderName, opponentDeckList) => {
     try {
       set({ debugInfo: 'Starting game...' });
       const format = formatId ? getFormat(formatId) : undefined;
@@ -191,35 +353,39 @@ export const useGameStore = create<GameState>((set, get) => ({
         deckList: deckList,
         startingLife,
         commanderName: commanderName ?? null,
+        opponentDeckList: opponentDeckList ?? null,
       });
       // Clear old game state so stale gameView/prompts don't bleed into new game
-      set({ isGameActive: true, gameLog: [], gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, debugInfo: `Game started: ${result}. Polling...` });
+      set({ isGameActive: true, gameLog: [], snapshots: [], gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, debugInfo: `Game started: ${result}. Polling...` });
     } catch (e) {
       set({ debugInfo: `Start failed: ${e}` });
       console.error('[store] Failed to start game:', e);
     }
   },
 
-  startMultiplayerGame: async (playerNames, hostPlayerIndex, startingLife) => {
+  startMultiplayerGame: async (playerNames, deckLists, enginePlayerIndex, localIsHost, startingLife) => {
     try {
       set({ debugInfo: 'Starting multiplayer game...' });
-      const result = await invoke('start_multiplayer_game', {
+      await invoke('start_multiplayer_game', {
         playerNames,
-        hostPlayerIndex,
+        deckLists,
+        enginePlayerIndex,
+        localIsHost,
         startingLife,
       });
       set({
         isGameActive: true,
         isMultiplayer: true,
-        isHost: true,
-        myPlayerSlot: `player-${hostPlayerIndex}`,
+        isHost: localIsHost,
+        myPlayerSlot: `player-${enginePlayerIndex}`,
         gameLog: [],
+        snapshots: [],
         gameView: null,
         currentPrompt: null,
         deferredQueue: [],
         isFlashing: false,
         isWaitingForResponse: false,
-        debugInfo: `Multiplayer game started: ${result}`,
+        debugInfo: 'Multiplayer game started.',
       });
     } catch (e) {
       set({ debugInfo: `Multiplayer start failed: ${e}` });
@@ -230,22 +396,16 @@ export const useGameStore = create<GameState>((set, get) => ({
   respond: async (action) => {
     try {
       set({ isWaitingForResponse: true, debugInfo: `Responding: ${action.type}` });
-      const { isMultiplayer, isHost, myPlayerSlot } = get();
-      if (isMultiplayer && !isHost) {
-        // Remote player: send response via server relay
-        await invoke('server_respond', { playerSlot: myPlayerSlot, action });
-      } else {
-        // Host or single-player: send directly to engine
-        await invoke('respond', { action });
-      }
+      const { myPlayerSlot } = get();
+      await invoke('respond', { action, playerSlot: myPlayerSlot });
     } catch (e) {
       set({ isWaitingForResponse: false, debugInfo: `Respond error: ${e}` });
       console.error('Failed to respond:', e);
     }
   },
 
-  castSpell: (cardId) => {
-    get().respond({ type: 'playCard', cardId });
+  castSpell: (cardId, mode?: string) => {
+    get().respond({ type: 'playCard', cardId, mode: mode ?? null });
   },
 
   passPriority: () => {
@@ -257,7 +417,7 @@ export const useGameStore = create<GameState>((set, get) => ({
         get().respond({ type: 'playCard', cardId: null });
         break;
       case 'chooseAttackers':
-        get().respond({ type: 'declareAttackers', attackerIds: [] });
+        get().respond({ type: 'declareAttackers', assignments: [] });
         break;
       case 'chooseBlockers':
         get().respond({ type: 'declareBlockers', assignments: [] });
@@ -267,8 +427,15 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  declareAttackers: (attackerIds) => {
-    get().respond({ type: 'declareAttackers', attackerIds });
+  declareAttackers: (attackerIds, defenderId) => {
+    const prompt = get().currentPrompt;
+    // Default to first possible defender (the opponent player)
+    const defaultDefender = prompt?.possibleDefenderIds?.[0]?.id ?? 'player-1';
+    const assignments = attackerIds.map(id => ({
+      attackerId: id,
+      defenderId: defenderId ?? defaultDefender,
+    }));
+    get().respond({ type: 'declareAttackers', assignments });
   },
 
   declareBlockers: (assignments) => {
@@ -291,12 +458,20 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().respond({ type: 'mulliganDecision', keep });
   },
 
+  mulliganPutBackDecision: (cardIds) => {
+    get().respond({ type: 'mulliganPutBackDecision', cardIds });
+  },
+
   tapLand: (cardId) => {
     get().respond({ type: 'tapLand', cardId });
   },
 
   untapLand: (cardId) => {
     get().respond({ type: 'untapLand', cardId });
+  },
+
+  activateAbility: (cardId, abilityIndex) => {
+    get().respond({ type: 'activateAbility', cardId, abilityIndex });
   },
 
   scryDecision: (bottomCardIds) => {
@@ -327,6 +502,78 @@ export const useGameStore = create<GameState>((set, get) => ({
     get().respond({ type: 'optionalTriggerDecision', accept });
   },
 
+  colorDecision: (color) => {
+    get().respond({ type: 'colorDecision', color });
+  },
+
+  chooseCardsDecision: (chosenCardIds) => {
+    get().respond({ type: 'chooseCardsDecision', chosenCardIds });
+  },
+
+  typeDecision: (chosenType) => {
+    get().respond({ type: 'typeDecision', chosenType });
+  },
+
+  numberDecision: (chosenNumber) => {
+    get().respond({ type: 'numberDecision', chosenNumber });
+  },
+
+  cardNameDecision: (chosenName) => {
+    get().respond({ type: 'cardNameDecision', chosenName });
+  },
+
+  payCombatCost: () => {
+    get().respond({ type: 'payCombatCost' });
+  },
+
+  declineCombatCost: () => {
+    get().respond({ type: 'declineCombatCost' });
+  },
+
+  payManaCost: () => {
+    get().respond({ type: 'payManaCost' });
+  },
+
+  cancelManaCost: () => {
+    get().respond({ type: 'cancelManaCost' });
+  },
+
+  delveDecision: (chosenCardIds) => {
+    get().respond({ type: 'delveDecision', chosenCardIds });
+  },
+
+  convokeDecision: (chosenCardIds) => {
+    get().respond({ type: 'convokeDecision', chosenCardIds });
+  },
+
+  improviseDecision: (chosenCardIds) => {
+    get().respond({ type: 'improviseDecision', chosenCardIds });
+  },
+
+  manaComboDecision: (chosenColors) => {
+    get().respond({ type: 'manaComboDecision', chosenColors });
+  },
+
+  exploreDecision: (putInGraveyard) => {
+    get().respond({ type: 'exploreResponse', putInGraveyard });
+  },
+
+  exertDecision: (chosenAttackerIds) => {
+    get().respond({ type: 'exertDecision', chosenAttackerIds });
+  },
+
+  enlistDecision: (chosenAttackerIds) => {
+    get().respond({ type: 'enlistDecision', chosenAttackerIds });
+  },
+
+  reorderLibraryDecision: (orderedCardIds) => {
+    get().respond({ type: 'reorderLibraryDecision', orderedCardIds });
+  },
+
+  assistDecision: (amountToPay) => {
+    get().respond({ type: 'assistDecision', amountToPay });
+  },
+
   concede: () => {
     get().respond({ type: 'concede' });
   },
@@ -334,7 +581,7 @@ export const useGameStore = create<GameState>((set, get) => ({
   endGame: async () => {
     try {
       await invoke('end_game');
-      set({ isGameActive: false, gameView: null, currentPrompt: null, deferredQueue: [], isFlashing: false, isWaitingForResponse: false, isMultiplayer: false, isHost: false, myPlayerSlot: null });
+      set({ isGameActive: false, gameView: null, currentPrompt: null, gameLog: [], snapshots: [], deferredQueue: [], isFlashing: false, isWaitingForResponse: false, isMultiplayer: false, isHost: false, myPlayerSlot: null });
     } catch (e) {
       console.error('Failed to end game:', e);
     }
@@ -342,6 +589,22 @@ export const useGameStore = create<GameState>((set, get) => ({
 
   setMultiplayerState: (isMultiplayer, isHost, myPlayerSlot) => {
     set({ isMultiplayer, isHost, myPlayerSlot });
+  },
+
+  restoreSnapshot: async (checkpointId) => {
+    const { isMultiplayer, isHost } = get();
+    if (isMultiplayer && !isHost) return;
+    const promptType = get().currentPrompt?.type;
+    const safePrompt =
+      promptType === 'chooseAction' ||
+      promptType === 'chooseAttackers' ||
+      promptType === 'chooseBlockers';
+    if (!safePrompt) {
+      set({ debugInfo: 'Snapshot restore is only available during priority/combat declaration prompts.' });
+      return;
+    }
+    await invoke('restore_snapshot', { checkpointId });
+    set({ debugInfo: `Requested snapshot restore: #${checkpointId}` });
   },
 
   setupListeners: async () => {
@@ -357,12 +620,22 @@ export const useGameStore = create<GameState>((set, get) => ({
       });
       unlisteners.push(unlisten1);
 
-      const unlisten2 = await listen<string>('game:log', (event) => {
+      const unlisten2 = await listen<unknown>('game:log', (event) => {
+        const entry = normalizeGameLogPayload(event.payload);
         set((state) => ({
-          gameLog: [...state.gameLog.slice(-99), event.payload],
+          gameLog: [...state.gameLog.slice(-199), entry],
         }));
       });
       unlisteners.push(unlisten2);
+
+      const unlistenSnapshot = await listen<unknown>('game:snapshot', (event) => {
+        const snapshot = normalizeSnapshotPayload(event.payload);
+        if (!snapshot.gameView) return;
+        set((state) => ({
+          snapshots: [...state.snapshots.filter((s) => s.checkpointId !== snapshot.checkpointId).slice(-199), snapshot],
+        }));
+      });
+      unlisteners.push(unlistenSnapshot);
 
       // Remote prompt listener: receives prompts relayed via the server for non-host players
       const unlisten3 = await listen<{ kind: string; forPlayer: string; prompt: AgentPrompt }>('game:remote_prompt', (event) => {
@@ -371,11 +644,49 @@ export const useGameStore = create<GameState>((set, get) => ({
         if (forPlayer === myPlayerSlot) {
           // This prompt is for us — render it fully.
           applyPrompt(prompt, 'Remote', set, get);
+        } else {
+          // Keep shared turn/priority in sync even when the prompt is for another player.
+          // Do not apply full foreign-perspective view (would leak/flip local actionability).
+          const current = get().gameView;
+          if (current && prompt?.gameView) {
+            const iHavePriority = prompt.gameView.priorityPlayerId === myPlayerSlot;
+            set({
+              gameView: {
+                ...current,
+                turn: prompt.gameView.turn,
+                step: prompt.gameView.step,
+                activePlayerId: prompt.gameView.activePlayerId,
+                priorityPlayerId: prompt.gameView.priorityPlayerId,
+                gameOver: prompt.gameView.gameOver,
+                winnerId: prompt.gameView.winnerId,
+              },
+              // Never keep a stale actionable prompt when priority is not ours.
+              currentPrompt: iHavePriority ? get().currentPrompt : null,
+              isWaitingForResponse: iHavePriority ? get().isWaitingForResponse : false,
+              debugInfo: `Remote sync: ${prompt.type}`,
+            });
+          }
         }
-        // Prompts for other players are intentionally ignored. Applying a different
-        // player's perspective can desync local actionability/state interpretation.
       });
       unlisteners.push(unlisten3);
+
+      const unlisten4 = await listen<{ reason: string; message: string }>('game:forced_end', (event) => {
+        const message = event.payload?.message ?? 'Forced game exit';
+        set({
+          isGameActive: false,
+          gameView: null,
+          currentPrompt: null,
+          deferredQueue: [],
+          isFlashing: false,
+          isWaitingForResponse: false,
+          isMultiplayer: false,
+          isHost: false,
+          myPlayerSlot: null,
+          snapshots: [],
+          debugInfo: `Game ended: ${message}`,
+        });
+      });
+      unlisteners.push(unlisten4);
     } catch (e) {
       console.error('[store] Failed to setup listeners:', e);
     }

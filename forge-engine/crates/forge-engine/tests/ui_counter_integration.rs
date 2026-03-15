@@ -3,6 +3,7 @@
 /// have proper backend support
 use forge_engine_core::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
+use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
@@ -21,7 +22,12 @@ impl CounterspellAgent {
 }
 
 impl PlayerAgent for CounterspellAgent {
-    fn mulligan_decision(&mut self, _player: PlayerId, _hand: &[CardId]) -> bool {
+    fn mulligan_decision(
+        &mut self,
+        _player: PlayerId,
+        _hand: &[CardId],
+        _mulligan_count: u32,
+    ) -> bool {
         true
     }
 
@@ -64,7 +70,12 @@ impl PlayerAgent for CounterspellAgent {
         valid.first().copied()
     }
 
-    fn choose_attackers(&mut self, _player: PlayerId, _available: &[CardId]) -> Vec<CardId> {
+    fn choose_attackers(
+        &mut self,
+        _player: PlayerId,
+        _available: &[CardId],
+        _possible_defenders: &[DefenderId],
+    ) -> Vec<(CardId, DefenderId)> {
         Vec::new()
     }
 
@@ -225,6 +236,7 @@ fn test_counterspell_targeting_flow() {
         Box::new(forge_engine_core::agent::PassAgent),
     ];
 
+    let mut rng_adapter = forge_engine_core::game_rng::ThreadRngAdapter;
     let mut ctx = EffectContext {
         game: &mut game,
         agents: &mut pass_agents,
@@ -232,6 +244,7 @@ fn test_counterspell_targeting_flow() {
         token_templates: &game_loop.token_templates,
         mana_pools: &mut game_loop.mana_pools,
         parent_target_card: None,
+        rng: &mut rng_adapter,
     };
 
     resolve_effect(&mut ctx, &counterspell_sa);

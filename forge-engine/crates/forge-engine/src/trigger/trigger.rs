@@ -49,6 +49,8 @@ pub enum TriggerMode {
     },
     Attacks {
         valid_card: Option<String>,
+        /// If true, only triggers when the creature attacks alone (Exalted).
+        alone: bool,
     },
     DamageDone {
         valid_source: Option<String>,
@@ -59,6 +61,7 @@ pub enum TriggerMode {
     Countered {
         valid_card: Option<String>,
         valid_cause: Option<String>,
+        valid_sa: Option<String>,
     },
     // ── New trigger modes (issue #19) ──
     /// A creature blocks an attacker.
@@ -119,6 +122,10 @@ pub enum TriggerMode {
     Transformed {
         valid_card: Option<String>,
     },
+    /// A face-down creature was turned face up (Morph/Megamorph).
+    TurnFaceUp {
+        valid_card: Option<String>,
+    },
     /// An aura/equipment was attached.
     Attached {
         valid_card: Option<String>,
@@ -148,6 +155,10 @@ pub enum TriggerMode {
     Explored {
         valid_card: Option<String>,
     },
+    /// A creature became monstrous.
+    BecomeMonstrous {
+        valid_card: Option<String>,
+    },
     /// A player became the monarch.
     BecomeMonarch {
         valid_player: Option<String>,
@@ -175,6 +186,269 @@ pub enum TriggerMode {
         valid_card: Option<String>,
         valid_activating_player: Option<String>,
     },
+    // ── New trigger modes (issue #54) ──
+    AttackersDeclared {
+        valid_player: Option<String>,
+        valid_attackers: Option<String>,
+        valid_attackers_amount: Option<String>,
+    },
+    BlockersDeclared,
+    ChangesZoneAll {
+        origin: Option<ZoneType>,
+        destination: Option<ZoneType>,
+        valid_card: Option<String>,
+    },
+    ChangesController {
+        valid_card: Option<String>,
+    },
+    TurnBegin {
+        valid_player: Option<String>,
+    },
+    DamageDoneOnce {
+        valid_source: Option<String>,
+        valid_target: Option<String>,
+        combat_damage_only: bool,
+    },
+    SpellCastAll {
+        valid_card: Option<String>,
+        valid_activating_player: Option<String>,
+    },
+    LifeLostAll {
+        valid_player: Option<String>,
+    },
+    CounterAddedOnce {
+        valid_card: Option<String>,
+        counter_type: Option<String>,
+        valid_source: Option<String>,
+    },
+    DiscardedAll {
+        valid_card: Option<String>,
+        valid_player: Option<String>,
+    },
+    SacrificedOnce {
+        valid_card: Option<String>,
+        valid_player: Option<String>,
+    },
+    Cycled {
+        valid_card: Option<String>,
+        valid_player: Option<String>,
+    },
+    PhasedIn {
+        valid_card: Option<String>,
+    },
+    PhasedOut {
+        valid_card: Option<String>,
+    },
+    Always,
+    Immediate,
+    Surveil {
+        valid_player: Option<String>,
+    },
+    Scry {
+        valid_player: Option<String>,
+    },
+    Foretell {
+        valid_card: Option<String>,
+    },
+    SearchedLibrary {
+        valid_player: Option<String>,
+    },
+    Shuffled {
+        valid_player: Option<String>,
+    },
+    ManaAdded {
+        valid_card: Option<String>,
+    },
+    TokenCreatedOnce {
+        valid_card: Option<String>,
+    },
+    TapAll {
+        valid_card: Option<String>,
+    },
+    UntapAll {
+        valid_card: Option<String>,
+    },
+    BecomesTargetOnce {
+        valid_card: Option<String>,
+    },
+    AttackerBlockedByCreature {
+        valid_card: Option<String>,
+        valid_blocked: Option<String>,
+    },
+    AttackerBlockedOnce {
+        valid_card: Option<String>,
+    },
+    AttackerUnblockedOnce {
+        valid_card: Option<String>,
+    },
+    SpellCastOnce {
+        valid_card: Option<String>,
+        valid_activating_player: Option<String>,
+    },
+    SpellCastOfType {
+        valid_card: Option<String>,
+        valid_activating_player: Option<String>,
+    },
+    DamageAll {
+        valid_source: Option<String>,
+        valid_target: Option<String>,
+    },
+    DamagePreventedOnce {
+        valid_card: Option<String>,
+    },
+    ExcessDamage {
+        valid_source: Option<String>,
+        valid_target: Option<String>,
+    },
+    LifeGainedAll {
+        valid_player: Option<String>,
+    },
+    CounterRemovedOnce {
+        valid_card: Option<String>,
+        counter_type: Option<String>,
+    },
+    /// A creature was exerted (Mirrors Java TriggerExerted).
+    Exerted {
+        valid_card: Option<String>,
+    },
+    /// A player collected evidence.
+    CollectEvidence {
+        valid_player: Option<String>,
+    },
+    /// A player foraged.
+    Forage {
+        valid_player: Option<String>,
+    },
+    /// A creature enlisted another creature.
+    Enlisted {
+        valid_card: Option<String>,
+        valid_enlisted: Option<String>,
+    },
+    /// A player flipped a coin.
+    FlippedCoin {
+        valid_player: Option<String>,
+        valid_result: Option<String>,
+    },
+    /// A player rolled a die.
+    RolledDie {
+        valid_player: Option<String>,
+        valid_result: Option<String>,
+        valid_sides: Option<String>,
+    },
+    /// A player completed a die-roll action.
+    RolledDieOnce {
+        valid_player: Option<String>,
+        valid_result: Option<String>,
+        valid_sides: Option<String>,
+    },
+    /// Mana was expended (Expend N mechanic). Fires when cumulative mana spent reaches Amount.
+    ManaExpend {
+        valid_player: Option<String>,
+        amount: i32,
+    },
+    /// A creature was exploited (Exploit keyword).
+    Exploited {
+        valid_card: Option<String>,
+        valid_source: Option<String>,
+    },
+}
+
+/// Check an optional ValidCard$ filter against a card from RunParams.
+/// Returns false if the filter exists but the card doesn't match.
+fn check_card_filter(
+    filter: &Option<String>,
+    card_id: Option<CardId>,
+    host_card: CardId,
+    host_controller: PlayerId,
+    game: &GameState,
+) -> bool {
+    if let Some(filter) = filter {
+        if let Some(cid) = card_id {
+            matches_valid_card(filter, cid, host_card, host_controller, game)
+        } else {
+            false
+        }
+    } else {
+        true
+    }
+}
+
+/// Check an optional ValidPlayer$ filter against a player from RunParams.
+/// Returns false if the filter exists but the player doesn't match.
+fn check_player_filter(
+    filter: &Option<String>,
+    player_id: Option<PlayerId>,
+    host_controller: PlayerId,
+) -> bool {
+    if let Some(filter) = filter {
+        if let Some(pid) = player_id {
+            matches_valid_player(filter, pid, host_controller)
+        } else {
+            false
+        }
+    } else {
+        true
+    }
+}
+
+/// Check an optional CounterType$ filter against a counter type from RunParams.
+fn check_counter_type_filter(expected: &Option<String>, actual: &Option<String>) -> bool {
+    if let Some(expected) = expected {
+        if let Some(actual) = actual {
+            actual.eq_ignore_ascii_case(expected)
+        } else {
+            false
+        }
+    } else {
+        true
+    }
+}
+
+/// Check a damage target filter that can match either a card or player target.
+/// `strict_card_filter` controls whether card-specific filters (Card., Creature., etc.)
+/// reject player targets.
+fn check_damage_target(
+    filter: &Option<String>,
+    run_params: &RunParams,
+    host_card: CardId,
+    host_controller: PlayerId,
+    game: &GameState,
+    strict_card_filter: bool,
+) -> bool {
+    let filter = match filter {
+        Some(f) => f,
+        None => return true,
+    };
+    if let Some(target_card) = run_params.damage_target_card {
+        matches_valid_card(filter, target_card, host_card, host_controller, game)
+    } else if strict_card_filter {
+        let is_card_filter = filter.starts_with("Card.")
+            || filter.starts_with("Creature.")
+            || filter.starts_with("Permanent.")
+            || filter.starts_with("Artifact.")
+            || filter.starts_with("Enchantment.")
+            || filter.starts_with("Planeswalker.");
+        if is_card_filter {
+            false
+        } else if let Some(target_player) = run_params.damage_target_player {
+            matches_valid_player(filter, target_player, host_controller)
+        } else {
+            false
+        }
+    } else if let Some(target_player) = run_params.damage_target_player {
+        matches_valid_player(filter, target_player, host_controller)
+    } else {
+        false
+    }
+}
+
+/// Check zone matches (origin and/or destination).
+fn check_zone_filter(expected: &Option<ZoneType>, actual: Option<ZoneType>) -> bool {
+    if let Some(expected) = expected {
+        actual == Some(*expected)
+    } else {
+        true
+    }
 }
 
 impl TriggerMode {
@@ -188,642 +462,182 @@ impl TriggerMode {
         host_controller: PlayerId,
     ) -> bool {
         match self {
+            // ── Zone change triggers ──
             TriggerMode::ChangesZone {
                 origin,
                 destination,
                 valid_card,
+            }
+            | TriggerMode::ChangesZoneAll {
+                origin,
+                destination,
+                valid_card,
             } => {
-                // Check origin zone matches
-                if let Some(expected_origin) = origin {
-                    if let Some(actual_origin) = run_params.origin {
-                        if actual_origin != *expected_origin {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                // Check destination zone matches
-                if let Some(expected_dest) = destination {
-                    if let Some(actual_dest) = run_params.destination {
-                        if actual_dest != *expected_dest {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                // Check ValidCard$ filter
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                true
+                check_zone_filter(origin, run_params.origin)
+                    && check_zone_filter(destination, run_params.destination)
+                    && check_card_filter(
+                        valid_card,
+                        run_params.card,
+                        host_card,
+                        host_controller,
+                        game,
+                    )
             }
 
+            // ── Phase trigger ──
             TriggerMode::Phase {
                 phase,
                 valid_player,
             } => {
-                // Check phase matches
                 if let Some(expected_phase) = phase {
-                    if let Some(actual_phase) = run_params.phase {
-                        if actual_phase != *expected_phase {
-                            return false;
-                        }
-                    } else {
+                    if run_params.phase != Some(*expected_phase) {
                         return false;
                     }
                 }
-
-                // Check ValidPlayer$
-                if let Some(filter) = valid_player {
-                    if let Some(player_id) = run_params.player {
-                        if !matches_valid_player(filter, player_id, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                true
+                check_player_filter(valid_player, run_params.player, host_controller)
             }
 
+            // ── Spell cast triggers (check spell_card + spell_controller) ──
             TriggerMode::SpellCast {
                 valid_card,
                 valid_activating_player,
+            }
+            | TriggerMode::SpellCastAll {
+                valid_card,
+                valid_activating_player,
+            }
+            | TriggerMode::SpellCastOnce {
+                valid_card,
+                valid_activating_player,
+            }
+            | TriggerMode::SpellCastOfType {
+                valid_card,
+                valid_activating_player,
+            }
+            | TriggerMode::SpellCopied {
+                valid_card,
+                valid_activating_player,
             } => {
-                // Check ValidCard$ on the spell
-                if let Some(filter) = valid_card {
-                    if let Some(spell_card) = run_params.spell_card {
-                        if !matches_valid_card(filter, spell_card, host_card, host_controller, game)
-                        {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                // Check ValidActivatingPlayer$
-                if let Some(filter) = valid_activating_player {
-                    if let Some(caster) = run_params.spell_controller {
-                        if !matches_valid_player(filter, caster, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                true
+                check_card_filter(
+                    valid_card,
+                    run_params.spell_card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_player_filter(
+                    valid_activating_player,
+                    run_params.spell_controller,
+                    host_controller,
+                )
             }
 
-            TriggerMode::Attacks { valid_card } => {
-                // Check ValidCard$ on attacker
-                if let Some(filter) = valid_card {
-                    if let Some(attacker) = run_params.attacker {
-                        if !matches_valid_card(filter, attacker, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
+            // ── Attacks trigger (check attacker, optionally alone) ──
+            TriggerMode::Attacks { valid_card, alone } => {
+                if *alone {
+                    if run_params.num_attackers.unwrap_or(0) != 1 {
                         return false;
                     }
                 }
-
-                true
+                check_card_filter(
+                    valid_card,
+                    run_params.attacker,
+                    host_card,
+                    host_controller,
+                    game,
+                )
             }
 
+            // ── Attacker blocked/unblocked (check attacker) ──
+            TriggerMode::AttackerBlocked { valid_card }
+            | TriggerMode::AttackerUnblocked { valid_card } => check_card_filter(
+                valid_card,
+                run_params.attacker,
+                host_card,
+                host_controller,
+                game,
+            ),
+
+            // ── Damage triggers with source + target + combat flag ──
             TriggerMode::DamageDone {
                 valid_source,
                 valid_target,
                 combat_damage_only,
-            } => {
-                // Check CombatDamage$
-                if *combat_damage_only {
-                    if run_params.is_combat_damage != Some(true) {
-                        return false;
-                    }
-                }
-
-                // Check ValidSource$
-                if let Some(filter) = valid_source {
-                    if let Some(source) = run_params.damage_source {
-                        if !matches_valid_card(filter, source, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                // Check ValidTarget$
-                if let Some(filter) = valid_target {
-                    // Target can be a card or a player
-                    if let Some(target_card) = run_params.damage_target_card {
-                        if !matches_valid_card(
-                            filter,
-                            target_card,
-                            host_card,
-                            host_controller,
-                            game,
-                        ) {
-                            return false;
-                        }
-                    } else if let Some(target_player) = run_params.damage_target_player {
-                        if !matches_valid_player(filter, target_player, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                true
             }
-
-            TriggerMode::Countered {
-                valid_card,
-                valid_cause,
-            } => {
-                // Check ValidCard$
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-
-                // Check ValidCause$
-                if let Some(_filter) = valid_cause {
-                    // TODO: Implement ValidCause checking
-                    // For now, assume it matches if we have a cause
-                    if run_params.cause.is_none() {
-                        return false;
-                    }
-                }
-
-                true
+            | TriggerMode::DamageDoneOnce {
+                valid_source,
+                valid_target,
+                combat_damage_only,
             }
-
-            // ── New trigger mode arms (issue #19) ──
-
-            TriggerMode::Blocks {
-                valid_card,
-                valid_blocked,
-            } => {
-                if let Some(filter) = valid_card {
-                    if let Some(blocker) = run_params.blocker {
-                        if !matches_valid_card(filter, blocker, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                if let Some(filter) = valid_blocked {
-                    if let Some(attacker) = run_params.blocked_attacker {
-                        if !matches_valid_card(filter, attacker, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::AttackerBlocked { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(attacker) = run_params.attacker {
-                        if !matches_valid_card(filter, attacker, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::AttackerUnblocked { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(attacker) = run_params.attacker {
-                        if !matches_valid_card(filter, attacker, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::LifeGained { valid_player } => {
-                if let Some(filter) = valid_player {
-                    if let Some(player_id) = run_params.player {
-                        if !matches_valid_player(filter, player_id, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::LifeLost { valid_player } => {
-                if let Some(filter) = valid_player {
-                    if let Some(player_id) = run_params.player {
-                        if !matches_valid_player(filter, player_id, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::CounterAdded {
-                valid_card,
-                counter_type,
-            } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                if let Some(expected_type) = counter_type {
-                    if let Some(ref actual_type) = run_params.counter_type {
-                        if !actual_type.eq_ignore_ascii_case(expected_type) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::CounterRemoved {
-                valid_card,
-                counter_type,
-            } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                if let Some(expected_type) = counter_type {
-                    if let Some(ref actual_type) = run_params.counter_type {
-                        if !actual_type.eq_ignore_ascii_case(expected_type) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::Sacrificed {
-                valid_card,
-                valid_player,
-            } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                if let Some(filter) = valid_player {
-                    if let Some(player_id) = run_params.player {
-                        if !matches_valid_player(filter, player_id, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::Drawn {
-                valid_card,
-                valid_player,
-            } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                if let Some(filter) = valid_player {
-                    if let Some(player_id) = run_params.player {
-                        if !matches_valid_player(filter, player_id, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::Milled {
-                valid_card,
-                valid_player,
-            } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                if let Some(filter) = valid_player {
-                    if let Some(player_id) = run_params.player {
-                        if !matches_valid_player(filter, player_id, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::Taps { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::Untaps { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::Transformed { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::Attached { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::Unattached { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::LandPlayed { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::BecomesTarget { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::TapsForMana { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::AbilityActivated {
-                valid_card,
-                valid_activating_player,
-            } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                if let Some(filter) = valid_activating_player {
-                    if let Some(player_id) = run_params.player {
-                        if !matches_valid_player(filter, player_id, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::Explored { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::BecomeMonarch { valid_player } => {
-                if let Some(filter) = valid_player {
-                    if let Some(player_id) = run_params.player {
-                        if !matches_valid_player(filter, player_id, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::DamageDealtOnce {
+            | TriggerMode::DamageDealtOnce {
                 valid_source,
                 valid_target,
                 combat_damage_only,
             } => {
-                if *combat_damage_only {
-                    if run_params.is_combat_damage != Some(true) {
-                        return false;
-                    }
+                if *combat_damage_only && run_params.is_combat_damage != Some(true) {
+                    return false;
                 }
-                if let Some(filter) = valid_source {
-                    if let Some(source) = run_params.damage_source {
-                        if !matches_valid_card(filter, source, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                if let Some(filter) = valid_target {
-                    if let Some(target_card) = run_params.damage_target_card {
-                        if !matches_valid_card(
-                            filter,
-                            target_card,
-                            host_card,
-                            host_controller,
-                            game,
-                        ) {
-                            return false;
-                        }
-                    } else if let Some(target_player) = run_params.damage_target_player {
-                        if !matches_valid_player(filter, target_player, host_controller) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
+                check_card_filter(
+                    valid_source,
+                    run_params.damage_source,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_damage_target(
+                    valid_target,
+                    run_params,
+                    host_card,
+                    host_controller,
+                    game,
+                    true,
+                )
             }
 
-            TriggerMode::Destroyed { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
+            // ── Damage triggers without combat flag ──
+            TriggerMode::DamageAll {
+                valid_source,
+                valid_target,
             }
-
-            TriggerMode::Exiled { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::TokenCreated { valid_card } => {
-                if let Some(filter) = valid_card {
-                    if let Some(card_id) = run_params.card {
-                        if !matches_valid_card(filter, card_id, host_card, host_controller, game) {
-                            return false;
-                        }
-                    } else {
-                        return false;
-                    }
-                }
-                true
-            }
-
-            TriggerMode::SpellCopied {
-                valid_card,
-                valid_activating_player,
+            | TriggerMode::ExcessDamage {
+                valid_source,
+                valid_target,
             } => {
-                if let Some(filter) = valid_card {
-                    if let Some(spell_card) = run_params.spell_card {
-                        if !matches_valid_card(filter, spell_card, host_card, host_controller, game)
+                check_card_filter(
+                    valid_source,
+                    run_params.damage_source,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_damage_target(
+                    valid_target,
+                    run_params,
+                    host_card,
+                    host_controller,
+                    game,
+                    false,
+                )
+            }
+
+            // ── Countered trigger ──
+            TriggerMode::Countered {
+                valid_card,
+                valid_cause,
+                valid_sa,
+            } => {
+                if !check_card_filter(
+                    valid_card,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) {
+                    return false;
+                }
+                if let Some(filter) = valid_cause {
+                    if let Some(cause) = run_params.cause.as_ref() {
+                        let Some(cause_card) = cause.source else {
+                            return false;
+                        };
+                        if !matches_valid_card(filter, cause_card, host_card, host_controller, game)
                         {
                             return false;
                         }
@@ -831,9 +645,9 @@ impl TriggerMode {
                         return false;
                     }
                 }
-                if let Some(filter) = valid_activating_player {
-                    if let Some(caster) = run_params.spell_controller {
-                        if !matches_valid_player(filter, caster, host_controller) {
+                if let Some(filter) = valid_sa {
+                    if let Some(countered_sa) = run_params.spell_ability.as_ref() {
+                        if !matches_valid_sa(filter, countered_sa) {
                             return false;
                         }
                     } else {
@@ -842,8 +656,359 @@ impl TriggerMode {
                 }
                 true
             }
+
+            // ── Block triggers (check blocker + blocked_attacker) ──
+            TriggerMode::Blocks {
+                valid_card,
+                valid_blocked,
+            }
+            | TriggerMode::AttackerBlockedByCreature {
+                valid_card,
+                valid_blocked,
+            } => {
+                check_card_filter(
+                    valid_card,
+                    run_params.blocker,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_card_filter(
+                    valid_blocked,
+                    run_params.blocked_attacker,
+                    host_card,
+                    host_controller,
+                    game,
+                )
+            }
+
+            // ── Card + player triggers (check run_params.card + run_params.player) ──
+            TriggerMode::Sacrificed {
+                valid_card,
+                valid_player,
+            }
+            | TriggerMode::Drawn {
+                valid_card,
+                valid_player,
+            }
+            | TriggerMode::Milled {
+                valid_card,
+                valid_player,
+            }
+            | TriggerMode::DiscardedAll {
+                valid_card,
+                valid_player,
+            }
+            | TriggerMode::SacrificedOnce {
+                valid_card,
+                valid_player,
+            }
+            | TriggerMode::Cycled {
+                valid_card,
+                valid_player,
+            } => {
+                check_card_filter(
+                    valid_card,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_player_filter(valid_player, run_params.player, host_controller)
+            }
+
+            // ── Enlisted trigger (host card + enlisted card) ──
+            TriggerMode::Enlisted {
+                valid_card,
+                valid_enlisted,
+            } => {
+                check_card_filter(
+                    valid_card,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_card_filter(
+                    valid_enlisted,
+                    run_params.enlisted,
+                    host_card,
+                    host_controller,
+                    game,
+                )
+            }
+            TriggerMode::FlippedCoin {
+                valid_player,
+                valid_result,
+            } => {
+                if !check_player_filter(valid_player, run_params.player, host_controller) {
+                    return false;
+                }
+                if let Some(filter) = valid_result {
+                    let Some(won) = run_params.coin_flip_won else {
+                        return false;
+                    };
+                    let f = filter.trim();
+                    if (f.eq_ignore_ascii_case("Win") || f.eq_ignore_ascii_case("Heads")) && !won {
+                        return false;
+                    }
+                    if (f.eq_ignore_ascii_case("Lose") || f.eq_ignore_ascii_case("Tails")) && won {
+                        return false;
+                    }
+                }
+                true
+            }
+            TriggerMode::RolledDie {
+                valid_player,
+                valid_result,
+                valid_sides,
+            }
+            | TriggerMode::RolledDieOnce {
+                valid_player,
+                valid_result,
+                valid_sides,
+            } => {
+                if !check_player_filter(valid_player, run_params.player, host_controller) {
+                    return false;
+                }
+                if let Some(filter) = valid_result {
+                    let Some(result) = run_params.die_result else {
+                        return false;
+                    };
+                    if !matches_amount(filter, result as usize) {
+                        return false;
+                    }
+                }
+                if let Some(filter) = valid_sides {
+                    let Some(sides) = run_params.die_sides else {
+                        return false;
+                    };
+                    if !matches_amount(filter, sides as usize) {
+                        return false;
+                    }
+                }
+                true
+            }
+
+            // ── Card + player triggers (check run_params.card + run_params.player for activated) ──
+            TriggerMode::AbilityActivated {
+                valid_card,
+                valid_activating_player,
+            } => {
+                check_card_filter(
+                    valid_card,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_player_filter(
+                    valid_activating_player,
+                    run_params.player,
+                    host_controller,
+                )
+            }
+
+            // ── Counter triggers (card + counter_type) ──
+            TriggerMode::CounterAdded {
+                valid_card,
+                counter_type,
+            }
+            | TriggerMode::CounterRemoved {
+                valid_card,
+                counter_type,
+            }
+            | TriggerMode::CounterRemovedOnce {
+                valid_card,
+                counter_type,
+            } => {
+                check_card_filter(
+                    valid_card,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_counter_type_filter(counter_type, &run_params.counter_type)
+            }
+
+            // ── CounterAddedOnce (card + counter_type + valid_source) ──
+            TriggerMode::CounterAddedOnce {
+                valid_card,
+                counter_type,
+                valid_source,
+            } => {
+                if !check_card_filter(
+                    valid_card,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) {
+                    return false;
+                }
+                if !check_counter_type_filter(counter_type, &run_params.counter_type) {
+                    return false;
+                }
+                if let Some(filter) = valid_source {
+                    if filter.eq_ignore_ascii_case("You") {
+                        if let Some(cause) = run_params.cause_player {
+                            if cause != host_controller {
+                                return false;
+                            }
+                        } else {
+                            return false;
+                        }
+                    }
+                }
+                true
+            }
+
+            // ── Card-only triggers (check run_params.card) ──
+            TriggerMode::Taps { valid_card }
+            | TriggerMode::Untaps { valid_card }
+            | TriggerMode::Transformed { valid_card }
+            | TriggerMode::TurnFaceUp { valid_card }
+            | TriggerMode::Attached { valid_card }
+            | TriggerMode::Unattached { valid_card }
+            | TriggerMode::LandPlayed { valid_card }
+            | TriggerMode::BecomesTarget { valid_card }
+            | TriggerMode::TapsForMana { valid_card }
+            | TriggerMode::Explored { valid_card }
+            | TriggerMode::BecomeMonstrous { valid_card }
+            | TriggerMode::Destroyed { valid_card }
+            | TriggerMode::Exiled { valid_card }
+            | TriggerMode::TokenCreated { valid_card }
+            | TriggerMode::ChangesController { valid_card }
+            | TriggerMode::PhasedIn { valid_card }
+            | TriggerMode::PhasedOut { valid_card }
+            | TriggerMode::Foretell { valid_card }
+            | TriggerMode::ManaAdded { valid_card }
+            | TriggerMode::TokenCreatedOnce { valid_card }
+            | TriggerMode::TapAll { valid_card }
+            | TriggerMode::UntapAll { valid_card }
+            | TriggerMode::BecomesTargetOnce { valid_card }
+            | TriggerMode::AttackerBlockedOnce { valid_card }
+            | TriggerMode::AttackerUnblockedOnce { valid_card }
+            | TriggerMode::DamagePreventedOnce { valid_card }
+            | TriggerMode::Exerted { valid_card } => check_card_filter(
+                valid_card,
+                run_params.card,
+                host_card,
+                host_controller,
+                game,
+            ),
+
+            // ── ManaExpend (check player + amount) ──
+            TriggerMode::ManaExpend {
+                valid_player,
+                amount,
+            } => {
+                if !check_player_filter(valid_player, run_params.player, host_controller) {
+                    return false;
+                }
+                // Amount must exactly match the cumulative expend amount
+                run_params.mana_expend_amount == Some(*amount)
+            }
+
+            // ── Exploited (check exploited creature + source) ──
+            TriggerMode::Exploited {
+                valid_card,
+                valid_source,
+            } => {
+                // ValidCard checks the exploited creature
+                if !check_card_filter(
+                    valid_card,
+                    run_params.exploited_card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) {
+                    return false;
+                }
+                // ValidSource checks the exploiter (the card with Exploit)
+                if !check_card_filter(
+                    valid_source,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) {
+                    return false;
+                }
+                true
+            }
+
+            // ── Player-only triggers (check run_params.player) ──
+            TriggerMode::LifeGained { valid_player }
+            | TriggerMode::LifeLost { valid_player }
+            | TriggerMode::BecomeMonarch { valid_player }
+            | TriggerMode::TurnBegin { valid_player }
+            | TriggerMode::LifeLostAll { valid_player }
+            | TriggerMode::LifeGainedAll { valid_player }
+            | TriggerMode::Surveil { valid_player }
+            | TriggerMode::Scry { valid_player }
+            | TriggerMode::SearchedLibrary { valid_player }
+            | TriggerMode::Shuffled { valid_player }
+            | TriggerMode::CollectEvidence { valid_player }
+            | TriggerMode::Forage { valid_player } => {
+                check_player_filter(valid_player, run_params.player, host_controller)
+            }
+
+            // ── AttackersDeclared (player + attacker count filtering) ──
+            TriggerMode::AttackersDeclared {
+                valid_player,
+                valid_attackers,
+                valid_attackers_amount,
+            } => {
+                if !check_player_filter(valid_player, run_params.player, host_controller) {
+                    return false;
+                }
+                if valid_attackers.is_some() || valid_attackers_amount.is_some() {
+                    if let Some(ref attacker_ids) = run_params.attacker_ids {
+                        let matching_count = if let Some(filter) = valid_attackers {
+                            attacker_ids
+                                .iter()
+                                .filter(|&&aid| {
+                                    matches_valid_card(
+                                        filter,
+                                        aid,
+                                        host_card,
+                                        host_controller,
+                                        game,
+                                    )
+                                })
+                                .count()
+                        } else {
+                            attacker_ids.len()
+                        };
+                        if let Some(amount_filter) = valid_attackers_amount {
+                            if !matches_amount(amount_filter, matching_count) {
+                                return false;
+                            }
+                        } else if matching_count == 0 {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
+                }
+                true
+            }
+
+            // ── Parameterless triggers ──
+            TriggerMode::BlockersDeclared | TriggerMode::Always | TriggerMode::Immediate => true,
         }
     }
+}
+
+fn matches_valid_sa(filter: &str, sa: &crate::spellability::SpellAbility) -> bool {
+    let f = filter.trim();
+    if f.is_empty() {
+        return true;
+    }
+    if f.eq_ignore_ascii_case("Spell") {
+        return sa.is_spell;
+    }
+    if f.eq_ignore_ascii_case("Ability") {
+        return !sa.is_spell;
+    }
+    true
 }
 
 /// Matches a card against a ValidCard$ filter string.
@@ -888,6 +1053,13 @@ fn matches_single_valid_card(
         "Instant" => card.type_line.is_instant(),
         "Sorcery" => card.type_line.is_sorcery(),
         "Permanent" => card.is_permanent(),
+        // Player-type filters: players are not cards, so never match.
+        // This prevents triggers like "ValidTarget$ Player" from firing
+        // when the damage target is a creature (e.g. Thrummingbird blocking
+        // an infect creature and its DamageDone trigger incorrectly matching
+        // the creature target as if it were a player).
+        "Player" | "You" | "Opponent" | "Each" | "Any"
+        | "ActivePlayer" | "NonActivePlayer" => false,
         _ => {
             // Try comma-separated types within the type portion (e.g. "Instant,Sorcery")
             if type_part.contains(',') {
@@ -951,7 +1123,31 @@ fn matches_single_valid_card(
                         return false;
                     }
                 }
+                "token" => {
+                    if !card.is_token {
+                        return false;
+                    }
+                }
+                "nonToken" => {
+                    if card.is_token {
+                        return false;
+                    }
+                }
+                "DamagedBy" => {
+                    // Check if this card was dealt damage by the host card this turn.
+                    // Mirrors Java's CardProperty "DamagedBy" check using
+                    // getDamageReceivedThisTurn().
+                    if !card.damage_sources_this_turn.contains(&host_card) {
+                        return false;
+                    }
+                }
                 _ => {
+                    // Check counters_GE/GT/LT/LE/EQ patterns like "counters_GE3_P1P1"
+                    if sub.starts_with("counters_") {
+                        if !check_counter_condition(sub, card) {
+                            return false;
+                        }
+                    }
                     // Ignore unknown qualifiers for now
                 }
             }
@@ -968,6 +1164,53 @@ fn matches_valid_player(filter: &str, player: PlayerId, host_controller: PlayerI
         "Opponent" => player != host_controller,
         "Any" | "Each" => true,
         _ => true, // unknown filter, match all
+    }
+}
+
+/// Check if a count matches a ValidAttackersAmount filter like "GE1", "EQ3", etc.
+fn matches_amount(filter: &str, count: usize) -> bool {
+    let (op, num_str) = if filter.len() >= 3 {
+        (&filter[..2], &filter[2..])
+    } else {
+        return count > 0; // fallback
+    };
+    let n: usize = num_str.parse().unwrap_or(0);
+    match op {
+        "GE" => count >= n,
+        "GT" => count > n,
+        "LE" => count <= n,
+        "LT" => count < n,
+        "EQ" => count == n,
+        "NE" => count != n,
+        _ => count > 0,
+    }
+}
+
+/// Check a counter condition like "counters_GE3_P1P1".
+/// Format: counters_{op}{num}_{counter_type}
+fn check_counter_condition(condition: &str, card: &crate::card::CardInstance) -> bool {
+    use crate::ability::effects::parse_counter_type;
+    let rest = &condition["counters_".len()..];
+    if rest.len() < 3 {
+        return true;
+    }
+    let op = &rest[..2];
+    let after_op = &rest[2..];
+    let (num_str, counter_type_str) = match after_op.find('_') {
+        Some(idx) => (&after_op[..idx], &after_op[idx + 1..]),
+        None => return true,
+    };
+    let threshold: i32 = num_str.parse().unwrap_or(0);
+    let counter_type = parse_counter_type(counter_type_str);
+    let count = card.counter_count(&counter_type);
+    match op {
+        "GE" => count >= threshold,
+        "GT" => count > threshold,
+        "LE" => count <= threshold,
+        "LT" => count < threshold,
+        "EQ" => count == threshold,
+        "NE" => count != threshold,
+        _ => true,
     }
 }
 
@@ -1043,7 +1286,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
                         }
                     },
                 );
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::ChangesZone {
                 origin,
                 destination,
@@ -1052,27 +1295,31 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         }
         "Phase" => {
             let phase = params.get("Phase").and_then(|s| parse_phase(s));
-            let valid_player = params.get("ValidPlayer").map(|s| s.clone());
+            let valid_player = params.get("ValidPlayer").cloned();
             TriggerMode::Phase {
                 phase,
                 valid_player,
             }
         }
         "SpellCast" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_activating_player = params.get("ValidActivatingPlayer").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
             TriggerMode::SpellCast {
                 valid_card,
                 valid_activating_player,
             }
         }
         "Attacks" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            TriggerMode::Attacks { valid_card }
+            let valid_card = params.get("ValidCard").cloned();
+            let alone = params
+                .get("Alone")
+                .map(|s| s.eq_ignore_ascii_case("True"))
+                .unwrap_or(false);
+            TriggerMode::Attacks { valid_card, alone }
         }
         "DamageDone" => {
-            let valid_source = params.get("ValidSource").map(|s| s.clone());
-            let valid_target = params.get("ValidTarget").map(|s| s.clone());
+            let valid_source = params.get("ValidSource").cloned();
+            let valid_target = params.get("ValidTarget").cloned();
             let combat_damage_only = params
                 .get("CombatDamage")
                 .map(|s| s.eq_ignore_ascii_case("True"))
@@ -1084,109 +1331,139 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "Countered" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_cause = params.get("ValidCause").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_cause = params.get("ValidCause").cloned();
+            let valid_sa = params.get("ValidSA").cloned();
             TriggerMode::Countered {
                 valid_card,
                 valid_cause,
+                valid_sa,
             }
         }
         // ── New trigger modes (issue #19) ──
         "Blocks" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_blocked = params.get("ValidBlocked").map(|s| s.clone());
-            TriggerMode::Blocks { valid_card, valid_blocked }
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_blocked = params.get("ValidBlocked").cloned();
+            TriggerMode::Blocks {
+                valid_card,
+                valid_blocked,
+            }
         }
         "AttackerBlocked" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::AttackerBlocked { valid_card }
         }
         "AttackerUnblocked" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::AttackerUnblocked { valid_card }
         }
         "LifeGained" => {
-            let valid_player = params.get("ValidPlayer").map(|s| s.clone());
+            let valid_player = params.get("ValidPlayer").cloned();
             TriggerMode::LifeGained { valid_player }
         }
         "LifeLost" => {
-            let valid_player = params.get("ValidPlayer").map(|s| s.clone());
+            let valid_player = params.get("ValidPlayer").cloned();
             TriggerMode::LifeLost { valid_player }
         }
         "CounterAdded" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let counter_type = params.get("CounterType").map(|s| s.clone());
-            TriggerMode::CounterAdded { valid_card, counter_type }
+            let valid_card = params.get("ValidCard").cloned();
+            let counter_type = params.get("CounterType").cloned();
+            TriggerMode::CounterAdded {
+                valid_card,
+                counter_type,
+            }
         }
         "CounterRemoved" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let counter_type = params.get("CounterType").map(|s| s.clone());
-            TriggerMode::CounterRemoved { valid_card, counter_type }
+            let valid_card = params.get("ValidCard").cloned();
+            let counter_type = params.get("CounterType").cloned();
+            TriggerMode::CounterRemoved {
+                valid_card,
+                counter_type,
+            }
         }
         "Sacrificed" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_player = params.get("ValidPlayer").map(|s| s.clone());
-            TriggerMode::Sacrificed { valid_card, valid_player }
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::Sacrificed {
+                valid_card,
+                valid_player,
+            }
         }
         "Drawn" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_player = params.get("ValidPlayer").map(|s| s.clone());
-            TriggerMode::Drawn { valid_card, valid_player }
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::Drawn {
+                valid_card,
+                valid_player,
+            }
         }
         "Milled" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_player = params.get("ValidPlayer").map(|s| s.clone());
-            TriggerMode::Milled { valid_card, valid_player }
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::Milled {
+                valid_card,
+                valid_player,
+            }
         }
         "Taps" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Taps { valid_card }
         }
         "Untaps" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Untaps { valid_card }
         }
         "Transformed" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Transformed { valid_card }
         }
+        "TurnFaceUp" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::TurnFaceUp { valid_card }
+        }
         "Attached" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Attached { valid_card }
         }
         "Unattached" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Unattached { valid_card }
         }
         "LandPlayed" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::LandPlayed { valid_card }
         }
         "BecomesTarget" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::BecomesTarget { valid_card }
         }
         "TapsForMana" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::TapsForMana { valid_card }
         }
         "AbilityActivated" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_activating_player =
-                params.get("ValidActivatingPlayer").map(|s| s.clone());
-            TriggerMode::AbilityActivated { valid_card, valid_activating_player }
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            TriggerMode::AbilityActivated {
+                valid_card,
+                valid_activating_player,
+            }
         }
         "Explored" | "Explores" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Explored { valid_card }
         }
+        "BecomeMonstrous" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::BecomeMonstrous { valid_card }
+        }
         "BecomeMonarch" => {
-            let valid_player = params.get("ValidPlayer").map(|s| s.clone());
+            let valid_player = params.get("ValidPlayer").cloned();
             TriggerMode::BecomeMonarch { valid_player }
         }
         "DamageDealtOnce" => {
-            let valid_source = params.get("ValidSource").map(|s| s.clone());
-            let valid_target = params.get("ValidTarget").map(|s| s.clone());
+            let valid_source = params.get("ValidSource").cloned();
+            let valid_target = params.get("ValidTarget").cloned();
             let combat_damage_only = params
                 .get("CombatDamage")
                 .map(|s| s.eq_ignore_ascii_case("True"))
@@ -1198,33 +1475,315 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "Destroyed" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Destroyed { valid_card }
         }
         "Exiled" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::Exiled { valid_card }
         }
+        "CollectEvidence" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::CollectEvidence { valid_player }
+        }
+        "Forage" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::Forage { valid_player }
+        }
+        "Enlisted" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_enlisted = params.get("ValidEnlisted").cloned();
+            TriggerMode::Enlisted {
+                valid_card,
+                valid_enlisted,
+            }
+        }
+        "FlippedCoin" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_result = params.get("ValidResult").cloned();
+            TriggerMode::FlippedCoin {
+                valid_player,
+                valid_result,
+            }
+        }
+        "RolledDie" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_result = params.get("ValidResult").cloned();
+            let valid_sides = params.get("ValidSides").cloned();
+            TriggerMode::RolledDie {
+                valid_player,
+                valid_result,
+                valid_sides,
+            }
+        }
+        "RolledDieOnce" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_result = params.get("ValidResult").cloned();
+            let valid_sides = params.get("ValidSides").cloned();
+            TriggerMode::RolledDieOnce {
+                valid_player,
+                valid_result,
+                valid_sides,
+            }
+        }
         "TokenCreated" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
             TriggerMode::TokenCreated { valid_card }
         }
         // SpellCastOrCopy: used by Magecraft — fires on both cast and copy.
         // We treat it as SpellCast here; the caller can duplicate it as SpellCopied.
         "SpellCastOrCopy" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_activating_player = params.get("ValidActivatingPlayer").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
             TriggerMode::SpellCast {
                 valid_card,
                 valid_activating_player,
             }
         }
         "SpellCopied" => {
-            let valid_card = params.get("ValidCard").map(|s| s.clone());
-            let valid_activating_player = params.get("ValidActivatingPlayer").map(|s| s.clone());
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
             TriggerMode::SpellCopied {
                 valid_card,
                 valid_activating_player,
+            }
+        }
+        // ── New trigger modes (issue #54) ──
+        "AttackersDeclared" => {
+            let valid_player = params
+                .get("AttackingPlayer")
+                .or_else(|| params.get("ValidPlayer"))
+                .cloned();
+            let valid_attackers = params.get("ValidAttackers").cloned();
+            let valid_attackers_amount = params.get("ValidAttackersAmount").cloned();
+            TriggerMode::AttackersDeclared {
+                valid_player,
+                valid_attackers,
+                valid_attackers_amount,
+            }
+        }
+        "BlockersDeclared" => TriggerMode::BlockersDeclared,
+        "ChangesZoneAll" => {
+            let origin =
+                params
+                    .get("Origin")
+                    .and_then(|s| if s == "Any" { None } else { parse_zone(s) });
+            let destination =
+                params
+                    .get("Destination")
+                    .and_then(|s| if s == "Any" { None } else { parse_zone(s) });
+            let valid_card = params
+                .get("ValidCards")
+                .or_else(|| params.get("ValidCard"))
+                .cloned();
+            TriggerMode::ChangesZoneAll {
+                origin,
+                destination,
+                valid_card,
+            }
+        }
+        "ChangesController" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::ChangesController { valid_card }
+        }
+        "TurnBegin" | "NewTurn" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::TurnBegin { valid_player }
+        }
+        "DamageDoneOnce" => {
+            let valid_source = params.get("ValidSource").cloned();
+            let valid_target = params.get("ValidTarget").cloned();
+            let combat_damage_only = params
+                .get("CombatDamage")
+                .map(|s| s.eq_ignore_ascii_case("True"))
+                .unwrap_or(false);
+            TriggerMode::DamageDoneOnce {
+                valid_source,
+                valid_target,
+                combat_damage_only,
+            }
+        }
+        "SpellCastAll" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            TriggerMode::SpellCastAll {
+                valid_card,
+                valid_activating_player,
+            }
+        }
+        "LifeLostAll" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::LifeLostAll { valid_player }
+        }
+        "CounterAddedOnce" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let counter_type = params.get("CounterType").cloned();
+            let valid_source = params.get("ValidSource").cloned();
+            TriggerMode::CounterAddedOnce {
+                valid_card,
+                counter_type,
+                valid_source,
+            }
+        }
+        "DiscardedAll" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::DiscardedAll {
+                valid_card,
+                valid_player,
+            }
+        }
+        "SacrificedOnce" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::SacrificedOnce {
+                valid_card,
+                valid_player,
+            }
+        }
+        "Cycled" | "Cycling" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::Cycled {
+                valid_card,
+                valid_player,
+            }
+        }
+        "PhasedIn" | "PhaseIn" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::PhasedIn { valid_card }
+        }
+        "PhasedOut" | "PhaseOut" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::PhasedOut { valid_card }
+        }
+        "Always" => TriggerMode::Always,
+        "Immediate" => TriggerMode::Immediate,
+        "Surveil" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::Surveil { valid_player }
+        }
+        "Scry" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::Scry { valid_player }
+        }
+        "Foretell" | "Foretold" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::Foretell { valid_card }
+        }
+        "SearchedLibrary" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::SearchedLibrary { valid_player }
+        }
+        "Shuffled" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::Shuffled { valid_player }
+        }
+        "ManaAdded" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::ManaAdded { valid_card }
+        }
+        "TokenCreatedOnce" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::TokenCreatedOnce { valid_card }
+        }
+        "TapAll" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::TapAll { valid_card }
+        }
+        "UntapAll" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::UntapAll { valid_card }
+        }
+        "BecomesTargetOnce" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::BecomesTargetOnce { valid_card }
+        }
+        "AttackerBlockedByCreature" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_blocked = params.get("ValidBlocked").cloned();
+            TriggerMode::AttackerBlockedByCreature {
+                valid_card,
+                valid_blocked,
+            }
+        }
+        "AttackerBlockedOnce" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::AttackerBlockedOnce { valid_card }
+        }
+        "AttackerUnblockedOnce" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::AttackerUnblockedOnce { valid_card }
+        }
+        "SpellCastOnce" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            TriggerMode::SpellCastOnce {
+                valid_card,
+                valid_activating_player,
+            }
+        }
+        "SpellCastOfType" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            TriggerMode::SpellCastOfType {
+                valid_card,
+                valid_activating_player,
+            }
+        }
+        "DamageAll" => {
+            let valid_source = params.get("ValidSource").cloned();
+            let valid_target = params.get("ValidTarget").cloned();
+            TriggerMode::DamageAll {
+                valid_source,
+                valid_target,
+            }
+        }
+        "DamagePreventedOnce" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::DamagePreventedOnce { valid_card }
+        }
+        "ExcessDamage" => {
+            let valid_source = params.get("ValidSource").cloned();
+            let valid_target = params.get("ValidTarget").cloned();
+            TriggerMode::ExcessDamage {
+                valid_source,
+                valid_target,
+            }
+        }
+        "LifeGainedAll" => {
+            let valid_player = params.get("ValidPlayer").cloned();
+            TriggerMode::LifeGainedAll { valid_player }
+        }
+        "CounterRemovedOnce" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let counter_type = params.get("CounterType").cloned();
+            TriggerMode::CounterRemovedOnce {
+                valid_card,
+                counter_type,
+            }
+        }
+        "Exerted" => {
+            let valid_card = params.get("ValidCard").cloned();
+            TriggerMode::Exerted { valid_card }
+        }
+        "ManaExpend" => {
+            let valid_player = params.get("Player").cloned();
+            let amount = params
+                .get("Amount")
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(1);
+            TriggerMode::ManaExpend {
+                valid_player,
+                amount,
+            }
+        }
+        "Exploited" => {
+            let valid_card = params.get("ValidCard").cloned();
+            let valid_source = params.get("ValidSource").cloned();
+            TriggerMode::Exploited {
+                valid_card,
+                valid_source,
             }
         }
         _ => return None,
@@ -1358,8 +1917,9 @@ mod tests {
             &mut id,
         ).unwrap();
         assert!(matches!(t.mode, TriggerMode::Attacks { .. }));
-        if let TriggerMode::Attacks { valid_card } = &t.mode {
+        if let TriggerMode::Attacks { valid_card, alone } = &t.mode {
             assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
+            assert!(!alone);
         }
     }
 
@@ -1369,8 +1929,14 @@ mod tests {
         let t = parse_trigger(
             "Mode$ DamageDone | ValidSource$ Creature.Self | CombatDamage$ True | Execute$ TrigDmg",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::DamageDone { valid_source, combat_damage_only, .. } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::DamageDone {
+            valid_source,
+            combat_damage_only,
+            ..
+        } = &t.mode
+        {
             assert_eq!(valid_source.as_deref(), Some("Creature.Self"));
             assert!(*combat_damage_only);
         } else {
@@ -1384,8 +1950,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Blocks | ValidCard$ Creature.Self | ValidBlocked$ Creature | Execute$ TrigBlock",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::Blocks { valid_card, valid_blocked } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::Blocks {
+            valid_card,
+            valid_blocked,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
             assert_eq!(valid_blocked.as_deref(), Some("Creature"));
         } else {
@@ -1399,7 +1970,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ AttackerBlocked | ValidCard$ Creature.Self | Execute$ TrigBlocked",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::AttackerBlocked { .. }));
     }
 
@@ -1409,7 +1981,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ AttackerUnblocked | ValidCard$ Creature.Self | Execute$ TrigUnblocked",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::AttackerUnblocked { .. }));
     }
 
@@ -1433,7 +2006,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ LifeLost | ValidPlayer$ Opponent | Execute$ TrigLost",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         if let TriggerMode::LifeLost { valid_player } = &t.mode {
             assert_eq!(valid_player.as_deref(), Some("Opponent"));
         } else {
@@ -1447,8 +2021,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ CounterAdded | ValidCard$ Card.Self | CounterType$ P1P1 | Execute$ TrigCounter",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::CounterAdded { valid_card, counter_type } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::CounterAdded {
+            valid_card,
+            counter_type,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Card.Self"));
             assert_eq!(counter_type.as_deref(), Some("P1P1"));
         } else {
@@ -1462,8 +2041,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ CounterRemoved | ValidCard$ Creature | CounterType$ M1M1 | Execute$ TrigRemove",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::CounterRemoved { valid_card, counter_type } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::CounterRemoved {
+            valid_card,
+            counter_type,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Creature"));
             assert_eq!(counter_type.as_deref(), Some("M1M1"));
         } else {
@@ -1477,8 +2061,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Sacrificed | ValidCard$ Creature | ValidPlayer$ You | Execute$ TrigSac",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::Sacrificed { valid_card, valid_player } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::Sacrificed {
+            valid_card,
+            valid_player,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Creature"));
             assert_eq!(valid_player.as_deref(), Some("You"));
         } else {
@@ -1506,8 +2095,13 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Milled | ValidCard$ Card | ValidPlayer$ Opponent | Execute$ TrigMill",
             &mut id,
-        ).unwrap();
-        if let TriggerMode::Milled { valid_card, valid_player } = &t.mode {
+        )
+        .unwrap();
+        if let TriggerMode::Milled {
+            valid_card,
+            valid_player,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Card"));
             assert_eq!(valid_player.as_deref(), Some("Opponent"));
         } else {
@@ -1521,7 +2115,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Taps | ValidCard$ Creature | Execute$ TrigTap",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Taps { .. }));
     }
 
@@ -1531,7 +2126,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Untaps | ValidCard$ Creature.Self | Execute$ TrigUntap",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Untaps { .. }));
     }
 
@@ -1541,7 +2137,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Transformed | ValidCard$ Card.Self | Execute$ TrigTransform",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Transformed { .. }));
     }
 
@@ -1551,7 +2148,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Attached | ValidCard$ Card.Self | Execute$ TrigAttach",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Attached { .. }));
     }
 
@@ -1561,7 +2159,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Unattached | ValidCard$ Card.Self | Execute$ TrigDetach",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Unattached { .. }));
     }
 
@@ -1585,7 +2184,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ BecomesTarget | ValidCard$ Creature.Self | Execute$ TrigTarget",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::BecomesTarget { .. }));
     }
 
@@ -1610,7 +2210,11 @@ mod tests {
             "Mode$ AbilityActivated | ValidCard$ Creature | ValidActivatingPlayer$ You | Execute$ TrigAct",
             &mut id,
         ).unwrap();
-        if let TriggerMode::AbilityActivated { valid_card, valid_activating_player } = &t.mode {
+        if let TriggerMode::AbilityActivated {
+            valid_card,
+            valid_activating_player,
+        } = &t.mode
+        {
             assert_eq!(valid_card.as_deref(), Some("Creature"));
             assert_eq!(valid_activating_player.as_deref(), Some("You"));
         } else {
@@ -1624,7 +2228,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Explores | ValidCard$ Creature.Self | Execute$ TrigExplore",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Explored { .. }));
     }
 
@@ -1634,7 +2239,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ BecomeMonarch | ValidPlayer$ You | Execute$ TrigMonarch",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         if let TriggerMode::BecomeMonarch { valid_player } = &t.mode {
             assert_eq!(valid_player.as_deref(), Some("You"));
         } else {
@@ -1649,7 +2255,12 @@ mod tests {
             "Mode$ DamageDealtOnce | ValidSource$ Creature.Self | CombatDamage$ True | Execute$ TrigOnce",
             &mut id,
         ).unwrap();
-        if let TriggerMode::DamageDealtOnce { valid_source, combat_damage_only, .. } = &t.mode {
+        if let TriggerMode::DamageDealtOnce {
+            valid_source,
+            combat_damage_only,
+            ..
+        } = &t.mode
+        {
             assert_eq!(valid_source.as_deref(), Some("Creature.Self"));
             assert!(*combat_damage_only);
         } else {
@@ -1663,7 +2274,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Destroyed | ValidCard$ Creature | Execute$ TrigDestroy",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Destroyed { .. }));
     }
 
@@ -1673,7 +2285,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Exiled | ValidCard$ Card | Execute$ TrigExile",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Exiled { .. }));
     }
 
@@ -1683,7 +2296,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ TokenCreated | ValidCard$ Creature | Execute$ TrigToken",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::TokenCreated { .. }));
     }
 
@@ -1704,7 +2318,8 @@ mod tests {
         let t = parse_trigger(
             "Mode$ Countered | ValidCard$ Card | Execute$ TrigCountered",
             &mut id,
-        ).unwrap();
+        )
+        .unwrap();
         assert!(matches!(t.mode, TriggerMode::Countered { .. }));
     }
 
@@ -1715,6 +2330,9 @@ mod tests {
             "Mode$ Drawn | ValidPlayer$ You | Execute$ TrigDraw | TriggerZones$ Battlefield,Graveyard",
             &mut id,
         ).unwrap();
-        assert_eq!(t.active_zones, vec![ZoneType::Battlefield, ZoneType::Graveyard]);
+        assert_eq!(
+            t.active_zones,
+            vec![ZoneType::Battlefield, ZoneType::Graveyard]
+        );
     }
 }

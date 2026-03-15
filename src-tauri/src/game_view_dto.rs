@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
-use forge_engine_core::card::CounterType;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
+
+use crate::ids_codec::{card_id_str, player_id_str};
 
 /// Frontend-compatible game state snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -14,6 +15,8 @@ pub struct GameViewDto {
     pub game_id: String,
     pub turn: u32,
     pub step: String,
+    /// Declared blockers for the current combat: blocker -> attacker.
+    pub combat_assignments: Vec<CombatAssignmentDto>,
     pub active_player_id: String,
     pub priority_player_id: String,
     pub players: Vec<PlayerDto>,
@@ -30,6 +33,44 @@ pub struct GameViewDto {
     pub opponent_command_zone: Vec<CardDto>,
     pub game_over: bool,
     pub winner_id: Option<String>,
+    /// The player who is the current monarch (issue #22).
+    pub monarch_id: Option<String>,
+    /// The player who holds the initiative (issue #22).
+    pub initiative_holder_id: Option<String>,
+}
+
+impl GameViewDto {
+    pub fn empty(game_id: String) -> Self {
+        Self {
+            game_id,
+            turn: 0,
+            step: "main1".into(),
+            combat_assignments: vec![],
+            active_player_id: String::new(),
+            priority_player_id: String::new(),
+            players: vec![],
+            my_hand: vec![],
+            battlefield: vec![],
+            stack: vec![],
+            exile: vec![],
+            graveyard: vec![],
+            opponent_graveyard: vec![],
+            opponent_exile: vec![],
+            my_command_zone: vec![],
+            opponent_command_zone: vec![],
+            game_over: false,
+            winner_id: None,
+            monarch_id: None,
+            initiative_holder_id: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CombatAssignmentDto {
+    pub blocker_id: String,
+    pub attacker_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +88,8 @@ pub struct PlayerDto {
     pub mana_pool: HashMap<String, i32>,
     /// Commander damage received: source card id string → total damage.
     pub commander_damage: HashMap<String, i32>,
+    /// Energy counters (Kaladesh block).
+    pub energy_counters: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -64,6 +107,12 @@ pub struct CardDto {
     pub supertypes: Vec<String>,
     pub power: Option<String>,
     pub toughness: Option<String>,
+    /// Base power before any modifiers (for buff/debuff color-coding).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_power: Option<i32>,
+    /// Base toughness before any modifiers (for buff/debuff color-coding).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_toughness: Option<i32>,
     pub text: String,
     pub is_playable: bool,
     pub is_selected: bool,
@@ -82,12 +131,30 @@ pub struct CardDto {
     pub is_double_faced: bool,
     /// True if this card is currently showing its back face.
     pub is_transformed: bool,
+    /// True if this card is face-down (Morph, Manifest).
+    pub is_face_down: bool,
+    /// True if this card is currently bestowed (attached as an Aura).
+    pub is_bestowed: bool,
+    /// True if this card is phased out (issue #22).
+    pub phased_out: bool,
+    /// True if this creature has been exerted (won't untap next untap step).
+    pub exerted: bool,
+    /// ID of the card this permanent is attached to (equipment host, enchanted creature).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attached_to: Option<String>,
+    /// IDs of cards attached to this permanent (equipment, auras).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub attachment_ids: Vec<String>,
     /// Flashback cost string, if the card has flashback (e.g. "1 R").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub flashback_cost: Option<String>,
     /// Kicker cost string, if the card has kicker (e.g. "W").
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kicker_cost: Option<String>,
+    /// Effective mana cost after static ability reductions/increases.
+    /// Only set when different from `mana_cost` and the card is playable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub effective_mana_cost: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -99,22 +166,14 @@ pub struct StackObjectDto {
     pub text: String,
 }
 
-fn player_id_str(pid: PlayerId) -> String {
-    format!("player-{}", pid.0)
-}
-
-fn card_id_str(cid: CardId) -> String {
-    format!("card-{}", cid.0)
-}
-
 fn mana_pool_to_map(pool: &ManaPool) -> HashMap<String, i32> {
     let mut m = HashMap::new();
-    m.insert("W".into(), pool.white);
-    m.insert("U".into(), pool.blue);
-    m.insert("B".into(), pool.black);
-    m.insert("R".into(), pool.red);
-    m.insert("G".into(), pool.green);
-    m.insert("C".into(), pool.colorless);
+    m.insert("W".into(), pool.white());
+    m.insert("U".into(), pool.blue());
+    m.insert("B".into(), pool.black());
+    m.insert("R".into(), pool.red());
+    m.insert("G".into(), pool.green());
+    m.insert("C".into(), pool.colorless());
     m
 }
 
@@ -161,6 +220,8 @@ pub fn card_to_dto(
 
     let power = card.base_power.map(|_| card.power().to_string());
     let toughness = card.base_toughness.map(|_| card.toughness().to_string());
+    let base_power = card.base_power;
+    let base_toughness = card.base_toughness;
 
     // Collect non-zero counters, using the variant name as key (e.g. "P1P1", "M1M1", "Loyalty")
     let counters: HashMap<String, i32> = card
@@ -187,19 +248,56 @@ pub fn card_to_dto(
         .collect::<Vec<_>>()
         .join("\n");
 
+    // Face-down cards show as nameless 2/2 creatures with no info
+    let morph_pt = forge_engine_core::spellability::MORPH_PT.to_string();
+    let (name, types, subtypes, supertypes, power, toughness, base_power, base_toughness, text, color, mana_cost_str, cmc) =
+        if card.face_down && card.zone == ZoneType::Battlefield {
+            (
+                "Face-down creature".to_string(),
+                vec!["Creature".to_string()],
+                vec![],
+                vec![],
+                Some(morph_pt.clone()),
+                Some(morph_pt),
+                None,
+                None,
+                String::new(),
+                String::new(),
+                String::new(),
+                0,
+            )
+        } else {
+            (
+                card.card_name.clone(),
+                types,
+                subtypes,
+                supertypes,
+                power,
+                toughness,
+                base_power,
+                base_toughness,
+                text,
+                card.color.to_string(),
+                card.mana_cost.to_string(),
+                card.mana_cost.cmc(),
+            )
+        };
+
     CardDto {
         id: card_id_str(cid),
-        name: card.card_name.clone(),
+        name,
         set_code: card.set_code.clone().unwrap_or_default(),
         card_number: String::new(),
-        color: card.color.to_string(),
-        mana_cost: card.mana_cost.to_string(),
-        cmc: card.mana_cost.cmc(),
+        color,
+        mana_cost: mana_cost_str,
+        cmc,
         types,
         subtypes,
         supertypes,
         power,
         toughness,
+        base_power,
+        base_toughness,
         text,
         is_playable: playable_ids.contains(&cid),
         is_selected: false,
@@ -212,7 +310,11 @@ pub fn card_to_dto(
         // and temporary pump keywords (KW$ parameter, until end of turn).
         keywords: {
             let mut all = card.keywords.clone();
-            for k in card.granted_keywords.iter().chain(card.pump_keywords.iter()) {
+            for k in card
+                .granted_keywords
+                .iter()
+                .chain(card.pump_keywords.iter())
+            {
                 if !all.iter().any(|e| e.eq_ignore_ascii_case(k)) {
                     all.push(k.clone());
                 }
@@ -227,6 +329,32 @@ pub fn card_to_dto(
         flashback_cost: card.get_flashback_cost(),
         kicker_cost: card.get_kicker_cost(),
         is_transformed: card.is_transformed,
+        is_face_down: card.face_down,
+        is_bestowed: card.is_bestowed,
+        attached_to: card.attached_to.map(card_id_str),
+        attachment_ids: card.attachments.iter().map(|&aid| card_id_str(aid)).collect(),
+        phased_out: card.phased_out,
+        exerted: card.exerted,
+        effective_mana_cost: {
+            if playable_ids.contains(&cid) && !card.is_land() {
+                let cost_adj = forge_engine_core::staticability::static_ability_cost_change::compute_cost_adjustment(
+                    game, card, card.controller, card.zone,
+                );
+                if !cost_adj.is_empty() {
+                    let adjusted = cost_adj.apply(&card.mana_cost);
+                    let adjusted_str = adjusted.to_string();
+                    if adjusted_str != card.mana_cost.to_string() {
+                        Some(adjusted_str)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        },
     }
 }
 
@@ -260,6 +388,7 @@ impl GameViewDto {
                 exile_count: game.cards_in_zone(ZoneType::Exile, pid).len(),
                 mana_pool: mana_pool_to_map(&pool),
                 commander_damage,
+                energy_counters: ps.energy_counters,
             });
         }
 
@@ -364,6 +493,15 @@ impl GameViewDto {
             game_id: game_id.to_string(),
             turn: game.turn.turn_number,
             step: phase_to_step(game.turn.phase).to_string(),
+            combat_assignments: game
+                .turn
+                .combat_block_assignments
+                .iter()
+                .map(|(blocker, attacker)| CombatAssignmentDto {
+                    blocker_id: card_id_str(*blocker),
+                    attacker_id: card_id_str(*attacker),
+                })
+                .collect(),
             active_player_id: player_id_str(game.active_player()),
             priority_player_id: player_id_str(game.turn.priority_player),
             players,
@@ -378,6 +516,8 @@ impl GameViewDto {
             opponent_command_zone,
             game_over: game.game_over,
             winner_id: game.winner.map(player_id_str),
+            monarch_id: game.monarch.map(player_id_str),
+            initiative_holder_id: game.initiative_holder.map(player_id_str),
         }
     }
 }
