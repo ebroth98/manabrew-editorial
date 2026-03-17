@@ -1,7 +1,7 @@
 use forge_foundation::mana::ManaAtom;
 use forge_foundation::ManaCost;
 use forge_foundation::ManaCostShard;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, Default)]
 struct ShardCount {
@@ -13,10 +13,10 @@ struct ShardCount {
 /// Rust mirror of Java `forge.game.mana.ManaCostBeingPaid` focused on AI auto-pay needs.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ManaCostBeingPaid {
-    unpaid_shards: HashMap<ManaCostShard, ShardCount>,
+    unpaid_shards: BTreeMap<ManaCostShard, ShardCount>,
     /// Tracks which colors were used to pay X costs (for colored X restrictions).
     /// Maps color short string ("W","U","B","R","G") to count paid.
-    pub(crate) x_mana_cost_paid_by_color: HashMap<String, i32>,
+    pub(crate) x_mana_cost_paid_by_color: BTreeMap<String, i32>,
     /// Bitmask of all colors paid (for Sunburst/Converge).
     pub(crate) sunburst_map: u16,
     /// Number of X shards in the original cost.

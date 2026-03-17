@@ -153,6 +153,7 @@ mod tests {
             _: PlayerId,
             _: &[CardId],
             _: &[CardId],
+            _: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             vec![]
         }

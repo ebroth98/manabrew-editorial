@@ -410,10 +410,7 @@ fn check_sba(
     let mut legend_fn = |player: PlayerId, ids: &[CardId]| -> CardId {
         agents[player.index()].choose_legend_keep(player, ids)
     };
-    game.check_state_based_actions_with_triggers(
-        Some(trigger_handler),
-        Some(&mut legend_fn),
-    )
+    game.check_state_based_actions_with_triggers(Some(trigger_handler), Some(&mut legend_fn))
 }
 
 mod action_space;
@@ -485,6 +482,7 @@ mod tests {
             _player: PlayerId,
             _attackers: &[CardId],
             _available_blockers: &[CardId],
+            _max_blockers: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
@@ -583,6 +581,7 @@ mod tests {
             _player: PlayerId,
             _attackers: &[CardId],
             _available_blockers: &[CardId],
+            _max_blockers: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
@@ -697,7 +696,12 @@ mod tests {
         card
     }
 
-    fn activated_permanent(owner: PlayerId, name: &str, type_line: &str, abilities: Vec<&str>) -> CardInstance {
+    fn activated_permanent(
+        owner: PlayerId,
+        name: &str,
+        type_line: &str,
+        abilities: Vec<&str>,
+    ) -> CardInstance {
         CardInstance::new(
             CardId(0),
             name.to_string(),
@@ -745,12 +749,11 @@ mod tests {
         let mut all_phases = seen0.lock().unwrap().clone();
         all_phases.extend(seen1.lock().unwrap().iter().copied());
 
+        // Priority windows are opened at Draw, Main1, and Main2.
+        // Combat phases don't call choose_action, so they're not recorded here.
         assert!(all_phases.contains(&PhaseType::Draw));
-        assert!(all_phases.contains(&PhaseType::CombatBegin));
-        assert!(all_phases.contains(&PhaseType::CombatDeclareAttackers));
-        assert!(all_phases.contains(&PhaseType::CombatDeclareBlockers));
-        assert!(all_phases.contains(&PhaseType::CombatDamage));
-        assert!(all_phases.contains(&PhaseType::CombatEnd));
+        assert!(all_phases.contains(&PhaseType::Main1));
+        assert!(all_phases.contains(&PhaseType::Main2));
         assert!(all_phases.contains(&PhaseType::EndOfTurn));
 
         assert!(!bad0.load(Ordering::SeqCst));

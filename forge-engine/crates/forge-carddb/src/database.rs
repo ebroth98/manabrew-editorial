@@ -1,5 +1,7 @@
 use std::collections::HashMap;
 
+use deunicode::deunicode;
+
 use crate::card_rules::CardRules;
 use crate::parser::CardScriptParser;
 
@@ -8,6 +10,8 @@ use crate::parser::CardScriptParser;
 #[derive(Debug)]
 pub struct CardDatabase {
     cards: HashMap<String, CardRules>,
+    /// Maps accent-stripped names to original names (mirrors Java's normalizedNames).
+    normalized_names: HashMap<String, String>,
 }
 
 /// Result of loading a batch of card scripts.
@@ -22,6 +26,7 @@ impl CardDatabase {
     pub fn new() -> Self {
         CardDatabase {
             cards: HashMap::new(),
+            normalized_names: HashMap::new(),
         }
     }
 
@@ -38,7 +43,13 @@ impl CardDatabase {
     }
 
     pub fn get_by_card_name(&self, card_name: &str) -> Option<&CardRules> {
-        self.cards.values().find(|r| r.name() == card_name)
+        // Mirror Java's getNormalizedName: check if this is an accent-stripped name
+        let resolved = self
+            .normalized_names
+            .get(card_name)
+            .map(|s| s.as_str())
+            .unwrap_or(card_name);
+        self.cards.values().find(|r| r.name() == resolved)
     }
 
     pub fn iter(&self) -> impl Iterator<Item = (&String, &CardRules)> {
@@ -47,6 +58,15 @@ impl CardDatabase {
 
     pub fn card_names(&self) -> impl Iterator<Item = String> + '_ {
         self.cards.values().map(|r| r.name())
+    }
+
+    /// Mirror of Java's CardDb.getNormalizedName().
+    /// If the given name is an accent-stripped variant, returns the original name.
+    pub fn get_normalized_name<'a>(&'a self, card_name: &'a str) -> &'a str {
+        self.normalized_names
+            .get(card_name)
+            .map(|s| s.as_str())
+            .unwrap_or(card_name)
     }
 
     /// Load cards from an iterator of (filename, script_content) pairs.
@@ -65,6 +85,18 @@ impl CardDatabase {
                 Ok(card) => {
                     let key = card.normalized_name.clone();
                     let key = if key.is_empty() { card.name() } else { key };
+
+                    // Mirror Java's addFaceToDbNames:
+                    // final String normalName = StringUtils.stripAccents(name);
+                    // if (!normalName.equals(name)) {
+                    //     normalizedNames.put(normalName, name);
+                    // }
+                    let card_name = card.name();
+                    let normal_name = deunicode(&card_name);
+                    if normal_name != card_name {
+                        db.normalized_names.insert(normal_name, card_name);
+                    }
+
                     db.cards.insert(key, card);
                     result.loaded += 1;
                 }
@@ -164,5 +196,19 @@ mod tests {
         let (db, _) = CardDatabase::load_from_strings(scripts);
         let card = db.get_by_card_name("Lightning Bolt").unwrap();
         assert_eq!(card.main_part.name, "Lightning Bolt");
+    }
+
+    #[test]
+    fn get_by_card_name_accent_normalized() {
+        let scripts = vec![(
+            "troll_of_khazad_dum",
+            "Name:Troll of Khazad-d\u{00fb}m\nManaCost:5 B\nTypes:Creature Troll\nPT:6/5\nOracle:Swampwalk",
+        )];
+
+        let (db, _) = CardDatabase::load_from_strings(scripts);
+        // Exact match should work
+        assert!(db.get_by_card_name("Troll of Khazad-d\u{00fb}m").is_some());
+        // ASCII-stripped name should also work (via normalized_names map)
+        assert!(db.get_by_card_name("Troll of Khazad-dum").is_some());
     }
 }

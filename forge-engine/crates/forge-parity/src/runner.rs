@@ -480,14 +480,21 @@ impl PlayerAgent for CapturingAgent {
                             PlayCardMode::Alternative(AlternativeCost::Bestow) => {
                                 "Bestow".to_string()
                             }
+                            PlayCardMode::Alternative(AlternativeCost::Warp) => "0".to_string(),
                             PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
                             PlayCardMode::ForetellExile => "ForetellExile".to_string(),
                         };
+                        let fallback = match cid.mode {
+                            PlayCardMode::Normal => "Normal",
+                            PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp",
+                            _ => "",
+                        };
                         format!(
-                            "{}|0|{}|{}",
+                            "{}|0|{}|{}|{}",
                             label,
                             self.parity_map.id(cid.card_id),
-                            variant
+                            variant,
+                            fallback
                         )
                     }
                     EntryKind::Ability(cid, idx) => {
@@ -642,6 +649,7 @@ impl PlayerAgent for CapturingAgent {
         player: PlayerId,
         attackers: &[CardId],
         available_blockers: &[CardId],
+        max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         let sorted_attackers = parity_order::sort_cards_by_name_then_id(
             attackers,
@@ -653,9 +661,9 @@ impl PlayerAgent for CapturingAgent {
             |id| self.card_name(id),
             |id| self.parity_map.id(id),
         );
-        let chosen = self
-            .inner
-            .choose_blockers(player, &sorted_attackers, &sorted_blockers);
+        let chosen =
+            self.inner
+                .choose_blockers(player, &sorted_attackers, &sorted_blockers, max_blockers);
 
         let attacker_labels = parity_id::label_cards_in_order(
             &sorted_attackers,
@@ -675,6 +683,8 @@ impl PlayerAgent for CapturingAgent {
             chosen_by_blocker.entry(blocker).or_insert(attacker);
         }
 
+        // Track how many blockers have been declared for BlockRestrict enforcement.
+        let mut blockers_declared = 0usize;
         for &blocker in &sorted_blockers {
             let blocker_label = blocker_label_by_id
                 .get(&blocker)
@@ -687,7 +697,12 @@ impl PlayerAgent for CapturingAgent {
                     )
                 });
             let mut options = vec!["PASS".to_string()];
-            let legal_attackers = self.legal_attackers_for_blocker(blocker, &sorted_attackers);
+            let at_limit = max_blockers.map_or(false, |max| blockers_declared >= max);
+            let legal_attackers = if at_limit {
+                Vec::new() // BlockRestrict reached → forced PASS, no options
+            } else {
+                self.legal_attackers_for_blocker(blocker, &sorted_attackers)
+            };
             for &attacker in &legal_attackers {
                 let attacker_label = attacker_label_by_id
                     .get(&attacker)
@@ -703,6 +718,9 @@ impl PlayerAgent for CapturingAgent {
                         .map(|label| format!("BLOCK:{blocker_label}->{label}"))
                 })
                 .unwrap_or_else(|| "PASS".to_string());
+            if chosen_by_blocker.contains_key(&blocker) {
+                blockers_declared += 1;
+            }
             self.record_decision("combat_blocker_choice", options, choice);
         }
 

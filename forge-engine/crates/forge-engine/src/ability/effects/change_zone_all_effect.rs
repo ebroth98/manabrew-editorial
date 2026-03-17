@@ -142,7 +142,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let until_host_leaves = sa
         .params
         .get("Duration")
-        .map(|d| d.eq_ignore_ascii_case("UntilHostLeavesPlay") || d.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT"))
+        .map(|d| {
+            d.eq_ignore_ascii_case("UntilHostLeavesPlay")
+                || d.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT")
+        })
         .unwrap_or(false);
     let exile_source = if until_host_leaves { sa.source } else { None };
 
@@ -239,8 +242,20 @@ mod tests {
 
         let filter = "TargetedCard.Self,Permanent.nonLand+NotDefinedTargeted+sharesNameWith Targeted+ControlledBy TargetedController";
 
-        assert!(matches_change_zone_all_filter(t1, &game, filter, &[], Some(t1)));
-        assert!(matches_change_zone_all_filter(t2, &game, filter, &[], Some(t1)));
+        assert!(matches_change_zone_all_filter(
+            t1,
+            &game,
+            filter,
+            &[],
+            Some(t1)
+        ));
+        assert!(matches_change_zone_all_filter(
+            t2,
+            &game,
+            filter,
+            &[],
+            Some(t1)
+        ));
         assert!(!matches_change_zone_all_filter(
             opp_land,
             &game,

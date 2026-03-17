@@ -718,7 +718,11 @@ fn cant_block_by(game: &GameState, attacker_id: CardId, blocker_id: CardId) -> b
     let attacker = game.card(attacker_id);
     let blocker = game.card(blocker_id);
 
-    for source in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for source in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for sa in &source.static_abilities {
             if sa.mode != StaticMode::CantBlockBy {
                 continue;

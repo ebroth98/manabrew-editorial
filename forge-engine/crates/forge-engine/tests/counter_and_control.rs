@@ -52,6 +52,7 @@ impl PlayerAgent for PassAgent {
         _player: PlayerId,
         _attackers: &[CardId],
         _available_blockers: &[CardId],
+        _max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         Vec::new()
     }

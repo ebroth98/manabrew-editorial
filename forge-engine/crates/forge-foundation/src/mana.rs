@@ -57,7 +57,7 @@ impl ManaAtom {
 
 /// Individual mana cost shard (one symbol in a mana cost).
 /// Mirrors Java `ManaCostShard`. Each variant stores its atom bitmask and display string.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum ManaCostShard {
     // Pure colors
     White,
@@ -596,7 +596,13 @@ impl ManaCost {
             shards: self
                 .shards
                 .iter()
-                .map(|s| if s.is_phyrexian() { s.to_non_phyrexian() } else { *s })
+                .map(|s| {
+                    if s.is_phyrexian() {
+                        s.to_non_phyrexian()
+                    } else {
+                        *s
+                    }
+                })
                 .collect(),
             generic_cost: self.generic_cost,
             has_no_cost: self.has_no_cost,

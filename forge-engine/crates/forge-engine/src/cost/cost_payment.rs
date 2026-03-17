@@ -99,11 +99,7 @@ impl CostPayment {
     ///   3. If decision is None or payment fails, return false
     ///
     /// Java also allows cost reordering via `player.getController().orderCosts()`.
-    pub fn pay_cost(
-        &mut self,
-        game: &mut GameState,
-        agent: &mut dyn PlayerAgent,
-    ) -> bool {
+    pub fn pay_cost(&mut self, game: &mut GameState, agent: &mut dyn PlayerAgent) -> bool {
         // TODO: self.adjusted_cost = CostAdjustment::adjust(&self.cost, ...);
         let mut parts = self.adjusted_cost.parts.clone();
 
@@ -114,12 +110,7 @@ impl CostPayment {
         }
 
         for part in &parts {
-            let decision = agent.decide_cost_part(
-                self.player,
-                self.source,
-                part,
-                game,
-            );
+            let decision = agent.decide_cost_part(self.player, self.source, part, game);
 
             match decision {
                 Some(pd) => {
@@ -153,17 +144,19 @@ impl CostPayment {
         // Phase 1: Collect all decisions
         let mut decisions: Vec<(CostPart, PaymentDecision)> = Vec::new();
         for part in &parts {
-            let decision = agent.decide_cost_part(
-                self.player,
-                self.source,
-                part,
-                game,
-            );
+            let decision = agent.decide_cost_part(self.player, self.source, part, game);
 
             match decision {
                 Some(pd) => {
                     if agent.pays_right_after_decision() {
-                        if !pay_as_decided(game, self.player, self.source, part, &pd, self.is_effect) {
+                        if !pay_as_decided(
+                            game,
+                            self.player,
+                            self.source,
+                            part,
+                            &pd,
+                            self.is_effect,
+                        ) {
                             return false;
                         }
                     }
@@ -276,12 +269,18 @@ pub fn pay_as_decided(
         }
 
         // ── Counters ────────────────────────────────────────────────────
-        CostPart::SubCounter { amount, counter_type } => {
+        CostPart::SubCounter {
+            amount,
+            counter_type,
+        } => {
             let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
             crate::cost::cost_sub_counter::pay_as_decided(game, source, resolved, counter_type);
             true
         }
-        CostPart::AddCounter { amount, counter_type } => {
+        CostPart::AddCounter {
+            amount,
+            counter_type,
+        } => {
             let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
             crate::cost::cost_put_counter::pay_as_decided(game, source, resolved, counter_type);
             true
@@ -443,7 +442,8 @@ pub fn pay_as_decided(
         // ── Choose Color ────────────────────────────────────────────────
         CostPart::ChooseColor(_) => {
             if let PaymentDecision::Colors(colors) = decision {
-                game.card_mut(source).chosen_colors = colors.iter().map(|c| c.long_name().to_string()).collect();
+                game.card_mut(source).chosen_colors =
+                    colors.iter().map(|c| c.long_name().to_string()).collect();
             }
             true
         }
@@ -495,7 +495,11 @@ pub fn pay_as_decided(
         }
 
         // ── Put Card To Library ─────────────────────────────────────────
-        CostPart::PutCardToLib { lib_pos, type_filter, .. } => {
+        CostPart::PutCardToLib {
+            lib_pos,
+            type_filter,
+            ..
+        } => {
             if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
                 crate::cost::cost_put_card_to_lib::pay_as_decided_self(game, source, *lib_pos);
             } else if let PaymentDecision::Cards(cards) = decision {
@@ -548,10 +552,16 @@ fn refund_cost_part(game: &mut GameState, source: CardId, player: PlayerId, part
         CostPart::Untap => {
             crate::cost::cost_untap::refund(game, source);
         }
-        CostPart::SubCounter { amount, counter_type } => {
+        CostPart::SubCounter {
+            amount,
+            counter_type,
+        } => {
             crate::cost::cost_sub_counter::refund(game, source, *amount, counter_type);
         }
-        CostPart::AddCounter { amount, counter_type } => {
+        CostPart::AddCounter {
+            amount,
+            counter_type,
+        } => {
             crate::cost::cost_put_counter::refund(game, source, *amount, counter_type);
         }
         CostPart::PayEnergy(amount) => {

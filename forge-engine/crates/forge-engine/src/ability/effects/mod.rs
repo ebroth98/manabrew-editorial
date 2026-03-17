@@ -578,9 +578,7 @@ fn try_pay_unless_cost(
                 _ => false,
             };
             if should_ask {
-                let card_name = sa
-                    .source
-                    .map(|cid| ctx.game.card(cid).card_name.clone());
+                let card_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
                 let api = sa.api.as_deref();
                 let kind = unless_cost_part_kind(part);
                 let message = format!(
@@ -1154,6 +1152,40 @@ pub fn resolve_numeric_svar(
                         sa,
                     );
                 }
+                // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI
+                // Use lki_power (captured at zone-change time) as primary source,
+                // falling back to the periodic snapshot if lki_power is 0 and
+                // the snapshot has a non-zero value. This handles cards that
+                // entered the battlefield after the last checkpoint.
+                if svar_expr == "TriggeredCard$CardPower" {
+                    if let Some(trigger_src) = sa.trigger_source {
+                        let lki = game.card(trigger_src).lki_power;
+                        if lki != 0 {
+                            return lki;
+                        }
+                        // lki_power is 0 — could be base 0/X creature or power
+                        // was reduced to 0 by effects. Check snapshot for
+                        // pre-resolution state.
+                        if let Some(snapshot) = game.get_lki_snapshot(trigger_src) {
+                            return snapshot.power;
+                        }
+                        return lki;
+                    }
+                    return 0;
+                }
+                if svar_expr == "TriggeredCard$CardToughness" {
+                    if let Some(trigger_src) = sa.trigger_source {
+                        let lki = game.card(trigger_src).lki_toughness;
+                        if lki != 0 {
+                            return lki;
+                        }
+                        if let Some(snapshot) = game.get_lki_snapshot(trigger_src) {
+                            return snapshot.toughness;
+                        }
+                        return game.card(trigger_src).lki_toughness;
+                    }
+                    return 0;
+                }
                 return evaluate_svar(svar_expr, sa);
             }
         }
@@ -1173,6 +1205,30 @@ pub fn resolve_numeric_svar(
                     sa.activating_player,
                     sa,
                 );
+            }
+            // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI of the triggered card.
+            // Mirrors Java AbilityUtils: TriggeredCard → Card, then Card$CardPower.
+            if svar_expr == "TriggeredCard$CardPower" {
+                if let Some(trigger_src) = sa.trigger_source {
+                    let lki = game.card(trigger_src).lki_power;
+                    if lki != 0 {
+                        return lki;
+                    }
+                    if let Some(snapshot) = game.get_lki_snapshot(trigger_src) {
+                        return snapshot.power;
+                    }
+                    return lki;
+                }
+                return 0;
+            }
+            if svar_expr == "TriggeredCard$CardToughness" {
+                if let Some(trigger_src) = sa.trigger_source {
+                    if let Some(snapshot) = game.get_lki_snapshot(trigger_src) {
+                        return snapshot.toughness;
+                    }
+                    return game.card(trigger_src).lki_toughness;
+                }
+                return 0;
             }
             return evaluate_svar(svar_expr, sa);
         }
@@ -1293,7 +1349,16 @@ pub fn resolve_count_svar_for_sa(
     }
 
     // Count$Valid TYPE.QUALIFIERS — count permanents matching filter
+    // Count$Valid TYPE.QUALIFIERS$GreatestCardPower — greatest power among matching creatures
     if let Some(filter_str) = expr.strip_prefix("Count$Valid ") {
+        // Check for $GreatestCardPower suffix
+        let (filter_str, greatest_power) =
+            if let Some(base) = filter_str.strip_suffix("$GreatestCardPower") {
+                (base, true)
+            } else {
+                (filter_str, false)
+            };
+
         let battlefield = game.cards_in_zone(ZoneType::Battlefield, controller);
         // Also check opponent's battlefield for non-YouCtrl filters
         let opp = game.opponent_of(controller);
@@ -1301,7 +1366,6 @@ pub fn resolve_count_svar_for_sa(
 
         let has_you_ctrl = filter_str.contains("YouCtrl") || filter_str.contains("YouControl");
 
-        let mut count = 0;
         let cards_to_check: Vec<CardId> = if has_you_ctrl {
             battlefield.to_vec()
         } else {
@@ -1313,19 +1377,38 @@ pub fn resolve_count_svar_for_sa(
         };
 
         let chosen_type = game.card(source_id).chosen_type.clone();
-        for &cid in &cards_to_check {
-            let card = game.card(cid);
-            if valid_card_matches_with_source(
-                filter_str,
-                card,
-                controller,
-                source_id,
-                chosen_type.as_deref(),
-            ) {
-                count += 1;
+        if greatest_power {
+            // Return the greatest power among matching creatures
+            let mut max_power = 0;
+            for &cid in &cards_to_check {
+                let card = game.card(cid);
+                if valid_card_matches_with_source(
+                    filter_str,
+                    card,
+                    controller,
+                    source_id,
+                    chosen_type.as_deref(),
+                ) {
+                    max_power = max_power.max(card.power());
+                }
             }
+            return max_power;
+        } else {
+            let mut count = 0;
+            for &cid in &cards_to_check {
+                let card = game.card(cid);
+                if valid_card_matches_with_source(
+                    filter_str,
+                    card,
+                    controller,
+                    source_id,
+                    chosen_type.as_deref(),
+                ) {
+                    count += 1;
+                }
+            }
+            return count;
         }
-        return count;
     }
 
     // Count$Devotion.COLOR — count mana symbols of a color among permanents you control.
@@ -1420,6 +1503,12 @@ pub fn resolve_count_svar_for_sa(
     if let Some(counter_type) = expr.strip_prefix("Count$CardCounters.") {
         let ct = crate::ability::effects::parse_counter_type(counter_type);
         return *game.card(source_id).counters.get(&ct).unwrap_or(&0);
+    }
+
+    // Count$TotalDamageDoneByThisTurn — total damage dealt by the source card this turn.
+    // Mirrors Java's Card.getTotalDamageDoneBy() via DamageHistory.
+    if expr == "Count$TotalDamageDoneByThisTurn" {
+        return game.card(source_id).total_damage_done_this_turn;
     }
 
     // Fallback
@@ -1775,6 +1864,7 @@ pub fn matches_change_type(
         "Instant" => card.type_line.is_instant(),
         "Sorcery" => card.type_line.is_sorcery(),
         "Planeswalker" => card.type_line.is_planeswalker(),
+        "Permanent" => card.is_permanent(),
         "Card" => true,
         // Support land-subtype selectors used in tutor scripts
         // (e.g. "Forest.Basic", "Plains.Basic").

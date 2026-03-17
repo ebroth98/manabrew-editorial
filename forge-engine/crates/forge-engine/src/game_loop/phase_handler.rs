@@ -209,6 +209,9 @@ impl GameLoop {
                 phase,
                 emit_phase_trigger,
             } => {
+                // LKI: Snapshot battlefield state before phase transition.
+                // Mirrors Java PhaseHandler line 1103: game.copyLastState().
+                game.copy_last_state();
                 self.set_phase(game, agents, phase);
                 if emit_phase_trigger {
                     self.emit_phase_trigger(game, phase);
@@ -409,6 +412,10 @@ impl GameLoop {
         // CantAttack / CantBlock flags are set here.
         apply_continuous_effects(game);
 
+        // LKI: Snapshot battlefield state before combat declarations.
+        // Mirrors Java's Game.copyLastState() called before declare attackers.
+        game.copy_last_state();
+
         // Declare Attackers
         self.set_phase(game, agents, PhaseType::CombatDeclareAttackers);
         let available_attackers = combat::get_available_attackers(game, active);
@@ -457,19 +464,6 @@ impl GameLoop {
                     ),
                 );
 
-                // Mirror Java's validateAttackers + getLegalAttackers fallback:
-                // if must-attack creatures were not included by the agent, add them
-                // directly without re-calling the agent (no extra RNG consumption).
-                let default_defender = possible_defenders
-                    .first()
-                    .copied()
-                    .unwrap_or(combat::DefenderId::Player(defending));
-                for &must in &must_attackers {
-                    if !picked.iter().any(|(a, _)| *a == must) {
-                        picked.push((must, default_defender));
-                    }
-                }
-
                 // Validate attack restrictions (OnlyAlone, NotAlone, NeedGreaterPower, etc.)
                 let attacker_ids: Vec<CardId> = picked.iter().map(|(a, _)| *a).collect();
                 let illegal = combat::attack_restriction::validate_attack_restrictions(
@@ -491,6 +485,29 @@ impl GameLoop {
                 if let Some(max) = global_max {
                     if picked.len() > max as usize {
                         invalid = true;
+                    }
+                }
+
+                // Mirror Java's validateAttackers + countViolations + getLegalAttackers:
+                // Count must-attack violations in the agent's raw declaration and compare
+                // against the minimum violations achievable by the best legal attack.
+                // If the agent's declaration has more violations, mark as invalid and retry
+                // (matching Java's RNG consumption for the retry loop).
+                if !invalid {
+                    let current_violations = must_attackers
+                        .iter()
+                        .filter(|&&m| !picked.iter().any(|(a, _)| *a == m))
+                        .count();
+                    if current_violations > 0 {
+                        // Compute minimum possible violations: try the best attack
+                        // which includes as many must-attackers as possible within
+                        // the global max. If all must-attackers fit within the limit,
+                        // best_violations = 0. Otherwise, best_violations = must_count - max.
+                        let max_attackers = global_max.unwrap_or(i32::MAX) as usize;
+                        let best_violations = must_attackers.len().saturating_sub(max_attackers);
+                        if current_violations > best_violations {
+                            invalid = true;
+                        }
                     }
                 }
 
@@ -952,9 +969,26 @@ impl GameLoop {
                         game.player(defending).name
                     ),
                 );
+                let max_blockers = {
+                    let raw =
+                        crate::staticability::static_ability_block_restrict::block_restrict_num(
+                            &game.cards,
+                            defending,
+                        );
+                    if raw < i32::MAX {
+                        Some(raw as usize)
+                    } else {
+                        None
+                    }
+                };
                 let mut chosen_blockers = {
                     let def_agent = &mut agents[defending.index()];
-                    def_agent.choose_blockers(defending, &attacker_card_ids, &available_blockers)
+                    def_agent.choose_blockers(
+                        defending,
+                        &attacker_card_ids,
+                        &available_blockers,
+                        max_blockers,
+                    )
                 };
                 if self.apply_pending_snapshot_restore(game, agents) {
                     return;
@@ -1161,6 +1195,11 @@ impl GameLoop {
         if has_first_strikers && self.combat.has_attackers() {
             // First Strike Damage step
             self.set_phase(game, agents, PhaseType::CombatFirstStrikeDamage);
+
+            // LKI: Snapshot battlefield state before first strike damage.
+            // Mirrors Java's Game.copyLastState() called before damage resolution.
+            game.copy_last_state();
+
             let fs_unblocked_choices = self.choose_assign_as_unblocked(game, agents, true);
             let fs_events = self
                 .combat
@@ -1206,6 +1245,11 @@ impl GameLoop {
         // Java parity: skip regular combat damage step when no attackers remain.
         if self.combat.has_attackers() {
             self.set_phase(game, agents, PhaseType::CombatDamage);
+
+            // LKI: Snapshot battlefield state before combat damage.
+            // Mirrors Java's Game.copyLastState() called before damage resolution.
+            game.copy_last_state();
+
             let unblocked_choices = self.choose_assign_as_unblocked(game, agents, false);
             let dmg_events = self
                 .combat

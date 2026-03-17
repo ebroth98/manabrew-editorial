@@ -26,12 +26,7 @@ pub fn pay_as_decided(
 
 /// Refund by removing the placed counters.
 /// Mirrors Java's `CostPutCounter.refund()`.
-pub fn refund(
-    game: &mut GameState,
-    source: CardId,
-    amount: i32,
-    counter_type: &CounterType,
-) {
+pub fn refund(game: &mut GameState, source: CardId, amount: i32, counter_type: &CounterType) {
     game.card_mut(source).remove_counter(counter_type, amount);
 }
 

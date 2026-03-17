@@ -94,8 +94,7 @@ fn matches_valid_cause(valid: Option<&str>, cause: Option<&SpellAbility>) -> boo
             {
                 return false;
             }
-            if q.eq_ignore_ascii_case("!EffectSource")
-                && cause.params.contains_key("EffectSource")
+            if q.eq_ignore_ascii_case("!EffectSource") && cause.params.contains_key("EffectSource")
             {
                 return false;
             }

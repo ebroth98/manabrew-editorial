@@ -490,6 +490,7 @@ impl PlayerAgent for InteractiveAgent {
         _player: PlayerId,
         attackers: &[CardId],
         available_blockers: &[CardId],
+        _max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         if attackers.is_empty() || available_blockers.is_empty() {
             return Vec::new();
@@ -692,6 +693,7 @@ impl PlayerAgent for SimpleAiAgent {
         _: PlayerId,
         attackers: &[CardId],
         available_blockers: &[CardId],
+        _: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         if !attackers.is_empty() && !available_blockers.is_empty() {
             vec![(available_blockers[0], attackers[0])]

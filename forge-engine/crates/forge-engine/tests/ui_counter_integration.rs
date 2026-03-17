@@ -1,7 +1,9 @@
 /// Integration test to verify counterspell and priority system works end-to-end
 /// This validates that the UI components (chooseTargetSpell, stack rendering, priority passing)
 /// have proper backend support
-use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayCardMode, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{
+    MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
+};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -81,6 +83,7 @@ impl PlayerAgent for CounterspellAgent {
         _player: PlayerId,
         _attackers: &[CardId],
         _available_blockers: &[CardId],
+        _max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         Vec::new()
     }

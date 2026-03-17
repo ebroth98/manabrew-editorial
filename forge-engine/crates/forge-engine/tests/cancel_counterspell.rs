@@ -55,6 +55,7 @@ impl PlayerAgent for PassAgent {
         _player: PlayerId,
         _attackers: &[CardId],
         _available_blockers: &[CardId],
+        _max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         Vec::new()
     }
@@ -261,14 +262,14 @@ fn test_cancel_counters_creature_spell() {
     let mut cancel_sa = SpellAbility::new_simple(
         Some(cancel),
         p0,
-        "SP$ Counter | TargetType$ Spell | ValidTgts$ Card",
+        "SP$ Counter | TargetType$ Spell | ValidTgts$ Spell",
     );
 
     // Setup targeting with TargetType$ Spell filter
     cancel_sa.target_restrictions = Some(target_restrictions::TargetRestrictions {
-        valid_tgts: vec!["Card".to_string()],
+        valid_tgts: vec!["Spell".to_string()],
         target_kind: target_restrictions::parse_valid_targets(
-            "SP$ Counter | TargetType$ Spell | ValidTgts$ Card",
+            "SP$ Counter | TargetType$ Spell | ValidTgts$ Spell",
         ),
         target_type_filter: Some("Spell".to_string()),
         min_targets: "1".to_string(),
@@ -343,14 +344,14 @@ fn test_cancel_counters_noncreature_spell() {
     let mut cancel_sa = SpellAbility::new_simple(
         Some(cancel),
         p0,
-        "SP$ Counter | TargetType$ Spell | ValidTgts$ Card",
+        "SP$ Counter | TargetType$ Spell | ValidTgts$ Spell",
     );
 
     // Setup targeting with TargetType$ Spell filter
     cancel_sa.target_restrictions = Some(target_restrictions::TargetRestrictions {
-        valid_tgts: vec!["Card".to_string()],
+        valid_tgts: vec!["Spell".to_string()],
         target_kind: target_restrictions::parse_valid_targets(
-            "SP$ Counter | TargetType$ Spell | ValidTgts$ Card",
+            "SP$ Counter | TargetType$ Spell | ValidTgts$ Spell",
         ),
         target_type_filter: Some("Spell".to_string()),
         min_targets: "1".to_string(),

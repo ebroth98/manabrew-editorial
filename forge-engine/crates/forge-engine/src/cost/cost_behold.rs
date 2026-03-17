@@ -13,11 +13,7 @@ use crate::ids::CardId;
 /// Execute behold payment for selected cards.
 /// Cards have already been chosen by the agent.
 /// If `exile` is true, moves revealed cards to exile.
-pub fn pay_as_decided_cards(
-    game: &mut GameState,
-    cards: &[CardId],
-    exile: bool,
-) -> bool {
+pub fn pay_as_decided_cards(game: &mut GameState, cards: &[CardId], exile: bool) -> bool {
     if exile {
         for &cid in cards {
             let owner = game.card(cid).owner;

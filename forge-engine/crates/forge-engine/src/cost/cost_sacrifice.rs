@@ -30,11 +30,7 @@ pub fn pay_as_decided_self(game: &mut GameState, source: CardId, player: PlayerI
 /// Execute typed sacrifice (non-self).
 /// Cards to sacrifice are passed in as `cards` (already selected by agent).
 /// Mirrors Java's `CostSacrifice.doListPayment()`.
-pub fn pay_as_decided_cards(
-    game: &mut GameState,
-    cards: &[CardId],
-    _player: PlayerId,
-) -> bool {
+pub fn pay_as_decided_cards(game: &mut GameState, cards: &[CardId], _player: PlayerId) -> bool {
     for &cid in cards {
         let owner = game.card(cid).owner;
         game.move_card(cid, ZoneType::Graveyard, owner);

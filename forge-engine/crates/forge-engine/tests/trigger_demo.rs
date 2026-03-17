@@ -2,7 +2,9 @@
 
 use std::collections::BTreeMap;
 
-use forge_engine_core::agent::{MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{
+    MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
+};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -253,6 +255,7 @@ impl PlayerAgent for VerboseAgent {
         _: PlayerId,
         _: &[CardId],
         _: &[CardId],
+        _: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         Vec::new()
     }

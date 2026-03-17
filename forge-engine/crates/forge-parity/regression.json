@@ -66,5 +66,9 @@
   {
     "name": "players____graveyard",
     "args": "--deck1 cost_reduction_test --deck2 white_static --seed 545 --max-turns 15 --games 1"
+  },
+  {
+    "name": "realMonoBlackSacrice",
+    "args": "--deck1 staticability_test --deck2 real_mono_black_sacrifice --seed 42 --max-turns 10 --games 5"
   }
 ]

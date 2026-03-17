@@ -10,11 +10,8 @@ use crate::spellability::SpellAbility;
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Create token creature(s) on the battlefield.
     // Mirrors Java TokenEffect / TokenEffectBase.
-    let mut amount: usize = sa
-        .params
-        .get("TokenAmount")
-        .and_then(|s| s.parse().ok())
-        .unwrap_or(1);
+    let mut amount: usize =
+        super::resolve_numeric_svar(ctx.game, sa, "TokenAmount", 1).max(0) as usize;
     let token_script = sa.params.get("TokenScript").cloned().unwrap_or_default();
     let token_owner_str = sa
         .params
@@ -138,7 +135,7 @@ fn parse_token_colors(s: &str) -> ColorSet {
 /// Create N tokens from a template and put them on the battlefield.
 fn create_tokens(
     ctx: &mut EffectContext,
-    _sa: &SpellAbility,
+    sa: &SpellAbility,
     template: &CardInstance,
     amount: usize,
     token_controller: crate::ids::PlayerId,
@@ -159,6 +156,16 @@ fn create_tokens(
         let token_id = ctx.game.create_card(token);
         ctx.game
             .move_card(token_id, ZoneType::Battlefield, token_controller);
+        // TokenTapped$ True: token enters the battlefield tapped.
+        // Must be set AFTER move_card because enter_battlefield() resets tapped to false.
+        // Mirrors Java TokenEffectBase line 131: if (sa.hasParam("TokenTapped")) tok.setTapped(true);
+        if sa
+            .params
+            .get("TokenTapped")
+            .map_or(false, |v| v.eq_ignore_ascii_case("true"))
+        {
+            ctx.game.tap(token_id);
+        }
         ctx.trigger_handler
             .register_active_trigger(ctx.game, token_id);
         // Fire TokenCreated trigger

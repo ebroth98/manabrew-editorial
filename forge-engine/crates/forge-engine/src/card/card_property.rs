@@ -94,8 +94,9 @@ fn matches_single_property(
             } else if let Some(keyword) = property.strip_prefix("with") {
                 card.has_keyword(keyword)
             } else {
-                // No recognized property — match everything
-                true
+                // Check if it's a creature subtype (Wall, Zombie, Elf, etc.).
+                // Mirrors Java's CardProperty.cardHasProperty() subtype matching.
+                card.type_line.has_subtype(property)
             }
         }
     }

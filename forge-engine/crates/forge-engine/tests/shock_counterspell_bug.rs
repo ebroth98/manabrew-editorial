@@ -107,6 +107,7 @@ impl PlayerAgent for ShockTestAgent {
         _player: PlayerId,
         _attackers: &[CardId],
         _available_blockers: &[CardId],
+        _max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         Vec::new()
     }

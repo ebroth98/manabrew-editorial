@@ -14,6 +14,7 @@ pub mod game_loop;
 pub mod game_rng;
 pub mod game_snapshot;
 pub mod ids;
+pub mod lki;
 pub mod mana;
 pub mod mulligan;
 pub mod phase;

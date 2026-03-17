@@ -1058,8 +1058,9 @@ fn matches_single_valid_card(
         // when the damage target is a creature (e.g. Thrummingbird blocking
         // an infect creature and its DamageDone trigger incorrectly matching
         // the creature target as if it were a player).
-        "Player" | "You" | "Opponent" | "Each" | "Any"
-        | "ActivePlayer" | "NonActivePlayer" => false,
+        "Player" | "You" | "Opponent" | "Each" | "Any" | "ActivePlayer" | "NonActivePlayer" => {
+            false
+        }
         _ => {
             // Try comma-separated types within the type portion (e.g. "Instant,Sorcery")
             if type_part.contains(',') {

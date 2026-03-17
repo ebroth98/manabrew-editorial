@@ -1,7 +1,7 @@
 pub mod card_property;
 pub mod damage_history;
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use forge_carddb::CardRules;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -130,7 +130,7 @@ pub struct CardInstance {
     pub damage: i32,
 
     // Counters
-    pub counters: HashMap<CounterType, i32>,
+    pub counters: BTreeMap<CounterType, i32>,
 
     // Keywords intrinsic to this card (from its card definition).
     pub keywords: Vec<String>,
@@ -281,6 +281,15 @@ pub struct CardInstance {
     /// Cards that dealt damage to this creature this turn (for DamagedBy trigger filters).
     /// Mirrors Java `CardDamageHistory.getDamageReceivedThisTurn()`.
     pub damage_sources_this_turn: Vec<CardId>,
+    /// Total damage dealt by this card this turn (for Count$TotalDamageDoneByThisTurn).
+    /// Mirrors Java `Card.getTotalDamageDoneBy()` via `DamageHistory.getDamageDoneThisTurn()`.
+    /// Reset each turn in `new_turn()`.
+    pub total_damage_done_this_turn: i32,
+    /// Last-known information: power when this card last left the battlefield.
+    /// Mirrors Java's LKI system for `TriggeredCard$CardPower`.
+    pub lki_power: i32,
+    /// Last-known information: toughness when this card last left the battlefield.
+    pub lki_toughness: i32,
     /// Damage history tracking (attacks, blocks, damage dealt).
     /// Mirrors Java `CardDamageHistory`.
     #[serde(skip)]
@@ -371,7 +380,7 @@ impl CardInstance {
             summoning_sick: true,
             exerted: false,
             damage: 0,
-            counters: HashMap::new(),
+            counters: BTreeMap::new(),
             keywords,
             granted_keywords: Vec::new(),
             pump_keywords: Vec::new(),
@@ -427,6 +436,9 @@ impl CardInstance {
             must_block: false,
             encoded_cards: Vec::new(),
             damage_sources_this_turn: Vec::new(),
+            total_damage_done_this_turn: 0,
+            lki_power: 0,
+            lki_toughness: 0,
             damage_history: damage_history::DamageHistory::default(),
             must_block_cards: Vec::new(),
             etb_counters_p1p1: 0,
@@ -488,6 +500,36 @@ impl CardInstance {
             let next_idx = self.activated_abilities.len();
             if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
                 self.activated_abilities.push(ab);
+            }
+        }
+
+        // TypeCycling: K:TypeCycling:{type}:{cost} → AB$ ChangeZone | Cost$ {cost} Discard<1/CARDNAME> | ActivationZone$ Hand
+        // Mirrors Java CardFactoryUtil lines 3852-3864.
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(rest) = kw.strip_prefix("TypeCycling:") {
+                let parts: Vec<&str> = rest.splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    let cycle_type = parts[0].trim(); // e.g., "Swamp"
+                    let mana_cost = parts[1].trim(); // e.g., "1"
+                                                     // getTitleWithoutCost() = capitalize(descType) + "cycling"
+                    let precost_desc = format!(
+                        "{}cycling",
+                        cycle_type
+                            .chars()
+                            .next()
+                            .map(|c| c.to_uppercase().to_string())
+                            .unwrap_or_default()
+                            + &cycle_type[1..]
+                    );
+                    let ab_text = format!(
+                        "AB$ ChangeZone | Cost$ {} Discard<1/CARDNAME> | ActivationZone$ Hand | PrecostDesc$ {} | Origin$ Library | Destination$ Hand | ChangeType$ {}",
+                        mana_cost, precost_desc, cycle_type
+                    );
+                    let next_idx = self.activated_abilities.len();
+                    if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                        self.activated_abilities.push(ab);
+                    }
+                }
             }
         }
 
@@ -1347,6 +1389,11 @@ impl CardInstance {
         self.get_keyword_cost("Blitz")
     }
 
+    /// Get warp cost (e.g. "Warp:1 B" → Some("1 B")).
+    pub fn get_warp_cost(&self) -> Option<String> {
+        self.get_keyword_cost("Warp")
+    }
+
     /// Get multikicker cost (e.g. "Multikicker:1 G" → Some("1 G")).
     pub fn get_multikicker_cost(&self) -> Option<String> {
         self.get_keyword_cost("Multikicker")
@@ -1636,6 +1683,7 @@ impl CardInstance {
         self.attacked_this_turn = false;
         self.has_deathtouch_damage = false;
         self.damage_sources_this_turn.clear();
+        self.total_damage_done_this_turn = 0;
         if self.zone == ZoneType::Battlefield {
             self.summoning_sick = false;
         }
@@ -1692,7 +1740,7 @@ impl CardInstance {
 /// Counter types commonly used in MTG.
 /// Note: `Copy` is intentionally absent because the `Named(String)` variant
 /// holds heap-allocated data. Use `.clone()` when an owned copy is needed.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum CounterType {
     P1P1,
     M1M1,

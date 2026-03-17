@@ -7,6 +7,7 @@ edition = "2021"
 forge-foundation = { path = "../forge-foundation" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+deunicode = { workspace = true }
 
 [dev-dependencies]
 # for integration tests

@@ -24,11 +24,7 @@ pub fn pay_as_decided_self(game: &mut GameState, source: CardId, player: PlayerI
 /// Execute typed discard (non-self).
 /// Cards to discard are passed in (already selected by agent).
 /// Mirrors Java's `CostDiscard.doPayment()`.
-pub fn pay_as_decided_cards(
-    game: &mut GameState,
-    cards: &[CardId],
-    _player: PlayerId,
-) -> bool {
+pub fn pay_as_decided_cards(game: &mut GameState, cards: &[CardId], _player: PlayerId) -> bool {
     for &cid in cards {
         let owner = game.card(cid).owner;
         game.move_card(cid, ZoneType::Graveyard, owner);

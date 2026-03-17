@@ -39,6 +39,8 @@ pub enum AlternativeCost {
     Megamorph,
     /// Cast as an Aura with enchant creature for the bestow cost.
     Bestow,
+    /// Cast for warp cost; exile at beginning of next end step.
+    Warp,
 }
 
 impl AlternativeCost {

@@ -19,11 +19,6 @@ pub fn pay_as_decided(
 }
 
 /// Refund by adding counters back.
-pub fn refund(
-    game: &mut GameState,
-    source: CardId,
-    amount: i32,
-    counter_type: &CounterType,
-) {
+pub fn refund(game: &mut GameState, source: CardId, amount: i32, counter_type: &CounterType) {
     game.card_mut(source).add_counter(counter_type, amount);
 }

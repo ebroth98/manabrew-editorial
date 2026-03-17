@@ -39,6 +39,24 @@ impl ManaAbilityRef {
 /// which uses the harness RNG).
 pub type SacrificeChooser<'a> = &'a mut dyn FnMut(&[CardId]) -> Option<CardId>;
 
+/// Callback parameter for mana ability payment decisions.
+/// Used to dispatch both sacrifice chooser and confirm payment callbacks
+/// through a single unified interface to avoid multiple mutable borrows.
+#[derive(Debug)]
+pub enum ManaPayCallback<'a> {
+    /// Choose which permanent to sacrifice from the given list.
+    /// Return the chosen card, or None to cancel.
+    ChooseSacrifice(&'a [CardId]),
+    /// Confirm whether to sacrifice the given card for a mana ability.
+    /// Return true to proceed, false to cancel.
+    /// Mirrors Java's DeterministicCostDecision.confirmPayment() path.
+    ConfirmSelfSacrifice(CardId),
+}
+
+/// Unified callback for mana payment decisions during auto-tap.
+/// Returns Some(card_id) on success, None to cancel.
+pub type ManaPayCallbackFn<'a> = &'a mut dyn FnMut(ManaPayCallback<'_>) -> Option<CardId>;
+
 /// Auto-tap lands to produce the required mana.
 /// Mirrors harness AutoPay flow used by parity tests: collect currently playable
 /// mana abilities in battlefield order, choose the first legal source for the
@@ -50,7 +68,7 @@ pub fn auto_tap_lands(
     cost: &ManaCost,
     current_spell: Option<CardId>,
 ) -> Vec<CardId> {
-    auto_tap_lands_internal(game, pool, player, cost, current_spell, false, None)
+    auto_tap_lands_internal(game, pool, player, cost, current_spell, false, &mut None)
 }
 
 pub fn auto_tap_lands_allow_reserved_source_reuse(
@@ -60,7 +78,7 @@ pub fn auto_tap_lands_allow_reserved_source_reuse(
     cost: &ManaCost,
     current_spell: Option<CardId>,
 ) -> Vec<CardId> {
-    auto_tap_lands_internal(game, pool, player, cost, current_spell, true, None)
+    auto_tap_lands_internal(game, pool, player, cost, current_spell, true, &mut None)
 }
 
 /// Auto-tap with an explicit sacrifice chooser callback for parity with Java's
@@ -73,7 +91,21 @@ pub fn auto_tap_lands_with_chooser(
     current_spell: Option<CardId>,
     sacrifice_chooser: SacrificeChooser<'_>,
 ) -> Vec<CardId> {
-    auto_tap_lands_internal(game, pool, player, cost, current_spell, false, Some(sacrifice_chooser))
+    let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
+        match kind {
+            ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
+            ManaPayCallback::ConfirmSelfSacrifice(_) => None, // no confirm callback provided
+        }
+    };
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        false,
+        &mut Some(&mut callback),
+    )
 }
 
 pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
@@ -84,7 +116,42 @@ pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
     current_spell: Option<CardId>,
     sacrifice_chooser: SacrificeChooser<'_>,
 ) -> Vec<CardId> {
-    auto_tap_lands_internal(game, pool, player, cost, current_spell, true, Some(sacrifice_chooser))
+    let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
+        match kind {
+            ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
+            ManaPayCallback::ConfirmSelfSacrifice(_) => None,
+        }
+    };
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        true,
+        &mut Some(&mut callback),
+    )
+}
+
+/// Auto-tap with unified callback for both sacrifice chooser and confirm payment.
+/// Used by parity tests to mirror Java's RNG-driven decision paths.
+pub fn auto_tap_lands_with_callbacks(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    callback: ManaPayCallbackFn<'_>,
+) -> Vec<CardId> {
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        false,
+        &mut Some(callback),
+    )
 }
 
 fn auto_tap_lands_internal(
@@ -94,7 +161,7 @@ fn auto_tap_lands_internal(
     cost: &ManaCost,
     current_spell: Option<CardId>,
     allow_reserved_source_reuse: bool,
-    mut sacrifice_chooser: Option<SacrificeChooser<'_>>,
+    callback: &mut Option<ManaPayCallbackFn<'_>>,
 ) -> Vec<CardId> {
     let mut tapped_lands: Vec<CardId> = Vec::new();
 
@@ -136,13 +203,11 @@ fn auto_tap_lands_internal(
             to_pay,
             &ma_list,
             allow_reserved_source_reuse,
-        )
-        else {
+        ) else {
             break;
         };
 
-        let Some(chosen_atom) = choose_atom_for_shard(&sa_payment, to_pay)
-        else {
+        let Some(chosen_atom) = choose_atom_for_shard(&sa_payment, to_pay) else {
             break;
         };
 
@@ -153,7 +218,7 @@ fn auto_tap_lands_internal(
             &sa_payment,
             current_spell,
             allow_reserved_source_reuse,
-            &mut sacrifice_chooser,
+            callback,
         ) {
             break;
         }
@@ -302,7 +367,7 @@ fn pay_non_tap_mana_ability_costs(
     ma: &ManaAbilityRef,
     reserved_source: Option<CardId>,
     allow_reserved_source_reuse: bool,
-    sacrifice_chooser: &mut Option<SacrificeChooser<'_>>,
+    callback: &mut Option<ManaPayCallbackFn<'_>>,
 ) -> bool {
     let Some(ab_idx) = ma.ability_index else {
         return true;
@@ -338,6 +403,21 @@ fn pay_non_tap_mana_ability_costs(
                     if *amount > 1 || game.card(ma.card_id).zone != ZoneType::Battlefield {
                         return false;
                     }
+                    // Mirror Java's DeterministicCostDecision.visit(CostSacrifice) →
+                    // confirm(cost, shouldAsk=true) → confirmPayment() path.
+                    // When a mana ability sacrifices itself (e.g. Treasure Token),
+                    // the player is asked to confirm before the sacrifice happens.
+                    if let Some(ref mut cb) = callback {
+                        if let Some(confirmed_id) =
+                            cb(ManaPayCallback::ConfirmSelfSacrifice(ma.card_id))
+                        {
+                            if confirmed_id != ma.card_id {
+                                return false;
+                            }
+                        } else {
+                            return false; // confirmation declined
+                        }
+                    }
                     let owner = game.card(ma.card_id).owner;
                     game.move_card(ma.card_id, ZoneType::Graveyard, owner);
                 } else {
@@ -361,8 +441,8 @@ fn pay_non_tap_mana_ability_costs(
                     // with Java's choosePermanentsToSacrifice which uses RNG).
                     // Otherwise fall back to deterministic first-by-index.
                     for _ in 0..required {
-                        let chosen = if let Some(ref mut chooser) = sacrifice_chooser {
-                            chooser(&targets)
+                        let chosen = if let Some(ref mut cb) = callback {
+                            cb(ManaPayCallback::ChooseSacrifice(&targets))
                         } else {
                             targets.first().copied()
                         };
@@ -380,10 +460,7 @@ fn pay_non_tap_mana_ability_costs(
     true
 }
 
-fn choose_atom_for_shard(
-    mana_ab: &ManaAbilityRef,
-    shard: ManaCostShard,
-) -> Option<u16> {
+fn choose_atom_for_shard(mana_ab: &ManaAbilityRef, shard: ManaCostShard) -> Option<u16> {
     if shard.is_colorless() {
         if mana_ab.atoms.contains(&ManaAtom::COLORLESS) {
             return Some(ManaAtom::COLORLESS);
@@ -613,7 +690,12 @@ fn group_sources_by_mana_color(
                         card_id,
                         ability_index: Some(ab.ability_index),
                         atoms: reflected_atoms,
-                        amount: parse_mana_ability_amount_with_game(ab, Some(game), Some(card_id), Some(player)),
+                        amount: parse_mana_ability_amount_with_game(
+                            ab,
+                            Some(game),
+                            Some(card_id),
+                            Some(player),
+                        ),
                         mana_text: "Reflected".to_string(),
                         source_order,
                     };
@@ -640,7 +722,12 @@ fn group_sources_by_mana_color(
                 card_id,
                 ability_index: Some(ab.ability_index),
                 atoms: atoms.clone(),
-                amount: parse_mana_ability_amount_with_game(ab, Some(game), Some(card_id), Some(player)),
+                amount: parse_mana_ability_amount_with_game(
+                    ab,
+                    Some(game),
+                    Some(card_id),
+                    Some(player),
+                ),
                 mana_text: ability_mana_text_for_score(produced, &card.chosen_colors),
                 source_order,
             };
@@ -1082,11 +1169,12 @@ mod tests {
             3,
             player,
             "Forest",
-            "Land",
+            "Land Forest",
             vec!["AB$ Mana | Cost$ T | Produced$ G"],
         ));
 
-        game.zone_mut(ZoneType::Battlefield, player).add(reserved_food);
+        game.zone_mut(ZoneType::Battlefield, player)
+            .add(reserved_food);
         game.zone_mut(ZoneType::Battlefield, player).add(goose);
         game.zone_mut(ZoneType::Battlefield, player).add(forest);
         game.card_mut(reserved_food).zone = ZoneType::Battlefield;
@@ -1135,7 +1223,7 @@ mod tests {
             3,
             player,
             "Forest",
-            "Land",
+            "Land Forest",
             vec!["AB$ Mana | Cost$ T | Produced$ G"],
         ));
 
@@ -1154,8 +1242,10 @@ mod tests {
         );
 
         assert_eq!(pool.total(), 2);
-        assert_eq!(tapped, vec![goose, forest]);
+        // Auto-tapper prefers simpler sources: Forest (score 3) before Goose (score 35).
+        assert_eq!(tapped, vec![forest, goose]);
         assert!(game.card(goose).tapped);
+        assert!(game.card(forest).tapped);
         assert_eq!(game.card(goose).zone, ZoneType::Battlefield);
         assert_eq!(game.card(reserved_food).zone, ZoneType::Graveyard);
     }
@@ -1184,7 +1274,7 @@ mod tests {
             3,
             player,
             "Forest",
-            "Land",
+            "Land Forest",
             vec!["AB$ Mana | Cost$ T | Produced$ G"],
         ));
 
@@ -1194,18 +1284,114 @@ mod tests {
             game.card_mut(cid).summoning_sick = false;
         }
 
-        let tapped = auto_tap_lands(
-            &mut game,
-            &mut pool,
-            player,
-            &ManaCost::parse("2"),
-            None,
-        );
+        let tapped = auto_tap_lands(&mut game, &mut pool, player, &ManaCost::parse("2"), None);
 
         assert_eq!(pool.total(), 2);
         assert_eq!(tapped, vec![plains, mountain]);
         assert!(game.card(plains).tapped);
         assert!(game.card(mountain).tapped);
         assert!(!game.card(forest).tapped);
+    }
+
+    #[test]
+    fn auto_tap_calls_confirm_payment_for_self_sacrifice() {
+        let mut game = GameState::new(&["P1", "P2"], 20);
+        let player = PlayerId(0);
+
+        // Create a Treasure Token (self-sacrifice for mana)
+        let treasure = game.create_card(make_card(
+            1,
+            player,
+            "Treasure Token",
+            "Artifact Treasure",
+            vec!["AB$ Mana | Cost$ T Sac<1/CARDNAME> | Produced$ Any"],
+        ));
+
+        game.zone_mut(ZoneType::Battlefield, player).add(treasure);
+        game.card_mut(treasure).zone = ZoneType::Battlefield;
+        game.card_mut(treasure).summoning_sick = false;
+
+        // Test 1: confirm_payment returns true (ACCEPT)
+        {
+            let mut pool = ManaPool::new();
+            let tapped = {
+                let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
+                    match kind {
+                        ManaPayCallback::ChooseSacrifice(_) => None,
+                        ManaPayCallback::ConfirmSelfSacrifice(cid) => {
+                            assert_eq!(cid, treasure); // should be asking about Treasure
+                            Some(cid) // confirm
+                        }
+                    }
+                };
+
+                auto_tap_lands_with_callbacks(
+                    &mut game,
+                    &mut pool,
+                    player,
+                    &ManaCost::parse("1"),
+                    None,
+                    &mut callback,
+                )
+            };
+
+            // The confirm callback was called if the treasure was sacrificed
+            assert_eq!(tapped, vec![treasure]);
+            assert_eq!(game.card(treasure).zone, ZoneType::Graveyard);
+            assert_eq!(pool.total(), 1);
+        }
+
+        // Reset for test 2: create new treasure and add a Forest as fallback
+        let treasure2 = game.create_card(make_card(
+            2,
+            player,
+            "Treasure Token",
+            "Artifact Treasure",
+            vec!["AB$ Mana | Cost$ T Sac<1/CARDNAME> | Produced$ Any"],
+        ));
+        let forest = game.create_card(make_card(
+            3,
+            player,
+            "Forest",
+            "Land Forest",
+            vec!["AB$ Mana | Cost$ T | Produced$ G"],
+        ));
+        game.zone_mut(ZoneType::Battlefield, player).add(treasure2);
+        game.zone_mut(ZoneType::Battlefield, player).add(forest);
+        game.card_mut(treasure2).zone = ZoneType::Battlefield;
+        game.card_mut(treasure2).summoning_sick = false;
+        game.card_mut(forest).zone = ZoneType::Battlefield;
+        game.card_mut(forest).summoning_sick = false;
+
+        // Test 2: confirm_payment returns false (DECLINE)
+        {
+            let mut pool = ManaPool::new();
+            let tapped = {
+                let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
+                    match kind {
+                        ManaPayCallback::ChooseSacrifice(_) => None,
+                        ManaPayCallback::ConfirmSelfSacrifice(cid) => {
+                            assert_eq!(cid, treasure2);
+                            None // decline
+                        }
+                    }
+                };
+
+                auto_tap_lands_with_callbacks(
+                    &mut game,
+                    &mut pool,
+                    player,
+                    &ManaCost::parse("1"),
+                    None,
+                    &mut callback,
+                )
+            };
+
+            // When declined, should fall back to Forest
+            assert_eq!(tapped, vec![forest]);
+            assert_eq!(game.card(treasure2).zone, ZoneType::Battlefield); // not sacrificed
+            assert_eq!(game.card(forest).zone, ZoneType::Battlefield);
+            assert_eq!(pool.total(), 1);
+        }
     }
 }

@@ -35,6 +35,10 @@ impl GameLoop {
             return;
         }
 
+        // LKI: Snapshot battlefield state before resolution.
+        // Mirrors Java MagicStack line 623: game.copyLastState() before resolving.
+        game.copy_last_state();
+
         let entry = game.stack.pop().unwrap();
         let stack_item_name = entry
             .spell_ability
@@ -174,7 +178,7 @@ impl GameLoop {
                     .spell_ability
                     .params
                     .get("PrecostDesc")
-                    .map_or(false, |d| d.contains("Cycling"));
+                    .map_or(false, |d| d.to_lowercase().contains("cycling"));
                 if is_cycling {
                     if let Some(source_card) = entry.spell_ability.source {
                         self.trigger_handler.run_trigger(
@@ -409,6 +413,27 @@ impl GameLoop {
                     );
                 }
 
+                // Warp: register delayed trigger to exile at EOT
+                // (mirrors Java PermanentEffect line 51-53)
+                if alt_cost == Some(crate::spellability::AlternativeCost::Warp) {
+                    self.trigger_handler.register_delayed_trigger(
+                        crate::trigger::handler::DelayedTrigger {
+                            mode: TriggerType::Phase,
+                            trigger_mode: crate::trigger::TriggerMode::Phase {
+                                phase: Some(forge_foundation::PhaseType::EndOfTurn),
+                                valid_player: None,
+                            },
+                            execute_svar: format!(
+                                "DB$ ChangeZone | Origin$ Battlefield | Destination$ Exile | Defined$ CardUID_{}", card_id.0
+                            ),
+                            controller: player,
+                            source_card: card_id,
+                            target_card: Some(card_id),
+                            remembered_amount: 0,
+                        },
+                    );
+                }
+
                 // Bestow: attach to a creature as an Aura
                 if alt_cost == Some(crate::spellability::AlternativeCost::Bestow) {
                     // Find a creature to attach to (agent chooses)
@@ -553,6 +578,13 @@ impl GameLoop {
         // Continuous effects might change after resolution
         apply_continuous_effects(game);
         super::check_sba(game, &mut self.trigger_handler, agents);
+
+        // LKI: Second snapshot after resolution and SBAs, before processing triggers.
+        // Mirrors Java MagicStack line 676: game.copyLastState() in finishResolving().
+        // This captures cards that entered the battlefield during this resolution
+        // (e.g., creatures reanimated by Exhume) so their LKI is available
+        // when they later leave the battlefield.
+        game.copy_last_state();
 
         // Process triggers that may have fired during resolution
         self.process_triggers(game, agents);

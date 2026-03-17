@@ -183,8 +183,22 @@ impl DeterministicAgent {
             PlayCardMode::Alternative(AlternativeCost::Morph)
             | PlayCardMode::Alternative(AlternativeCost::Megamorph) => "Morph",
             PlayCardMode::Alternative(AlternativeCost::Bestow) => "Bestow",
+            PlayCardMode::Alternative(AlternativeCost::Warp) => "0",
             PlayCardMode::GainLifeAlt => "GainLifeAlt",
             PlayCardMode::ForetellExile => "ForetellExile",
+        }
+    }
+
+    /// Fallback tiebreaker for card play modes. Mirrors Java's use of
+    /// `sa.toUnsuppressedString()` as the 5th sort key field.
+    /// When variant is the same (e.g., Normal and Warp both return "0"),
+    /// this ensures a deterministic ordering.
+    fn play_option_fallback(play: PlayOption) -> &'static str {
+        match play.mode {
+            PlayCardMode::Normal => "Normal",
+            PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp",
+            // Other modes already have unique variant strings, so fallback rarely matters.
+            _ => "",
         }
     }
 
@@ -193,10 +207,11 @@ impl DeterministicAgent {
             ActionChoice::Card(play) => {
                 let label = self.play_option_label(play);
                 format!(
-                    "{}|0|{}|{}|",
+                    "{}|0|{}|{}|{}",
                     label,
                     self.parity_map.id(play.card_id),
                     Self::play_option_sort_text(play),
+                    Self::play_option_fallback(play),
                 )
             }
             ActionChoice::Ability(card_id, ability_idx) => format!(
@@ -474,6 +489,7 @@ impl PlayerAgent for DeterministicAgent {
         _player: PlayerId,
         attackers: &[CardId],
         available_blockers: &[CardId],
+        max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         let sorted_attackers = choice_space::sort_native(attackers, |a, b| {
             let an = self.card_name(*a);
@@ -490,7 +506,15 @@ impl PlayerAgent for DeterministicAgent {
 
         let mut pairs = Vec::new();
         for &blocker in &sorted_blockers {
-            let legal_attackers = self.legal_attackers_for_blocker(blocker, &sorted_attackers);
+            // When BlockRestrict limit is reached, Java still iterates remaining
+            // blockers with 0 legal options (consuming RNG for forced PASS).
+            // Mirror this by continuing iteration but with empty legal attackers.
+            let at_limit = max_blockers.map_or(false, |max| pairs.len() >= max);
+            let legal_attackers = if at_limit {
+                Vec::new() // no legal targets → forced PASS (consumes RNG)
+            } else {
+                self.legal_attackers_for_blocker(blocker, &sorted_attackers)
+            };
             let choice = choice_space::pick_index_with_pass(
                 legal_attackers.len(),
                 &mut self.rng.borrow_mut(),
@@ -912,7 +936,8 @@ impl PlayerAgent for DeterministicAgent {
                 .cmp(&self.card_name(*b))
                 .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
         });
-        let result = self.choose_cards_for_effect(player, &sorted, 1, 1)
+        let result = self
+            .choose_cards_for_effect(player, &sorted, 1, 1)
             .into_iter()
             .next();
         result

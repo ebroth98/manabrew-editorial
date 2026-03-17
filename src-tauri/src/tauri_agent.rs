@@ -148,11 +148,15 @@ impl TauriAgent {
         if let Some(timeout) = self.response_timeout {
             self.response_rx
                 .recv_timeout(timeout)
-                .unwrap_or(PlayerAction::PlayCard { card_id: None, mode: None })
+                .unwrap_or(PlayerAction::PlayCard {
+                    card_id: None,
+                    mode: None,
+                })
         } else {
-            self.response_rx
-                .recv()
-                .unwrap_or(PlayerAction::PlayCard { card_id: None, mode: None })
+            self.response_rx.recv().unwrap_or(PlayerAction::PlayCard {
+                card_id: None,
+                mode: None,
+            })
         }
     }
 
@@ -376,10 +380,14 @@ impl PlayerAgent for TauriAgent {
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
     ) -> MainPhaseAction {
-        let playable_card_ids: Vec<String> =
-            playable.iter().map(|play| card_id_str(play.card_id)).collect();
-        let playable_options: Vec<PlayOptionDto> =
-            playable.iter().map(|play| Self::play_option_to_dto(play)).collect();
+        let playable_card_ids: Vec<String> = playable
+            .iter()
+            .map(|play| card_id_str(play.card_id))
+            .collect();
+        let playable_options: Vec<PlayOptionDto> = playable
+            .iter()
+            .map(|play| Self::play_option_to_dto(play))
+            .collect();
         let mut tappable_land_ids: Vec<String> =
             tappable_lands.iter().map(|&c| card_id_str(c)).collect();
         let untappable_land_ids: Vec<String> =
@@ -529,6 +537,7 @@ impl PlayerAgent for TauriAgent {
         _player: PlayerId,
         attackers: &[CardId],
         available_blockers: &[CardId],
+        _max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         let attacker_ids = Self::card_ids(attackers);
         let available_blocker_ids = Self::card_ids(available_blockers);
@@ -1136,9 +1145,9 @@ impl PlayerAgent for TauriAgent {
             source_card_name: Some(select_prompt.to_string()),
         });
         match self.recv_action() {
-            PlayerAction::ChooseCardsDecision { chosen_card_ids } => chosen_card_ids
-                .first()
-                .and_then(|id| parse_card_id(id)),
+            PlayerAction::ChooseCardsDecision { chosen_card_ids } => {
+                chosen_card_ids.first().and_then(|id| parse_card_id(id))
+            }
             _ => {
                 if is_optional {
                     None
@@ -1466,11 +1475,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn exert_attackers(
-        &mut self,
-        _player: PlayerId,
-        attackers: &[CardId],
-    ) -> Vec<CardId> {
+    fn exert_attackers(&mut self, _player: PlayerId, attackers: &[CardId]) -> Vec<CardId> {
         let attacker_ids = Self::card_ids(attackers);
         let view = self.view();
         let attacker_cards: Vec<CardDto> = attacker_ids
@@ -1483,7 +1488,9 @@ impl PlayerAgent for TauriAgent {
             attacker_cards,
         });
         match self.recv_action() {
-            PlayerAction::ExertDecision { chosen_attacker_ids } => chosen_attacker_ids
+            PlayerAction::ExertDecision {
+                chosen_attacker_ids,
+            } => chosen_attacker_ids
                 .iter()
                 .filter_map(|id| parse_card_id(id))
                 .filter(|cid| attackers.contains(cid))
@@ -1492,11 +1499,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn enlist_attackers(
-        &mut self,
-        _player: PlayerId,
-        attackers: &[CardId],
-    ) -> Vec<CardId> {
+    fn enlist_attackers(&mut self, _player: PlayerId, attackers: &[CardId]) -> Vec<CardId> {
         let attacker_ids = Self::card_ids(attackers);
         let view = self.view();
         let attacker_cards: Vec<CardDto> = attacker_ids
@@ -1509,7 +1512,9 @@ impl PlayerAgent for TauriAgent {
             attacker_cards,
         });
         match self.recv_action() {
-            PlayerAction::EnlistDecision { chosen_attacker_ids } => chosen_attacker_ids
+            PlayerAction::EnlistDecision {
+                chosen_attacker_ids,
+            } => chosen_attacker_ids
                 .iter()
                 .filter_map(|id| parse_card_id(id))
                 .filter(|cid| attackers.contains(cid))
@@ -1518,11 +1523,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn choose_reorder_library(
-        &mut self,
-        _player: PlayerId,
-        cards: &[CardId],
-    ) -> Vec<CardId> {
+    fn choose_reorder_library(&mut self, _player: PlayerId, cards: &[CardId]) -> Vec<CardId> {
         let card_ids = Self::card_ids(cards);
         let peeked = std::mem::take(&mut self.peeked_library_cards);
         self.send_prompt(AgentPromptInner::ReorderLibrary {
@@ -1571,12 +1572,7 @@ impl PlayerAgent for TauriAgent {
         }
     }
 
-    fn help_pay_assist(
-        &mut self,
-        _player: PlayerId,
-        card_name: &str,
-        max_generic: u32,
-    ) -> u32 {
+    fn help_pay_assist(&mut self, _player: PlayerId, card_name: &str, max_generic: u32) -> u32 {
         self.send_prompt(AgentPromptInner::HelpPayAssist {
             game_view: self.view(),
             card_name: card_name.to_string(),

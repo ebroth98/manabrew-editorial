@@ -897,10 +897,7 @@ pub fn parse_cost(raw: &str) -> Cost {
                 .and_then(|s| s.strip_suffix('>'))
             {
                 let pieces: Vec<&str> = inner.split('/').collect();
-                let amount = pieces
-                    .first()
-                    .map(|s| parse_i32_or_x(s, 1))
-                    .unwrap_or(1);
+                let amount = pieces.first().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
                 // Java payload is usually Enlist<1/CARDNAME/creature> where the
                 // third segment is the effective enlist target description.
                 let filter = if pieces.len() >= 3 {
@@ -1382,7 +1379,12 @@ fn can_pay_inner(
                     return false;
                 }
                 // Stun counters prevent untapping
-                if *card.counters.get(&CounterType::Named("STUN".to_string())).unwrap_or(&0) > 0 {
+                if *card
+                    .counters
+                    .get(&CounterType::Named("STUN".to_string()))
+                    .unwrap_or(&0)
+                    > 0
+                {
                     return false;
                 }
             }
@@ -1615,10 +1617,7 @@ fn can_pay_inner(
                 let targets = get_tap_type_targets(game, player, type_filter, source);
                 if let Some(power_threshold) = min_total_power {
                     // Crew: check total power of all valid targets >= threshold
-                    let total_power: i32 = targets
-                        .iter()
-                        .map(|&cid| game.card(cid).power())
-                        .sum();
+                    let total_power: i32 = targets.iter().map(|&cid| game.card(cid).power()).sum();
                     if total_power < *power_threshold {
                         return false;
                     }
@@ -1914,7 +1913,9 @@ fn can_pay_inner(
                 let total_mv: i32 = game
                     .cards_in_zone(ZoneType::Graveyard, player)
                     .iter()
-                    .filter(|&&cid| !cant_exile(&static_source_cards, game.card(cid), ability, true))
+                    .filter(|&&cid| {
+                        !cant_exile(&static_source_cards, game.card(cid), ability, true)
+                    })
                     .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
                     .sum();
                 if total_mv < resolved_amount {
@@ -1925,7 +1926,9 @@ fn can_pay_inner(
                 let gy_count = game
                     .cards_in_zone(ZoneType::Graveyard, player)
                     .iter()
-                    .filter(|&&cid| !cant_exile(&static_source_cards, game.card(cid), ability, true))
+                    .filter(|&&cid| {
+                        !cant_exile(&static_source_cards, game.card(cid), ability, true)
+                    })
                     .count() as i32;
                 let has_food = game
                     .cards_in_zone(ZoneType::Battlefield, player)

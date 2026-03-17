@@ -86,7 +86,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let controller = ctx.game.card(source_id).controller;
 
         // 1. Add Age counter (mirrors Java host.addCounter(CounterEnumType.AGE, 1, ...))
-        ctx.game.card_mut(source_id).add_counter(&CounterType::Age, 1);
+        ctx.game
+            .card_mut(source_id)
+            .add_counter(&CounterType::Age, 1);
 
         // 2. Count age counters to determine how many times to pay
         let n = ctx

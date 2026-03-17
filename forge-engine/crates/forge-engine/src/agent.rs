@@ -227,11 +227,13 @@ pub trait PlayerAgent {
     }
 
     /// Choose blockers. Returns pairs of (blocker, attacker).
+    /// `max_blockers` is the BlockRestrict limit (if any) — agent should stop after this many.
     fn choose_blockers(
         &mut self,
         player: PlayerId,
         attackers: &[CardId],
         available_blockers: &[CardId],
+        max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)>;
 
     /// Choose one attacker for a specific blocker during sequential declaration.
@@ -245,7 +247,7 @@ pub trait PlayerAgent {
         attackers: &[CardId],
         blocker: CardId,
     ) -> Option<CardId> {
-        let pairs = self.choose_blockers(player, attackers, &[blocker]);
+        let pairs = self.choose_blockers(player, attackers, &[blocker], None);
         pairs
             .into_iter()
             .find_map(|(b, a)| if b == blocker { Some(a) } else { None })
@@ -975,6 +977,7 @@ impl PlayerAgent for PassAgent {
         _player: PlayerId,
         _attackers: &[CardId],
         _available_blockers: &[CardId],
+        _max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         Vec::new() // no blockers
     }

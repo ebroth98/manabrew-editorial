@@ -22,10 +22,7 @@ pub fn pay_as_decided_self(game: &mut GameState, source: CardId) -> bool {
 /// Execute typed exile (non-self).
 /// Cards to exile are passed in (already selected by agent).
 /// Mirrors Java's `CostExile.doListPayment()`.
-pub fn pay_as_decided_cards(
-    game: &mut GameState,
-    cards: &[CardId],
-) -> bool {
+pub fn pay_as_decided_cards(game: &mut GameState, cards: &[CardId]) -> bool {
     for &cid in cards {
         let owner = game.card(cid).owner;
         game.move_card(cid, ZoneType::Exile, owner);

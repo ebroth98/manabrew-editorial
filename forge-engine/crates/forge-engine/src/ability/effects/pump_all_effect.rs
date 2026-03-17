@@ -57,7 +57,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let activating_player = sa.activating_player;
 
     // Determine the zone to look for cards in (default: Battlefield).
-    let pump_zone_str = sa.params.get("PumpZone").map(|s| s.as_str()).unwrap_or("Battlefield");
+    let pump_zone_str = sa
+        .params
+        .get("PumpZone")
+        .map(|s| s.as_str())
+        .unwrap_or("Battlefield");
     let pump_zone = match pump_zone_str {
         s if s.eq_ignore_ascii_case("Hand") => ZoneType::Hand,
         _ => ZoneType::Battlefield,

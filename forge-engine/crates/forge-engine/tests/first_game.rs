@@ -99,6 +99,7 @@ impl PlayerAgent for ScriptedAgent {
         _player: PlayerId,
         attackers: &[CardId],
         available_blockers: &[CardId],
+        _max_blockers: Option<usize>,
     ) -> Vec<(CardId, CardId)> {
         if self.block_idx >= self.block_plan.len() {
             return Vec::new();

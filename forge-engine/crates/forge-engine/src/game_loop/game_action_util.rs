@@ -91,20 +91,18 @@ impl GameLoop {
                     mana::calculate_available_mana(self.pool(player), game, player);
 
                 // Apply cost reduction/increase from static abilities
-                let cost_adj =
-                    crate::cost::cost_adjustment::compute_cost_adjustment(
-                        game,
-                        card,
-                        player,
-                        ZoneType::Hand,
-                    );
-                let raise_cost =
-                    crate::cost::cost_adjustment::compute_raise_cost_parts(
-                        game,
-                        card,
-                        player,
-                        ZoneType::Hand,
-                    );
+                let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
+                    game,
+                    card,
+                    player,
+                    ZoneType::Hand,
+                );
+                let raise_cost = crate::cost::cost_adjustment::compute_raise_cost_parts(
+                    game,
+                    card,
+                    player,
+                    ZoneType::Hand,
+                );
                 let raise_mana = raise_cost
                     .as_ref()
                     .map(Self::mana_from_cost)
@@ -337,6 +335,16 @@ impl GameLoop {
                     false
                 };
 
+                // Warp: alt cost for creatures
+                let warp_ok = if let Some(warp_cost_str) = card.get_warp_cost() {
+                    let adjusted = cost_adj
+                        .apply(&forge_foundation::ManaCost::parse(&warp_cost_str))
+                        .add(&raise_mana);
+                    available_mana.can_pay(&adjusted)
+                } else {
+                    false
+                };
+
                 if !normal_ok
                     && !spectacle_ok
                     && !evoke_ok
@@ -350,6 +358,7 @@ impl GameLoop {
                     && !offering_ok
                     && !morph_ok
                     && !bestow_ok
+                    && !warp_ok
                 {
                     continue;
                 }
@@ -478,6 +487,14 @@ impl GameLoop {
                                 ),
                             });
                         }
+                        if warp_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::Warp,
+                                ),
+                            });
+                        }
                     }
                 }
             }
@@ -538,13 +555,12 @@ impl GameLoop {
                     let available_mana =
                         mana::calculate_available_mana(self.pool(player), game, player);
                     let foretell_mc = forge_foundation::ManaCost::parse(&foretell_cost_str);
-                    let cost_adj =
-                        crate::cost::cost_adjustment::compute_cost_adjustment(
-                            game,
-                            card,
-                            player,
-                            ZoneType::Exile,
-                        );
+                    let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
+                        game,
+                        card,
+                        player,
+                        ZoneType::Exile,
+                    );
                     let adjusted = cost_adj.apply(&foretell_mc);
                     if available_mana.can_pay(&adjusted) {
                         playable.push(crate::agent::PlayOption {
@@ -585,13 +601,12 @@ impl GameLoop {
                     continue;
                 }
                 let tax = card.commander_cast_count as i32 * 2;
-                let cost_adj =
-                    crate::cost::cost_adjustment::compute_cost_adjustment(
-                        game,
-                        card,
-                        player,
-                        ZoneType::Command,
-                    );
+                let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
+                    game,
+                    card,
+                    player,
+                    ZoneType::Command,
+                );
                 let adjusted_cost = cost_adj.apply(&card.mana_cost);
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
@@ -731,6 +746,7 @@ impl GameLoop {
             let mut is_emerge = false;
             let mut is_gainlife_alt = false;
             let mut is_bestow = false;
+            let mut is_warp = false;
             let mut is_morph_facedown = false;
 
             match play_mode {
@@ -790,6 +806,7 @@ impl GameLoop {
                     crate::spellability::AlternativeCost::Madness => is_madness = true,
                     crate::spellability::AlternativeCost::Emerge => is_emerge = true,
                     crate::spellability::AlternativeCost::Bestow => is_bestow = true,
+                    crate::spellability::AlternativeCost::Warp => is_warp = true,
                     crate::spellability::AlternativeCost::Morph
                     | crate::spellability::AlternativeCost::Megamorph => {
                         is_morph_facedown = true;
@@ -922,6 +939,9 @@ impl GameLoop {
             } else if is_bestow {
                 let bestow_cost_str = game.card(card_id).get_bestow_cost().unwrap();
                 forge_foundation::ManaCost::parse(&bestow_cost_str)
+            } else if is_warp {
+                let warp_cost_str = game.card(card_id).get_warp_cost().unwrap();
+                forge_foundation::ManaCost::parse(&warp_cost_str)
             } else if is_morph_facedown {
                 forge_foundation::ManaCost::generic(crate::spellability::MORPH_GENERIC_COST)
             } else {
@@ -1025,20 +1045,18 @@ impl GameLoop {
 
             // ── Cost reduction / increase from static abilities ──────────
             let cast_zone = game.card(card_id).zone;
-            let cost_adj =
-                crate::cost::cost_adjustment::compute_cost_adjustment(
-                    game,
-                    game.card(card_id),
-                    player,
-                    cast_zone,
-                );
-            let raise_cost =
-                crate::cost::cost_adjustment::compute_raise_cost_parts(
-                    game,
-                    game.card(card_id),
-                    player,
-                    cast_zone,
-                );
+            let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
+                game,
+                game.card(card_id),
+                player,
+                cast_zone,
+            );
+            let raise_cost = crate::cost::cost_adjustment::compute_raise_cost_parts(
+                game,
+                game.card(card_id),
+                player,
+                cast_zone,
+            );
             let raise_mana = raise_cost
                 .as_ref()
                 .map(Self::mana_from_cost)
@@ -1410,8 +1428,7 @@ impl GameLoop {
                 let max_x = {
                     let mut x: u32 = 0;
                     loop {
-                        let extra_generic =
-                            ((x + 1) * x_count as u32) as i32 + commander_tax;
+                        let extra_generic = ((x + 1) * x_count as u32) as i32 + commander_tax;
                         let full_cost =
                             non_x_cost.add(&forge_foundation::ManaCost::generic(extra_generic));
                         if !available_mana.can_pay(&full_cost) {
@@ -1732,6 +1749,8 @@ impl GameLoop {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Emerge);
             } else if is_bestow {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Bestow);
+            } else if is_warp {
+                sa.alt_cost = Some(crate::spellability::AlternativeCost::Warp);
             } else if is_morph_facedown {
                 let is_mega = game
                     .card(card_id)
@@ -1828,7 +1847,7 @@ impl GameLoop {
                 let saved_permanent_states: Vec<(
                     CardId,
                     bool,
-                    std::collections::HashMap<crate::card::CounterType, i32>,
+                    std::collections::BTreeMap<crate::card::CounterType, i32>,
                 )> = game
                     .cards_in_zone(ZoneType::Battlefield, player)
                     .iter()
@@ -1988,10 +2007,28 @@ impl GameLoop {
                 // AI deterministic auto-pay: preserve full state so failed payment
                 // cannot leave partial taps or partial pool mutations behind.
                 let mana_payment_snapshot = self.make_snapshot(game, true);
-                let mut chooser = |valid: &[CardId]| -> Option<CardId> {
-                    agents[player.index()].choose_sacrifice(player, valid)
+                let mut callback = |kind: mana::ManaPayCallback<'_>| -> Option<CardId> {
+                    match kind {
+                        mana::ManaPayCallback::ChooseSacrifice(valid) => {
+                            agents[player.index()].choose_sacrifice(player, valid)
+                        }
+                        mana::ManaPayCallback::ConfirmSelfSacrifice(sacrifice_id) => {
+                            let confirmed = agents[player.index()].confirm_payment(
+                                player,
+                                "Sacrifice",
+                                "Sacrifice for mana",
+                                None,
+                                Some("Mana"),
+                            );
+                            if confirmed {
+                                Some(sacrifice_id)
+                            } else {
+                                None
+                            }
+                        }
+                    }
                 };
-                let tapped = match mana::pay_mana_cost_auto_with_chooser(
+                let tapped = match mana::pay_mana_cost_auto_with_callback(
                     game,
                     self.pool_mut(player),
                     player,
@@ -2000,7 +2037,7 @@ impl GameLoop {
                     commander_tax,
                     &payment_ctx,
                     any_color_conversion,
-                    Some(&mut chooser),
+                    &mut callback,
                 ) {
                     Some(tapped) => tapped,
                     None => {

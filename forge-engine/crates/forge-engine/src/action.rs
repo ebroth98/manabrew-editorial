@@ -142,6 +142,10 @@ impl GameState {
                         self.cards[card_id.index()].add_counter(&ct, sunburst);
                     }
                 }
+                // Update LKI snapshot: card just entered the battlefield.
+                // Ensures it's available for later TriggeredCard$CardPower lookups
+                // even if it dies within the same resolution chain.
+                self.update_lki_snapshot(card_id);
                 return;
             }
             ZoneType::Graveyard | ZoneType::Hand | ZoneType::Exile | ZoneType::Library => {
@@ -155,6 +159,17 @@ impl GameState {
                 self.cards[card_id.index()].attachments.clear();
                 // Also detach this card from its host if it was an Aura/Equipment.
                 self.detach(card_id);
+
+                // Save last-known information before resetting.
+                // Mirrors Java's LKI system for trigger SVars like TriggeredCard$CardPower.
+                if src_zone == ZoneType::Battlefield {
+                    let card = &self.cards[card_id.index()];
+                    let lki_p = card.power();
+                    let lki_t = card.toughness();
+                    let card = &mut self.cards[card_id.index()];
+                    card.lki_power = lki_p;
+                    card.lki_toughness = lki_t;
+                }
 
                 // Reset battlefield state when leaving (including static modifiers).
                 let keep_counters =

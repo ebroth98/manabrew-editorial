@@ -530,14 +530,15 @@ impl GameLoop {
                     game.untap(card_id);
                 }
                 CostPart::Mana(mana_cost) => {
+                    // Check if this ability also sacrifices itself (e.g. Food Token
+                    // "{2}, {T}, Sacrifice this: Gain 3 life"). If so, allow the
+                    // auto-tapper to reuse the reserved source for mana.
                     let reuses_reserved_source = cost.parts.iter().any(|part| {
                         matches!(
                             part,
                             CostPart::Sacrifice { type_filter, .. } if type_filter == "CARDNAME"
                         )
                     });
-                    // Use sacrifice chooser callback to match Java's
-                    // choosePermanentsToSacrifice RNG path during auto-tap.
                     let mut chooser = |valid: &[CardId]| -> Option<CardId> {
                         agents[player.index()].choose_sacrifice(player, valid)
                     };

@@ -112,10 +112,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .into_iter()
                 .collect()
         } else if defined.eq_ignore_ascii_case("Self")
-            || (defined.is_empty() && origin_zone.is_known())
+            || (defined.is_empty()
+                && origin_zone.is_known()
+                && !sa.params.contains_key("DefinedPlayer"))
         {
             // Java parity: missing Defined defaults to Self for known-origin ChangeZone;
             // hidden-origin empty Defined uses search flow below.
+            // Skip this branch when DefinedPlayer$ is present (e.g. Exhume).
             sa.source
                 .filter(|&cid| ctx.game.card(cid).zone == origin_zone)
                 .into_iter()
@@ -125,14 +128,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // 1. exiled_by field (set by ChangeZoneAll Duration$ UntilHostLeavesPlay)
             // 2. remembered_cards on the source (set by BeholdExile cost)
             if let Some(source_id) = sa.source {
-                let mut result: Vec<_> = ctx.game
+                let mut result: Vec<_> = ctx
+                    .game
                     .cards
                     .iter()
                     .filter(|c| c.zone == origin_zone && c.exiled_by == Some(source_id))
                     .map(|c| c.id)
                     .collect();
                 // Also check source's remembered_cards for BeholdExile tracking
-                let remembered: Vec<_> = ctx.game
+                let remembered: Vec<_> = ctx
+                    .game
                     .card(source_id)
                     .remembered_cards
                     .iter()
@@ -157,7 +162,51 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             } else {
                 Vec::new()
             }
-        } else if (defined.is_empty() && origin_zone.is_hidden())
+        } else if sa.params.contains_key("DefinedPlayer") {
+            // DefinedPlayer$ Player — each defined player independently chooses and moves
+            // a card from their own zone. Used by Exhume, etc.
+            // Mirrors Java's changeHiddenOriginResolve → changeZonePlayerInvariant loop.
+            let defined_player = sa.params.get("DefinedPlayer").cloned().unwrap_or_default();
+            let players: Vec<crate::ids::PlayerId> =
+                if defined_player.eq_ignore_ascii_case("Player") {
+                    // "Player" = all players in turn order
+                    (0..ctx.game.players.len())
+                        .map(|i| crate::ids::PlayerId(i as u32))
+                        .collect()
+                } else if defined_player.eq_ignore_ascii_case("You") {
+                    vec![controller]
+                } else if defined_player.eq_ignore_ascii_case("Opponent") {
+                    vec![ctx.game.opponent_of(controller)]
+                } else {
+                    vec![controller]
+                };
+            let mut collected = Vec::new();
+            for pid in players {
+                let zone_cards = ctx.game.cards_in_zone(origin_zone, pid).to_vec();
+                let candidates: Vec<_> = zone_cards
+                    .into_iter()
+                    .filter(|&cid| matches_with_context(cid, &change_type))
+                    .collect();
+                if candidates.is_empty() {
+                    continue;
+                }
+                ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
+                if let Some(chosen) = ctx.agents[pid.index()].choose_single_card_for_zone_change(
+                    pid,
+                    &candidates,
+                    "Select card for zone change",
+                    false,
+                ) {
+                    collected.push(chosen);
+                }
+            }
+            collected
+        } else if (defined.is_empty()
+            && (origin_zone.is_hidden()
+                || sa
+                    .params
+                    .get("Hidden")
+                    .map_or(false, |v| v.eq_ignore_ascii_case("True"))))
             || defined.eq_ignore_ascii_case("You")
             || defined.eq_ignore_ascii_case("Opponent")
         {

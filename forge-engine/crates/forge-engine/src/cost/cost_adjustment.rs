@@ -146,9 +146,11 @@ pub fn compute_cost_adjustment_with_targets(
 ) -> CostAdjustment {
     let mut adj = CostAdjustment::default();
 
-    for source in game.cards.iter().filter(|c| {
-        c.zone == ZoneType::Battlefield || c.id == spell_card.id
-    }) {
+    for source in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield || c.id == spell_card.id)
+    {
         for st_ab in source.static_abilities.iter() {
             let is_reduce;
             let is_set_cost;
@@ -437,9 +439,11 @@ pub fn compute_raise_cost_parts_with_targets(
     let mut has_tap = false;
     let mut mandatory = false;
 
-    for source in game.cards.iter().filter(|c| {
-        c.zone == ZoneType::Battlefield || c.id == spell_card.id
-    }) {
+    for source in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield || c.id == spell_card.id)
+    {
         for st_ab in source.static_abilities.iter() {
             if st_ab.mode != StaticMode::IncreaseCost {
                 continue;
@@ -670,10 +674,13 @@ fn check_valid_spell(valid_spell: &str, spell_card: &CardInstance) -> bool {
         match category {
             "Spell" => {
                 // We're casting a spell, check sub-attributes
-                parts.iter().skip(1).all(|attr| match attr.to_lowercase().as_str() {
-                    "bargain" => spell_card.has_keyword("Bargain"),
-                    _ => true, // unknown attributes pass
-                })
+                parts
+                    .iter()
+                    .skip(1)
+                    .all(|attr| match attr.to_lowercase().as_str() {
+                        "bargain" => spell_card.has_keyword("Bargain"),
+                        _ => true, // unknown attributes pass
+                    })
             }
             "Activated" | "Static" => {
                 // These are for ability cost changes, not spell casting
