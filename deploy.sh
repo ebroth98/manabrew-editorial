@@ -22,12 +22,27 @@ COMPOSE_FILE="forge-engine/crates/forge-server/compose.yml"
 RAW_LOG="/tmp/deploy-raw.log"
 : > "$RAW_LOG"   # truncate
 
-# ── Load .env (for GITHUB_TOKEN) ────────────────────────────────────
+# ── Load .env files ──────────────────────────────────────────────────
+# Root .env (for GITHUB_TOKEN and other global settings)
 if [ -f "$REPO_DIR/.env" ]; then
     set -a
     # shellcheck disable=SC1091
     source "$REPO_DIR/.env"
     set +a
+fi
+# Server .env (for COMPOSE_PROFILES and dashboard settings)
+SERVER_ENV="$REPO_DIR/forge-engine/crates/forge-server/.env"
+if [ -f "$SERVER_ENV" ]; then
+    set -a
+    # shellcheck disable=SC1091
+    source "$SERVER_ENV"
+    set +a
+fi
+
+# Check if parity dashboard profile is active
+SKIP_DASHBOARD=true
+if echo "${COMPOSE_PROFILES:-}" | grep -q "parity"; then
+    SKIP_DASHBOARD=false
 fi
 
 # ── Configure git to use PAT instead of SSH ─────────────────────────
@@ -77,14 +92,19 @@ BUILD_START=$(date +%s)
 BUILD_ARGS="--build-arg GIT_COMMIT_SHA=${CURR}"
 
 # -- parity-dashboard (Java + Rust) --
-if $INFRA_CHANGED; then
-    echo "Building parity-dashboard (full)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build --progress=plain --no-cache $BUILD_ARGS parity-dashboard >> "$RAW_LOG" 2>&1
-    SERVICES_TO_RESTART="parity-dashboard"
-elif $JAVA_CHANGED || $RUST_CHANGED; then
-    echo "Building parity-dashboard (cached)..." >> "$RAW_LOG"
-    docker compose -f "$COMPOSE_FILE" build --progress=plain $BUILD_ARGS parity-dashboard >> "$RAW_LOG" 2>&1
-    SERVICES_TO_RESTART="parity-dashboard"
+# Only build if the parity profile is active (COMPOSE_PROFILES contains "parity")
+if ! $SKIP_DASHBOARD; then
+    if $INFRA_CHANGED; then
+        echo "Building parity-dashboard (full)..." >> "$RAW_LOG"
+        docker compose -f "$COMPOSE_FILE" --profile parity build --progress=plain --no-cache $BUILD_ARGS parity-dashboard >> "$RAW_LOG" 2>&1
+        SERVICES_TO_RESTART="parity-dashboard"
+    elif $JAVA_CHANGED || $RUST_CHANGED; then
+        echo "Building parity-dashboard (cached)..." >> "$RAW_LOG"
+        docker compose -f "$COMPOSE_FILE" --profile parity build --progress=plain $BUILD_ARGS parity-dashboard >> "$RAW_LOG" 2>&1
+        SERVICES_TO_RESTART="parity-dashboard"
+    fi
+else
+    echo "Parity dashboard skipped (COMPOSE_PROFILES does not include 'parity')" >> "$RAW_LOG"
 fi
 
 # -- forge-server (Rust only) --
@@ -103,7 +123,12 @@ if [ -z "$SERVICES_TO_RESTART" ]; then
     exit 0
 fi
 
-docker compose -f "$COMPOSE_FILE" up -d $SERVICES_TO_RESTART >> "$RAW_LOG" 2>&1
+# Pass --profile parity when dashboard is included in the restart list
+PROFILE_FLAG=""
+if echo "$SERVICES_TO_RESTART" | grep -q "parity-dashboard"; then
+    PROFILE_FLAG="--profile parity"
+fi
+docker compose -f "$COMPOSE_FILE" $PROFILE_FLAG up -d $SERVICES_TO_RESTART >> "$RAW_LOG" 2>&1
 
 BUILD_END=$(date +%s)
 BUILD_DURATION=$(( BUILD_END - BUILD_START ))
