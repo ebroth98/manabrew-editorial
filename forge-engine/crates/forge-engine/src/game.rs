@@ -300,60 +300,6 @@ impl GameState {
             .copied()
             .collect()
     }
-
-    /// Snapshot all battlefield cards for LKI.
-    /// Mirrors Java's `Game.copyLastState()`.
-    /// Called at phase transitions, before SBAs, before combat.
-    pub fn copy_last_state(&mut self) {
-        // Update existing snapshots for cards still on the battlefield.
-        // Add new snapshots for cards that entered since last checkpoint.
-        // Keep stale snapshots for cards that left — they serve as LKI
-        // for trigger SVars like TriggeredCard$CardPower.
-        // This matches Java's behavior where lastStateBattlefield is only
-        // fully cleared at major checkpoints but individual entries persist
-        // through resolution chains.
-        for card in self.cards.iter() {
-            if card.zone == ZoneType::Battlefield {
-                if let Some(existing) = self
-                    .last_state_battlefield
-                    .iter_mut()
-                    .find(|s| s.id == card.id)
-                {
-                    *existing = crate::lki::CardSnapshot::from_card(card);
-                } else {
-                    self.last_state_battlefield
-                        .push(crate::lki::CardSnapshot::from_card(card));
-                }
-            }
-        }
-    }
-
-    /// Look up a card's LKI snapshot from the last battlefield state.
-    /// Returns None if the card wasn't on the battlefield at the last checkpoint.
-    pub fn get_lki_snapshot(&self, card_id: CardId) -> Option<&crate::lki::CardSnapshot> {
-        self.last_state_battlefield.iter().find(|s| s.id == card_id)
-    }
-
-    /// Update the LKI snapshot for a specific card on the battlefield.
-    /// If the card is already in the snapshot, update it. Otherwise, add it.
-    /// Called when a card enters the battlefield or its state changes significantly.
-    /// Mirrors Java's incremental LKI updates between full copyLastState() calls.
-    pub fn update_lki_snapshot(&mut self, card_id: CardId) {
-        let card = &self.cards[card_id.index()];
-        if card.zone != ZoneType::Battlefield {
-            return;
-        }
-        let snapshot = crate::lki::CardSnapshot::from_card(card);
-        if let Some(existing) = self
-            .last_state_battlefield
-            .iter_mut()
-            .find(|s| s.id == card_id)
-        {
-            *existing = snapshot;
-        } else {
-            self.last_state_battlefield.push(snapshot);
-        }
-    }
 }
 
 #[cfg(test)]

@@ -243,6 +243,8 @@ pub fn filter_spells_by_type(game: &GameState, candidates: &[u32], filter: &str)
 }
 
 /// Parse a single ValidTgts value into a TargetKind.
+/// Forward-ported from Java for future use when enhanced targeting is needed.
+#[allow(dead_code)]
 fn parse_target_kind(val: &str) -> TargetKind {
     let val = val.trim();
     if val.eq_ignore_ascii_case("Any") {
@@ -255,7 +257,8 @@ fn parse_target_kind(val: &str) -> TargetKind {
         return TargetKind::Spell;
     }
     if val.starts_with("Creature") {
-        let filter = val.strip_prefix("Creature").unwrap();
+        // Safe: we just checked starts_with, so strip_prefix will succeed
+        let filter = val.strip_prefix("Creature").unwrap_or("");
         if filter.is_empty() {
             return TargetKind::Creature(None);
         }
@@ -263,7 +266,8 @@ fn parse_target_kind(val: &str) -> TargetKind {
         return TargetKind::Creature(Some(filter.to_string()));
     }
     if val.starts_with("Permanent") {
-        let filter = val.strip_prefix("Permanent").unwrap();
+        // Safe: we just checked starts_with, so strip_prefix will succeed
+        let filter = val.strip_prefix("Permanent").unwrap_or("");
         if filter.is_empty() {
             return TargetKind::Permanent(None);
         }
@@ -539,7 +543,8 @@ fn parse_target_kind_legacy(val: &str) -> TargetKind {
         return TargetKind::Spell;
     }
     if val.starts_with("Creature") {
-        let filter = val.strip_prefix("Creature").unwrap();
+        // Safe: we just checked starts_with, so strip_prefix will succeed
+        let filter = val.strip_prefix("Creature").unwrap_or("");
         if filter.is_empty() {
             return TargetKind::Creature(None);
         }
@@ -547,7 +552,8 @@ fn parse_target_kind_legacy(val: &str) -> TargetKind {
         return TargetKind::Creature(Some(filter.to_string()));
     }
     if val.starts_with("Permanent") {
-        let filter = val.strip_prefix("Permanent").unwrap();
+        // Safe: we just checked starts_with, so strip_prefix will succeed
+        let filter = val.strip_prefix("Permanent").unwrap_or("");
         if filter.is_empty() {
             return TargetKind::Permanent(None);
         }

@@ -53,14 +53,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // SpellAbilityEffect.getTargetCards(sa), which defaults `Defined` to `Self`
     // when the ability has no targets. Mirror that fallback here so abilities
     // like Guardian of New Benalia correctly affect their source.
-    let target_card = sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get("Defined").map(|s| s.as_str()) {
-            Some("Self") => sa.source,
-            Some("ParentTarget") => ctx.parent_target_card,
-            Some(_) => None,
-            None if !sa.uses_targeting() => sa.source,
-            None => None,
-        }
+    let target_card = sa.target_chosen.target_card.or_else(|| match sa.defined() {
+        Some("Self") => sa.source,
+        Some("ParentTarget") => ctx.parent_target_card,
+        Some(_) => None,
+        None if !sa.uses_targeting() => sa.source,
+        None => None,
     });
 
     if let Some(target_card) = target_card {

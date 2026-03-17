@@ -104,6 +104,8 @@ impl Room {
         }
     }
 
+    /// Forward-ported for future use when room cleanup logic is implemented.
+    #[allow(dead_code)]
     pub fn all_disconnected(&self) -> bool {
         self.players.iter().all(|p| !p.connected)
     }
@@ -174,6 +176,8 @@ impl Room {
         self.players.iter().map(|p| p.username.clone()).collect()
     }
 
+    /// Forward-ported for future use when full player ID tracking is needed.
+    #[allow(dead_code)]
     pub fn player_ids(&self) -> Vec<String> {
         self.players.iter().map(|p| p.player_id.clone()).collect()
     }

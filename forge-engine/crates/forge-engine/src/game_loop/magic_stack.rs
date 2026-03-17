@@ -1,4 +1,4 @@
-use super::game_action::CostPaymentContext;
+use super::cost_payment::CostPaymentContext;
 use super::*;
 use crate::spellability::TargetKind;
 

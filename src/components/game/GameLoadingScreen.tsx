@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { tauriApi } from "@/api/tauri";
 import { useGameStore } from "@/stores/useGameStore";
 import { Button } from "@/components/ui/button";
 
@@ -18,7 +18,7 @@ export function GameLoadingScreen({ debugInfo }: GameLoadingScreenProps) {
         size="sm"
         onClick={async () => {
           try {
-            const raw = await invoke<unknown>("get_prompt");
+            const raw = await tauriApi.debug.getPrompt();
             useGameStore.setState({
               debugInfo: `Manual poll: ${JSON.stringify(raw)?.slice(0, 200)}`,
             });

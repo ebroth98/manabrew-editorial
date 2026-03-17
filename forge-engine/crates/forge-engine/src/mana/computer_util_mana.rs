@@ -532,6 +532,9 @@ fn group_and_order_to_pay_shards(
     res
 }
 
+/// Forward-ported from Java for future use. Currently unused but will be needed
+/// when mana payment prioritization logic is fully ported.
+#[allow(dead_code)]
 fn sort_mana_abilities(
     game: &GameState,
     player: PlayerId,
@@ -802,6 +805,9 @@ fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId>
     sources
 }
 
+/// Forward-ported from Java for future use. Currently unused but will be needed
+/// when mana payment prioritization logic is fully ported.
+#[allow(dead_code)]
 fn colors_most_common_in_hand(
     game: &GameState,
     player: PlayerId,
@@ -857,6 +863,9 @@ fn colors_most_common_in_hand(
         .collect()
 }
 
+/// Forward-ported from Java for future use. Currently unused but will be needed
+/// when mana payment prioritization logic is fully ported.
+#[allow(dead_code)]
 fn score_mana_producing_card(game: &GameState, card_id: CardId, player: PlayerId) -> i32 {
     let card = game.card(card_id);
     let mut score = 0;
@@ -894,6 +903,9 @@ fn score_mana_producing_card(game: &GameState, card_id: CardId, player: PlayerId
     score
 }
 
+/// Forward-ported from Java for future use. Currently unused but will be needed
+/// when mana payment prioritization logic is fully ported.
+#[allow(dead_code)]
 fn score_mana_ability(
     game: &GameState,
     card_id: CardId,
@@ -1019,6 +1031,9 @@ fn autopay_source_score(game: &GameState, _player: PlayerId, ma: &ManaAbilityRef
     s
 }
 
+/// Forward-ported from Java for future use. Currently unused but will be needed
+/// when mana payment prioritization logic is fully ported.
+#[allow(dead_code)]
 fn score_implicit_land_mana_ability(atom: u16) -> i32 {
     let mut score = 0;
     let text = atom_short(atom);
@@ -1087,6 +1102,10 @@ pub fn auto_tap_lands_generic(
 
     tapped_lands
 }
+
+/// Forward-ported from Java for future use. Currently unused but will be needed
+/// when mana payment prioritization logic is fully ported.
+#[allow(dead_code)]
 fn parse_mana_ability_amount(ab: &crate::ability::activated::ActivatedAbility) -> i32 {
     parse_mana_ability_amount_with_game(ab, None, None, None)
 }

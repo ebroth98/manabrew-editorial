@@ -1,7 +1,7 @@
 import { Archive } from "lucide-react";
 
 import { cn } from "@/lib/utils";
-import { LibraryZoneTile } from "@/components/game/LibraryZoneTile";
+import { LibraryZoneTile } from "@/components/game/zones";
 import type { ZonePanelItem } from "@/stores/usePreferencesStore";
 
 export interface ZoneActionColumnProps {

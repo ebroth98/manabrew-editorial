@@ -8,34 +8,14 @@ use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let origin_str = sa.params.get("Origin").map(|s| s.as_str()).unwrap_or("");
-    let destination_str = sa
-        .params
-        .get("Destination")
-        .map(|s| s.as_str())
-        .unwrap_or("");
-    let tapped = sa
-        .params
-        .get("Tapped")
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
-    let change_type = sa.params.get("ChangeType").cloned().unwrap_or_default();
-    let defined = sa.params.get("Defined").cloned().unwrap_or_default();
-    let lib_position = sa
-        .params
-        .get("LibraryPosition")
-        .cloned()
-        .unwrap_or_default();
-    let shuffle = sa
-        .params
-        .get("Shuffle")
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
-    let remember_changed = sa
-        .params
-        .get("RememberChanged")
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let origin_str = sa.origin().unwrap_or("");
+    let destination_str = sa.destination().unwrap_or("");
+    let tapped = sa.is_tapped();
+    let change_type = sa.change_type().unwrap_or("").to_string();
+    let defined = sa.defined().unwrap_or("").to_string();
+    let lib_position = sa.library_position().unwrap_or("").to_string();
+    let shuffle = sa.is_shuffle();
+    let remember_changed = sa.is_remember_changed();
     let controller = sa.activating_player;
     let matches_with_context = |card_id, clause: &str| {
         let card = ctx.game.card(card_id);
@@ -112,9 +92,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .into_iter()
                 .collect()
         } else if defined.eq_ignore_ascii_case("Self")
-            || (defined.is_empty()
-                && origin_zone.is_known()
-                && !sa.params.contains_key("DefinedPlayer"))
+            || (defined.is_empty() && origin_zone.is_known() && sa.defined_player().is_none())
         {
             // Java parity: missing Defined defaults to Self for known-origin ChangeZone;
             // hidden-origin empty Defined uses search flow below.
@@ -162,11 +140,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             } else {
                 Vec::new()
             }
-        } else if sa.params.contains_key("DefinedPlayer") {
+        } else if sa.defined_player().is_some() {
             // DefinedPlayer$ Player — each defined player independently chooses and moves
             // a card from their own zone. Used by Exhume, etc.
             // Mirrors Java's changeHiddenOriginResolve → changeZonePlayerInvariant loop.
-            let defined_player = sa.params.get("DefinedPlayer").cloned().unwrap_or_default();
+            let defined_player = sa.defined_player().unwrap_or("");
             let players: Vec<crate::ids::PlayerId> =
                 if defined_player.eq_ignore_ascii_case("Player") {
                     // "Player" = all players in turn order
@@ -201,12 +179,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
             collected
-        } else if (defined.is_empty()
-            && (origin_zone.is_hidden()
-                || sa
-                    .params
-                    .get("Hidden")
-                    .map_or(false, |v| v.eq_ignore_ascii_case("True"))))
+        } else if (defined.is_empty() && (origin_zone.is_hidden() || sa.is_hidden()))
             || defined.eq_ignore_ascii_case("You")
             || defined.eq_ignore_ascii_case("Opponent")
         {
@@ -331,13 +304,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 // WithCountersType$: add a counter when entering the battlefield
                 // (e.g. Undying adds P1P1, Persist adds M1M1).
                 // Mirrors Java's ChangeZoneEffect "WithCountersType" parameter.
-                if let Some(counter_type_str) = sa.params.get("WithCountersType") {
+                if let Some(counter_type_str) = sa.with_counters_type() {
                     let ct = parse_counter_type(counter_type_str);
-                    let amount = sa
-                        .params
-                        .get("WithCountersAmount")
-                        .and_then(|s| s.parse::<i32>().ok())
-                        .unwrap_or(1);
+                    let amount = sa.with_counters_amount().unwrap_or(1);
                     ctx.game.card_mut(card_id).add_counter(&ct, amount);
                 }
 

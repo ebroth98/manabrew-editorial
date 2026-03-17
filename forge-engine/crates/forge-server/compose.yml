@@ -1,3 +1,18 @@
+# ──────────────────────────────────────────────────────────────────
+# Parity dashboard control via .env:
+#
+#   Deploy WITH dashboard (default):
+#     COMPOSE_PROFILES=parity          (in .env)
+#     docker compose up
+#
+#   Deploy WITHOUT dashboard:
+#     remove COMPOSE_PROFILES from .env (or set it empty)
+#     docker compose up
+#
+#   Or override on the CLI:
+#     docker compose --profile parity up
+# ──────────────────────────────────────────────────────────────────
+
 services:
     forge-server:
         build: .
@@ -12,6 +27,8 @@ services:
         restart: on-failure:5
 
     parity-dashboard:
+        profiles:
+            - parity
         build:
             context: ../../.. # repo root (needs Cargo workspace + forge/ + preset_decks/)
             dockerfile: forge-engine/crates/forge-parity/Dockerfile

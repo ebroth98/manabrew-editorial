@@ -1,26 +1,19 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { tauriApi, type PresetDeckInfo } from "@/api/tauri";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { GAME_FORMATS, validateDeck, type GameFormat } from "@/lib/formats";
 import { FormatBadge } from "@/components/game/FormatBadge";
+import { DeckSelectionCard } from "./DeckSelectionCard";
 import { cn } from "@/lib/utils";
-import { AlertCircle, Check, Search, Shuffle, Swords } from "lucide-react";
-
-interface PresetDeckInfo {
-  id: string;
-  label: string;
-  desc: string;
-  color: string;
-}
+import { Search, Shuffle, Swords } from "lucide-react";
 
 interface CreateGameDialogProps {
   open: boolean;
@@ -64,7 +57,7 @@ export function CreateGameDialog({
   const [deckSearch, setDeckSearch] = useState("");
 
   useEffect(() => {
-    invoke<PresetDeckInfo[]>("get_preset_decks")
+    tauriApi.deck.getPresetDecks()
       .then(setPresetDecks)
       .catch((e) => console.error("[CreateGameDialog] Failed to load preset decks:", e));
   }, []);
@@ -361,34 +354,21 @@ export function CreateGameDialog({
                 </p>
               ) : (
               <div className="grid grid-cols-3 gap-2">
-                {filteredPresetEntries.map((deck) => {
-                  const isSelected = selectedDeck === deck.id;
-                  return (
-                    <button
-                      key={deck.id}
-                      type="button"
-                      onClick={() => setSelectedDeck(deck.id)}
-                      className={cn(
-                        "rounded-lg border p-2.5 text-left transition-all",
-                        isSelected
-                          ? "border-primary bg-primary/5 ring-1 ring-primary"
-                          : "border-border hover:bg-muted/40 hover:shadow-sm"
-                      )}
-                    >
-                      <div className="flex items-start justify-between gap-1 mb-1">
-                        <span className={cn("font-semibold text-xs leading-tight", deck.color)}>
-                          {deck.name}
-                        </span>
-                        {isSelected && (
-                          <Check className="h-3 w-3 text-primary shrink-0 mt-0.5" />
-                        )}
-                      </div>
-                      <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2">
-                        {deck.desc}
-                      </p>
-                    </button>
-                  );
-                })}
+                {filteredPresetEntries.map((deck) => (
+                  <DeckSelectionCard
+                    key={deck.id}
+                    id={deck.id}
+                    name={deck.name}
+                    desc={deck.desc}
+                    color={deck.color}
+                    deckList={deck.deckList}
+                    cards={deck.cards}
+                    isPreset={deck.isPreset}
+                    isSelected={selectedDeck === deck.id}
+                    isLegal={true}
+                    onSelect={() => setSelectedDeck(deck.id)}
+                  />
+                ))}
               </div>
               )}
             </div>
@@ -410,58 +390,20 @@ export function CreateGameDialog({
                 <div className="grid grid-cols-3 gap-2">
                   {filteredUserDecks.map((d) => {
                     const validation = validateDeck(d.deckList.map((c) => c.name), selectedFormat);
-                    const isSelected = selectedDeck === d.id;
-                    const colorPips = getDeckColors(d.cards);
-                    const breakdown = getDeckTypeBreakdown(d.cards);
                     return (
-                      <button
+                      <DeckSelectionCard
                         key={d.id}
-                        type="button"
-                        onClick={() => { if (validation.legal) setSelectedDeck(d.id); }}
-                        disabled={!validation.legal}
-                        title={!validation.legal ? validation.errors[0] : undefined}
-                        className={cn(
-                          "rounded-lg border p-2.5 text-left transition-all",
-                          validation.legal ? "cursor-pointer" : "cursor-not-allowed opacity-50",
-                          isSelected && validation.legal
-                            ? "border-primary bg-primary/5 ring-1 ring-primary"
-                            : validation.legal
-                            ? "border-border hover:bg-muted/40 hover:shadow-sm"
-                            : "border-border"
-                        )}
-                      >
-                        {/* Name row */}
-                        <div className="flex items-start justify-between gap-1 mb-1.5">
-                          <span className="font-semibold text-xs leading-tight truncate">
-                            {d.name}
-                          </span>
-                          <div className="flex items-center gap-0.5 shrink-0 mt-0.5">
-                            {isSelected && <Check className="h-3 w-3 text-primary" />}
-                            {!validation.legal && <AlertCircle className="h-3 w-3 text-destructive" />}
-                          </div>
-                        </div>
-                        {/* Color pips */}
-                        <div className="flex items-center gap-1 mb-1.5 min-h-[10px]">
-                          {colorPips.length > 0
-                            ? colorPips.map((c) => <ColorPip key={c} color={c} />)
-                            : <span className="text-[10px] text-muted-foreground">Colorless</span>}
-                        </div>
-                        {/* Type breakdown */}
-                        <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2">
-                          {!validation.legal ? validation.errors[0] : breakdown}
-                        </p>
-                        {/* Footer: card count + badge */}
-                        <div className="flex items-center justify-between mt-1.5">
-                          <span className="text-[10px] text-muted-foreground">
-                            {d.deckList.length} cards
-                          </span>
-                          {d.badge && (
-                            <Badge variant="outline" className="text-[9px] h-4 px-1">
-                              {d.badge}
-                            </Badge>
-                          )}
-                        </div>
-                      </button>
+                        id={d.id}
+                        name={d.name}
+                        badge={d.badge}
+                        deckList={d.deckList}
+                        cards={d.cards}
+                        isPreset={d.isPreset}
+                        isSelected={selectedDeck === d.id}
+                        isLegal={validation.legal}
+                        validationError={validation.errors[0]}
+                        onSelect={() => setSelectedDeck(d.id)}
+                      />
                     );
                   })}
                 </div>
@@ -527,45 +469,4 @@ function RulePill({ label, value }: { label: string; value: string }) {
   );
 }
 
-// ── Deck description helpers ───────────────────────────────────────
 
-const COLOR_PIP: Record<string, string> = {
-  W: "bg-amber-100 border border-amber-400",
-  U: "bg-blue-500",
-  B: "bg-gray-800 border border-gray-600",
-  R: "bg-red-500",
-  G: "bg-green-600",
-};
-
-function ColorPip({ color }: { color: string }) {
-  return (
-    <span
-      className={cn("inline-block w-2.5 h-2.5 rounded-full shrink-0", COLOR_PIP[color] ?? "bg-gray-400")}
-      title={color}
-    />
-  );
-}
-
-/** Extract unique WUBRG colors present in a card list, in canonical order. */
-function getDeckColors(cards: { color: string }[]): string[] {
-  const seen = new Set<string>();
-  for (const card of cards) {
-    for (const ch of card.color) {
-      if ("WUBRG".includes(ch)) seen.add(ch);
-    }
-  }
-  return "WUBRG".split("").filter((c) => seen.has(c));
-}
-
-/** Short card-type breakdown string, e.g. "14 creatures · 8 spells · 20 lands". */
-function getDeckTypeBreakdown(cards: { types?: string[] }[]): string {
-  if (cards.length === 0) return "Empty deck";
-  const creatures = cards.filter((c) => c.types?.includes("Creature")).length;
-  const lands = cards.filter((c) => c.types?.includes("Land")).length;
-  const spells = cards.length - creatures - lands;
-  const parts: string[] = [];
-  if (creatures > 0) parts.push(`${creatures} creature${creatures === 1 ? "" : "s"}`);
-  if (spells > 0) parts.push(`${spells} spell${spells === 1 ? "" : "s"}`);
-  if (lands > 0) parts.push(`${lands} land${lands === 1 ? "" : "s"}`);
-  return parts.join(" · ");
-}

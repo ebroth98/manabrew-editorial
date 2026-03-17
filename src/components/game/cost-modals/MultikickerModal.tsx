@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Modal } from "@/components/game/Modal";
+import { Modal } from "../modals/Modal";
 import { Button } from "@/components/ui/button";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";

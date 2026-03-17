@@ -9,13 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { cn } from "@/lib/utils";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
-import { Trash2, Pencil, Plus, Search, Swords, Crown, X } from "lucide-react";
+import { Plus, Search, Swords, Crown, X, Pencil } from "lucide-react";
 import { toast } from "sonner";
 import { CardPreview } from "@/components/game/CardPreview";
 import { DeckStats } from "@/components/editor/DeckStats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { inferFormats } from "@/lib/formats";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
+import { DeckCard } from "@/components/deck/DeckCard";
 import type { Card } from "@/types/xmage";
 import { fetchCardCollection } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
@@ -24,30 +25,9 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
+import { extractColors, groupCards, categorize, COLOR_MAP } from "./myDecks.utils";
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
-const COLOR_MAP: Record<string, { bg: string; border: string; label: string }> =
-  {
-    W: { bg: "bg-yellow-50",  border: "border-yellow-300", label: "W" },
-    U: { bg: "bg-blue-100",   border: "border-blue-400",   label: "U" },
-    B: { bg: "bg-gray-800",   border: "border-gray-600",   label: "B" },
-    R: { bg: "bg-red-100",    border: "border-red-400",    label: "R" },
-    G: { bg: "bg-green-100",  border: "border-green-400",  label: "G" },
-    C: { bg: "bg-zinc-200",   border: "border-zinc-400",   label: "C" },
-  };
-
-function extractColors(cards: Card[]): string[] {
-  const set = new Set<string>();
-  for (const card of cards) {
-    for (const ch of card.color ?? "") {
-      if (ch in COLOR_MAP) set.add(ch);
-    }
-    // Detect explicit colourless mana requirement {C}
-    if (card.manaCost?.includes("{C}")) set.add("C");
-  }
-  return ["W", "U", "B", "R", "G", "C"].filter((c) => set.has(c));
-}
+// ── Component ────────────────────────────────────────────────────────────────
 
 function ColorPip({ color }: { color: string }) {
   const style = COLOR_MAP[color];
@@ -65,48 +45,6 @@ function ColorPip({ color }: { color: string }) {
     </span>
   );
 }
-
-interface CardGroup {
-  card: Card;
-  count: number;
-}
-
-function groupCards(cards: Card[]): CardGroup[] {
-  const map = new Map<string, CardGroup>();
-  for (const card of cards) {
-    const existing = map.get(card.name);
-    if (existing) existing.count++;
-    else map.set(card.name, { card, count: 1 });
-  }
-  return Array.from(map.values()).sort((a, b) => {
-    const aCmc = a.card.cmc ?? 0;
-    const bCmc = b.card.cmc ?? 0;
-    if (aCmc !== bCmc) return aCmc - bCmc;
-    return a.card.name.localeCompare(b.card.name);
-  });
-}
-
-// Group card list by type category (Forge-style: Lands, Creatures, Spells)
-function categorize(
-  groups: CardGroup[],
-): { label: string; items: CardGroup[] }[] {
-  const lands: CardGroup[] = [];
-  const creatures: CardGroup[] = [];
-  const other: CardGroup[] = [];
-  for (const g of groups) {
-    const types = g.card.types ?? [];
-    if (types.includes("Land")) lands.push(g);
-    else if (types.includes("Creature")) creatures.push(g);
-    else other.push(g);
-  }
-  return [
-    { label: "Creatures", items: creatures },
-    { label: "Spells & Other", items: other },
-    { label: "Lands", items: lands },
-  ].filter((c) => c.items.length > 0);
-}
-
-// ── Component ────────────────────────────────────────────────────────────────
 
 function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
   const SUPERTYPES = new Set([
@@ -317,99 +255,22 @@ export default function MyDecks() {
               </div>
             ) : (
               <div className="py-1">
-                {filtered.map((s) => {
-                  const deckColors = extractColors(s.deck.cards);
-                  const deckFormats = inferFormats(s.deck.cards.map((c) => c.name));
-                  const isSelected = s.id === selectedId;
-                  return (
-                    <div
-                      key={s.id}
-                      className={cn(
-                        "flex items-center gap-2 px-3 py-2 cursor-pointer group",
-                        isSelected
-                          ? "bg-secondary text-secondary-foreground"
-                          : "hover:bg-muted/60",
-                      )}
-                      onClick={() => setSelectedId(s.id)}
-                    >
-                      {/* Color identity pips */}
-                      <div className="flex gap-0.5 w-16 shrink-0">
-                        {deckColors.length > 0 ? (
-                          deckColors.map((c) => <ColorPip key={c} color={c} />)
-                        ) : (
-                          <span className="text-xs text-muted-foreground italic">
-                            —
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Name + count + format badges */}
-                      <div className="flex-1 min-w-0">
-                        {editingId === s.id ? (
-                          <Input
-                            autoFocus
-                            value={editName}
-                            className="h-6 text-sm px-1"
-                            onChange={(e) => setEditName(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") confirmRename(s.id);
-                              if (e.key === "Escape") setEditingId(null);
-                            }}
-                            onBlur={() => confirmRename(s.id)}
-                            onClick={(e) => e.stopPropagation()}
-                          />
-                        ) : (
-                          <p className="text-sm font-medium truncate">
-                            {s.deck.name}
-                          </p>
-                        )}
-                        <div className="flex items-center gap-1 flex-wrap">
-                          <span className="text-xs text-muted-foreground">
-                            {s.deck.cards.length} cards
-                          </span>
-                          {deckFormats.map((f) => (
-                            <FormatBadge key={f.id} formatId={f.id} />
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* Actions (visible on hover or selection) */}
-                      <div
-                        className={cn(
-                          "flex gap-1 shrink-0 transition-opacity",
-                          isSelected
-                            ? "opacity-100"
-                            : "opacity-0 group-hover:opacity-100",
-                        )}
-                      >
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6"
-                          title="Rename"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startRename(s.id, s.deck.name);
-                          }}
-                        >
-                          <Pencil className="h-3 w-3" />
-                        </Button>
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-6 w-6 text-destructive hover:text-destructive"
-                          title="Delete"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDelete(s.id);
-                          }}
-                        >
-                          <Trash2 className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
+                {filtered.map((s) => (
+                  <DeckCard
+                    key={s.id}
+                    deck={s}
+                    isSelected={s.id === selectedId}
+                    isEditing={editingId === s.id}
+                    editName={editName}
+                    onSelect={() => setSelectedId(s.id)}
+                    onRename={(name) => setEditName(name)}
+                    onStartRename={() => startRename(s.id, s.deck.name)}
+                    onConfirmRename={() => confirmRename(s.id)}
+                    onCancelRename={() => setEditingId(null)}
+                    onDelete={() => handleDelete(s.id)}
+                    onEditNameChange={setEditName}
+                  />
+                ))}
               </div>
             )}
           </ScrollArea>

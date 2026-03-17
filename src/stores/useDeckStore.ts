@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Deck, Card } from '@/types/xmage';
 
-interface SavedDeck {
+export interface SavedDeck {
   id: string;
   deck: Deck;
   savedAt: number;

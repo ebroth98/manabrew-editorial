@@ -6,6 +6,7 @@
 
 use forge_foundation::ColorSet;
 
+use crate::card::filter_constants as fc;
 use crate::card::CardInstance;
 use crate::ids::PlayerId;
 
@@ -33,27 +34,27 @@ fn matches_single_property(
 ) -> bool {
     match property {
         // Inclusive type checks (mirrors Java Card.isValid type token before dot).
-        "Card" | "card" => true,
-        "Permanent" => card.is_permanent(),
-        "Creature" => card.is_creature(),
-        "Land" => card.is_land(),
-        "Instant" => card.type_line.is_instant(),
-        "Sorcery" => card.type_line.is_sorcery(),
-        "Artifact" => card.type_line.is_artifact(),
-        "Enchantment" => card.type_line.is_enchantment(),
-        "Planeswalker" => card.type_line.is_planeswalker(),
-        "OppCtrl" => card.controller != source_controller,
-        "YouCtrl" => card.controller == source_controller,
-        "YouDontCtrl" => card.controller != source_controller,
+        fc::CARD | "card" => true,
+        fc::PERMANENT => card.is_permanent(),
+        fc::CREATURE => card.is_creature(),
+        fc::LAND => card.is_land(),
+        fc::INSTANT => card.type_line.is_instant(),
+        fc::SORCERY => card.type_line.is_sorcery(),
+        fc::ARTIFACT => card.type_line.is_artifact(),
+        fc::ENCHANTMENT => card.type_line.is_enchantment(),
+        fc::PLANESWALKER => card.type_line.is_planeswalker(),
+        fc::OPP_CTRL => card.controller != source_controller,
+        fc::YOU_CTRL => card.controller == source_controller,
+        fc::YOU_DONT_CTRL => card.controller != source_controller,
         // Combat qualifier used by scripts such as Stalking Leonin
         // (`ValidTgts$ Creature.attackingYou`): card must currently be
         // attacking the source controller.
         "attackingYou" => card.attacking_player == Some(source_controller),
-        "Other" => true, // "Other" means "not self" — handled at call site
+        fc::OTHER => true, // "Other" means "not self" — handled at call site
         // Type-based filters
-        "nonLand" => !card.type_line.is_land(),
-        "nonCreature" => !card.is_creature(),
-        "nonArtifact" => !card.type_line.is_artifact(),
+        fc::NON_LAND => !card.type_line.is_land(),
+        fc::NON_CREATURE => !card.is_creature(),
+        fc::NON_ARTIFACT => !card.type_line.is_artifact(),
         _ => {
             let lower = property.to_ascii_lowercase();
             if let Some(rest) = lower.strip_prefix("cmcge") {

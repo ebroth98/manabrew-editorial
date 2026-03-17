@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/game/Modal";
+import { Modal } from "@/components/game/modals/Modal";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { MODAL_CARD_THUMBNAIL } from "./game.styles";

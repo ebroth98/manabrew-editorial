@@ -24,8 +24,6 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { useAuthStore } from "@/stores/useAuthStore";
-import { useConnectionStore } from "@/stores/useConnectionStore";
-import { wsClient } from "@/api/websocket";
 import iconSvg from "@/assets/icon.svg";
 
 const formSchema = z.object({
@@ -42,7 +40,6 @@ export default function Login() {
   const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const { login } = useAuthStore();
-  const { setServerAddress } = useConnectionStore();
 
   const { lastServer, lastUsername } = useAuthStore();
 
@@ -60,14 +57,10 @@ export default function Login() {
   async function onSubmit(values: FormValues) {
     setIsLoading(true);
     try {
-      // Connect to WebSocket (Middleware)
-      wsClient.connect(`ws://${values.serverAddress}:8080`); // Assume middleware is running on port 8080 or handle this properly
-
-      // Simulate handshake/login with middleware
-      // For now, we'll just mock it as successful after a delay
+      // TODO: Implement actual Tauri server connection
+      // Placeholder: simulate successful login
       await new Promise((resolve) => setTimeout(resolve, 1000));
 
-      setServerAddress(values.serverAddress);
       login(
         {
           username: values.username,

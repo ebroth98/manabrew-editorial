@@ -1,16 +1,9 @@
 import { useState, useEffect } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { tauriApi, type PresetDeckInfo } from "@/api/tauri";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords, User, Bot } from "lucide-react";
-
-interface PresetDeckInfo {
-  id: string;
-  label: string;
-  desc: string;
-  color: string;
-}
 
 interface SelectedDeck {
   id: string;
@@ -37,7 +30,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
   const [deckSearch, setDeckSearch] = useState("");
 
   useEffect(() => {
-    invoke<PresetDeckInfo[]>("get_preset_decks")
+    tauriApi.deck.getPresetDecks()
       .then(setPresetDecks)
       .catch((e) =>
         console.error("[DeckVsSelector] Failed to load preset decks:", e)

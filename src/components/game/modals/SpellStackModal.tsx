@@ -1,0 +1,123 @@
+import { Card } from "@/components/game/Card";
+import { CardPreview } from "@/components/game/CardPreview";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Modal } from "./Modal";
+import type { StackObject } from "@/types/xmage";
+import { cn } from "@/lib/utils";
+import { stackObjectToCardStub } from "../game.utils";
+import { useHoverPreview } from "@/hooks/useHoverPreview";
+import { MODAL_CARD_SIZE } from "../game.styles";
+
+interface SpellStackModalProps {
+  stack: StackObject[];
+  /** Stack entry IDs the player may target (counter). Empty means view-only. */
+  validSpellIds: string[];
+  onTarget: (spellId: string) => void;
+  onCancel: () => void;
+}
+
+export function SpellStackModal({ stack, validSpellIds, onTarget, onCancel }: SpellStackModalProps) {
+  const { hoveredCard, mousePos, onMouseEnter, onMouseLeave } = useHoverPreview();
+
+  const isTargeting = validSpellIds.length > 0;
+
+  // Display newest (top of stack) first — stack[last] = top, stack[0] = bottom
+  const displayStack = [...stack].reverse();
+
+  return (
+    <Modal onClose={onCancel} maxWidth="max-w-3xl" maxHeight="max-h-[85vh]">
+      <Modal.Header>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-semibold text-base">
+              {isTargeting ? "Choose a Spell to Counter" : "Spells on the Stack"}
+            </h2>
+            <p className="text-xs text-muted-foreground">
+              {stack.length} spell{stack.length !== 1 ? "s" : ""} on the stack
+              {" · "}
+              Top of stack is shown first
+            </p>
+          </div>
+          {isTargeting && (
+            <Badge variant="secondary">{validSpellIds.length} targetable</Badge>
+          )}
+        </div>
+      </Modal.Header>
+
+      {isTargeting && (
+        <Modal.Instructions>
+          Click a highlighted spell to counter it.
+        </Modal.Instructions>
+      )}
+
+      <Modal.Body>
+        {stack.length === 0 ? (
+          <Modal.EmptyState message="The stack is empty." />
+        ) : (
+          <div className="flex flex-wrap gap-6 content-start justify-center">
+            {displayStack.map((obj, idx) => {
+              const isValid = validSpellIds.includes(obj.id);
+              const cardStub = stackObjectToCardStub(obj);
+              const isTop = idx === 0;
+              return (
+                <div
+                  key={obj.id}
+                  className={cn(
+                    "shrink-0 flex flex-col items-center gap-1 group",
+                    isValid ? "cursor-pointer" : "cursor-default",
+                    !isValid && isTargeting && "opacity-50",
+                  )}
+                  onMouseEnter={(e) => onMouseEnter(cardStub, e)}
+                  onMouseLeave={onMouseLeave}
+                  onClick={isValid ? () => onTarget(obj.id) : undefined}
+                >
+                  <Card
+                    card={cardStub}
+                    className={cn(
+                      MODAL_CARD_SIZE,
+                      "transition-transform",
+                      isValid && "ring-2 ring-blue-400 group-hover:scale-105 group-hover:-translate-y-2",
+                    )}
+                  />
+                  <div className="flex items-center gap-1">
+                    <Badge
+                      variant={isTop ? "default" : "outline"}
+                      className="text-[10px] h-4 px-1"
+                    >
+                      {isTop ? "TOP" : `+${idx}`}
+                    </Badge>
+                    {isValid && (
+                      <Badge variant="secondary" className="text-[10px] h-4 px-1 text-blue-600">
+                        ← Counter
+                      </Badge>
+                    )}
+                  </div>
+                  {obj.text && (
+                    <p className="text-[10px] text-muted-foreground text-center max-w-[100px] line-clamp-3 leading-tight">
+                      {obj.text}
+                    </p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Modal.Body>
+
+      <Modal.Footer>
+        <Button variant="outline" size="sm" onClick={onCancel}>
+          {isTargeting ? "Cancel" : "Close"}
+        </Button>
+      </Modal.Footer>
+
+      {hoveredCard && (
+        <CardPreview
+          card={hoveredCard}
+          mouseX={mousePos.x}
+          mouseY={mousePos.y}
+        />
+      )}
+    </Modal>
+  );
+}

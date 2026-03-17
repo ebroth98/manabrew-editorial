@@ -22,5 +22,6 @@ pub mod player;
 pub mod replacement;
 pub mod spellability;
 pub mod staticability;
+pub mod svar;
 pub mod trigger;
 pub mod zone;

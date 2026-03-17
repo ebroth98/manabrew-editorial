@@ -1,7 +1,7 @@
 import { Card } from "@/components/game/Card";
 import type { Card as CardType } from "@/types/xmage";
 import { CardPreview } from "@/components/game/CardPreview";
-import { Modal } from "@/components/game/Modal";
+import { Modal } from "@/components/game/modals/Modal";
 import { cn } from "@/lib/utils";
 import { useHoverPreview } from "@/hooks/useHoverPreview";
 import { MODAL_CARD_SIZE } from "./game.styles";

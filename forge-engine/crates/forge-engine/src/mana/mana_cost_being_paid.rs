@@ -39,6 +39,8 @@ impl ManaCostBeingPaid {
 
     /// Set the X mana payment — converts X shards into concrete shards.
     /// Mirrors Java `ManaCostBeingPaid.setXManaCostPaid()`.
+    /// Forward-ported from Java for future use when X spell casting is implemented.
+    #[allow(dead_code)]
     pub(crate) fn set_x_mana_cost_paid(&mut self, x_paid: i32, x_color: &str) {
         let x_cost = x_paid * self.cnt_x;
         self.cnt_x = 0;
@@ -54,6 +56,8 @@ impl ManaCostBeingPaid {
         self.increase_shard_with_x(shard, x_cost);
     }
 
+    /// Forward-ported from Java for future use when X spell casting is implemented.
+    #[allow(dead_code)]
     fn increase_shard_with_x(&mut self, shard: ManaCostShard, amount: i32) {
         if amount <= 0 {
             return;

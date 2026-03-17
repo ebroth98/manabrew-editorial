@@ -1,9 +1,55 @@
 //! Last-Known Information (LKI) system.
 //!
 //! Mirrors Java's `Game.copyLastState()` + `Game.lastStateBattlefield`.
-//! Stores lightweight snapshots of battlefield cards at key checkpoints
-//! so trigger SVars (e.g. `TriggeredCard$CardPower`) resolve using the
-//! card's state at the time it was last on the battlefield.
+//!
+//! ## Overview
+//!
+//! The LKI system maintains two types of snapshots to resolve trigger SVars
+//! (e.g. `TriggeredCard$CardPower`) using a card's state at the time it was
+//! last on the battlefield:
+//!
+//! 1. **Periodic snapshots** (`GameState.last_state_battlefield`):
+//!    - Captured by `copy_last_state()` at key checkpoints (phase transitions,
+//!      before SBAs, before combat)
+//!    - Lightweight `CardSnapshot` structs for all battlefield cards
+//!    - Stale snapshots persist after cards leave (for LKI lookups)
+//!
+//! 2. **Per-card LKI** (`CardInstance.lki_power` / `lki_toughness`):
+//!    - Saved in `action.rs::change_zone()` when a card leaves the battlefield
+//!    - Captures the exact power/toughness at zone-change time
+//!    - Primary source for trigger SVars
+//!
+//! ## Resolution hierarchy
+//!
+//! When resolving `TriggeredCard$CardPower` / `TriggeredCard$CardToughness`:
+//! 1. Check `card.lki_power` / `card.lki_toughness` (captured at zone change)
+//! 2. If zero, check periodic snapshot (in case card entered after last checkpoint)
+//! 3. Fall back to zero if neither source has data
+//!
+//! ## Lifecycle
+//!
+//! ```text
+//! Card enters battlefield
+//!   → assign zone timestamp
+//!   → update_lki_snapshot() creates/updates periodic snapshot
+//!
+//! Phase transition / SBA check
+//!   → copy_last_state() refreshes all battlefield snapshots
+//!
+//! Card leaves battlefield (dies, exiled, etc.)
+//!   → action.rs captures lki_power/lki_toughness
+//!   → periodic snapshot remains (stale but valid for LKI)
+//!
+//! Trigger fires (e.g. "When ~ dies, deal damage equal to its power")
+//!   → resolve_lki_power() checks lki_power, then periodic snapshot
+//!   → SpellAbility resolves with correct LKI value
+//! ```
+//!
+//! ## Java equivalents
+//!
+//! - `Game.copyLastState()` → `GameState::copy_last_state()`
+//! - `Game.lastStateBattlefield` → `GameState.last_state_battlefield`
+//! - `Card.getPower()` (during trigger) → `resolve_lki_power()`
 
 use crate::card::{CardInstance, CounterType};
 use crate::ids::{CardId, PlayerId};
@@ -40,4 +86,104 @@ impl CardSnapshot {
             card_name: card.card_name.clone(),
         }
     }
+}
+
+/// LKI methods for `GameState`.
+/// Implemented in this module to keep all LKI logic centralized.
+impl crate::game::GameState {
+    /// Snapshot all battlefield cards for LKI.
+    /// Mirrors Java's `Game.copyLastState()`.
+    /// Called at phase transitions, before SBAs, before combat.
+    pub fn copy_last_state(&mut self) {
+        // Update existing snapshots for cards still on the battlefield.
+        // Add new snapshots for cards that entered since last checkpoint.
+        // Keep stale snapshots for cards that left — they serve as LKI
+        // for trigger SVars like TriggeredCard$CardPower.
+        // This matches Java's behavior where lastStateBattlefield is only
+        // fully cleared at major checkpoints but individual entries persist
+        // through resolution chains.
+        for card in self.cards.iter() {
+            if card.zone == ZoneType::Battlefield {
+                if let Some(existing) = self
+                    .last_state_battlefield
+                    .iter_mut()
+                    .find(|s| s.id == card.id)
+                {
+                    *existing = CardSnapshot::from_card(card);
+                } else {
+                    self.last_state_battlefield
+                        .push(CardSnapshot::from_card(card));
+                }
+            }
+        }
+    }
+
+    /// Look up a card's LKI snapshot from the last battlefield state.
+    /// Returns None if the card wasn't on the battlefield at the last checkpoint.
+    pub fn get_lki_snapshot(&self, card_id: CardId) -> Option<&CardSnapshot> {
+        self.last_state_battlefield.iter().find(|s| s.id == card_id)
+    }
+
+    /// Update the LKI snapshot for a specific card on the battlefield.
+    /// If the card is already in the snapshot, update it. Otherwise, add it.
+    /// Called when a card enters the battlefield or its state changes significantly.
+    /// Mirrors Java's incremental LKI updates between full copyLastState() calls.
+    pub fn update_lki_snapshot(&mut self, card_id: CardId) {
+        let card = &self.cards[card_id.index()];
+        if card.zone != ZoneType::Battlefield {
+            return;
+        }
+        let snapshot = CardSnapshot::from_card(card);
+        if let Some(existing) = self
+            .last_state_battlefield
+            .iter_mut()
+            .find(|s| s.id == card_id)
+        {
+            *existing = snapshot;
+        } else {
+            self.last_state_battlefield.push(snapshot);
+        }
+    }
+}
+
+/// Resolve LKI power for a trigger source card.
+///
+/// Checks `card.lki_power` (captured at zone-change time) first, then falls
+/// back to the periodic snapshot if `lki_power` is zero and a snapshot exists
+/// with non-zero power.
+///
+/// This handles the edge case where a card dies/leaves after entering the
+/// battlefield but before the next `copy_last_state()` checkpoint — the
+/// per-card LKI captures the correct value at zone-change time.
+///
+/// Returns 0 if no LKI data exists.
+pub fn resolve_lki_power(game: &crate::game::GameState, trigger_src: CardId) -> i32 {
+    let lki = game.card(trigger_src).lki_power;
+    if lki != 0 {
+        return lki;
+    }
+    // lki_power is 0 — could be base 0/X creature or power was reduced to 0 by effects.
+    // Check snapshot for pre-resolution state.
+    if let Some(snapshot) = game.get_lki_snapshot(trigger_src) {
+        return snapshot.power;
+    }
+    lki
+}
+
+/// Resolve LKI toughness for a trigger source card.
+///
+/// Checks `card.lki_toughness` (captured at zone-change time) first, then
+/// falls back to the periodic snapshot if `lki_toughness` is zero and a
+/// snapshot exists.
+///
+/// Returns 0 if no LKI data exists.
+pub fn resolve_lki_toughness(game: &crate::game::GameState, trigger_src: CardId) -> i32 {
+    let lki = game.card(trigger_src).lki_toughness;
+    if lki != 0 {
+        return lki;
+    }
+    if let Some(snapshot) = game.get_lki_snapshot(trigger_src) {
+        return snapshot.toughness;
+    }
+    lki
 }

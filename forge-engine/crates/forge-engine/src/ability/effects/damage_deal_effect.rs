@@ -8,7 +8,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // For triggered abilities, resolve Defined$ for target
     let target_player = sa.target_chosen.target_player.or_else(|| {
-        if let Some(defined) = sa.params.get("Defined") {
+        if let Some(defined) = sa.defined() {
             resolve_defined_player(defined, sa.activating_player, ctx.game)
         } else {
             None

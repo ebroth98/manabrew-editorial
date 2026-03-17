@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { invoke } from '@tauri-apps/api/core';
+import { tauriApi } from '@/api/tauri';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
   RoomInfo,
@@ -67,14 +67,14 @@ export const useServerStore = create<ServerState>()((set, get) => ({
   async connect(host, port, username, password) {
     set({ username, connecting: true, error: null });
     try {
-      await invoke('server_connect', { host, port, username, password });
+      await tauriApi.server.connect({ host, port, username, password });
     } catch (e) {
       set({ connecting: false, error: String(e) });
     }
   },
 
   async disconnect() {
-    await invoke('server_disconnect');
+    await tauriApi.server.disconnect();
     set({
       connected: false,
       playerId: null,
@@ -90,37 +90,37 @@ export const useServerStore = create<ServerState>()((set, get) => ({
   },
 
   async listRooms() {
-    await invoke('server_list_rooms');
+    await tauriApi.server.listRooms();
   },
 
   async listPlayers() {
-    await invoke('server_list_players');
+    await tauriApi.server.listPlayers();
   },
 
   async createRoom(roomName, maxPlayers, format) {
-    await invoke('server_create_room', { roomName, maxPlayers, format });
+    await tauriApi.server.createRoom({ roomName, maxPlayers, format });
   },
 
   async joinRoom(roomId) {
-    await invoke('server_join_room', { roomId });
+    await tauriApi.server.joinRoom({ roomId });
   },
 
   async leaveRoom() {
-    await invoke('server_leave_room');
+    await tauriApi.server.leaveRoom();
     set({ currentRoom: null });
     get().listRooms();
   },
 
   async setReady(ready) {
-    await invoke('server_set_ready', { ready });
+    await tauriApi.server.setReady({ ready });
   },
 
   async setDeckSelection(deckName, deckList, commanderName) {
-    await invoke('server_set_deck_selection', { deckName, deckList, commanderName: commanderName ?? null });
+    await tauriApi.server.setDeckSelection({ deckName, deckList, commanderName: commanderName ?? null });
   },
 
   async startGame() {
-    await invoke('server_start_game');
+    await tauriApi.server.startGame();
   },
 
   setupListeners() {

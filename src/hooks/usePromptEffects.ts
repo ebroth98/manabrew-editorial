@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import type { AgentPrompt } from "@/stores/useGameStore";
-import type { LibraryPeekMode } from "@/components/game/LibraryPeekModal";
+import type { LibraryPeekMode } from "@/components/game/modals";
 import type { Card } from "@/types/xmage";
 
 interface UsePromptEffectsOptions {

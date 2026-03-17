@@ -1,35 +1,26 @@
 import { useGameStore } from "@/stores/useGameStore";
+import { useGameUIStore } from "@/stores/useGameUIStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
-import type { Card as XMageCard, Player, ActivatableAbilityInfo } from "@/types/xmage";
+import type { Card as XMageCard, Player } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
-import { FreeBattlefield } from "@/components/game/FreeBattlefield";
 import { CardPreview } from "@/components/game/CardPreview";
 import { GameModals } from "@/components/game/GameModals";
 import { GameOverScreen } from "@/components/game/GameOverScreen";
 import { GameLoadingScreen } from "@/components/game/GameLoadingScreen";
-import { RightActionPanel } from "@/components/game/RightActionPanel";
-import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
+import { RightActionPanel } from "@/components/game/panels";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
-import { PlayerPanel } from "@/components/game/PlayerPanel";
-import { OpponentHalf } from "@/components/game/OpponentHalf";
-import { MidPhaseStrip } from "@/components/game/MidPhaseStrip";
-import { HandDisplay } from "@/components/game/HandDisplay";
 import { PlayModePicker } from "@/components/game/PlayModePicker";
-import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
 import { BATTLEFIELD_CARD } from "@/components/game/game.styles";
 import { useFlashQueue } from "@/hooks/useFlashQueue";
 import { useHandDrag } from "@/hooks/useHandDrag";
 import { useCardHover } from "@/hooks/useCardHover";
 import { usePromptEffects } from "@/hooks/usePromptEffects";
 import { useCombatState } from "@/hooks/useCombatState";
-import {
-  ResizablePanelGroup,
-  ResizablePanel,
-  ResizableHandle,
-} from "@/components/ui/resizable";
+import { useGameEventListeners } from "@/hooks/useGameEventListeners";
+import { GameBoard } from "@/components/game/GameBoard";
 import { cn } from "@/lib/utils";
 import { Navigate, useLocation } from "react-router-dom";
 
@@ -99,7 +90,6 @@ export default function Game() {
     restoreSnapshot,
     isMultiplayer,
     isHost,
-    setupListeners,
   } = useGameStore();
   const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
   const zonePanelSide = usePreferencesStore((s) => s.zonePanelSide);
@@ -110,19 +100,20 @@ export default function Game() {
 
   const promptType = currentPrompt?.type;
 
-  // Ability picker state (for multi-ability lands like Yavimaya Coast)
-  const [abilityPickerState, setAbilityPickerState] = useState<{
-    cardId: string;
-    cardName: string;
-    abilities: ActivatableAbilityInfo[];
-  } | null>(null);
-
-  // Play mode picker state (for cards with multiple cast modes like Spectacle/Evoke)
-  const [playModePicker, setPlayModePicker] = useState<{
-    cardId: string;
-    cardName: string;
-    options: { cardId: string; mode: string; modeLabel: string }[];
-  } | null>(null);
+  // UI state from Zustand store (modals, panels)
+  const {
+    abilityPicker: abilityPickerState,
+    playModePicker,
+    viewingZone,
+    isActionPanelCollapsed,
+    openAbilityPicker,
+    closeAbilityPicker,
+    openPlayModePicker,
+    closePlayModePicker,
+    openZoneViewer,
+    closeZoneViewer,
+    toggleActionPanel,
+  } = useGameUIStore();
 
   // Wraps castSpell: if a card has multiple play modes, show picker first
   const handleCastSpell = (cardId: string) => {
@@ -132,7 +123,7 @@ export default function Game() {
         ?? gameView?.graveyard?.find((c) => c.id === cardId)?.name
         ?? gameView?.exile?.find((c) => c.id === cardId)?.name
         ?? "Card";
-      setPlayModePicker({ cardId, cardName, options });
+      openPlayModePicker({ cardId, cardName, options });
     } else if (options && options.length === 1) {
       castSpell(cardId, options[0].mode);
     } else {
@@ -157,21 +148,60 @@ export default function Game() {
     currentPrompt,
   });
 
-  // Zone viewer
-  const [viewingZone, setViewingZone] = useState<{
-    title: string;
-    cards: XMageCard[];
-    onClickCard?: (cardId: string) => void;
-  } | null>(null);
+  // Zone viewer helpers (wrap store actions)
   function openZone(title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) {
-    setViewingZone({ title, cards, onClickCard });
+    openZoneViewer({ title, cards, onClickCard });
   }
   function closeZone() {
-    setViewingZone(null);
+    closeZoneViewer();
+  }
+  function openZoneAndCast(title: string, cards: XMageCard[], onClickCard: (cardId: string) => void) {
+    openZoneViewer({ title, cards, onClickCard: (cardId) => {
+      closeZoneViewer();
+      onClickCard(cardId);
+    }});
   }
 
-  // Right-side prompt/action panel collapse state
-  const [isActionPanelCollapsed, setIsActionPanelCollapsed] = useState(false);
+  // Land tap/untap handler with ability picker support
+  const handleTapLand = (card: XMageCard) => {
+    if (promptType !== "chooseAction") {
+      tapLand(card.id);
+      return;
+    }
+
+    const abilities = (currentPrompt?.activatableAbilityIds ?? [])
+      .filter((a) => a.cardId === card.id);
+    const isManaSource = (currentPrompt?.tappableLandIds ?? []).includes(card.id);
+    const hasManaAbility = isManaSource && !card.types.includes("Land");
+
+    // If the card has both a mana ability and non-mana abilities, show picker
+    if (abilities.length > 1 || (abilities.length >= 1 && hasManaAbility)) {
+      const pickerAbilities = hasManaAbility
+        ? [
+            {
+              cardId: card.id,
+              abilityIndex: -1,
+              description: "{T}: Tap for mana",
+              isManaAbility: true,
+            },
+            ...abilities,
+          ]
+        : abilities;
+      openAbilityPicker({
+        cardId: card.id,
+        cardName: card.name,
+        abilities: pickerAbilities,
+      });
+    } else if (abilities.length === 1) {
+      activateAbility(card.id, abilities[0].abilityIndex);
+    } else {
+      tapLand(card.id);
+    }
+  };
+
+  const handleUntapLand = (card: XMageCard) => {
+    untapLand(card.id);
+  };
 
   // Prompt-driven effects: auto-pass, passUntilEot, library peek, zone target, spell stack
   const {
@@ -221,15 +251,7 @@ export default function Game() {
   const activeFlash = useFlashQueue(flashDurationMs);
 
   // Set up event listeners on mount
-  useEffect(() => {
-    let cleanup: (() => void) | undefined;
-    setupListeners().then((fn) => {
-      cleanup = fn;
-    });
-    return () => {
-      cleanup?.();
-    };
-  }, [setupListeners]);
+  useGameEventListeners();
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -412,244 +434,61 @@ export default function Game() {
       <ArrowOverlay arrows={arrows} />
 
       <div className="flex gap-1 min-h-0 flex-1 overflow-hidden">
-        <div className="flex flex-col gap-1 min-h-0 flex-1 overflow-hidden">
-          {/* ── Resizable split: opponent (top) / me (bottom) ─── */}
-          <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
-            <ResizablePanel defaultSize={45} minSize={20}>
-              {displayOpponents.length <= 1 ? (
-                <OpponentHalf
-                  player={displayOpponents[0]!}
-                  permanents={opponentPermanentsByPlayer.get(displayOpponents[0]!.id) ?? []}
-                  graveyard={gameView.opponentGraveyard ?? []}
-                  exile={gameView.opponentExile ?? []}
-                  commandZone={gameView.opponentCommandZone ?? undefined}
-                  isTargetable={playerIsTargetable(displayOpponents[0]!.id)}
-                  onTarget={() => handleTargetPlayer(displayOpponents[0]!.id)}
-                  isFlashing={turnFlashPlayerId === displayOpponents[0]?.id}
-                  activePlayerId={gameView.activePlayerId}
-                  priorityPlayerId={gameView.priorityPlayerId}
-                  promptType={promptType}
-                  pendingAttacker={pendingAttacker}
-                  attackerIds={currentPrompt?.attackerIds}
-                  onClickCard={handleBattlefieldClick}
-                  onClickAnyCard={handleAttackerClick}
-                  onHoverCard={handleHoverCard}
-                  onFlipCard={handleFlipCard}
-                  showBackFace={showBackFace}
-                  onOpenZone={openZone}
-                  zonePanelSide={zonePanelSide}
-                  zonePanelOrder={zonePanelOrder}
-                />
-              ) : (
-                <ResizablePanelGroup orientation="horizontal">
-                  {displayOpponents.map((op, i) => (
-                    <Fragment key={op.id}>
-                      {i > 0 && <ResizableHandle />}
-                      <ResizablePanel>
-                        <OpponentHalf
-                          player={op}
-                          permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
-                          graveyard={i === 0 ? (gameView.opponentGraveyard ?? []) : []}
-                          exile={i === 0 ? (gameView.opponentExile ?? []) : []}
-                          commandZone={i === 0 ? (gameView.opponentCommandZone ?? undefined) : undefined}
-                          isTargetable={playerIsTargetable(op.id)}
-                          onTarget={() => handleTargetPlayer(op.id)}
-                          isFlashing={turnFlashPlayerId === op.id}
-                          activePlayerId={gameView.activePlayerId}
-                          priorityPlayerId={gameView.priorityPlayerId}
-                          promptType={promptType}
-                          pendingAttacker={pendingAttacker}
-                          attackerIds={currentPrompt?.attackerIds}
-                          onClickCard={handleBattlefieldClick}
-                          onClickAnyCard={handleAttackerClick}
-                          onHoverCard={handleHoverCard}
-                          onFlipCard={handleFlipCard}
-                          showBackFace={showBackFace}
-                          onOpenZone={openZone}
-                          zonePanelSide={zonePanelSide}
-                          zonePanelOrder={zonePanelOrder}
-                        />
-                      </ResizablePanel>
-                    </Fragment>
-                  ))}
-                </ResizablePanelGroup>
-              )}
-            </ResizablePanel>
+        <GameBoard
+          me={me!}
+          opponents={displayOpponents}
+          myPermanents={myPermanents}
+          opponentPermanentsByPlayer={opponentPermanentsByPlayer}
+          myHand={gameView.myHand}
+          graveyard={gameView.graveyard}
+          exile={gameView.exile}
+          myCommandZone={gameView.myCommandZone}
+          opponentGraveyard={gameView.opponentGraveyard ?? []}
+          opponentExile={gameView.opponentExile ?? []}
+          opponentCommandZone={gameView.opponentCommandZone}
+          activePlayerId={gameView.activePlayerId}
+          priorityPlayerId={gameView.priorityPlayerId}
+          step={gameView.step}
+          promptType={promptType}
+          currentPrompt={currentPrompt}
+          pendingAttackers={pendingAttackers}
+          pendingAttacker={pendingAttacker}
+          blockAssignments={blockAssignments}
+          playerIsTargetable={playerIsTargetable}
+          turnFlashPlayerId={turnFlashPlayerId}
+          showBackFace={showBackFace}
+          zonePanelSide={zonePanelSide}
+          zonePanelOrder={zonePanelOrder}
+          isOverBattlefield={isOverBattlefield}
+          battlefieldContainerRef={battlefieldContainerRef}
+          onHandCardDragStart={startHandCardDrag}
+          onHoverCard={handleHoverCard}
+          onFlipCard={handleFlipCard}
+          onBattlefieldClick={handleBattlefieldClick}
+          onAttackerClick={handleAttackerClick}
+          onTargetPlayer={handleTargetPlayer}
+          onOpenZone={openZone}
+          onOpenZoneAndCast={(title, cards, onClickCard) =>
+            openZoneAndCast(title, cards, (cardId) => {
+              handleCastSpell(cardId);
+              onClickCard(cardId);
+            })
+          }
+          onTapLand={
+            promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
+              ? handleTapLand
+              : undefined
+          }
+          onUntapLand={
+            promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
+              ? handleUntapLand
+              : undefined
+          }
+        />
 
-            <ResizableHandle
-              withHandle={false}
-              gripOnly
-              className="h-8 w-full my-0 flex items-center justify-center overflow-visible"
-            >
-              <MidPhaseStrip currentStep={gameView.step} />
-            </ResizableHandle>
-
-            <ResizablePanel defaultSize={60} minSize={35}>
-              <div className="flex flex-col gap-1 h-full overflow-hidden">
-                <div className="flex gap-2 flex-1 min-h-0 overflow-hidden">
-                  <div
-                    ref={battlefieldContainerRef}
-                    className="relative flex flex-col flex-1 min-w-0 overflow-hidden"
-                  >
-                    <div
-                      className={cn(
-                        "absolute bottom-1 z-20",
-                        zonePanelSide === "left" ? "left-1" : "right-1",
-                      )}
-                    >
-                      <ZoneActionColumn
-                        libraryCount={me!.libraryCount}
-                        graveyardCount={gameView.graveyard.length}
-                        exileCount={gameView.exile.length}
-                        order={zonePanelOrder}
-                        onOpenGraveyard={() => {
-                          const hasPlayable = gameView.graveyard.some((c) => c.isPlayable);
-                          openZone(
-                            "Your Graveyard",
-                            gameView.graveyard,
-                            hasPlayable && promptType === "chooseAction"
-                              ? (cardId) => {
-                                  closeZone();
-                                  handleCastSpell(cardId);
-                                }
-                              : undefined,
-                          );
-                        }}
-                        onOpenExile={() => {
-                          const hasPlayable = gameView.exile.some((c) => c.isPlayable);
-                          openZone(
-                            "Your Exile",
-                            gameView.exile,
-                            hasPlayable && promptType === "chooseAction"
-                              ? (cardId) => {
-                                  closeZone();
-                                  handleCastSpell(cardId);
-                                }
-                              : undefined,
-                          );
-                        }}
-                        hasPlayableInGraveyard={promptType === "chooseAction" && gameView.graveyard.some((c) => c.isPlayable)}
-                        hasPlayableInExile={promptType === "chooseAction" && gameView.exile.some((c) => c.isPlayable)}
-                      />
-                    </div>
-                    <FreeBattlefield
-                      cards={myPermanents}
-                      className="flex-1"
-                      onClickCard={
-                        promptType === "chooseAttackers" ||
-                        promptType === "chooseBlockers" ||
-                        promptType === "chooseTargetCard" ||
-                        promptType === "chooseTargetAny"
-                          ? handleBattlefieldClick
-                          : undefined
-                      }
-                      onHoverCard={handleHoverCard}
-                      onFlipCard={handleFlipCard}
-                      showBackFace={showBackFace}
-                      pendingCardIds={
-                        promptType === "chooseAttackers"
-                          ? pendingAttackers
-                          : promptType === "chooseBlockers"
-                            ? blockAssignments.map((a) => a.blockerId)
-                            : undefined
-                      }
-                      tappableLandIds={
-                        promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
-                          ? (currentPrompt?.tappableLandIds ?? [])
-                          : undefined
-                      }
-                      onTapLand={
-                        promptType === "chooseAction"
-                          ? (card) => {
-                              const abilities = (currentPrompt?.activatableAbilityIds ?? [])
-                                .filter((a) => a.cardId === card.id);
-                              const isManaSource = (currentPrompt?.tappableLandIds ?? []).includes(card.id);
-                              const hasManaAbility = isManaSource && !card.types.includes("Land");
-                              // If the card has both a mana ability and non-mana abilities
-                              // (e.g. Incubation Druid: tap for mana + Adapt), show the
-                              // picker so the player can choose which ability to use.
-                              if (abilities.length > 1 || (abilities.length >= 1 && hasManaAbility)) {
-                                const pickerAbilities = hasManaAbility
-                                  ? [
-                                      {
-                                        cardId: card.id,
-                                        abilityIndex: -1,
-                                        description: "{T}: Tap for mana",
-                                        isManaAbility: true,
-                                      },
-                                      ...abilities,
-                                    ]
-                                  : abilities;
-                                setAbilityPickerState({
-                                  cardId: card.id,
-                                  cardName: card.name,
-                                  abilities: pickerAbilities,
-                                });
-                              } else if (abilities.length === 1) {
-                                activateAbility(card.id, abilities[0].abilityIndex);
-                              } else {
-                                tapLand(card.id);
-                              }
-                            }
-                          : promptType === "payCombatCost" || promptType === "payManaCost"
-                            ? (card) => tapLand(card.id)
-                            : undefined
-                      }
-                      untappableLandIds={
-                        promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
-                          ? (currentPrompt?.untappableLandIds ?? [])
-                          : undefined
-                      }
-                      onUntapLand={
-                        promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
-                          ? (card) => untapLand(card.id)
-                          : undefined
-                      }
-                      bottomReserved={130}
-                      leftReserved={zonePanelSide === "left" ? ZONE_COLUMN_RESERVED_PX : 0}
-                      rightReserved={zonePanelSide === "right" ? ZONE_COLUMN_RESERVED_PX : 0}
-                      isDropActive={isOverBattlefield}
-                    />
-                    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
-                      <HandDisplay
-                        cards={gameView.myHand}
-                        onHoverCard={handleHoverCard}
-                        onFlipCard={handleFlipCard}
-                        showBackFace={showBackFace}
-                        onStartDrag={startHandCardDrag}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </ResizablePanel>
-          </ResizablePanelGroup>
-
-          <div className="flex items-center gap-2 shrink-0">
-            <div className="flex-1 min-w-0">
-              <PlayerPanel
-                player={me!}
-                isOpponent={false}
-                isActiveTurn={gameView.activePlayerId === me!.id}
-                isPriorityPlayer={gameView.priorityPlayerId === me!.id}
-                isTargetable={playerIsTargetable(me!.id)}
-                onTarget={() => handleTargetPlayer(me!.id)}
-                isFlashing={turnFlashPlayerId === me!.id}
-                onOpenCommandZone={() => {
-                  if ((gameView.myCommandZone?.length ?? 0) > 0) {
-                    openZone("Your Command Zone", gameView.myCommandZone!);
-                  }
-                }}
-                commandZoneCount={gameView.myCommandZone?.length ?? 0}
-              />
-            </div>
-          </div>
-
-        </div>
-
-          <RightActionPanel
+        <RightActionPanel
           collapsed={isActionPanelCollapsed}
-          onToggleCollapse={() => setIsActionPanelCollapsed((prev) => !prev)}
+          onToggleCollapse={toggleActionPanel}
           promptType={promptType}
           isWaitingForResponse={isWaitingForResponse}
           isAutoPassing={isAutoPassing}
@@ -675,28 +514,28 @@ export default function Game() {
             "Unknown"
           }
           isMyTurn={gameView.activePlayerId === me!.id}
-            gameLog={gameLog}
-            onHoverLogCard={handleLogCardHover}
-            snapshots={snapshots}
-            canRestoreSnapshots={
-              (!isMultiplayer || isHost) &&
-              (promptType === "chooseAction" ||
-                promptType === "chooseAttackers" ||
-                promptType === "chooseBlockers")
-            }
-            onRestoreSnapshot={restoreSnapshot}
-            payManaCostInfo={
-              promptType === "payManaCost" && currentPrompt?.manaCost != null
-                ? {
-                    cardName: currentPrompt.cardName ?? "Spell",
-                    manaCost: currentPrompt.manaCost,
-                    manaPool: currentPrompt.gameView?.players?.[0]?.manaPool ?? {},
-                  }
-                : null
-            }
-            onPayManaCost={payManaCost}
-            onCancelManaCost={cancelManaCost}
-          />
+          gameLog={gameLog}
+          onHoverLogCard={handleLogCardHover}
+          snapshots={snapshots}
+          canRestoreSnapshots={
+            (!isMultiplayer || isHost) &&
+            (promptType === "chooseAction" ||
+              promptType === "chooseAttackers" ||
+              promptType === "chooseBlockers")
+          }
+          onRestoreSnapshot={restoreSnapshot}
+          payManaCostInfo={
+            promptType === "payManaCost" && currentPrompt?.manaCost != null
+              ? {
+                  cardName: currentPrompt.cardName ?? "Spell",
+                  manaCost: currentPrompt.manaCost,
+                  manaPool: currentPrompt.gameView?.players?.[0]?.manaPool ?? {},
+                }
+              : null
+          }
+          onPayManaCost={payManaCost}
+          onCancelManaCost={cancelManaCost}
+        />
       </div>
 
       <GameModals
@@ -727,9 +566,9 @@ export default function Game() {
           } else {
             activateAbility(abilityPickerState!.cardId, ability.abilityIndex);
           }
-          setAbilityPickerState(null);
+          closeAbilityPicker();
         }}
-        onCancelAbilityPicker={() => setAbilityPickerState(null)}
+        onCancelAbilityPicker={closeAbilityPicker}
         onMulliganDecision={mulliganDecision}
         onMulliganPutBackDecision={mulliganPutBackDecision}
         isWaitingForResponse={isWaitingForResponse}
@@ -767,9 +606,9 @@ export default function Game() {
           options={playModePicker.options}
           onSelect={(mode) => {
             castSpell(playModePicker.cardId, mode);
-            setPlayModePicker(null);
+            closePlayModePicker();
           }}
-          onCancel={() => setPlayModePicker(null)}
+          onCancel={closePlayModePicker}
         />
       )}
 

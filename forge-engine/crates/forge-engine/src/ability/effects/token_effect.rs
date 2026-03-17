@@ -12,10 +12,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Mirrors Java TokenEffect / TokenEffectBase.
     let mut amount: usize =
         super::resolve_numeric_svar(ctx.game, sa, "TokenAmount", 1).max(0) as usize;
-    let token_script = sa.params.get("TokenScript").cloned().unwrap_or_default();
+    let token_script = sa.token_script().unwrap_or("").to_string();
     let token_owner_str = sa
-        .params
-        .get("TokenOwner")
+        .token_owner()
         .map(|s| s.to_lowercase())
         .unwrap_or_else(|| "you".to_string());
 
@@ -159,11 +158,7 @@ fn create_tokens(
         // TokenTapped$ True: token enters the battlefield tapped.
         // Must be set AFTER move_card because enter_battlefield() resets tapped to false.
         // Mirrors Java TokenEffectBase line 131: if (sa.hasParam("TokenTapped")) tok.setTapped(true);
-        if sa
-            .params
-            .get("TokenTapped")
-            .map_or(false, |v| v.eq_ignore_ascii_case("true"))
-        {
+        if sa.is_param_true("TokenTapped") {
             ctx.game.tap(token_id);
         }
         ctx.trigger_handler
