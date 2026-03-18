@@ -805,7 +805,7 @@ impl PlayerAgent for TauriAgent {
     }
 
     fn is_human(&self) -> bool {
-        true
+        !matches!(self.prompt_sink, PromptSink::Ai(_))
     }
 
     fn specify_mana_combo(
