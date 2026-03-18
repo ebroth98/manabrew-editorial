@@ -235,8 +235,51 @@ fn matches_type_and_qualifiers(filter: &str, card: &CardInstance, source: &CardI
                         if !card.color.has_color(color) {
                             return false;
                         }
+                    } else if let Some(kw) = sub_lower.strip_prefix("with") {
+                        // "withFlying", "withoutFlying", etc.
+                        if let Some(without_kw) = kw.strip_prefix("out") {
+                            // "withoutFlying" — card must NOT have this keyword
+                            let kw_name = &sub[7..]; // original case
+                            if card.has_keyword(kw_name) {
+                                return false;
+                            }
+                        } else if !kw.is_empty() {
+                            // "withFlying" — card must have this keyword
+                            let kw_name = &sub[4..]; // original case
+                            if !card.has_keyword(kw_name) {
+                                return false;
+                            }
+                        }
+                    } else if let Some(negated) = sub_lower.strip_prefix("non") {
+                        // Negated qualifier: "nonBlack", "nonArtifact", "nonFlying", etc.
+                        let should_negate = match negated {
+                            "creature" => card.is_creature(),
+                            "land" => card.is_land(),
+                            "artifact" => card.type_line.is_artifact(),
+                            "enchantment" => card.type_line.is_enchantment(),
+                            "token" => card.is_token,
+                            _ => {
+                                if let Some(color) = Color::from_name(negated) {
+                                    card.color.has_color(color)
+                                } else {
+                                    // nonSubtype: e.g., "nonHuman", "nonWall"
+                                    card.type_line.has_subtype(
+                                        &sub[3..], // use original case for subtype
+                                    )
+                                }
+                            }
+                        };
+                        if should_negate {
+                            return false;
+                        }
+                    } else if !sub.is_empty() {
+                        // Fall through: check as creature subtype (Wall, Zombie, etc.)
+                        // Mirrors card_has_property behavior: unrecognized qualifiers
+                        // are checked against the card's type_line subtypes.
+                        if !card.type_line.has_subtype(sub) {
+                            return false;
+                        }
                     }
-                    // Unknown qualifiers pass (conservative fallback)
                 }
             }
         }
