@@ -1,49 +1,9 @@
 import type { Card as XMageCard, Player, StackObject } from "@/types/xmage";
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
+import type { PromptType } from "@/types/promptType";
 
-export type PromptActionType =
-  | "chooseAction"
-  | "chooseAttackers"
-  | "chooseBlockers"
-  | "mulligan"
-  | "mulliganPutBack"
-  | "chooseTargetPlayer"
-  | "chooseTargetCard"
-  | "chooseTargetAny"
-  | "chooseTargetCardFromZone"
-  | "chooseTargetSpell"
-  | "chooseMode"
-  | "chooseOptionalTrigger"
-  | "chooseKicker"
-  | "chooseBuyback"
-  | "chooseMultikicker"
-  | "chooseReplicate"
-  | "chooseAlternativeCost"
-  | "scry"
-  | "surveil"
-  | "dig"
-  | "chooseDiscard"
-  | "payCombatCost"
-  | "payManaCost"
-  | "chooseColor"
-  | "chooseType"
-  | "chooseNumber"
-  | "chooseCardName"
-  | "chooseDelve"
-  | "chooseConvoke"
-  | "chooseImprovise"
-  | "specifyManaCombo"
-  | "chooseDamageAssignmentOrder"
-  | "chooseCardsForEffect"
-  | "choosePhyrexian"
-  | "chooseExertAttackers"
-  | "chooseEnlistAttackers"
-  | "reorderLibrary"
-  | "exploreDecision"
-  | "helpPayAssist"
-  | "gameOver"
-  | string;
+export type PromptActionType = PromptType;
 
 export interface CombatAssignment {
   blockerId: string;
@@ -65,7 +25,7 @@ export interface OpponentHalfProps {
   isFlashing: boolean;
   activePlayerId: string;
   priorityPlayerId: string;
-  promptType: string | undefined;
+  promptType: PromptType | undefined;
   pendingAttacker: string | null;
   attackerIds?: string[];
   onClickCard: (card: XMageCard) => void;

@@ -9,9 +9,11 @@ import {
 import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
 import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/xmage";
 import type { AgentPrompt } from "@/stores/useGameStore";
+import type { PromptType } from "@/types/promptType";
+import { PromptType as PT } from "@/types/promptType";
 
 interface TargetModalsProps {
-  promptType?: string;
+  promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
   // Zone viewer
   viewingZone: { title: string; cards: XMageCard[]; onClickCard?: (cardId: string) => void } | null;
@@ -111,7 +113,7 @@ export function TargetModals({
         />
       )}
 
-      {promptType === "chooseCardsForEffect" && currentPrompt?.zoneCards != null && (
+      {promptType === PT.ChooseCardsForEffect && currentPrompt?.zoneCards != null && (
         <ChooseCardsModal
           cards={currentPrompt.zoneCards}
           minChoices={currentPrompt.minChoices ?? 1}
@@ -121,7 +123,7 @@ export function TargetModals({
         />
       )}
 
-      {promptType === "chooseExertAttackers" && currentPrompt?.attackerCards != null && (
+      {promptType === PT.ChooseExertAttackers && currentPrompt?.attackerCards != null && (
         <ChooseCardsModal
           cards={currentPrompt.attackerCards}
           minChoices={0}
@@ -132,7 +134,7 @@ export function TargetModals({
         />
       )}
 
-      {promptType === "chooseEnlistAttackers" && currentPrompt?.attackerCards != null && (
+      {promptType === PT.ChooseEnlistAttackers && currentPrompt?.attackerCards != null && (
         <ChooseCardsModal
           cards={currentPrompt.attackerCards}
           minChoices={0}

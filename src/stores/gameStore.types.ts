@@ -1,6 +1,7 @@
 import type { GameView, Card, ActivatableAbilityInfo } from '@/types/xmage';
 import type { GameLogEntry } from '@/types/gameLog';
 import type { GameSnapshotEntry } from '@/types/gameSnapshot';
+import type { PromptType } from '@/types/promptType';
 
 export interface DisplayEvent {
   kind: string;
@@ -14,7 +15,7 @@ export interface DisplayEvent {
 }
 
 export interface AgentPrompt {
-  type: string;
+  type: PromptType;
   gameView: GameView;
   displayEvents?: DisplayEvent[];
   playableCardIds?: string[];

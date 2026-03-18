@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::{valid_filter, CardInstance};
 use crate::ids::PlayerId;
 
 // ── ReplacementType ───────────────────────────────────────────────────────────
@@ -359,27 +359,7 @@ impl ReplacementEffect {
 /// - `Permanent`  — matches all permanents (no restriction)
 /// - `Card`       — matches all cards (no restriction)
 pub fn matches_valid_card(expr: &str, card: &CardInstance, source: &CardInstance) -> bool {
-    for token in expr.split('+') {
-        let t = token.trim();
-        match t {
-            "Card.Self" => {
-                if card.id != source.id {
-                    return false;
-                }
-            }
-            "Creature" => {
-                if !card.is_creature() {
-                    return false;
-                }
-            }
-            // "Permanent", "Card", and empty tokens impose no restriction.
-            "Permanent" | "Card" | "" => {}
-            _ => {
-                // Unknown token — treat as permissive (don't reject).
-            }
-        }
-    }
-    true
+    valid_filter::matches_valid_card(expr, card, source)
 }
 
 /// Check if a player matches a `ValidPlayer$` expression.
@@ -389,12 +369,7 @@ pub fn matches_valid_card(expr: &str, card: &CardInstance, source: &CardInstance
 /// - `Player.inGame`    — any player
 /// - `Player` / empty   — any player (permissive default)
 pub fn matches_valid_player(expr: &str, player: PlayerId, source: &CardInstance) -> bool {
-    match expr.trim() {
-        "You" => player == source.controller,
-        "Opponent" => player != source.controller,
-        "Player.inGame" | "Player" | "" => true,
-        _ => true, // Unknown — permissive fallback.
-    }
+    valid_filter::matches_valid_player(expr, player, source.controller)
 }
 
 /// Check if a zone name string matches `zone`.

@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::{valid_filter, CardInstance};
 use crate::staticability::StaticMode;
 
 pub fn assign_as_unblocked(cards: &[CardInstance], card: &CardInstance, optional: bool) -> bool {
@@ -63,11 +63,5 @@ pub fn has_mandatory_assign_as_unblocked(cards: &[CardInstance], card: &CardInst
 }
 
 fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,
-        Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),
-        Some(v) if v.eq_ignore_ascii_case("Card.Self") => card.id == source.id,
-        _ => true,
-    }
+    valid_filter::matches_valid_card_opt(valid, card, source)
 }

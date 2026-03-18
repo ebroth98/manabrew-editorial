@@ -82,7 +82,9 @@ export function DeckBuilder() {
       const updates = new Map<string, Partial<Card>>();
       for (const [key, sc] of scryfallMap) updates.set(key, scryfallCardToPartial(sc));
       enrichDeckCards(updates);
-    }).catch(() => {});
+    }).catch((err) => {
+      console.warn('[DeckBuilder] Failed to enrich card images:', err);
+    });
   }, [currentDeck.cards, currentDeck.sideboard, enrichDeckCards]);
 
   // Filter

@@ -97,3 +97,28 @@ export async function fetchCardCollection(cards: { name: string; setCode?: strin
   }
   return result;
 }
+
+/**
+ * Extract the primary image URL from a Scryfall card response.
+ * Handles both single-faced cards (top-level image_uris) and double-faced cards
+ * (image_uris in card_faces array).
+ */
+export function getScryfallImageUrl(card: ScryfallCard): string | undefined {
+  const sc = card as unknown as { 
+    card_faces?: { image_uris?: { normal?: string } }[];
+    image_uris?: { normal?: string };
+  };
+  return sc.image_uris?.normal ?? sc.card_faces?.[0]?.image_uris?.normal;
+}
+
+/**
+ * Extract mana cost from a Scryfall card (handles DFCs).
+ * For double-faced cards, returns the front face's mana cost.
+ */
+export function getScryfallManaCost(card: ScryfallCard): string | undefined {
+  const sc = card as unknown as {
+    card_faces?: { mana_cost?: string }[];
+    mana_cost?: string;
+  };
+  return sc.mana_cost ?? sc.card_faces?.[0]?.mana_cost;
+}

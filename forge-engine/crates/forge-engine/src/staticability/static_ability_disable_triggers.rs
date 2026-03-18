@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::{valid_filter, CardInstance};
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::CardId;
@@ -253,26 +253,7 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
 }
 
 fn matches_valid_card(valid: &str, card: &CardInstance, source: &CardInstance) -> bool {
-    if valid.eq_ignore_ascii_case("Card") || valid.eq_ignore_ascii_case("Permanent") {
-        return true;
-    }
-    if valid.eq_ignore_ascii_case("Creature") {
-        return card.is_creature();
-    }
-    if valid.eq_ignore_ascii_case("Card.Self") {
-        return card.id == source.id;
-    }
-    if valid.eq_ignore_ascii_case("Creature.YouCtrl")
-        || valid.eq_ignore_ascii_case("Creature.YouControl")
-    {
-        return card.is_creature() && card.controller == source.controller;
-    }
-    if valid.eq_ignore_ascii_case("Creature.OppCtrl")
-        || valid.eq_ignore_ascii_case("Creature.OpponentCtrl")
-    {
-        return card.is_creature() && card.controller != source.controller;
-    }
-    true
+    valid_filter::matches_valid_card(valid, card, source)
 }
 
 fn matches_valid_card_for_controller(
@@ -280,23 +261,11 @@ fn matches_valid_card_for_controller(
     card: &CardInstance,
     source_controller: crate::ids::PlayerId,
 ) -> bool {
-    if valid.eq_ignore_ascii_case("Card") || valid.eq_ignore_ascii_case("Permanent") {
-        return true;
-    }
-    if valid.eq_ignore_ascii_case("Creature") {
-        return card.is_creature();
-    }
-    if valid.eq_ignore_ascii_case("Creature.YouCtrl")
-        || valid.eq_ignore_ascii_case("Creature.YouControl")
-    {
-        return card.is_creature() && card.controller == source_controller;
-    }
-    if valid.eq_ignore_ascii_case("Creature.OppCtrl")
-        || valid.eq_ignore_ascii_case("Creature.OpponentCtrl")
-    {
-        return card.is_creature() && card.controller != source_controller;
-    }
-    true
+    // Create a temporary CardInstance with the controller for matching
+    // For disable triggers, we just need the controller, so we use a dummy source
+    let mut dummy_source = card.clone();
+    dummy_source.controller = source_controller;
+    valid_filter::matches_valid_card(valid, card, &dummy_source)
 }
 
 fn matches_valid_player(
@@ -304,16 +273,7 @@ fn matches_valid_player(
     player: crate::ids::PlayerId,
     source_controller: crate::ids::PlayerId,
 ) -> bool {
-    if valid.eq_ignore_ascii_case("Player") {
-        return true;
-    }
-    if valid.eq_ignore_ascii_case("You") || valid.eq_ignore_ascii_case("YouCtrl") {
-        return player == source_controller;
-    }
-    if valid.eq_ignore_ascii_case("Opponent") || valid.eq_ignore_ascii_case("OppCtrl") {
-        return player != source_controller;
-    }
-    true
+    valid_filter::matches_valid_player(valid, player, source_controller)
 }
 
 fn trigger_matches(

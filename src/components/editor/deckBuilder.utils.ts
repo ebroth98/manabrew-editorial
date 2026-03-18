@@ -1,5 +1,6 @@
 import type { Card } from "@/types/xmage";
 import type { ScryfallCard } from "@/types/scryfall";
+import { getScryfallImageUrl, getScryfallManaCost } from "@/api/scryfall";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -78,14 +79,8 @@ export function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
   const supertypes = mainTokens.filter((t) => SUPERTYPES.has(t));
   const types = mainTokens.filter((t) => !SUPERTYPES.has(t));
   const subtypes = subPart ? subPart.split(/\s+/).filter(Boolean) : [];
-  const imageUrl =
-    sc.image_uris?.normal ??
-    (sc as unknown as { card_faces?: { image_uris?: { normal?: string } }[] })
-      .card_faces?.[0]?.image_uris?.normal;
-  const manaCost =
-    sc.mana_cost ??
-    (sc as unknown as { card_faces?: { mana_cost?: string }[] }).card_faces?.[0]?.mana_cost ??
-    "";
+  const imageUrl = getScryfallImageUrl(sc);
+  const manaCost = getScryfallManaCost(sc) ?? "";
   return {
     manaCost, cmc: sc.cmc, types, subtypes, supertypes,
     color: (sc.colors ?? []).join(""),

@@ -1012,7 +1012,10 @@ fn split_cost_tokens(raw: &str) -> Vec<&str> {
                 }
                 start = i + 1;
             }
-            _ => {}
+            _ => {
+                // This is a character-parsing loop, not a semantic dispatch
+                // No warning needed here — we're just walking through characters
+            }
         }
         i += 1;
     }

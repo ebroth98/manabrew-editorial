@@ -2,6 +2,8 @@ import { Fragment } from "react";
 import type { Card, Player } from "@/types/xmage";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { ZonePanelItem } from "@/stores/usePreferencesStore";
+import type { PromptType } from "@/types/promptType";
+import { PromptType as PT } from "@/types/promptType";
 import { OpponentHalf, PlayerPanel } from "@/components/game/panels";
 import { MidPhaseStrip } from "@/components/game/MidPhaseStrip";
 import { FreeBattlefield, HandDisplay } from "@/components/game/zones";
@@ -32,7 +34,7 @@ interface GameBoardProps {
   step: string;
 
   // Prompt state
-  promptType?: string;
+  promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
 
   // Combat state
@@ -199,7 +201,7 @@ export function GameBoard({
                     order={zonePanelOrder}
                     onOpenGraveyard={() => {
                       const hasPlayable = graveyard.some((c) => c.isPlayable);
-                      if (hasPlayable && promptType === "chooseAction") {
+                      if (hasPlayable && promptType === PT.ChooseAction) {
                         onOpenZoneAndCast("Your Graveyard", graveyard, (_cardId) => {
                           // Parent will close zone and call handleCastSpell
                         });
@@ -209,7 +211,7 @@ export function GameBoard({
                     }}
                     onOpenExile={() => {
                       const hasPlayable = exile.some((c) => c.isPlayable);
-                      if (hasPlayable && promptType === "chooseAction") {
+                      if (hasPlayable && promptType === PT.ChooseAction) {
                         onOpenZoneAndCast("Your Exile", exile, (_cardId) => {
                           // Parent will close zone and call handleCastSpell
                         });
@@ -218,10 +220,10 @@ export function GameBoard({
                       }
                     }}
                     hasPlayableInGraveyard={
-                      promptType === "chooseAction" && graveyard.some((c) => c.isPlayable)
+                      promptType === PT.ChooseAction && graveyard.some((c) => c.isPlayable)
                     }
                     hasPlayableInExile={
-                      promptType === "chooseAction" && exile.some((c) => c.isPlayable)
+                      promptType === PT.ChooseAction && exile.some((c) => c.isPlayable)
                     }
                   />
                 </div>
@@ -229,10 +231,10 @@ export function GameBoard({
                   cards={myPermanents}
                   className="flex-1"
                   onClickCard={
-                    promptType === "chooseAttackers" ||
-                    promptType === "chooseBlockers" ||
-                    promptType === "chooseTargetCard" ||
-                    promptType === "chooseTargetAny"
+                    promptType === PT.ChooseAttackers ||
+                    promptType === PT.ChooseBlockers ||
+                    promptType === PT.ChooseTargetCard ||
+                    promptType === PT.ChooseTargetAny
                       ? onBattlefieldClick
                       : undefined
                   }
@@ -240,24 +242,24 @@ export function GameBoard({
                   onFlipCard={onFlipCard}
                   showBackFace={showBackFace}
                   pendingCardIds={
-                    promptType === "chooseAttackers"
+                    promptType === PT.ChooseAttackers
                       ? pendingAttackers
-                      : promptType === "chooseBlockers"
+                      : promptType === PT.ChooseBlockers
                         ? blockAssignments.map((a) => a.blockerId)
                         : undefined
                   }
                   tappableLandIds={
-                    promptType === "chooseAction" ||
-                    promptType === "payCombatCost" ||
-                    promptType === "payManaCost"
+                    promptType === PT.ChooseAction ||
+                    promptType === PT.PayCombatCost ||
+                    promptType === PT.PayManaCost
                       ? (currentPrompt?.tappableLandIds ?? [])
                       : undefined
                   }
                   onTapLand={onTapLand}
                   untappableLandIds={
-                    promptType === "chooseAction" ||
-                    promptType === "payCombatCost" ||
-                    promptType === "payManaCost"
+                    promptType === PT.ChooseAction ||
+                    promptType === PT.PayCombatCost ||
+                    promptType === PT.PayManaCost
                       ? (currentPrompt?.untappableLandIds ?? [])
                       : undefined
                   }

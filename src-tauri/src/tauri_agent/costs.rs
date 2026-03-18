@@ -1,0 +1,276 @@
+use forge_engine_core::agent::ManaCostAction;
+use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::mana::ManaPool;
+
+use crate::ids_codec::{card_id_str, parse_card_id};
+use crate::prompt::{AgentPromptInner, PlayerAction};
+
+use super::TauriAgent;
+
+pub(super) fn choose_phyrexian_pay_life(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    color: &str,
+    card_name: Option<&str>,
+) -> bool {
+    agent.send_prompt(AgentPromptInner::ChoosePhyrexian {
+        game_view: agent.view(),
+        phyrexian_color: color.to_string(),
+        source_card_name: card_name.map(String::from),
+    });
+    match agent.recv_action() {
+        PlayerAction::PhyrexianDecision { pay_life } => pay_life,
+        _ => false,
+    }
+}
+
+pub(super) fn choose_kicker(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    kicker_cost: &str,
+    card_name: Option<&str>,
+) -> bool {
+    agent.send_prompt(AgentPromptInner::ChooseKicker {
+        game_view: agent.view(),
+        kicker_cost: kicker_cost.to_string(),
+        source_card_name: card_name.map(String::from),
+    });
+    match agent.recv_action() {
+        PlayerAction::KickerDecision { kicked } => kicked,
+        _ => false,
+    }
+}
+
+pub(super) fn choose_buyback(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    buyback_cost: &str,
+    card_name: Option<&str>,
+) -> bool {
+    agent.send_prompt(AgentPromptInner::ChooseBuyback {
+        game_view: agent.view(),
+        buyback_cost: buyback_cost.to_string(),
+        source_card_name: card_name.map(String::from),
+    });
+    match agent.recv_action() {
+        PlayerAction::BuybackDecision { buyback_paid } => buyback_paid,
+        _ => false,
+    }
+}
+
+pub(super) fn choose_multikicker(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    cost: &str,
+    max_kicks: u32,
+    card_name: Option<&str>,
+) -> u32 {
+    agent.send_prompt(AgentPromptInner::ChooseMultikicker {
+        game_view: agent.view(),
+        cost: cost.to_string(),
+        max_kicks,
+        source_card_name: card_name.map(String::from),
+    });
+    match agent.recv_action() {
+        PlayerAction::MultikickerDecision { kick_count } => kick_count.min(max_kicks),
+        _ => 0,
+    }
+}
+
+pub(super) fn choose_replicate(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    cost: &str,
+    max_replicates: u32,
+    card_name: Option<&str>,
+) -> u32 {
+    agent.send_prompt(AgentPromptInner::ChooseReplicate {
+        game_view: agent.view(),
+        cost: cost.to_string(),
+        max_replicates,
+        source_card_name: card_name.map(String::from),
+    });
+    match agent.recv_action() {
+        PlayerAction::ReplicateDecision { replicate_count } => replicate_count.min(max_replicates),
+        _ => 0,
+    }
+}
+
+pub(super) fn choose_alternative_cost(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    options: &[String],
+    card_name: Option<&str>,
+) -> usize {
+    agent.send_prompt(AgentPromptInner::ChooseAlternativeCost {
+        game_view: agent.view(),
+        options: options.to_vec(),
+        source_card_name: card_name.map(String::from),
+    });
+    match agent.recv_action() {
+        PlayerAction::AlternativeCostDecision { chosen_index } => {
+            chosen_index.min(options.len().saturating_sub(1))
+        }
+        _ => 0,
+    }
+}
+
+pub(super) fn pay_mana_cost(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    card_id: CardId,
+    card_name: &str,
+    mana_cost: &str,
+    tappable_lands: &[CardId],
+    untappable_lands: &[CardId],
+    mana_pool: &ManaPool,
+) -> ManaCostAction {
+    let card_id_s = card_id_str(card_id);
+    let tappable_land_ids = TauriAgent::card_ids(tappable_lands);
+    let untappable_land_ids = TauriAgent::card_ids(untappable_lands);
+
+    agent.send_prompt(AgentPromptInner::PayManaCost {
+        game_view: agent.view(),
+        card_id: card_id_s,
+        card_name: card_name.to_string(),
+        mana_cost: mana_cost.to_string(),
+        tappable_land_ids,
+        untappable_land_ids,
+        mana_pool_total: mana_pool.total(),
+    });
+    match agent.recv_action() {
+        PlayerAction::TapLand { card_id } => parse_card_id(&card_id)
+            .map(ManaCostAction::TapLand)
+            .unwrap_or(ManaCostAction::Cancel),
+        PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)
+            .map(ManaCostAction::UntapLand)
+            .unwrap_or(ManaCostAction::Cancel),
+        PlayerAction::PayManaCost => ManaCostAction::Pay,
+        _ => ManaCostAction::Cancel,
+    }
+}
+
+pub(super) fn specify_mana_combo(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    available_colors: &[String],
+    amount: usize,
+    card_name: Option<&str>,
+) -> Vec<String> {
+    agent.send_prompt(AgentPromptInner::SpecifyManaCombo {
+        game_view: agent.view(),
+        available_colors: available_colors.to_vec(),
+        amount,
+        source_card_name: card_name.map(String::from),
+    });
+    let action = agent.recv_action();
+    match action {
+        PlayerAction::ManaComboDecision { chosen_colors } => {
+            // Validate: only return valid colors, pad/truncate to amount
+            let mut result: Vec<String> = chosen_colors
+                .into_iter()
+                .filter(|c| available_colors.contains(c))
+                .collect();
+            // Pad with first available color if needed
+            while result.len() < amount {
+                result.push(available_colors.first().cloned().unwrap_or("C".to_string()));
+            }
+            result.truncate(amount);
+            result
+        }
+        _ => {
+            // Default: all first color
+            vec![available_colors.first().cloned().unwrap_or("C".to_string()); amount]
+        }
+    }
+}
+
+pub(super) fn choose_delve(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    valid: &[CardId],
+    max: usize,
+    card_name: Option<&str>,
+) -> Vec<CardId> {
+    let valid_ids = TauriAgent::card_ids(valid);
+    // Build CardDtos for the graveyard cards
+    let zone_cards: Vec<_> = valid
+        .iter()
+        .filter_map(|&cid| {
+            agent.latest_view.as_ref().and_then(|v| {
+                v.graveyard
+                    .iter()
+                    .chain(v.opponent_graveyard.iter())
+                    .find(|c| c.id == card_id_str(cid))
+                    .cloned()
+            })
+        })
+        .collect();
+
+    agent.send_prompt(AgentPromptInner::ChooseDelve {
+        game_view: agent.view(),
+        valid_card_ids: valid_ids,
+        zone_cards,
+        max_cards: max,
+        source_card_name: card_name.map(|s| s.to_string()),
+    });
+    match agent.recv_action() {
+        PlayerAction::DelveDecision { chosen_card_ids } => chosen_card_ids
+            .iter()
+            .filter_map(|id| parse_card_id(id))
+            .filter(|cid| valid.contains(cid))
+            .take(max)
+            .collect(),
+        _ => vec![],
+    }
+}
+
+pub(super) fn choose_improvise(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    untapped_artifacts: &[CardId],
+    remaining_cost: &forge_foundation::ManaCost,
+    card_name: Option<&str>,
+) -> Vec<CardId> {
+    let valid_ids = TauriAgent::card_ids(untapped_artifacts);
+
+    agent.send_prompt(AgentPromptInner::ChooseImprovise {
+        game_view: agent.view(),
+        valid_card_ids: valid_ids,
+        remaining_cost: remaining_cost.to_string(),
+        source_card_name: card_name.map(|s| s.to_string()),
+    });
+    match agent.recv_action() {
+        PlayerAction::ImproviseDecision { chosen_card_ids } => chosen_card_ids
+            .iter()
+            .filter_map(|id| parse_card_id(id))
+            .filter(|cid| untapped_artifacts.contains(cid))
+            .collect(),
+        _ => vec![],
+    }
+}
+
+pub(super) fn choose_convoke(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    untapped_creatures: &[CardId],
+    remaining_cost: &forge_foundation::ManaCost,
+    card_name: Option<&str>,
+) -> Vec<CardId> {
+    let valid_ids = TauriAgent::card_ids(untapped_creatures);
+
+    agent.send_prompt(AgentPromptInner::ChooseConvoke {
+        game_view: agent.view(),
+        valid_card_ids: valid_ids,
+        remaining_cost: remaining_cost.to_string(),
+        source_card_name: card_name.map(|s| s.to_string()),
+    });
+    match agent.recv_action() {
+        PlayerAction::ConvokeDecision { chosen_card_ids } => chosen_card_ids
+            .iter()
+            .filter_map(|id| parse_card_id(id))
+            .filter(|cid| untapped_creatures.contains(cid))
+            .collect(),
+        _ => vec![],
+    }
+}

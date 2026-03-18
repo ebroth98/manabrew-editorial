@@ -8,6 +8,14 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { CardIdentity, GameFormat } from "@/types/server";
 
+/**
+ * Typed wrapper around Tauri's invoke that handles parameter conversion.
+ * This centralizes the object → Record<string, unknown> cast needed by Tauri's API.
+ */
+function tauriInvoke<T>(cmd: string, args?: object): Promise<T> {
+  return invoke<T>(cmd, args ? { ...args } as Record<string, unknown> : undefined);
+}
+
 // ============================================================================
 // Game Commands
 // ============================================================================
@@ -42,19 +50,19 @@ export const gameCommands = {
    * @returns Game session identifier string
    */
   startGame: (params: StartGameParams) =>
-    invoke<string>("start_game", params as unknown as Record<string, unknown>),
+    tauriInvoke<string>("start_game", params),
 
   /**
    * Start a multiplayer game with multiple players and decks.
    */
   startMultiplayerGame: (params: StartMultiplayerGameParams) =>
-    invoke<void>("start_multiplayer_game", params as unknown as Record<string, unknown>),
+    tauriInvoke<void>("start_multiplayer_game", params),
 
   /**
    * Send a player action/decision to the game engine.
    */
   respond: (params: RespondParams) =>
-    invoke<void>("respond", params as unknown as Record<string, unknown>),
+    tauriInvoke<void>("respond", params),
 
   /**
    * End the current game session.
@@ -66,7 +74,7 @@ export const gameCommands = {
    * Restore game state to a specific checkpoint.
    */
   restoreSnapshot: (params: RestoreSnapshotParams) =>
-    invoke<void>("restore_snapshot", params as unknown as Record<string, unknown>),
+    tauriInvoke<void>("restore_snapshot", params),
 };
 
 // ============================================================================
@@ -106,7 +114,7 @@ export const serverCommands = {
    * Triggers 'server:auth_result' event on completion.
    */
   connect: (params: ServerConnectParams) =>
-    invoke<void>("server_connect", params as unknown as Record<string, unknown>),
+    tauriInvoke<void>("server_connect", params),
 
   /**
    * Disconnect from the current XMage server.
@@ -133,14 +141,14 @@ export const serverCommands = {
    * Triggers 'server:room_created' event on success.
    */
   createRoom: (params: CreateRoomParams) =>
-    invoke<void>("server_create_room", params as unknown as Record<string, unknown>),
+    tauriInvoke<void>("server_create_room", params),
 
   /**
    * Join an existing game room.
    * Triggers 'server:room_update' event with room state.
    */
   joinRoom: (params: JoinRoomParams) =>
-    invoke<void>("server_join_room", params as unknown as Record<string, unknown>),
+    tauriInvoke<void>("server_join_room", params),
 
   /**
    * Leave the current game room.
@@ -153,13 +161,13 @@ export const serverCommands = {
    * Triggers 'server:ready_changed' event.
    */
   setReady: (params: SetReadyParams) =>
-    invoke<void>("server_set_ready", params as unknown as Record<string, unknown>),
+    tauriInvoke<void>("server_set_ready", params),
 
   /**
    * Set deck selection for the current room.
    */
   setDeckSelection: (params: SetDeckSelectionParams) =>
-    invoke<void>("server_set_deck_selection", params as unknown as Record<string, unknown>),
+    tauriInvoke<void>("server_set_deck_selection", params),
 
   /**
    * Start the game in the current room (host only).

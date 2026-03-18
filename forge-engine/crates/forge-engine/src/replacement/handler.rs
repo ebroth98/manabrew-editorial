@@ -355,7 +355,12 @@ fn execute_effect(
                         *count *= 2;
                         return ReplacementResult::Updated;
                     }
-                    _ => {}
+                    _ => {
+                        eprintln!(
+                            "[WARN] Unknown replacement mode in AddCounter event: {:?}",
+                            replace
+                        );
+                    }
                 }
             }
             ReplacementResult::Replaced

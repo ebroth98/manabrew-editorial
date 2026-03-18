@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { StackObject } from "@/types/xmage";
 import type { PromptActionType } from "./game.types";
+import { PromptType } from "@/types/promptType";
 
 interface StackSectionProps {
   stack: StackObject[];
@@ -10,7 +11,7 @@ interface StackSectionProps {
 }
 
 export function StackSection({ stack, promptType, onOpenStack }: StackSectionProps) {
-  const isCounterPrompt = promptType === "chooseTargetSpell";
+  const isCounterPrompt = promptType === PromptType.ChooseTargetSpell;
   const show = stack.length > 0 || isCounterPrompt;
 
   if (!show) return null;

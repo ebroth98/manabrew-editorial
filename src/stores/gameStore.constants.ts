@@ -1,49 +1,50 @@
 import type { AgentPrompt, GameState, DeferredSnapshot } from './gameStore.types';
 import type { GameLogEntry } from '@/types/gameLog';
+import { PromptType } from '@/types/promptType';
 
 /** Prompt types the UI knows how to render a modal/interaction for. */
-export const HANDLED_PROMPT_TYPES = new Set([
-  "stateUpdate",
-  "gameOver",
-  "mulligan",
-  "mulliganPutBack",
-  "chooseAction",
-  "chooseAttackers",
-  "chooseBlockers",
-  "chooseTargetCard",
-  "chooseTargetCardFromZone",
-  "chooseTargetPlayer",
-  "chooseTargetAny",
-  "chooseTargetSpell",
-  "chooseMode",
-  "chooseOptionalTrigger",
-  "choosePhyrexian",
-  "chooseKicker",
-  "chooseBuyback",
-  "chooseMultikicker",
-  "chooseReplicate",
-  "chooseAlternativeCost",
-  "chooseColor",
-  "chooseCardsForEffect",
-  "chooseType",
-  "chooseNumber",
-  "chooseCardName",
-  "chooseDiscard",
-  "chooseDamageAssignmentOrder",
-  "payCombatCost",
-  "payManaCost",
-  "chooseDelve",
-  "chooseConvoke",
-  "chooseImprovise",
-  "specifyManaCombo",
-  "scry",
-  "surveil",
-  "dig",
-  "chooseExertAttackers",
-  "chooseEnlistAttackers",
-  "reorderLibrary",
-  "exploreDecision",
-  "helpPayAssist",
+export const HANDLED_PROMPT_TYPES = new Set<PromptType>([
+  PromptType.StateUpdate,
+  PromptType.GameOver,
+  PromptType.Mulligan,
+  PromptType.MulliganPutBack,
+  PromptType.ChooseAction,
+  PromptType.ChooseAttackers,
+  PromptType.ChooseBlockers,
+  PromptType.ChooseTargetCard,
+  PromptType.ChooseTargetCardFromZone,
+  PromptType.ChooseTargetPlayer,
+  PromptType.ChooseTargetAny,
+  PromptType.ChooseTargetSpell,
+  PromptType.ChooseMode,
+  PromptType.ChooseOptionalTrigger,
+  PromptType.ChoosePhyrexian,
+  PromptType.ChooseKicker,
+  PromptType.ChooseBuyback,
+  PromptType.ChooseMultikicker,
+  PromptType.ChooseReplicate,
+  PromptType.ChooseAlternativeCost,
+  PromptType.ChooseColor,
+  PromptType.ChooseCardsForEffect,
+  PromptType.ChooseType,
+  PromptType.ChooseNumber,
+  PromptType.ChooseCardName,
+  PromptType.ChooseDiscard,
+  PromptType.ChooseDamageAssignmentOrder,
+  PromptType.PayCombatCost,
+  PromptType.PayManaCost,
+  PromptType.ChooseDelve,
+  PromptType.ChooseConvoke,
+  PromptType.ChooseImprovise,
+  PromptType.SpecifyManaCombo,
+  PromptType.Scry,
+  PromptType.Surveil,
+  PromptType.Dig,
+  PromptType.ChooseExertAttackers,
+  PromptType.ChooseEnlistAttackers,
+  PromptType.ReorderLibrary,
+  PromptType.ExploreDecision,
+  PromptType.HelpPayAssist,
 ]);
 
 export function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: Partial<GameState>) => void, get: () => GameState) {
@@ -54,7 +55,7 @@ export function applyPrompt(prompt: AgentPrompt, source: string, set: (partial: 
   const queueLen = get().deferredQueue.length;
   // stateUpdate prompts only carry a gameView + display events — they should
   // NOT replace the currentPrompt (the active player decision).
-  const isStateUpdate = prompt.type === "stateUpdate";
+  const isStateUpdate = prompt.type === PromptType.StateUpdate;
 
   // DEV warning: detect prompt types the UI doesn't handle (engine takes a default/arbitrary action)
   if (!isStateUpdate && !HANDLED_PROMPT_TYPES.has(prompt.type)) {

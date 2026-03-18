@@ -18,6 +18,7 @@ import { CombatInfo } from "./CombatInfo";
 import { TurnStateSection } from "../TurnStateSection";
 import { ActionLog } from "./ActionLog";
 import { SnapshotsPanel } from "./SnapshotsPanel";
+import { PromptType } from "@/types/promptType";
 
 export function RightActionPanel({
   collapsed,
@@ -62,7 +63,7 @@ export function RightActionPanel({
   const [activeTab, setActiveTab] = useState<"main" | "log" | "snapshots">("main");
   const needsAction =
     Boolean(promptType) &&
-    promptType !== "gameOver" &&
+    promptType !== PromptType.GameOver &&
     !isWaitingForResponse &&
     !isAutoPassing &&
     !isPassingUntilEot;

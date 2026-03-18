@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
+use crate::card::valid_filter;
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -1018,154 +1019,17 @@ fn matches_valid_card(
     filter: &str,
     card_id: CardId,
     host_card: CardId,
-    host_controller: PlayerId,
-    game: &GameState,
-) -> bool {
-    // Comma-separated = OR conditions
-    if filter.contains(',') && !filter.contains('.') {
-        return filter.split(',').any(|part| {
-            matches_single_valid_card(part.trim(), card_id, host_card, host_controller, game)
-        });
-    }
-
-    matches_single_valid_card(filter, card_id, host_card, host_controller, game)
-}
-
-fn matches_single_valid_card(
-    filter: &str,
-    card_id: CardId,
-    host_card: CardId,
-    host_controller: PlayerId,
+    _host_controller: PlayerId,
     game: &GameState,
 ) -> bool {
     let card = game.card(card_id);
-
-    // Split on dots for compound filters (e.g. "Creature.Other", "Card.Self")
-    let parts: Vec<&str> = filter.split('.').collect();
-    let type_part = parts[0];
-    let qualifiers = &parts[1..];
-
-    // Check the type portion
-    let type_matches = match type_part {
-        "Card" => true, // matches any card
-        "Creature" => card.is_creature(),
-        "Land" => card.is_land(),
-        "Instant" => card.type_line.is_instant(),
-        "Sorcery" => card.type_line.is_sorcery(),
-        "Permanent" => card.is_permanent(),
-        // Player-type filters: players are not cards, so never match.
-        // This prevents triggers like "ValidTarget$ Player" from firing
-        // when the damage target is a creature (e.g. Thrummingbird blocking
-        // an infect creature and its DamageDone trigger incorrectly matching
-        // the creature target as if it were a player).
-        "Player" | "You" | "Opponent" | "Each" | "Any" | "ActivePlayer" | "NonActivePlayer" => {
-            false
-        }
-        _ => {
-            // Try comma-separated types within the type portion (e.g. "Instant,Sorcery")
-            if type_part.contains(',') {
-                type_part.split(',').any(|t| match t.trim() {
-                    "Creature" => card.is_creature(),
-                    "Land" => card.is_land(),
-                    "Instant" => card.type_line.is_instant(),
-                    "Sorcery" => card.type_line.is_sorcery(),
-                    "Card" => true,
-                    _ => false,
-                })
-            } else {
-                true // unknown type, match all
-            }
-        }
-    };
-
-    if !type_matches {
-        return false;
-    }
-
-    // Check qualifiers — handle compound "+" syntax (e.g. "Self+kicked", "YouCtrl+nonBlack")
-    // Mirrors Java's CardProperty.isValidCard() which splits on '+' for sub-conditions.
-    for &qualifier in qualifiers {
-        // Split compound qualifiers on '+' (e.g. "Self+kicked" → ["Self", "kicked"])
-        let sub_parts: Vec<&str> = qualifier.split('+').collect();
-        for sub in &sub_parts {
-            match *sub {
-                "Self" => {
-                    if card_id != host_card {
-                        return false;
-                    }
-                }
-                "Other" | "StrictlyOther" => {
-                    if card_id == host_card {
-                        return false;
-                    }
-                }
-                "YouCtrl" => {
-                    if card.controller != host_controller {
-                        return false;
-                    }
-                }
-                "OppCtrl" => {
-                    if card.controller == host_controller {
-                        return false;
-                    }
-                }
-                "kicked" => {
-                    if !card.kicked {
-                        return false;
-                    }
-                }
-                "nonCreature" => {
-                    if card.is_creature() {
-                        return false;
-                    }
-                }
-                "nonLand" => {
-                    if card.is_land() {
-                        return false;
-                    }
-                }
-                "token" => {
-                    if !card.is_token {
-                        return false;
-                    }
-                }
-                "nonToken" => {
-                    if card.is_token {
-                        return false;
-                    }
-                }
-                "DamagedBy" => {
-                    // Check if this card was dealt damage by the host card this turn.
-                    // Mirrors Java's CardProperty "DamagedBy" check using
-                    // getDamageReceivedThisTurn().
-                    if !card.damage_sources_this_turn.contains(&host_card) {
-                        return false;
-                    }
-                }
-                _ => {
-                    // Check counters_GE/GT/LT/LE/EQ patterns like "counters_GE3_P1P1"
-                    if sub.starts_with("counters_") {
-                        if !check_counter_condition(sub, card) {
-                            return false;
-                        }
-                    }
-                    // Ignore unknown qualifiers for now
-                }
-            }
-        }
-    }
-
-    true
+    let host = game.card(host_card);
+    valid_filter::matches_valid_card(filter, card, host)
 }
 
 /// Matches a player against a ValidPlayer$ filter string.
 fn matches_valid_player(filter: &str, player: PlayerId, host_controller: PlayerId) -> bool {
-    match filter {
-        "You" => player == host_controller,
-        "Opponent" => player != host_controller,
-        "Any" | "Each" => true,
-        _ => true, // unknown filter, match all
-    }
+    valid_filter::matches_valid_player(filter, player, host_controller)
 }
 
 /// Check if a count matches a ValidAttackersAmount filter like "GE1", "EQ3", etc.
@@ -1184,34 +1048,6 @@ fn matches_amount(filter: &str, count: usize) -> bool {
         "EQ" => count == n,
         "NE" => count != n,
         _ => count > 0,
-    }
-}
-
-/// Check a counter condition like "counters_GE3_P1P1".
-/// Format: counters_{op}{num}_{counter_type}
-fn check_counter_condition(condition: &str, card: &crate::card::CardInstance) -> bool {
-    use crate::ability::effects::parse_counter_type;
-    let rest = &condition["counters_".len()..];
-    if rest.len() < 3 {
-        return true;
-    }
-    let op = &rest[..2];
-    let after_op = &rest[2..];
-    let (num_str, counter_type_str) = match after_op.find('_') {
-        Some(idx) => (&after_op[..idx], &after_op[idx + 1..]),
-        None => return true,
-    };
-    let threshold: i32 = num_str.parse().unwrap_or(0);
-    let counter_type = parse_counter_type(counter_type_str);
-    let count = card.counter_count(&counter_type);
-    match op {
-        "GE" => count >= threshold,
-        "GT" => count > threshold,
-        "LE" => count <= threshold,
-        "LT" => count < threshold,
-        "EQ" => count == threshold,
-        "NE" => count != threshold,
-        _ => true,
     }
 }
 

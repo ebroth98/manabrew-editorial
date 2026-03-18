@@ -11,9 +11,11 @@ import {
   PhyrexianModal,
 } from "@/components/game/cost-modals";
 import type { AgentPrompt } from "@/stores/useGameStore";
+import type { PromptType } from "@/types/promptType";
+import { PromptType as PT } from "@/types/promptType";
 
 interface CostModalsProps {
-  promptType?: string;
+  promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
   // Cost decision callbacks
   onPhyrexianDecision: (payLife: boolean) => void;
@@ -46,7 +48,7 @@ export function CostModals({
 }: CostModalsProps) {
   return (
     <>
-      {promptType === "choosePhyrexian" && currentPrompt?.phyrexianColor != null && (
+      {promptType === PT.ChoosePhyrexian && currentPrompt?.phyrexianColor != null && (
         <PhyrexianModal
           phyrexianColor={currentPrompt.phyrexianColor}
           sourceCardName={currentPrompt.sourceCardName}
@@ -54,7 +56,7 @@ export function CostModals({
         />
       )}
 
-      {promptType === "chooseKicker" && currentPrompt?.kickerCost != null && (
+      {promptType === PT.ChooseKicker && currentPrompt?.kickerCost != null && (
         <KickerModal
           kickerCost={currentPrompt.kickerCost}
           sourceCardName={currentPrompt.sourceCardName}
@@ -62,7 +64,7 @@ export function CostModals({
         />
       )}
 
-      {promptType === "chooseBuyback" && currentPrompt?.buybackCost != null && (
+      {promptType === PT.ChooseBuyback && currentPrompt?.buybackCost != null && (
         <BuybackModal
           buybackCost={currentPrompt.buybackCost}
           sourceCardName={currentPrompt.sourceCardName}
@@ -70,7 +72,7 @@ export function CostModals({
         />
       )}
 
-      {promptType === "chooseMultikicker" && currentPrompt?.cost != null && (
+      {promptType === PT.ChooseMultikicker && currentPrompt?.cost != null && (
         <MultikickerModal
           cost={currentPrompt.cost}
           maxKicks={currentPrompt.maxKicks ?? 0}
@@ -79,7 +81,7 @@ export function CostModals({
         />
       )}
 
-      {promptType === "chooseReplicate" && currentPrompt?.cost != null && (
+      {promptType === PT.ChooseReplicate && currentPrompt?.cost != null && (
         <ReplicateModal
           cost={currentPrompt.cost}
           maxReplicates={currentPrompt.maxReplicates ?? 0}
@@ -88,7 +90,7 @@ export function CostModals({
         />
       )}
 
-      {promptType === "chooseAlternativeCost" && currentPrompt?.options != null && (
+      {promptType === PT.ChooseAlternativeCost && currentPrompt?.options != null && (
         <AlternativeCostModal
           options={currentPrompt.options}
           sourceCardName={currentPrompt.sourceCardName}
@@ -96,7 +98,7 @@ export function CostModals({
         />
       )}
 
-      {promptType === "payCombatCost" && currentPrompt?.description != null && (
+      {promptType === PT.PayCombatCost && currentPrompt?.description != null && (
         <PayCombatCostModal
           attackerName={currentPrompt.attackerName ?? "Creature"}
           cost={currentPrompt.cost != null ? Number(currentPrompt.cost) : 0}
@@ -107,7 +109,7 @@ export function CostModals({
         />
       )}
 
-      {promptType === "chooseDelve" && currentPrompt?.zoneCards != null && (
+      {promptType === PT.ChooseDelve && currentPrompt?.zoneCards != null && (
         <ChooseCardsModal
           cards={currentPrompt.zoneCards}
           minChoices={0}
@@ -117,7 +119,7 @@ export function CostModals({
         />
       )}
 
-      {promptType === "chooseConvoke" && currentPrompt?.validCardIds != null && (
+      {promptType === PT.ChooseConvoke && currentPrompt?.validCardIds != null && (
         <ChooseCardsModal
           cards={currentPrompt.gameView?.battlefield?.filter(
             (c) => currentPrompt.validCardIds?.includes(c.id)
@@ -130,7 +132,7 @@ export function CostModals({
         />
       )}
 
-      {promptType === "chooseImprovise" && currentPrompt?.validCardIds != null && (
+      {promptType === PT.ChooseImprovise && currentPrompt?.validCardIds != null && (
         <ChooseCardsModal
           cards={currentPrompt.gameView?.battlefield?.filter(
             (c) => currentPrompt.validCardIds?.includes(c.id)

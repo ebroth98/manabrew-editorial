@@ -23,19 +23,20 @@ import { useGameEventListeners } from "@/hooks/useGameEventListeners";
 import { GameBoard } from "@/components/game/GameBoard";
 import { cn } from "@/lib/utils";
 import { Navigate, useLocation } from "react-router-dom";
+import { PromptType } from "@/types/promptType";
 
 /** Prompt types where hover card preview is allowed (no modal overlay). */
-const HOVER_ALLOWED_PROMPTS = new Set([
-  "chooseAction",
-  "chooseAttackers",
-  "chooseBlockers",
-  "chooseTargetPlayer",
-  "chooseTargetCard",
-  "chooseTargetAny",
-  "chooseTargetCardFromZone",
-  "chooseTargetSpell",
-  "payManaCost",
-  "gameOver",
+const HOVER_ALLOWED_PROMPTS = new Set<PromptType>([
+  PromptType.ChooseAction,
+  PromptType.ChooseAttackers,
+  PromptType.ChooseBlockers,
+  PromptType.ChooseTargetPlayer,
+  PromptType.ChooseTargetCard,
+  PromptType.ChooseTargetAny,
+  PromptType.ChooseTargetCardFromZone,
+  PromptType.ChooseTargetSpell,
+  PromptType.PayManaCost,
+  PromptType.GameOver,
 ]);
 
 export default function Game() {
@@ -164,7 +165,7 @@ export default function Game() {
 
   // Land tap/untap handler with ability picker support
   const handleTapLand = (card: XMageCard) => {
-    if (promptType !== "chooseAction") {
+    if (promptType !== PromptType.ChooseAction) {
       tapLand(card.id);
       return;
     }
@@ -385,7 +386,7 @@ export default function Game() {
 
   // Auto-return to play menu when game is over
   useEffect(() => {
-    if (!gameView?.gameOver && currentPrompt?.type !== "gameOver") return;
+    if (!gameView?.gameOver && currentPrompt?.type !== PromptType.GameOver) return;
     const timer = setTimeout(() => endGame(), 3000);
     return () => clearTimeout(timer);
   }, [gameView?.gameOver, currentPrompt?.type]);
@@ -408,7 +409,7 @@ export default function Game() {
   );
 
   // Game over overlay
-  if (gameView.gameOver || promptType === "gameOver") {
+  if (gameView.gameOver || promptType === PromptType.GameOver) {
     return (
       <GameOverScreen
         winnerId={gameView.winnerId}
@@ -475,12 +476,12 @@ export default function Game() {
             })
           }
           onTapLand={
-            promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
+            promptType === PromptType.ChooseAction || promptType === PromptType.PayCombatCost || promptType === PromptType.PayManaCost
               ? handleTapLand
               : undefined
           }
           onUntapLand={
-            promptType === "chooseAction" || promptType === "payCombatCost" || promptType === "payManaCost"
+            promptType === PromptType.ChooseAction || promptType === PromptType.PayCombatCost || promptType === PromptType.PayManaCost
               ? handleUntapLand
               : undefined
           }
@@ -519,13 +520,13 @@ export default function Game() {
           snapshots={snapshots}
           canRestoreSnapshots={
             (!isMultiplayer || isHost) &&
-            (promptType === "chooseAction" ||
-              promptType === "chooseAttackers" ||
-              promptType === "chooseBlockers")
+            (promptType === PromptType.ChooseAction ||
+              promptType === PromptType.ChooseAttackers ||
+              promptType === PromptType.ChooseBlockers)
           }
           onRestoreSnapshot={restoreSnapshot}
           payManaCostInfo={
-            promptType === "payManaCost" && currentPrompt?.manaCost != null
+            promptType === PromptType.PayManaCost && currentPrompt?.manaCost != null
               ? {
                   cardName: currentPrompt.cardName ?? "Spell",
                   manaCost: currentPrompt.manaCost,
@@ -556,7 +557,7 @@ export default function Game() {
         }}
         spellStackModalOpen={spellStackModalOpen}
         stack={gameView.stack}
-        validSpellIds={promptType === "chooseTargetSpell" ? (currentPrompt?.validSpellIds ?? []) : []}
+        validSpellIds={promptType === PromptType.ChooseTargetSpell ? (currentPrompt?.validSpellIds ?? []) : []}
         onTargetSpell={(spellId) => { targetSpell(spellId); setSpellStackModalOpen(false); }}
         onCloseStack={() => setSpellStackModalOpen(false)}
         abilityPickerState={abilityPickerState}

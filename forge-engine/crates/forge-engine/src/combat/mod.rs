@@ -8,7 +8,7 @@ use std::collections::{HashMap, HashSet};
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
-use crate::card::card_property;
+use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::staticability::static_ability::StaticMode;
@@ -761,19 +761,7 @@ fn matches_valid_card(
     filter: &str,
     source: &crate::card::CardInstance,
 ) -> bool {
-    // Split into parts on '.' and '+' to detect "Self" and "Card.Self".
-    for part in filter.split(|c: char| c == '.' || c == '+') {
-        let part = part.trim();
-        if part.eq_ignore_ascii_case("Self") {
-            // "Self" means the card must be the source of the static ability.
-            if card.id != source.id {
-                return false;
-            }
-        } else if !card_property::card_has_property(card, part, source.controller) {
-            return false;
-        }
-    }
-    true
+    valid_filter::matches_valid_card(filter, card, source)
 }
 
 /// Filter blockers to only those that can legally block at least one attacker.

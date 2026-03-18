@@ -18,7 +18,7 @@ import { inferFormats } from "@/lib/formats";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { DeckCard } from "@/components/deck/DeckCard";
 import type { Card } from "@/types/xmage";
-import { fetchCardCollection } from "@/api/scryfall";
+import { fetchCardCollection, getScryfallImageUrl, getScryfallManaCost } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
 import {
   ResizableHandle,
@@ -61,15 +61,8 @@ function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
   const supertypes = mainTokens.filter((t) => SUPERTYPES.has(t));
   const types = mainTokens.filter((t) => !SUPERTYPES.has(t));
   const subtypes = subPart ? subPart.split(/\s+/).filter(Boolean) : [];
-  const imageUrl =
-    sc.image_uris?.normal ??
-    (sc as unknown as { card_faces?: { image_uris?: { normal?: string } }[] })
-      .card_faces?.[0]?.image_uris?.normal;
-  const manaCost =
-    sc.mana_cost ??
-    (sc as unknown as { card_faces?: { mana_cost?: string }[] }).card_faces?.[0]
-      ?.mana_cost ??
-    "";
+  const imageUrl = getScryfallImageUrl(sc);
+  const manaCost = getScryfallManaCost(sc) ?? "";
   return {
     manaCost,
     cmc: sc.cmc,

@@ -3,6 +3,7 @@ import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { LibraryPeekMode } from "@/components/game/modals";
 import type { Card } from "@/types/xmage";
+import { PromptType } from "@/types/promptType";
 
 interface UsePromptEffectsOptions {
   currentPrompt: AgentPrompt | null;
@@ -62,9 +63,9 @@ export function usePromptEffects({
     if (passUntilEotTurn !== null) {
       if (turn > passUntilEotTurn) {
         setPassUntilEotTurn(null);
-      } else if (currentPrompt.type === "chooseAction" && stackLength > 0) {
+      } else if (currentPrompt.type === PromptType.ChooseAction && stackLength > 0) {
         setPassUntilEotTurn(null);
-      } else if (currentPrompt.type === "chooseAction" || currentPrompt.type === "chooseAttackers") {
+      } else if (currentPrompt.type === PromptType.ChooseAction || currentPrompt.type === PromptType.ChooseAttackers) {
         setIsAutoPassing(true);
         const timer = setTimeout(() => passPriority(), 0);
         return () => clearTimeout(timer);
@@ -78,11 +79,11 @@ export function usePromptEffects({
 
     let shouldAutoPass = false;
 
-    if (currentPrompt.type === "chooseAction") {
+    if (currentPrompt.type === PromptType.ChooseAction) {
       shouldAutoPass = (currentPrompt.playableCardIds ?? []).length === 0;
-    } else if (currentPrompt.type === "chooseAttackers") {
+    } else if (currentPrompt.type === PromptType.ChooseAttackers) {
       shouldAutoPass = (currentPrompt.availableAttackerIds ?? []).length === 0;
-    } else if (currentPrompt.type === "chooseBlockers") {
+    } else if (currentPrompt.type === PromptType.ChooseBlockers) {
       shouldAutoPass = (currentPrompt.availableBlockerIds ?? []).length === 0;
     }
 
@@ -98,17 +99,17 @@ export function usePromptEffects({
   // Open library-peek modal for Scry / Surveil / Dig / Discard prompts
   useEffect(() => {
     if (
-      (promptType === "scry" || promptType === "surveil" || promptType === "dig") &&
+      (promptType === PromptType.Scry || promptType === PromptType.Surveil || promptType === PromptType.Dig) &&
       currentPrompt?.cards &&
       currentPrompt.cards.length > 0
     ) {
       setLibraryPeekModal({
         mode: promptType as LibraryPeekMode,
         cards: currentPrompt.cards as Card[],
-        numToTake: promptType === "dig" ? currentPrompt.numToTake : undefined,
-        optional: promptType === "dig" ? currentPrompt.optional : undefined,
+        numToTake: promptType === PromptType.Dig ? currentPrompt.numToTake : undefined,
+        optional: promptType === PromptType.Dig ? currentPrompt.optional : undefined,
       });
-    } else if (promptType === "chooseDiscard" && currentPrompt) {
+    } else if (promptType === PromptType.ChooseDiscard && currentPrompt) {
       const promptHand = currentPrompt.gameView?.myHand ?? myHand;
       const handCards = (currentPrompt.handCardIds ?? [])
         .map((id) => promptHand.find((c) => c.id === id))
@@ -121,10 +122,10 @@ export function usePromptEffects({
         });
       }
     } else if (
-      promptType !== "scry" &&
-      promptType !== "surveil" &&
-      promptType !== "dig" &&
-      promptType !== "chooseDiscard"
+      promptType !== PromptType.Scry &&
+      promptType !== PromptType.Surveil &&
+      promptType !== PromptType.Dig &&
+      promptType !== PromptType.ChooseDiscard
     ) {
       setLibraryPeekModal(null);
     }
@@ -132,7 +133,7 @@ export function usePromptEffects({
 
   // Handle zone-based targeting prompts
   useEffect(() => {
-    if (promptType === "chooseTargetCardFromZone" && currentPrompt) {
+    if (promptType === PromptType.ChooseTargetCardFromZone && currentPrompt) {
       const zone = currentPrompt.zone;
       const validCardIds = currentPrompt.validCardIds || [];
       const zoneCards = currentPrompt.zoneCards || [];
@@ -153,7 +154,7 @@ export function usePromptEffects({
 
   // Auto-open spell-stack modal for counter-targeting prompts
   useEffect(() => {
-    setSpellStackModalOpen(promptType === "chooseTargetSpell");
+    setSpellStackModalOpen(promptType === PromptType.ChooseTargetSpell);
   }, [promptType]);
 
   return {

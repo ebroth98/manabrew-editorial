@@ -10,7 +10,7 @@ use forge_foundation::color::Color;
 use forge_foundation::mana::ManaCost;
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::{valid_filter, CardInstance};
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -198,7 +198,9 @@ pub fn compute_cost_adjustment_with_targets(
                             continue;
                         }
                     }
-                    _ => {} // "Player" or unknown → applies to all
+                    _ => {
+                        eprintln!("[WARN] Unknown cost adjustment Activator: {:?}", activator);
+                    }
                 }
             } else {
                 // Default for ReduceCost/SetCost: applies to controller only.
@@ -473,7 +475,9 @@ pub fn compute_raise_cost_parts_with_targets(
                             continue;
                         }
                     }
-                    _ => {}
+                    _ => {
+                        eprintln!("[WARN] Unknown IncreaseCost Activator: {:?}", activator);
+                    }
                 }
             } else {
                 // IncreaseCost without Activator$ → universal effect (e.g. Thalia)
@@ -840,8 +844,19 @@ fn check_is_present(
 
     cards.iter().any(|&cid| {
         let card = game.card(cid);
+        let type_lower = type_part.to_ascii_lowercase();
         card.type_line.has_subtype(type_part)
-            || matches_base_type(&type_part.to_ascii_lowercase(), card)
+            || match type_lower.as_str() {
+                "card" => true,
+                "creature" => card.is_creature(),
+                "instant" => card.type_line.is_instant(),
+                "sorcery" => card.type_line.is_sorcery(),
+                "artifact" => card.type_line.is_artifact(),
+                "enchantment" => card.type_line.is_enchantment(),
+                "planeswalker" => card.type_line.is_planeswalker(),
+                "land" => card.is_land(),
+                _ => false,
+            }
     })
 }
 
@@ -864,126 +879,7 @@ fn zone_name_matches(zone: ZoneType, name: &str) -> bool {
 // ── ValidCard$ matching (mirrors Java's checkRequirement ValidCard) ──
 
 pub(crate) fn matches_valid_card(valid: &str, spell: &CardInstance, source: &CardInstance) -> bool {
-    let alternatives: Vec<&str> = valid.split(',').map(|s| s.trim()).collect();
-    alternatives
-        .iter()
-        .any(|alt| matches_single_valid(alt, spell, source))
-}
-
-fn matches_single_valid(token: &str, spell: &CardInstance, source: &CardInstance) -> bool {
-    if let Some((base, qualifiers_str)) = token.split_once('.') {
-        let base_lower = base.to_ascii_lowercase();
-
-        // Check base type first
-        if !matches_base_type(&base_lower, spell) {
-            return false;
-        }
-
-        // Split qualifiers by '+' for multiple conditions (e.g. "YouCtrl+counters_GE1_P1P1")
-        let qualifiers: Vec<&str> = qualifiers_str.split('+').collect();
-        for qual in qualifiers {
-            let qual_lower = qual.to_ascii_lowercase();
-            match qual_lower.as_str() {
-                "self" => {
-                    if spell.id != source.id {
-                        return false;
-                    }
-                }
-                "noncreature" => {
-                    if spell.is_creature() {
-                        return false;
-                    }
-                }
-                "nonland" => {
-                    if spell.is_land() {
-                        return false;
-                    }
-                }
-                "multicolor" => {
-                    if !spell.color.is_multicolor() {
-                        return false;
-                    }
-                }
-                "colorless" => {
-                    if !spell.color.is_colorless() {
-                        return false;
-                    }
-                }
-                "tapped" => {
-                    if !spell.tapped {
-                        return false;
-                    }
-                }
-                "untapped" => {
-                    if spell.tapped {
-                        return false;
-                    }
-                }
-                "youctrl" => {
-                    if spell.controller != source.controller {
-                        return false;
-                    }
-                }
-                "enchantedby" => {
-                    // Check if source is attached to spell
-                    if source.attached_to != Some(spell.id) {
-                        return false;
-                    }
-                }
-                q => {
-                    // CMC comparisons: cmcEQ1, cmcLE3, cmcGE5
-                    if let Some(rest) = q.strip_prefix("cmc") {
-                        let cmc = spell.mana_cost.cmc() as i32;
-                        if rest.starts_with("eq") {
-                            if let Ok(n) = rest[2..].parse::<i32>() {
-                                if cmc != n {
-                                    return false;
-                                }
-                            }
-                        } else if rest.starts_with("le") {
-                            if let Ok(n) = rest[2..].parse::<i32>() {
-                                if cmc > n {
-                                    return false;
-                                }
-                            }
-                        } else if rest.starts_with("ge") {
-                            if let Ok(n) = rest[2..].parse::<i32>() {
-                                if cmc < n {
-                                    return false;
-                                }
-                            }
-                        }
-                    } else if let Some(color) = Color::from_name(q) {
-                        if !spell.color.has_color(color) {
-                            return false;
-                        }
-                    }
-                    // Unknown qualifiers pass (conservative)
-                }
-            }
-        }
-        true
-    } else {
-        let lower = token.to_ascii_lowercase();
-        matches_base_type(&lower, spell)
-    }
-}
-
-fn matches_base_type(base: &str, spell: &CardInstance) -> bool {
-    match base {
-        "card" => true,
-        "creature" => spell.is_creature(),
-        "instant" => spell.type_line.is_instant(),
-        "sorcery" => spell.type_line.is_sorcery(),
-        "artifact" => spell.type_line.is_artifact(),
-        "enchantment" => spell.type_line.is_enchantment(),
-        "planeswalker" => spell.type_line.is_planeswalker(),
-        "land" => spell.is_land(),
-        _ => {
-            // Try matching as subtype (e.g. "Wizard", "Dragon")
-            spell.type_line.has_subtype(base)
-        }
-    }
+    valid_filter::matches_valid_card(valid, spell, source)
 }
 
 // ── Affinity / Delve / Convoke / Improvise helpers ──────────────────

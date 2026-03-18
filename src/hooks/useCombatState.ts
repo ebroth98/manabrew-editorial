@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Card } from "@/types/xmage";
+import { PromptType } from "@/types/promptType";
 
 export interface CombatAssignment {
   blockerId: string;
@@ -33,12 +34,12 @@ export function useCombatState({
   }, [promptType]);
 
   const playerIsTargetable =
-    promptType === "chooseTargetPlayer" || promptType === "chooseTargetAny"
+    promptType === PromptType.ChooseTargetPlayer || promptType === PromptType.ChooseTargetAny
       ? (pid: string) => currentPrompt?.validPlayerIds?.includes(pid) ?? false
       : () => false;
 
   function handleTargetPlayer(pid: string) {
-    if (promptType === "chooseTargetAny") {
+    if (promptType === PromptType.ChooseTargetAny) {
       targetAny({ kind: "player", playerId: pid });
     } else {
       targetPlayer(pid);
@@ -48,13 +49,13 @@ export function useCombatState({
   function handleBattlefieldClick(card: Card) {
     if (!currentPrompt || !card.isChoosable) return;
 
-    if (promptType === "chooseAttackers") {
+    if (promptType === PromptType.ChooseAttackers) {
       setPendingAttackers((prev) =>
         prev.includes(card.id)
           ? prev.filter((id) => id !== card.id)
           : [...prev, card.id],
       );
-    } else if (promptType === "chooseBlockers") {
+    } else if (promptType === PromptType.ChooseBlockers) {
       if (pendingAttacker) {
         setBlockAssignments((prev) => {
           const rest = prev.filter((a) => a.attackerId !== pendingAttacker);
@@ -62,9 +63,9 @@ export function useCombatState({
         });
         setPendingAttacker(null);
       }
-    } else if (promptType === "chooseTargetCard") {
+    } else if (promptType === PromptType.ChooseTargetCard) {
       targetCard(card.id);
-    } else if (promptType === "chooseTargetAny") {
+    } else if (promptType === PromptType.ChooseTargetAny) {
       targetAny({ kind: "card", cardId: card.id });
     }
   }

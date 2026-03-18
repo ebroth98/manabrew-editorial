@@ -158,7 +158,9 @@ macro_rules! effect_dispatch {
             });
             match api_type {
                 $( $api => $handler(ctx, sa), )*
-                _ => {} // Unimplemented effect — silently skip
+                _ => {
+                    eprintln!("[WARN] Unimplemented effect API type: {:?}", api_type);
+                }
             }
         }
     };

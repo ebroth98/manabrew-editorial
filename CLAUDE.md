@@ -28,6 +28,19 @@ Whenever you implement, partially implement, or modify a feature in this reposit
 - Keep the Summary Statistics section at the bottom of `features.md` accurate after any changes.
 - whenever relevant update or create a new preset deck in src-tauri/src/game_manager.rs so that it will be possible to test the newly introduced mechanic 
 
+## Agent Workflow
+
+For any non-trivial development task (new features, significant refactoring, multi-file changes), you MUST load the `crew-orchestrator` skill first and follow its full workflow:
+
+1. **DISCOVER** — Load `crew-context-scout` to understand project patterns
+2. **PLAN** — Load `crew-task-planner` to break the task into subtasks
+3. **USER APPROVAL** — Present the plan and wait for approval before coding
+4. **EXECUTE** — Load `crew-coder` for each subtask
+5. **REVIEW** — Load `crew-reviewer` to check for security and quality issues
+6. **TEST** — Load `crew-test-engineer` to generate and run tests
+
+Do NOT skip straight to `crew-coder`. The orchestrator ensures quality through planning, review, and testing stages. Only skip the orchestrator for trivial tasks (one-liner fixes, simple questions, file renames).
+
 ## Project Structure
 
 - **UI**: Tauri + Swift (macOS/iOS) app in the repo root and `src-tauri/`

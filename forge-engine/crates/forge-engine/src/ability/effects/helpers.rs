@@ -28,6 +28,35 @@ pub fn parse_num_dmg(ability: &str) -> i32 {
     parse_param(ability, "NumDmg$ ").unwrap_or(0)
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Defined$ Resolution Pattern (Documentation)
+// ──────────────────────────────────────────────────────────────────────────
+//
+// Many effect files resolve the `Defined$` parameter to determine which cards
+// to operate on. The common pattern is:
+//
+// ```rust
+// let defined = sa.defined().unwrap_or_default().to_string();
+// if defined.eq_ignore_ascii_case("Self") || (defined.is_empty() && ...) {
+//     // Use source card: sa.source
+// } else if defined.eq_ignore_ascii_case("Targeted") {
+//     // Use targeted card: sa.target_chosen.target_card
+// } else if defined.eq_ignore_ascii_case("ParentTarget") {
+//     // Use parent ability's target: ctx.parent_target_card
+// } else if defined.eq_ignore_ascii_case("Remembered") {
+//     // Use remembered cards: ctx.game.card(source_id).remembered_cards
+// } else if defined.eq_ignore_ascii_case("TriggeredCard") {
+//     // Use trigger context card: sa.trigger_source
+// }
+// ```
+//
+// Each effect may need to handle additional Defined$ values based on its
+// specific requirements (e.g. "ExiledWith", "CardUID_X", "TriggeredNewCardLKICopy").
+//
+// For player targets, use `resolve_defined_player()` or `resolve_defined_players()`
+// instead.
+// ──────────────────────────────────────────────────────────────────────────
+
 /// Resolve a Defined$ parameter to a player ID.
 /// Mirrors Java's AbilityUtils.getDefinedPlayers().
 ///

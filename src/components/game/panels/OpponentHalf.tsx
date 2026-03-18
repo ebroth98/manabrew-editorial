@@ -4,6 +4,7 @@ import { BattlefieldZone } from "../zones";
 import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ZONE_COLUMN_RESERVED_PX } from "../game.constants";
 import type { OpponentHalfProps } from "../game.types";
+import { PromptType } from "@/types/promptType";
 
 export function OpponentHalf({
   player,
@@ -74,22 +75,22 @@ export function OpponentHalf({
             leftReserved={zonePanelSide === "left" ? ZONE_COLUMN_RESERVED_PX : 0}
             rightReserved={zonePanelSide === "right" ? ZONE_COLUMN_RESERVED_PX : 0}
             onClickCard={
-              promptType === "chooseTargetCard" ||
-              promptType === "chooseTargetAny"
+              promptType === PromptType.ChooseTargetCard ||
+              promptType === PromptType.ChooseTargetAny
                 ? onClickCard
                 : undefined
             }
             onClickAnyCard={
-              promptType === "chooseBlockers" ? onClickAnyCard : undefined
+              promptType === PromptType.ChooseBlockers ? onClickAnyCard : undefined
             }
             onHoverCard={onHoverCard}
             pendingCardIds={
-              promptType === "chooseBlockers" && pendingAttacker
+              promptType === PromptType.ChooseBlockers && pendingAttacker
                 ? [pendingAttacker]
                 : undefined
             }
             attackingCardIds={
-              promptType === "chooseBlockers" ? (attackerIds ?? []) : undefined
+              promptType === PromptType.ChooseBlockers ? (attackerIds ?? []) : undefined
             }
           />
         </div>

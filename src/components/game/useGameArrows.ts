@@ -12,6 +12,8 @@
 
 import { type RefObject, useEffect, useState } from "react";
 import type { ArrowDef } from "./ArrowOverlay";
+import type { PromptType } from "@/types/promptType";
+import { PromptType as PT } from "@/types/promptType";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -24,7 +26,7 @@ export interface UseGameArrowsOptions {
   /** Ref to the outermost game container (position: relative). */
   containerRef: RefObject<HTMLElement | null>;
   /** Current prompt type from the backend, e.g. "chooseBlockers". */
-  promptType: string | undefined;
+  promptType: PromptType | undefined;
   /** Opponent's attacking creature IDs (from ChooseBlockers prompt). */
   attackerIds: string[];
   /** Block assignments the human player has declared so far. */
@@ -92,7 +94,7 @@ function buildArrows(
 
   const arrows: ArrowDef[] = [];
 
-  if (promptType === "chooseBlockers") {
+  if (promptType === PT.ChooseBlockers) {
     // 1. Orange attack arrows: each opponent attacker → my player panel
     const myPos = playerCenter(container, myPlayerId);
     for (const id of attackerIds) {
@@ -139,7 +141,7 @@ function buildArrows(
     }
   }
 
-  if (promptType === "chooseAttackers") {
+  if (promptType === PT.ChooseAttackers) {
     // Orange preview arrows: selected attacker → opponent player panel
     const oppPos = playerCenter(container, opponentPlayerId);
     for (const id of pendingAttackers) {

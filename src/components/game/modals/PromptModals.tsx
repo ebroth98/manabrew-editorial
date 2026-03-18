@@ -13,9 +13,11 @@ import {
 } from "@/components/game/modals";
 import type { Card as XMageCard } from "@/types/xmage";
 import type { AgentPrompt } from "@/stores/useGameStore";
+import type { PromptType } from "@/types/promptType";
+import { PromptType as PT } from "@/types/promptType";
 
 interface PromptModalsProps {
-  promptType?: string;
+  promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
   isWaitingForResponse: boolean;
   myHand: XMageCard[];
@@ -57,7 +59,7 @@ export function PromptModals({
 }: PromptModalsProps) {
   return (
     <>
-      {promptType === "mulligan" && currentPrompt && (
+      {promptType === PT.Mulligan && currentPrompt && (
         <MulliganModal
           handCards={myHand}
           mulliganCount={currentPrompt.mulliganCount ?? 0}
@@ -67,7 +69,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "mulliganPutBack" && currentPrompt?.cards && currentPrompt?.count != null && (
+      {promptType === PT.MulliganPutBack && currentPrompt?.cards && currentPrompt?.count != null && (
         <MulliganBottomModal
           handCards={currentPrompt.cards}
           count={currentPrompt.count}
@@ -75,7 +77,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "chooseMode" && currentPrompt?.options && (
+      {promptType === PT.ChooseMode && currentPrompt?.options && (
         <ChooseModeModal
           options={currentPrompt.options}
           minChoices={currentPrompt.minChoices ?? 1}
@@ -85,7 +87,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "chooseOptionalTrigger" && currentPrompt?.description != null && (
+      {promptType === PT.ChooseOptionalTrigger && currentPrompt?.description != null && (
         <ChooseOptionalTriggerModal
           description={currentPrompt.description}
           cardName={currentPrompt.sourceCardName}
@@ -97,7 +99,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "chooseColor" && currentPrompt?.validColors != null && (
+      {promptType === PT.ChooseColor && currentPrompt?.validColors != null && (
         <ChooseColorModal
           validColors={currentPrompt.validColors}
           sourceCardName={currentPrompt.sourceCardName}
@@ -105,7 +107,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "chooseType" && currentPrompt?.validTypes != null && (
+      {promptType === PT.ChooseType && currentPrompt?.validTypes != null && (
         <ChooseTypeModal
           typeCategory={currentPrompt.typeCategory ?? "Creature"}
           validTypes={currentPrompt.validTypes}
@@ -114,7 +116,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "chooseNumber" && currentPrompt?.min != null && currentPrompt?.max != null && (
+      {promptType === PT.ChooseNumber && currentPrompt?.min != null && currentPrompt?.max != null && (
         <ChooseNumberModal
           min={currentPrompt.min}
           max={currentPrompt.max}
@@ -123,7 +125,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "chooseCardName" && currentPrompt?.validNames != null && (
+      {promptType === PT.ChooseCardName && currentPrompt?.validNames != null && (
         <ChooseCardNameModal
           validNames={currentPrompt.validNames}
           cardName={currentPrompt.sourceCardName}
@@ -131,7 +133,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "chooseDamageAssignmentOrder" && currentPrompt?.blockerIds != null && (
+      {promptType === PT.ChooseDamageAssignmentOrder && currentPrompt?.blockerIds != null && (
         <DamageOrderModal
           attackerId={currentPrompt.attackerId}
           blockerIds={currentPrompt.blockerIds}
@@ -141,7 +143,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "reorderLibrary" && currentPrompt?.cards != null && (
+      {promptType === PT.ReorderLibrary && currentPrompt?.cards != null && (
         <ReorderLibraryModal
           cards={currentPrompt.cards}
           cardName={currentPrompt.sourceCardName}
@@ -149,7 +151,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "specifyManaCombo" && currentPrompt?.availableColors != null && currentPrompt?.amount != null && (
+      {promptType === PT.SpecifyManaCombo && currentPrompt?.availableColors != null && currentPrompt?.amount != null && (
         <SpecifyManaComboModal
           availableColors={currentPrompt.availableColors}
           amount={currentPrompt.amount}
@@ -158,7 +160,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "exploreDecision" && currentPrompt?.revealedCardName != null && (
+      {promptType === PT.ExploreDecision && currentPrompt?.revealedCardName != null && (
         <ChooseOptionalTriggerModal
           description={`Exploring revealed ${currentPrompt.revealedCardName} (nonland). Put it in graveyard or leave on top of library?`}
           cardName={currentPrompt.revealedCardName}
@@ -168,7 +170,7 @@ export function PromptModals({
         />
       )}
 
-      {promptType === "helpPayAssist" && currentPrompt?.maxGeneric != null && (
+      {promptType === PT.HelpPayAssist && currentPrompt?.maxGeneric != null && (
         <ChooseNumberModal
           min={0}
           max={currentPrompt.maxGeneric}

@@ -1,0 +1,349 @@
+//! Shared card/player filter matching used across triggers, static abilities,
+//! replacement effects, and combat. Consolidates 34 duplicate implementations.
+//!
+//! This module provides canonical implementations for matching cards and players
+//! against filter expressions like "Creature.YouCtrl" or "Opponent".
+//!
+//! **Filter Syntax:**
+//!
+//! Card filters are dot-separated: "Creature.YouCtrl.nonToken"
+//! - Comma separates OR conditions: "Creature,Artifact" matches either
+//! - Dot separates qualifiers: "Creature.YouCtrl" matches creatures you control
+//! - Plus separates compound conditions: "YouCtrl+kicked" matches both
+//!
+//! **Type parts:**
+//! - Card, Permanent, Creature, Land, Artifact, Enchantment, Planeswalker, Instant, Sorcery
+//! - Subtypes: "Zombie", "Wall", "Forest", etc.
+//!
+//! **Qualifiers:**
+//! - Controller: YouCtrl, OppCtrl, YouControl, OpponentCtrl
+//! - Self: Self, Other, StrictlyOther
+//! - Token: token, nonToken
+//! - Type negation: nonCreature, nonLand
+//! - State: tapped, untapped, kicked
+//! - Counters: counters_GE3_P1P1, counters_EQ1_Charge
+//! - CMC: cmcEQ1, cmcLE3, cmcGE5
+//! - Color: White, Blue, Black, Red, Green, Colorless, multicolor
+//! - Combat: DamagedBy
+//! - Attachment: EnchantedBy
+
+use forge_foundation::color::Color;
+
+use crate::card::CardInstance;
+use crate::ids::PlayerId;
+
+/// Check if a card matches a filter expression like "Creature.YouCtrl".
+/// Returns true if `valid` is empty or the card satisfies all parts.
+///
+/// # Examples
+///
+/// ```ignore
+/// // Matches any creature you control:
+/// matches_valid_card("Creature.YouCtrl", creature, source)
+///
+/// // Matches either creatures or artifacts:
+/// matches_valid_card("Creature,Artifact", card, source)
+///
+/// // Matches creatures you control that are tokens:
+/// matches_valid_card("Creature.YouCtrl.token", card, source)
+/// ```
+pub fn matches_valid_card(valid: &str, card: &CardInstance, source: &CardInstance) -> bool {
+    let valid = valid.trim();
+    if valid.is_empty() {
+        return true;
+    }
+
+    // Comma-separated = OR conditions (only if no dots, to avoid splitting "Type.Qualifier,Other")
+    if valid.contains(',') && !valid.contains('.') {
+        return valid
+            .split(',')
+            .any(|part| matches_single_valid_card(part.trim(), card, source));
+    }
+
+    matches_single_valid_card(valid, card, source)
+}
+
+/// Convenience wrapper: None means "no filter" → always matches.
+pub fn matches_valid_card_opt(
+    valid: Option<&str>,
+    card: &CardInstance,
+    source: &CardInstance,
+) -> bool {
+    match valid {
+        None => true,
+        Some(v) => matches_valid_card(v, card, source),
+    }
+}
+
+fn matches_single_valid_card(filter: &str, card: &CardInstance, source: &CardInstance) -> bool {
+    // Handle comma-separated types with qualifiers (e.g. "Creature.YouCtrl,Artifact.YouCtrl")
+    if filter.contains(',') {
+        return filter
+            .split(',')
+            .any(|alt| matches_type_and_qualifiers(alt.trim(), card, source));
+    }
+
+    matches_type_and_qualifiers(filter, card, source)
+}
+
+fn matches_type_and_qualifiers(filter: &str, card: &CardInstance, source: &CardInstance) -> bool {
+    // Split on dots for compound filters (e.g. "Creature.Other", "Card.Self")
+    let parts: Vec<&str> = filter.split('.').collect();
+    if parts.is_empty() {
+        return true;
+    }
+
+    let type_part = parts[0];
+    let qualifiers = &parts[1..];
+
+    // Check the type portion
+    let type_matches = match type_part {
+        "Card" | "Any" => true, // matches any card
+        "Creature" => card.is_creature(),
+        "Land" => card.is_land(),
+        "Instant" => card.type_line.is_instant(),
+        "Sorcery" => card.type_line.is_sorcery(),
+        "Artifact" => card.type_line.is_artifact(),
+        "Enchantment" => card.type_line.is_enchantment(),
+        "Planeswalker" => card.type_line.is_planeswalker(),
+        "Permanent" => card.is_permanent(),
+        "Spell" => true, // used in some contexts
+        // Player-type filters: players are not cards, so never match.
+        "Player" | "You" | "Opponent" | "Each" | "ActivePlayer" | "NonActivePlayer" => false,
+        _ => {
+            // Try comma-separated types within the type portion (e.g. "Instant,Sorcery")
+            if type_part.contains(',') {
+                type_part.split(',').any(|t| match t.trim() {
+                    "Creature" => card.is_creature(),
+                    "Land" => card.is_land(),
+                    "Instant" => card.type_line.is_instant(),
+                    "Sorcery" => card.type_line.is_sorcery(),
+                    "Artifact" => card.type_line.is_artifact(),
+                    "Enchantment" => card.type_line.is_enchantment(),
+                    "Planeswalker" => card.type_line.is_planeswalker(),
+                    "Card" => true,
+                    _ => false,
+                })
+            } else {
+                // Try matching as subtype (e.g. "Zombie", "Wall", "Dragon")
+                card.type_line.has_subtype(type_part)
+            }
+        }
+    };
+
+    if !type_matches {
+        return false;
+    }
+
+    // Check qualifiers — handle compound "+" syntax (e.g. "Self+kicked", "YouCtrl+nonBlack")
+    for &qualifier in qualifiers {
+        // Split compound qualifiers on '+' (e.g. "Self+kicked" → ["Self", "kicked"])
+        let sub_parts: Vec<&str> = qualifier.split('+').collect();
+        for sub in &sub_parts {
+            let sub_lower = sub.to_ascii_lowercase();
+            match sub_lower.as_str() {
+                "self" => {
+                    if card.id != source.id {
+                        return false;
+                    }
+                }
+                "other" | "strictlyother" => {
+                    if card.id == source.id {
+                        return false;
+                    }
+                }
+                "youctrl" | "youcontrol" | "you" => {
+                    if card.controller != source.controller {
+                        return false;
+                    }
+                }
+                "oppctrl" | "opponentctrl" | "opponent" => {
+                    if card.controller == source.controller {
+                        return false;
+                    }
+                }
+                "kicked" => {
+                    if !card.kicked {
+                        return false;
+                    }
+                }
+                "noncreature" => {
+                    if card.is_creature() {
+                        return false;
+                    }
+                }
+                "nonland" => {
+                    if card.is_land() {
+                        return false;
+                    }
+                }
+                "token" => {
+                    if !card.is_token {
+                        return false;
+                    }
+                }
+                "nontoken" => {
+                    if card.is_token {
+                        return false;
+                    }
+                }
+                "tapped" => {
+                    if !card.tapped {
+                        return false;
+                    }
+                }
+                "untapped" => {
+                    if card.tapped {
+                        return false;
+                    }
+                }
+                "multicolor" => {
+                    if !card.color.is_multicolor() {
+                        return false;
+                    }
+                }
+                "colorless" => {
+                    if !card.color.is_colorless() {
+                        return false;
+                    }
+                }
+                "damagedby" => {
+                    // Check if this card was dealt damage by the source card this turn
+                    if !card.damage_sources_this_turn.contains(&source.id) {
+                        return false;
+                    }
+                }
+                "enchantedby" => {
+                    // Check if source is attached to this card
+                    if source.attached_to != Some(card.id) {
+                        return false;
+                    }
+                }
+                _ => {
+                    // Check counters_GE/GT/LT/LE/EQ patterns like "counters_GE3_P1P1"
+                    if sub.starts_with("counters_") {
+                        if !check_counter_condition(sub, card) {
+                            return false;
+                        }
+                    } else if let Some(rest) = sub_lower.strip_prefix("cmc") {
+                        // CMC comparisons: cmcEQ1, cmcLE3, cmcGE5
+                        if !check_cmc_condition(rest, card) {
+                            return false;
+                        }
+                    } else if let Some(color) = Color::from_name(&sub_lower) {
+                        // Color names: white, blue, black, red, green
+                        if !card.color.has_color(color) {
+                            return false;
+                        }
+                    }
+                    // Unknown qualifiers pass (conservative fallback)
+                }
+            }
+        }
+    }
+
+    true
+}
+
+/// Check if a player matches a filter expression like "You", "Opponent", "Each".
+pub fn matches_valid_player(filter: &str, player: PlayerId, source_controller: PlayerId) -> bool {
+    let filter = filter.trim();
+    if filter.is_empty() {
+        return true;
+    }
+
+    // Handle comma-separated alternatives
+    if filter.contains(',') {
+        return filter
+            .split(',')
+            .any(|part| matches_single_valid_player(part.trim(), player, source_controller));
+    }
+
+    matches_single_valid_player(filter, player, source_controller)
+}
+
+/// Convenience wrapper: None means "no filter" → always matches.
+pub fn matches_valid_player_opt(
+    filter: Option<&str>,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
+    match filter {
+        None => true,
+        Some(v) => matches_valid_player(v, player, source_controller),
+    }
+}
+
+fn matches_single_valid_player(
+    filter: &str,
+    player: PlayerId,
+    source_controller: PlayerId,
+) -> bool {
+    let filter_lower = filter.to_ascii_lowercase();
+    match filter_lower.as_str() {
+        "you" | "youctrl" => player == source_controller,
+        "opponent" | "oppctrl" | "opponentctrl" => player != source_controller,
+        "any" | "each" | "player" | "player.ingame" => true,
+        // "Active" / "NonActive" would need turn info — not currently supported
+        _ => true, // unknown filter, match all (permissive fallback)
+    }
+}
+
+/// Check a counter condition like "counters_GE3_P1P1".
+/// Format: counters_{op}{num}_{counter_type}
+fn check_counter_condition(condition: &str, card: &CardInstance) -> bool {
+    use crate::ability::effects::parse_counter_type;
+    let rest = &condition["counters_".len()..];
+    if rest.len() < 3 {
+        return true;
+    }
+    let op = &rest[..2];
+    let after_op = &rest[2..];
+    let (num_str, counter_type_str) = match after_op.find('_') {
+        Some(idx) => (&after_op[..idx], &after_op[idx + 1..]),
+        None => return true,
+    };
+    let threshold: i32 = num_str.parse().unwrap_or(0);
+    let counter_type = parse_counter_type(counter_type_str);
+    let count = card.counter_count(&counter_type);
+    match op {
+        "GE" => count >= threshold,
+        "GT" => count > threshold,
+        "LE" => count <= threshold,
+        "LT" => count < threshold,
+        "EQ" => count == threshold,
+        "NE" => count != threshold,
+        _ => true,
+    }
+}
+
+/// Check a CMC condition like "cmcEQ1", "cmcLE3", "cmcGE5".
+fn check_cmc_condition(rest: &str, card: &CardInstance) -> bool {
+    let cmc = card.mana_cost.cmc() as i32;
+    if let Some(num_str) = rest.strip_prefix("eq") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return cmc == n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("le") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return cmc <= n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("ge") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return cmc >= n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("lt") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return cmc < n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("gt") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return cmc > n;
+        }
+    } else if let Some(num_str) = rest.strip_prefix("ne") {
+        if let Ok(n) = num_str.parse::<i32>() {
+            return cmc != n;
+        }
+    }
+    true // fallback: unknown format passes
+}

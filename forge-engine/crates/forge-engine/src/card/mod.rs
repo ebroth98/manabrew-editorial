@@ -3,6 +3,7 @@ pub mod card_property;
 pub mod damage_history;
 pub mod filter_constants;
 mod keyword_gen;
+pub mod valid_filter;
 
 use std::collections::BTreeMap;
 

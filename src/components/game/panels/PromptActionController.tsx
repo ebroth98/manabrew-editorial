@@ -4,6 +4,7 @@ import { ManaPool } from "./ManaPool";
 import type { PromptActionType, CombatAssignment } from "../game.types";
 import { PROMPT_BUTTON_COLUMN, PROMPT_HINT, BUTTON_ATTACK, BUTTON_CONFIRM_BLOCKS } from "../game.styles";
 import { Sword, TimerOff } from "lucide-react";
+import { PromptType } from "@/types/promptType";
 
 interface PromptActionControllerProps {
   promptType?: PromptActionType;
@@ -65,7 +66,7 @@ export function PromptActionController({
   }
 
   switch (promptType) {
-    case "chooseAction":
+    case PromptType.ChooseAction:
       return (
         <div className={PROMPT_BUTTON_COLUMN}>
           <Button size="sm" variant="outline" onClick={onPassPriority} disabled={isWaitingForResponse}>
@@ -85,7 +86,7 @@ export function PromptActionController({
         </div>
       );
 
-    case "chooseAttackers":
+    case PromptType.ChooseAttackers:
       return (
         <div className={PROMPT_BUTTON_COLUMN}>
           <Button size="sm" variant="outline" onClick={onPassPriority} disabled={isWaitingForResponse}>
@@ -115,7 +116,7 @@ export function PromptActionController({
         </div>
       );
 
-    case "chooseBlockers":
+    case PromptType.ChooseBlockers:
       return (
         <div className={PROMPT_BUTTON_COLUMN}>
           <Button size="sm" variant="outline" onClick={onPassPriority} disabled={isWaitingForResponse}>
@@ -137,24 +138,24 @@ export function PromptActionController({
         </div>
       );
 
-    case "mulligan":
-    case "mulliganPutBack":
+    case PromptType.Mulligan:
+    case PromptType.MulliganPutBack:
       return <p className={PROMPT_HINT}>Mulligan decision is open. Complete the prompt there.</p>;
 
-    case "chooseTargetSpell":
+    case PromptType.ChooseTargetSpell:
       return (
         <Button size="sm" onClick={onOpenStack} disabled={isWaitingForResponse}>
           Choose Counter Target
         </Button>
       );
 
-    case "chooseTargetPlayer":
-    case "chooseTargetCard":
-    case "chooseTargetAny":
-    case "chooseTargetCardFromZone":
+    case PromptType.ChooseTargetPlayer:
+    case PromptType.ChooseTargetCard:
+    case PromptType.ChooseTargetAny:
+    case PromptType.ChooseTargetCardFromZone:
       return <p className={PROMPT_HINT}>Select a highlighted target on the battlefield or in the selector.</p>;
 
-    case "payManaCost":
+    case PromptType.PayManaCost:
       return (
         <div className={PROMPT_BUTTON_COLUMN}>
           {payManaCostInfo && (
@@ -181,34 +182,34 @@ export function PromptActionController({
         </div>
       );
 
-    case "chooseMode":
-    case "chooseOptionalTrigger":
-    case "chooseKicker":
-    case "chooseBuyback":
-    case "chooseMultikicker":
-    case "chooseReplicate":
-    case "chooseAlternativeCost":
-    case "scry":
-    case "surveil":
-    case "dig":
-    case "chooseDiscard":
-    case "payCombatCost":
-    case "chooseColor":
-    case "chooseType":
-    case "chooseNumber":
-    case "chooseCardName":
-    case "chooseDelve":
-    case "chooseConvoke":
-    case "chooseImprovise":
-    case "specifyManaCombo":
-    case "chooseDamageAssignmentOrder":
-    case "chooseCardsForEffect":
-    case "choosePhyrexian":
-    case "chooseExertAttackers":
-    case "chooseEnlistAttackers":
-    case "reorderLibrary":
-    case "exploreDecision":
-    case "helpPayAssist":
+    case PromptType.ChooseMode:
+    case PromptType.ChooseOptionalTrigger:
+    case PromptType.ChooseKicker:
+    case PromptType.ChooseBuyback:
+    case PromptType.ChooseMultikicker:
+    case PromptType.ChooseReplicate:
+    case PromptType.ChooseAlternativeCost:
+    case PromptType.Scry:
+    case PromptType.Surveil:
+    case PromptType.Dig:
+    case PromptType.ChooseDiscard:
+    case PromptType.PayCombatCost:
+    case PromptType.ChooseColor:
+    case PromptType.ChooseType:
+    case PromptType.ChooseNumber:
+    case PromptType.ChooseCardName:
+    case PromptType.ChooseDelve:
+    case PromptType.ChooseConvoke:
+    case PromptType.ChooseImprovise:
+    case PromptType.SpecifyManaCombo:
+    case PromptType.ChooseDamageAssignmentOrder:
+    case PromptType.ChooseCardsForEffect:
+    case PromptType.ChoosePhyrexian:
+    case PromptType.ChooseExertAttackers:
+    case PromptType.ChooseEnlistAttackers:
+    case PromptType.ReorderLibrary:
+    case PromptType.ExploreDecision:
+    case PromptType.HelpPayAssist:
       return <p className={PROMPT_HINT}>Decision modal is open. Complete the prompt there.</p>;
 
     default:

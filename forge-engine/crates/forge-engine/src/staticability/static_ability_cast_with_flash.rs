@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::{valid_filter, CardInstance};
 use crate::ids::PlayerId;
 use crate::staticability::StaticMode;
 use crate::trigger::parse_pipe_params;
@@ -60,28 +60,11 @@ fn matches_valid_player(
     player: PlayerId,
     source_controller: PlayerId,
 ) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Player") => true,
-        Some(v) if v.eq_ignore_ascii_case("You") || v.eq_ignore_ascii_case("YouCtrl") => {
-            player == source_controller
-        }
-        Some(v) if v.eq_ignore_ascii_case("Opponent") || v.eq_ignore_ascii_case("OppCtrl") => {
-            player != source_controller
-        }
-        _ => true,
-    }
+    valid_filter::matches_valid_player_opt(valid, player, source_controller)
 }
 
 fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Card") => true,
-        Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),
-        Some(v) if v.eq_ignore_ascii_case("Nonland") => !card.is_land(),
-        Some(v) if v.eq_ignore_ascii_case("Card.Self") => card.id == source.id,
-        _ => true,
-    }
+    valid_filter::matches_valid_card_opt(valid, card, source)
 }
 
 fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {

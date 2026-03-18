@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::{valid_filter, CardInstance};
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -38,25 +38,7 @@ pub fn cant_sacrifice(
 }
 
 fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
-    match valid {
-        None => true,
-        Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,
-        Some(v) if v.eq_ignore_ascii_case("Card.Self") => card.id == source.id,
-        Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),
-        Some(v)
-            if v.eq_ignore_ascii_case("Creature.YouCtrl")
-                || v.eq_ignore_ascii_case("Creature.YouControl") =>
-        {
-            card.is_creature() && card.controller == source.controller
-        }
-        Some(v)
-            if v.eq_ignore_ascii_case("Creature.OppCtrl")
-                || v.eq_ignore_ascii_case("Creature.OpponentCtrl") =>
-        {
-            card.is_creature() && card.controller != source.controller
-        }
-        _ => true,
-    }
+    valid_filter::matches_valid_card_opt(valid, card, source)
 }
 
 fn matches_valid_cause(valid: Option<&str>, cause: Option<&SpellAbility>) -> bool {

@@ -1,4 +1,5 @@
 import type { PromptActionType, CombatAssignment } from "./game.types";
+import { PromptType } from "@/types/promptType";
 
 interface CombatSummarySectionProps {
   promptType?: PromptActionType;
@@ -13,7 +14,7 @@ export function CombatSummarySection({
   blockAssignments,
   resolveCardName,
 }: CombatSummarySectionProps) {
-  if (promptType !== "chooseBlockers" || attackerIds.length === 0) return null;
+  if (promptType !== PromptType.ChooseBlockers || attackerIds.length === 0) return null;
 
   return (
     <div className="rounded-lg p-2 bg-red-50 dark:bg-red-950/20">

@@ -38,7 +38,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "Draw" => ctx.game.player_mut(target).skip_next_draw = true,
             "Combat" | "BeginCombat" => ctx.game.player_mut(target).skip_next_combat = true,
             "Untap" => ctx.game.player_mut(target).skip_next_untap = true,
-            _ => {}
+            _ => {
+                eprintln!("[WARN] Unknown phase to skip: {:?}", phase);
+            }
         }
     }
 }

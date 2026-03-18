@@ -1,0 +1,216 @@
+use forge_engine_core::agent::CombatCostAction;
+use forge_engine_core::combat::DefenderId;
+use forge_engine_core::ids::{CardId, PlayerId};
+
+use crate::game_view_dto::CardDto;
+use crate::ids_codec::{card_id_str, parse_card_id};
+use crate::prompt::{AgentPromptInner, BlockAssignment, PlayerAction};
+
+use super::TauriAgent;
+
+pub(super) fn choose_attackers(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    available: &[CardId],
+    possible_defenders: &[DefenderId],
+) -> Vec<(CardId, DefenderId)> {
+    let available_attacker_ids = TauriAgent::card_ids(available);
+    let possible_defender_dtos = TauriAgent::defender_ids_to_dtos(possible_defenders);
+    let mut view = agent.view();
+    TauriAgent::mark_battlefield_choosable(&mut view, &available_attacker_ids);
+    agent.send_prompt(AgentPromptInner::ChooseAttackers {
+        game_view: view,
+        available_attacker_ids,
+        possible_defender_ids: possible_defender_dtos,
+    });
+    let default_defender = possible_defenders
+        .first()
+        .copied()
+        .unwrap_or(DefenderId::Player(PlayerId(1)));
+    match agent.recv_action() {
+        PlayerAction::RestoreSnapshot { checkpoint_id } => {
+            agent.pending_restore_checkpoint = Some(checkpoint_id);
+            Vec::new()
+        }
+        PlayerAction::DeclareAttackers { assignments } => assignments
+            .iter()
+            .filter_map(|a| {
+                let attacker = parse_card_id(&a.attacker_id)?;
+                let defender = TauriAgent::parse_defender_id(&a.defender_id, possible_defenders)
+                    .unwrap_or(default_defender);
+                Some((attacker, defender))
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+pub(super) fn choose_blockers(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    attackers: &[CardId],
+    available_blockers: &[CardId],
+    _max_blockers: Option<usize>,
+) -> Vec<(CardId, CardId)> {
+    let attacker_ids = TauriAgent::card_ids(attackers);
+    let available_blocker_ids = TauriAgent::card_ids(available_blockers);
+    let mut view = agent.view();
+    TauriAgent::mark_battlefield_choosable(&mut view, &available_blocker_ids);
+    agent.send_prompt(AgentPromptInner::ChooseBlockers {
+        game_view: view,
+        attacker_ids,
+        available_blocker_ids,
+    });
+    match agent.recv_action() {
+        PlayerAction::RestoreSnapshot { checkpoint_id } => {
+            agent.pending_restore_checkpoint = Some(checkpoint_id);
+            Vec::new()
+        }
+        PlayerAction::DeclareBlockers { assignments } => assignments
+            .iter()
+            .filter_map(
+                |BlockAssignment {
+                     blocker_id,
+                     attacker_id,
+                 }| {
+                    let b = parse_card_id(blocker_id)?;
+                    let a = parse_card_id(attacker_id)?;
+                    Some((b, a))
+                },
+            )
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+pub(super) fn choose_damage_assignment_order(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    attacker: CardId,
+    blockers: &[CardId],
+) -> Vec<CardId> {
+    let attacker_id = card_id_str(attacker);
+    let blocker_ids: Vec<String> = blockers.iter().map(|&b| card_id_str(b)).collect();
+    let blocker_cards: Vec<CardDto> = Vec::new(); // Blocker info available from gameView
+    let view = agent.view();
+    agent.send_prompt(AgentPromptInner::ChooseDamageAssignmentOrder {
+        game_view: view,
+        attacker_id,
+        blocker_ids,
+        blocker_cards,
+    });
+    match agent.recv_action() {
+        PlayerAction::DamageAssignmentOrderDecision {
+            ordered_blocker_ids,
+        } => {
+            let parsed: Vec<CardId> = ordered_blocker_ids
+                .iter()
+                .filter_map(|s| parse_card_id(s))
+                .collect();
+            if parsed.len() == blockers.len() {
+                parsed
+            } else {
+                blockers.to_vec()
+            }
+        }
+        _ => blockers.to_vec(),
+    }
+}
+
+pub(super) fn pay_combat_cost(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    attacker: CardId,
+    cost: i32,
+    description: &str,
+    tappable_lands: &[CardId],
+    untappable_lands: &[CardId],
+    mana_pool_total: i32,
+) -> CombatCostAction {
+    let attacker_id = card_id_str(attacker);
+    let attacker_name = agent
+        .latest_view
+        .as_ref()
+        .and_then(|v| v.battlefield.iter().find(|c| c.id == attacker_id))
+        .map(|c| c.name.clone())
+        .unwrap_or_default();
+    let tappable_land_ids = TauriAgent::card_ids(tappable_lands);
+    let untappable_land_ids = TauriAgent::card_ids(untappable_lands);
+
+    agent.send_prompt(AgentPromptInner::PayCombatCost {
+        game_view: agent.view(),
+        attacker_id,
+        attacker_name,
+        cost,
+        description: description.to_string(),
+        tappable_land_ids,
+        untappable_land_ids,
+        mana_pool_total,
+    });
+    match agent.recv_action() {
+        PlayerAction::TapLand { card_id } => parse_card_id(&card_id)
+            .map(CombatCostAction::TapLand)
+            .unwrap_or(CombatCostAction::Decline),
+        PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)
+            .map(CombatCostAction::UntapLand)
+            .unwrap_or(CombatCostAction::Decline),
+        PlayerAction::PayCombatCost => CombatCostAction::Pay,
+        _ => CombatCostAction::Decline,
+    }
+}
+
+pub(super) fn exert_attackers(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    attackers: &[CardId],
+) -> Vec<CardId> {
+    let attacker_ids = TauriAgent::card_ids(attackers);
+    let view = agent.view();
+    let attacker_cards: Vec<CardDto> = attacker_ids
+        .iter()
+        .filter_map(|id| view.battlefield.iter().find(|c| c.id == *id).cloned())
+        .collect();
+    agent.send_prompt(AgentPromptInner::ChooseExertAttackers {
+        game_view: view,
+        attacker_ids,
+        attacker_cards,
+    });
+    match agent.recv_action() {
+        PlayerAction::ExertDecision {
+            chosen_attacker_ids,
+        } => chosen_attacker_ids
+            .iter()
+            .filter_map(|id| parse_card_id(id))
+            .filter(|cid| attackers.contains(cid))
+            .collect(),
+        _ => vec![],
+    }
+}
+
+pub(super) fn enlist_attackers(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    attackers: &[CardId],
+) -> Vec<CardId> {
+    let attacker_ids = TauriAgent::card_ids(attackers);
+    let view = agent.view();
+    let attacker_cards: Vec<CardDto> = attacker_ids
+        .iter()
+        .filter_map(|id| view.battlefield.iter().find(|c| c.id == *id).cloned())
+        .collect();
+    agent.send_prompt(AgentPromptInner::ChooseEnlistAttackers {
+        game_view: view,
+        attacker_ids,
+        attacker_cards,
+    });
+    match agent.recv_action() {
+        PlayerAction::EnlistDecision {
+            chosen_attacker_ids,
+        } => chosen_attacker_ids
+            .iter()
+            .filter_map(|id| parse_card_id(id))
+            .filter(|cid| attackers.contains(cid))
+            .collect(),
+        _ => vec![],
+    }
+}

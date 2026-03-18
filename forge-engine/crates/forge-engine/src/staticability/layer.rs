@@ -279,7 +279,12 @@ pub fn apply_continuous_effects(game: &mut GameState) {
 
             // ETBTapped is a one-time effect applied at zone-change time
             // (see `apply_etb_tapped`), not a continuous effect.
-            _ => {}
+            _ => {
+                eprintln!(
+                    "[WARN] Unknown StaticMode in collect_static_effects: {:?}",
+                    sa.mode
+                );
+            }
         }
     }
 
@@ -491,7 +496,9 @@ fn check_is_present(game: &GameState, source_id: CardId, sa: &StaticAbility) -> 
                         return false;
                     }
                 }
-                _ => {} // Unknown qualifiers are ignored for now
+                _ => {
+                    eprintln!("[WARN] Unknown IsPresent qualifier: {:?}", qualifier);
+                }
             }
         }
         return true;

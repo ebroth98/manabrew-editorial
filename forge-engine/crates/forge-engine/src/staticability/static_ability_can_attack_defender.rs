@@ -1,7 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::ability::effects::parse_counter_type;
-use crate::card::CardInstance;
+use crate::card::{valid_filter, CardInstance};
 use crate::ids::PlayerId;
 use crate::staticability::StaticMode;
 

@@ -104,7 +104,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 card.face_down = true;
             }
         }
-        _ => {} // Unknown mode — silently skip
+        _ => {
+            eprintln!("[WARN] Unknown SetState mode: {:?}", mode);
+        }
     }
 }
 
