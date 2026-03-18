@@ -208,6 +208,20 @@ impl CardInstance {
         {
             self.has_morph = true;
         }
+
+        // Plot: K:Plot:{cost} → AB$ Plot | Cost$ {cost} | ActivationZone$ Hand | SorcerySpeed$ True
+        // Mirrors Java CardFactoryUtil lines 3398-3449.
+        // Exiles the card from hand; plotted cards can later be cast for free.
+        if let Some(plot_cost) = self.get_keyword_cost("Plot") {
+            let ab_text = format!(
+                "AB$ Plot | Cost$ {} | ActivationZone$ Hand | SorcerySpeed$ True | Secondary$ True | SpellDescription$ Plot",
+                plot_cost
+            );
+            let next_idx = self.activated_abilities.len();
+            if let Some(ab) = parse_activated_ability(&ab_text, next_idx) {
+                self.activated_abilities.push(ab);
+            }
+        }
     }
 
     /// Generate triggered abilities from keywords (e.g. Prowess, Bushido, Annihilator, etc.).
@@ -584,6 +598,29 @@ impl CardInstance {
                     .entry("TrigCumulativeUpkeep".to_string())
                     .or_insert_with(|| {
                         format!("DB$ Sacrifice | SacValid$ Self | CumulativeUpkeep$ {cost_spec}")
+                    });
+            }
+
+            // Madness: K:Madness:{cost} → trigger when this card is exiled from hand
+            // (via the discard replacement). Mirrors Java's Madness trigger created in
+            // CardFactoryUtil.java:1474-1508.
+            //
+            // Flow: discard → exile (replacement) → ChangesZone trigger fires →
+            // optional trigger prompt → Play effect with Optional$ True →
+            // if not played, card moves to graveyard.
+            if let Some(madness_cost) = kw.strip_prefix("Madness:") {
+                let raw = "Mode$ ChangesZone | Origin$ Hand | Destination$ Exile | ValidCard$ Card.Self | OptionalDecider$ You | Secondary$ True | TriggerZones$ Exile | TriggerDescription$ You may cast this card for its madness cost.";
+                if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
+                    trig.execute = "TrigMadnessPlay".to_string();
+                    self.triggers.push(trig);
+                }
+                self.svars
+                    .entry("TrigMadnessPlay".to_string())
+                    .or_insert_with(|| {
+                        format!(
+                            "DB$ Play | Defined$ Self | Optional$ True | PlayCost$ {} | MadnessPlay$ True",
+                            madness_cost
+                        )
                     });
             }
         }

@@ -81,6 +81,35 @@ pub fn resolve_numeric_svar(
                     }
                     return 0;
                 }
+                // Discarded$Valid Filter/Times.N — check discarded cost cards
+                if let Some(rest) = svar_expr.strip_prefix("Discarded$Valid ") {
+                    let mut parts = rest.split("/Times.");
+                    let filter = parts.next().unwrap_or("").trim();
+                    let times: i32 = parts
+                        .next()
+                        .and_then(|s| s.trim().parse().ok())
+                        .unwrap_or(0);
+                    // Check remembered_cards on the source (set during cost payment)
+                    let remembered = &game.card(source_id).remembered_cards;
+                    if remembered.is_empty() {
+                        return 0;
+                    }
+                    // Check if the discarded card matches the filter
+                    for &rem_id in remembered {
+                        let rem_card = game.card(rem_id);
+                        let matches = if filter.contains("nonLand") {
+                            !rem_card.is_land()
+                        } else if filter == "Card" {
+                            true
+                        } else {
+                            true // default: accept
+                        };
+                        if matches {
+                            return times;
+                        }
+                    }
+                    return 0;
+                }
                 return evaluate_svar(svar_expr, sa);
             }
         }

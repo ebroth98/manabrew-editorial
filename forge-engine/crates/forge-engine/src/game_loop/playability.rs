@@ -220,6 +220,16 @@ impl GameLoop {
                     false
                 };
 
+                // Sacrifice-based alternative cost (e.g. Fireblast: sacrifice two Mountains)
+                let sacrifice_alt_ok =
+                    if let Some((amount, ref type_filter)) = card.get_sacrifice_alt_cost() {
+                        let targets =
+                            crate::cost::get_sacrifice_targets(game, player, type_filter);
+                        targets.len() as i32 >= amount
+                    } else {
+                        false
+                    };
+
                 // GainLife alternative cost (e.g. Invigorate: free if you control a Forest
                 // and an opponent gains life as the alt cost).
                 let gainlife_alt_ok = if let Some((_life, condition)) = card.get_gainlife_alt_cost()
@@ -338,6 +348,7 @@ impl GameLoop {
                     && !foretell_exile_ok
                     && !emerge_ok
                     && !gainlife_alt_ok
+                    && !sacrifice_alt_ok
                     && !offering_ok
                     && !morph_ok
                     && !bestow_ok
@@ -448,6 +459,14 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::GainLifeAlt,
                             });
                         }
+                        if sacrifice_alt_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::Alternative(
+                                    crate::spellability::AlternativeCost::SacrificeAlt,
+                                ),
+                            });
+                        }
                         if foretell_exile_ok {
                             playable.push(crate::agent::PlayOption {
                                 card_id,
@@ -492,7 +511,10 @@ impl GameLoop {
             }
             let available_mana = mana::calculate_available_mana(self.pool(player), game, player);
             let flashback_ok = if let Some(fb_cost_str) = card.get_flashback_cost() {
-                available_mana.can_pay(&forge_foundation::ManaCost::parse(&fb_cost_str))
+                let fb_cost = crate::cost::parse_cost(&fb_cost_str);
+                let fb_mana = Self::mana_from_cost(&fb_cost);
+                available_mana.can_pay(&fb_mana)
+                    && crate::cost::can_pay_ignoring_mana(&fb_cost, game, card_id, player)
             } else {
                 false
             };
@@ -554,7 +576,7 @@ impl GameLoop {
                         });
                     }
                 }
-            } else if card.has_keyword("MadnessExiled") {
+            } else if card.has_keyword(crate::card::KEYWORD_MADNESS_EXILED) {
                 // Madness: exiled card that can be cast for madness cost
                 if let Some(madness_cost_str) = card.get_madness_cost() {
                     if must_be_instant && !has_flash_permission(card_id) {
@@ -571,6 +593,42 @@ impl GameLoop {
                             ),
                         });
                     }
+                }
+            } else if let Some(plotted_turn) = card.keywords.iter().chain(card.granted_keywords.iter()).find_map(|kw| {
+                crate::card::parse_plotted_turn(kw)
+            }) {
+                // Plot: plotted card in exile can be cast for free on a LATER turn
+                if game.turn.turn_number <= plotted_turn {
+                    continue;
+                }
+                if must_be_instant && !has_flash_permission(card_id) {
+                    continue;
+                }
+                playable.push(crate::agent::PlayOption {
+                    card_id,
+                    mode: crate::agent::PlayCardMode::Alternative(
+                        crate::spellability::AlternativeCost::Plot,
+                    ),
+                });
+            } else if card.has_keyword(crate::card::KEYWORD_WARP_EXILED) {
+                // Warp: exiled card can be cast for its normal mana cost
+                if must_be_instant && !has_flash_permission(card_id) {
+                    continue;
+                }
+                let available_mana =
+                    mana::calculate_available_mana(self.pool(player), game, player);
+                let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
+                    game,
+                    card,
+                    player,
+                    ZoneType::Exile,
+                );
+                let adjusted = cost_adj.apply(&card.mana_cost);
+                if available_mana.can_pay(&adjusted) {
+                    playable.push(crate::agent::PlayOption {
+                        card_id,
+                        mode: crate::agent::PlayCardMode::Normal,
+                    });
                 }
             }
         }

@@ -238,4 +238,8 @@ pub struct RunParams {
     pub lki_p1p1_counters: Option<i32>,
     /// Whether cumulative upkeep was paid (for PayCumulativeUpkeep trigger).
     pub cumulative_upkeep_paid: Option<bool>,
+    /// Snapshot of drawn_this_turn at the time a Drawn event fires.
+    /// Used by `Number$ N` triggers to compare against the exact draw count
+    /// at fire time (not at deferred match time).
+    pub drawn_this_turn_snapshot: Option<i32>,
 }

@@ -613,6 +613,13 @@ impl GameState {
     /// Reset per-turn state for all cards and players of a given player.
     pub fn new_turn_for_player(&mut self, player: PlayerId) {
         self.player_mut(player).new_turn();
+        // Reset drawn_this_turn for ALL players (mirrors Java Game.newTurn).
+        // The Drawn trigger Number$ check requires an accurate per-turn count.
+        for pid in &self.player_order.clone() {
+            if *pid != player {
+                self.player_mut(*pid).drawn_this_turn = 0;
+            }
+        }
 
         let all_card_ids: Vec<CardId> = (0..self.cards.len()).map(|i| CardId(i as u32)).collect();
         for cid in all_card_ids {

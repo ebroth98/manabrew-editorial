@@ -410,7 +410,15 @@ fn check_sba(
     let mut legend_fn = |player: PlayerId, ids: &[CardId]| -> CardId {
         agents[player.index()].choose_legend_keep(player, ids)
     };
-    game.check_state_based_actions_with_triggers(Some(trigger_handler), Some(&mut legend_fn))
+    let result =
+        game.check_state_based_actions_with_triggers(Some(trigger_handler), Some(&mut legend_fn));
+    // Re-register triggers after SBA may have moved cards between zones.
+    // This ensures triggers with non-Battlefield active zones (e.g.
+    // TriggerZones$ Graveyard) are registered when cards die.
+    if result {
+        trigger_handler.reset_active_triggers(game);
+    }
+    result
 }
 
 mod action_space;

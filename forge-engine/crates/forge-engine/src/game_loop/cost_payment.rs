@@ -36,7 +36,7 @@ impl GameLoop {
         source: CardId,
         type_filter: &str,
         amount: i32,
-    ) {
+    ) -> Vec<CardId> {
         // Build eligible hand cards — filtered by type if the cost specifies it.
         let eligible: Vec<CardId> = if type_filter == "Card" || type_filter.is_empty() {
             game.cards_in_zone(ZoneType::Hand, player).to_vec()
@@ -54,25 +54,15 @@ impl GameLoop {
             .filter(|&cid| cid != source || game.card(source).owner != player)
             .collect();
         let chosen = agents[player.index()].choose_discard(player, &eligible, amount as usize);
-        for cid in chosen {
-            let owner = game.card(cid).owner;
-            self.trigger_handler.run_trigger(
-                TriggerType::Discarded,
-                RunParams {
-                    card: Some(cid),
-                    player: Some(player),
-                    ..Default::default()
-                },
-                false,
-            );
-            game.move_card(cid, ZoneType::Graveyard, owner);
-            crate::ability::effects::emit_zone_trigger(
+        for &cid in &chosen {
+            crate::ability::effects::helpers::discard_with_madness_replacement(
+                game,
                 &mut self.trigger_handler,
                 cid,
-                ZoneType::Hand,
-                ZoneType::Graveyard,
+                player,
             );
         }
+        chosen
     }
 
     fn cost_part_kind(part: &CostPart) -> &'static str {
@@ -205,19 +195,76 @@ impl GameLoop {
         context: CostPaymentContext,
     ) -> bool {
         let _ = context;
-        // Mirror Java cost-payment flow by resolving optional confirmations before
-        // mutating any game state. This avoids partially paid costs when a later
-        // cost part is declined.
-        for part in cost.parts.iter() {
-            if !self.confirm_cost_part_payment(game, agents, player, card_id, part, api, mandatory)
-            {
-                return false;
-            }
-        }
         // Java CostPayment is transactional: if any later cost part fails,
         // previously applied parts are undone. Mirror that via full snapshot.
         let payment_snapshot = self.make_snapshot(game, true);
         let mut payment_ok = true;
+
+        // Java's CostPayment.payComputerCosts uses a two-phase approach:
+        // Phase 1 (accept/visit): iterate all cost parts, gather decisions
+        //   - CostDiscard.visit() → pick cards to discard (consumes RNG)
+        //   - CostSacrifice(CARDNAME).visit() → confirmPayment (consumes RNG)
+        //   - Other parts → no-op
+        // Phase 2 (payAsDecided): iterate all cost parts, execute payments
+        //   - CostPartMana → auto-tap (may trigger mana abilities, consuming RNG)
+        //   - CostDiscard → discard the pre-picked cards
+        //   - CostSacrifice → sacrifice
+        //
+        // We match this by pre-picking discards and pre-confirming sacrifices
+        // before the main payment loop.
+
+        // Phase 1: visit/decide (matching Java's accept loop order).
+        let mut pre_picked_discards: Vec<CardId> = Vec::new();
+        for part in cost.parts.clone() {
+            match &part {
+                CostPart::Discard {
+                    type_filter,
+                    amount,
+                } => {
+                    if type_filter != "CARDNAME" {
+                        // Pre-pick discard cards (mirrors Java CostDiscard.visit → pickCards)
+                        let eligible: Vec<CardId> =
+                            if type_filter == "Card" || type_filter.is_empty() {
+                                game.cards_in_zone(ZoneType::Hand, player).to_vec()
+                            } else {
+                                game.cards_in_zone(ZoneType::Hand, player)
+                                    .iter()
+                                    .copied()
+                                    .filter(|&cid| {
+                                        crate::ability::effects::matches_change_type(
+                                            game.card(cid),
+                                            type_filter,
+                                            &[],
+                                        )
+                                    })
+                                    .collect()
+                            };
+                        let eligible: Vec<CardId> = eligible
+                            .into_iter()
+                            .filter(|&cid| cid != card_id || game.card(card_id).owner != player)
+                            .collect();
+                        let chosen = agents[player.index()]
+                            .choose_discard(player, &eligible, *amount as usize);
+                        pre_picked_discards.extend(chosen);
+                    }
+                }
+                _ => {
+                    // Confirm decisions for parts that need them
+                    if !self.confirm_cost_part_payment(
+                        game, agents, player, card_id, &part, api, mandatory,
+                    ) {
+                        payment_ok = false;
+                        break;
+                    }
+                }
+            }
+        }
+        if !payment_ok {
+            self.restore_snapshot(game, &payment_snapshot);
+            return false;
+        }
+
+        // Phase 2: execute payments.
         for part in cost.parts.clone() {
             match &part {
                 CostPart::Tap => {
@@ -312,6 +359,21 @@ impl GameLoop {
                             false,
                         );
                         game.move_card(card_id, ZoneType::Graveyard, owner);
+                    } else if !pre_picked_discards.is_empty() {
+                        // Use pre-picked cards from visit phase
+                        let to_discard: Vec<CardId> = pre_picked_discards
+                            .drain(..(*amount as usize).min(pre_picked_discards.len()))
+                            .collect();
+                        for cid in to_discard {
+                            crate::ability::effects::helpers::discard_with_madness_replacement(
+                                game,
+                                &mut self.trigger_handler,
+                                cid,
+                                player,
+                            );
+                            // Store discarded card for SVar evaluation
+                            game.card_mut(card_id).remembered_cards.push(cid);
+                        }
                     } else {
                         self.pay_discard_cost(game, agents, player, card_id, type_filter, *amount);
                     }
@@ -797,7 +859,11 @@ impl GameLoop {
                     amount,
                 } => {
                     if type_filter != "CARDNAME" {
-                        self.pay_discard_cost(game, agents, player, card_id, type_filter, *amount);
+                        let discarded =
+                            self.pay_discard_cost(game, agents, player, card_id, type_filter, *amount);
+                        // Store discarded cards on the source card for SVar evaluation
+                        // (e.g. Grab the Prize: X = Discarded$Valid Card.nonLand/Times.2)
+                        game.card_mut(card_id).remembered_cards.extend(discarded);
                     }
                 }
                 CostPart::ExileFromAnyGrave {

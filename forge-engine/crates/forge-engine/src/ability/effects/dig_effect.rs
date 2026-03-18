@@ -123,13 +123,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     ctx.agents[sa.activating_player.index()].on_library_peek(ctx.game, &top_n);
 
     // Ask the chooser (activating player) which cards to take.
+    // Java DigEffect skips the prompt entirely when no valid cards exist,
+    // so we must also skip to avoid consuming extra RNG.
     let max_take = change_num.min(valid.len());
-    let chosen = ctx.agents[sa.activating_player.index()].choose_dig(
-        sa.activating_player,
-        &valid,
-        max_take,
-        optional || any_number,
-    );
+    let chosen = if valid.is_empty() {
+        Vec::new()
+    } else {
+        ctx.agents[sa.activating_player.index()].choose_dig(
+            sa.activating_player,
+            &valid,
+            max_take,
+            optional || any_number,
+        )
+    };
 
     let chosen: Vec<_> = chosen
         .into_iter()

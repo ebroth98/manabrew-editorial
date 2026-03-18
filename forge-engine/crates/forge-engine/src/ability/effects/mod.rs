@@ -75,6 +75,7 @@ pub mod name_card_effect;
 pub mod peek_and_reveal_effect;
 pub mod phases_effect;
 pub mod play_effect;
+pub mod plot_effect;
 pub mod poison_effect;
 pub mod power_exchange_effect;
 pub mod prevent_damage_effect;
@@ -159,7 +160,10 @@ macro_rules! effect_dispatch {
             match api_type {
                 $( $api => $handler(ctx, sa), )*
                 _ => {
-                    eprintln!("[WARN] Unimplemented effect API type: {:?}", api_type);
+                    if !api_type.is_empty() {
+                        eprintln!("[WARN] Unimplemented effect API type: {:?}", api_type);
+                    }
+                    // Empty API types are normal for sub-ability chain nodes without DB$/SP$ prefix
                 }
             }
         }
@@ -195,6 +199,8 @@ effect_dispatch! {
     "RevealHand" => reveal_hand_effect::resolve,
     "LookAt" => look_at_effect::resolve,
     "Charm" => charm_effect::resolve,
+    "GenericChoice" => charm_effect::resolve,
+    "Plot" => plot_effect::resolve,
     "PeekAndReveal" => peek_and_reveal_effect::resolve,
     "SetState" => set_state_effect::resolve,
     "Cleanup" => cleanup_effect::resolve,
@@ -570,6 +576,8 @@ fn try_pay_unless_cost(
             | CostPart::PayShards(_)
             | CostPart::Draw(_)
             | CostPart::Mill(_)
+            | CostPart::Discard { .. }
+            | CostPart::Sacrifice { .. }
             | CostPart::AddCounter { .. } => {}
             _ => {
                 return false;
@@ -594,6 +602,10 @@ fn try_pay_unless_cost(
                 CostPart::Mill(_) => true,
                 // Java: CostAddMana.visit() → confirm(cost, true)
                 CostPart::AddMana { .. } => true,
+                // Java: CostDiscard.visit() → confirm(cost, true)
+                CostPart::Discard { .. } => true,
+                // Java: CostSacrifice.visit() → confirm(cost, true)
+                CostPart::Sacrifice { .. } => true,
                 // Java: CostPayEnergy, CostPayShards, CostPutCounter, CostPartMana → no confirm
                 _ => false,
             };
@@ -689,6 +701,77 @@ fn try_pay_unless_cost(
                 // Put counters on the source permanent (e.g. Fabricate UnlessCost).
                 // Mirrors Java CostPutCounter payment.
                 ctx.game.card_mut(source).add_counter(counter_type, *amount);
+            }
+            CostPart::Discard {
+                amount,
+                type_filter,
+            } => {
+                // UnlessCost discard: pick cards from hand and discard them.
+                for _ in 0..*amount {
+                    let valid: Vec<CardId> = ctx
+                        .game
+                        .cards_in_zone(ZoneType::Hand, payer)
+                        .to_vec()
+                        .into_iter()
+                        .filter(|&cid| {
+                            if type_filter == "Card" || type_filter.is_empty() {
+                                true
+                            } else {
+                                crate::ability::effects::helpers::matches_change_type(
+                                    ctx.game.card(cid),
+                                    type_filter,
+                                    &[],
+                                )
+                            }
+                        })
+                        .collect();
+                    if valid.is_empty() {
+                        return false;
+                    }
+                    let chosen =
+                        ctx.agents[payer.index()].choose_discard(payer, &valid, 1);
+                    if let Some(&cid) = chosen.first() {
+                        helpers::discard_with_madness_replacement(
+                            ctx.game,
+                            ctx.trigger_handler,
+                            cid,
+                            payer,
+                        );
+                    }
+                }
+            }
+            CostPart::Sacrifice {
+                amount,
+                type_filter,
+            } => {
+                for _ in 0..*amount {
+                    let valid =
+                        crate::cost::get_sacrifice_targets(ctx.game, payer, type_filter);
+                    if valid.is_empty() {
+                        return false;
+                    }
+                    if let Some(chosen) =
+                        ctx.agents[payer.index()].choose_sacrifice(payer, &valid)
+                    {
+                        let owner = ctx.game.card(chosen).owner;
+                        ctx.trigger_handler.run_trigger(
+                            TriggerType::Sacrificed,
+                            RunParams {
+                                card: Some(chosen),
+                                player: Some(payer),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                        ctx.game.move_card(chosen, ZoneType::Graveyard, owner);
+                        emit_zone_trigger(
+                            &mut ctx.trigger_handler,
+                            chosen,
+                            ZoneType::Battlefield,
+                            ZoneType::Graveyard,
+                        );
+                    }
+                }
             }
             _ => {
                 // Unsupported UnlessCost part in effect resolution path.

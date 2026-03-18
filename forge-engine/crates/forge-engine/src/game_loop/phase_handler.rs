@@ -317,16 +317,23 @@ impl GameLoop {
         // Skip draw on turn 1
         if game.turn.turn_number > 1 {
             if let Some(card_id) = game.draw_card(active) {
+                let drawn_snapshot = game.player(active).drawn_this_turn;
                 // Fire Drawn trigger for turn draw
                 self.trigger_handler.run_trigger(
                     TriggerType::Drawn,
                     RunParams {
                         card: Some(card_id),
                         player: Some(active),
+                        drawn_this_turn_snapshot: Some(drawn_snapshot),
                         ..Default::default()
                     },
                     false,
                 );
+                // Match Drawn triggers immediately so Number$ N checks see
+                // the correct drawn count at fire time.
+                if self.trigger_handler.has_number_drawn_triggers(game) {
+                    self.trigger_handler.flush_waiting_triggers(game);
+                }
             }
         }
     }
@@ -416,37 +423,22 @@ impl GameLoop {
             );
             for card_id in chosen.iter().take(to_discard) {
                 if game.card(*card_id).zone == ZoneType::Hand {
-                    let has_madness = game.card(*card_id).get_madness_cost().is_some();
-                    if has_madness {
-                        // Madness: exile instead of graveyard (can cast for madness cost)
-                        game.move_card(*card_id, ZoneType::Exile, active);
-                        effects::emit_zone_trigger(
-                            &mut self.trigger_handler,
-                            *card_id,
-                            ZoneType::Hand,
-                            ZoneType::Exile,
-                        );
-                    } else {
-                        game.move_card(*card_id, ZoneType::Graveyard, active);
-                        effects::emit_zone_trigger(
-                            &mut self.trigger_handler,
-                            *card_id,
-                            ZoneType::Hand,
-                            ZoneType::Graveyard,
-                        );
-                    }
-                    // Fire Discarded trigger regardless of destination
-                    self.trigger_handler.run_trigger(
-                        TriggerType::Discarded,
-                        RunParams {
-                            card: Some(*card_id),
-                            player: Some(active),
-                            ..Default::default()
-                        },
-                        false,
+                    effects::helpers::discard_with_madness_replacement(
+                        game,
+                        &mut self.trigger_handler,
+                        *card_id,
+                        active,
                     );
                 }
             }
+        }
+
+        // Process any triggers from cleanup discard (e.g. Madness triggers that
+        // need to resolve before end of turn). Mirrors Java's cleanup step which
+        // processes triggers after discard-to-hand-size.
+        self.process_triggers(game, agents);
+        if !game.stack.is_empty() {
+            self.resolve_stack(game, agents);
         }
 
         // Reset fog flag (issue #22: Fog effect lasts until end of turn).

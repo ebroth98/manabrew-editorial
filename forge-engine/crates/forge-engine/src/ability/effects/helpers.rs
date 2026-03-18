@@ -351,3 +351,50 @@ pub fn matches_change_type(
 
     true
 }
+
+// ── Madness discard helper ────────────────────────────────────────────
+
+/// Handle a card being discarded, applying the Madness replacement effect
+/// if applicable. If the card has Madness, it goes to exile (marked with
+/// `KEYWORD_MADNESS_EXILED`); otherwise it goes to the graveyard.
+///
+/// Also registers zone triggers and fires the Discarded trigger.
+/// Mirrors Java's Madness replacement effect + discard trigger flow.
+pub fn discard_with_madness_replacement(
+    game: &mut GameState,
+    trigger_handler: &mut crate::trigger::handler::TriggerHandler,
+    card_id: crate::ids::CardId,
+    discard_player: crate::ids::PlayerId,
+) {
+    let owner = game.card(card_id).owner;
+    let has_madness = game.card(card_id).get_madness_cost().is_some();
+
+    if has_madness {
+        game.move_card(card_id, ZoneType::Exile, owner);
+        trigger_handler.register_active_trigger(game, card_id);
+        super::emit_zone_trigger(trigger_handler, card_id, ZoneType::Hand, ZoneType::Exile);
+        game.card_mut(card_id)
+            .granted_keywords
+            .push(crate::card::KEYWORD_MADNESS_EXILED.to_string());
+    } else {
+        game.move_card(card_id, ZoneType::Graveyard, owner);
+        trigger_handler.register_active_trigger(game, card_id);
+        super::emit_zone_trigger(trigger_handler, card_id, ZoneType::Hand, ZoneType::Graveyard);
+    }
+
+    trigger_handler.run_trigger(
+        crate::event::TriggerType::Discarded,
+        crate::event::RunParams {
+            card: Some(card_id),
+            player: Some(discard_player),
+            ..Default::default()
+        },
+        false,
+    );
+}
+
+/// Remove the `MadnessExiled` marker from a card's granted keywords.
+pub fn remove_madness_exiled_marker(card: &mut crate::card::CardInstance) {
+    card.granted_keywords
+        .retain(|k| k != crate::card::KEYWORD_MADNESS_EXILED);
+}

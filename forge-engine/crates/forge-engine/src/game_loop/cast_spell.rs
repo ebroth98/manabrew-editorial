@@ -140,6 +140,8 @@ impl GameLoop {
             let mut is_madness = false;
             let mut is_emerge = false;
             let mut is_gainlife_alt = false;
+            let mut is_sacrifice_alt = false;
+            let mut is_plot_cast = false;
             let mut is_bestow = false;
             let mut is_warp = false;
             let mut is_morph_facedown = false;
@@ -202,6 +204,10 @@ impl GameLoop {
                     crate::spellability::AlternativeCost::Emerge => is_emerge = true,
                     crate::spellability::AlternativeCost::Bestow => is_bestow = true,
                     crate::spellability::AlternativeCost::Warp => is_warp = true,
+                    crate::spellability::AlternativeCost::SacrificeAlt => {
+                        is_sacrifice_alt = true
+                    }
+                    crate::spellability::AlternativeCost::Plot => is_plot_cast = true,
                     crate::spellability::AlternativeCost::Morph
                     | crate::spellability::AlternativeCost::Megamorph => {
                         is_morph_facedown = true;
@@ -304,10 +310,9 @@ impl GameLoop {
                 flashback_mana_cost.unwrap_or_else(forge_foundation::ManaCost::zero)
             } else if is_madness {
                 let madness_cost_str = game.card(card_id).get_madness_cost().unwrap_or_default();
-                // Remove the MadnessExiled marker
-                game.card_mut(card_id)
-                    .granted_keywords
-                    .retain(|k| k != "MadnessExiled");
+                crate::ability::effects::helpers::remove_madness_exiled_marker(
+                    game.card_mut(card_id),
+                );
                 forge_foundation::ManaCost::parse(&madness_cost_str)
             } else if is_spectacle {
                 let spec_cost_str = game.card(card_id).get_spectacle_cost().unwrap_or_default();
@@ -336,6 +341,13 @@ impl GameLoop {
             } else if is_gainlife_alt {
                 // GainLife alternative cost: cast for free (zero mana).
                 // The side effect (opponent gains life) is applied below.
+                forge_foundation::ManaCost::generic(0)
+            } else if is_sacrifice_alt {
+                // Sacrifice-based alternative cost: cast for free (zero mana).
+                // The sacrifice is performed below.
+                forge_foundation::ManaCost::generic(0)
+            } else if is_plot_cast {
+                // Plot: cast from exile for free (already paid plot cost).
                 forge_foundation::ManaCost::generic(0)
             } else if is_bestow {
                 let bestow_cost_str = game.card(card_id).get_bestow_cost().unwrap_or_default();
@@ -1703,6 +1715,13 @@ impl GameLoop {
                 }
             }
 
+            // Apply sacrifice-based alternative cost (e.g. Fireblast: sacrifice two Mountains).
+            if is_sacrifice_alt {
+                if let Some((amount, type_filter)) = game.card(card_id).get_sacrifice_alt_cost() {
+                    self.pay_sacrifice_cost(game, agents, player, &type_filter, amount);
+                }
+            }
+
             // Increment commander cast count (before moving card to stack)
             if is_commander_cast {
                 game.card_mut(card_id).commander_cast_count += 1;
@@ -1739,12 +1758,14 @@ impl GameLoop {
                 Some(ZoneType::Exile)
             } else if is_flashback || is_escape {
                 Some(ZoneType::Graveyard)
-            } else if is_madness {
+            } else if is_madness || is_plot_cast {
                 Some(ZoneType::Exile)
             } else if is_commander_cast {
                 Some(ZoneType::Command)
             } else {
-                Some(ZoneType::Hand)
+                // Use the card's actual zone (usually Hand, but could be
+                // Exile for Warp-from-exile casts with Normal mode).
+                Some(game.card(card_id).zone)
             };
 
             let entry = StackEntry {

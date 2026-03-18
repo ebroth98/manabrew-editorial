@@ -18,6 +18,25 @@ impl CardInstance {
         self.get_keyword_cost("Spectacle")
     }
 
+    /// Get sacrifice-based alternative cost info (e.g. Fireblast: sacrifice two Mountains).
+    ///
+    /// Stored as keyword `AltCostSacrifice:N:Type` where N is the count and Type is the filter.
+    /// Returns `Some((amount, type_filter))` if present.
+    pub fn get_sacrifice_alt_cost(&self) -> Option<(i32, String)> {
+        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+            if let Some(rest) = kw.strip_prefix(super::KEYWORD_ALT_COST_SACRIFICE_PREFIX) {
+                let mut parts = rest.splitn(2, ':');
+                let amount = parts
+                    .next()
+                    .and_then(|s| s.parse::<i32>().ok())
+                    .unwrap_or(0);
+                let type_filter = parts.next().unwrap_or("").to_string();
+                return Some((amount, type_filter));
+            }
+        }
+        None
+    }
+
     /// Get GainLife alternative cost info.
     ///
     /// Stored as keyword `AltCostGainLife:N:IsPresent` where N is the life amount
@@ -25,7 +44,7 @@ impl CardInstance {
     /// Returns `Some((life_amount, condition))` if present.
     pub fn get_gainlife_alt_cost(&self) -> Option<(i32, String)> {
         for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(rest) = kw.strip_prefix("AltCostGainLife:") {
+            if let Some(rest) = kw.strip_prefix(super::KEYWORD_ALT_COST_GAINLIFE_PREFIX) {
                 let mut parts = rest.splitn(2, ':');
                 let amount = parts
                     .next()

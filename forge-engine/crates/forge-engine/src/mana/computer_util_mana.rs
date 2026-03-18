@@ -212,6 +212,9 @@ fn auto_tap_lands_internal(
         };
 
         // Pay non-tap ability costs first so a failed payment cannot generate mana.
+        // If payment fails (e.g. Treasure sacrifice declined), remove this source
+        // and retry with another source for the same shard. This mirrors Java's
+        // ComputerUtilMana which retries different sources after a decline.
         if !pay_non_tap_mana_ability_costs(
             game,
             player,
@@ -220,7 +223,11 @@ fn auto_tap_lands_internal(
             allow_reserved_source_reuse,
             callback,
         ) {
-            break;
+            // Remove the declined source and retry the same shard
+            for abilities in sources_for_shards.values_mut() {
+                abilities.retain(|a| a.card_id != sa_payment.card_id);
+            }
+            continue;
         }
 
         tap_land_for_mana(

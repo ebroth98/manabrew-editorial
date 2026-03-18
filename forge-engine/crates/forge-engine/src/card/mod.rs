@@ -5,6 +5,33 @@ pub mod filter_constants;
 mod keyword_gen;
 pub mod valid_filter;
 
+// ── Keyword marker constants ──────────────────────────────────────────
+// These are synthetic keywords injected at runtime to track card state.
+// Using constants avoids magic strings scattered across the codebase.
+
+/// Marker added to cards exiled via the Madness replacement effect.
+/// Presence means the card is eligible for casting at its madness cost.
+/// Removed when the card is cast or moved to graveyard.
+pub const KEYWORD_MADNESS_EXILED: &str = "MadnessExiled";
+
+/// Prefix for the Plotted marker. Full keyword is `"Plotted:{turn}"`.
+/// The turn number prevents casting on the same turn the card was plotted.
+pub const KEYWORD_PLOTTED_PREFIX: &str = "Plotted:";
+
+/// Prefix for the sacrifice-based alternative cost keyword.
+/// Full keyword is `"AltCostSacrifice:{amount}:{type_filter}"`.
+pub const KEYWORD_ALT_COST_SACRIFICE_PREFIX: &str = "AltCostSacrifice:";
+
+/// Prefix for the GainLife-based alternative cost keyword.
+pub const KEYWORD_ALT_COST_GAINLIFE_PREFIX: &str = "AltCostGainLife:";
+
+/// SpellAbility parameter key indicating a Madness Play effect.
+pub const PARAM_MADNESS_PLAY: &str = "MadnessPlay";
+
+/// Marker for cards exiled via Warp's end-of-turn trigger.
+/// These cards can be cast from exile on a later turn for their normal mana cost.
+pub const KEYWORD_WARP_EXILED: &str = "WarpExiled";
+
 use std::collections::BTreeMap;
 
 use forge_carddb::CardRules;
@@ -16,6 +43,41 @@ use crate::ids::{CardId, PlayerId};
 use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::staticability::{parse_static_ability, StaticAbility};
 use crate::trigger::{parse_trigger, Trigger};
+
+/// Build the full `"Plotted:{turn}"` keyword string.
+pub fn make_plotted_keyword(turn: u32) -> String {
+    format!("{}{}", KEYWORD_PLOTTED_PREFIX, turn)
+}
+
+/// Extract the turn number from a `"Plotted:{turn}"` keyword, if present.
+pub fn parse_plotted_turn(kw: &str) -> Option<u32> {
+    kw.strip_prefix(KEYWORD_PLOTTED_PREFIX)
+        .and_then(|s| s.parse().ok())
+}
+
+/// Parse `Mode$ AlternativeCost | Cost$ Sac<N/Type>` from a static ability raw string
+/// and return `Some("AltCostSacrifice:N:Type")` keyword.
+fn parse_sacrifice_alt_cost_keyword(raw: &str) -> Option<String> {
+    if !raw.contains("AlternativeCost") {
+        return None;
+    }
+    raw.split('|').find_map(|part| {
+        let p = part.trim();
+        if let Some(rest) = p.strip_prefix("Cost$") {
+            let cost = rest.trim();
+            if let Some(inner) = cost
+                .strip_prefix("Sac<")
+                .and_then(|s| s.strip_suffix('>'))
+            {
+                let mut split = inner.splitn(2, '/');
+                let amount = split.next().and_then(|s| s.trim().parse::<i32>().ok())?;
+                let type_filter = split.next().unwrap_or("").trim().to_string();
+                return Some(format!("{}{}:{}", KEYWORD_ALT_COST_SACRIFICE_PREFIX, amount, type_filter));
+            }
+        }
+        None
+    })
+}
 
 /// Parse `Mode$ AlternativeCost | Cost$ GainLife<N/...> | IsPresent$ ...` from a
 /// static ability raw string and return `Some("AltCostGainLife:N:condition")` keyword.
@@ -47,7 +109,7 @@ fn parse_gainlife_alt_cost_keyword(raw: &str) -> Option<String> {
             p.strip_prefix("IsPresent$").map(|s| s.trim().to_string())
         })
         .unwrap_or_default();
-    Some(format!("AltCostGainLife:{}:{}", life_amount, condition))
+    Some(format!("{}{}:{}", KEYWORD_ALT_COST_GAINLIFE_PREFIX, life_amount, condition))
 }
 
 /// Stores alternate-face characteristics for double-faced cards (DFCs).
@@ -522,6 +584,10 @@ impl CardInstance {
         for raw in &face.static_abilities {
             // Convert Mode$ AlternativeCost | Cost$ GainLife<N> to keyword for runtime detection
             if let Some(kw) = parse_gainlife_alt_cost_keyword(raw) {
+                card.keywords.push(kw);
+            }
+            // Convert Mode$ AlternativeCost | Cost$ Sac<N/Type> to keyword for runtime detection
+            if let Some(kw) = parse_sacrifice_alt_cost_keyword(raw) {
                 card.keywords.push(kw);
             }
             let prefixed = format!("S$ {}", raw);

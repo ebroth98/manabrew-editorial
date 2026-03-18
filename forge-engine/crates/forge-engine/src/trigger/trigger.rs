@@ -105,6 +105,8 @@ pub enum TriggerMode {
     Drawn {
         valid_card: Option<String>,
         valid_player: Option<String>,
+        /// `Number$ N` — only fires when this is exactly the Nth card drawn this turn.
+        number: Option<i32>,
     },
     /// A card was milled.
     Milled {
@@ -682,12 +684,38 @@ impl TriggerMode {
                 )
             }
 
-            // ── Card + player triggers (check run_params.card + run_params.player) ──
-            TriggerMode::Sacrificed {
+            // ── Drawn trigger with optional Number$ threshold ──
+            TriggerMode::Drawn {
                 valid_card,
                 valid_player,
+                number,
+            } => {
+                if let Some(n) = number {
+                    // Number$ N: only fires when this is exactly the Nth card drawn this turn.
+                    // Use the snapshotted drawn count from fire-time (RunParams), NOT the
+                    // live counter. The live counter may have advanced past N if multiple
+                    // cards were drawn by the same effect (e.g. Faithless Looting draws 2).
+                    let drawn_count = run_params
+                        .drawn_this_turn_snapshot
+                        .unwrap_or_else(|| {
+                            let player = run_params.player.unwrap_or(host_controller);
+                            game.player(player).drawn_this_turn
+                        });
+                    if drawn_count != *n {
+                        return false;
+                    }
+                }
+                check_card_filter(
+                    valid_card,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_player_filter(valid_player, run_params.player, host_controller)
             }
-            | TriggerMode::Drawn {
+
+            // ── Card + player triggers (check run_params.card + run_params.player) ──
+            TriggerMode::Sacrificed {
                 valid_card,
                 valid_player,
             }
@@ -1229,9 +1257,13 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "Drawn" => {
             let valid_card = params.get("ValidCard").cloned();
             let valid_player = params.get("ValidPlayer").cloned();
+            let number = params
+                .get("Number")
+                .and_then(|s| s.trim().parse::<i32>().ok());
             TriggerMode::Drawn {
                 valid_card,
                 valid_player,
+                number,
             }
         }
         "Milled" => {

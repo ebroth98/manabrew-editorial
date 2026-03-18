@@ -96,6 +96,22 @@ impl TriggerHandler {
     /// damage before triggers go on the stack).
     ///
     /// Call this immediately after firing triggers and before SBA.
+    /// Returns true if any active trigger is a Drawn trigger with Number$ set.
+    /// Used to gate flush_waiting_triggers during draws to avoid disrupting
+    /// other trigger matching when no Number$-gated Drawn triggers exist.
+    pub fn has_number_drawn_triggers(&self, game: &GameState) -> bool {
+        self.active_triggers.iter().any(|at| {
+            let card = game.card(at.card_id);
+            if at.trigger_index >= card.triggers.len() {
+                return false;
+            }
+            matches!(
+                &card.triggers[at.trigger_index].mode,
+                crate::trigger::TriggerMode::Drawn { number: Some(_), .. }
+            )
+        })
+    }
+
     pub fn flush_waiting_triggers(&mut self, game: &GameState) {
         if self.waiting_triggers.is_empty() && self.delayed_triggers.is_empty() {
             return;

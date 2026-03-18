@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{matches_valid_cards, parse_param, EffectContext};
+use super::{matches_valid_cards, resolve_numeric_svar, EffectContext};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
@@ -9,7 +9,7 @@ use crate::spellability::SpellAbility;
 /// Mirrors Java's `DamageAllEffect.java`:
 /// - `ValidCards$` selects which battlefield permanents receive damage.
 /// - `ValidPlayers$` set to "Player" also deals damage to every player.
-/// - `NumDmg$` specifies the amount (fixed integer; SVar X not yet supported).
+/// - `NumDmg$` specifies the amount (integer or SVar reference).
 ///
 /// # Card script examples
 /// ```text
@@ -17,7 +17,7 @@ use crate::spellability::SpellAbility;
 /// A:SP$ DamageAll | ValidCards$ Creature.withFlying | ValidPlayers$ Player | NumDmg$ X
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let num_dmg = parse_param(&sa.ability_text, "NumDmg$ ").unwrap_or(0);
+    let num_dmg = resolve_numeric_svar(ctx.game, sa, "NumDmg", 0);
     if num_dmg <= 0 {
         return;
     }
@@ -121,9 +121,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 
-    // Deal damage to each player if ValidPlayers$ is set
+    // Deal damage to each matching player if ValidPlayers$ is set
     if !valid_players.is_empty() {
+        let is_opponent_only = valid_players.contains("Opponent");
         for pid in player_ids {
+            if is_opponent_only && pid == activating_player {
+                continue;
+            }
             let source_has_infect = if let Some(src_id) = source {
                 let src = ctx.game.card(src_id);
                 source_has_infect_keyword

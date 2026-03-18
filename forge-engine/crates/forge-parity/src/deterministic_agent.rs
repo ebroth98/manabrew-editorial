@@ -184,6 +184,8 @@ impl DeterministicAgent {
             | PlayCardMode::Alternative(AlternativeCost::Megamorph) => "Morph",
             PlayCardMode::Alternative(AlternativeCost::Bestow) => "Bestow",
             PlayCardMode::Alternative(AlternativeCost::Warp) => "0",
+            PlayCardMode::Alternative(AlternativeCost::SacrificeAlt) => "0",
+            PlayCardMode::Alternative(AlternativeCost::Plot) => "Plot",
             PlayCardMode::GainLifeAlt => "GainLifeAlt",
             PlayCardMode::ForetellExile => "ForetellExile",
         }

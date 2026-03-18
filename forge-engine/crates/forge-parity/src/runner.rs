@@ -481,6 +481,12 @@ impl PlayerAgent for CapturingAgent {
                                 "Bestow".to_string()
                             }
                             PlayCardMode::Alternative(AlternativeCost::Warp) => "0".to_string(),
+                            PlayCardMode::Alternative(AlternativeCost::SacrificeAlt) => {
+                                "0".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Plot) => {
+                                "Plot".to_string()
+                            }
                             PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
                             PlayCardMode::ForetellExile => "ForetellExile".to_string(),
                         };

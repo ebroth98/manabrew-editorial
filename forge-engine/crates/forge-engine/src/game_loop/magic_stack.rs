@@ -112,7 +112,23 @@ impl GameLoop {
                     api,
                 );
                 if !accepted {
-                    // Player declined — trigger does nothing
+                    // Player declined — trigger does nothing.
+                    // For Madness triggers: move the source card from exile to graveyard.
+                    // Mirrors Java's Madness cleanup when the trigger is declined.
+                    if entry
+                        .spell_ability
+                        .param_is_true(crate::card::PARAM_MADNESS_PLAY)
+                    {
+                        if let Some(source_id) = entry.spell_ability.source {
+                            if game.card(source_id).zone == ZoneType::Exile {
+                                let owner = game.card(source_id).owner;
+                                game.move_card(source_id, ZoneType::Graveyard, owner);
+                                crate::ability::effects::helpers::remove_madness_exiled_marker(
+                                    game.card_mut(source_id),
+                                );
+                            }
+                        }
+                    }
                     apply_continuous_effects(game);
                     super::check_sba(game, &mut self.trigger_handler, agents);
                     self.process_triggers(game, agents);
@@ -413,9 +429,13 @@ impl GameLoop {
                     );
                 }
 
-                // Warp: register delayed trigger to exile at EOT
-                // (mirrors Java PermanentEffect line 51-53)
+                // Warp: mark card so it can be cast from exile on a later turn,
+                // and register delayed trigger to exile at EOT.
+                // Mirrors Java PermanentEffect + StaticAbilityCastWithFlash for Warp.
                 if alt_cost == Some(crate::spellability::AlternativeCost::Warp) {
+                    game.card_mut(card_id)
+                        .keywords
+                        .push(crate::card::KEYWORD_WARP_EXILED.to_string());
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::Phase,

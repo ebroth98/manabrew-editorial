@@ -42,6 +42,10 @@ pub enum AlternativeCost {
     Bestow,
     /// Cast for warp cost; exile at beginning of next end step.
     Warp,
+    /// Sacrifice-based alternative cost (e.g. Fireblast: sacrifice two Mountains).
+    SacrificeAlt,
+    /// Cast a plotted card from exile for free.
+    Plot,
 }
 
 impl AlternativeCost {
@@ -123,6 +127,9 @@ pub struct SpellAbility {
     /// The value chosen for X in the mana cost (e.g. Fireball X=5 means 5 damage).
     /// Mirrors Java's `SpellAbility.getXManaCostPaid()`.
     pub x_mana_cost_paid: u32,
+    /// Cards discarded as part of the cost payment.
+    /// Mirrors Java's `CostPayment.getPaidList("Discarded")`.
+    pub discarded_cost_cards: Vec<crate::ids::CardId>,
 }
 
 impl SpellAbility {
@@ -238,6 +245,7 @@ impl SpellAbility {
             optional_generic_cost_paid: false,
             trigger_remembered_amount: 0,
             x_mana_cost_paid: 0,
+            discarded_cost_cards: Vec::new(),
         }
     }
 }
@@ -299,6 +307,7 @@ pub fn build_spell_ability(
         optional_generic_cost_paid: false,
         trigger_remembered_amount: 0,
         x_mana_cost_paid: 0,
+        discarded_cost_cards: Vec::new(),
     }
 }
 
