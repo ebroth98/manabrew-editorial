@@ -80,7 +80,9 @@ export function usePromptEffects({
     let shouldAutoPass = false;
 
     if (currentPrompt.type === PromptType.ChooseAction) {
-      shouldAutoPass = (currentPrompt.playableCardIds ?? []).length === 0;
+      const hasPlayableCards = (currentPrompt.playableCardIds ?? []).length > 0;
+      const hasActivatableAbilities = (currentPrompt.activatableAbilityIds ?? []).length > 0;
+      shouldAutoPass = !hasPlayableCards && !hasActivatableAbilities;
     } else if (currentPrompt.type === PromptType.ChooseAttackers) {
       shouldAutoPass = (currentPrompt.availableAttackerIds ?? []).length === 0;
     } else if (currentPrompt.type === PromptType.ChooseBlockers) {
@@ -93,7 +95,6 @@ export function usePromptEffects({
     const timer = setTimeout(() => passPriority(), 0);
 
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentPrompt, isWaitingForResponse, autoPassEnabled, passPriority, passUntilEotTurn, turn, stackLength]);
 
   // Open library-peek modal for Scry / Surveil / Dig / Discard prompts
