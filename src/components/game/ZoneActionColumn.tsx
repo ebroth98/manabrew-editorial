@@ -36,7 +36,7 @@ function ZoneCountTile({
           "h-16 w-10 rounded-md border-2 border-dashed text-xs leading-none transition-colors",
           "flex flex-col items-center justify-center gap-1",
           highlighted
-            ? "border-green-400 text-green-700 dark:text-green-300 bg-green-50/70 dark:bg-green-950/20"
+            ? "border-green-400 text-green-700 dark:text-green-300 bg-green-50/70 dark:bg-green-950/20 animate-pulse"
             : onClick
               ? "border-muted-foreground/45 text-muted-foreground bg-muted/10 hover:border-primary hover:text-foreground"
               : "border-muted-foreground/35 text-muted-foreground/80 bg-muted/5",

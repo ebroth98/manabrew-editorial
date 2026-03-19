@@ -73,7 +73,7 @@
   },
   {
     "name": "realMonoBlackSacrice",
-    "args": "--deck1 staticability_test --deck2 real_mono_black_sacrifice --seed 42 --max-turns 10 --games 5"
+    "args": "--deck1 staticability_test --deck2 real_mono_black_sacrifice --seed 42 --max-turns 40 --games 5"
   },
   {
     "name": "realMonoRedMadness",

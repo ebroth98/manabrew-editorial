@@ -1051,6 +1051,10 @@ impl PlayerAgent for DeterministicAgent {
             );
         }
     }
+
+    fn choose_single_replacement_effect(&mut self, _player: PlayerId, count: usize) -> usize {
+        choice_space::pick_index(count, &mut self.rng.borrow_mut())
+    }
 }
 
 #[cfg(test)]

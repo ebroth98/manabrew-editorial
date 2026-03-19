@@ -268,8 +268,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
             let card_owner = ctx.game.card(card_id).owner;
+            // Determine controller for battlefield entry:
+            // - GainControl$ True → spell's activating player takes control
+            // - Default → card enters under its owner's control (Java's
+            //   Card.getController() falls back to owner for non-battlefield cards)
+            // This matters for Exhume where each player returns their own creature.
             let dest_owner = if dest_zone == ZoneType::Battlefield {
-                controller
+                if sa.params.get("GainControl").map_or(false, |v| v == "True") {
+                    controller
+                } else {
+                    card_owner
+                }
             } else {
                 card_owner
             };

@@ -54,6 +54,14 @@ export interface Card {
   kickerCost?: string;
   /** Effective mana cost after static ability reductions/increases. Only set when different from manaCost. */
   effectiveManaCost?: string;
+  /** Madness cost string if the card has madness (e.g. "R"). */
+  madnessCost?: string;
+  /** True if this card is currently exiled via Madness replacement. */
+  isMadnessExiled?: boolean;
+  /** True if this card has been plotted (castable from exile for free on a later turn). */
+  isPlotted?: boolean;
+  /** True if this card was exiled via Warp (castable from exile for normal cost). */
+  isWarpExiled?: boolean;
 }
 
 export interface Deck {

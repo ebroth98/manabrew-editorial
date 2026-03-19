@@ -38,6 +38,16 @@ fn do_sacrifice(
         .get(&crate::card::CounterType::P1P1)
         .unwrap_or(&0);
 
+    // Clear temporary Animate triggers before firing events (CR 400.7).
+    {
+        let card = ctx.game.card_mut(card_id);
+        let pt = card.pump_trigger_count;
+        if pt > 0 {
+            let new_len = card.triggers.len().saturating_sub(pt);
+            card.triggers.truncate(new_len);
+            card.pump_trigger_count = 0;
+        }
+    }
     // Fire Sacrificed trigger
     ctx.trigger_handler.run_trigger(
         TriggerType::Sacrificed,
@@ -48,9 +58,8 @@ fn do_sacrifice(
         },
         false,
     );
-    ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
-    // Use LKI-aware zone trigger so Modular death triggers get the correct
-    // counter count via trigger_remembered_amount.
+    // Emit ChangesZone before move so LKI state (counters, keywords)
+    // is still available for trigger matching.
     emit_zone_trigger_with_lki_counters(
         ctx.trigger_handler,
         card_id,
@@ -58,6 +67,8 @@ fn do_sacrifice(
         ZoneType::Graveyard,
         lki_p1p1,
     );
+    ctx.trigger_handler.flush_waiting_triggers(ctx.game);
+    ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
     // Fire Exploited trigger when the sacrifice is from the Exploit keyword
     if let Some(source_id) = exploit_source {
         ctx.trigger_handler.run_trigger(

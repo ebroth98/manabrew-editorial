@@ -495,6 +495,12 @@ impl GameLoop {
             }
         }
 
+        // Reset player damage prevention shields at end of turn.
+        // Mirrors Java's DamagePreventEffect which exiles Effect cards at EOT.
+        for player in &mut game.players {
+            player.damage_prevention = 0;
+        }
+
         // Remove damage and reset until-end-of-turn effects on all battlefield permanents
         for i in 0..game.cards.len() {
             if game.cards[i].zone == ZoneType::Battlefield {
@@ -525,9 +531,19 @@ impl GameLoop {
                     game.cards[i].power_modifier = 0;
                     game.cards[i].toughness_modifier = 0;
                     game.cards[i].pump_keywords.clear();
+                    // Remove triggers added by Animate effects (Supernatural Stamina etc.)
+                    let pump_trigs = game.cards[i].pump_trigger_count;
+                    if pump_trigs > 0 {
+                        let new_len = game.cards[i].triggers.len().saturating_sub(pump_trigs);
+                        game.cards[i].triggers.truncate(new_len);
+                        game.cards[i].pump_trigger_count = 0;
+                    }
                     game.cards[i].has_deathtouch_damage = false;
                     // Reset regeneration shields at end of turn (issue #22).
                     game.cards[i].regeneration_shields = 0;
+                    // Reset damage prevention shields at end of turn.
+                    // Mirrors Java's DamagePreventEffect which exiles Effect cards at EOT.
+                    game.cards[i].damage_prevention = 0;
                     // Reset per-turn damage history.
                     game.cards[i].damage_history.new_turn();
                 }

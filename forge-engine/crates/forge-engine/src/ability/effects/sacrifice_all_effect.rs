@@ -36,6 +36,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .counters
             .get(&crate::card::CounterType::P1P1)
             .unwrap_or(&0);
+        // Clear temporary Animate triggers before firing events (CR 400.7).
+        {
+            let card = ctx.game.card_mut(card_id);
+            let pt = card.pump_trigger_count;
+            if pt > 0 {
+                let new_len = card.triggers.len().saturating_sub(pt);
+                card.triggers.truncate(new_len);
+                card.pump_trigger_count = 0;
+            }
+        }
         // Fire Sacrificed trigger
         ctx.trigger_handler.run_trigger(
             TriggerType::Sacrificed,
@@ -46,7 +56,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             },
             false,
         );
-        ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
         emit_zone_trigger_with_lki_counters(
             ctx.trigger_handler,
             card_id,
@@ -54,5 +63,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ZoneType::Graveyard,
             lki_p1p1,
         );
+        ctx.trigger_handler.flush_waiting_triggers(ctx.game);
+        ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
     }
 }

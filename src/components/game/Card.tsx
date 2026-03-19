@@ -9,6 +9,20 @@ import { isCreature, isLethalDamage } from "./game.utils";
 import { CARD_BADGES } from "./game.constants";
 import { CARD_BANNER_CONTAINER, CARD_BANNER_TEXT } from "./game.styles";
 
+/** Special token types that get a more descriptive badge label. */
+const TOKEN_LABELS: Record<string, string> = {
+  "Blood Token": "BLOOD",
+  "Treasure Token": "TREASURE",
+  "Food Token": "FOOD",
+  "Clue Token": "CLUE",
+  "Map Token": "MAP",
+  "Powerstone Token": "PWRSTONE",
+};
+
+function getTokenLabel(name: string): string {
+  return TOKEN_LABELS[name] ?? "TOKEN";
+}
+
 /** Top-center status badge overlay for a card (Exerted, Morph, Bestow, etc.) */
 function CardBadge({ label, style }: { label: string; style: string }) {
   return (
@@ -98,8 +112,17 @@ export function Card({
             <CardBadge {...CARD_BADGES.bestow} />
           ) : card.isTransformed ? (
             <CardBadge {...CARD_BADGES.transformed} />
+          ) : card.isPlotted ? (
+            <CardBadge {...CARD_BADGES.plotted} />
+          ) : card.isMadnessExiled ? (
+            <CardBadge {...CARD_BADGES.madnessExiled} />
+          ) : card.isWarpExiled ? (
+            <CardBadge {...CARD_BADGES.warpExiled} />
           ) : card.isToken ? (
-            <CardBadge {...CARD_BADGES.token} />
+            <CardBadge
+              label={getTokenLabel(card.name)}
+              style={CARD_BADGES.token.style}
+            />
           ) : null}
           {/* Keyword chips — all zones */}
           {card.keywords && card.keywords.length > 0 && (

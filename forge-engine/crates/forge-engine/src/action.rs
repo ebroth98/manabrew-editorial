@@ -199,6 +199,19 @@ impl GameState {
                 if !keep_counters {
                     card.counters.clear();
                 }
+                // Clear temporary triggers added by Animate effects (e.g.
+                // Supernatural Stamina's "when this creature dies, return it").
+                // Per CR 400.7 a permanent that changes zones becomes a new
+                // object; it must not retain one-shot death-return triggers.
+                // Without this, a creature that dies-and-returns would still
+                // carry the trigger, making it "immortal" for the rest of the
+                // turn.
+                let pump_trigs = card.pump_trigger_count;
+                if pump_trigs > 0 {
+                    let new_len = card.triggers.len().saturating_sub(pump_trigs);
+                    card.triggers.truncate(new_len);
+                    card.pump_trigger_count = 0;
+                }
             }
             ZoneType::Command => {
                 // Detach any attachments before resetting state.

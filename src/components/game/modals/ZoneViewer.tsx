@@ -48,7 +48,17 @@ export function ZoneViewer({ title, cards, onClose, onClickCard }: ZoneViewerPro
                       onClickCard(card.id);
                     }}
                   >
-                    {card.flashbackCost ? <span className="inline-flex items-center gap-0.5">FB <ManaSymbols cost={card.flashbackCost} size="sm" /></span> : "CAST"}
+                    {card.flashbackCost ? (
+                      <span className="inline-flex items-center gap-0.5">FB <ManaSymbols cost={card.flashbackCost} size="sm" /></span>
+                    ) : card.isPlotted ? (
+                      "PLOT CAST"
+                    ) : card.isMadnessExiled && card.madnessCost ? (
+                      <span className="inline-flex items-center gap-0.5">MADNESS <ManaSymbols cost={card.madnessCost} size="sm" /></span>
+                    ) : card.isWarpExiled ? (
+                      <span className="inline-flex items-center gap-0.5">CAST <ManaSymbols cost={card.manaCost} size="sm" /></span>
+                    ) : (
+                      "CAST"
+                    )}
                   </button>
                 )}
               </div>

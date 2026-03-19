@@ -484,9 +484,7 @@ impl PlayerAgent for CapturingAgent {
                             PlayCardMode::Alternative(AlternativeCost::SacrificeAlt) => {
                                 "0".to_string()
                             }
-                            PlayCardMode::Alternative(AlternativeCost::Plot) => {
-                                "Plot".to_string()
-                            }
+                            PlayCardMode::Alternative(AlternativeCost::Plot) => "Plot".to_string(),
                             PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
                             PlayCardMode::ForetellExile => "ForetellExile".to_string(),
                         };
@@ -1204,6 +1202,16 @@ impl PlayerAgent for CapturingAgent {
 
     fn notify_state_changed(&mut self) {
         self.inner.notify_state_changed();
+    }
+
+    fn choose_single_replacement_effect(&mut self, player: PlayerId, count: usize) -> usize {
+        let chosen = self.inner.choose_single_replacement_effect(player, count);
+        self.record_verbose_decision(
+            "choose_single_replacement_effect",
+            (0..count).map(|i| format!("Effect#{}", i)).collect(),
+            format!("Effect#{}", chosen),
+        );
+        chosen
     }
 }
 

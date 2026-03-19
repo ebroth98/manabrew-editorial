@@ -37,6 +37,9 @@ src-tauri/target/
 parity.db
 .parity-cache/
 
+# Worktrees
+.worktrees/
+
 # Java / Maven
 forge/target/
 forge/**/target/

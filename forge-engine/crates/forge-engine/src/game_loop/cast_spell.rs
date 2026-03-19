@@ -204,9 +204,7 @@ impl GameLoop {
                     crate::spellability::AlternativeCost::Emerge => is_emerge = true,
                     crate::spellability::AlternativeCost::Bestow => is_bestow = true,
                     crate::spellability::AlternativeCost::Warp => is_warp = true,
-                    crate::spellability::AlternativeCost::SacrificeAlt => {
-                        is_sacrifice_alt = true
-                    }
+                    crate::spellability::AlternativeCost::SacrificeAlt => is_sacrifice_alt = true,
                     crate::spellability::AlternativeCost::Plot => is_plot_cast = true,
                     crate::spellability::AlternativeCost::Morph
                     | crate::spellability::AlternativeCost::Megamorph => {
@@ -389,13 +387,23 @@ impl GameLoop {
                             },
                             false,
                         );
-                        game.move_card(sac_id, ZoneType::Graveyard, sac_owner);
+                        {
+                            let card = game.card_mut(sac_id);
+                            let pt = card.pump_trigger_count;
+                            if pt > 0 {
+                                let new_len = card.triggers.len().saturating_sub(pt);
+                                card.triggers.truncate(new_len);
+                                card.pump_trigger_count = 0;
+                            }
+                        }
                         crate::ability::effects::emit_zone_trigger(
                             &mut self.trigger_handler,
                             sac_id,
                             ZoneType::Battlefield,
                             ZoneType::Graveyard,
                         );
+                        self.trigger_handler.flush_waiting_triggers(game);
+                        game.move_card(sac_id, ZoneType::Graveyard, sac_owner);
                     }
                 }
                 cost
@@ -442,13 +450,23 @@ impl GameLoop {
                             },
                             false,
                         );
-                        game.move_card(sac_id, ZoneType::Graveyard, sac_owner);
+                        {
+                            let card = game.card_mut(sac_id);
+                            let pt = card.pump_trigger_count;
+                            if pt > 0 {
+                                let new_len = card.triggers.len().saturating_sub(pt);
+                                card.triggers.truncate(new_len);
+                                card.pump_trigger_count = 0;
+                            }
+                        }
                         crate::ability::effects::emit_zone_trigger(
                             &mut self.trigger_handler,
                             sac_id,
                             ZoneType::Battlefield,
                             ZoneType::Graveyard,
                         );
+                        self.trigger_handler.flush_waiting_triggers(game);
+                        game.move_card(sac_id, ZoneType::Graveyard, sac_owner);
                     }
                 }
                 cost
@@ -1216,6 +1234,30 @@ impl GameLoop {
                     game.move_card(card_id, ZoneType::Stack, player);
                     return None;
                 }
+                // Post-targeting validation: reject cast if MustTarget (Flagbearer)
+                // restriction is not satisfied. Mirrors Java's isLegalAfterTargeting()
+                // → meetsMustTargetRestriction() which prevents casting if the chosen
+                // target doesn't include the required Flagbearer.
+                let meets =
+                    crate::staticability::static_ability_must_target::meets_must_target_restriction(
+                        &targeting_game,
+                        &sa,
+                    );
+                eprintln!(
+                    "[RUST-CAST-CHECK] {} meets_must_target={} target={:?}",
+                    card_name,
+                    meets,
+                    sa.target_chosen
+                        .target_card
+                        .map(|c| (c.0, targeting_game.card(c).card_name.clone()))
+                );
+                if !meets {
+                    eprintln!(
+                        "[RUST-MUST-TARGET] Cast rejected for {} — MustTarget restriction not met",
+                        card_name
+                    );
+                    return None;
+                }
             }
 
             // Build mana payment context for restriction checking
@@ -1460,7 +1502,11 @@ impl GameLoop {
                                 None,
                                 Some("Mana"),
                             );
-                            if confirmed { Some(source_id) } else { None }
+                            if confirmed {
+                                Some(source_id)
+                            } else {
+                                None
+                            }
                         }
                     }
                 };

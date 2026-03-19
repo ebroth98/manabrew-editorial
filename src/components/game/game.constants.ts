@@ -84,11 +84,14 @@ export const PROMPT_LABELS: Record<string, string> = {
 
 /** Card status badge definitions — label + Tailwind color classes */
 export const CARD_BADGES = {
-  exerted:     { label: "EXERTED",     style: "bg-orange-500/90 text-white" },
-  morph:       { label: "MORPH",       style: "bg-gray-600/90 text-white" },
-  bestow:      { label: "BESTOW",      style: "bg-teal-500/90 text-white" },
-  token:       { label: "TOKEN",       style: "bg-amber-400/90 text-amber-900" },
-  transformed: { label: "TRANSFORMED", style: "bg-purple-500/90 text-white" },
+  exerted:       { label: "EXERTED",     style: "bg-orange-500/90 text-white" },
+  morph:         { label: "MORPH",       style: "bg-gray-600/90 text-white" },
+  bestow:        { label: "BESTOW",      style: "bg-teal-500/90 text-white" },
+  token:         { label: "TOKEN",       style: "bg-amber-400/90 text-amber-900" },
+  transformed:   { label: "TRANSFORMED", style: "bg-purple-500/90 text-white" },
+  plotted:       { label: "PLOTTED",     style: "bg-indigo-500/90 text-white" },
+  madnessExiled: { label: "MADNESS",     style: "bg-red-600/90 text-white" },
+  warpExiled:    { label: "WARPED",      style: "bg-cyan-600/90 text-white" },
 } as const;
 
 /** Logical footprint of battlefield cards (for FreeBattlefield grid layout) */

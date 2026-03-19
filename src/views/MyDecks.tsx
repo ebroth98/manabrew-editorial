@@ -18,42 +18,34 @@ import { inferFormats } from "@/lib/formats";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { DeckCard } from "@/components/deck/DeckCard";
 import type { Card } from "@/types/xmage";
-import { fetchCardCollection, getScryfallImageUrl, getScryfallManaCost } from "@/api/scryfall";
+import {
+  fetchCardCollection,
+  getScryfallImageUrl,
+  getScryfallManaCost,
+} from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
 import {
   ResizableHandle,
   ResizablePanel,
   ResizablePanelGroup,
 } from "@/components/ui/resizable";
-import { extractColors, groupCards, categorize, COLOR_MAP } from "./myDecks.utils";
+import {
+  extractColors,
+  groupCards,
+  categorize,
+  COLOR_MAP,
+} from "./myDecks.utils";
 
-// ── Component ────────────────────────────────────────────────────────────────
+// ── Constants ────────────────────────────────────────────────────────────────
 
-function ColorPip({ color }: { color: string }) {
-  const style = COLOR_MAP[color];
-  if (!style) return null;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-bold",
-        style.bg,
-        style.border,
-        color === "B" ? "text-gray-100" : "text-gray-700",
-      )}
-    >
-      {style.label}
-    </span>
-  );
-}
+const ROUTE_DECK_EDITOR = "/deck-editor";
+const ROUTE_PLAY = "/play";
+const DEFAULT_DECK_NAME = "New Deck";
+const SUPERTYPES = new Set(["Basic", "Legendary", "Snow", "World", "Ongoing"]);
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
-  const SUPERTYPES = new Set([
-    "Basic",
-    "Legendary",
-    "Snow",
-    "World",
-    "Ongoing",
-  ]);
   const [mainPart = "", subPart = ""] = sc.type_line
     .split("—")
     .map((s) => s.trim());
@@ -76,6 +68,38 @@ function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
     cardNumber: sc.collector_number,
     ...(imageUrl ? { imageUrl } : {}),
   };
+}
+
+function makeHoverHandlers(
+  card: Card,
+  setHovered: (h: { card: Card; x: number; y: number } | null) => void,
+) {
+  return {
+    onMouseEnter: (e: React.MouseEvent) =>
+      setHovered({ card, x: e.clientX, y: e.clientY }),
+    onMouseMove: (e: React.MouseEvent) =>
+      setHovered({ card, x: e.clientX, y: e.clientY }),
+    onMouseLeave: () => setHovered(null),
+  };
+}
+
+// ── Component ────────────────────────────────────────────────────────────────
+
+function ColorPip({ color }: { color: string }) {
+  const style = COLOR_MAP[color];
+  if (!style) return null;
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-bold",
+        style.bg,
+        style.border,
+        color === "B" ? "text-gray-100" : "text-gray-700",
+      )}
+    >
+      {style.label}
+    </span>
+  );
 }
 
 export default function MyDecks() {
@@ -155,25 +179,25 @@ export default function MyDecks() {
   const categories = categorize(mainGroups);
   const colors = selected ? extractColors(selected.deck.cards) : [];
 
-  function setSavedCommander(id: string, card: Card) {
+  function patchSavedDeck(id: string, patch: { name?: string; commander?: Card | undefined }) {
     useDeckStore.setState((state) => ({
       savedDecks: state.savedDecks.map((s) =>
-        s.id === id ? { ...s, deck: { ...s.deck, commander: card } } : s,
+        s.id === id ? { ...s, deck: { ...s.deck, ...patch } } : s,
       ),
     }));
   }
 
+  function setSavedCommander(id: string, card: Card) {
+    patchSavedDeck(id, { commander: card });
+  }
+
   function removeSavedCommander(id: string) {
-    useDeckStore.setState((state) => ({
-      savedDecks: state.savedDecks.map((s) =>
-        s.id === id ? { ...s, deck: { ...s.deck, commander: undefined } } : s,
-      ),
-    }));
+    patchSavedDeck(id, { commander: undefined });
   }
 
   function handleEdit(id: string) {
     loadSavedDeck(id);
-    navigate("/deck-editor");
+    navigate(ROUTE_DECK_EDITOR);
   }
 
   function handlePlay(id: string) {
@@ -191,8 +215,8 @@ export default function MyDecks() {
 
   function handleNew() {
     clearDeck();
-    setDeckName("New Deck");
-    navigate("/deck-editor");
+    setDeckName(DEFAULT_DECK_NAME);
+    navigate(ROUTE_DECK_EDITOR);
   }
 
   function startRename(id: string, currentName: string) {
@@ -204,12 +228,7 @@ export default function MyDecks() {
     if (!editName.trim()) return;
     const deck = savedDecks.find((s) => s.id === id);
     if (!deck) return;
-    // update the saved deck name in place
-    useDeckStore.setState((state) => ({
-      savedDecks: state.savedDecks.map((s) =>
-        s.id === id ? { ...s, deck: { ...s.deck, name: editName.trim() } } : s,
-      ),
-    }));
+    patchSavedDeck(id, { name: editName.trim() });
     setEditingId(null);
     toast.success("Deck renamed");
   }
@@ -295,12 +314,16 @@ export default function MyDecks() {
                   {inferFormats(selected.deck.cards.map((c) => c.name)).map(
                     (f) => (
                       <FormatBadge key={f.id} formatId={f.id} />
-                    )
+                    ),
                   )}
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">
-                <Button size="sm" variant="outline" onClick={() => handleEdit(selected.id)}>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleEdit(selected.id)}
+                >
                   <Pencil className="h-3.5 w-3.5 mr-1" />
                   Edit
                 </Button>
@@ -347,20 +370,18 @@ export default function MyDecks() {
                     </h3>
                     <div
                       className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
-                      onMouseEnter={(e) =>
-                        setHovered({ card: selected.deck.commander!, x: e.clientX, y: e.clientY })
-                      }
-                      onMouseMove={(e) =>
-                        setHovered({ card: selected.deck.commander!, x: e.clientX, y: e.clientY })
-                      }
-                      onMouseLeave={() => setHovered(null)}
+                      {...makeHoverHandlers(selected.deck.commander!, setHovered)}
                     >
                       <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
                       <span className="text-sm flex-1 truncate">
                         {selected.deck.commander.name}
                       </span>
                       {selected.deck.commander.manaCost && (
-                        <ManaSymbols cost={selected.deck.commander.manaCost} size="sm" className="shrink-0" />
+                        <ManaSymbols
+                          cost={selected.deck.commander.manaCost}
+                          size="sm"
+                          className="shrink-0"
+                        />
                       )}
                       <Button
                         size="icon"
@@ -382,54 +403,57 @@ export default function MyDecks() {
                     </h3>
                     <div className="space-y-0.5">
                       {items.map(({ card, count }) => {
-                        const isCommander = selected.deck.commander?.name === card.name;
+                        const isCommander =
+                          selected.deck.commander?.name === card.name;
                         return (
-                        <div
-                          key={card.name}
-                          className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
-                          onMouseEnter={(e) =>
-                            setHovered({ card, x: e.clientX, y: e.clientY })
-                          }
-                          onMouseMove={(e) =>
-                            setHovered({ card, x: e.clientX, y: e.clientY })
-                          }
-                          onMouseLeave={() => setHovered(null)}
-                        >
-                          <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
-                            {count}
-                          </span>
-                          <span className="text-sm flex-1 truncate">
-                            {card.name}
-                          </span>
-                          {card.manaCost && (
-                            <ManaSymbols cost={card.manaCost} size="sm" className="shrink-0" />
-                          )}
-                          {card.power && card.toughness && (
-                            <Badge
-                              variant="outline"
-                              className="text-xs h-4 px-1 shrink-0"
-                            >
-                              {card.power}/{card.toughness}
-                            </Badge>
-                          )}
-                          <Button
-                            size="icon"
-                            variant="ghost"
-                            className={
-                              isCommander
-                                ? "h-5 w-5 text-yellow-500 shrink-0"
-                                : "h-5 w-5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-                            }
-                            title={isCommander ? "Remove commander" : "Set as commander"}
-                            onClick={() =>
-                              isCommander
-                                ? removeSavedCommander(selected.id)
-                                : setSavedCommander(selected.id, card)
-                            }
+                          <div
+                            key={card.name}
+                            className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
+                            {...makeHoverHandlers(card, setHovered)}
                           >
-                            <Crown className="h-3 w-3" />
-                          </Button>
-                        </div>
+                            <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
+                              {count}
+                            </span>
+                            <span className="text-sm flex-1 truncate">
+                              {card.name}
+                            </span>
+                            {card.manaCost && (
+                              <ManaSymbols
+                                cost={card.manaCost}
+                                size="sm"
+                                className="shrink-0"
+                              />
+                            )}
+                            {card.power && card.toughness && (
+                              <Badge
+                                variant="outline"
+                                className="text-xs h-4 px-1 shrink-0"
+                              >
+                                {card.power}/{card.toughness}
+                              </Badge>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className={
+                                isCommander
+                                  ? "h-5 w-5 text-yellow-500 shrink-0"
+                                  : "h-5 w-5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                              }
+                              title={
+                                isCommander
+                                  ? "Remove commander"
+                                  : "Set as commander"
+                              }
+                              onClick={() =>
+                                isCommander
+                                  ? removeSavedCommander(selected.id)
+                                  : setSavedCommander(selected.id, card)
+                              }
+                            >
+                              <Crown className="h-3 w-3" />
+                            </Button>
+                          </div>
                         );
                       })}
                     </div>
@@ -449,13 +473,7 @@ export default function MyDecks() {
                           <div
                             key={card.name}
                             className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40"
-                            onMouseEnter={(e) =>
-                              setHovered({ card, x: e.clientX, y: e.clientY })
-                            }
-                            onMouseMove={(e) =>
-                              setHovered({ card, x: e.clientX, y: e.clientY })
-                            }
-                            onMouseLeave={() => setHovered(null)}
+                            {...makeHoverHandlers(card, setHovered)}
                           >
                             <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
                               {count}
@@ -464,7 +482,11 @@ export default function MyDecks() {
                               {card.name}
                             </span>
                             {card.manaCost && (
-                              <ManaSymbols cost={card.manaCost} size="sm" className="shrink-0" />
+                              <ManaSymbols
+                                cost={card.manaCost}
+                                size="sm"
+                                className="shrink-0"
+                              />
                             )}
                           </div>
                         ))}
@@ -503,7 +525,7 @@ export default function MyDecks() {
         preSelectedDeckId={playDeckId}
         onStart={(cardNames, formatId, commanderName) => {
           startGame(cardNames, formatId, commanderName);
-          navigate("/play");
+          navigate(ROUTE_PLAY);
         }}
       />
     </ResizablePanelGroup>

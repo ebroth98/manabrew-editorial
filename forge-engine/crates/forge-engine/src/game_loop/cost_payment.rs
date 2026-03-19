@@ -243,8 +243,11 @@ impl GameLoop {
                             .into_iter()
                             .filter(|&cid| cid != card_id || game.card(card_id).owner != player)
                             .collect();
-                        let chosen = agents[player.index()]
-                            .choose_discard(player, &eligible, *amount as usize);
+                        let chosen = agents[player.index()].choose_discard(
+                            player,
+                            &eligible,
+                            *amount as usize,
+                        );
                         pre_picked_discards.extend(chosen);
                     }
                 }
@@ -292,26 +295,62 @@ impl GameLoop {
                             CostPart::Sacrifice { type_filter, .. } if type_filter == "CARDNAME"
                         )
                     });
-                    let mut chooser = |valid: &[CardId]| -> Option<CardId> {
-                        agents[player.index()].choose_sacrifice(player, valid)
+                    // Use full callback with confirm_payment for sacrifice and
+                    // sub-counter mana abilities, matching the spell casting path
+                    // in cast_spell.rs. This ensures Rasputin Dreamweaver's
+                    // counter-removal mana ability triggers confirm_payment.
+                    let mut callback = |kind: mana::ManaPayCallback<'_>| -> Option<CardId> {
+                        match kind {
+                            mana::ManaPayCallback::ChooseSacrifice(valid) => {
+                                agents[player.index()].choose_sacrifice(player, valid)
+                            }
+                            mana::ManaPayCallback::ConfirmSelfSacrifice(sacrifice_id) => {
+                                let confirmed = agents[player.index()].confirm_payment(
+                                    player,
+                                    "Sacrifice",
+                                    "Sacrifice for mana",
+                                    None,
+                                    Some("Mana"),
+                                );
+                                if confirmed {
+                                    Some(sacrifice_id)
+                                } else {
+                                    None
+                                }
+                            }
+                            mana::ManaPayCallback::ConfirmSubCounter(source_id) => {
+                                let confirmed = agents[player.index()].confirm_payment(
+                                    player,
+                                    "SubCounter",
+                                    "Remove counter for mana",
+                                    None,
+                                    Some("Mana"),
+                                );
+                                if confirmed {
+                                    Some(source_id)
+                                } else {
+                                    None
+                                }
+                            }
+                        }
                     };
                     let tapped = if reuses_reserved_source {
-                        mana::auto_tap_lands_allow_reserved_source_reuse_with_chooser(
+                        mana::auto_tap_lands_allow_reserved_source_reuse_with_callbacks(
                             game,
                             &mut self.mana_pools[player.index()],
                             player,
                             mana_cost,
                             Some(card_id),
-                            &mut chooser,
+                            &mut callback,
                         )
                     } else {
-                        mana::auto_tap_lands_with_chooser(
+                        mana::auto_tap_lands_with_callbacks(
                             game,
                             &mut self.mana_pools[player.index()],
                             player,
                             mana_cost,
                             Some(card_id),
-                            &mut chooser,
+                            &mut callback,
                         )
                     };
                     self.emit_tap_for_mana_triggers(player, &tapped);
@@ -329,6 +368,11 @@ impl GameLoop {
                 } => {
                     if type_filter == "CARDNAME" {
                         let owner = game.card(card_id).owner;
+                        let lki_p1p1 = *game
+                            .card(card_id)
+                            .counters
+                            .get(&crate::card::CounterType::P1P1)
+                            .unwrap_or(&0);
                         self.trigger_handler.run_trigger(
                             TriggerType::Sacrificed,
                             RunParams {
@@ -338,6 +382,26 @@ impl GameLoop {
                             },
                             false,
                         );
+                        // Clear temporary Animate triggers BEFORE emitting
+                        // ChangesZone so they are not pre-matched by flush.
+                        // Per CR 400.7 the dying card becomes a new object.
+                        {
+                            let card = game.card_mut(card_id);
+                            let pt = card.pump_trigger_count;
+                            if pt > 0 {
+                                let new_len = card.triggers.len().saturating_sub(pt);
+                                card.triggers.truncate(new_len);
+                                card.pump_trigger_count = 0;
+                            }
+                        }
+                        crate::ability::effects::emit_zone_trigger_with_lki_counters(
+                            &mut self.trigger_handler,
+                            card_id,
+                            ZoneType::Battlefield,
+                            ZoneType::Graveyard,
+                            lki_p1p1,
+                        );
+                        self.trigger_handler.flush_waiting_triggers(game);
                         game.move_card(card_id, ZoneType::Graveyard, owner);
                     } else {
                         self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
@@ -859,8 +923,14 @@ impl GameLoop {
                     amount,
                 } => {
                     if type_filter != "CARDNAME" {
-                        let discarded =
-                            self.pay_discard_cost(game, agents, player, card_id, type_filter, *amount);
+                        let discarded = self.pay_discard_cost(
+                            game,
+                            agents,
+                            player,
+                            card_id,
+                            type_filter,
+                            *amount,
+                        );
                         // Store discarded cards on the source card for SVar evaluation
                         // (e.g. Grab the Prize: X = Discarded$Valid Card.nonLand/Times.2)
                         game.card_mut(card_id).remembered_cards.extend(discarded);
@@ -1650,6 +1720,15 @@ impl GameLoop {
                 .counters
                 .get(&crate::card::CounterType::P1P1)
                 .unwrap_or(&0);
+            {
+                let card = game.card_mut(chosen);
+                let pt = card.pump_trigger_count;
+                if pt > 0 {
+                    let new_len = card.triggers.len().saturating_sub(pt);
+                    card.triggers.truncate(new_len);
+                    card.pump_trigger_count = 0;
+                }
+            }
             self.trigger_handler.run_trigger(
                 TriggerType::Sacrificed,
                 RunParams {
@@ -1659,7 +1738,6 @@ impl GameLoop {
                 },
                 false,
             );
-            game.move_card(chosen, ZoneType::Graveyard, owner);
             crate::ability::effects::emit_zone_trigger_with_lki_counters(
                 &mut self.trigger_handler,
                 chosen,
@@ -1667,6 +1745,8 @@ impl GameLoop {
                 ZoneType::Graveyard,
                 lki_p1p1,
             );
+            self.trigger_handler.flush_waiting_triggers(game);
+            game.move_card(chosen, ZoneType::Graveyard, owner);
         } else if !foods.is_empty() {
             // Let the chooser pick between food + graveyard cards. Food means sacrifice path.
             let mut combined = foods.clone();
@@ -1688,7 +1768,15 @@ impl GameLoop {
                         },
                         false,
                     );
-                    game.move_card(chosen, ZoneType::Graveyard, owner);
+                    {
+                        let card = game.card_mut(chosen);
+                        let pt = card.pump_trigger_count;
+                        if pt > 0 {
+                            let new_len = card.triggers.len().saturating_sub(pt);
+                            card.triggers.truncate(new_len);
+                            card.pump_trigger_count = 0;
+                        }
+                    }
                     crate::ability::effects::emit_zone_trigger_with_lki_counters(
                         &mut self.trigger_handler,
                         chosen,
@@ -1696,6 +1784,8 @@ impl GameLoop {
                         ZoneType::Graveyard,
                         lki_p1p1,
                     );
+                    self.trigger_handler.flush_waiting_triggers(game);
+                    game.move_card(chosen, ZoneType::Graveyard, owner);
                 } else {
                     // Graveyard path: exile chosen + two more.
                     let mut chosen_gy = vec![chosen];
@@ -2528,7 +2618,17 @@ impl GameLoop {
                     },
                     false,
                 );
-                game.move_card(chosen, ZoneType::Graveyard, owner);
+                // Clear temporary Animate triggers BEFORE emitting
+                // ChangesZone so they are not pre-matched by flush.
+                {
+                    let card = game.card_mut(chosen);
+                    let pt = card.pump_trigger_count;
+                    if pt > 0 {
+                        let new_len = card.triggers.len().saturating_sub(pt);
+                        card.triggers.truncate(new_len);
+                        card.pump_trigger_count = 0;
+                    }
+                }
                 crate::ability::effects::emit_zone_trigger_with_lki_counters(
                     &mut self.trigger_handler,
                     chosen,
@@ -2536,6 +2636,8 @@ impl GameLoop {
                     ZoneType::Graveyard,
                     lki_p1p1,
                 );
+                self.trigger_handler.flush_waiting_triggers(game);
+                game.move_card(chosen, ZoneType::Graveyard, owner);
             }
         }
     }

@@ -159,6 +159,25 @@ pub fn auto_tap_lands_with_callbacks(
     )
 }
 
+pub fn auto_tap_lands_allow_reserved_source_reuse_with_callbacks(
+    game: &mut GameState,
+    pool: &mut ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    callback: ManaPayCallbackFn<'_>,
+) -> Vec<CardId> {
+    auto_tap_lands_internal(
+        game,
+        pool,
+        player,
+        cost,
+        current_spell,
+        true,
+        &mut Some(callback),
+    )
+}
+
 fn auto_tap_lands_internal(
     game: &mut GameState,
     pool: &mut ManaPool,
@@ -191,7 +210,12 @@ fn auto_tap_lands_internal(
     // lower scores to lands and higher scores (+26) to creatures.
     sort_sources_for_autopay(game, player, &mut sources_for_shards);
 
-    while !unpaid.is_paid() {
+    // Guard counter mirrors Java's AutoPay.payManaCost() `guard++ < 128`.
+    // Java re-collects candidates each iteration, so a declined sacrifice
+    // (e.g. Treasure Token) reappears and is retried with a fresh RNG call.
+    let mut guard = 0u32;
+    while !unpaid.is_paid() && guard < 128 {
+        guard += 1;
         let Some(to_pay) = get_next_shard_to_pay(&unpaid, &sources_for_shards) else {
             break;
         };
@@ -217,9 +241,10 @@ fn auto_tap_lands_internal(
         };
 
         // Pay non-tap ability costs first so a failed payment cannot generate mana.
-        // If payment fails (e.g. Treasure sacrifice declined), remove this source
-        // and retry with another source for the same shard. This mirrors Java's
-        // ComputerUtilMana which retries different sources after a decline.
+        // If payment fails (e.g. Treasure sacrifice declined), retry the same
+        // source on the next loop iteration — matching Java's AutoPay which
+        // re-collects candidates (finding the same undestroyed source) and
+        // retries with a new RNG-driven confirm_payment call.
         if !pay_non_tap_mana_ability_costs(
             game,
             player,
@@ -228,13 +253,8 @@ fn auto_tap_lands_internal(
             allow_reserved_source_reuse,
             callback,
         ) {
-            // Java parity: when a mana ability cost payment is declined/invalid,
-            // remove that specific ability from this shard and try other sources.
-            if let Some(list) = sources_for_shards.get_mut(&to_pay) {
-                list.retain(|a| {
-                    !(a.card_id == sa_payment.card_id && a.ability_index == sa_payment.ability_index)
-                });
-            }
+            // Don't remove the source — Java's AutoPay keeps it available
+            // for the next iteration since the card wasn't actually sacrificed.
             continue;
         }
 

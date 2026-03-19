@@ -733,6 +733,18 @@ pub trait PlayerAgent {
     /// Display-only notification: authoritative game state changed without
     /// necessarily changing turn/phase (e.g. stack item resolved).
     fn notify_state_changed(&mut self) {}
+
+    /// Choose which replacement effect to apply when multiple effects match the same event.
+    /// Mirrors Java's `PlayerController.chooseSingleReplacementEffect(List<ReplacementEffect>)`.
+    ///
+    /// `player` — the player who controls the affected object (not necessarily the decider).
+    /// `count` — number of replacement effects to choose from.
+    ///
+    /// Returns the index of the chosen effect (0..count-1).
+    /// Default: always pick the first effect (timestamp order).
+    fn choose_single_replacement_effect(&mut self, _player: PlayerId, _count: usize) -> usize {
+        0
+    }
 }
 
 /// A simple agent that always passes priority and makes no choices.

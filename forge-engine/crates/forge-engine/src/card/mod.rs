@@ -206,6 +206,9 @@ pub struct CardInstance {
     /// Keywords granted temporarily by pump effects (`KW$` parameter) until end of turn.
     /// Cleared during step_cleanup alongside power_modifier / toughness_modifier.
     pub pump_keywords: Vec<String>,
+    /// Number of triggers added temporarily by `DB$ Animate | Triggers$` effects.
+    /// At cleanup, this many triggers are popped from the end of the `triggers` vec.
+    pub pump_trigger_count: usize,
 
     // Abilities (raw strings from card definition)
     pub abilities: Vec<String>,
@@ -453,6 +456,7 @@ impl CardInstance {
             keywords,
             granted_keywords: Vec::new(),
             pump_keywords: Vec::new(),
+            pump_trigger_count: 0,
             abilities,
             activated_abilities,
             static_abilities,

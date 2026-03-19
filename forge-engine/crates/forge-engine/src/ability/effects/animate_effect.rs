@@ -3,6 +3,7 @@ use forge_foundation::{ColorSet, ZoneType};
 use super::EffectContext;
 use crate::card::AnimateState;
 use crate::spellability::SpellAbility;
+use crate::trigger::parse_trigger;
 
 /// `SP$ Animate` — turn a non-creature permanent into a creature (or modify creature stats).
 ///
@@ -29,11 +30,36 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let types_str = sa.params.get("Types").cloned();
     let keywords_str = sa.params.get("Keywords").cloned();
     let colors_str = sa.params.get("Colors").cloned();
+    let triggers_str = sa.params.get("Triggers").cloned();
     let overwrite_types = sa
         .params
         .get("OverwriteTypes")
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
+
+    // Resolve Triggers$ SVars from the source card into parsed Trigger objects.
+    // These will be temporarily added to each target card.
+    let mut parsed_triggers: Vec<crate::trigger::Trigger> = Vec::new();
+    if let Some(ref trigs) = triggers_str {
+        // The source card holds the SVars that define the triggers.
+        let source_id = sa.source.unwrap_or(crate::ids::CardId(0));
+        let source_svars = ctx.game.card(source_id).svars.clone();
+        let mut next_trig_id = 1000u32; // high base to avoid collisions
+        for trig_name in trigs.split(',') {
+            let trig_name = trig_name.trim();
+            if trig_name.is_empty() {
+                continue;
+            }
+            if let Some(svar_text) = source_svars.get(trig_name) {
+                if let Some(mut trig) = parse_trigger(svar_text, &mut next_trig_id) {
+                    trig.execute = trig
+                        .execute
+                        .clone();
+                    parsed_triggers.push(trig);
+                }
+            }
+        }
+    }
 
     for card_id in target_ids {
         // Only animate cards on the battlefield
@@ -85,6 +111,30 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     ctx.game.cards[card_id.index()].pump_keywords.push(kw);
                 }
             }
+        }
+
+        // Apply triggers (e.g. Supernatural Stamina's death → return trigger)
+        // Triggers are added from the SOURCE card's SVars, not the target's.
+        // Also copy the SVars needed by the trigger's Execute$ reference.
+        if !parsed_triggers.is_empty() {
+            let source_id = sa.source.unwrap_or(crate::ids::CardId(0));
+            let source_svars = ctx.game.card(source_id).svars.clone();
+            for trig in &parsed_triggers {
+                ctx.game.cards[card_id.index()].triggers.push(trig.clone());
+                ctx.game.cards[card_id.index()].pump_trigger_count += 1;
+                // Copy the Execute SVar from source to target so trigger resolution
+                // can find it (e.g. SupernaturalStaminaTrigChangeZone)
+                if !trig.execute.is_empty() {
+                    if let Some(exec_svar) = source_svars.get(&trig.execute) {
+                        ctx.game.cards[card_id.index()]
+                            .svars
+                            .entry(trig.execute.clone())
+                            .or_insert_with(|| exec_svar.clone());
+                    }
+                }
+            }
+            // Re-register this card's triggers so the new ones are active
+            ctx.trigger_handler.register_active_trigger(ctx.game, card_id);
         }
 
         // Apply color

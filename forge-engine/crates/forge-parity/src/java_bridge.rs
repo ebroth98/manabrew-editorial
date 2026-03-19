@@ -142,6 +142,7 @@ impl JavaBridge {
                         || line.contains("Error")
                         || line.contains("Failed")
                         || line.contains("WARNING")
+                        || line.contains("[JAVA-STACK]")
                     {
                         if line.contains("[det-java") {
                             continue;
@@ -355,6 +356,7 @@ impl JavaServer {
                         || line.contains("Error")
                         || line.contains("Failed")
                         || line.contains("WARNING")
+                        || line.contains("[JAVA-STACK]")
                     {
                         if line.contains("[det-java") {
                             continue;

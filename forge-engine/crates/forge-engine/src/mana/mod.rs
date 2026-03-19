@@ -15,6 +15,7 @@ pub use auto_pay::{
 };
 pub use computer_util_mana::{
     auto_tap_lands, auto_tap_lands_allow_reserved_source_reuse,
+    auto_tap_lands_allow_reserved_source_reuse_with_callbacks,
     auto_tap_lands_allow_reserved_source_reuse_with_chooser, auto_tap_lands_generic,
     auto_tap_lands_with_callbacks, auto_tap_lands_with_chooser, ManaPayCallback, ManaPayCallbackFn,
     SacrificeChooser,

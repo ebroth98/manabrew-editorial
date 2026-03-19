@@ -412,10 +412,14 @@ fn check_sba(
     };
     let result =
         game.check_state_based_actions_with_triggers(Some(trigger_handler), Some(&mut legend_fn));
-    // Re-register triggers after SBA may have moved cards between zones.
-    // This ensures triggers with non-Battlefield active zones (e.g.
-    // TriggerZones$ Graveyard) are registered when cards die.
     if result {
+        // Flush triggers fired during SBA before re-registering. This preserves
+        // triggers from Animate effects (pump_trigger_count) that were active
+        // when creatures died.
+        trigger_handler.flush_waiting_triggers(game);
+        // Re-register triggers after SBA may have moved cards between zones.
+        // This ensures triggers with non-Battlefield active zones (e.g.
+        // TriggerZones$ Graveyard) are registered when cards die.
         trigger_handler.reset_active_triggers(game);
     }
     result

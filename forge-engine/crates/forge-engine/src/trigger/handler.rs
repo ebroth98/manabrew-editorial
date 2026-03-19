@@ -90,6 +90,11 @@ impl TriggerHandler {
         self.waiting_triggers.push(TriggerWaiting { mode, params });
     }
 
+    /// Number of triggers in the waiting queue (for debug/diagnostics).
+    pub fn waiting_trigger_count(&self) -> usize {
+        self.waiting_triggers.len()
+    }
+
     /// Match waiting triggers NOW, while source cards are still in their
     /// current zones.  Stores results in `pre_matched_triggers` so that a
     /// subsequent `run_waiting_triggers` call returns them even if SBA has
@@ -108,7 +113,10 @@ impl TriggerHandler {
             }
             matches!(
                 &card.triggers[at.trigger_index].mode,
-                crate::trigger::TriggerMode::Drawn { number: Some(_), .. }
+                crate::trigger::TriggerMode::Drawn {
+                    number: Some(_),
+                    ..
+                }
             )
         })
     }
@@ -449,6 +457,93 @@ impl TriggerHandler {
         self.active_triggers.retain(|at| at.card_id != card_id);
     }
 
+    /// Mirrors Java's StaticAbilityDisableTriggers.disabled().
+    /// Checks if a ChangesZone trigger is suppressed by a DisableTriggers
+    /// static ability (e.g. Hushbringer).
+    fn is_trigger_disabled_by_static(
+        game: &GameState,
+        host_card: CardId,
+        trigger_index: usize,
+        params: &RunParams,
+    ) -> bool {
+        let trigger = &game.card(host_card).triggers[trigger_index];
+
+        // Only applies to ChangesZone triggers
+        let _trigger_is_changes_zone = match &trigger.mode {
+            TriggerMode::ChangesZone { .. } => true,
+            _ => return false,
+        };
+
+        // The card changing zones (the "cause")
+        let cause_card_id = match params.card {
+            Some(cid) => cid,
+            None => return false,
+        };
+
+        // For LTB (origin=Battlefield), use the LKI card state.
+        // For ETB (destination=Battlefield), use current state.
+        let cause_is_creature = if params.origin == Some(ZoneType::Battlefield) {
+            // Card may have already moved — check if it WAS a creature
+            // (LKI). The card's type_line is preserved after move_card.
+            game.card(cause_card_id).is_creature()
+        } else {
+            game.card(cause_card_id).is_creature()
+        };
+
+        // Check all cards on the battlefield for DisableTriggers static abilities
+        for card in game.cards.iter() {
+            if card.zone != ZoneType::Battlefield {
+                continue;
+            }
+            for sa in &card.static_abilities {
+                if sa.mode != crate::staticability::StaticMode::DisableTriggers {
+                    continue;
+                }
+
+                // ValidCause$ — must match the card changing zones
+                if let Some(valid_cause) = sa.params.get("ValidCause") {
+                    if valid_cause == "Creature" && !cause_is_creature {
+                        continue;
+                    }
+                }
+
+                // ValidMode$ — must match the trigger's mode
+                if let Some(valid_mode) = sa.params.get("ValidMode") {
+                    let modes: Vec<&str> = valid_mode.split(',').collect();
+                    if !modes.iter().any(|m| *m == "ChangesZone") {
+                        continue;
+                    }
+                }
+
+                // Origin$ — the event's origin zone must match
+                if let Some(origin) = sa.params.get("Origin") {
+                    let event_origin = params
+                        .origin
+                        .map(|z| format!("{:?}", z))
+                        .unwrap_or_default();
+                    if !origin.eq_ignore_ascii_case(&event_origin) {
+                        continue;
+                    }
+                }
+
+                // Destination$ — the event's destination zone must match
+                if let Some(dest) = sa.params.get("Destination") {
+                    let event_dest = params
+                        .destination
+                        .map(|z| format!("{:?}", z))
+                        .unwrap_or_default();
+                    if !dest.eq_ignore_ascii_case(&event_dest) {
+                        continue;
+                    }
+                }
+
+                // All conditions matched — trigger is disabled.
+                return true;
+            }
+        }
+        false
+    }
+
     /// Mirrors Java's canRunTrigger().
     /// Validation chain: mode → suppression → active zones → performTest.
     fn can_run_trigger(
@@ -560,6 +655,14 @@ impl TriggerHandler {
         // Check suppression
         if self.suppressed_modes.contains(mode) {
             return false;
+        }
+
+        // DisableTriggers static ability check (e.g. Hushbringer).
+        // Mirrors Java's StaticAbilityDisableTriggers.disabled().
+        if *mode == TriggerType::ChangesZone {
+            if Self::is_trigger_disabled_by_static(game, host_card, trigger_index, params) {
+                return false;
+            }
         }
 
         // Check active zones.

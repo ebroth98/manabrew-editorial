@@ -155,6 +155,18 @@ pub struct CardDto {
     /// Only set when different from `mana_cost` and the card is playable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub effective_mana_cost: Option<String>,
+    /// Madness cost string, if the card has madness (e.g. "R").
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub madness_cost: Option<String>,
+    /// True if this card is currently exiled via Madness replacement.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_madness_exiled: bool,
+    /// True if this card has been plotted (exiled face-up, castable for free later).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_plotted: bool,
+    /// True if this card was exiled via Warp (castable from exile for normal cost).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub is_warp_exiled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -355,6 +367,16 @@ pub fn card_to_dto(
                 None
             }
         },
+        madness_cost: card.get_madness_cost(),
+        is_madness_exiled: card.has_keyword(
+            forge_engine_core::card::KEYWORD_MADNESS_EXILED,
+        ),
+        is_plotted: card
+            .keywords
+            .iter()
+            .chain(card.granted_keywords.iter())
+            .any(|kw| kw.starts_with(forge_engine_core::card::KEYWORD_PLOTTED_PREFIX)),
+        is_warp_exiled: card.has_keyword(forge_engine_core::card::KEYWORD_WARP_EXILED),
     }
 }
 
