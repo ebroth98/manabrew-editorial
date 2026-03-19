@@ -205,6 +205,12 @@ impl SpellAbility {
             current = sa.sub_ability.as_deref_mut();
         }
 
+        if !crate::staticability::static_ability_must_target::meets_must_target_restriction(
+            game, self,
+        ) {
+            return false;
+        }
+
         true
     }
 
@@ -372,22 +378,6 @@ fn choose_targets_for(
                         target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
                     })
                     .collect();
-            valid_cards =
-                crate::staticability::static_ability_must_target::filter_must_target_cards(
-                    game,
-                    sa,
-                    valid_cards,
-                );
-            let valid_players =
-                if crate::staticability::static_ability_must_target::must_target_cards_required(
-                    game,
-                    sa,
-                    &valid_cards,
-                ) {
-                    Vec::new()
-                } else {
-                    valid_players
-                };
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             match agent.choose_target_any(player, &valid_players, &valid_cards) {
@@ -409,9 +399,6 @@ fn choose_targets_for(
                         target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
                     })
                     .collect();
-            valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
-                game, sa, valid,
-            );
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
@@ -429,9 +416,6 @@ fn choose_targets_for(
                         target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
                     })
                     .collect();
-            valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
-                game, sa, valid,
-            );
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
@@ -443,9 +427,6 @@ fn choose_targets_for(
                 player,
                 filter.as_deref(),
                 sa.source,
-            );
-            valid = crate::staticability::static_ability_must_target::filter_must_target_cards(
-                game, sa, valid,
             );
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];

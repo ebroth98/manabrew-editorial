@@ -2,7 +2,7 @@ use forge_foundation::ZoneType;
 
 use super::{
     emit_zone_trigger, evaluate_svar, matches_change_type, parse_counter_type, parse_zone_type,
-    EffectContext,
+    resolve_defined_player_with_sa, EffectContext,
 };
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
@@ -156,7 +156,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 } else if defined_player.eq_ignore_ascii_case("Opponent") {
                     vec![ctx.game.opponent_of(controller)]
                 } else {
-                    vec![controller]
+                    resolve_defined_player_with_sa(defined_player, sa, controller, ctx.game)
+                        .map(|pid| vec![pid])
+                        .unwrap_or_else(|| vec![controller])
                 };
             let mut collected = Vec::new();
             for pid in players {
@@ -252,10 +254,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             );
         }
 
+        let mut searched_library_owners: Vec<crate::ids::PlayerId> = Vec::new();
         for card_id in cards_to_move {
             if remember_changed {
                 if let Some(source_id) = sa.source {
                     ctx.game.card_mut(source_id).add_remembered_card(card_id);
+                }
+            }
+            if origin_zone == ZoneType::Library {
+                let owner = ctx.game.card(card_id).owner;
+                if !searched_library_owners.contains(&owner) {
+                    searched_library_owners.push(owner);
                 }
             }
             let card_owner = ctx.game.card(card_id).owner;
@@ -333,17 +342,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         // Shuffle the library after a search (when origin was Library)
         if (origin_zone == ZoneType::Library || shuffle) && dest_zone != ZoneType::Library {
-            let lib_cards = ctx
-                .game
-                .cards_in_zone(ZoneType::Library, controller)
-                .to_vec();
-            if !lib_cards.is_empty() {
-                let lib = ctx.game.zone_mut(ZoneType::Library, controller);
+            let shuffle_players = if !searched_library_owners.is_empty() {
+                searched_library_owners
+            } else {
+                vec![controller]
+            };
+            for pid in shuffle_players {
+                let lib_cards = ctx.game.cards_in_zone(ZoneType::Library, pid).to_vec();
+                if lib_cards.is_empty() {
+                    continue;
+                }
+                let lib = ctx.game.zone_mut(ZoneType::Library, pid);
                 ctx.rng.shuffle_cards(&mut lib.cards);
                 ctx.trigger_handler.run_trigger(
                     TriggerType::Shuffled,
                     RunParams {
-                        player: Some(controller),
+                        player: Some(pid),
                         ..Default::default()
                     },
                     false,

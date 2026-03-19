@@ -9,6 +9,7 @@ use crate::card::filter_constants as fc;
 use crate::card::{CardInstance, CounterType};
 use crate::game::GameState;
 use crate::ids::PlayerId;
+use crate::spellability::SpellAbility;
 
 /// Parse a numeric parameter from an ability string (e.g. "NumAtt$ 3" → 3).
 pub fn parse_param(ability: &str, prefix: &str) -> Option<i32> {
@@ -77,6 +78,34 @@ pub fn resolve_defined_player(
         }
         "DefendingPlayer" | "TriggeredDefendingPlayer" => Some(game.opponent_of(controller)),
         _ => None,
+    }
+}
+
+/// Resolve a Defined$ parameter to a player ID with spell/trigger context.
+/// Mirrors Java's Triggered* player resolution for trigger SVar chains.
+pub fn resolve_defined_player_with_sa(
+    defined: &str,
+    sa: &SpellAbility,
+    controller: PlayerId,
+    game: &GameState,
+) -> Option<PlayerId> {
+    let key = defined.strip_prefix("Player.").unwrap_or(defined);
+    match key {
+        "TriggeredPlayer" | "TargetedPlayer" => sa.target_chosen.target_player,
+        "DefendingPlayer" | "TriggeredDefendingPlayer" => sa
+            .target_chosen
+            .target_player
+            .or_else(|| Some(game.opponent_of(controller))),
+        "TriggeredController" => sa
+            .trigger_source
+            .map(|cid| game.card(cid).controller)
+            .or(sa.target_chosen.target_player),
+        "TargetedController" => sa
+            .target_chosen
+            .target_card
+            .map(|cid| game.card(cid).controller)
+            .or(sa.target_chosen.target_player),
+        _ => resolve_defined_player(key, controller, game),
     }
 }
 

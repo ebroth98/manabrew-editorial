@@ -1,5 +1,6 @@
 use super::{resolve_defined_player, EffectContext};
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
@@ -28,7 +29,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Run GameLoss replacement effects (e.g. Platinum Angel).
-    let mut event = ReplacementEvent::GameLoss { player: loser };
+    let mut event = ReplacementEvent::GameLoss {
+        player: loser,
+        reason: GameLossReason::SpellEffect,
+    };
     let result = apply_replacements(ctx.game, &mut event);
     if result == ReplacementResult::Replaced {
         return;

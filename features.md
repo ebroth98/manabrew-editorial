@@ -574,7 +574,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `RegisteredPlayer.java` | Pre-game player registration | Not implemented |
 | `AchievementTracker.java` | Achievement tracking | Not implemented |
 | `DelayedReveal.java` | Deferred card reveal to player | Not implemented |
-| `GameLossReason.java` | Loss reason enum | Not implemented |
+| `GameLossReason.java` | Loss reason enum | **Implemented** (`replacement_effect.rs` — `GameLossReason` with life/poison/commander/mill/opponent-win/spell-effect reasons used by replacement matching) |
 | `IGameEntitiesFactory.java` | Interface: entity factory | Not implemented |
 | `IHasIcon.java` | Interface: icon accessor | Not implemented |
 | `package-info.java` | Package doc | N/A |
@@ -620,7 +620,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `ReplaceGainLife.java` | Replace life gain | **Implemented** (`handler.rs` — GainLife event with Prevent$/ReplaceWith$ GainDouble; wired in `life_gain_effect.rs`) |
 | `ReplaceLifeReduced.java` | Replace life reduction | Not implemented |
 | `ReplacePayLife.java` | Replace life payment | Not implemented |
-| `ReplaceGameLoss.java` | Replace game loss | **Implemented** (`handler.rs` — GameLoss event; CantHappen prevents loss; wired in `game_loss_effect.rs` + SBA life/poison checks) |
+| `ReplaceGameLoss.java` | Replace game loss | **Implemented** (`handler.rs` + `replacement_effect.rs` — reasoned GameLoss event with `ValidLoseReason$` filtering; CantHappen prevents loss; wired in `game_loss_effect.rs` + SBA life/poison/commander checks) |
 | `ReplaceGameWin.java` | Replace game win | **Implemented** (`handler.rs` — GameWin event; CantHappen prevents win; wired in `game_win_effect.rs`) |
 | `ReplaceDestroy.java` | Replace destroy events | **Partial** (`replacement_handler.rs` — Replaced blocks SBA destruction; no regeneration shield) |
 | `ReplaceMoved.java` | Replace zone change events | **Partial** (`replacement_handler.rs` — NewDestination$ reroutes zone; Destination$/Origin$/ValidCard$ filters; no LKI/ETB handling) |
@@ -692,7 +692,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
-| `StaticAbility.java` | Core static ability class with layer system | **Partial** (`static_ability.rs`: `StaticAbility` struct + parser, expanded `StaticMode` enum (critical/high-priority ticket modes wired), `CardFilter` for `Affected$`/`ValidCards$`; still missing Java dependency graph/timestamp parity) |
+| `StaticAbility.java` | Core static ability class with layer system | **Partial** (`static_ability.rs`: `StaticAbility` struct + parser, expanded `StaticMode` enum (critical/high-priority ticket modes wired), `CardFilter` for `Affected$`/`ValidCards$` including Java-style `SharesColorWith` / `sharesCreatureTypeWith` and `... Equipped` predicates used by equipment statics; still missing Java dependency graph/timestamp parity) |
 | `StaticAbilityLayer.java` | Enum: copy, control, text, type, color, abilities, P/T, rules | **Partial** (`static_ability.rs`: `Layer` enum — Control(2), Type(4), Color(5), Ability(6), SetPT(7b), ModifyPT(7c); missing: copy/text/7a/rules layers) |
 | `StaticAbilityMode.java` | Enum: 80+ static ability modes | **Partial** (`static_ability.rs` `StaticMode`: includes baseline 7 plus ticket modes: CantTarget, CantAttach, MustAttack, MustBlock, Panharmonicon, CantGainLosePayLife, CantDraw, CantSacrifice, CantRegenerate, DisableTriggers, CantPutCounter, CastWithFlash, BlockRestrict, AttackRestrict, IgnoreHexproof/Shroud, IgnoreLegendRule, MustTarget, AssignCombatDamageAsUnblocked, AssignNoCombatDamage, CombatDamageToughness, NoCleanupDamage, InfectDamage, WitherDamage, ColorlessDamageSource, CountersRemain, MaxCounter; plus CanAttackDefender and OptionalAttackCost) |
 | `StaticAbilityContinuous.java` | Core continuous effect handler | **Partial** (`layer.rs` `apply_continuous_effects()`: Control (2, `GainControl$` incl. aura `Card.EnchantedBy`), Ability/keyword-grant (6), SetPT (7b), ModifyPT (7c) layers applied in CR 613 order; `apply_etb_tapped()` for ETBTapped via static abilities, `R:Event$ Moved | ReplaceWith$ ETBTapped` replacement effects, AND `ReplaceWith$ DBTap` shock land pattern with `UnlessCost$ PayLife<N>` player prompt; missing: type/color layers, dependency resolution) |
@@ -712,13 +712,13 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `StaticAbilityCantPhase.java` | Prevents phasing | Not implemented |
 | `StaticAbilityCantPutCounter.java` | Prevents counter placement | **Partial** (`static_ability_cant_put_counter.rs` integrated in PutCounter/PutCounterAll/MoveCounter/Proliferate/Explore and Infect/Wither damage paths) |
 | `StaticAbilityCantPreventDamage.java` | Prevents damage prevention | Not implemented |
-| `StaticAbilityCantSacrifice.java` | Prevents sacrifice | **Partial** (`static_ability_cant_sacrifice.rs` integrated in sacrifice effects + sacrifice cost payment) |
+| `StaticAbilityCantSacrifice.java` | Prevents sacrifice | **Partial** (`static_ability_cant_sacrifice.rs` integrated in sacrifice effects + sacrifice cost payment, including `ValidCause$ Activated` cause matching for Yasharn-style cost locks) |
 | `StaticAbilityCantVenture.java` | Prevents venturing | Not implemented |
 | `StaticAbilityCantGainLosePayLife.java` | Prevents life gain/loss/payment | **Partial** (`static_ability_cant_gain_lose_pay_life.rs` integrated in life effects, damage-to-player, and PayLife costs) |
 | `StaticAbilityCastWithFlash.java` | Grants flash to spells | **Partial** (`static_ability_cast_with_flash.rs` + playable-card instant-speed checks) |
 | `StaticAbilityMustAttack.java` | Forces creatures to attack | **Partial** (`static_ability_must_attack.rs` + combat declaration auto-include) |
 | `StaticAbilityMustBlock.java` | Forces creatures to block | **Implemented** — `static_ability_must_block.rs` + `combat::compute_must_block_targets()` auto-assigns in phase_handler; Lure/AllMustBlock keyword detection |
-| `StaticAbilityMustTarget.java` | Forces targeting restrictions | **Partial** (`static_ability_must_target.rs` scaffold; full target-choice enforcement pending) |
+| `StaticAbilityMustTarget.java` | Forces targeting restrictions | **Partial** (`static_ability_must_target.rs` post-target validation parity path added via `meets_must_target_restriction`; still missing full Java choice-order/dependency parity in all edge cases) |
 | `StaticAbilityAdapt.java` | Adapt mechanic interactions | Not implemented |
 | `StaticAbilityPanharmonicon.java` | Double trigger effects | **Partial** (`static_ability_panharmonicon.rs` + trigger duplication hook in `trigger/handler.rs`) |
 | `StaticAbilityManaConvert.java` | Mana color conversion | Not implemented |
@@ -952,7 +952,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | `action.rs` | **Complete** | move_card, damage, SBAs (lethal, poison, commander), draw, shuffle, tap/untap |
 | `event.rs` | **Complete** | TriggerType enum (68 types: 34 original + 34 new from issue #54), RunParams (~33 fields) |
 | `trigger.rs` | **Complete** | Trigger matching, ValidCard/ValidPlayer filters, parsing |
-| `trigger_handler.rs` | **Complete** | Active/waiting/delayed triggers, dispatch, OptionalDecider$ support, APNAP ordering |
+| `trigger_handler.rs` | **Complete** | Active/waiting/delayed triggers, dispatch, OptionalDecider$ support, APNAP ordering, and Java-parity trigger common requirement checks for `IsPresent$` (`PresentCompare$`/`PresentPlayer$`/`PresentZone$`) |
 | `agent.rs` | **Complete** | PlayerAgent trait (Java-parity decision hooks including `confirm_action`, `confirm_payment`, `choose_binary`, optional-cost callbacks including choose_buyback/multikicker/replicate/alternative_cost, plus combat optional-cost callbacks `exert_attackers`/`enlist_attackers`), MainPhaseAction, TargetChoice, BinaryChoiceKind |
 | `game_loop.rs` | **Partial** | Game flow orchestration with APNAP priority handoff, `priority_player` tracking, draw/combat/end priority windows, and illegal-action guardrails; still missing full Java parity for extra turns/phases and advanced phase replacement hooks |
 | `spellability/mod.rs` | **Complete** | SpellAbility module structure |
@@ -1190,7 +1190,7 @@ The mana system is fully implemented. See `mana_system_gaps.md` for the detailed
 | Format/Rules Config | 0% | `GameRules.java`, `GameFormat.java`, `GameType.java` | Format enforcement, banned lists |
 | Match Management | 0% | `Match.java` | Best-of-3, sideboarding |
 | Event Visitor System | 0% | `IGameEventVisitor.java` + 60+ event classes | TriggerType enum works but less extensible |
-| Card Property Evaluation | Partial | `CardProperty.java`, `CardPredicates.java`, `CardLists.java` | String matching in trigger.rs; needs full evaluation |
+| Card Property Evaluation | Partial | `CardProperty.java`, `CardPredicates.java`, `CardLists.java` | Shared string matching in `card/valid_filter.rs` (incl. `startedTheTurnUntapped` / `startedTheTurnTapped`) plus trigger usage; still needs full evaluator parity |
 | SpellAbility Conditions | 0% | `SpellAbilityCondition.java`, `SpellAbilityRestriction.java` | ConditionDefined/ConditionPresent partial in effects only |
 
 ---

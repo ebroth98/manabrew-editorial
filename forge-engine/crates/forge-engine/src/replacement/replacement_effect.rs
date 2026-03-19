@@ -21,6 +21,18 @@ use forge_foundation::ZoneType;
 use crate::card::{valid_filter, CardInstance};
 use crate::ids::PlayerId;
 
+/// Reasons a player can lose the game.
+/// Mirrors Java `GameLossReason` values used by `ValidLoseReason$`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GameLossReason {
+    LifeReachedZero,
+    Poisoned,
+    CommanderDamage,
+    Milled,
+    OpponentWon,
+    SpellEffect,
+}
+
 // ── ReplacementType ───────────────────────────────────────────────────────────
 
 /// The type of game event a replacement effect intercepts.
@@ -243,12 +255,33 @@ impl ReplacementEffect {
     }
 
     /// Returns `true` if this effect can replace a `GameLoss` event for `player_id`.
-    pub fn can_replace_game_loss(&self, player_id: PlayerId, source: &CardInstance) -> bool {
+    pub fn can_replace_game_loss(
+        &self,
+        player_id: PlayerId,
+        reason: GameLossReason,
+        source: &CardInstance,
+    ) -> bool {
         if self.event != ReplacementType::GameLoss {
             return false;
         }
         if let Some(valid) = self.params.get("ValidPlayer") {
             if !matches_valid_player(valid, player_id, source) {
+                return false;
+            }
+        }
+        if let Some(valid_reason) = self.params.get("ValidLoseReason") {
+            let matches_reason = valid_reason
+                .split(',')
+                .map(str::trim)
+                .any(|r| r.eq_ignore_ascii_case(match reason {
+                    GameLossReason::LifeReachedZero => "LifeReachedZero",
+                    GameLossReason::Poisoned => "Poisoned",
+                    GameLossReason::CommanderDamage => "CommanderDamage",
+                    GameLossReason::Milled => "Milled",
+                    GameLossReason::OpponentWon => "OpponentWon",
+                    GameLossReason::SpellEffect => "SpellEffect",
+                }));
+            if !matches_reason {
                 return false;
             }
         }

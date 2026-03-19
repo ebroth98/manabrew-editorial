@@ -37,6 +37,6 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
         Some(v) if v.eq_ignore_ascii_case("Card.EffectSource") => {
             source.effect_source == Some(card.id)
         }
-        _ => true,
+        Some(v) => crate::card::valid_filter::matches_valid_card(v, card, source),
     }
 }

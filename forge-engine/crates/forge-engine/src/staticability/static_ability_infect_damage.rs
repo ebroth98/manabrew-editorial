@@ -11,17 +11,34 @@ pub fn is_infect_damage(
     target: PlayerId,
     source_controller: PlayerId,
 ) -> bool {
+    is_infect_damage_with_life_override(game, cards, target, source_controller, None)
+}
+
+pub fn is_infect_damage_with_life_override(
+    game: &GameState,
+    cards: &[CardInstance],
+    target: PlayerId,
+    _source_controller: PlayerId,
+    target_life_override: Option<i32>,
+) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
             .static_abilities
             .iter()
             .filter(|sa| sa.mode == StaticMode::InfectDamage)
         {
-            if !condition_matches(game, source, st_ab) {
+            let life_override = if source.controller == target {
+                target_life_override
+            } else {
+                None
+            };
+            if !condition_matches(game, source, st_ab, life_override) {
                 continue;
             }
             let valid = st_ab.params.get("ValidTarget").map(String::as_str);
-            if matches_valid_player(valid, target, source_controller) {
+            // ValidTarget is evaluated relative to the static ability source
+            // (e.g. Phyrexian Unlife's controller), not the damage source.
+            if matches_valid_player(valid, target, source.controller) {
                 return true;
             }
         }
@@ -33,6 +50,7 @@ fn condition_matches(
     game: &GameState,
     source: &CardInstance,
     st_ab: &crate::staticability::StaticAbility,
+    life_override: Option<i32>,
 ) -> bool {
     let Some(check_svar) = st_ab.params.get("CheckSVar") else {
         return true;
@@ -45,7 +63,7 @@ fn condition_matches(
     };
     // Only support the pattern needed by Phyrexian Unlife.
     let value = if expr == "Count$YourLifeTotal" {
-        game.player(source.controller).life
+        life_override.unwrap_or_else(|| game.player(source.controller).life)
     } else {
         return true;
     };

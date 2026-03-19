@@ -179,7 +179,9 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             // Collect matching target IDs before any mutation.
             game.cards
                 .iter()
-                .filter(|c| c.zone == ZoneType::Battlefield && filter.matches(c, source_card))
+                .filter(|c| {
+                    c.zone == ZoneType::Battlefield && filter.matches_with_game(c, source_card, game)
+                })
                 .map(|c| c.id)
                 .collect()
         };
@@ -187,74 +189,73 @@ pub fn apply_continuous_effects(game: &mut GameState) {
         match sa.mode {
             // ── Continuous: queue effect for later sorted application ────
             StaticMode::Continuous => {
-                let Some(layer) = sa.continuous_layer() else {
-                    continue;
-                };
                 for target in targets {
-                    match layer {
-                        Layer::Control => {
-                            let Some(gain_control) = sa.params.get("GainControl") else {
-                                continue;
-                            };
-                            let new_controller = match gain_control.as_str() {
-                                "You" | "YouCtrl" => source_card.controller,
-                                "Opponent" => game.opponent_of(source_card.controller),
-                                _ => continue,
-                            };
+                    // Java parity: one continuous static can contribute effects in
+                    // multiple layers (e.g. Brothers Yamazaki adds both +2/+2 and Haste).
+                    if sa.params.contains_key("GainControl") {
+                        let Some(gain_control) = sa.params.get("GainControl") else {
+                            continue;
+                        };
+                        let new_controller = match gain_control.as_str() {
+                            "You" | "YouCtrl" => source_card.controller,
+                            "Opponent" => game.opponent_of(source_card.controller),
+                            _ => continue,
+                        };
+                        pending.push(PendingEffect {
+                            layer: Layer::Control,
+                            target,
+                            kind: EffectKind::SetController {
+                                controller: new_controller,
+                            },
+                        });
+                    }
+
+                    if sa.params.contains_key("AddPower") || sa.params.contains_key("AddToughness")
+                    {
+                        let p = sa
+                            .params
+                            .get("AddPower")
+                            .and_then(|s| s.parse::<i32>().ok())
+                            .unwrap_or(0);
+                        let t = sa
+                            .params
+                            .get("AddToughness")
+                            .and_then(|s| s.parse::<i32>().ok())
+                            .unwrap_or(0);
+                        pending.push(PendingEffect {
+                            layer: Layer::ModifyPT,
+                            target,
+                            kind: EffectKind::AddPT {
+                                power: p,
+                                toughness: t,
+                            },
+                        });
+                    }
+
+                    if sa.params.contains_key("SetPower") || sa.params.contains_key("SetToughness")
+                    {
+                        let sp = resolve_set_pt_param(game, &sa, *source_id, "SetPower");
+                        let st = resolve_set_pt_param(game, &sa, *source_id, "SetToughness");
+                        pending.push(PendingEffect {
+                            layer: Layer::SetPT,
+                            target,
+                            kind: EffectKind::SetPT {
+                                power: sp,
+                                toughness: st,
+                            },
+                        });
+                    }
+
+                    if sa.params.contains_key("AddKeyword") {
+                        // AddKeyword$ supports multiple keywords separated by " & ".
+                        let kws = sa.params.get("AddKeyword").cloned().unwrap_or_default();
+                        for kw in kws.split('&').map(str::trim).filter(|s| !s.is_empty()) {
                             pending.push(PendingEffect {
-                                layer,
+                                layer: Layer::Ability,
                                 target,
-                                kind: EffectKind::SetController {
-                                    controller: new_controller,
-                                },
+                                kind: EffectKind::GrantKeyword(kw.to_string()),
                             });
                         }
-                        Layer::ModifyPT => {
-                            let p = sa
-                                .params
-                                .get("AddPower")
-                                .and_then(|s| s.parse::<i32>().ok())
-                                .unwrap_or(0);
-                            let t = sa
-                                .params
-                                .get("AddToughness")
-                                .and_then(|s| s.parse::<i32>().ok())
-                                .unwrap_or(0);
-                            pending.push(PendingEffect {
-                                layer,
-                                target,
-                                kind: EffectKind::AddPT {
-                                    power: p,
-                                    toughness: t,
-                                },
-                            });
-                        }
-                        Layer::SetPT => {
-                            let sp = resolve_set_pt_param(game, &sa, *source_id, "SetPower");
-                            let st = resolve_set_pt_param(game, &sa, *source_id, "SetToughness");
-                            pending.push(PendingEffect {
-                                layer,
-                                target,
-                                kind: EffectKind::SetPT {
-                                    power: sp,
-                                    toughness: st,
-                                },
-                            });
-                        }
-                        Layer::Ability => {
-                            // AddKeyword$ supports multiple keywords separated by " & ".
-                            // Reference: StaticAbilityContinuous.java, AddKeyword handling.
-                            let kws = sa.params.get("AddKeyword").cloned().unwrap_or_default();
-                            for kw in kws.split('&').map(str::trim).filter(|s| !s.is_empty()) {
-                                pending.push(PendingEffect {
-                                    layer,
-                                    target,
-                                    kind: EffectKind::GrantKeyword(kw.to_string()),
-                                });
-                            }
-                        }
-                        // Type and Color layers are collected but not yet applied.
-                        Layer::Type | Layer::Color => {}
                     }
                 }
             }
@@ -275,16 +276,49 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             StaticMode::CantAttackUnless
             | StaticMode::CantBlockUnless
             | StaticMode::CantBlockBy
-            | StaticMode::OptionalAttackCost => {}
-
-            // ETBTapped is a one-time effect applied at zone-change time
-            // (see `apply_etb_tapped`), not a continuous effect.
-            _ => {
-                eprintln!(
-                    "[WARN] Unknown StaticMode in collect_static_effects: {:?}",
-                    sa.mode
-                );
-            }
+            | StaticMode::OptionalAttackCost
+            // Non-layer static modes are enforced by dedicated rule checks
+            // in their own modules / gameplay paths (cast checks, targeting
+            // checks, combat checks, trigger suppression, etc.), so they are
+            // intentionally not applied in the continuous layer collector.
+            | StaticMode::ETBTapped
+            | StaticMode::CantBeCast
+            | StaticMode::ReduceCost
+            | StaticMode::IncreaseCost
+            | StaticMode::SetCost
+            | StaticMode::CantTarget
+            | StaticMode::CantAttach
+            | StaticMode::MustAttack
+            | StaticMode::MustBlock
+            | StaticMode::Panharmonicon
+            | StaticMode::CantGainLosePayLife
+            | StaticMode::CantDraw
+            | StaticMode::CantExile
+            | StaticMode::CantSacrifice
+            | StaticMode::CantRegenerate
+            | StaticMode::DisableTriggers
+            | StaticMode::CantPutCounter
+            | StaticMode::CastWithFlash
+            | StaticMode::BlockRestrict
+            | StaticMode::AttackRestrict
+            | StaticMode::CanAttackDefender
+            | StaticMode::IgnoreHexproof
+            | StaticMode::IgnoreShroud
+            | StaticMode::IgnoreLegendRule
+            | StaticMode::MustTarget
+            | StaticMode::AssignCombatDamageAsUnblocked
+            | StaticMode::AssignNoCombatDamage
+            | StaticMode::CombatDamageToughness
+            | StaticMode::NoCleanupDamage
+            | StaticMode::InfectDamage
+            | StaticMode::WitherDamage
+            | StaticMode::ColorlessDamageSource
+            | StaticMode::CountersRemain
+            | StaticMode::MaxCounter
+            | StaticMode::ManaConvert
+            | StaticMode::UnspentMana
+            | StaticMode::ManaBurn
+            | StaticMode::Other(_) => {}
         }
     }
 
@@ -372,7 +406,7 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
         } else {
             let source = &game.cards[source_id.index()];
             let filter = CardFilter::parse(&filter_str);
-            filter.matches(&game.cards[entering_card.index()], source)
+            filter.matches_with_game(&game.cards[entering_card.index()], source, game)
         };
 
         if tapped {
@@ -415,7 +449,7 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
         } else {
             let source = &game.cards[source_id.index()];
             let filter = CardFilter::parse(&filter_str);
-            filter.matches(&game.cards[entering_card.index()], source)
+            filter.matches_with_game(&game.cards[entering_card.index()], source, game)
         };
 
         if tapped {
@@ -496,6 +530,16 @@ fn check_is_present(game: &GameState, source_id: CardId, sa: &StaticAbility) -> 
                         return false;
                     }
                 }
+                "startedtheturnuntapped" => {
+                    if card.started_turn_tapped {
+                        return false;
+                    }
+                }
+                "startedtheturntapped" => {
+                    if !card.started_turn_tapped {
+                        return false;
+                    }
+                }
                 _ => {
                     eprintln!("[WARN] Unknown IsPresent qualifier: {:?}", qualifier);
                 }
@@ -511,7 +555,7 @@ fn check_is_present(game: &GameState, source_id: CardId, sa: &StaticAbility) -> 
     let count = game
         .cards
         .iter()
-        .filter(|c| c.zone == ZoneType::Battlefield && filter.matches(c, source_card))
+        .filter(|c| c.zone == ZoneType::Battlefield && filter.matches_with_game(c, source_card, game))
         .count() as i32;
 
     let cmp = sa

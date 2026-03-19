@@ -16,6 +16,7 @@ use forge_foundation::ColorSet;
 use serde::{Deserialize, Serialize};
 
 use crate::card::CardInstance;
+use crate::game::GameState;
 
 // ── Mode ────────────────────────────────────────────────────────────────────
 
@@ -212,6 +213,14 @@ pub struct CardFilter {
     pub card_name: Option<String>,
     /// Only match token permanents.
     pub token_only: bool,
+    /// Only match cards that share a color with the source card.
+    pub shares_color_with_source: bool,
+    /// Only match cards that share a color with the source's equipped creature.
+    pub shares_color_with_equipped: bool,
+    /// Only match cards that share a creature type with the source card.
+    pub shares_creature_type_with_source: bool,
+    /// Only match cards that share a creature type with the source's equipped creature.
+    pub shares_creature_type_with_equipped: bool,
 }
 
 impl CardFilter {
@@ -251,6 +260,10 @@ impl CardFilter {
             "Colorless" => f.colorless_only = true,
             "attackingYou" => f.attacking_you = true,
             "token" | "Token" => f.token_only = true,
+            "SharesColorWith" => f.shares_color_with_source = true,
+            "sharesCreatureTypeWith" => f.shares_creature_type_with_source = true,
+            "SharesColorWith Equipped" => f.shares_color_with_equipped = true,
+            "sharesCreatureTypeWith Equipped" => f.shares_creature_type_with_equipped = true,
             s if s.starts_with("named") => {
                 f.card_name = Some(s["named".len()..].to_string());
             }
@@ -305,8 +318,65 @@ impl CardFilter {
         if self.token_only && !card.is_token {
             return false;
         }
+        if self.shares_color_with_source {
+            if card.color.is_colorless() || source.color.is_colorless() {
+                return false;
+            }
+            if !card.color.shares_color_with(source.color) {
+                return false;
+            }
+        }
+        if self.shares_creature_type_with_source
+            && !shares_creature_type_with(card, source)
+        {
+            return false;
+        }
         true
     }
+
+    /// Context-aware matching for predicates that require game lookups
+    /// (e.g. `SharesColorWith Equipped`).
+    pub fn matches_with_game(
+        &self,
+        card: &CardInstance,
+        source: &CardInstance,
+        game: &GameState,
+    ) -> bool {
+        if !self.matches(card, source) {
+            return false;
+        }
+        if self.shares_color_with_equipped {
+            let Some(equipped_id) = source.attached_to else {
+                return false;
+            };
+            let equipped = game.card(equipped_id);
+            if card.color.is_colorless() || equipped.color.is_colorless() {
+                return false;
+            }
+            if !card.color.shares_color_with(equipped.color) {
+                return false;
+            }
+        }
+        if self.shares_creature_type_with_equipped {
+            let Some(equipped_id) = source.attached_to else {
+                return false;
+            };
+            let equipped = game.card(equipped_id);
+            if !shares_creature_type_with(card, equipped) {
+                return false;
+            }
+        }
+        true
+    }
+}
+
+fn shares_creature_type_with(a: &CardInstance, b: &CardInstance) -> bool {
+    a.type_line.subtypes.iter().any(|a_sub| {
+        b.type_line
+            .subtypes
+            .iter()
+            .any(|b_sub| a_sub.eq_ignore_ascii_case(b_sub))
+    })
 }
 
 // ── Parser ───────────────────────────────────────────────────────────────────

@@ -1233,13 +1233,14 @@ pub(crate) fn tap_land_for_mana(
     player: PlayerId,
     land_id: CardId,
     atom: u16,
+    should_tap: bool,
     tapped_lands: &mut Vec<CardId>,
 ) {
     let pain = land_pain_damage(game.card(land_id), atom);
     let is_snow = game.card(land_id).type_line.is_snow();
     // Only tap if not already tapped — tapped cards with non-tap mana abilities
     // (e.g. Rasputin Dreamweaver's SubCounter ability) are valid sources.
-    if !game.card(land_id).tapped {
+    if should_tap && !game.card(land_id).tapped {
         game.tap(land_id);
     }
     if is_snow {

@@ -4,6 +4,7 @@ use crate::card::CounterType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
 use crate::staticability::layer::apply_etb_tapped;
 use crate::trigger::handler::TriggerHandler;
@@ -363,7 +364,10 @@ impl GameState {
         // Check players with 0 or less life
         for pid in self.player_order.clone() {
             if self.player(pid).life <= 0 && self.player(pid).is_alive() {
-                let mut event = ReplacementEvent::GameLoss { player: pid };
+                let mut event = ReplacementEvent::GameLoss {
+                    player: pid,
+                    reason: GameLossReason::LifeReachedZero,
+                };
                 let result = apply_replacements(self, &mut event);
                 if result != ReplacementResult::Replaced {
                     self.player_mut(pid).has_lost = true;
@@ -372,10 +376,20 @@ impl GameState {
             }
             // Check poison counters (10+ = lose)
             if self.player(pid).poison_counters >= 10 && self.player(pid).is_alive() {
-                let mut event = ReplacementEvent::GameLoss { player: pid };
+                let mut event = ReplacementEvent::GameLoss {
+                    player: pid,
+                    reason: GameLossReason::Poisoned,
+                };
                 let result = apply_replacements(self, &mut event);
                 if result != ReplacementResult::Replaced {
-                    self.player_mut(pid).has_lost = true;
+                    let mut event = ReplacementEvent::GameLoss {
+                        player: pid,
+                        reason: GameLossReason::CommanderDamage,
+                    };
+                    let result = apply_replacements(self, &mut event);
+                    if result != ReplacementResult::Replaced {
+                        self.player_mut(pid).has_lost = true;
+                    }
                     any_changes = true;
                 }
             }
@@ -624,6 +638,9 @@ impl GameState {
         let all_card_ids: Vec<CardId> = (0..self.cards.len()).map(|i| CardId(i as u32)).collect();
         for cid in all_card_ids {
             if self.cards[cid.index()].controller == player {
+                if self.cards[cid.index()].zone == ZoneType::Battlefield {
+                    self.cards[cid.index()].started_turn_tapped = self.cards[cid.index()].tapped;
+                }
                 self.cards[cid.index()].new_turn();
             }
         }

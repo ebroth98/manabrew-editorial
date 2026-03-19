@@ -197,6 +197,16 @@ fn matches_type_and_qualifiers(filter: &str, card: &CardInstance, source: &CardI
                         return false;
                     }
                 }
+                "startedtheturnuntapped" => {
+                    if card.started_turn_tapped {
+                        return false;
+                    }
+                }
+                "startedtheturntapped" => {
+                    if !card.started_turn_tapped {
+                        return false;
+                    }
+                }
                 "multicolor" => {
                     if !card.color.is_multicolor() {
                         return false;
@@ -237,7 +247,7 @@ fn matches_type_and_qualifiers(filter: &str, card: &CardInstance, source: &CardI
                         }
                     } else if let Some(kw) = sub_lower.strip_prefix("with") {
                         // "withFlying", "withoutFlying", etc.
-                        if let Some(without_kw) = kw.strip_prefix("out") {
+                        if kw.strip_prefix("out").is_some() {
                             // "withoutFlying" — card must NOT have this keyword
                             let kw_name = &sub[7..]; // original case
                             if card.has_keyword(kw_name) {

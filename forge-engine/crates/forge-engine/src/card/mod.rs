@@ -229,6 +229,9 @@ pub struct CardInstance {
     // Turn tracking
     pub entered_battlefield_this_turn: bool,
     pub attacked_this_turn: bool,
+    /// Snapshot of whether this permanent was tapped at the start of its
+    /// controller's current turn (before untap step).
+    pub started_turn_tapped: bool,
 
     // Triggers — mirrors Java Card.getTriggers()
     pub triggers: Vec<Trigger>,
@@ -458,6 +461,7 @@ impl CardInstance {
             cant_block_static: false,
             entered_battlefield_this_turn: false,
             attacked_this_turn: false,
+            started_turn_tapped: false,
             triggers: Vec::new(),
             svars: BTreeMap::new(),
             is_commander: false,

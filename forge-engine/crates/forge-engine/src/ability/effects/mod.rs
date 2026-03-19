@@ -157,6 +157,12 @@ macro_rules! effect_dispatch {
                 // Fallback: detect from ability text (for backwards compat)
                 detect_api_type_from_text(&sa.ability_text)
             });
+            // Some DB/SVar helper nodes intentionally have no API payload.
+            // Java treats those as no-op leafs; avoid warning spam in parity runs.
+            let api_type = api_type.trim();
+            if api_type.is_empty() {
+                return;
+            }
             match api_type {
                 $( $api => $handler(ctx, sa), )*
                 _ => {

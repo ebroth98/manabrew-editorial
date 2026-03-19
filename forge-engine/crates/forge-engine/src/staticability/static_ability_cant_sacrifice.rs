@@ -61,6 +61,10 @@ fn matches_valid_cause(valid: Option<&str>, cause: Option<&SpellAbility>) -> boo
             true
         } else if head.eq_ignore_ascii_case("Spell") {
             cause.is_spell
+        } else if head.eq_ignore_ascii_case("Activated") {
+            !cause.is_spell && !cause.is_trigger
+        } else if head.eq_ignore_ascii_case("Triggered") {
+            cause.is_trigger
         } else if head.eq_ignore_ascii_case("Ability") {
             !cause.is_spell
         } else {

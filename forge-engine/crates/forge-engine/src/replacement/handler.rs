@@ -13,7 +13,7 @@ use forge_foundation::ZoneType;
 use crate::card::CounterType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::replacement::{ReplacementEffect, ReplacementLayer, ReplacementResult};
+use crate::replacement::{GameLossReason, ReplacementEffect, ReplacementLayer, ReplacementResult};
 
 // ── ReplacementEvent ──────────────────────────────────────────────────────────
 
@@ -74,7 +74,10 @@ pub enum ReplacementEvent {
     },
 
     /// A player is losing the game.
-    GameLoss { player: PlayerId },
+    GameLoss {
+        player: PlayerId,
+        reason: GameLossReason,
+    },
 
     /// A player is winning the game.
     GameWin { player: PlayerId },
@@ -212,7 +215,9 @@ fn collect_effects(
                     re.can_replace_add_counter(target_card, card)
                 }
 
-                ReplacementEvent::GameLoss { player } => re.can_replace_game_loss(*player, card),
+                ReplacementEvent::GameLoss { player, reason } => {
+                    re.can_replace_game_loss(*player, *reason, card)
+                }
 
                 ReplacementEvent::GameWin { player } => re.can_replace_game_win(*player, card),
 

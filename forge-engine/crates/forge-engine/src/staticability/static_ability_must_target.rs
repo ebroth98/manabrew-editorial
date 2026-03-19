@@ -2,6 +2,8 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::spellability::target_restrictions;
+use crate::spellability::target_restrictions::TargetKind;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 use crate::trigger::parse_pipe_params;
@@ -61,6 +63,33 @@ pub fn must_target_cards_required(game: &GameState, sa: &SpellAbility, targets: 
     })
 }
 
+/// Mirrors Java's `StaticAbilityMustTarget.meetsMustTargetRestriction(spellAbility)`.
+/// This is checked *after* target choices are made and can invalidate the cast
+/// if a required MustTarget card was targetable but not chosen.
+pub fn meets_must_target_restriction(game: &GameState, sa: &SpellAbility) -> bool {
+    if sa.is_copy {
+        return true;
+    }
+
+    let mut restrictions = get_restrictions(game, sa);
+    if restrictions.is_empty() {
+        return true;
+    }
+
+    let mut current = Some(sa);
+    let mut uses_targeting = false;
+    while let Some(node) = current {
+        if node.uses_targeting() && !node.params.contains_key("TargetingPlayer") {
+            uses_targeting = true;
+            let choices = get_targetable_card_choices(game, node);
+            is_restrictions_met(game, &mut restrictions, &choices, node);
+        }
+        current = node.sub_ability.as_deref();
+    }
+
+    !uses_targeting || restrictions.is_empty()
+}
+
 fn get_restrictions(game: &GameState, sa: &SpellAbility) -> Vec<MustTargetRestriction> {
     if sa.is_copy {
         return Vec::new();
@@ -109,6 +138,84 @@ fn get_restrictions(game: &GameState, sa: &SpellAbility) -> Vec<MustTargetRestri
         }
     }
     out
+}
+
+fn is_restrictions_met(
+    game: &GameState,
+    restrictions: &mut Vec<MustTargetRestriction>,
+    choices: &[CardId],
+    sa: &SpellAbility,
+) {
+    let mut i = restrictions.len();
+    while i > 0 {
+        i -= 1;
+        let restriction = &restrictions[i];
+
+        let already_targeted = sa
+            .target_chosen
+            .target_card
+            .map(|cid| card_matches_restriction(game, cid, restriction))
+            .unwrap_or(false);
+        if already_targeted {
+            restrictions.remove(i);
+            continue;
+        }
+
+        let can_target_matching = choices
+            .iter()
+            .any(|&cid| card_matches_restriction(game, cid, restriction));
+        if !can_target_matching {
+            restrictions.remove(i);
+        }
+    }
+}
+
+fn get_targetable_card_choices(game: &GameState, sa: &SpellAbility) -> Vec<CardId> {
+    let Some(tr) = sa.target_restrictions.as_ref() else {
+        return Vec::new();
+    };
+    let player = sa.targeting_player.unwrap_or(sa.activating_player);
+
+    match &tr.target_kind {
+        TargetKind::Any => target_restrictions::get_all_candidates_any_filtered(
+            game,
+            &tr.valid_tgts,
+            player,
+        )
+        .into_iter()
+        .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
+        .collect(),
+        TargetKind::Creature(filter) => {
+            let base = target_restrictions::get_all_candidates_creature_filtered(
+                game,
+                filter.as_deref(),
+                player,
+            );
+            target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
+                .into_iter()
+                .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
+                .collect()
+        }
+        TargetKind::Permanent(filter) => {
+            let base = target_restrictions::get_all_battlefield_permanents_filtered(
+                game,
+                filter.as_deref(),
+                player,
+            );
+            target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
+                .into_iter()
+                .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
+                .collect()
+        }
+        TargetKind::CardInZone { zone, filter } => target_restrictions::get_valid_cards_in_zone(
+            game,
+            *zone,
+            player,
+            filter.as_deref(),
+            sa.source,
+        ),
+        TargetKind::Player | TargetKind::Spell | TargetKind::None => Vec::new(),
+    }
 }
 
 fn parse_zone(s: &str) -> Option<ZoneType> {
@@ -172,7 +279,7 @@ fn spell_ability_matches(
     if tokens.is_empty() {
         return true;
     }
-    tokens.iter().all(|tok| {
+    tokens.iter().any(|tok| {
         let lower = tok.to_ascii_lowercase();
         let parts: Vec<&str> = lower.split('.').collect();
         let base = parts.first().copied().unwrap_or("");

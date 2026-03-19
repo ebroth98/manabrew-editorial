@@ -1209,6 +1209,11 @@ impl GameLoop {
                     return None;
                 }
                 if !sa.setup_targets(&targeting_game, agents, &self.mana_pools) {
+                    // Parity with Java harness deterministic cast flow:
+                    // handlePlayingSpellAbilityDeterministic() moves spells to stack
+                    // before setupTargets(), and a setupTargets() failure is not rolled back.
+                    // Net effect is the spell leaves hand without resolving.
+                    game.move_card(card_id, ZoneType::Stack, player);
                     return None;
                 }
             }
@@ -1446,6 +1451,16 @@ impl GameLoop {
                             } else {
                                 None
                             }
+                        }
+                        mana::ManaPayCallback::ConfirmSubCounter(source_id) => {
+                            let confirmed = agents[player.index()].confirm_payment(
+                                player,
+                                "SubCounter",
+                                "Remove counter for mana",
+                                None,
+                                Some("Mana"),
+                            );
+                            if confirmed { Some(source_id) } else { None }
                         }
                     }
                 };

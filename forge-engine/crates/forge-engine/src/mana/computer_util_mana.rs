@@ -51,6 +51,9 @@ pub enum ManaPayCallback<'a> {
     /// Return true to proceed, false to cancel.
     /// Mirrors Java's DeterministicCostDecision.confirmPayment() path.
     ConfirmSelfSacrifice(CardId),
+    /// Confirm whether to remove counters from the source for a mana ability.
+    /// Mirrors Java CostPayment confirm for CostRemoveCounter (SubCounter).
+    ConfirmSubCounter(CardId),
 }
 
 /// Unified callback for mana payment decisions during auto-tap.
@@ -94,7 +97,8 @@ pub fn auto_tap_lands_with_chooser(
     let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
         match kind {
             ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
-            ManaPayCallback::ConfirmSelfSacrifice(_) => None, // no confirm callback provided
+            ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
+            ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
         }
     };
     auto_tap_lands_internal(
@@ -119,7 +123,8 @@ pub fn auto_tap_lands_allow_reserved_source_reuse_with_chooser(
     let mut callback = |kind: ManaPayCallback<'_>| -> Option<CardId> {
         match kind {
             ManaPayCallback::ChooseSacrifice(valid) => sacrifice_chooser(valid),
-            ManaPayCallback::ConfirmSelfSacrifice(_) => None,
+            ManaPayCallback::ConfirmSelfSacrifice(cid) => Some(cid),
+            ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
         }
     };
     auto_tap_lands_internal(
@@ -223,9 +228,12 @@ fn auto_tap_lands_internal(
             allow_reserved_source_reuse,
             callback,
         ) {
-            // Remove the declined source and retry the same shard
-            for abilities in sources_for_shards.values_mut() {
-                abilities.retain(|a| a.card_id != sa_payment.card_id);
+            // Java parity: when a mana ability cost payment is declined/invalid,
+            // remove that specific ability from this shard and try other sources.
+            if let Some(list) = sources_for_shards.get_mut(&to_pay) {
+                list.retain(|a| {
+                    !(a.card_id == sa_payment.card_id && a.ability_index == sa_payment.ability_index)
+                });
             }
             continue;
         }
@@ -236,6 +244,7 @@ fn auto_tap_lands_internal(
             player,
             sa_payment.card_id,
             chosen_atom,
+            source_requires_tap(game, &sa_payment),
             &mut tapped_lands,
         );
 
@@ -398,6 +407,15 @@ fn pay_non_tap_mana_ability_costs(
             } => {
                 if game.card(ma.card_id).counter_count(counter_type) < *amount {
                     return false;
+                }
+                if let Some(ref mut cb) = callback {
+                    if let Some(confirmed_id) = cb(ManaPayCallback::ConfirmSubCounter(ma.card_id)) {
+                        if confirmed_id != ma.card_id {
+                            return false;
+                        }
+                    } else {
+                        return false;
+                    }
                 }
                 game.card_mut(ma.card_id)
                     .remove_counter(counter_type, *amount);
@@ -1090,6 +1108,9 @@ pub fn auto_tap_lands_generic(
             break;
         }
         let card = game.card(card_id);
+        if !card.is_land() || card.tapped {
+            continue;
+        }
         let mut atoms = all_basic_subtype_atoms(card);
         if atoms.is_empty() {
             if let Some(a) = basic_land_mana_atom(card) {
@@ -1103,11 +1124,23 @@ pub fn auto_tap_lands_generic(
             atoms.first().copied().unwrap_or(ManaAtom::COLORLESS)
         };
 
-        tap_land_for_mana(game, pool, player, card_id, atom, &mut tapped_lands);
+        tap_land_for_mana(game, pool, player, card_id, atom, true, &mut tapped_lands);
         remaining -= 1;
     }
 
     tapped_lands
+}
+
+fn source_requires_tap(game: &GameState, ma: &ManaAbilityRef) -> bool {
+    match ma.ability_index {
+        // Implicit mana abilities (basic/subtype lands) always require tapping.
+        None => true,
+        Some(ab_idx) => game.card(ma.card_id).activated_abilities[ab_idx]
+            .cost
+            .parts
+            .iter()
+            .any(|p| matches!(p, CostPart::Tap)),
+    }
 }
 
 /// Forward-ported from Java for future use. Currently unused but will be needed

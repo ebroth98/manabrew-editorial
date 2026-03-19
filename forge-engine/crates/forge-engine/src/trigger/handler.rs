@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use forge_foundation::ZoneType;
 
+use crate::card::valid_filter;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -207,6 +208,15 @@ impl TriggerHandler {
                     // For Attacks triggers, defending_player is propagated for Annihilator etc.
                     if let Some(pid) = event.params.damage_target_player {
                         sa.target_chosen.target_player = Some(pid);
+                    }
+                    // For trigger SVar chains that reference TriggeredPlayer,
+                    // propagate the event player (e.g. Maralen draw-step trigger).
+                    if sa.target_chosen.target_player.is_none()
+                        && svar_text.contains("TriggeredPlayer")
+                    {
+                        if let Some(pid) = event.params.player {
+                            sa.target_chosen.target_player = Some(pid);
+                        }
                     }
                     // Only propagate defending_player when the SVar actually
                     // references it (Annihilator, DefendingPlayer, etc.).
@@ -615,6 +625,45 @@ impl TriggerHandler {
             }
         }
 
+        // Mirrors Java Trigger.requirementsCheck() -> meetsCommonRequirements():
+        // apply common IsPresent$/PresentCompare$/PresentPlayer$/PresentZone$ checks.
+        if let Some(is_present) = trigger.params.get("IsPresent") {
+            let present_compare = trigger
+                .params
+                .get("PresentCompare")
+                .map(String::as_str)
+                .unwrap_or("GE1");
+            let present_player = trigger
+                .params
+                .get("PresentPlayer")
+                .map(String::as_str)
+                .unwrap_or("Any");
+            let present_zone = trigger
+                .params
+                .get("PresentZone")
+                .and_then(|z| parse_zone_name(z))
+                .unwrap_or(ZoneType::Battlefield);
+
+            let candidate_players: Vec<PlayerId> = match present_player {
+                p if p.eq_ignore_ascii_case("You") => vec![host_controller],
+                p if p.eq_ignore_ascii_case("Opponent") => vec![game.opponent_of(host_controller)],
+                _ => game.players.iter().map(|p| p.id).collect(),
+            };
+
+            let mut present_count = 0i32;
+            for pid in candidate_players {
+                for &cid in game.cards_in_zone(present_zone, pid) {
+                    if valid_filter::matches_valid_card(is_present, game.card(cid), card) {
+                        present_count += 1;
+                    }
+                }
+            }
+
+            if !compare_count_condition(present_count, present_compare) {
+                return false;
+            }
+        }
+
         true
     }
 
@@ -651,5 +700,18 @@ fn compare_count_condition(count: i32, cond: &str) -> bool {
         count != n_str.trim().parse::<i32>().unwrap_or(0)
     } else {
         true // Unknown condition — allow trigger
+    }
+}
+
+fn parse_zone_name(name: &str) -> Option<ZoneType> {
+    match name.to_ascii_lowercase().as_str() {
+        "battlefield" => Some(ZoneType::Battlefield),
+        "graveyard" => Some(ZoneType::Graveyard),
+        "hand" => Some(ZoneType::Hand),
+        "library" => Some(ZoneType::Library),
+        "exile" => Some(ZoneType::Exile),
+        "stack" => Some(ZoneType::Stack),
+        "command" => Some(ZoneType::Command),
+        _ => None,
     }
 }

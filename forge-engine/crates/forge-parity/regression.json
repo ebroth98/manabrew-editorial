@@ -12,6 +12,10 @@
     "args": "--deck1 black_control --deck2 zone_change --games 10 --max-turns 30"
   },
   {
+    "name": "staticability",
+    "args": "--deck1 staticability_test --deck2 staticability_test --max-turns 40 --seed 42 --games 20"
+  },
+  {
     "name": "tokens",
     "args": "--deck1 token_swarm --deck2 token_swarm --max-turns 40 --seed 42 --games 10"
   },

@@ -259,6 +259,9 @@ impl CombatState {
         }
 
         let mut events = Vec::new();
+        // Java parity: combat damage in a step is simultaneous, so replacement checks
+        // like Phyrexian Unlife's life condition must use life totals from step start.
+        let life_at_step_start: Vec<i32> = game.players.iter().map(|p| p.life).collect();
 
         for (attacker_id, defender) in self.attackers.clone() {
             // Check attacker is still alive
@@ -279,13 +282,15 @@ impl CombatState {
             let attacker_has_deathtouch = attacker.has_deathtouch();
             let attacker_has_lifelink = attacker.has_lifelink();
             let defending_player = defender.controlling_player(game);
-            let attacker_has_infect = attacker.has_infect()
-                || crate::staticability::static_ability_infect_damage::is_infect_damage(
+            let attacker_has_infect_for_player = attacker.has_infect()
+                || crate::staticability::static_ability_infect_damage::is_infect_damage_with_life_override(
                     game,
                     &game.cards,
                     defending_player,
                     attacker.controller,
+                    life_at_step_start.get(defending_player.index()).copied(),
                 );
+            let attacker_has_infect_for_creature = attacker.has_infect();
             let attacker_has_wither = attacker.has_wither()
                 || crate::staticability::static_ability_wither_damage::is_wither_damage(
                     &game.cards,
@@ -345,7 +350,7 @@ impl CombatState {
                             attacker_power,
                             attacker_has_lifelink,
                             attacker_controller,
-                            attacker_has_infect,
+                            attacker_has_infect_for_player,
                             attacker_toxic_count,
                         );
                         events.push(CombatDamageEvent {
@@ -384,7 +389,7 @@ impl CombatState {
                             attacker_has_deathtouch,
                             attacker_has_lifelink,
                             attacker_controller,
-                            attacker_has_wither || attacker_has_infect,
+                            attacker_has_wither || attacker_has_infect_for_creature,
                         );
                         events.push(CombatDamageEvent {
                             source: attacker_id,
@@ -513,13 +518,7 @@ impl CombatState {
                         game.card(blocker_id).power()
                     };
                     if blocker_power > 0 {
-                        let blocker_has_infect = blocker_card.has_infect()
-                            || crate::staticability::static_ability_infect_damage::is_infect_damage(
-                                game,
-                                &game.cards,
-                                game.card(attacker_id).controller,
-                                blocker_card.controller,
-                            );
+                        let blocker_has_infect = blocker_card.has_infect();
                         let blocker_has_wither = blocker_card.has_wither()
                             || crate::staticability::static_ability_wither_damage::is_wither_damage(
                                 &game.cards,
@@ -547,7 +546,7 @@ impl CombatState {
                         attacker_has_deathtouch,
                         attacker_has_lifelink,
                         attacker_controller,
-                        attacker_has_wither || attacker_has_infect,
+                        attacker_has_wither || attacker_has_infect_for_creature,
                     );
                     events.push(CombatDamageEvent {
                         source: attacker_id,
@@ -721,7 +720,7 @@ fn cant_block_by(game: &GameState, attacker_id: CardId, blocker_id: CardId) -> b
     for source in game
         .cards
         .iter()
-        .filter(|c| c.zone == ZoneType::Battlefield)
+        .filter(|c| c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command)
     {
         for sa in &source.static_abilities {
             if sa.mode != StaticMode::CantBlockBy {

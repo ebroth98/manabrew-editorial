@@ -54,7 +54,11 @@ impl GameLoop {
         // and re-prompt if invalid.  We mirror this so RNG consumption matches.
         let mut chosen_attackers: Vec<(CardId, combat::DefenderId)> = Vec::new();
         if !available_attackers.is_empty() {
-            let max_attempts = 50; // safety valve to avoid infinite loops
+            // Java parity: attacker declaration retries until a legal attack
+            // set is found. A low cap can prematurely accept an invalid/no-attack
+            // outcome on crowded boards (e.g. Silent Arbiter + MustAttack).
+            // Keep a very high guard only as a last-resort safety valve.
+            let max_attempts = 5000;
             for _attempt in 0..max_attempts {
                 agents[active.index()].snapshot_state(game, &self.mana_pools);
                 self.game_log.log(

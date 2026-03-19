@@ -307,10 +307,23 @@ impl GameLoop {
 
                         // Resolve the effect chain (walk sub-abilities)
                         let mut parent_target_card: Option<CardId> = None;
+                        let mut parent_target_player = None;
                         let mut current_sa = Some(&etb_sa);
                         while let Some(sa) = current_sa {
-                            self.resolve_single_effect(game, agents, sa, parent_target_card);
-                            parent_target_card = sa.target_chosen.target_card;
+                            let mut sa_with_ctx;
+                            let sa_ref =
+                                if parent_target_player.is_some()
+                                    && sa.target_chosen.target_player.is_none()
+                                {
+                                    sa_with_ctx = sa.clone();
+                                    sa_with_ctx.target_chosen.target_player = parent_target_player;
+                                    &sa_with_ctx
+                                } else {
+                                    sa
+                                };
+                            self.resolve_single_effect(game, agents, sa_ref, parent_target_card);
+                            parent_target_card = sa_ref.target_chosen.target_card;
+                            parent_target_player = sa_ref.target_chosen.target_player;
                             current_sa = sa.get_sub_ability();
                         }
                     }
@@ -620,6 +633,7 @@ impl GameLoop {
         // the parent SA's chosen target card so sub-abilities can resolve
         // `Defined$ ParentTarget`. Mirrors Java's resolveApiAbility() + resolveSubAbilities().
         let mut parent_target_card: Option<CardId> = None;
+        let mut parent_target_player = None;
         let root_kicked = entry.spell_ability.kicked;
         let mut current = Some(&entry.spell_ability);
         let mut is_first = true;
@@ -635,17 +649,25 @@ impl GameLoop {
             is_first = false;
 
             // Propagate kicked flag from root SA to sub-abilities for condition checks
-            let mut sa_with_kicked;
-            let sa_ref = if root_kicked && !sa.kicked {
-                sa_with_kicked = sa.clone();
-                sa_with_kicked.kicked = true;
-                &sa_with_kicked
+            let mut sa_with_ctx;
+            let needs_ctx_clone = (root_kicked && !sa.kicked)
+                || (parent_target_player.is_some() && sa.target_chosen.target_player.is_none());
+            let sa_ref = if needs_ctx_clone {
+                sa_with_ctx = sa.clone();
+                if root_kicked && !sa_with_ctx.kicked {
+                    sa_with_ctx.kicked = true;
+                }
+                if sa_with_ctx.target_chosen.target_player.is_none() {
+                    sa_with_ctx.target_chosen.target_player = parent_target_player;
+                }
+                &sa_with_ctx
             } else {
                 sa
             };
             self.resolve_single_effect(game, agents, sa_ref, parent_target_card);
             // This SA's target card becomes the parent context for the next sub-ability.
-            parent_target_card = sa.target_chosen.target_card;
+            parent_target_card = sa_ref.target_chosen.target_card;
+            parent_target_player = sa_ref.target_chosen.target_player;
             current = sa.get_sub_ability();
         }
     }
