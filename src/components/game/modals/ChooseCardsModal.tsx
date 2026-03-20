@@ -129,7 +129,20 @@ export function ChooseCardsModal({
           )}
         </div>
 
-        {!isAutoConfirm && (
+        {cards.length === 0 ? (
+          <div className={MODAL_FOOTER_BETWEEN}>
+            <span className="text-xs text-muted-foreground text-left leading-tight max-w-[200px]">
+              No cards available to choose.
+            </span>
+            <Button
+              size="sm"
+              onClick={() => onConfirm([])}
+              className="min-w-[100px] shrink-0"
+            >
+              Done
+            </Button>
+          </div>
+        ) : !isAutoConfirm ? (
           <div className={MODAL_FOOTER_BETWEEN}>
             <span className="text-xs text-muted-foreground text-left leading-tight max-w-[200px]">
               {minChoices === 0 ? "Choosing is optional." : `You must select at least ${minChoices}.`}
@@ -145,7 +158,7 @@ export function ChooseCardsModal({
                 : `Confirm ${selected.size > 0 ? `(${selected.size})` : ""}`}
             </Button>
           </div>
-        )}
+        ) : null}
       </div>
     </Modal>
   );

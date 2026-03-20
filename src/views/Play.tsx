@@ -39,7 +39,7 @@ export default function Play() {
 
   if (isGameActive) {
     return (
-      <div className="h-full min-h-0 overflow-visible">
+      <div className="h-full min-h-0 no-scrollbar">
         <Game />
       </div>
     );

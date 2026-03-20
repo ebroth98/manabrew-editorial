@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::OnceLock;
 
@@ -7,6 +8,16 @@ use forge_engine_core::ids::PlayerId;
 
 static CARD_DB: OnceLock<CardDatabase> = OnceLock::new();
 static TOKEN_DB: OnceLock<CardDatabase> = OnceLock::new();
+static TOKEN_IMAGE_MAP: OnceLock<HashMap<String, TokenImageInfo>> = OnceLock::new();
+
+/// Scryfall set code + collector number for a token, derived from edition files.
+#[derive(Debug, Clone)]
+pub struct TokenImageInfo {
+    /// Scryfall token set code (e.g., "thou" for Tokens of Hour of Devastation).
+    pub set_code: String,
+    /// Collector number within that token set (e.g., "1").
+    pub collector_number: String,
+}
 
 /// Returns the path to the Forge card scripts directory.
 /// Checks the CARDS_DIR env var first; falls back to the path adjacent
@@ -25,6 +36,15 @@ fn token_scripts_dir() -> PathBuf {
         PathBuf::from(dir)
     } else {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../forge/forge-gui/res/tokenscripts")
+    }
+}
+
+/// Returns the path to the Forge editions directory.
+fn editions_dir() -> PathBuf {
+    if let Ok(dir) = std::env::var("EDITIONS_DIR") {
+        PathBuf::from(dir)
+    } else {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../forge/forge-gui/res/editions")
     }
 }
 
@@ -65,6 +85,101 @@ pub fn get_token_db() -> &'static CardDatabase {
         );
         db
     })
+}
+
+/// Returns the global token image mapping, built from edition files on first call.
+///
+/// Maps token script names (e.g., "w_1_1_spirit_flying") to their Scryfall
+/// token set code and collector number (e.g., set="tmid", number="2").
+///
+/// Scryfall token sets use the convention: "t" + lowercase edition code.
+/// For example, Hour of Devastation (HOU) has token set "thou".
+pub fn get_token_image_map() -> &'static HashMap<String, TokenImageInfo> {
+    TOKEN_IMAGE_MAP.get_or_init(|| {
+        let dir = editions_dir();
+        eprintln!("[tokendb] Parsing edition files from {:?} for token images …", dir);
+        let map = parse_edition_token_map(&dir);
+        eprintln!("[tokendb] Built token image map with {} entries", map.len());
+        map
+    })
+}
+
+/// Parse all edition files to build a mapping from token script name
+/// to (scryfall_token_set_code, collector_number).
+fn parse_edition_token_map(editions_dir: &PathBuf) -> HashMap<String, TokenImageInfo> {
+    let mut map = HashMap::new();
+
+    let entries = match std::fs::read_dir(editions_dir) {
+        Ok(e) => e,
+        Err(err) => {
+            eprintln!("[tokendb] Failed to read editions dir: {}", err);
+            return map;
+        }
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.extension().and_then(|e| e.to_str()) != Some("txt") {
+            continue;
+        }
+
+        let content = match std::fs::read_to_string(&path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+
+        // Extract edition code: prefer ScryfallCode, fall back to Code
+        let mut code: Option<String> = None;
+        let mut scryfall_code: Option<String> = None;
+        let mut in_tokens = false;
+
+        for line in content.lines() {
+            let line = line.trim();
+
+            if line.starts_with("[") {
+                in_tokens = line == "[tokens]";
+                continue;
+            }
+
+            if !in_tokens {
+                if let Some(val) = line.strip_prefix("Code=") {
+                    code = Some(val.trim().to_string());
+                } else if let Some(val) = line.strip_prefix("ScryfallCode=") {
+                    scryfall_code = Some(val.trim().to_string());
+                }
+                continue;
+            }
+
+            // Parse token line: "1 w_4_4_angel_flying @Adi Granov"
+            // Format: <collector_number> <script_name> [@artist]
+            let parts: Vec<&str> = line.splitn(3, ' ').collect();
+            if parts.len() < 2 {
+                continue;
+            }
+
+            let collector_number = parts[0].trim();
+            // The script name may have trailing " @Artist" — strip it
+            let script_name = parts[1].split(" @").next().unwrap_or(parts[1]).trim();
+
+            if script_name.is_empty() || collector_number.is_empty() {
+                continue;
+            }
+
+            // Build Scryfall token set code: "t" + lowercase(scryfall_code or code)
+            let edition_code = scryfall_code.as_ref().or(code.as_ref());
+            if let Some(ec) = edition_code {
+                let token_set_code = format!("t{}", ec.to_lowercase());
+                // Only insert if not already present — first edition wins,
+                // ensuring we get a valid mapping without overwriting.
+                map.entry(script_name.to_string()).or_insert(TokenImageInfo {
+                    set_code: token_set_code,
+                    collector_number: collector_number.to_string(),
+                });
+            }
+        }
+    }
+
+    map
 }
 
 /// Convert an immutable `CardRules` definition into a mutable `CardInstance`

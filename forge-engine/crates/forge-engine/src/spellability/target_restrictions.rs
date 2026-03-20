@@ -274,6 +274,16 @@ fn parse_target_kind(val: &str) -> TargetKind {
         let filter = filter.strip_prefix('.').unwrap_or(filter);
         return TargetKind::Permanent(Some(filter.to_string()));
     }
+    if val.starts_with("Land") {
+        // "Land" targeting is a permanent target restricted to lands.
+        // Keep land qualifiers (e.g. "Land.nonBasic") in the filter string.
+        let filter = val.strip_prefix("Land").unwrap_or("");
+        if filter.is_empty() {
+            return TargetKind::Permanent(Some("Land".to_string()));
+        }
+        let filter = filter.strip_prefix('.').unwrap_or(filter);
+        return TargetKind::Permanent(Some(format!("Land.{filter}")));
+    }
     // Fallback: treat as "Any" if unrecognized
     TargetKind::Any
 }
@@ -560,6 +570,16 @@ fn parse_target_kind_legacy(val: &str) -> TargetKind {
         let filter = filter.strip_prefix('.').unwrap_or(filter);
         return TargetKind::Permanent(Some(filter.to_string()));
     }
+    if val.starts_with("Land") {
+        // "Land" targeting is a permanent target restricted to lands.
+        // Keep land qualifiers (e.g. "Land.nonBasic") in the filter string.
+        let filter = val.strip_prefix("Land").unwrap_or("");
+        if filter.is_empty() {
+            return TargetKind::Permanent(Some("Land".to_string()));
+        }
+        let filter = filter.strip_prefix('.').unwrap_or(filter);
+        return TargetKind::Permanent(Some(format!("Land.{filter}")));
+    }
     // Fallback: treat as "Any" if unrecognized
     TargetKind::Any
 }
@@ -690,6 +710,22 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn parse_valid_targets_land() {
+        assert_eq!(
+            parse_valid_targets("SP$ Destroy | ValidTgts$ Land"),
+            TargetKind::Permanent(Some("Land".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_valid_targets_land_filter() {
+        assert_eq!(
+            parse_valid_targets("SP$ Destroy | ValidTgts$ Land.nonBasic"),
+            TargetKind::Permanent(Some("Land.nonBasic".to_string()))
+        );
     }
 
     #[test]

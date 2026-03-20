@@ -23,7 +23,7 @@ const { w: CARD_W, h: CARD_H } = FLASH_CARD_SIZE;
  * Supports showing front or back face for double-faced cards.
  */
 export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: CardPreviewProps) {
-  const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color, card.setCode);
+  const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color, card.setCode, card.cardNumber);
   const imageUrl = card.imageUrl ?? fetchedUrl ?? null;
 
   // Fetch double-faced card data if needed

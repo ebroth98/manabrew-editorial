@@ -145,6 +145,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // a card from their own zone. Used by Exhume, etc.
             // Mirrors Java's changeHiddenOriginResolve → changeZonePlayerInvariant loop.
             let defined_player = sa.defined_player().unwrap_or("");
+            let fallback_targeted_controller = || {
+                // Java parity for sub-abilities: TargetedController can resolve from
+                // parent targeting context when this SA doesn't carry direct targets.
+                sa.target_chosen
+                    .target_card
+                    .or(ctx.parent_target_card)
+                    .map(|cid| ctx.game.card(cid).controller)
+            };
             let players: Vec<crate::ids::PlayerId> =
                 if defined_player.eq_ignore_ascii_case("Player") {
                     // "Player" = all players in turn order
@@ -157,6 +165,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     vec![ctx.game.opponent_of(controller)]
                 } else {
                     resolve_defined_player_with_sa(defined_player, sa, controller, ctx.game)
+                        .or_else(|| {
+                            if defined_player.eq_ignore_ascii_case("TargetedController")
+                                || defined_player.eq_ignore_ascii_case("Player.TargetedController")
+                            {
+                                fallback_targeted_controller()
+                            } else {
+                                None
+                            }
+                        })
                         .map(|pid| vec![pid])
                         .unwrap_or_else(|| vec![controller])
                 };
@@ -171,6 +188,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     continue;
                 }
                 ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
+                // Ensure UI agents can render hidden-zone candidates (library search).
+                ctx.agents[pid.index()].on_library_peek(ctx.game, &candidates);
                 if let Some(chosen) = ctx.agents[pid.index()].choose_single_card_for_zone_change(
                     pid,
                     &candidates,

@@ -3,10 +3,11 @@ use std::collections::HashMap;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
+use forge_engine_core::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
-use crate::ids_codec::{card_id_str, player_id_str};
+use crate::ids_codec::{card_id_str, player_id_str, stack_id_str};
 
 /// Frontend-compatible game state snapshot.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -174,8 +175,82 @@ pub struct CardDto {
 pub struct StackObjectDto {
     pub id: String,
     pub source_id: String,
+    /// The player who cast/activated this spell or ability.
+    pub controller_id: String,
     pub name: String,
     pub text: String,
+    /// True when this stack entry is a permanent spell (creature, artifact,
+    /// enchantment, planeswalker) that will resolve onto the battlefield.
+    /// False for instants, sorceries, and activated/triggered abilities.
+    pub is_permanent_spell: bool,
+    /// Normalized chosen targets for this stack object, flattened across the
+    /// root ability and sub-ability chain in evaluation order.
+    pub targets: Vec<StackTargetDto>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct StackTargetDto {
+    pub kind: StackTargetKindDto,
+    /// Engine identifier encoded for frontend lookups:
+    /// - Card => "card-<id>"
+    /// - Player => "player-<index>"
+    /// - Stack => "stack-<id>"
+    pub id: String,
+    /// Zero-based index in the spell-ability chain (root ability = 0).
+    pub node_index: u32,
+    /// Zero-based target slot index inside this node.
+    pub target_index: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum StackTargetKindDto {
+    Card,
+    Player,
+    Stack,
+}
+
+fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
+    let mut out = Vec::new();
+    let mut node_index = 0u32;
+    let mut current = Some(root);
+
+    while let Some(sa) = current {
+        let mut target_index = 0u32;
+
+        if let Some(cid) = sa.target_chosen.target_card {
+            out.push(StackTargetDto {
+                kind: StackTargetKindDto::Card,
+                id: card_id_str(cid),
+                node_index,
+                target_index,
+            });
+            target_index += 1;
+        }
+        if let Some(pid) = sa.target_chosen.target_player {
+            out.push(StackTargetDto {
+                kind: StackTargetKindDto::Player,
+                id: player_id_str(pid),
+                node_index,
+                target_index,
+            });
+            target_index += 1;
+        }
+        if let Some(stack_id) = sa.target_chosen.target_stack_entry {
+            out.push(StackTargetDto {
+                kind: StackTargetKindDto::Stack,
+                id: stack_id_str(stack_id),
+                node_index,
+                target_index,
+            });
+        }
+
+        node_index += 1;
+        current = sa.sub_ability.as_deref();
+    }
+
+    out
 }
 
 fn mana_pool_to_map(pool: &ManaPool) -> HashMap<String, i32> {
@@ -299,7 +374,7 @@ pub fn card_to_dto(
         id: card_id_str(cid),
         name,
         set_code: card.set_code.clone().unwrap_or_default(),
-        card_number: String::new(),
+        card_number: card.card_number.clone().unwrap_or_default(),
         color,
         mana_cost: mana_cost_str,
         cmc,
@@ -452,8 +527,11 @@ impl GameViewDto {
                         .source
                         .map(|c| card_id_str(c))
                         .unwrap_or_default(),
+                    controller_id: player_id_str(entry.spell_ability.activating_player),
                     name,
                     text: entry.spell_ability.ability_text.clone(),
+                    is_permanent_spell: entry.is_creature_spell || entry.is_permanent_spell,
+                    targets: collect_stack_targets(&entry.spell_ability),
                 }
             })
             .collect();

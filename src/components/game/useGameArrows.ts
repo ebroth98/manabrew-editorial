@@ -14,6 +14,8 @@ import { type RefObject, useEffect, useState } from "react";
 import type { ArrowDef } from "./ArrowOverlay";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
+import type { StackObject, StackTarget } from "@/types/xmage";
+import { useStackUIStore } from "@/stores/useStackUIStore";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -39,6 +41,8 @@ export interface UseGameArrowsOptions {
   myPlayerId: string;
   /** The opponent player's ID (for "my attacker → them" arrows). */
   opponentPlayerId: string;
+  /** Current stack objects (last item is top of stack). */
+  stack?: StackObject[];
 }
 
 // ─── DOM helpers ─────────────────────────────────────────────────────────────
@@ -72,6 +76,65 @@ function playerCenter(container: HTMLElement, playerId: string) {
   return getCenter(container, `[data-player-id="${CSS.escape(playerId)}"]`);
 }
 
+function stackObjectCenter(container: HTMLElement, stackObjectId: string) {
+  return getCenter(container, `[data-stack-object-id="${CSS.escape(stackObjectId)}"]`);
+}
+
+function placementGhostCenter(container: HTMLElement) {
+  return getCenter(container, "[data-placement-ghost]");
+}
+
+function getAllTargets(obj: StackObject): StackTarget[] {
+  const maybeObj = obj as unknown as Record<string, unknown>;
+  const targets = Array.isArray(maybeObj.targets)
+    ? (maybeObj.targets as StackTarget[])
+    : [];
+  if (targets.length === 0) {
+    const legacyTargetCardId =
+      typeof maybeObj.targetCardId === "string" ? maybeObj.targetCardId : null;
+    if (legacyTargetCardId) {
+      return [{
+        kind: "card",
+        id: legacyTargetCardId,
+        nodeIndex: 0,
+        targetIndex: 0,
+      }];
+    }
+    return [];
+  }
+  return targets;
+}
+
+function entityCenter(container: HTMLElement, target: StackTarget) {
+  if (target.kind === "card") return cardCenter(container, target.id);
+  if (target.kind === "player") return playerCenter(container, target.id);
+  if (target.kind === "stack") return stackObjectCenter(container, target.id);
+  return null;
+}
+
+function stackArrowType(target: StackTarget): ArrowDef["type"] {
+  if (target.kind === "card") return "hostile-target";
+  if (target.kind === "player") return "hostile-target";
+  return "friendly-target";
+}
+
+function isPermanentSpell(obj: StackObject): boolean {
+  return obj.isPermanentSpell === true;
+}
+
+function getActiveStackObject(
+  stack: StackObject[] | undefined,
+  activeStackObjectId?: string | null,
+): StackObject | null {
+  if (!stack || stack.length === 0) return null;
+  return (
+    (activeStackObjectId
+      ? stack.find((obj) => obj.id === activeStackObjectId)
+      : null) ??
+    stack[stack.length - 1]
+  );
+}
+
 // ─── Arrow builder ────────────────────────────────────────────────────────────
 
 /**
@@ -81,6 +144,7 @@ function playerCenter(container: HTMLElement, playerId: string) {
 function buildArrows(
   container: HTMLElement,
   opts: Omit<UseGameArrowsOptions, "containerRef">,
+  activeStackObjectId?: string | null,
 ): ArrowDef[] {
   const {
     promptType,
@@ -90,6 +154,7 @@ function buildArrows(
     pendingAttackers,
     myPlayerId,
     opponentPlayerId,
+    stack,
   } = opts;
 
   const arrows: ArrowDef[] = [];
@@ -158,6 +223,52 @@ function buildArrows(
     }
   }
 
+  // Stack arrows: target arrows OR placement ghost arrow.
+  const activeObj = getActiveStackObject(stack, activeStackObjectId);
+  if (activeObj) {
+    const targets = getAllTargets(activeObj);
+    const from = stackObjectCenter(container, activeObj.id);
+    if (from && targets.length > 0) {
+      // Target arrows: stack object -> each explicit target
+      for (const target of targets) {
+        const to = entityCenter(container, target);
+        if (to) {
+          arrows.push({
+            fromX: from.x,
+            fromY: from.y,
+            toX: to.x,
+            toY: to.y,
+            type: stackArrowType(target),
+          });
+        }
+      }
+    } else if (from && isPermanentSpell(activeObj)) {
+      // Placement arrow: permanent spell with no targets -> ghost on battlefield
+      const to = placementGhostCenter(container);
+      if (to) {
+        arrows.push({
+          fromX: from.x,
+          fromY: from.y,
+          toX: to.x,
+          toY: to.y,
+          type: "placement",
+        });
+      }
+    } else if (from && activeObj.sourceId) {
+      // Ability with no explicit targets — arrow back to source card on battlefield
+      const to = cardCenter(container, activeObj.sourceId);
+      if (to) {
+        arrows.push({
+          fromX: from.x,
+          fromY: from.y,
+          toX: to.x,
+          toY: to.y,
+          type: "friendly-target",
+        });
+      }
+    }
+  }
+
   return arrows;
 }
 
@@ -182,6 +293,7 @@ export function useGameArrows(opts: UseGameArrowsOptions): ArrowDef[] {
     pendingAttackers,
     myPlayerId,
     opponentPlayerId,
+    stack,
   } = opts;
 
   useEffect(() => {
@@ -194,6 +306,7 @@ export function useGameArrows(opts: UseGameArrowsOptions): ArrowDef[] {
     // Measure immediately after React commits the DOM
     function measure() {
       if (!container) return;
+      const activeStackObjectId = useStackUIStore.getState().hoveredStackObjectId;
       setArrows(
         buildArrows(container, {
           promptType,
@@ -203,7 +316,8 @@ export function useGameArrows(opts: UseGameArrowsOptions): ArrowDef[] {
           pendingAttackers,
           myPlayerId,
           opponentPlayerId,
-        }),
+          stack,
+        }, activeStackObjectId),
       );
     }
 
@@ -212,7 +326,11 @@ export function useGameArrows(opts: UseGameArrowsOptions): ArrowDef[] {
     // Re-measure on container resize (handles window resize / layout reflow)
     const ro = new ResizeObserver(measure);
     ro.observe(container);
-    return () => ro.disconnect();
+    const unsubStackHover = useStackUIStore.subscribe(() => measure());
+    return () => {
+      ro.disconnect();
+      unsubStackHover();
+    };
   }, [
     containerRef,
     promptType,
@@ -222,6 +340,7 @@ export function useGameArrows(opts: UseGameArrowsOptions): ArrowDef[] {
     pendingAttackers,
     myPlayerId,
     opponentPlayerId,
+    stack,
   ]);
 
   return arrows;

@@ -13,7 +13,7 @@ use rand::SeedableRng;
 use tauri::{AppHandle, Emitter};
 
 use crate::ai_agent::spawn_ai_prompt_responder;
-use crate::card_db::{card_rules_to_instance, get_token_db};
+use crate::card_db::{card_rules_to_instance, get_token_db, get_token_image_map};
 use crate::game_log_event::GameLogEntryDto;
 use crate::game_snapshot_event::GameSnapshotEventDto;
 use crate::game_view_dto::GameViewDto;
@@ -459,9 +459,15 @@ fn run_game(
 
     // Register token templates so the engine can instantiate tokens by script name.
     // Uses a placeholder owner (p0); the actual owner/controller is set at creation time.
+    // Attaches Scryfall set code + collector number from edition files for image lookup.
     let token_db = get_token_db();
+    let token_image_map = get_token_image_map();
     for (script_name, rules) in token_db.iter() {
-        let template = card_rules_to_instance(rules, p0);
+        let mut template = card_rules_to_instance(rules, p0);
+        if let Some(info) = token_image_map.get(script_name) {
+            template.set_code = Some(info.set_code.clone());
+            template.card_number = Some(info.collector_number.clone());
+        }
         game_loop.register_token(script_name.clone(), template);
     }
 

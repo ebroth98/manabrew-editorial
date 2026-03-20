@@ -1,9 +1,10 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
 import type { BattlefieldZoneProps } from "../game.types";
 import { CARD_RING, BATTLEFIELD_CARD, ZONE_LABEL } from "../game.styles";
+import { useGameThemeColors, withAlpha } from "../game.theme";
 import type { Card as XMageCard } from "@/types/openmagic";
 
 const ATTACH_OFFSET_Y = 16;
@@ -30,8 +31,10 @@ export function BattlefieldZone({
   leftReserved = 0,
   rightReserved = 0,
   landsAtTop = false,
+  placementGhost,
 }: BattlefieldZoneProps) {
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
+  const themeColors = useGameThemeColors();
 
   const cardMap = useMemo(() => {
     const m = new Map<string, XMageCard>();
@@ -63,6 +66,17 @@ export function BattlefieldZone({
     const isUntappable = untappableLandIds?.includes(card.id);
     const isChoosableClick =
       (card.isChoosable && !!onClickCard) || (isAttacking && !!onClickAnyCard);
+    const ringColor = isAttacking
+      ? themeColors.promptAction.attackAction
+      : isPending
+        ? themeColors.promptAction.passAction
+        : isTappable
+          ? themeColors.activeAction.active
+          : isUntappable
+            ? themeColors.promptAction.cancel
+            : isChoosableClick
+              ? themeColors.promptAction.defenseAction
+              : null;
     return (
       <div
         key={card.id}
@@ -92,6 +106,7 @@ export function BattlefieldZone({
             isTappable && !isAttacking && CARD_RING.tappable,
             isUntappable && !isAttacking && !isTappable && CARD_RING.untappable,
           )}
+          style={ringColor ? ({ "--tw-ring-color": ringColor } as CSSProperties) : undefined}
         />
         {isTappable && onTapLand && (
           <CardOverlayButton
@@ -162,6 +177,26 @@ export function BattlefieldZone({
     );
   };
 
+  const ghostEl = placementGhost ? (
+    <div
+      data-placement-ghost
+      className="shrink-0 border-2 border-dashed rounded-lg flex items-center justify-center"
+      style={{
+        width: 70,
+        height: 98,
+        borderColor: withAlpha(themeColors.activeAction.active, 0.55),
+        backgroundColor: withAlpha(themeColors.activeAction.active, 0.08),
+      }}
+    >
+      <span
+        className="text-[9px] font-medium text-center px-1 leading-tight"
+        style={{ color: withAlpha(themeColors.activeAction.active, 0.7) }}
+      >
+        {placementGhost.cardName}
+      </span>
+    </div>
+  ) : null;
+
   return (
     <div className={cn("flex flex-col gap-1 min-h-0", className)}>
       {label && <span className={ZONE_LABEL}>{label}</span>}
@@ -174,7 +209,7 @@ export function BattlefieldZone({
           paddingRight: `${8 + rightReserved}px`,
         }}
       >
-        {cards.length === 0 ? (
+        {cards.length === 0 && !placementGhost ? (
           <span className="text-xs text-muted-foreground italic self-center mx-auto mt-auto mb-auto">
             {emptyLabel}
           </span>
@@ -189,12 +224,14 @@ export function BattlefieldZone({
                 )}
                 <div className="flex flex-wrap gap-2 mt-auto content-start">
                   {nonLands.map(renderCard)}
+                  {ghostEl}
                 </div>
               </>
             ) : (
               <>
                 <div className="flex flex-wrap gap-2 content-start">
                   {nonLands.map(renderCard)}
+                  {ghostEl}
                 </div>
                 {lands.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-auto pt-1">

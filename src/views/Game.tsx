@@ -22,9 +22,12 @@ import { usePromptEffects } from "@/hooks/usePromptEffects";
 import { useCombatState } from "@/hooks/useCombatState";
 import { useGameEventListeners } from "@/hooks/useGameEventListeners";
 import { GameBoard } from "@/components/game/GameBoard";
+import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
 import { cn } from "@/lib/utils";
 import { Navigate, useLocation } from "react-router-dom";
 import { PromptType } from "@/types/promptType";
+import { useStackUIStore } from "@/stores/useStackUIStore";
+import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
 
 /** Prompt types where hover card preview is allowed (no modal overlay). */
 const HOVER_ALLOWED_PROMPTS = new Set<PromptType>([
@@ -97,6 +100,7 @@ export default function Game() {
   const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
   const zonePanelSide = usePreferencesStore((s) => s.zonePanelSide);
   const zonePanelOrder = usePreferencesStore((s) => s.zonePanelOrder);
+  const themeColors = useGameThemeColors();
   const location = useLocation();
   const devExtraOpponents = ((location.state as { devExtraOpponents?: number } | null)?.devExtraOpponents ?? 0);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -336,7 +340,22 @@ export default function Game() {
     pendingAttackers,
     myPlayerId: me?.id ?? "",
     opponentPlayerId: opponent?.id ?? "",
+    stack: gameView?.stack ?? [],
   });
+
+  const hoveredStackObjectId = useStackUIStore((s) => s.hoveredStackObjectId);
+  const placementGhost = useMemo((): PlacementGhost | null => {
+    const stack = gameView?.stack;
+    if (!stack || stack.length === 0) return null;
+    const active =
+      (hoveredStackObjectId
+        ? stack.find((obj) => obj.id === hoveredStackObjectId)
+        : null) ?? stack[stack.length - 1];
+    const hasTargets = (active.targets ?? []).length > 0;
+    if (hasTargets) return null;
+    if (!active.isPermanentSpell) return null;
+    return { stackObjectId: active.id, cardName: active.name, controllerId: active.controllerId };
+  }, [gameView?.stack, hoveredStackObjectId]);
 
   const visibleCardsById = useMemo(() => {
     if (!gameView) return new Map<string, XMageCard>();
@@ -406,6 +425,20 @@ export default function Game() {
       handleHoverCard(null);
     }
   }, [draggingHandCard, handleHoverCard]);
+
+  // If the previewed card leaves all visible zones (e.g. removed from the game),
+  // close the preview. We use visibleCardsById so that cards in graveyard, exile,
+  // and command zones can still be previewed (e.g. in ZoneViewer modals).
+  const hoverableCardIds = useMemo(() => {
+    return new Set(visibleCardsById.keys());
+  }, [visibleCardsById]);
+
+  useEffect(() => {
+    if (!hoveredCard) return;
+    if (!hoverableCardIds.has(hoveredCard.id) && !stackCardsBySourceId.has(hoveredCard.id)) {
+      dismissHover();
+    }
+  }, [hoveredCard, hoverableCardIds, stackCardsBySourceId, dismissHover]);
 
   const cardNameById = useMemo(() => {
     const byId = new Map<string, string>();
@@ -520,11 +553,16 @@ export default function Game() {
       ref={containerRef}
       className="relative flex flex-col h-full min-h-0 gap-1.5 p-1.5 overflow-visible"
       style={
-        { "--flash-duration": `${flashDurationMs}ms` } as React.CSSProperties
+        {
+          "--flash-duration": `${flashDurationMs}ms`,
+          "--playable-ring-color": withAlpha(themeColors.activeAction.active, 0.75),
+          "--playable-glow-color": withAlpha(themeColors.activeAction.active, 0.3),
+          "--playable-ring-color-strong": themeColors.activeAction.active,
+          "--playable-glow-color-strong": withAlpha(themeColors.activeAction.active, 0.6),
+        } as React.CSSProperties
       }
     >
       <ArrowOverlay arrows={arrows} />
-
       <div className="flex gap-1 min-h-0 flex-1 overflow-visible">
         <GameBoard
           me={me!}
@@ -551,6 +589,7 @@ export default function Game() {
           showBackFace={showBackFace}
           zonePanelSide={zonePanelSide}
           zonePanelOrder={zonePanelOrder}
+          placementGhost={placementGhost}
           isOverBattlefield={isOverBattlefield}
           battlefieldContainerRef={battlefieldContainerRef}
           handContainerRef={handContainerRef}

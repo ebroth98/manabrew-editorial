@@ -152,8 +152,26 @@ export interface CombatAssignment {
 export interface StackObject {
   id: string; // UUID
   sourceId: string; // UUID
+  /** Player who cast/activated this spell or ability. */
+  controllerId: string;
   name: string;
   text: string;
+  /** True for permanent spells (creature/artifact/enchantment/planeswalker). */
+  isPermanentSpell: boolean;
+  /** Normalized chosen targets flattened across ability/sub-ability nodes. */
+  targets: StackTarget[];
+}
+
+export type StackTargetKind = "card" | "player" | "stack";
+
+export interface StackTarget {
+  kind: StackTargetKind;
+  /** Encoded game entity id: card-*, player-*, stack-* */
+  id: string;
+  /** Zero-based index in the ability chain (root node = 0). */
+  nodeIndex: number;
+  /** Zero-based target slot index within the node. */
+  targetIndex: number;
 }
 
 export interface ActivatableAbilityInfo {

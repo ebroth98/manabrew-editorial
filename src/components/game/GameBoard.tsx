@@ -7,6 +7,7 @@ import { PromptType as PT } from "@/types/promptType";
 import { OpponentHalf, PlayerPanel } from "@/components/game/panels";
 import { MidPhaseStrip } from "@/components/game/MidPhaseStrip";
 import { FreeBattlefield, HandDisplay } from "@/components/game/zones";
+import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
 import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
 import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
@@ -54,6 +55,9 @@ interface GameBoardProps {
   zonePanelSide: "left" | "right";
   zonePanelOrder: ZonePanelItem[];
 
+  // Stack placement preview
+  placementGhost?: PlacementGhost | null;
+
   // Battlefield drag state
   isOverBattlefield: boolean;
   battlefieldContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -98,6 +102,7 @@ export function GameBoard({
   showBackFace,
   zonePanelSide,
   zonePanelOrder,
+  placementGhost,
   isOverBattlefield,
   battlefieldContainerRef,
   handContainerRef,
@@ -143,6 +148,7 @@ export function GameBoard({
               onOpenZone={onOpenZone}
               zonePanelSide={zonePanelSide}
               zonePanelOrder={zonePanelOrder}
+              placementGhost={placementGhost?.controllerId === opponents[0]!.id ? placementGhost : null}
             />
           ) : (
             <ResizablePanelGroup orientation="horizontal">
@@ -172,6 +178,7 @@ export function GameBoard({
                       onOpenZone={onOpenZone}
                       zonePanelSide={zonePanelSide}
                       zonePanelOrder={zonePanelOrder}
+                      placementGhost={placementGhost?.controllerId === op.id ? placementGhost : null}
                     />
                   </ResizablePanel>
                 </Fragment>
@@ -199,8 +206,8 @@ export function GameBoard({
                 style={
                   priorityPlayerId === me.id
                     ? {
-                        borderColor: themeColors.activeAction.priority,
-                        boxShadow: `inset 0 0 0 1px ${withAlpha(themeColors.activeAction.priority, 0.85)}`,
+                        borderColor: themeColors.activeAction.active,
+                        boxShadow: `inset 0 0 0 1px ${withAlpha(themeColors.activeAction.active, 0.85)}`,
                       }
                     : undefined
                 }
@@ -298,6 +305,7 @@ export function GameBoard({
                   leftReserved={ZONE_COLUMN_RESERVED_PX}
                   rightReserved={0}
                   isDropActive={isOverBattlefield}
+                  placementGhost={placementGhost?.controllerId === me.id ? placementGhost : null}
                 />
                 <div ref={handContainerRef} className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
                   <HandDisplay

@@ -1,39 +1,8 @@
+import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
+import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
 
 type OverlayVariant = "tap" | "untap" | "choosable" | "pending" | "attacking";
-
-const VARIANT_STYLES: Record<OverlayVariant, { bg: string; border: string; labelBg: string; labelText: string }> = {
-  tap: {
-    bg: "bg-yellow-400/20",
-    border: "border-yellow-400",
-    labelBg: "bg-yellow-200/90",
-    labelText: "text-yellow-800",
-  },
-  untap: {
-    bg: "bg-cyan-400/20",
-    border: "border-cyan-400",
-    labelBg: "bg-cyan-200/90",
-    labelText: "text-cyan-900",
-  },
-  choosable: {
-    bg: "bg-blue-500/20",
-    border: "border-blue-400",
-    labelBg: "",
-    labelText: "",
-  },
-  pending: {
-    bg: "bg-orange-500/20",
-    border: "border-orange-400",
-    labelBg: "",
-    labelText: "",
-  },
-  attacking: {
-    bg: "bg-red-500/20",
-    border: "border-red-500",
-    labelBg: "",
-    labelText: "",
-  },
-};
 
 interface CardOverlayButtonProps {
   variant: OverlayVariant;
@@ -45,21 +14,39 @@ interface CardOverlayButtonProps {
 }
 
 export function CardOverlayButton({ variant, onClick, title, label, stopMouseDown }: CardOverlayButtonProps) {
-  const styles = VARIANT_STYLES[variant];
+  const themeColors = useGameThemeColors();
+
+  const variantColorMap: Record<OverlayVariant, string> = {
+    tap: themeColors.activeAction.active,
+    untap: themeColors.promptAction.cancel,
+    choosable: themeColors.promptAction.defenseAction,
+    pending: themeColors.promptAction.passAction,
+    attacking: themeColors.promptAction.attackAction,
+  };
+
+  const baseColor = variantColorMap[variant];
+  const buttonStyle: CSSProperties = {
+    backgroundColor: withAlpha(baseColor, 0.2),
+    borderColor: baseColor,
+  };
+  const labelStyle: CSSProperties = {
+    backgroundColor: withAlpha(baseColor, 0.92),
+    color: "#fff",
+  };
+
   return (
     <button
       className={cn(
         "absolute inset-0 z-20 rounded-lg opacity-0 group-hover:opacity-100 border-2 transition-opacity",
-        styles.bg,
-        styles.border,
         label && "flex items-end justify-center pb-1",
       )}
+      style={buttonStyle}
       onClick={onClick}
       onMouseDown={stopMouseDown ? (e) => e.stopPropagation() : undefined}
       title={title}
     >
       {label && (
-        <span className={cn("text-[9px] font-bold px-1 rounded leading-none", styles.labelBg, styles.labelText)}>
+        <span className="text-[9px] font-bold px-1 rounded leading-none" style={labelStyle}>
           {label}
         </span>
       )}

@@ -1,6 +1,7 @@
 import { Archive } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
 import { LibraryZoneTile } from "@/components/game/zones";
 import type { ZonePanelItem } from "@/stores/usePreferencesStore";
 
@@ -22,12 +23,14 @@ function ZoneCountTile({
   title,
   onClick,
   highlighted,
+  highlightColor,
 }: {
   count: number;
   label: string;
   title: string;
   onClick?: () => void;
   highlighted?: boolean;
+  highlightColor: string;
 }) {
   return (
     <div className="flex flex-col items-center gap-0.5">
@@ -36,11 +39,20 @@ function ZoneCountTile({
           "h-16 w-10 rounded-md border-2 border-dashed text-xs leading-none transition-colors",
           "flex flex-col items-center justify-center gap-1",
           highlighted
-            ? "border-green-400 text-green-700 dark:text-green-300 bg-green-50/70 dark:bg-green-950/20 animate-pulse"
+            ? "animate-pulse"
             : onClick
               ? "border-muted-foreground/45 text-muted-foreground bg-muted/10 hover:border-primary hover:text-foreground"
               : "border-muted-foreground/35 text-muted-foreground/80 bg-muted/5",
         )}
+        style={
+          highlighted
+            ? {
+                borderColor: highlightColor,
+                color: highlightColor,
+                backgroundColor: withAlpha(highlightColor, 0.15),
+              }
+            : undefined
+        }
         onClick={onClick}
         disabled={!onClick}
         title={title}
@@ -66,6 +78,7 @@ export function ZoneActionColumn({
   hasPlayableInGraveyard,
   hasPlayableInExile,
 }: ZoneActionColumnProps) {
+  const themeColors = useGameThemeColors();
   const items = {
     library: (
       <LibraryZoneTile key="library" count={libraryCount} onClick={onOpenLibrary} />
@@ -78,6 +91,7 @@ export function ZoneActionColumn({
         title="Graveyard"
         onClick={onOpenGraveyard}
         highlighted={hasPlayableInGraveyard}
+        highlightColor={themeColors.activeAction.active}
       />
     ),
     exile: (
@@ -88,6 +102,7 @@ export function ZoneActionColumn({
         title="Banish"
         onClick={onOpenExile}
         highlighted={hasPlayableInExile}
+        highlightColor={themeColors.activeAction.active}
       />
     ),
   } as const;

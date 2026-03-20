@@ -662,7 +662,7 @@ Parity tooling note (Rust `forge-parity`): **Implemented** low-effort mechanic c
 | Java File | Feature | forge-engine Status |
 |-----------|---------|:-------------------:|
 | `SpellAbility.java` | Core spell/ability class: cost, targeting, resolution | **Partial** (`stack.rs`/`game_action_util.rs`/`spellability/mod.rs`: stack entry context, target storage/setup, `TargetingPlayer$ ...` chooser support, and Java-style spell announcement ordering where modes/targets are chosen from pre-payment game state before mana payment mutates the battlefield) |
-| `SpellAbilityStackInstance.java` | Spell on the stack with full context | **Implemented** (`stack.rs` StackEntry) |
+| `SpellAbilityStackInstance.java` | Spell on the stack with full context | **Implemented** (`stack.rs` StackEntry). Tauri `StackObjectDto` now also exports normalized `targets[]` semantics (card/player/stack + node/slot indices) for UI targeting overlays. |
 | `SpellPermanent.java` | Permanent spell (creature/non-creature) | Not implemented |
 | `Spell.java` | Non-permanent spell base | Not implemented |
 | `AbilityActivated.java` | Activated ability | **Implemented** (`ability/activated.rs` parses `AB$` lines; `game_loop.rs` activate_ability resolves mana/non-mana; UI wired via `ActivatableAbilityInfo` in prompt.rs + tauri_agent.rs) |

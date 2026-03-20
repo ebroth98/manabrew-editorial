@@ -20,8 +20,7 @@ export function ChooseAction({
 
   if (buttonLayout === "modern") {
     const passUntilLabel = isMyTurn ? "End Turn" : "Pass Till End";
-    const passPriorityStyle = getPromptActionButtonStyle(promptActionColors.passPriority);
-    const passUntilStyle = getPromptActionButtonStyle(promptActionColors.passUntilEnd);
+    const passActionStyle = getPromptActionButtonStyle(promptActionColors.passAction);
 
     return (
       <div
@@ -33,7 +32,7 @@ export function ChooseAction({
             className="h-9 w-full rounded-lg text-sm font-black tracking-[0.12em] !border-0 !text-white transition-[filter,box-shadow] hover:brightness-105"
             onClick={onPassPriority}
             disabled={isWaitingForResponse}
-            style={passPriorityStyle}
+            style={passActionStyle}
           >
             PASS
           </Button>
@@ -50,7 +49,7 @@ export function ChooseAction({
               onClick={onPassUntilEot}
               disabled={isWaitingForResponse}
               title={isMyTurn ? "End Turn (F6)" : "Pass Until Your Turn (F6)"}
-              style={passUntilStyle}
+              style={passActionStyle}
             >
               <ChevronsRight className="h-3 w-3" />
             </Button>
@@ -70,7 +69,7 @@ export function ChooseAction({
         label="Pass (Space)"
         icon={<Ban className="h-3.5 w-3.5" />}
         variant="outline"
-        baseColor={promptActionColors.passPriority}
+        baseColor={promptActionColors.passAction}
         onClick={onPassPriority}
         disabled={isWaitingForResponse}
       />
@@ -79,7 +78,7 @@ export function ChooseAction({
         label={isMyTurn ? "End Turn (F6)" : "Pass Until Your Turn (F6)"}
         icon={<ChevronsRight className="h-3.5 w-3.5" />}
         variant="outline"
-        baseColor={promptActionColors.passUntilEnd}
+        baseColor={promptActionColors.passAction}
         onClick={onPassUntilEot}
         disabled={isWaitingForResponse}
         title="Pass priority to end of turn (F6)"

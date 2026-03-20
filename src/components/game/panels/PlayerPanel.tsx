@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Heart, Layers, Sword } from "lucide-react";
 import { getAvatarColor, getInitials } from "../game.utils";
-import { useGameThemeColors } from "../game.theme";
+import { useGameThemeColors, withAlpha } from "../game.theme";
 
 interface PlayerPanelProps {
   player: Player;
@@ -22,7 +22,7 @@ interface PlayerPanelProps {
 
 export function PlayerPanel({
   player,
-  isOpponent,
+  isOpponent: _isOpponent,
   className,
   verticalAlign = "top",
   isActiveTurn,
@@ -41,27 +41,28 @@ export function PlayerPanel({
     0,
   );
 
-  const avatarRingColor = isOpponent
-    ? themeColors.activeAction.opponentTurnRing
-    : themeColors.activeAction.myTurnRing;
+  const avatarRingColor = themeColors.activeAction.active;
 
   const isTop = verticalAlign === "top";
 
   const statsBar = (
-    <div className="flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-full pl-10 pr-2 py-0.5 shadow-sm">
+    <div
+      className="flex items-center gap-1 backdrop-blur-sm rounded-full pl-10 pr-2 py-0.5 shadow-sm"
+      style={{ backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58) }}
+    >
       <span className="inline-flex items-center gap-1 text-white">
-        <Heart className="h-3 w-3 text-red-400" />
+        <Heart className="h-3 w-3" style={{ color: themeColors.promptAction.attackAction }} />
         <span className="font-extrabold text-[11px] leading-none tabular-nums">{player.life}</span>
       </span>
       <span className="text-white/20">|</span>
       <span className="inline-flex items-center gap-1 text-white/90">
-        <Layers className="h-3 w-3 text-sky-300" />
+        <Layers className="h-3 w-3" style={{ color: themeColors.promptAction.defenseAction }} />
         <span className="font-bold text-[11px] leading-none tabular-nums">{player.handCount}</span>
       </span>
       {(DEV_SHOW_ALL_STATS || player.poison > 0) && (
         <>
           <span className="text-white/20">|</span>
-          <span className="inline-flex items-center gap-1 text-red-300 font-bold text-[11px]">
+          <span className="inline-flex items-center gap-1 font-bold text-[11px] text-emerald-500">
             ☠<span className="tabular-nums">{player.poison || 0}</span>
           </span>
         </>
@@ -69,7 +70,7 @@ export function PlayerPanel({
       {(DEV_SHOW_ALL_STATS || (player.energyCounters ?? 0) > 0) && (
         <>
           <span className="text-white/20">|</span>
-          <span className="inline-flex items-center gap-1 text-yellow-300 font-bold text-[11px]">
+          <span className="inline-flex items-center gap-1 font-bold text-[11px]" style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}>
             ⚡<span className="tabular-nums">{player.energyCounters ?? 0}</span>
           </span>
         </>
@@ -77,7 +78,7 @@ export function PlayerPanel({
       {(DEV_SHOW_ALL_STATS || totalCmdDmg > 0) && (
         <>
           <span className="text-white/20">|</span>
-          <span className="inline-flex items-center gap-1 text-orange-300 font-bold text-[11px]">
+          <span className="inline-flex items-center gap-1 font-bold text-[11px]" style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}>
             ⚔<span className="tabular-nums">{totalCmdDmg || 0}</span>
           </span>
         </>
@@ -89,9 +90,10 @@ export function PlayerPanel({
             className={cn(
               "inline-flex items-center gap-1 font-bold text-[11px]",
               onOpenCommandZone
-                ? "text-sky-300 hover:text-sky-200"
+                ? ""
                 : "text-muted-foreground/80",
             )}
+            style={onOpenCommandZone ? { color: themeColors.promptAction.defenseAction } : undefined}
             onClick={onOpenCommandZone}
             disabled={!onOpenCommandZone}
             title="Command Zone"
@@ -104,15 +106,18 @@ export function PlayerPanel({
     </div>
   );
 
+  const targetableColor = withAlpha(themeColors.promptAction.attackAction, 0.9);
+
   return (
     <div
       data-player-id={player.id}
       className={cn(
-        "relative transition-colors",
-        isTargetable && "cursor-pointer",
+        "relative transition-colors rounded-full",
+        isTargetable && "cursor-pointer animate-player-targetable-pulse",
         isFlashing && "animate-player-turn-flash",
         className,
       )}
+      style={isTargetable ? ({ "--targetable-color": targetableColor } as CSSProperties) : undefined}
       onClick={isTargetable ? onTarget : undefined}
       title={isTargetable ? `Target ${player.name}` : undefined}
     >
@@ -122,12 +127,17 @@ export function PlayerPanel({
           <Avatar
             className={cn(
               "h-full w-full",
-              isTargetable && "ring-2 ring-red-400/90",
+              isTargetable && "ring-2",
             )}
             style={
-              isActiveTurn
-                ? ({ boxShadow: `0 0 0 2px ${avatarRingColor}` } as CSSProperties)
-                : undefined
+              {
+                ...(isTargetable
+                  ? ({ "--tw-ring-color": targetableColor } as CSSProperties)
+                  : {}),
+                ...(isActiveTurn
+                  ? ({ boxShadow: `0 0 0 2px ${avatarRingColor}` } as CSSProperties)
+                  : {}),
+              }
             }
           >
             <AvatarFallback

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
 import type { Card as XMageCard, StackObject } from "@/types/openmagic";
+import { useStackUIStore } from "@/stores/useStackUIStore";
 
 interface StackDisplayProps {
   stack: StackObject[];
@@ -33,6 +34,7 @@ export function StackDisplay({
   showPreStackFlash = true,
 }: StackDisplayProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
+  const setHoveredStackObjectId = useStackUIStore((s) => s.setHoveredStackObjectId);
   const prevLayoutRef = useRef<Record<string, { left: number; top: number }>>({});
   const prevStackIdsRef = useRef<Set<string>>(new Set(stack.map((obj) => obj.id)));
   const enteringIds = new Set(
@@ -87,6 +89,10 @@ export function StackDisplay({
     prevStackIdsRef.current = new Set(stack.map((obj) => obj.id));
   }, [stack]);
 
+  useEffect(() => {
+    return () => setHoveredStackObjectId(null);
+  }, [setHoveredStackObjectId]);
+
   if (stack.length === 0 && !flashCard) return null;
 
   return (
@@ -97,7 +103,10 @@ export function StackDisplay({
       <div
         className="relative"
         style={{ height: `${pileHeight}px`, width: `${pileWidth}px` }}
-        onMouseLeave={() => setHoveredId(null)}
+        onMouseLeave={() => {
+          setHoveredId(null);
+          setHoveredStackObjectId(null);
+        }}
       >
         {stack.map((obj, idx) => {
           const card = resolveStackCard(obj);
@@ -116,6 +125,7 @@ export function StackDisplay({
           return (
             <div
               key={obj.id}
+              data-stack-object-id={obj.id}
               className={cn(
                 "absolute left-0 will-change-transform",
                 hasPositionChange
@@ -130,7 +140,10 @@ export function StackDisplay({
                 width: `${STACK_UI.cardWidth}px`,
                 height: `${cardHeight}px`,
               }}
-              onMouseEnter={() => setHoveredId(obj.id)}
+              onMouseEnter={() => {
+                setHoveredId(obj.id);
+                setHoveredStackObjectId(obj.id);
+              }}
               onClick={onOpenStack}
             >
               <Card

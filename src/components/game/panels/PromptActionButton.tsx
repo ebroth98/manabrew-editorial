@@ -31,7 +31,7 @@ export function PromptActionButton({
   style,
 }: PromptActionButtonProps) {
   const promptActionColors = usePromptActionColors();
-  const resolvedBaseColor = baseColor ?? promptActionColors.default;
+  const resolvedBaseColor = baseColor ?? promptActionColors.passAction;
   const themedStyle = {
     ...getPromptActionButtonStyle(resolvedBaseColor),
     ...style,

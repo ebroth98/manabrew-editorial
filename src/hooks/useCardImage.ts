@@ -1,18 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
-import { getCardByName, getTokenByName } from "@/api/scryfall";
+import { getCardByName, getTokenBySetAndNumber } from "@/api/scryfall";
 
 /**
  * Returns a Scryfall image URL for the given card name.
  * If the card already has an imageUrl stored, skips the fetch.
- * Pass isToken=true to search the token database instead of named cards.
- * Pass color (engine format: "W", "WU", "C") to disambiguate same-named tokens.
- * Pass setCode to get a specific printing.
+ * For tokens, uses the set code + collector number for a direct Scryfall lookup.
+ * Pass setCode to get a specific printing for non-token cards.
  */
-export function useCardImage(name: string, existingUrl?: string, isToken?: boolean, color?: string, setCode?: string) {
+export function useCardImage(name: string, existingUrl?: string, isToken?: boolean, color?: string, setCode?: string, cardNumber?: string) {
   return useQuery({
-    queryKey: ["card-image", name, isToken ? "token" : "card", color ?? "", setCode ?? ""],
+    queryKey: ["card-image", name, isToken ? "token" : "card", color ?? "", setCode ?? "", cardNumber ?? ""],
     queryFn: async () => {
-      const card = isToken ? await getTokenByName(name, color) : await getCardByName(name, setCode);
+      let card;
+      if (isToken && setCode && cardNumber) {
+        card = await getTokenBySetAndNumber(setCode, cardNumber);
+      } else {
+        card = await getCardByName(name, setCode);
+      }
       // Double-faced cards return card_faces instead of top-level image_uris.
       // Find the face matching the current name (works for both front and back face).
       if (card.card_faces) {

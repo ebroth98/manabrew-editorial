@@ -296,6 +296,11 @@ pub struct CardInstance {
     /// Optional set code (e.g., "M21") for specific printings.
     pub set_code: Option<String>,
 
+    /// Optional collector number within a set (e.g., "1", "42").
+    /// For tokens, this is the token's collector number in the token set
+    /// (e.g., collector "1" in set "THOU" for Adorned Pouncer token).
+    pub card_number: Option<String>,
+
     // Phase-out state (issue #22, Phases effect).
     pub phased_out: bool,
 
@@ -487,6 +492,7 @@ impl CardInstance {
             is_transformed: false,
             other_part: None,
             set_code: None,
+            card_number: None,
             phased_out: false,
             regeneration_shields: 0,
             kicked: false,

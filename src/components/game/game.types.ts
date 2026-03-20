@@ -2,6 +2,7 @@ import type { Card as XMageCard, Player } from "@/types/openmagic";
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType } from "@/types/promptType";
+import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
 
 export type PromptActionType = PromptType;
 
@@ -36,6 +37,7 @@ export interface OpponentHalfProps {
   onOpenZone: (title: string, cards: XMageCard[], onClickCard?: (cardId: string) => void) => void;
   zonePanelSide: "left" | "right";
   zonePanelOrder: ("library" | "graveyard" | "exile")[];
+  placementGhost?: PlacementGhost | null;
 }
 
 export interface BattlefieldZoneProps {
@@ -60,6 +62,7 @@ export interface BattlefieldZoneProps {
   leftReserved?: number;
   rightReserved?: number;
   landsAtTop?: boolean;
+  placementGhost?: PlacementGhost | null;
 }
 
 export interface HandDisplayProps {

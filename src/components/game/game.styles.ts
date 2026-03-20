@@ -8,12 +8,12 @@
 // ── Card ring variants (used in BattlefieldZone, FreeBattlefield) ──────────
 
 export const CARD_RING = {
-  choosable: "ring-2 ring-blue-400 cursor-pointer",
-  pending: "ring-2 ring-orange-400 cursor-pointer",
-  attacking: "ring-2 ring-red-500 cursor-pointer",
-  tappable: "ring-2 ring-yellow-400 cursor-pointer",
-  untappable: "ring-2 ring-cyan-400 cursor-pointer",
-  selected: "ring-2 ring-selection",
+  choosable: "ring-2 cursor-pointer",
+  pending: "ring-2 cursor-pointer",
+  attacking: "ring-2 cursor-pointer",
+  tappable: "ring-2 cursor-pointer",
+  untappable: "ring-2 cursor-pointer",
+  selected: "ring-2",
 } as const;
 
 // ── Card sizing ────────────────────────────────────────────────────────────
@@ -76,10 +76,10 @@ export const CARD_BANNER_CONTAINER = "absolute top-0 left-0 right-0 flex justify
 export const CARD_BANNER_TEXT = "text-[8px] font-bold px-1.5 py-0.5 rounded-b leading-none" as const;
 
 /** Attack confirm button */
-export const BUTTON_ATTACK = "flex items-center gap-1 bg-orange-500 hover:bg-orange-600 text-white" as const;
+export const BUTTON_ATTACK = "flex items-center gap-1" as const;
 
 /** Block confirm button */
-export const BUTTON_CONFIRM_BLOCKS = "bg-blue-600 hover:bg-blue-700 text-white" as const;
+export const BUTTON_CONFIRM_BLOCKS = "" as const;
 
 /** Tab button base style for RightActionPanel */
 export const TAB_BUTTON_BASE = "h-8 text-xs font-semibold border-b-2 -mb-px transition-colors" as const;

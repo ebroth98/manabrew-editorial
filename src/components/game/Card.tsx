@@ -1,10 +1,11 @@
 import type { Card as CardType } from "@/types/openmagic";
 import { useCardImage } from "@/hooks/useCardImage";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { KeywordChips } from "@/components/game/CardKeywords";
+import { useGameThemeColors, withAlpha } from "./game.theme";
 import { isCreature, isLethalDamage } from "./game.utils";
 import { CARD_BADGES } from "./game.constants";
 import { CARD_BANNER_CONTAINER, CARD_BANNER_TEXT } from "./game.styles";
@@ -35,6 +36,7 @@ function CardBadge({ label, style }: { label: string; style: string }) {
 interface CardProps {
   card: CardType;
   className?: string;
+  style?: CSSProperties;
   isTapped?: boolean;
   onClick?: () => void;
   isHovered?: boolean;
@@ -45,6 +47,7 @@ interface CardProps {
 export function Card({
   card,
   className,
+  style,
   isTapped,
   onClick,
   isHovered,
@@ -58,25 +61,35 @@ export function Card({
     card.isToken,
     card.color,
     card.setCode,
+    card.cardNumber,
   );
   const imageUrl = card.imageUrl || scryfallUrl;
+  const themeColors = useGameThemeColors();
 
   const creature = isCreature(card);
   const lethal = isLethalDamage(card);
   const onBattlefield = card.zoneId === "battlefield";
 
   // P/T color-coding: green if buffed above base, red if debuffed
-  const ptColor = (() => {
-    if (lethal) return "bg-red-600 text-white";
-    if (card.basePower == null || card.power == null) return "bg-black/70 text-white";
+  const ptStyle = (() => {
+    if (lethal) return { backgroundColor: themeColors.promptAction.attackAction, color: "#fff" };
+    if (card.basePower == null || card.power == null) {
+      return {
+        backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.72),
+        color: "#fff",
+      };
+    }
     const currentP = parseInt(card.power, 10);
     const currentT = parseInt(card.toughness ?? "0", 10);
     const buffed = currentP > card.basePower || currentT > (card.baseToughness ?? 0);
     const debuffed = currentP < card.basePower || currentT < (card.baseToughness ?? 0);
-    if (buffed && !debuffed) return "bg-green-700 text-white";
-    if (debuffed && !buffed) return "bg-red-700 text-white";
-    if (buffed && debuffed) return "bg-amber-700 text-white";
-    return "bg-black/70 text-white";
+    if (buffed && !debuffed) return { backgroundColor: themeColors.promptAction.defenseAction, color: "#fff" };
+    if (debuffed && !buffed) return { backgroundColor: themeColors.promptAction.attackAction, color: "#fff" };
+    if (buffed && debuffed) return { backgroundColor: themeColors.activeAction.active, color: "#fff" };
+    return {
+      backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.72),
+      color: "#fff",
+    };
   })();
 
   return (
@@ -93,6 +106,7 @@ export function Card({
         className,
       )}
       onClick={onClick}
+      style={style}
     >
       {imageUrl && !hasError ? (
         <>
@@ -142,13 +156,16 @@ export function Card({
               <span
                 className={cn(
                   "text-[10px] font-bold px-1 py-0.5 rounded leading-none",
-                  ptColor,
                 )}
+                style={ptStyle}
               >
                 {card.power}/{card.toughness}
               </span>
               {card.damage != null && card.damage > 0 && (
-                <span className="text-[9px] font-bold text-red-400 bg-black/60 px-1 py-0.5 rounded leading-none">
+                <span
+                  className="text-[9px] font-bold bg-black/60 px-1 py-0.5 rounded leading-none"
+                  style={{ color: withAlpha(themeColors.promptAction.attackAction, 0.9) }}
+                >
                   ⚔{card.damage}
                 </span>
               )}
@@ -179,7 +196,10 @@ export function Card({
                   <span className="line-through opacity-50">
                     <ManaSymbols cost={card.manaCost} size="sm" />
                   </span>
-                  <span className="bg-green-500/20 rounded px-0.5">
+                  <span
+                    className="rounded px-0.5"
+                    style={{ backgroundColor: withAlpha(themeColors.promptAction.defenseAction, 0.2) }}
+                  >
                     <ManaSymbols cost={card.effectiveManaCost} size="sm" />
                   </span>
                 </div>
@@ -207,22 +227,26 @@ export function Card({
             </span>
             {creature && card.power && card.toughness && (
               <span
-                className={cn(
-                  "font-bold text-sm shrink-0",
-                  lethal
-                    ? "text-red-500"
-                    : card.basePower != null &&
-                        parseInt(card.power, 10) > card.basePower
-                      ? "text-green-400"
+                className="font-bold text-sm shrink-0"
+                style={{
+                  color:
+                    lethal
+                      ? themeColors.promptAction.attackAction
                       : card.basePower != null &&
-                          parseInt(card.power, 10) < card.basePower
-                        ? "text-red-400"
-                        : "",
-                )}
+                          parseInt(card.power, 10) > card.basePower
+                        ? withAlpha(themeColors.promptAction.defenseAction, 0.92)
+                        : card.basePower != null &&
+                            parseInt(card.power, 10) < card.basePower
+                          ? withAlpha(themeColors.promptAction.attackAction, 0.92)
+                          : undefined,
+                }}
               >
                 {card.power}/{card.toughness}
                 {card.damage != null && card.damage > 0 && (
-                  <span className="text-xs text-red-400 ml-0.5">
+                  <span
+                    className="text-xs ml-0.5"
+                    style={{ color: withAlpha(themeColors.promptAction.attackAction, 0.9) }}
+                  >
                     ⚔{card.damage}
                   </span>
                 )}

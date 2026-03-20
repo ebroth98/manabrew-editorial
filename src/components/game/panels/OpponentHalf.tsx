@@ -31,6 +31,7 @@ export function OpponentHalf({
   onOpenZone,
   zonePanelSide,
   zonePanelOrder,
+  placementGhost,
 }: OpponentHalfProps) {
   const themeColors = useGameThemeColors();
 
@@ -42,8 +43,8 @@ export function OpponentHalf({
       style={
         priorityPlayerId === player.id
           ? {
-              borderColor: themeColors.activeAction.priority,
-              boxShadow: `inset 0 0 0 1px ${withAlpha(themeColors.activeAction.priority, 0.85)}`,
+              borderColor: themeColors.activeAction.active,
+              boxShadow: `inset 0 0 0 1px ${withAlpha(themeColors.activeAction.active, 0.85)}`,
             }
           : undefined
       }
@@ -115,6 +116,7 @@ export function OpponentHalf({
             attackingCardIds={
               promptType === PromptType.ChooseBlockers ? (attackerIds ?? []) : undefined
             }
+            placementGhost={placementGhost}
           />
         </div>
       </div>

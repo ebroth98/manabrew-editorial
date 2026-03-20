@@ -6,9 +6,16 @@ import type { Card as XMageCard } from "@/types/openmagic";
 import { Move, MousePointer2 } from "lucide-react";
 import { CARD_W, CARD_H, CARD_GAP as GAP } from "../game.constants";
 import { CARD_RING, BATTLEFIELD_CARD } from "../game.styles";
+import { useGameThemeColors, withAlpha } from "../game.theme";
 import { useBattlefieldLayout } from "@/hooks/useBattlefieldLayout";
 
 const ATTACH_OFFSET_Y = 16;
+
+export interface PlacementGhost {
+  stackObjectId: string;
+  cardName: string;
+  controllerId: string;
+}
 
 interface FreeBattlefieldProps {
   cards: XMageCard[];
@@ -28,6 +35,8 @@ interface FreeBattlefieldProps {
   leftReserved?: number;
   rightReserved?: number;
   isDropActive?: boolean;
+  /** When set, renders a dotted ghost outline where a permanent will land. */
+  placementGhost?: PlacementGhost | null;
 }
 
 export function FreeBattlefield({
@@ -48,7 +57,9 @@ export function FreeBattlefield({
   leftReserved = 0,
   rightReserved = 0,
   isDropActive = false,
+  placementGhost,
 }: FreeBattlefieldProps) {
+  const themeColors = useGameThemeColors();
   const cardMap = useMemo(() => {
     const m = new Map<string, XMageCard>();
     for (const c of cards) m.set(c.id, c);
@@ -120,6 +131,19 @@ export function FreeBattlefield({
       (card.isChoosable && !!onClickCard) || (isAttacking && !!onClickAnyCard);
     const isDragging = draggingCardIds.has(card.id);
     const isSelected = selectedCardIds.has(card.id);
+    const ringColor = isSelected
+      ? themeColors.activeAction.active
+      : isAttacking
+        ? themeColors.promptAction.attackAction
+        : isPending
+          ? themeColors.promptAction.passAction
+          : isTappable
+            ? themeColors.activeAction.active
+            : isUntappable
+              ? themeColors.promptAction.cancel
+              : isChoosableClick
+                ? themeColors.promptAction.defenseAction
+                : null;
 
     return (
       <div
@@ -158,6 +182,7 @@ export function FreeBattlefield({
             !isSelected && isTappable && !isAttacking && CARD_RING.tappable,
             !isSelected && isUntappable && !isAttacking && !isTappable && CARD_RING.untappable,
           )}
+          style={ringColor ? ({ "--tw-ring-color": ringColor } as React.CSSProperties) : undefined}
         />
 
         {isTappable && onTapLand && (
@@ -220,7 +245,7 @@ export function FreeBattlefield({
         {/* Top-right tool controls */}
         <div className="absolute top-1 right-1 z-40 flex items-center gap-1">
           {selectedCardIds.size > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-card/90 border text-selection">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-card/90 border">
               {selectedCardIds.size} selected
             </span>
           )}
@@ -297,21 +322,67 @@ export function FreeBattlefield({
           );
         })}
 
+        {placementGhost && containerRef.current && (() => {
+          const cw = containerRef.current!.clientWidth;
+          const usableW = cw - leftReserved - rightReserved;
+          const cols = Math.max(1, Math.floor((usableW + GAP) / (CARD_W + GAP)));
+          const nonLandCount = topLevelCards.filter((c) => !c.types.includes("Land")).length;
+          const slot = nonLandCount;
+          const xMin = Math.max(0, leftReserved);
+          const ghostX = Math.min(cw - CARD_W - rightReserved, xMin + (slot % cols) * (CARD_W + GAP) + GAP);
+          const ghostY = Math.floor(slot / cols) * (CARD_H + GAP) + GAP;
+          return (
+            <div
+              data-placement-ghost
+              className="absolute pointer-events-none border-2 border-dashed rounded-lg"
+              style={{
+                left: ghostX,
+                top: ghostY,
+                width: CARD_W,
+                height: CARD_H,
+                borderColor: withAlpha(themeColors.activeAction.active, 0.55),
+                backgroundColor: withAlpha(themeColors.activeAction.active, 0.08),
+              }}
+            >
+              <span
+                className="absolute inset-0 flex items-center justify-center text-[9px] font-medium text-center px-1 leading-tight"
+                style={{ color: withAlpha(themeColors.activeAction.active, 0.7) }}
+              >
+                {placementGhost.cardName}
+              </span>
+            </div>
+          );
+        })()}
+
         {marqueeRect && (
           <div
-            className="absolute pointer-events-none border-2 border-dashed border-selection bg-selection/10 rounded"
+            className="absolute pointer-events-none border-2 border-dashed rounded"
             style={{
               left: marqueeRect.left,
               top: marqueeRect.top,
               width: marqueeRect.width,
               height: marqueeRect.height,
+              borderColor: themeColors.activeAction.active,
+              backgroundColor: withAlpha(themeColors.activeAction.active, 0.1),
             }}
           />
         )}
 
         {isDropActive && (
-          <div className="absolute inset-0 border-2 border-dashed border-primary bg-primary/5 rounded-lg pointer-events-none z-30 flex items-end justify-center pb-2">
-            <span className="text-primary text-[10px] font-bold bg-overlay/80 px-2 py-0.5 rounded">
+          <div
+            className="absolute inset-0 border-2 border-dashed rounded-lg pointer-events-none z-30 flex items-end justify-center pb-2"
+            style={{
+              borderColor: themeColors.activeAction.active,
+              backgroundColor: withAlpha(themeColors.activeAction.active, 0.06),
+            }}
+          >
+            <span
+              className="text-[10px] font-bold px-2 py-0.5 rounded"
+              style={{
+                color: themeColors.activeAction.active,
+                backgroundColor: withAlpha(themeColors.activeAction.priority, 0.28),
+              }}
+            >
               Drop to play
             </span>
           </div>

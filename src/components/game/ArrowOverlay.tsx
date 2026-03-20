@@ -7,10 +7,10 @@
  * Arrow types and colours are themable via game theme settings.
  */
 
-import { useGameThemeColors } from "./game.theme";
+import { useGameThemeColors, withAlpha } from "./game.theme";
 
 /** Visual category that controls color and semantics. */
-export type ArrowType = "attack" | "block" | "hostile-target" | "friendly-target";
+export type ArrowType = "attack" | "block" | "hostile-target" | "friendly-target" | "placement";
 
 /** A single arrow to render, in container-relative pixel coordinates. */
 export interface ArrowDef {
@@ -28,19 +28,13 @@ const BEND_FACTOR = 0.22;      // fraction of line length for bezier control-poi
 const TIP_SHORTEN = 10;        // px trimmed from arrowhead end (avoids overlapping target)
 const TAIL_SHORTEN = 6;        // px trimmed from tail end
 
-const DEFAULT_ARROW_COLORS: Record<ArrowType, string> = {
-  attack: "rgba(255, 138, 0, 0.88)",
-  block: "rgba(210, 40, 40, 0.88)",
-  "hostile-target": "rgba(210, 40, 40, 0.88)",
-  "friendly-target": "rgba(90, 150, 255, 0.88)",
-};
-
 // Stable marker IDs per arrow type (must be unique in the SVG <defs>)
 const MARKER_IDS: Record<ArrowType, string> = {
   attack: "ao-attack",
   block: "ao-block",
   "hostile-target": "ao-hostile",
   "friendly-target": "ao-friendly",
+  placement: "ao-placement",
 };
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
@@ -114,6 +108,7 @@ function ArrowPath({ arrow, colors }: { arrow: ArrowDef; colors: Record<ArrowTyp
   const { ax1, ay1, ax2, ay2 } = shortenLine(fromX, fromY, toX, toY);
   const { cx, cy } = controlPoint(ax1, ay1, ax2, ay2);
   const d = `M ${ax1},${ay1} Q ${cx},${cy} ${ax2},${ay2}`;
+  const isDashed = type === "placement";
   return (
     <path
       d={d}
@@ -121,6 +116,7 @@ function ArrowPath({ arrow, colors }: { arrow: ArrowDef; colors: Record<ArrowTyp
       strokeWidth={STROKE_WIDTH}
       fill="none"
       strokeLinecap="round"
+      strokeDasharray={isDashed ? "8 6" : undefined}
       markerEnd={`url(#${MARKER_IDS[type]})`}
     />
   );
@@ -137,10 +133,11 @@ function ArrowPath({ arrow, colors }: { arrow: ArrowDef; colors: Record<ArrowTyp
 export function ArrowOverlay({ arrows }: { arrows: ArrowDef[] }) {
   const themeColors = useGameThemeColors();
   const arrowColors: Record<ArrowType, string> = {
-    attack: themeColors.arrow?.attack ?? DEFAULT_ARROW_COLORS.attack,
-    block: themeColors.arrow?.block ?? DEFAULT_ARROW_COLORS.block,
-    "hostile-target": themeColors.arrow?.hostileTarget ?? DEFAULT_ARROW_COLORS["hostile-target"],
-    "friendly-target": themeColors.arrow?.friendlyTarget ?? DEFAULT_ARROW_COLORS["friendly-target"],
+    attack: themeColors.arrow.attack,
+    block: themeColors.arrow.block,
+    "hostile-target": themeColors.arrow.hostileTarget,
+    "friendly-target": themeColors.arrow.friendlyTarget,
+    placement: withAlpha(themeColors.activeAction.active, 0.7),
   };
 
   if (arrows.length === 0) return null;

@@ -5,20 +5,13 @@ import { THEME_PRESETS } from "@/themes";
 export interface GameThemeColors {
   activeAction: {
     priority: string;
-    turnText: string;
-    myTurnRing: string;
-    opponentTurnRing: string;
-  };
-  highlight: string;
-  hand: {
-    playableBorder: string;
+    active: string;
   };
   promptAction: {
-    default: string;
-    passPriority: string;
-    passUntilEnd: string;
+    passAction: string;
+    attackAction: string;
+    defenseAction: string;
     cancel: string;
-    pacificAction: string;
   };
   arrow: {
     attack: string;
@@ -31,20 +24,13 @@ export interface GameThemeColors {
 export const GAME_THEME_COLORS: GameThemeColors = {
   activeAction: {
     priority: "#a855f7",
-    turnText: "#f59e0b",
-    myTurnRing: "#f59e0b",
-    opponentTurnRing: "#f59e0b",
-  },
-  highlight: "#fb923c",
-  hand: {
-    playableBorder: "rgba(255, 255, 255, 0.7)",
+    active: "#fb923c",
   },
   promptAction: {
-    default: "#7c3aed",
-    passPriority:"#7c3aed",
-    passUntilEnd: "#5b21b6",
+    passAction: "#7c3aed",
+    attackAction: "#dc2626",
+    defenseAction: "#2563eb",
     cancel: "#6b7280",
-    pacificAction: "#60a5fa",
   },
   arrow: {
     attack: "rgba(255, 138, 0, 0.88)",
@@ -58,7 +44,6 @@ function cloneThemeColors(colors: GameThemeColors): GameThemeColors {
   return {
     ...colors,
     activeAction: { ...colors.activeAction },
-    hand: { ...colors.hand },
     promptAction: { ...colors.promptAction },
     arrow: { ...colors.arrow },
   };
@@ -125,6 +110,69 @@ export function resolveGameThemeColors(
     if (!hasColorPath(path) || typeof value !== "string" || !value.trim()) continue;
     setByPath(merged as unknown as Record<string, unknown>, path, value.trim());
   }
+
+  const explicitActive = overrides["activeAction.active"]?.trim();
+  if (!explicitActive) {
+    const legacyActivePaths = [
+      "activeAction.turnText",
+      "activeAction.myTurnRing",
+      "activeAction.opponentTurnRing",
+      "highlight",
+      "hand.playableBorder",
+    ] as const;
+    for (const path of legacyActivePaths) {
+      const value = overrides[path]?.trim();
+      if (!value) continue;
+      if (path === "hand.playableBorder" && !value.startsWith("#")) continue;
+      merged.activeAction.active = value;
+      break;
+    }
+  }
+
+  const explicitPassAction = overrides["promptAction.passAction"]?.trim();
+  if (!explicitPassAction) {
+    const legacyPassPaths = [
+      "promptAction.default",
+      "promptAction.passPriority",
+      "promptAction.passUntilEnd",
+      "promptAction.pacificAction",
+    ] as const;
+    for (const path of legacyPassPaths) {
+      const value = overrides[path]?.trim();
+      if (!value) continue;
+      merged.promptAction.passAction = value;
+      break;
+    }
+  }
+
+  const explicitAttackAction = overrides["promptAction.attackAction"]?.trim();
+  if (!explicitAttackAction) {
+    const legacyAttackPaths = [
+      "promptAction.attack",
+      "promptAction.secondary",
+    ] as const;
+    for (const path of legacyAttackPaths) {
+      const value = overrides[path]?.trim();
+      if (!value) continue;
+      merged.promptAction.attackAction = value;
+      break;
+    }
+  }
+
+  const explicitDefenseAction = overrides["promptAction.defenseAction"]?.trim();
+  if (!explicitDefenseAction) {
+    const legacyDefensePaths = [
+      "promptAction.defense",
+      "promptAction.primary",
+    ] as const;
+    for (const path of legacyDefensePaths) {
+      const value = overrides[path]?.trim();
+      if (!value) continue;
+      merged.promptAction.defenseAction = value;
+      break;
+    }
+  }
+
   return merged;
 }
 
