@@ -3,7 +3,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import Lobby from "@/views/Lobby";
 import DeckEditor from "@/views/DeckEditor";
-import MyDecks from "@/views/MyDecks";
+
 import Game from "@/views/Game";
 import Play from "@/views/Play";
 import Draft from "@/views/Draft";
@@ -57,14 +57,6 @@ export const router = createBrowserRouter([
         element: (
           <ErrorBoundary context="Deck Editor">
             <DeckEditor />
-          </ErrorBoundary>
-        ),
-      },
-      {
-        path: "my-decks",
-        element: (
-          <ErrorBoundary context="My Decks">
-            <MyDecks />
           </ErrorBoundary>
         ),
       },

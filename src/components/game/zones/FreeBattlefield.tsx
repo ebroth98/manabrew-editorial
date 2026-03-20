@@ -220,7 +220,7 @@ export function FreeBattlefield({
         {/* Top-right tool controls */}
         <div className="absolute top-1 right-1 z-40 flex items-center gap-1">
           {selectedCardIds.size > 0 && (
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-card/90 border text-purple-500">
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-card/90 border text-selection">
               {selectedCardIds.size} selected
             </span>
           )}
@@ -299,7 +299,7 @@ export function FreeBattlefield({
 
         {marqueeRect && (
           <div
-            className="absolute pointer-events-none border-2 border-dashed border-purple-400 bg-purple-400/10 rounded"
+            className="absolute pointer-events-none border-2 border-dashed border-selection bg-selection/10 rounded"
             style={{
               left: marqueeRect.left,
               top: marqueeRect.top,
@@ -310,8 +310,8 @@ export function FreeBattlefield({
         )}
 
         {isDropActive && (
-          <div className="absolute inset-0 border-2 border-dashed border-green-400 bg-green-400/5 rounded-lg pointer-events-none z-30 flex items-end justify-center pb-2">
-            <span className="text-green-400 text-[10px] font-bold bg-green-950/80 px-2 py-0.5 rounded">
+          <div className="absolute inset-0 border-2 border-dashed border-primary bg-primary/5 rounded-lg pointer-events-none z-30 flex items-end justify-center pb-2">
+            <span className="text-primary text-[10px] font-bold bg-overlay/80 px-2 py-0.5 rounded">
               Drop to play
             </span>
           </div>

@@ -24,7 +24,7 @@ import { toast } from "sonner";
 import type { Card } from "@/types/openmagic";
 import { fetchCardCollection, searchCards, getScryfallImageUrl, getCardByName } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
-import { createEmptyCard } from "@/lib/scryfall.utils";
+import { createEmptyCard, scryfallToXMage } from "@/lib/scryfall.utils";
 import { DROP_ZONE } from "@/lib/constants";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
@@ -44,6 +44,37 @@ import {
   computeGroupedSections,
   computeGroupedStackColumns,
 } from "./deckBuilder.utils";
+
+// ─── Unsaved changes tracking (shared with DeckEditor) ──────────────────────
+
+let _hasUnsavedChanges = false;
+const _listeners = new Set<() => void>();
+
+function setUnsavedState(_snapshot: string, current: string) {
+  const next = current !== _snapshot;
+  if (next !== _hasUnsavedChanges) {
+    _hasUnsavedChanges = next;
+    _listeners.forEach((fn) => fn());
+  }
+}
+
+/** Hook to read unsaved changes state from outside DeckBuilder. */
+export function useDeckUnsavedChanges(): boolean {
+  const [, forceUpdate] = useState(0);
+  useEffect(() => {
+    const listener = () => forceUpdate((n) => n + 1);
+    _listeners.add(listener);
+    return () => { _listeners.delete(listener); };
+  }, []);
+  return _hasUnsavedChanges;
+}
+
+function getContrastColor(hex: string): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5 ? "#000000" : "#ffffff";
+}
 
 const SIDEBOARD_LINE_REGEX = /^(sideboard|side)$/i;
 const DECK_LINE_REGEX = /^(\d+)x?\s+(.+)$/i;
@@ -193,8 +224,32 @@ export function DeckBuilder() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [cardSize, setCardSize] = useState(3);
   const [groupBy, setGroupBy] = useState<GroupByMode>("type");
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => JSON.stringify({ cards: currentDeck.cards, sideboard: currentDeck.sideboard, name: currentDeck.name }));
+  const [pendingSwitchAction, setPendingSwitchAction] = useState<(() => void) | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const enrichedNamesRef = useRef(new Set<string>());
+
+  const currentSnapshot = JSON.stringify({ cards: currentDeck.cards, sideboard: currentDeck.sideboard, name: currentDeck.name });
+  const hasUnsavedChanges = currentSnapshot !== lastSavedSnapshot;
+
+  // Sync shared unsaved state for DeckEditor blocker
+  useEffect(() => {
+    setUnsavedState(lastSavedSnapshot, currentSnapshot);
+  }, [lastSavedSnapshot, currentSnapshot]);
+
+  // Reset snapshot when a deck is loaded
+  const deckIdentity = `${currentDeck.name}:${savedDecks.length}`;
+  useEffect(() => {
+    setLastSavedSnapshot(JSON.stringify({ cards: currentDeck.cards, sideboard: currentDeck.sideboard, name: currentDeck.name }));
+  }, [deckIdentity]);
+
+  // Warn on navigation/tab close with unsaved changes
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    const handler = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsavedChanges]);
 
   const { selectedCards, isSelected, toggleCard, clearSelection, selectCards } = useDeckSelection();
 
@@ -357,7 +412,17 @@ export function DeckBuilder() {
 
   function handleSave() {
     saveCurrentDeck();
+    setLastSavedSnapshot(JSON.stringify({ cards: currentDeck.cards, sideboard: currentDeck.sideboard, name: currentDeck.name }));
     toast.success(`Deck "${currentDeck.name}" saved`);
+  }
+
+  /** If unsaved changes exist, queue the action behind a confirm dialog. Otherwise run it immediately. */
+  function guardUnsaved(action: () => void) {
+    if (hasUnsavedChanges) {
+      setPendingSwitchAction(() => action);
+    } else {
+      action();
+    }
   }
 
   return (
@@ -382,53 +447,106 @@ export function DeckBuilder() {
             </Button>
           </div>
         ) : (
-          <div className="flex items-center gap-1 flex-1 min-w-0">
+          <div className="flex items-center gap-1.5 flex-1 min-w-0">
             <span className="font-semibold text-sm truncate">{currentDeck.name}</span>
             <Button size="icon" variant="ghost" className="h-6 w-6 shrink-0"
               onClick={() => { setNameInput(currentDeck.name); setEditingName(true); }}>
               <Pencil className="h-3 w-3" />
             </Button>
-            <span className="text-xs text-muted-foreground ml-1">
+            {(currentDeck.labels ?? []).map((label) => (
+              <span
+                key={label.name}
+                className="text-[10px] px-1.5 py-0.5 rounded-full font-medium shrink-0 border"
+                style={label.color
+                  ? { backgroundColor: label.color, color: getContrastColor(label.color), borderColor: label.color }
+                  : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", borderColor: "hsl(var(--border))" }
+                }
+              >
+                {label.name}
+              </span>
+            ))}
+            <span className="text-xs text-muted-foreground ml-auto shrink-0">
               {currentDeck.cards.length}
               {currentDeck.sideboard.length > 0 && <span className="text-muted-foreground/50"> · SB:{currentDeck.sideboard.length}</span>}
             </span>
           </div>
         )}
 
-        {savedDecks.length > 0 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Switch deck">
-                <FolderOpen className="h-3.5 w-3.5" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="min-w-52 max-h-72 overflow-y-auto">
-              {savedDecks.map((s) => {
-                const colors = extractColors(s.deck.cards);
-                return (
-                  <DropdownMenuItem
-                    key={s.id}
-                    onSelect={() => {
-                      loadSavedDeck(s.id);
-                      toast.success(`Loaded "${s.deck.name}"`);
-                    }}
-                    className="gap-2"
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button size="sm" variant="ghost" className="h-7 shrink-0 gap-1 text-xs" title="My Decks">
+              <FolderOpen className="h-3.5 w-3.5" />
+              My Decks
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="min-w-56 max-h-80 overflow-y-auto">
+            <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">My Decks</div>
+            <DropdownMenuItem
+              onSelect={() => guardUnsaved(() => { clearDeck(); setNameInput("New Deck"); setDeckName("New Deck"); setLastSavedSnapshot(JSON.stringify({ cards: [], sideboard: [], name: "New Deck" })); toast.success("New deck created"); })}
+              className="gap-2 text-primary"
+            >
+              <Plus className="h-3.5 w-3.5 shrink-0" />
+              <span className="text-xs font-medium">New Deck</span>
+            </DropdownMenuItem>
+            {savedDecks.length > 0 && <div className="border-t my-1" />}
+            {savedDecks.map((s) => {
+              const colors = extractColors(s.deck.cards);
+              const isActive = s.deck.name === currentDeck.name;
+              return (
+                <DropdownMenuItem
+                  key={s.id}
+                  onSelect={() => guardUnsaved(() => {
+                    loadSavedDeck(s.id);
+                    toast.success(`Loaded "${s.deck.name}"`);
+                  })}
+                  className={cn("gap-2", isActive && "bg-muted")}
+                >
+                  <div className="w-20 shrink-0">
+                    {colors.length > 0 ? (
+                      <ManaSymbols cost={colors.map((c) => `{${c}}`).join("")} size="sm" />
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-xs truncate block">{s.deck.name}</span>
+                    {(s.deck.labels ?? []).length > 0 && (
+                      <div className="flex gap-1 mt-0.5 flex-wrap">
+                        {(s.deck.labels ?? []).map((label) => (
+                          <span
+                            key={label.name}
+                            className="text-[8px] px-1 py-0 rounded-full font-medium border leading-tight"
+                            style={label.color
+                              ? { backgroundColor: label.color, color: getContrastColor(label.color), borderColor: label.color }
+                              : { backgroundColor: "hsl(var(--muted))", color: "hsl(var(--muted-foreground))", borderColor: "hsl(var(--border))" }
+                            }
+                          >
+                            {label.name}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-muted-foreground shrink-0">{s.deck.cards.length}</span>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-5 w-5 text-destructive shrink-0 opacity-0 group-hover:opacity-100"
+                    title="Delete deck"
+                    onClick={(e) => { e.stopPropagation(); deleteSavedDeck(s.id); toast.success(`Deleted "${s.deck.name}"`); }}
                   >
-                    <div className="w-16 shrink-0 pr-2 mr-2">
-                      {colors.length > 0 ? (
-                        <ManaSymbols cost={colors.map((c) => `{${c}}`).join("")} size="sm" />
-                      ) : (
-                        <span className="text-xs text-muted-foreground">—</span>
-                      )}
-                    </div>
-                    <span className="flex-1 truncate text-xs">{s.deck.name}</span>
-                    <span className="text-[10px] text-muted-foreground shrink-0">{s.deck.cards.length}</span>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuItem>
+              );
+            })}
+            {savedDecks.length === 0 && (
+              <div className="px-3 py-4 text-center text-xs text-muted-foreground">
+                No saved decks yet
+              </div>
+            )}
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
 
       {/* ── Toolbar: view + search + actions ── */}
@@ -498,11 +616,23 @@ export function DeckBuilder() {
         </div>
         <div className="shrink-0">
           <QuickCardSearch
-            onSelect={(sc) => setDetailCard(sc)}
+            onSelect={(sc) => { addToMain(scryfallToXMage(sc)); toast.success(`Added ${sc.name}`); }}
             onHover={(card, x, y) => setHovered({ card, x, y })}
             onLeave={() => setHovered(null)}
           />
         </div>
+
+        {/* Save button — standalone, always visible */}
+        <Button
+          size="sm"
+          variant="default"
+          className="h-7 shrink-0 gap-1 text-xs"
+          title={hasUnsavedChanges ? "Save deck (unsaved changes)" : "Save deck"}
+          onClick={handleSave}
+        >
+          <Save className="h-3.5 w-3.5" />
+          Save
+        </Button>
 
         {/* Compact action icons */}
         <div className="flex items-center rounded-md border bg-muted/30 p-0.5 shrink-0">
@@ -511,9 +641,6 @@ export function DeckBuilder() {
           </Button>
           <Button size="icon" variant="ghost" className="h-7 w-7" title="Export to clipboard" onClick={handleExport} disabled={currentDeck.cards.length === 0}>
             <ClipboardCopy className="h-3.5 w-3.5" />
-          </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" title="Save deck" onClick={handleSave}>
-            <Save className="h-3.5 w-3.5" />
           </Button>
           <Button size="icon" variant="ghost" className="h-7 w-7 relative" title="Labels" onClick={() => setLabelsOpen(true)}>
             <Palette className="h-3.5 w-3.5" />
@@ -695,6 +822,29 @@ export function DeckBuilder() {
         }}
       />
       <DeckLabelsModal open={labelsOpen} onClose={() => setLabelsOpen(false)} />
+
+      {/* Unsaved changes confirm dialog (for deck switching) */}
+      {pendingSwitchAction && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-overlay/50 backdrop-blur-sm">
+          <div className="bg-card border rounded-xl shadow-xl p-6 max-w-sm space-y-4">
+            <h3 className="text-lg font-semibold">Unsaved Changes</h3>
+            <p className="text-sm text-muted-foreground">
+              You have unsaved changes. Do you want to discard them?
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setPendingSwitchAction(null)}>
+                Cancel
+              </Button>
+              <Button variant="default" size="sm" onClick={() => { handleSave(); pendingSwitchAction(); setPendingSwitchAction(null); }}>
+                Save & Switch
+              </Button>
+              <Button variant="destructive" size="sm" onClick={() => { pendingSwitchAction(); setPendingSwitchAction(null); }}>
+                Discard
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

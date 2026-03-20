@@ -5,7 +5,6 @@ import {
   Home,
   Gamepad2,
   Layers,
-  BookMarked,
   Settings,
   Swords,
   Search,
@@ -76,17 +75,6 @@ export function Sidebar({ className }: SidebarProps) {
                 >
                   <Layers className="mr-2 h-4 w-4" />
                   Deck Editor
-                </Button>
-              )}
-            </NavLink>
-            <NavLink to="/my-decks">
-              {({ isActive }) => (
-                <Button
-                  variant={isActive ? "secondary" : "ghost"}
-                  className="w-full justify-start"
-                >
-                  <BookMarked className="mr-2 h-4 w-4" />
-                  My Decks
                 </Button>
               )}
             </NavLink>

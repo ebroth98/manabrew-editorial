@@ -5,7 +5,7 @@ export const ROUTES = {
   PLAY: "/play",
   SEARCH: "/search",
   DECK_EDITOR: "/deck-editor",
-  MY_DECKS: "/my-decks",
+
   SETTINGS: "/settings",
 } as const;
 

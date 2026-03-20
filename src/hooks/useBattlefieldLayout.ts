@@ -59,6 +59,7 @@ export function useBattlefieldLayout({
 
   const { marqueeRect, handleContainerMouseDown } = useMarquee({
     onMarqueeComplete: handleMarqueeComplete,
+    externalContainerRef: containerRef,
   });
 
   useLayoutEffect(() => {

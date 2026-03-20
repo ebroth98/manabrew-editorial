@@ -36,7 +36,7 @@ export function PhyrexianModal({ phyrexianColor, sourceCardName, onDecide }: Phy
         <div className="text-sm text-muted-foreground self-center">
           <p>
             Pay <ManaSymbols cost={phyrexianCostStr} size="lg" /> with{" "}
-            <span className="font-bold text-red-500">{lifeCost} life</span> or{" "}
+            <span className="font-bold text-destructive">{lifeCost} life</span> or{" "}
             <ManaSymbols cost={manaCostStr} size="lg" /> mana?
           </p>
         </div>

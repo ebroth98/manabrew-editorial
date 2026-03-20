@@ -5,14 +5,12 @@ import {
   withAlpha,
 } from "@/components/game/game.theme";
 
-const FALLBACK_BASE = GAME_THEME_COLORS.promptAction.default;
-
 export function usePromptActionColors() {
   return useGameThemeColors().promptAction;
 }
 
 export function getPromptActionButtonStyle(baseColor: string): CSSProperties {
-  const resolved = baseColor || FALLBACK_BASE;
+  const resolved = baseColor || GAME_THEME_COLORS.promptAction.default;
   const shadow = `0 4px 14px ${withAlpha(resolved, 0.28)}`;
 
   return {
