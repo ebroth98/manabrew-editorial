@@ -8,6 +8,7 @@ import {
   BookMarked,
   Settings,
   Swords,
+  Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import iconSvg from "@/assets/icon.svg";
@@ -59,6 +60,17 @@ export function Sidebar({ className }: SidebarProps) {
                 >
                   <Home className="mr-2 h-4 w-4" />
                   Lobby
+                </Button>
+              )}
+            </NavLink>
+            <NavLink to="/search">
+              {({ isActive }) => (
+                <Button
+                  variant={isActive ? "secondary" : "ghost"}
+                  className="w-full justify-start"
+                >
+                  <Search className="mr-2 h-4 w-4" />
+                  Card Search
                 </Button>
               )}
             </NavLink>

@@ -1,32 +1,40 @@
-import type { ScryfallCard, ScryfallListResponse } from "@/types/scryfall";
+import type { ScryfallCard, ScryfallListResponse, ScryfallRulingsResponse, ScryfallSet } from "@/types/scryfall";
 
-export async function searchCards(query: string, page: number = 1): Promise<ScryfallListResponse> {
-  const url = `https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}&page=${page}&order=cmc&unique=cards`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    throw new Error('Failed to fetch cards from Scryfall');
-  }
+const SCRYFALL_API = "https://api.scryfall.com";
+const COLLECTION_BATCH_SIZE = 75;
+
+async function scryfallFetch<T>(url: string, errorMsg: string, init?: RequestInit): Promise<T> {
+  const response = await fetch(url, init);
+  if (!response.ok) throw new Error(errorMsg);
   return response.json();
+}
+
+export async function searchCards(query: string, page: number = 1, order?: string, dir?: string): Promise<ScryfallListResponse> {
+  const orderParam = order || "cmc";
+  const dirParam = dir && dir !== "auto" ? `&dir=${dir}` : "";
+  return scryfallFetch(
+    `${SCRYFALL_API}/cards/search?q=${encodeURIComponent(query)}&page=${page}&order=${orderParam}&unique=cards${dirParam}`,
+    "Failed to fetch cards from Scryfall",
+  );
+}
+
+export async function getRulings(rulingsUri: string): Promise<ScryfallRulingsResponse> {
+  return scryfallFetch(rulingsUri, "Failed to fetch rulings from Scryfall");
 }
 
 export async function getCardPrints(printsSearchUri: string): Promise<ScryfallListResponse> {
-  const response = await fetch(printsSearchUri);
-  if (!response.ok) {
-    throw new Error('Failed to fetch card prints from Scryfall');
-  }
-  return response.json();
+  return scryfallFetch(printsSearchUri, "Failed to fetch card prints from Scryfall");
 }
 
 export async function getCardByName(name: string, setCode?: string): Promise<ScryfallCard> {
-  const url = `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(name)}${setCode ? `&set=${setCode.toLowerCase()}` : ""}`;
-  const response = await fetch(url);
-  if (!response.ok) {
-    if (setCode) {
-      return getCardByName(name);
-    }
+  const setParam = setCode ? `&set=${setCode.toLowerCase()}` : "";
+  const url = `${SCRYFALL_API}/cards/named?exact=${encodeURIComponent(name)}${setParam}`;
+  try {
+    return await scryfallFetch<ScryfallCard>(url, `Card not found: ${name}`);
+  } catch {
+    if (setCode) return getCardByName(name);
     throw new Error(`Card not found: ${name}`);
   }
-  return response.json();
 }
   
 
@@ -58,7 +66,7 @@ export async function getTokenByName(name: string, color?: string): Promise<Scry
   const colorQuery = colorPart ? `+${colorPart}` : "";
   // dir=asc → oldest first, so data[0] is the classic original art instead of
   // the newest crossover/themed printing. unique=art → one result per artwork.
-  const url = `https://api.scryfall.com/cards/search?q=!"${encodeURIComponent(searchName)}"+t:token${colorQuery}+-is:universesbeyond&order=released&dir=asc&unique=art`;
+  const url = `${SCRYFALL_API}/cards/search?q=!"${encodeURIComponent(searchName)}"+t:token${colorQuery}+-is:universesbeyond&order=released&dir=asc&unique=art`;
   const response = await fetch(url);
   if (!response.ok) {
     throw new Error(`Token not found: ${name}`);
@@ -77,11 +85,11 @@ export async function getTokenByName(name: string, color?: string): Promise<Scry
 export async function fetchCardCollection(cards: { name: string; setCode?: string }[]): Promise<Map<string, ScryfallCard>> {
   const result = new Map<string, ScryfallCard>();
   const unique = Array.from(new Map(cards.map((c) => [`${c.name}-${c.setCode || ""}`, c])).values());
-  for (let i = 0; i < unique.length; i += 75) {
-    const batch = unique.slice(i, i + 75);
+  for (let i = 0; i < unique.length; i += COLLECTION_BATCH_SIZE) {
+    const batch = unique.slice(i, i + COLLECTION_BATCH_SIZE);
     const identifiers = batch.map((c) => (c.setCode ? { name: c.name, set: c.setCode.toLowerCase() } : { name: c.name }));
     try {
-      const response = await fetch("https://api.scryfall.com/cards/collection", {
+      const response = await fetch(`${SCRYFALL_API}/cards/collection`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ identifiers }),
@@ -121,4 +129,20 @@ export function getScryfallManaCost(card: ScryfallCard): string | undefined {
     mana_cost?: string;
   };
   return sc.mana_cost ?? sc.card_faces?.[0]?.mana_cost;
+}
+
+/**
+ * Fetch all Magic sets from Scryfall.
+ */
+export async function fetchSets(): Promise<ScryfallSet[]> {
+  const data = await scryfallFetch<{ data: ScryfallSet[] }>(
+    `${SCRYFALL_API}/sets`,
+    "Failed to fetch sets from Scryfall",
+  );
+  return data.data;
+}
+
+/** Build a Scryfall mana symbol SVG URL. */
+export function manaSymbolUrl(symbol: string): string {
+  return `https://svgs.scryfall.io/card-symbols/${encodeURIComponent(symbol)}.svg`;
 }

@@ -97,3 +97,30 @@ export interface ScryfallListResponse {
   next_page?: string;
   data: ScryfallCard[];
 }
+
+export interface ScryfallRuling {
+  object: "ruling";
+  oracle_id: string;
+  source: string;
+  published_at: string;
+  comment: string;
+}
+
+export interface ScryfallRulingsResponse {
+  object: "list";
+  has_more: boolean;
+  data: ScryfallRuling[];
+}
+
+export interface ScryfallSet {
+  object: "set";
+  id: string;
+  code: string;
+  name: string;
+  set_type: string;
+  released_at?: string;
+  card_count: number;
+  digital: boolean;
+  icon_svg_uri: string;
+  parent_set_code?: string;
+}

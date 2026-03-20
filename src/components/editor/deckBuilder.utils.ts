@@ -1,6 +1,5 @@
 import type { Card } from "@/types/xmage";
-import type { ScryfallCard } from "@/types/scryfall";
-import { getScryfallImageUrl, getScryfallManaCost } from "@/api/scryfall";
+export { scryfallCardToPartial } from "@/lib/scryfall.utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -70,27 +69,6 @@ export function groupCards(cards: Card[]): CardGroup[] {
 }
 
 /**
- * Converts a Scryfall card to a partial Card object with extracted properties.
- */
-export function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
-  const SUPERTYPES = new Set(["Basic", "Legendary", "Snow", "World", "Ongoing"]);
-  const [mainPart = "", subPart = ""] = sc.type_line.split("—").map((s) => s.trim());
-  const mainTokens = mainPart.split(/\s+/).filter(Boolean);
-  const supertypes = mainTokens.filter((t) => SUPERTYPES.has(t));
-  const types = mainTokens.filter((t) => !SUPERTYPES.has(t));
-  const subtypes = subPart ? subPart.split(/\s+/).filter(Boolean) : [];
-  const imageUrl = getScryfallImageUrl(sc);
-  const manaCost = getScryfallManaCost(sc) ?? "";
-  return {
-    manaCost, cmc: sc.cmc, types, subtypes, supertypes,
-    color: (sc.colors ?? []).join(""),
-    power: sc.power, toughness: sc.toughness,
-    setCode: sc.set, cardNumber: sc.collector_number,
-    ...(imageUrl ? { imageUrl } : {}),
-  };
-}
-
-/**
  * Exports deck to Arena format (main deck + sideboard).
  */
 export function exportToArena(deck: { name: string; cards: Card[]; sideboard: Card[] }): string {
@@ -147,4 +125,20 @@ export function computeStackColumns(
   const otherGroups = allGroups.filter((g) => !usedNames.has(g.card.name));
   if (otherGroups.length > 0) cols.push({ id: "other", label: "Other", filter: () => false, groups: otherGroups });
   return cols.filter((c) => c.groups.length > 0);
+}
+
+/**
+ * Get cards belonging to a specific tag, grouped and sorted.
+ */
+export function getTaggedGroups(
+  tag: string,
+  allCards: Card[],
+  cardTags: Record<string, string[]> | undefined,
+): CardGroup[] {
+  const taggedNames = new Set(
+    Object.entries(cardTags ?? {})
+      .filter(([, tags]) => tags.includes(tag))
+      .map(([name]) => name),
+  );
+  return groupCards(allCards.filter((c) => taggedNames.has(c.name.toLowerCase())));
 }

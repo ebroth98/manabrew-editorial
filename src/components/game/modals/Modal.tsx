@@ -13,6 +13,8 @@ interface ModalProps {
   maxHeight?: string;
   /** Additional className for the modal panel */
   className?: string;
+  /** Additional className for the backdrop overlay (e.g. z-index overrides) */
+  backdropClassName?: string;
 }
 
 /**
@@ -24,7 +26,7 @@ interface ModalProps {
  *
  * Use the compound sub-components (Modal.Header, Modal.Body, etc.) for consistent layout.
  */
-export function Modal({ children, onClose, maxWidth = "max-w-2xl", maxHeight = "max-h-[80vh]", className }: ModalProps) {
+export function Modal({ children, onClose, maxWidth = "max-w-2xl", maxHeight = "max-h-[80vh]", className, backdropClassName }: ModalProps) {
   useEffect(() => {
     if (!onClose) return;
     function handleKey(e: KeyboardEvent) {
@@ -36,7 +38,7 @@ export function Modal({ children, onClose, maxWidth = "max-w-2xl", maxHeight = "
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      className={cn("fixed inset-0 z-[9000] flex items-center justify-center bg-black/60 backdrop-blur-sm", backdropClassName)}
       onClick={onClose}
     >
       <div

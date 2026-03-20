@@ -1,5 +1,3 @@
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { CardSearch } from "@/components/editor/CardSearch";
 import { DeckBuilder } from "@/components/editor/DeckBuilder";
 import {
   DndContext,
@@ -11,12 +9,13 @@ import {
 } from "@dnd-kit/core";
 import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useDeckStore } from "@/stores/useDeckStore";
+import { DROP_ZONE } from "@/lib/constants";
 import { useState } from "react";
 import type { Card as XMageCard } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
 
 export default function DeckEditor() {
-  const { addToMain, addToSide, removeFromMain, removeFromSide, currentDeck } = useDeckStore();
+  const { addToMain, addToSide, removeFromMain, removeFromSide, currentDeck, tagCard } = useDeckStore();
   const [draggedCard, setDraggedCard] = useState<XMageCard | null>(null);
 
   const sensors = useSensors(
@@ -38,32 +37,22 @@ export default function DeckEditor() {
 
     const card = dragData.card as XMageCard;
     const overId = String(over.id);
-    const isFromSearch = dragData.type !== "deck-card";
+    const cardName = (dragData.name as string) ?? card.name;
 
-    if (isFromSearch) {
-      // Drag from CardSearch → add a new copy
-      if (overId === "drop-side") {
-        addToSide({ ...card, id: crypto.randomUUID() });
-      } else {
-        addToMain({ ...card, id: crypto.randomUUID() });
+    if (overId.startsWith(DROP_ZONE.TAG_PREFIX)) {
+      const tag = overId.slice(DROP_ZONE.TAG_PREFIX.length);
+      tagCard(cardName, tag);
+    } else if (overId === DROP_ZONE.SIDE) {
+      const copies = currentDeck.cards.filter((c) => c.name === cardName);
+      for (const c of copies) {
+        removeFromMain(c.id);
+        addToSide({ ...c, id: crypto.randomUUID() });
       }
-    } else {
-      // Drag within deck → move between main and sideboard
-      const cardName = dragData.name as string;
-      if (overId === "drop-side") {
-        // Move all copies from main to side
-        const copies = currentDeck.cards.filter((c) => c.name === cardName);
-        for (const c of copies) {
-          removeFromMain(c.id);
-          addToSide({ ...c, id: crypto.randomUUID() });
-        }
-      } else if (overId === "drop-main") {
-        // Move all copies from side to main
-        const copies = currentDeck.sideboard.filter((c) => c.name === cardName);
-        for (const c of copies) {
-          removeFromSide(c.id);
-          addToMain({ ...c, id: crypto.randomUUID() });
-        }
+    } else if (overId === DROP_ZONE.MAIN) {
+      const copies = currentDeck.sideboard.filter((c) => c.name === cardName);
+      for (const c of copies) {
+        removeFromSide(c.id);
+        addToMain({ ...c, id: crypto.randomUUID() });
       }
     }
   }
@@ -76,20 +65,9 @@ export default function DeckEditor() {
       onDragEnd={handleDragEnd}
     >
       <div className="h-full w-full overflow-hidden">
-        <ResizablePanelGroup orientation="horizontal">
-          <ResizablePanel defaultSize={45} minSize={30}>
-            <CardSearch />
-          </ResizablePanel>
-
-          <ResizableHandle withHandle />
-
-          <ResizablePanel defaultSize={55} minSize={30}>
-            <DeckBuilder />
-          </ResizablePanel>
-        </ResizablePanelGroup>
+        <DeckBuilder />
       </div>
 
-      {/* Drag ghost overlay */}
       <DragOverlay dropAnimation={null}>
         {draggedCard && (
           <div className="w-24 opacity-90 rotate-3 shadow-2xl pointer-events-none">

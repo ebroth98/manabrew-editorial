@@ -1,5 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -100,6 +101,11 @@ export function DeckCard({
           </span>
           {deckFormats.map((f) => (
             <FormatBadge key={f.id} formatId={f.id} />
+          ))}
+          {deck.deck.labels?.map((label) => (
+            <Badge key={label} variant="outline" className="text-[9px] h-4 px-1 text-primary/80 border-primary/30">
+              {label}
+            </Badge>
           ))}
         </div>
       </div>

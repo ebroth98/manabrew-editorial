@@ -70,6 +70,12 @@ export interface Deck {
   sideboard: Card[];
   /** Designated commander (Commander format). Not included in cards[]. */
   commander?: Card;
+  /** User-assigned labels for the deck (e.g. "Aggro", "Budget", "Competitive"). */
+  labels?: string[];
+  /** User-created tag/label names for organizing cards into custom sections. */
+  customTags?: string[];
+  /** Maps card name (lowercased) → array of tag names the card belongs to. */
+  cardTags?: Record<string, string[]>;
 }
 
 export interface Player {

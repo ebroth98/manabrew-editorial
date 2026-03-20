@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { STORAGE_KEYS } from '@/lib/constants';
 
 export type ZonePanelSide = 'left' | 'right';
 export type ZonePanelItem = 'library' | 'graveyard' | 'exile';
@@ -76,6 +77,6 @@ export const usePreferencesStore = create<PreferencesState>()(
         })),
       resetGameThemeColorOverrides: () => set({ gameThemeColorOverrides: {} }),
     }),
-    { name: 'xmage-preferences' },
+    { name: STORAGE_KEYS.PREFERENCES },
   ),
 );

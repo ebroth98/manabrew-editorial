@@ -5,15 +5,20 @@ import { Input } from "@/components/ui/input";
 import {
   X, Download, Upload, Save, FolderOpen, Trash2,
   Pencil, Check, Search, LayoutGrid, List, Layers,
+  Plus, Loader2, Tag, Tags,
 } from "lucide-react";
 import { DeckStats } from "./DeckStats";
 import { CardPreview } from "@/components/game/CardPreview";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import type { Card } from "@/types/xmage";
-import { fetchCardCollection } from "@/api/scryfall";
+import { fetchCardCollection, searchCards, getScryfallImageUrl } from "@/api/scryfall";
+import type { ScryfallCard } from "@/types/scryfall";
+import { createEmptyCard } from "@/lib/scryfall.utils";
+import { DROP_ZONE } from "@/lib/constants";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import {
   Dialog,
   DialogContent,
@@ -22,6 +27,9 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { DeckListView } from "./DeckListView";
+import { CardDetailModal } from "./CardDetailModal";
+import { DeckLabelsModal } from "./DeckLabelsModal";
+import { SetName } from "./SetSelect";
 import {
   type CardGroup,
   type ViewMode,
@@ -35,10 +43,125 @@ import {
   computeStackColumns,
 } from "./deckBuilder.utils";
 
+const SIDEBOARD_LINE_REGEX = /^(sideboard|side)$/i;
+const DECK_LINE_REGEX = /^(\d+)x?\s+(.+)$/i;
+
+// ─── Quick Search ─────────────────────────────────────────────────────────────
+
+function QuickCardSearch({ onSelect, onHover, onLeave }: {
+  onSelect: (card: ScryfallCard) => void;
+  onHover: (card: Card, x: number, y: number) => void;
+  onLeave: () => void;
+}) {
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<ScryfallCard[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const doSearch = useCallback((q: string) => {
+    if (q.trim().length < 2) {
+      setResults([]);
+      setIsOpen(false);
+      return;
+    }
+    setIsLoading(true);
+    searchCards(q, 1)
+      .then((res) => {
+        setResults(res.data.slice(0, 8));
+        setIsOpen(true);
+      })
+      .catch(() => setResults([]))
+      .finally(() => setIsLoading(false));
+  }, []);
+
+  function handleChange(value: string) {
+    setQuery(value);
+    clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => doSearch(value), 400);
+  }
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="relative">
+        <Plus className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+        <Input
+          className="h-7 text-xs pl-6 pr-6"
+          placeholder="Quick add card…"
+          value={query}
+          onChange={(e) => handleChange(e.target.value)}
+          onFocus={() => { if (results.length > 0) setIsOpen(true); }}
+        />
+        {isLoading && (
+          <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3 w-3 animate-spin text-muted-foreground" />
+        )}
+        {!isLoading && query && (
+          <button
+            type="button"
+            className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+            onClick={() => { setQuery(""); setResults([]); setIsOpen(false); }}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        )}
+      </div>
+
+      {isOpen && results.length > 0 && (
+        <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-popover border rounded-md shadow-lg max-h-72 overflow-y-auto">
+          {results.map((sc) => {
+            const previewCard: Card = {
+              ...createEmptyCard(sc.name),
+              imageUrl: getScryfallImageUrl(sc),
+            };
+            return (
+            <button
+              key={sc.id}
+              type="button"
+              className="w-full text-left px-2 py-1.5 hover:bg-muted flex items-center gap-2 border-b border-border/30 last:border-0"
+              onClick={() => { onSelect(sc); setIsOpen(false); onLeave(); }}
+              onMouseEnter={(e) => onHover(previewCard, e.clientX, e.clientY)}
+              onMouseMove={(e) => onHover(previewCard, e.clientX, e.clientY)}
+              onMouseLeave={onLeave}
+            >
+              {sc.image_uris?.small && (
+                <img
+                  src={sc.image_uris.small}
+                  alt=""
+                  className="w-6 h-6 rounded object-cover object-top shrink-0"
+                />
+              )}
+              <span className="text-xs font-medium flex-1 truncate">{sc.name}</span>
+              {sc.mana_cost && (
+                <ManaSymbols cost={sc.mana_cost} size="sm" className="shrink-0" />
+              )}
+              <SetName code={sc.set} className="text-[10px] text-muted-foreground shrink-0" />
+            </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main DeckBuilder Component ───────────────────────────────────────────────
 
 export function DeckBuilder() {
   const [printPickerCard, setPrintPickerCard] = useState<string | null>(null);
+  const [detailCard, setDetailCard] = useState<ScryfallCard | null>(null);
+  const [labelsOpen, setLabelsOpen] = useState(false);
   const {
     currentDeck,
     savedDecks,
@@ -54,10 +177,15 @@ export function DeckBuilder() {
     enrichDeckCards,
     setCommander,
     removeCommander,
+    addCustomTag,
+    removeCustomTag,
+    tagCard,
+    untagCard,
   } = useDeckStore();
 
   const [editingName, setEditingName] = useState(false);
   const [deckFilter, setDeckFilter] = useState("");
+  const [newTagInput, setNewTagInput] = useState("");
   const [nameInput, setNameInput] = useState(currentDeck.name);
   const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [hovered, setHovered] = useState<{ card: Card; x: number; y: number } | null>(null);
@@ -66,8 +194,8 @@ export function DeckBuilder() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const enrichedNamesRef = useRef(new Set<string>());
 
-  const { setNodeRef: setMainDropRef, isOver: isOverMain } = useDroppable({ id: "drop-main" });
-  const { setNodeRef: setSideDropRef, isOver: isOverSide } = useDroppable({ id: "drop-side" });
+  const { setNodeRef: setMainDropRef, isOver: isOverMain } = useDroppable({ id: DROP_ZONE.MAIN });
+  const { setNodeRef: setSideDropRef, isOver: isOverSide } = useDroppable({ id: DROP_ZONE.SIDE });
 
   // Auto-enrich cards missing CMC/mana data
   useEffect(() => {
@@ -101,10 +229,8 @@ export function DeckBuilder() {
   // ── Handlers ──
 
   function handleRemoveOneFromMain(cardName: string) {
-    const cards = currentDeck.cards;
-    for (let i = cards.length - 1; i >= 0; i--) {
-      if (cards[i].name === cardName) { removeFromMain(cards[i].id); return; }
-    }
+    const card = currentDeck.cards.findLast((c) => c.name === cardName);
+    if (card) removeFromMain(card.id);
   }
 
   function handleRemoveAllFromMain(cardName: string) {
@@ -118,10 +244,8 @@ export function DeckBuilder() {
   }
 
   function handleRemoveOneFromSide(cardName: string) {
-    const side = currentDeck.sideboard;
-    for (let i = side.length - 1; i >= 0; i--) {
-      if (side[i].name === cardName) { removeFromSide(side[i].id); return; }
-    }
+    const card = currentDeck.sideboard.findLast((c) => c.name === cardName);
+    if (card) removeFromSide(card.id);
   }
 
   function handleMoveToMain(cardName: string) {
@@ -150,8 +274,8 @@ export function DeckBuilder() {
       let inSide = false;
       const parsed: { name: string; count: number; side: boolean }[] = [];
       for (const line of lines) {
-        if (/^(sideboard|side)$/i.test(line)) { inSide = true; continue; }
-        const match = line.match(/^(\d+)x?\s+(.+)$/i);
+        if (SIDEBOARD_LINE_REGEX.test(line)) { inSide = true; continue; }
+        const match = line.match(DECK_LINE_REGEX);
         if (!match) continue;
         parsed.push({ count: parseInt(match[1], 10), name: match[2].trim(), side: inSide });
       }
@@ -159,11 +283,7 @@ export function DeckBuilder() {
       let imported = 0;
       for (const { name, count, side } of parsed) {
         for (let i = 0; i < count; i++) {
-          const card: Card = {
-            id: crypto.randomUUID(), name, setCode: "", cardNumber: "", color: "",
-            manaCost: "", types: [], subtypes: [], supertypes: [], text: "",
-            isPlayable: true, isSelected: false, isChoosable: true, controllerId: "", ownerId: "", zoneId: "",
-          };
+          const card = createEmptyCard(name);
           if (side) addToSide(card); else addToMain(card);
           imported++;
         }
@@ -267,6 +387,14 @@ export function DeckBuilder() {
           <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={handleSave}>
             <Save className="h-3 w-3" /> Save
           </Button>
+          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setLabelsOpen(true)}>
+            <Tags className="h-3 w-3" /> Labels
+            {(currentDeck.labels?.length ?? 0) > 0 && (
+              <span className="bg-primary text-primary-foreground text-[9px] rounded-full w-4 h-4 flex items-center justify-center">
+                {currentDeck.labels!.length}
+              </span>
+            )}
+          </Button>
           <Dialog open={loadDialogOpen} onOpenChange={setLoadDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1">
@@ -306,9 +434,16 @@ export function DeckBuilder() {
         </div>
       </div>
 
-      {/* ── Deck filter ── */}
-      <div className="px-3 py-1.5 border-b shrink-0">
-        <div className="relative">
+      {/* ── Quick add + Deck filter + Tag creation ── */}
+      <div className="px-3 py-1.5 border-b shrink-0 flex gap-2">
+        <div className="flex-1 min-w-0">
+          <QuickCardSearch
+            onSelect={(sc) => setDetailCard(sc)}
+            onHover={(card, x, y) => setHovered({ card, x, y })}
+            onLeave={() => setHovered(null)}
+          />
+        </div>
+        <div className="flex-1 min-w-0 relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
           <Input className="h-7 text-xs pl-6 pr-6" placeholder="Filter deck…" value={deckFilter} onChange={(e) => setDeckFilter(e.target.value)} />
           {deckFilter && (
@@ -316,6 +451,22 @@ export function DeckBuilder() {
               <X className="h-3 w-3" />
             </button>
           )}
+        </div>
+        <div className="shrink-0 relative">
+          <Tag className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
+          <Input
+            className="h-7 text-xs pl-6 w-36"
+            placeholder="Add tag…"
+            value={newTagInput}
+            onChange={(e) => setNewTagInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newTagInput.trim()) {
+                addCustomTag(newTagInput.trim());
+                setNewTagInput("");
+                toast.success(`Tag "${newTagInput.trim()}" added`);
+              }
+            }}
+          />
         </div>
       </div>
 
@@ -350,6 +501,11 @@ export function DeckBuilder() {
           onAddToSide={(card) => addToSide(card)}
           onRemoveFromSide={handleRemoveOneFromSide}
           totalCards={currentDeck.cards.length}
+          customTags={currentDeck.customTags}
+          cardTags={currentDeck.cardTags}
+          allMainCards={currentDeck.cards}
+          onUntagCard={untagCard}
+          onRemoveTag={removeCustomTag}
         />
       </div>
 
@@ -357,6 +513,8 @@ export function DeckBuilder() {
 
       {hovered && <CardPreview card={hovered.card} mouseX={hovered.x} mouseY={hovered.y} />}
       <PrintPickerModal cardName={printPickerCard} onClose={() => setPrintPickerCard(null)} />
+      <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} />
+      <DeckLabelsModal open={labelsOpen} onClose={() => setLabelsOpen(false)} />
     </div>
   );
 }

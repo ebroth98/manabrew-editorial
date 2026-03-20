@@ -74,6 +74,7 @@ export function CreateGameDialog({
       id: "current",
       name: currentDeck.name,
       badge: "editing",
+      labels: currentDeck.labels,
       deckList: [
         ...currentDeck.cards.map((c) => ({ name: c.name, setCode: c.setCode || "" })),
         ...(currentDeck.commander ? [{ name: currentDeck.commander.name, setCode: currentDeck.commander.setCode || "" }] : []),
@@ -86,6 +87,7 @@ export function CreateGameDialog({
       id: s.id,
       name: s.deck.name,
       badge: null as string | null,
+      labels: s.deck.labels,
       deckList: [
         ...s.deck.cards.map((c) => ({ name: c.name, setCode: c.setCode || "" })),
         ...(s.deck.commander ? [{ name: s.deck.commander.name, setCode: s.deck.commander.setCode || "" }] : []),
@@ -396,6 +398,7 @@ export function CreateGameDialog({
                         id={d.id}
                         name={d.name}
                         badge={d.badge}
+                        labels={d.labels}
                         deckList={d.deckList}
                         cards={d.cards}
                         isPreset={d.isPreset}

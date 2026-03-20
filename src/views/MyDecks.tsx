@@ -18,12 +18,10 @@ import { inferFormats } from "@/lib/formats";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { DeckCard } from "@/components/deck/DeckCard";
 import type { Card } from "@/types/xmage";
-import {
-  fetchCardCollection,
-  getScryfallImageUrl,
-  getScryfallManaCost,
-} from "@/api/scryfall";
+import { fetchCardCollection } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
+import { scryfallCardToPartial } from "@/lib/scryfall.utils";
+import { ROUTES, DEFAULT_DECK_NAME } from "@/lib/constants";
 import {
   ResizableHandle,
   ResizablePanel,
@@ -36,39 +34,7 @@ import {
   COLOR_MAP,
 } from "./myDecks.utils";
 
-// ── Constants ────────────────────────────────────────────────────────────────
-
-const ROUTE_DECK_EDITOR = "/deck-editor";
-const ROUTE_PLAY = "/play";
-const DEFAULT_DECK_NAME = "New Deck";
-const SUPERTYPES = new Set(["Basic", "Legendary", "Snow", "World", "Ongoing"]);
-
 // ── Helpers ──────────────────────────────────────────────────────────────────
-
-function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
-  const [mainPart = "", subPart = ""] = sc.type_line
-    .split("—")
-    .map((s) => s.trim());
-  const mainTokens = mainPart.split(/\s+/).filter(Boolean);
-  const supertypes = mainTokens.filter((t) => SUPERTYPES.has(t));
-  const types = mainTokens.filter((t) => !SUPERTYPES.has(t));
-  const subtypes = subPart ? subPart.split(/\s+/).filter(Boolean) : [];
-  const imageUrl = getScryfallImageUrl(sc);
-  const manaCost = getScryfallManaCost(sc) ?? "";
-  return {
-    manaCost,
-    cmc: sc.cmc,
-    types,
-    subtypes,
-    supertypes,
-    color: (sc.colors ?? []).join(""),
-    power: sc.power,
-    toughness: sc.toughness,
-    setCode: sc.set,
-    cardNumber: sc.collector_number,
-    ...(imageUrl ? { imageUrl } : {}),
-  };
-}
 
 function makeHoverHandlers(
   card: Card,
@@ -197,7 +163,7 @@ export default function MyDecks() {
 
   function handleEdit(id: string) {
     loadSavedDeck(id);
-    navigate(ROUTE_DECK_EDITOR);
+    navigate(ROUTES.DECK_EDITOR);
   }
 
   function handlePlay(id: string) {
@@ -216,7 +182,7 @@ export default function MyDecks() {
   function handleNew() {
     clearDeck();
     setDeckName(DEFAULT_DECK_NAME);
-    navigate(ROUTE_DECK_EDITOR);
+    navigate(ROUTES.DECK_EDITOR);
   }
 
   function startRename(id: string, currentName: string) {
@@ -525,7 +491,7 @@ export default function MyDecks() {
         preSelectedDeckId={playDeckId}
         onStart={(cardNames, formatId, commanderName) => {
           startGame(cardNames, formatId, commanderName);
-          navigate(ROUTE_PLAY);
+          navigate(ROUTES.PLAY);
         }}
       />
     </ResizablePanelGroup>

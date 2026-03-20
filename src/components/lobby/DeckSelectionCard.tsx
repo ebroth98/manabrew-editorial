@@ -9,6 +9,7 @@ interface DeckSelectionCardProps {
   desc?: string;
   color?: string;
   badge?: string | null;
+  labels?: string[];
   deckList: { name: string; setCode: string }[];
   cards: Card[];
   isPreset: boolean;
@@ -65,6 +66,7 @@ export function DeckSelectionCard({
   desc,
   color,
   badge,
+  labels,
   deckList,
   cards,
   isPreset,
@@ -118,13 +120,18 @@ export function DeckSelectionCard({
         {!isLegal ? validationError : breakdown}
       </p>
 
-      {/* Footer: card count + badge */}
-      <div className="flex items-center justify-between mt-1.5">
+      {/* Footer: card count + labels + badge */}
+      <div className="flex items-center gap-1 flex-wrap mt-1.5">
         <span className="text-[10px] text-muted-foreground">
           {deckList.length} cards
         </span>
+        {labels?.map((label) => (
+          <Badge key={label} variant="outline" className="text-[8px] h-3.5 px-1 text-primary/80 border-primary/30">
+            {label}
+          </Badge>
+        ))}
         {badge && (
-          <Badge variant="outline" className="text-[9px] h-4 px-1">
+          <Badge variant="outline" className="text-[9px] h-4 px-1 ml-auto">
             {badge}
           </Badge>
         )}

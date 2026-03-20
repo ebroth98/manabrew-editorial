@@ -1,6 +1,15 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { Deck, Card } from '@/types/xmage';
+import { STORAGE_KEYS, DEFAULT_DECK_NAME } from '@/lib/constants';
+
+/** Apply a map of name→patch to an array of cards. */
+function patchCardsByName(cards: Card[], updates: Map<string, Partial<Card>>): Card[] {
+  return cards.map((c) => {
+    const patch = updates.get(c.name.toLowerCase());
+    return patch ? { ...c, ...patch } : c;
+  });
+}
 
 export interface SavedDeck {
   id: string;
@@ -28,12 +37,26 @@ interface DeckState {
   updatePrint: (cardName: string, scryfallCard: import('@/types/scryfall').ScryfallCard) => void;
   /** Patch cards in currentDeck by name with enriched data from Scryfall. */
   enrichDeckCards: (updates: Map<string, Partial<Card>>) => void;
+  /** Add a card to a saved deck's main board. */
+  addCardToSavedDeck: (id: string, card: Card) => void;
   /** Patch cards in a specific saved deck by name with enriched data from Scryfall. */
   enrichSavedDeck: (id: string, updates: Map<string, Partial<Card>>) => void;
+  /** Add a custom tag/section to the current deck. */
+  addCustomTag: (tag: string) => void;
+  /** Remove a custom tag/section and all card associations. */
+  removeCustomTag: (tag: string) => void;
+  /** Assign a tag to a card (by name). */
+  tagCard: (cardName: string, tag: string) => void;
+  /** Remove a tag from a card (by name). */
+  untagCard: (cardName: string, tag: string) => void;
+  /** Add a label to the current deck. */
+  addDeckLabel: (label: string) => void;
+  /** Remove a label from the current deck. */
+  removeDeckLabel: (label: string) => void;
 }
 
 const initialDeck: Deck = {
-  name: 'New Deck',
+  name: DEFAULT_DECK_NAME,
   cards: [],
   sideboard: [],
 };
@@ -88,25 +111,19 @@ export const useDeckStore = create<DeckState>()(
         })),
       updatePrint: (cardName, scryfallCard) =>
         set((state) => {
-          const updates = new Map();
+          const updates = new Map<string, Partial<Card>>();
           updates.set(cardName.toLowerCase(), {
             setCode: scryfallCard.set,
             imageUrl: scryfallCard.image_uris?.normal ?? scryfallCard.image_uris?.large ?? null,
             cardNumber: scryfallCard.collector_number,
           });
-          function applyUpdates(cards: Card[]): Card[] {
-            return cards.map((c) => {
-              const patch = updates.get(c.name.toLowerCase());
-              return patch ? { ...c, ...patch } : c;
-            });
-          }
           const cmd = state.currentDeck.commander;
           const cmdPatch = cmd ? updates.get(cmd.name.toLowerCase()) : undefined;
           return {
             currentDeck: {
               ...state.currentDeck,
-              cards: applyUpdates(state.currentDeck.cards),
-              sideboard: applyUpdates(state.currentDeck.sideboard),
+              cards: patchCardsByName(state.currentDeck.cards, updates),
+              sideboard: patchCardsByName(state.currentDeck.sideboard, updates),
               ...(cmdPatch ? { commander: { ...cmd!, ...cmdPatch } } : {}),
             },
           };
@@ -140,49 +157,100 @@ export const useDeckStore = create<DeckState>()(
         })),
       enrichDeckCards: (updates) =>
         set((state) => {
-          function applyUpdates(cards: Card[]): Card[] {
-            return cards.map((c) => {
-              const patch = updates.get(c.name.toLowerCase());
-              return patch ? { ...c, ...patch } : c;
-            });
-          }
           const cmd = state.currentDeck.commander;
           const cmdPatch = cmd ? updates.get(cmd.name.toLowerCase()) : undefined;
           return {
             currentDeck: {
               ...state.currentDeck,
-              cards: applyUpdates(state.currentDeck.cards),
-              sideboard: applyUpdates(state.currentDeck.sideboard),
+              cards: patchCardsByName(state.currentDeck.cards, updates),
+              sideboard: patchCardsByName(state.currentDeck.sideboard, updates),
               ...(cmdPatch ? { commander: { ...cmd!, ...cmdPatch } } : {}),
             },
           };
         }),
+      addCardToSavedDeck: (id, card) =>
+        set((state) => ({
+          savedDecks: state.savedDecks.map((s) =>
+            s.id !== id
+              ? s
+              : { ...s, deck: { ...s.deck, cards: [...s.deck.cards, card] }, savedAt: Date.now() },
+          ),
+        })),
       enrichSavedDeck: (id, updates) =>
+        set((state) => ({
+          savedDecks: state.savedDecks.map((s) =>
+            s.id !== id
+              ? s
+              : {
+                  ...s,
+                  deck: {
+                    ...s.deck,
+                    cards: patchCardsByName(s.deck.cards, updates),
+                    sideboard: patchCardsByName(s.deck.sideboard, updates),
+                  },
+                }
+          ),
+        })),
+      addCustomTag: (tag) =>
         set((state) => {
-          function applyUpdates(cards: Card[]): Card[] {
-            return cards.map((c) => {
-              const patch = updates.get(c.name.toLowerCase());
-              return patch ? { ...c, ...patch } : c;
-            });
-          }
+          const existing = state.currentDeck.customTags ?? [];
+          if (existing.includes(tag)) return state;
           return {
-            savedDecks: state.savedDecks.map((s) =>
-              s.id !== id
-                ? s
-                : {
-                    ...s,
-                    deck: {
-                      ...s.deck,
-                      cards: applyUpdates(s.deck.cards),
-                      sideboard: applyUpdates(s.deck.sideboard),
-                    },
-                  }
-            ),
+            currentDeck: { ...state.currentDeck, customTags: [...existing, tag] },
           };
         }),
+      removeCustomTag: (tag) =>
+        set((state) => {
+          const customTags = (state.currentDeck.customTags ?? []).filter((t) => t !== tag);
+          const cardTags = { ...state.currentDeck.cardTags };
+          for (const key of Object.keys(cardTags)) {
+            cardTags[key] = cardTags[key].filter((t) => t !== tag);
+            if (cardTags[key].length === 0) delete cardTags[key];
+          }
+          return {
+            currentDeck: { ...state.currentDeck, customTags, cardTags },
+          };
+        }),
+      tagCard: (cardName, tag) =>
+        set((state) => {
+          const key = cardName.toLowerCase();
+          const cardTags = { ...state.currentDeck.cardTags };
+          const tags = cardTags[key] ?? [];
+          if (tags.includes(tag)) return state;
+          cardTags[key] = [...tags, tag];
+          return {
+            currentDeck: { ...state.currentDeck, cardTags },
+          };
+        }),
+      untagCard: (cardName, tag) =>
+        set((state) => {
+          const key = cardName.toLowerCase();
+          const cardTags = { ...state.currentDeck.cardTags };
+          const tags = cardTags[key] ?? [];
+          cardTags[key] = tags.filter((t) => t !== tag);
+          if (cardTags[key].length === 0) delete cardTags[key];
+          return {
+            currentDeck: { ...state.currentDeck, cardTags },
+          };
+        }),
+      addDeckLabel: (label) =>
+        set((state) => {
+          const existing = state.currentDeck.labels ?? [];
+          if (existing.includes(label)) return state;
+          return {
+            currentDeck: { ...state.currentDeck, labels: [...existing, label] },
+          };
+        }),
+      removeDeckLabel: (label) =>
+        set((state) => ({
+          currentDeck: {
+            ...state.currentDeck,
+            labels: (state.currentDeck.labels ?? []).filter((l) => l !== label),
+          },
+        })),
     }),
     {
-      name: 'xmage-deck-storage',
+      name: STORAGE_KEYS.DECK,
     }
   )
 );

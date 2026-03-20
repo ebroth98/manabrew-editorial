@@ -1,4 +1,5 @@
 import type { Card } from "@/types/xmage";
+export { type CardGroup, groupCards } from "@/components/editor/deckBuilder.utils";
 
 // ── Color Extraction & Constants ────────────────────────────────────────
 
@@ -17,41 +18,19 @@ export function extractColors(cards: Card[]): string[] {
     for (const ch of card.color ?? "") {
       if (ch in COLOR_MAP) set.add(ch);
     }
-    // Detect explicit colourless mana requirement {C}
     if (card.manaCost?.includes("{C}")) set.add("C");
   }
   return ["W", "U", "B", "R", "G", "C"].filter((c) => set.has(c));
 }
 
-// ── Card Grouping & Categorization ──────────────────────────────────────
+// ── Card Categorization (Forge-style: Creatures, Spells, Lands) ─────────
 
-export interface CardGroup {
-  card: Card;
-  count: number;
-}
-
-export function groupCards(cards: Card[]): CardGroup[] {
-  const map = new Map<string, CardGroup>();
-  for (const card of cards) {
-    const existing = map.get(card.name);
-    if (existing) existing.count++;
-    else map.set(card.name, { card, count: 1 });
-  }
-  return Array.from(map.values()).sort((a, b) => {
-    const aCmc = a.card.cmc ?? 0;
-    const bCmc = b.card.cmc ?? 0;
-    if (aCmc !== bCmc) return aCmc - bCmc;
-    return a.card.name.localeCompare(b.card.name);
-  });
-}
-
-// Group card list by type category (Forge-style: Lands, Creatures, Spells)
 export function categorize(
-  groups: CardGroup[],
-): { label: string; items: CardGroup[] }[] {
-  const lands: CardGroup[] = [];
-  const creatures: CardGroup[] = [];
-  const other: CardGroup[] = [];
+  groups: { card: Card; count: number }[],
+): { label: string; items: { card: Card; count: number }[] }[] {
+  const lands: typeof groups = [];
+  const creatures: typeof groups = [];
+  const other: typeof groups = [];
   for (const g of groups) {
     const types = g.card.types ?? [];
     if (types.includes("Land")) lands.push(g);

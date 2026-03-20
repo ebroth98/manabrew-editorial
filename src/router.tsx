@@ -8,6 +8,7 @@ import Game from "@/views/Game";
 import Play from "@/views/Play";
 import Draft from "@/views/Draft";
 import Settings from "@/views/Settings";
+import Search from "@/views/Search";
 
 export const router = createBrowserRouter([
   {
@@ -40,6 +41,14 @@ export const router = createBrowserRouter([
         element: (
           <ErrorBoundary context="Lobby">
             <Lobby />
+          </ErrorBoundary>
+        ),
+      },
+      {
+        path: "search",
+        element: (
+          <ErrorBoundary context="Search">
+            <Search />
           </ErrorBoundary>
         ),
       },
