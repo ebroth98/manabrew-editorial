@@ -110,14 +110,14 @@ export interface SetDeckSelectionParams {
 
 export const serverCommands = {
   /**
-   * Connect to an XMage server.
+   * Connect to an OpenMagic server.
    * Triggers 'server:auth_result' event on completion.
    */
   connect: (params: ServerConnectParams) =>
     tauriInvoke<void>("server_connect", params),
 
   /**
-   * Disconnect from the current XMage server.
+   * Disconnect from the current OpenMagic server.
    */
   disconnect: () =>
     invoke<void>("server_disconnect"),

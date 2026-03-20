@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import { THEME_PRESETS } from "@/themes";
 
 export interface GameThemeColors {
   activeAction: {
@@ -18,6 +19,12 @@ export interface GameThemeColors {
     passUntilEnd: string;
     cancel: string;
     pacificAction: string;
+  };
+  arrow: {
+    attack: string;
+    block: string;
+    hostileTarget: string;
+    friendlyTarget: string;
   };
 }
 
@@ -39,6 +46,12 @@ export const GAME_THEME_COLORS: GameThemeColors = {
     cancel: "#6b7280",
     pacificAction: "#60a5fa",
   },
+  arrow: {
+    attack: "rgba(255, 138, 0, 0.88)",
+    block: "rgba(210, 40, 40, 0.88)",
+    hostileTarget: "rgba(210, 40, 40, 0.88)",
+    friendlyTarget: "rgba(90, 150, 255, 0.88)",
+  },
 };
 
 function cloneThemeColors(colors: GameThemeColors): GameThemeColors {
@@ -47,6 +60,7 @@ function cloneThemeColors(colors: GameThemeColors): GameThemeColors {
     activeAction: { ...colors.activeAction },
     hand: { ...colors.hand },
     promptAction: { ...colors.promptAction },
+    arrow: { ...colors.arrow },
   };
 }
 
@@ -85,14 +99,28 @@ function flattenColorLeaves(node: Record<string, unknown>, prefix = ""): Record<
   return out;
 }
 
-export function getDefaultGameThemeColorMap(): Record<string, string> {
+/** Get the game color defaults from the active preset, falling back to hardcoded defaults. */
+function getPresetGameColors(): Record<string, string> {
+  const presetId = usePreferencesStore.getState().appThemePreset;
+  const preset = THEME_PRESETS.find((p) => p.id === presetId);
+  if (preset?.gameColors) return { ...preset.gameColors };
   return flattenColorLeaves(GAME_THEME_COLORS as unknown as Record<string, unknown>);
+}
+
+export function getDefaultGameThemeColorMap(): Record<string, string> {
+  return getPresetGameColors();
 }
 
 export function resolveGameThemeColors(
   overrides: Record<string, string> = {},
 ): GameThemeColors {
+  // Start from hardcoded defaults, apply preset, then user overrides
   const merged = cloneThemeColors(GAME_THEME_COLORS);
+  const presetColors = getPresetGameColors();
+  for (const [path, value] of Object.entries(presetColors)) {
+    if (!hasColorPath(path) || typeof value !== "string" || !value.trim()) continue;
+    setByPath(merged as unknown as Record<string, unknown>, path, value.trim());
+  }
   for (const [path, value] of Object.entries(overrides)) {
     if (!hasColorPath(path) || typeof value !== "string" || !value.trim()) continue;
     setByPath(merged as unknown as Record<string, unknown>, path, value.trim());
@@ -106,7 +134,8 @@ export function getGameThemeColors(): GameThemeColors {
 
 export function useGameThemeColors(): GameThemeColors {
   const overrides = usePreferencesStore((s) => s.gameThemeColorOverrides);
-  return useMemo(() => resolveGameThemeColors(overrides), [overrides]);
+  const presetId = usePreferencesStore((s) => s.appThemePreset);
+  return useMemo(() => resolveGameThemeColors(overrides), [overrides, presetId]);
 }
 
 function normalizeHexColor(hex: string): string {

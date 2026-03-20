@@ -16,7 +16,7 @@ import { FormatBadge } from "@/components/game/FormatBadge";
 import { inferFormats } from "@/lib/formats";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { DeckCard } from "@/components/deck/DeckCard";
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 import { fetchCardCollection } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
 import { scryfallCardToPartial } from "@/lib/scryfall.utils";

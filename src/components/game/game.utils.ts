@@ -1,4 +1,4 @@
-import type { Card as CardType, StackObject } from "@/types/xmage";
+import type { Card as CardType, StackObject } from "@/types/openmagic";
 import { AVATAR_COLORS, PROMPT_LABELS } from "./game.constants";
 
 export function getAvatarColor(name: string): string {

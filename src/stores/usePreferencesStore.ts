@@ -7,6 +7,10 @@ export type ZonePanelItem = 'library' | 'graveyard' | 'exile';
 export type HandDisplayMode = 'cool' | 'normal';
 
 interface PreferencesState {
+  /** App color theme preset id */
+  appThemePreset: string;
+  setAppThemePreset: (id: string) => void;
+
   /** Duration of card-play and turn-start flash animations in ms */
   flashDurationMs: number;
   setFlashDurationMs: (ms: number) => void;
@@ -35,6 +39,11 @@ interface PreferencesState {
   handDisplayMode: HandDisplayMode;
   setHandDisplayMode: (mode: HandDisplayMode) => void;
 
+  /** App theme color overrides (CSS variable name → HSL value) */
+  appThemeColorOverrides: Record<string, string>;
+  setAppThemeColorOverride: (key: string, hsl: string) => void;
+  resetAppThemeColorOverrides: () => void;
+
   /** Game UI color overrides by dot-path key */
   gameThemeColorOverrides: Record<string, string>;
   setGameThemeColorOverride: (path: string, color: string) => void;
@@ -44,6 +53,9 @@ interface PreferencesState {
 export const usePreferencesStore = create<PreferencesState>()(
   persist(
     (set) => ({
+      appThemePreset: "default",
+      setAppThemePreset: (appThemePreset) => set({ appThemePreset, appThemeColorOverrides: {}, gameThemeColorOverrides: {} }),
+
       flashDurationMs: 1000,
       setFlashDurationMs: (ms) => set({ flashDurationMs: ms }),
 
@@ -66,6 +78,13 @@ export const usePreferencesStore = create<PreferencesState>()(
 
       handDisplayMode: 'cool',
       setHandDisplayMode: (handDisplayMode) => set({ handDisplayMode }),
+
+      appThemeColorOverrides: {},
+      setAppThemeColorOverride: (key, hsl) =>
+        set((state) => ({
+          appThemeColorOverrides: { ...state.appThemeColorOverrides, [key]: hsl },
+        })),
+      resetAppThemeColorOverrides: () => set({ appThemeColorOverrides: {} }),
 
       gameThemeColorOverrides: {},
       setGameThemeColorOverride: (path, color) =>

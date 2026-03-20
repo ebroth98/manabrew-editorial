@@ -11,7 +11,7 @@ import {
   ReorderLibraryModal,
   SpecifyManaComboModal,
 } from "@/components/game/modals";
-import type { Card as XMageCard } from "@/types/xmage";
+import type { Card as XMageCard } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";

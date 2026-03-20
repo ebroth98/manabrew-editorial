@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 
 /**
  * Manages hovered-card + mouse-position state for card preview overlays.

@@ -1,4 +1,4 @@
-import type { Card as CardType } from "@/types/xmage";
+import type { Card as CardType } from "@/types/openmagic";
 import { useCardImage } from "@/hooks/useCardImage";
 import { cn } from "@/lib/utils";
 import { useState } from "react";

@@ -11,11 +11,11 @@ import type { DragEndEvent, DragStartEvent } from "@dnd-kit/core";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { DROP_ZONE } from "@/lib/constants";
 import { useState } from "react";
-import type { Card as XMageCard } from "@/types/xmage";
+import type { Card as XMageCard } from "@/types/openmagic";
 import { Card } from "@/components/game/Card";
 
 export default function DeckEditor() {
-  const { addToMain, addToSide, removeFromMain, removeFromSide, currentDeck, tagCard } = useDeckStore();
+  const { addToMain, addToSide, removeFromMain, removeFromSide, currentDeck, tagCard, untagCard } = useDeckStore();
   const [draggedCard, setDraggedCard] = useState<XMageCard | null>(null);
 
   const sensors = useSensors(
@@ -37,18 +37,29 @@ export default function DeckEditor() {
 
     const card = dragData.card as XMageCard;
     const overId = String(over.id);
+    const activeId = String(active.id);
     const cardName = (dragData.name as string) ?? card.name;
 
+    // Detect if dragged from a tag section (id format: deck-tag-{tag}-{cardName})
+    const sourceTagMatch = activeId.match(/^deck-tag-(.+?)-(?:.+)$/);
+    const sourceTag = sourceTagMatch?.[1] ?? null;
+
     if (overId.startsWith(DROP_ZONE.TAG_PREFIX)) {
-      const tag = overId.slice(DROP_ZONE.TAG_PREFIX.length);
-      tagCard(cardName, tag);
+      const destTag = overId.slice(DROP_ZONE.TAG_PREFIX.length);
+      // If moving between tags, untag from source
+      if (sourceTag && sourceTag !== destTag) {
+        untagCard(cardName, sourceTag);
+      }
+      tagCard(cardName, destTag);
     } else if (overId === DROP_ZONE.SIDE) {
+      if (sourceTag) untagCard(cardName, sourceTag);
       const copies = currentDeck.cards.filter((c) => c.name === cardName);
       for (const c of copies) {
         removeFromMain(c.id);
         addToSide({ ...c, id: crypto.randomUUID() });
       }
     } else if (overId === DROP_ZONE.MAIN) {
+      if (sourceTag) untagCard(cardName, sourceTag);
       const copies = currentDeck.sideboard.filter((c) => c.name === cardName);
       for (const c of copies) {
         removeFromSide(c.id);

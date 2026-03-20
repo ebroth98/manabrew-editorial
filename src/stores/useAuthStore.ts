@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { User } from '@/types/xmage';
+import type { User } from '@/types/openmagic';
 
 interface AuthState {
   user: User | null;
@@ -26,7 +26,7 @@ export const useAuthStore = create<AuthState>()(
       setLastConnection: (lastServer, lastUsername) => set({ lastServer, lastUsername }),
     }),
     {
-      name: 'xmage-auth-storage',
+      name: 'openmagic-auth-storage',
       partialize: (state) => ({
         lastServer: state.lastServer,
         lastUsername: state.lastUsername,

@@ -11,15 +11,13 @@ import {
   Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import iconSvg from "@/assets/icon.svg";
-import { useTheme } from "next-themes";
+import { OpenMagicLogo } from "./OpenMagicLogo";
+
 
 interface SidebarProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export function Sidebar({ className }: SidebarProps) {
   const isGameActive = useGameStore((s) => s.isGameActive);
-  const { theme } = useTheme();
-  const isLight = theme === "light";
 
   return (
     <div
@@ -31,13 +29,9 @@ export function Sidebar({ className }: SidebarProps) {
       <div className="flex-1 space-y-4 py-4">
         <div className="px-3 py-2">
           <div className="mb-2 px-4 flex items-center gap-2">
-            <img
-              src={iconSvg}
-              alt="Logo"
-              className={"h-12 w-12 " + (isLight ? "" : "dark:invert")}
-            />
+            <OpenMagicLogo size={48} className="rounded-xl shrink-0" />
             <h2 className="text-lg font-semibold tracking-tight">
-              Bardidina Magica
+              OpenMagic
             </h2>
           </div>
           <div className="space-y-1">

@@ -3,7 +3,7 @@ import { useGameUIStore } from "@/stores/useGameUIStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Card as XMageCard, Player, StackObject } from "@/types/xmage";
+import type { Card as XMageCard, Player, StackObject } from "@/types/openmagic";
 import { Card } from "@/components/game/Card";
 import { CardPreview } from "@/components/game/CardPreview";
 import { GameModals } from "@/components/game/GameModals";

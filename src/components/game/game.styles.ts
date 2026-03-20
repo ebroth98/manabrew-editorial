@@ -13,7 +13,7 @@ export const CARD_RING = {
   attacking: "ring-2 ring-red-500 cursor-pointer",
   tappable: "ring-2 ring-yellow-400 cursor-pointer",
   untappable: "ring-2 ring-cyan-400 cursor-pointer",
-  selected: "ring-2 ring-purple-400",
+  selected: "ring-2 ring-selection",
 } as const;
 
 // ── Card sizing ────────────────────────────────────────────────────────────

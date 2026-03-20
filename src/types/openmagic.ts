@@ -1,4 +1,4 @@
-// Core XMage Types (mirrored from Java)
+// Core OpenMagic Types (mirrored from Java forge-game)
 
 export interface Card {
   id: string; // UUID
@@ -64,6 +64,11 @@ export interface Card {
   isWarpExiled?: boolean;
 }
 
+export interface DeckLabel {
+  name: string;
+  color?: string;
+}
+
 export interface Deck {
   name: string;
   cards: Card[];
@@ -71,7 +76,7 @@ export interface Deck {
   /** Designated commander (Commander format). Not included in cards[]. */
   commander?: Card;
   /** User-assigned labels for the deck (e.g. "Aggro", "Budget", "Competitive"). */
-  labels?: string[];
+  labels?: DeckLabel[];
   /** User-created tag/label names for organizing cards into custom sections. */
   customTags?: string[];
   /** Maps card name (lowercased) → array of tag names the card belongs to. */

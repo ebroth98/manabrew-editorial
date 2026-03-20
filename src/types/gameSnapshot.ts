@@ -1,4 +1,4 @@
-import type { GameView } from "@/types/xmage";
+import type { GameView } from "@/types/openmagic";
 
 export interface GameSnapshotEntry {
   checkpointId: number;

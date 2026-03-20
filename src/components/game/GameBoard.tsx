@@ -1,5 +1,5 @@
 import { Fragment } from "react";
-import type { Card, Player } from "@/types/xmage";
+import type { Card, Player } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { ZonePanelItem } from "@/stores/usePreferencesStore";
 import type { PromptType } from "@/types/promptType";

@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Plus, Loader2, Image as ImageIcon, ChevronDown } from "lucide-react";
+import { Plus, Minus, Loader2, Image as ImageIcon, ChevronDown, Tag, Check, Crown } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useCardRulings } from "@/hooks/useCards";
 import { usePreferredPrintsStore } from "@/stores/usePreferredPrintsStore";
 import { useDeckStore } from "@/stores/useDeckStore";
@@ -17,19 +18,32 @@ import { FORMAT_DISPLAY, LEGALITY_STYLES } from "@/lib/constants";
 import { toast } from "sonner";
 import type { ScryfallCard } from "@/types/scryfall";
 
+interface DeckEditorActions {
+  onAddOne: (cardName: string) => void;
+  onRemoveOne: (cardName: string) => void;
+  onPickPrint: (cardName: string) => void;
+  onSetCommander: (cardName: string) => void;
+  isCommander?: boolean;
+  customTags?: string[];
+  onTagCard?: (cardName: string, tag: string) => void;
+  onAddTag?: (tag: string) => void;
+}
+
 interface CardDetailModalProps {
   card: ScryfallCard | null;
   onClose: () => void;
+  deckEditorActions?: DeckEditorActions;
 }
 
-export function CardDetailModal({ card: initialCard, onClose }: CardDetailModalProps) {
+export function CardDetailModal({ card: initialCard, onClose, deckEditorActions }: CardDetailModalProps) {
   const [showPrints, setShowPrints] = useState(false);
   const [showDeckPicker, setShowDeckPicker] = useState(false);
+  const [newTagInput, setNewTagInput] = useState("");
   const [selectedPrint, setSelectedPrint] = useState<ScryfallCard | null>(null);
   const { data: rulingsData, isLoading: rulingsLoading } = useCardRulings(initialCard?.rulings_uri);
   const { setPreferredPrint } = usePreferredPrintsStore();
   const setLookup = useSetLookup();
-  const { savedDecks, currentDeck, addToMain, addCardToSavedDeck } = useDeckStore();
+  const { savedDecks, currentDeck, addToMain, addCardToSavedDeck, updatePrint } = useDeckStore();
 
   if (!initialCard) return null;
 
@@ -50,6 +64,15 @@ export function CardDetailModal({ card: initialCard, onClose }: CardDetailModalP
     toast.success(`Added to ${deckName}`);
   }
 
+  function handleAddNewTag() {
+    if (!newTagInput.trim() || !deckEditorActions?.onTagCard) return;
+    deckEditorActions.onAddTag?.(newTagInput.trim());
+    deckEditorActions.onTagCard(card.name, newTagInput.trim());
+    toast.success(`Tagged "${card.name}" with "${newTagInput.trim()}"`);
+    setNewTagInput("");
+    setShowDeckPicker(false);
+  }
+
   function handleSelectPrint(print: ScryfallCard) {
     setSelectedPrint(print);
     setPreferredPrint(initialCard!.oracle_id, {
@@ -57,6 +80,9 @@ export function CardDetailModal({ card: initialCard, onClose }: CardDetailModalP
       collectorNumber: print.collector_number,
       imageUrl: getScryfallImageUrl(print),
     });
+    if (deckEditorActions) {
+      updatePrint(card.name, print);
+    }
   }
 
   return (
@@ -81,15 +107,17 @@ export function CardDetailModal({ card: initialCard, onClose }: CardDetailModalP
                       <span className="text-muted-foreground text-sm">No Image</span>
                     </div>
                   )}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="w-full mt-2 gap-1"
-                    onClick={() => setShowPrints(true)}
-                  >
-                    <ImageIcon className="h-3.5 w-3.5" />
-                    Show All Printings
-                  </Button>
+                  {!deckEditorActions && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2 gap-1"
+                      onClick={() => setShowPrints(true)}
+                    >
+                      <ImageIcon className="h-3.5 w-3.5" />
+                      Show All Printings
+                    </Button>
+                  )}
                 </div>
 
                 <div className="flex-1 min-w-0 space-y-3">
@@ -219,52 +247,136 @@ export function CardDetailModal({ card: initialCard, onClose }: CardDetailModalP
 
         <Modal.Footer>
           <div className="flex gap-2 w-full justify-between">
-            <div className="relative">
-              <Button size="sm" className="gap-1" onClick={() => setShowDeckPicker((v) => !v)}>
-                <Plus className="h-3.5 w-3.5" />
-                Add to Deck
-                <ChevronDown className="h-3 w-3 ml-1" />
-              </Button>
+            {deckEditorActions ? (
+              <div className="flex items-center gap-1">
+                {/* +/- stepper */}
+                <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
+                  <Button size="icon" variant="ghost" className="h-7 w-7" title="Remove one copy"
+                    onClick={() => { deckEditorActions.onRemoveOne(card.name); toast.success(`Removed one ${card.name}`); }}>
+                    <Minus className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button size="icon" variant="ghost" className="h-7 w-7" title="Add one copy"
+                    onClick={() => { deckEditorActions.onAddOne(card.name); toast.success(`Added ${card.name}`); }}>
+                    <Plus className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
 
-              {showDeckPicker && (
-                <div className="absolute bottom-full left-0 mb-1 w-64 bg-popover border rounded-md shadow-lg py-1 z-10">
-                  <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">
-                    Select a deck
+                {/* Icon toolbar */}
+                <div className="flex items-center rounded-md border bg-muted/30 p-0.5">
+                  <Button size="icon" variant="ghost" className="h-7 w-7" title="Change printing"
+                    onClick={() => setShowPrints(true)}>
+                    <ImageIcon className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className={cn("h-7 w-7", deckEditorActions.isCommander && "text-commander")}
+                    title={deckEditorActions.isCommander ? "Remove as commander" : "Set as commander"}
+                    onClick={() => { deckEditorActions.onSetCommander(card.name); toast.success(deckEditorActions.isCommander ? `Removed ${card.name} as commander` : `Set ${card.name} as commander`); }}
+                  >
+                    <Crown className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+
+                {/* Tag dropdown */}
+                {deckEditorActions.onTagCard && (
+                  <div className="relative ml-1">
+                    <Button size="sm" variant="outline" className="gap-1 h-8" onClick={() => setShowDeckPicker((v) => !v)}>
+                      <Tag className="h-3.5 w-3.5" />
+                      <ChevronDown className="h-3 w-3 opacity-60" />
+                    </Button>
+                    {showDeckPicker && (
+                      <div className="absolute bottom-full left-0 mb-1 w-48 bg-popover border rounded-md shadow-lg py-1 z-10">
+                        {(deckEditorActions.customTags ?? []).map((tag) => (
+                          <button
+                            key={tag}
+                            type="button"
+                            className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2"
+                            onClick={() => {
+                              deckEditorActions.onTagCard!(card.name, tag);
+                              setShowDeckPicker(false);
+                              toast.success(`Tagged "${card.name}" with "${tag}"`);
+                            }}
+                          >
+                            <Tag className="h-3 w-3 text-primary/60" />
+                            <span className="flex-1 truncate">{tag}</span>
+                          </button>
+                        ))}
+                        {(deckEditorActions.customTags ?? []).length > 0 && <div className="border-t my-1" />}
+                        <div className="px-2 py-1 flex items-center gap-1">
+                          <Input
+                            className="h-7 text-xs flex-1"
+                            placeholder="New tag…"
+                            value={newTagInput}
+                            onChange={(e) => setNewTagInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") handleAddNewTag();
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-7 w-7 shrink-0"
+                            disabled={!newTagInput.trim()}
+                            onClick={handleAddNewTag}
+                          >
+                            <Check className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                  {currentDeck.name && (
-                    <button
-                      type="button"
-                      className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2"
-                      onClick={handleAddToCurrentDeck}
-                    >
-                      <span className="flex-1 truncate">{currentDeck.name}</span>
-                      <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
-                        editing
-                      </Badge>
-                    </button>
-                  )}
-                  {savedDecks.length > 0 && <div className="border-t my-1" />}
-                  <ScrollArea className={savedDecks.length > 6 ? "max-h-48" : ""}>
-                    {savedDecks.map((s) => (
+                )}
+              </div>
+            ) : (
+              <div className="relative">
+                <Button size="sm" className="gap-1" onClick={() => setShowDeckPicker((v) => !v)}>
+                  <Plus className="h-3.5 w-3.5" />
+                  Add to Deck
+                  <ChevronDown className="h-3 w-3 ml-1" />
+                </Button>
+
+                {showDeckPicker && (
+                  <div className="absolute bottom-full left-0 mb-1 w-64 bg-popover border rounded-md shadow-lg py-1 z-10">
+                    <div className="px-2 py-1 text-xs font-semibold text-muted-foreground">
+                      Select a deck
+                    </div>
+                    {currentDeck.name && (
                       <button
-                        key={s.id}
                         type="button"
                         className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2"
-                        onClick={() => handleAddToSavedDeck(s.id, s.deck.name)}
+                        onClick={handleAddToCurrentDeck}
                       >
-                        <span className="flex-1 truncate">{s.deck.name}</span>
-                        <span className="text-xs text-muted-foreground shrink-0">
-                          {s.deck.cards.length} cards
-                        </span>
+                        <span className="flex-1 truncate">{currentDeck.name}</span>
+                        <Badge variant="outline" className="text-[10px] px-1 py-0 shrink-0">
+                          editing
+                        </Badge>
                       </button>
-                    ))}
-                  </ScrollArea>
-                  {savedDecks.length === 0 && !currentDeck.name && (
-                    <div className="px-3 py-2 text-sm text-muted-foreground">No decks available</div>
-                  )}
-                </div>
-              )}
-            </div>
+                    )}
+                    {savedDecks.length > 0 && <div className="border-t my-1" />}
+                    <ScrollArea className={savedDecks.length > 6 ? "max-h-48" : ""}>
+                      {savedDecks.map((s) => (
+                        <button
+                          key={s.id}
+                          type="button"
+                          className="w-full text-left px-3 py-1.5 text-sm hover:bg-muted flex items-center gap-2"
+                          onClick={() => handleAddToSavedDeck(s.id, s.deck.name)}
+                        >
+                          <span className="flex-1 truncate">{s.deck.name}</span>
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            {s.deck.cards.length} cards
+                          </span>
+                        </button>
+                      ))}
+                    </ScrollArea>
+                    {savedDecks.length === 0 && !currentDeck.name && (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No decks available</div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <Button size="sm" variant="ghost" onClick={onClose}>Close</Button>
           </div>
         </Modal.Footer>

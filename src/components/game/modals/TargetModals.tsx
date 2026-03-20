@@ -7,7 +7,7 @@ import {
   AbilityPickerModal,
 } from "@/components/game/modals";
 import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
-import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/xmage";
+import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";

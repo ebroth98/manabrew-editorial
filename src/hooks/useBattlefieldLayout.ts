@@ -1,13 +1,6 @@
 import { useRef, useState, useLayoutEffect, useCallback } from "react";
 import { CARD_W, CARD_H, CARD_GAP as GAP } from "@/components/game/game.constants";
-
-interface Marquee {
-  startX: number;
-  startY: number;
-  currentX: number;
-  currentY: number;
-  additive: boolean;
-}
+import { useMarquee } from "./useMarqueeSelection";
 
 interface UseBattlefieldLayoutOptions {
   cardIds: string[];
@@ -30,18 +23,12 @@ export function useBattlefieldLayout({
   const [draggingCardIds, setDraggingCardIds] = useState<Set<string>>(new Set());
   const [justDraggedCardIds, setJustDraggedCardIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
-  const [marquee, setMarquee] = useState<Marquee | null>(null);
 
-  // Refs so event handlers always read the latest state without stale closures
   const positionsRef = useRef(positions);
   positionsRef.current = positions;
   const selectedCardIdsRef = useRef(selectedCardIds);
   selectedCardIdsRef.current = selectedCardIds;
-  const selectModeRef = useRef(selectMode);
-  selectModeRef.current = selectMode;
-  const marqueeRef = useRef<Marquee | null>(null);
 
-  // Mutable drag state — updated without triggering re-renders
   const dragRef = useRef<{
     cardIds: string[];
     startMouseX: number;
@@ -50,9 +37,30 @@ export function useBattlefieldLayout({
     moved: boolean;
   } | null>(null);
 
-  // Auto-position new cards in a left-to-right grid; remove departed cards.
-  // When landCardIds is provided, lands are placed in a dedicated bottom row and
-  // non-lands fill the rows above.
+  const handleMarqueeComplete = useCallback(
+    (rect: { left: number; top: number; width: number; height: number }, additive: boolean) => {
+      const hits = new Set<string>();
+      for (const [id, pos] of Object.entries(positionsRef.current)) {
+        if (
+          pos.x < rect.left + rect.width &&
+          pos.x + CARD_W > rect.left &&
+          pos.y < rect.top + rect.height &&
+          pos.y + CARD_H > rect.top
+        ) {
+          hits.add(id);
+        }
+      }
+      setSelectedCardIds(
+        additive ? new Set([...selectedCardIdsRef.current, ...hits]) : hits,
+      );
+    },
+    [],
+  );
+
+  const { marqueeRect, handleContainerMouseDown } = useMarquee({
+    onMarqueeComplete: handleMarqueeComplete,
+  });
+
   useLayoutEffect(() => {
     if (!containerRef.current) return;
     const containerW = containerRef.current.clientWidth;
@@ -120,7 +128,6 @@ export function useBattlefieldLayout({
     });
   }, [cardIds, bottomReserved, leftReserved, rightReserved, landCardIds]);
 
-  // Card mousedown: shift+click toggles selection; otherwise start drag
   const handleCardMouseDown = useCallback((e: React.MouseEvent, cardId: string) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -193,7 +200,6 @@ export function useBattlefieldLayout({
       if (draggedIds.length > 0) {
         const draggedSet = new Set(draggedIds);
         setJustDraggedCardIds(draggedSet);
-        // Keep this marker for the current click dispatch turn only.
         setTimeout(() => setJustDraggedCardIds((prev) => (prev === draggedSet ? new Set() : prev)), 0);
       }
     };
@@ -202,82 +208,13 @@ export function useBattlefieldLayout({
     document.addEventListener("mouseup", handleMouseUp);
   }, [leftReserved, rightReserved]);
 
-  // Container background mousedown: marquee in select mode, clear selection otherwise
-  const handleContainerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-
-    const el = containerRef.current;
-    if (!el) return;
-
-    if (selectModeRef.current) {
-      e.preventDefault();
-      const rect = el.getBoundingClientRect();
-      const startX = e.clientX - rect.left;
-      const startY = e.clientY - rect.top;
-      const additive = e.shiftKey;
-
-      const initial: Marquee = { startX, startY, currentX: startX, currentY: startY, additive };
-      marqueeRef.current = initial;
-      setMarquee(initial);
-
-      const handleMouseMove = (me: MouseEvent) => {
-        const currentX = Math.max(0, Math.min(el.clientWidth, me.clientX - rect.left));
-        const currentY = Math.max(0, Math.min(el.clientHeight, me.clientY - rect.top));
-        const updated = { ...marqueeRef.current!, currentX, currentY };
-        marqueeRef.current = updated;
-        setMarquee(updated);
-      };
-
-      const handleMouseUp = () => {
-        document.removeEventListener("mousemove", handleMouseMove);
-        document.removeEventListener("mouseup", handleMouseUp);
-
-        const m = marqueeRef.current;
-        marqueeRef.current = null;
-        setMarquee(null);
-
-        if (!m) return;
-        const selX = Math.min(m.startX, m.currentX);
-        const selY = Math.min(m.startY, m.currentY);
-        const selW = Math.abs(m.currentX - m.startX);
-        const selH = Math.abs(m.currentY - m.startY);
-
-        if (selW > 4 || selH > 4) {
-          const hits = new Set<string>();
-          for (const [id, pos] of Object.entries(positionsRef.current)) {
-            if (
-              pos.x < selX + selW &&
-              pos.x + CARD_W > selX &&
-              pos.y < selY + selH &&
-              pos.y + CARD_H > selY
-            ) {
-              hits.add(id);
-            }
-          }
-          setSelectedCardIds(
-            additive ? new Set([...selectedCardIdsRef.current, ...hits]) : hits,
-          );
-        } else if (!additive) {
-          setSelectedCardIds(new Set());
-        }
-      };
-
-      document.addEventListener("mousemove", handleMouseMove);
-      document.addEventListener("mouseup", handleMouseUp);
-    } else {
+  const wrappedHandleContainerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!selectMode) {
       setSelectedCardIds(new Set());
+      return;
     }
-  }, []);
-
-  // Marquee rectangle for rendering
-  const marqueeRect = marquee
-    ? {
-        left: Math.min(marquee.startX, marquee.currentX),
-        top: Math.min(marquee.startY, marquee.currentY),
-        width: Math.abs(marquee.currentX - marquee.startX),
-        height: Math.abs(marquee.currentY - marquee.startY),
-      }
-    : null;
+    handleContainerMouseDown(e);
+  }, [selectMode, handleContainerMouseDown]);
 
   return {
     containerRef,
@@ -289,6 +226,6 @@ export function useBattlefieldLayout({
     setSelectMode,
     marqueeRect,
     handleCardMouseDown,
-    handleContainerMouseDown,
+    handleContainerMouseDown: wrappedHandleContainerMouseDown,
   };
 }

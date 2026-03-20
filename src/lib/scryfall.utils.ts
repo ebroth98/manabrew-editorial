@@ -1,4 +1,4 @@
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 import type { ScryfallCard } from "@/types/scryfall";
 import { getScryfallImageUrl, getScryfallManaCost } from "@/api/scryfall";
 

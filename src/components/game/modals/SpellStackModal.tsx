@@ -3,7 +3,7 @@ import { CardPreview } from "@/components/game/CardPreview";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "./Modal";
-import type { StackObject } from "@/types/xmage";
+import type { StackObject } from "@/types/openmagic";
 import { cn } from "@/lib/utils";
 import { stackObjectToCardStub } from "../game.utils";
 import { useHoverPreview } from "@/hooks/useHoverPreview";

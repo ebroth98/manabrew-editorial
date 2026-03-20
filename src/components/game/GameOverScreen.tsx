@@ -1,4 +1,4 @@
-import type { Player } from "@/types/xmage";
+import type { Player } from "@/types/openmagic";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 

@@ -3,7 +3,7 @@ import { Modal } from "./Modal";
 import { cn } from "@/lib/utils";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
-import type { Card as XMageCard } from "@/types/xmage";
+import type { Card as XMageCard } from "@/types/openmagic";
 
 interface DamageOrderModalProps {
   /** Attacker card ID (to show which attacker this is for). */

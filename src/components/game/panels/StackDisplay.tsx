@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Card } from "@/components/game/Card";
 import { cn } from "@/lib/utils";
-import type { Card as XMageCard, StackObject } from "@/types/xmage";
+import type { Card as XMageCard, StackObject } from "@/types/openmagic";
 
 interface StackDisplayProps {
   stack: StackObject[];

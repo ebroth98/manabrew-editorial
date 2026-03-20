@@ -146,10 +146,10 @@ Always use `import type` for type-only imports:
 
 ```tsx
 // ✅ Good
-import type { Card as CardType } from "@/types/xmage";
+import type { Card as CardType } from "@/types/openmagic";
 
 // ❌ Bad
-import { Card as CardType } from "@/types/xmage";
+import { Card as CardType } from "@/types/openmagic";
 ```
 
 ### Props interfaces

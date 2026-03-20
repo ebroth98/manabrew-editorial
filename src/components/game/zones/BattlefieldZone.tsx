@@ -4,7 +4,7 @@ import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
 import type { BattlefieldZoneProps } from "../game.types";
 import { CARD_RING, BATTLEFIELD_CARD, ZONE_LABEL } from "../game.styles";
-import type { Card as XMageCard } from "@/types/xmage";
+import type { Card as XMageCard } from "@/types/openmagic";
 
 const ATTACH_OFFSET_Y = 16;
 

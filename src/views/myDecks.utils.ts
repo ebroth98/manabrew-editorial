@@ -1,4 +1,4 @@
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 export { type CardGroup, groupCards } from "@/components/editor/deckBuilder.utils";
 
 // ── Color Extraction ─────────────────────────────────────────────────────────

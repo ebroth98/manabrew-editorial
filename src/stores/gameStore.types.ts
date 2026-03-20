@@ -1,4 +1,4 @@
-import type { GameView, Card, ActivatableAbilityInfo } from '@/types/xmage';
+import type { GameView, Card, ActivatableAbilityInfo } from '@/types/openmagic';
 import type { GameLogEntry } from '@/types/gameLog';
 import type { GameSnapshotEntry } from '@/types/gameSnapshot';
 import type { PromptType } from '@/types/promptType';

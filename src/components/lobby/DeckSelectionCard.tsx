@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 
 interface DeckSelectionCardProps {

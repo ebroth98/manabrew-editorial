@@ -4,12 +4,10 @@
  * Inspired by Forge desktop's TargetingOverlay.java.
  * Draws curved quadratic-bezier arrows with filled arrowheads.
  *
- * Arrow types and colours:
- *   attack          — orange  (attacker → defending player/permanent)
- *   block           — red     (blocker  → attacker)
- *   hostile-target  — red     (spell/ability → hostile target)
- *   friendly-target — blue    (spell/ability → friendly target)
+ * Arrow types and colours are themable via game theme settings.
  */
+
+import { useGameThemeColors } from "./game.theme";
 
 /** Visual category that controls color and semantics. */
 export type ArrowType = "attack" | "block" | "hostile-target" | "friendly-target";
@@ -30,7 +28,7 @@ const BEND_FACTOR = 0.22;      // fraction of line length for bezier control-poi
 const TIP_SHORTEN = 10;        // px trimmed from arrowhead end (avoids overlapping target)
 const TAIL_SHORTEN = 6;        // px trimmed from tail end
 
-const ARROW_COLORS: Record<ArrowType, string> = {
+const DEFAULT_ARROW_COLORS: Record<ArrowType, string> = {
   attack: "rgba(255, 138, 0, 0.88)",
   block: "rgba(210, 40, 40, 0.88)",
   "hostile-target": "rgba(210, 40, 40, 0.88)",
@@ -110,9 +108,9 @@ function ArrowheadMarker({ id, color }: { id: string; color: string }) {
 }
 
 /** One curved arrow path. */
-function ArrowPath({ arrow }: { arrow: ArrowDef }) {
+function ArrowPath({ arrow, colors }: { arrow: ArrowDef; colors: Record<ArrowType, string> }) {
   const { fromX, fromY, toX, toY, type } = arrow;
-  const color = ARROW_COLORS[type];
+  const color = colors[type];
   const { ax1, ay1, ax2, ay2 } = shortenLine(fromX, fromY, toX, toY);
   const { cx, cy } = controlPoint(ax1, ay1, ax2, ay2);
   const d = `M ${ax1},${ay1} Q ${cx},${cy} ${ax2},${ay2}`;
@@ -137,6 +135,14 @@ function ArrowPath({ arrow }: { arrow: ArrowDef }) {
  * with `pointer-events: none` so it never blocks user interaction.
  */
 export function ArrowOverlay({ arrows }: { arrows: ArrowDef[] }) {
+  const themeColors = useGameThemeColors();
+  const arrowColors: Record<ArrowType, string> = {
+    attack: themeColors.arrow?.attack ?? DEFAULT_ARROW_COLORS.attack,
+    block: themeColors.arrow?.block ?? DEFAULT_ARROW_COLORS.block,
+    "hostile-target": themeColors.arrow?.hostileTarget ?? DEFAULT_ARROW_COLORS["hostile-target"],
+    "friendly-target": themeColors.arrow?.friendlyTarget ?? DEFAULT_ARROW_COLORS["friendly-target"],
+  };
+
   if (arrows.length === 0) return null;
 
   return (
@@ -147,11 +153,11 @@ export function ArrowOverlay({ arrows }: { arrows: ArrowDef[] }) {
       aria-hidden="true"
     >
       <defs>
-        {(Object.keys(ARROW_COLORS) as ArrowType[]).map((type) => (
+        {(Object.keys(arrowColors) as ArrowType[]).map((type) => (
           <ArrowheadMarker
             key={type}
             id={MARKER_IDS[type]}
-            color={ARROW_COLORS[type]}
+            color={arrowColors[type]}
           />
         ))}
         {/* Drop-shadow filter for readability against any background */}
@@ -162,7 +168,7 @@ export function ArrowOverlay({ arrows }: { arrows: ArrowDef[] }) {
 
       <g filter="url(#ao-shadow)">
         {arrows.map((arrow, i) => (
-          <ArrowPath key={i} arrow={arrow} />
+          <ArrowPath key={i} arrow={arrow} colors={arrowColors} />
         ))}
       </g>
     </svg>

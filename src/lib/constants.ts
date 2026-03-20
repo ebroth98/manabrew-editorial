@@ -12,9 +12,9 @@ export const ROUTES = {
 // ─── Storage Keys ────────────────────────────────────────────────────────────
 
 export const STORAGE_KEYS = {
-  DECK: "xmage-deck-storage",
-  PREFERRED_PRINTS: "xmage-preferred-prints",
-  PREFERENCES: "xmage-preferences",
+  DECK: "openmagic-deck-storage",
+  PREFERRED_PRINTS: "openmagic-preferred-prints",
+  PREFERENCES: "openmagic-preferences",
 } as const;
 
 // ─── Deck Defaults ───────────────────────────────────────────────────────────

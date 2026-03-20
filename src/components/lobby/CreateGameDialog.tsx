@@ -302,7 +302,7 @@ export function CreateGameDialog({
               <div>
               <SectionLabel>
                 Opponents
-                <span className="ml-1 text-[9px] font-mono text-orange-500 bg-orange-50 dark:bg-orange-950/30 px-1 rounded">
+                <span className="ml-1 text-[9px] font-mono text-warning bg-warning/10 px-1 rounded">
                   DEV
                 </span>
               </SectionLabel>
@@ -315,7 +315,7 @@ export function CreateGameDialog({
                     className={cn(
                       "flex-1 py-1 rounded border text-xs transition-colors",
                       playerCount === n
-                        ? "border-orange-400 bg-orange-50 dark:bg-orange-950/30 text-orange-700 dark:text-orange-400 font-semibold"
+                        ? "border-warning bg-warning/10 text-warning font-semibold"
                         : "border-border hover:bg-muted/60"
                     )}
                   >

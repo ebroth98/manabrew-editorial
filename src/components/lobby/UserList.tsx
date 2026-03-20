@@ -1,7 +1,5 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { usePreferencesStore } from "@/stores/usePreferencesStore";
-import { useServerStore } from "@/stores/useServerStore";
 import type { PlayerInfo } from "@/types/server";
 import { cn } from "@/lib/utils";
 
@@ -10,56 +8,40 @@ interface UserListProps {
 }
 
 export function UserList({ players }: UserListProps) {
-  const { connected, connecting, error } = useServerStore();
-  const { serverHost, serverPort } = usePreferencesStore();
-  const status = connecting
-    ? "CONNECTING"
-    : connected
-      ? "CONNECTED"
-      : error
-        ? "ERROR"
-        : "DISCONNECTED";
-
   return (
-    <div className="flex flex-col h-full border-l">
-      <div className="p-4 border-b">
-        <h3 className="font-semibold text-sm">Online Players ({players.length})</h3>
-        <div className="mt-2 flex items-center justify-between gap-2 text-xs">
-          <span
-            className={cn(
-              "inline-flex items-center gap-1",
-              status === "CONNECTED" && "text-green-500",
-              status === "ERROR" && "text-red-500",
-              status === "DISCONNECTED" && "text-muted-foreground",
-            )}
-          >
-            <span className="w-1.5 h-1.5 rounded-full bg-current inline-block" />
-            {status}
-          </span>
-          <span className="text-muted-foreground">{serverHost}:{serverPort}</span>
-        </div>
+    <div className="flex flex-col h-full">
+      <div className="px-4 py-3 border-b flex items-center justify-between">
+        <h3 className="font-semibold text-sm">Players</h3>
+        <span className="text-xs text-muted-foreground bg-muted px-1.5 py-0.5 rounded-full">
+          {players.length}
+        </span>
       </div>
       <ScrollArea className="flex-1">
-        <div className="p-4 space-y-3">
+        <div className="p-3 space-y-1">
           {players.length === 0 ? (
-            <p className="text-xs text-muted-foreground italic">No players online.</p>
+            <p className="text-xs text-muted-foreground italic text-center py-6">No players online</p>
           ) : (
             players.map((player) => (
-              <div key={player.player_id} className="flex items-center space-x-3">
-                <div className="relative">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback>{player.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+              <div
+                key={player.player_id}
+                className="flex items-center gap-2.5 px-2 py-1.5 rounded-md hover:bg-muted/40 transition-colors"
+              >
+                <div className="relative shrink-0">
+                  <Avatar className="h-7 w-7">
+                    <AvatarFallback className="text-[10px]">
+                      {player.username.slice(0, 2).toUpperCase()}
+                    </AvatarFallback>
                   </Avatar>
                   <span
                     className={cn(
-                      "absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full border-2 border-background",
-                      player.connected ? "bg-green-500" : "bg-gray-400"
+                      "absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full border-2 border-background",
+                      player.connected ? "bg-primary" : "bg-muted-foreground/40"
                     )}
                   />
                 </div>
-                <div className="flex flex-col gap-0.5 min-w-0">
-                  <span className="text-sm font-medium leading-none truncate">{player.username}</span>
-                  <span className="text-xs text-muted-foreground">
+                <div className="flex-1 min-w-0">
+                  <span className="text-xs font-medium leading-none truncate block">{player.username}</span>
+                  <span className="text-[10px] text-muted-foreground">
                     {player.room_id ? 'In room' : 'In lobby'}
                   </span>
                 </div>

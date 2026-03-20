@@ -2,7 +2,7 @@ import React, { useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
-import type { Card as XMageCard } from "@/types/xmage";
+import type { Card as XMageCard } from "@/types/openmagic";
 import { Move, MousePointer2 } from "lucide-react";
 import { CARD_W, CARD_H, CARD_GAP as GAP } from "../game.constants";
 import { CARD_RING, BATTLEFIELD_CARD } from "../game.styles";

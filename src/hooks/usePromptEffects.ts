@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import type { AgentPrompt } from "@/stores/useGameStore";
 import type { LibraryPeekMode } from "@/components/game/modals";
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 import { PromptType } from "@/types/promptType";
 
 interface UsePromptEffectsOptions {

@@ -1,4 +1,4 @@
-import type { Card as XMageCard, Player } from "@/types/xmage";
+import type { Card as XMageCard, Player } from "@/types/openmagic";
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType } from "@/types/promptType";

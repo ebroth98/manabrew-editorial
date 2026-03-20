@@ -5,7 +5,7 @@ import { Card } from "@/components/game/Card";
 import { CardPreview } from "@/components/game/CardPreview";
 import { useHoverPreview } from "@/hooks/useHoverPreview";
 import { MODAL_FOOTER_BETWEEN, MULLIGAN_CARD_SIZE } from "../game.styles";
-import type { Card as CardType } from "@/types/xmage";
+import type { Card as CardType } from "@/types/openmagic";
 
 interface MulliganModalProps {
   handCards: CardType[];

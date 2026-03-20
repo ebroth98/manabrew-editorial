@@ -28,6 +28,12 @@
   --color-card: hsl(var(--card));
   --color-card-foreground: hsl(var(--card-foreground));
 
+  --color-selection: hsl(var(--selection));
+  --color-selection-foreground: hsl(var(--selection-foreground));
+  --color-commander: hsl(var(--commander));
+  --color-warning: hsl(var(--warning));
+  --color-overlay: hsl(var(--overlay));
+
 
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
@@ -213,6 +219,12 @@
     --input: 214 18% 88%;               /* #D6DAE4 */
     --ring: 220 18% 40%;
     --radius: 0.5rem;
+
+    --selection: 270 60% 65%;             /* purple — lasso/multi-select */
+    --selection-foreground: 0 0% 100%;
+    --commander: 45 93% 47%;              /* gold — commander badge */
+    --warning: 38 92% 50%;                /* amber — unknown/warning */
+    --overlay: 0 0% 0%;                   /* black — card overlays */
   }
 
   /* ── Dark theme — deep charcoal + slate accents, no navy ────── */
@@ -236,6 +248,12 @@
     --border: 220 7% 20%;               /* #2E3034 — subtle dividers */
     --input: 220 7% 18%;                /* #2A2C30 */
     --ring: 214 12% 68%;                /* #A3A8B4 */
+
+    --selection: 270 60% 65%;             /* purple — lasso/multi-select */
+    --selection-foreground: 214 12% 92%;
+    --commander: 45 80% 55%;              /* gold — commander badge */
+    --warning: 38 80% 50%;                /* amber — unknown/warning */
+    --overlay: 0 0% 0%;                   /* black — card overlays */
   }
 }
 

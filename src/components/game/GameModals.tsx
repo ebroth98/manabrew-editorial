@@ -2,7 +2,7 @@ import { PromptModals } from "@/components/game/modals/PromptModals";
 import { CostModals } from "@/components/game/modals/CostModals";
 import { TargetModals } from "@/components/game/modals/TargetModals";
 import type { LibraryPeekMode } from "@/components/game/modals";
-import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/xmage";
+import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
 
 interface GameModalsProps {

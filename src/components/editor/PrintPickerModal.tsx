@@ -73,7 +73,7 @@ export function PrintPickerModal({ cardName, onClose, onSelect }: PrintPickerMod
           </div>
         )}
         {error && (
-          <div className="flex items-center justify-center py-12 text-red-500">
+          <div className="flex items-center justify-center py-12 text-destructive">
             {error}
           </div>
         )}

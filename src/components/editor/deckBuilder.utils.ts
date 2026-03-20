@@ -1,4 +1,4 @@
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 export { scryfallCardToPartial } from "@/lib/scryfall.utils";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -10,6 +10,15 @@ export interface CardGroup {
 
 export type ViewMode = "list" | "visual" | "stack";
 
+export type GroupByMode = "type" | "cmc" | "color" | "custom";
+
+export const GROUP_BY_OPTIONS: { value: GroupByMode; label: string }[] = [
+  { value: "type", label: "Type" },
+  { value: "cmc", label: "Mana Value" },
+  { value: "color", label: "Color" },
+  { value: "custom", label: "Custom Tags" },
+];
+
 export interface SectionDefinition {
   id: string;
   label: string;
@@ -18,34 +27,34 @@ export interface SectionDefinition {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-export const MAIN_SECTIONS: SectionDefinition[] = [
-  { id: "creatures",     label: "Creatures",      filter: (t: string[]) => t.includes("Creature") },
-  { id: "planeswalkers", label: "Planeswalkers",   filter: (t: string[]) => t.includes("Planeswalker") && !t.includes("Creature") },
-  { id: "instants",      label: "Instants",        filter: (t: string[]) => t.includes("Instant") },
-  { id: "sorceries",     label: "Sorceries",       filter: (t: string[]) => t.includes("Sorcery") },
-  { id: "enchantments",  label: "Enchantments",    filter: (t: string[]) => t.includes("Enchantment") && !t.includes("Creature") },
-  { id: "artifacts",     label: "Artifacts",       filter: (t: string[]) => t.includes("Artifact") && !t.includes("Creature") },
-  { id: "lands",         label: "Lands",           filter: (t: string[]) => t.includes("Land") },
-];
+const TYPE_SECTIONS: Record<string, SectionDefinition> = {
+  creatures:     { id: "creatures",     label: "Creatures",      filter: (t) => t.includes("Creature") },
+  planeswalkers: { id: "planeswalkers", label: "Planeswalkers",  filter: (t) => t.includes("Planeswalker") && !t.includes("Creature") },
+  instants:      { id: "instants",      label: "Instants",       filter: (t) => t.includes("Instant") },
+  sorceries:     { id: "sorceries",     label: "Sorceries",      filter: (t) => t.includes("Sorcery") },
+  enchantments:  { id: "enchantments",  label: "Enchantments",   filter: (t) => t.includes("Enchantment") && !t.includes("Creature") },
+  artifacts:     { id: "artifacts",     label: "Artifacts",      filter: (t) => t.includes("Artifact") && !t.includes("Creature") },
+  lands:         { id: "lands",         label: "Lands",          filter: (t) => t.includes("Land") },
+};
 
-export const STACK_TYPE_COLS: SectionDefinition[] = [
-  { id: "creatures",     label: "Creatures",     filter: (t: string[]) => t.includes("Creature") },
-  { id: "instants",      label: "Instants",      filter: (t: string[]) => t.includes("Instant") },
-  { id: "sorceries",     label: "Sorceries",     filter: (t: string[]) => t.includes("Sorcery") },
-  { id: "enchantments",  label: "Enchantments",  filter: (t: string[]) => t.includes("Enchantment") && !t.includes("Creature") },
-  { id: "artifacts",     label: "Artifacts",     filter: (t: string[]) => t.includes("Artifact") && !t.includes("Creature") },
-  { id: "planeswalkers", label: "Planeswalkers", filter: (t: string[]) => t.includes("Planeswalker") && !t.includes("Creature") },
-  { id: "lands",         label: "Lands",         filter: (t: string[]) => t.includes("Land") },
-];
+const pick = (...keys: string[]) => keys.map((k) => TYPE_SECTIONS[k]);
+
+export const MAIN_SECTIONS: SectionDefinition[] = pick(
+  "creatures", "planeswalkers", "instants", "sorceries", "enchantments", "artifacts", "lands",
+);
+
+export const STACK_TYPE_COLS: SectionDefinition[] = pick(
+  "creatures", "instants", "sorceries", "enchantments", "artifacts", "planeswalkers", "lands",
+);
 
 export const CARD_WIDTH_MAP: Record<number, number> = { 1: 75, 2: 95, 3: 115, 4: 140, 5: 170 };
 
 export const GRID_COLS: Record<number, string> = {
-  1: "grid-cols-5",
-  2: "grid-cols-4",
-  3: "grid-cols-3",
-  4: "grid-cols-2",
-  5: "grid-cols-1",
+  1: "grid-cols-12",
+  2: "grid-cols-10",
+  3: "grid-cols-8",
+  4: "grid-cols-6",
+  5: "grid-cols-5",
 };
 
 // ─── Pure Functions ───────────────────────────────────────────────────────────
@@ -125,6 +134,131 @@ export function computeStackColumns(
   const otherGroups = allGroups.filter((g) => !usedNames.has(g.card.name));
   if (otherGroups.length > 0) cols.push({ id: "other", label: "Other", filter: () => false, groups: otherGroups });
   return cols.filter((c) => c.groups.length > 0);
+}
+
+// ─── Group-By Functions ──────────────────────────────────────────────────────
+
+const CMC_SECTIONS: SectionDefinition[] = [
+  { id: "cmc-0", label: "0", filter: () => false },
+  { id: "cmc-1", label: "1", filter: () => false },
+  { id: "cmc-2", label: "2", filter: () => false },
+  { id: "cmc-3", label: "3", filter: () => false },
+  { id: "cmc-4", label: "4", filter: () => false },
+  { id: "cmc-5", label: "5", filter: () => false },
+  { id: "cmc-6", label: "6", filter: () => false },
+  { id: "cmc-7+", label: "7+", filter: () => false },
+];
+
+const COLOR_ORDER = ["W", "U", "B", "R", "G"] as const;
+const COLOR_NAMES: Record<string, string> = { W: "White", U: "Blue", B: "Black", R: "Red", G: "Green" };
+
+function getCardColorKey(card: Card): string {
+  const colors = (card.color ?? "").split("").filter((c) => COLOR_ORDER.includes(c as typeof COLOR_ORDER[number]));
+  if (colors.length === 0) return "Colorless";
+  if (colors.length > 1) return "Multicolor";
+  return COLOR_NAMES[colors[0]] ?? "Colorless";
+}
+
+function groupByCmc(cards: Card[]): Array<SectionDefinition & { groups: CardGroup[] }> {
+  const buckets = new Map<string, Card[]>();
+  for (const c of cards) {
+    const cmc = c.cmc ?? 0;
+    const key = cmc >= 7 ? "cmc-7+" : `cmc-${cmc}`;
+    const arr = buckets.get(key) ?? [];
+    arr.push(c);
+    buckets.set(key, arr);
+  }
+  return CMC_SECTIONS
+    .map((s) => ({ ...s, groups: groupCards(buckets.get(s.id) ?? []) }))
+    .filter((s) => s.groups.length > 0);
+}
+
+function groupByColor(cards: Card[]): Array<SectionDefinition & { groups: CardGroup[] }> {
+  const colorKeys = ["White", "Blue", "Black", "Red", "Green", "Multicolor", "Colorless"];
+  const buckets = new Map<string, Card[]>();
+  for (const c of cards) {
+    const key = getCardColorKey(c);
+    const arr = buckets.get(key) ?? [];
+    arr.push(c);
+    buckets.set(key, arr);
+  }
+  return colorKeys
+    .map((key) => ({
+      id: `color-${key.toLowerCase()}`,
+      label: key,
+      filter: (() => false) as SectionDefinition["filter"],
+      groups: groupCards(buckets.get(key) ?? []),
+    }))
+    .filter((s) => s.groups.length > 0);
+}
+
+function groupByCustomTags(
+  cards: Card[],
+  customTags: string[] | undefined,
+  cardTags: Record<string, string[]> | undefined,
+): Array<SectionDefinition & { groups: CardGroup[] }> {
+  const tags = customTags ?? [];
+  const taggedNames = new Set<string>();
+  const result = tags.map((tag) => {
+    const groups = getTaggedGroups(tag, cards, cardTags);
+    for (const g of groups) taggedNames.add(g.card.name);
+    return {
+      id: `tag-${tag}`,
+      label: tag,
+      filter: (() => false) as SectionDefinition["filter"],
+      groups,
+    };
+  });
+  const untagged = groupCards(cards.filter((c) => !taggedNames.has(c.name.toLowerCase()) && !taggedNames.has(c.name)));
+  if (untagged.length > 0) {
+    result.push({ id: "untagged", label: "Untagged", filter: (() => false) as SectionDefinition["filter"], groups: untagged });
+  }
+  return result.filter((s) => s.groups.length > 0);
+}
+
+/**
+ * Compute sections based on group-by mode. Returns the same shape as computeSectionGroups.
+ */
+export function computeGroupedSections(
+  cards: Card[],
+  mode: GroupByMode,
+  customTags?: string[],
+  cardTags?: Record<string, string[]>,
+): { sections: Array<SectionDefinition & { groups: CardGroup[] }>; otherGroups: CardGroup[] } {
+  switch (mode) {
+    case "type": {
+      const sections = computeSectionGroups(cards, MAIN_SECTIONS);
+      const otherGroups = computeOtherGroups(cards, sections);
+      return { sections, otherGroups };
+    }
+    case "cmc":
+      return { sections: groupByCmc(cards), otherGroups: [] };
+    case "color":
+      return { sections: groupByColor(cards), otherGroups: [] };
+    case "custom":
+      return { sections: groupByCustomTags(cards, customTags, cardTags), otherGroups: [] };
+  }
+}
+
+/**
+ * Compute stack columns based on group-by mode.
+ */
+export function computeGroupedStackColumns(
+  cards: Card[],
+  mode: GroupByMode,
+  customTags?: string[],
+  cardTags?: Record<string, string[]>,
+): Array<SectionDefinition & { groups: CardGroup[] }> {
+  switch (mode) {
+    case "type":
+      return computeStackColumns(cards, STACK_TYPE_COLS);
+    case "cmc":
+      return groupByCmc(cards);
+    case "color":
+      return groupByColor(cards);
+    case "custom":
+      return groupByCustomTags(cards, customTags, cardTags);
+  }
 }
 
 /**

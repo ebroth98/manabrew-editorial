@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { StackObject } from "@/types/xmage";
+import type { StackObject } from "@/types/openmagic";
 import type { PromptActionType } from "./game.types";
 import { PromptType } from "@/types/promptType";
 

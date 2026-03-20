@@ -1,35 +1,48 @@
+import { useState, useCallback } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import {
   X, Minus, Plus, Download, Upload, Crown,
-  ChevronDown, ChevronRight, Tag,
+  Tag, Move, MousePointer2,
 } from "lucide-react";
-import { Image as ImageIcon } from "lucide-react";
-import { useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 import type { CardGroup, ViewMode, SectionDefinition } from "./deckBuilder.utils";
-import { CARD_WIDTH_MAP, groupCards, getTaggedGroups } from "./deckBuilder.utils";
+import { CARD_WIDTH_MAP, GRID_COLS, getTaggedGroups } from "./deckBuilder.utils";
+import { CARD_RING } from "@/components/game/game.styles";
 import { DROP_ZONE } from "@/lib/constants";
+import { useMarquee } from "@/hooks/useMarqueeSelection";
+import {
+  CardCountBadge, CardThumbnail, CardHoverOverlay, CollapsibleHeader, EmptyDropZone,
+  buildCardActions, handleCardClick,
+} from "./deckEditor.primitives";
 
 // ─── Draggable Stack Card ─────────────────────────────────────────────────────
 
 function DraggableStackCard({
-  group, dragId, cardWidth, cardHeight, peek, index,
-  onAddOne, onRemoveOne, onHover, onLeave,
+  group, dragId, cardWidth, cardHeight, index,
+  onAddOne, onRemoveOne, onHover, onLeave, onUntag,
+  isSelected, onSelect, onShowInfo,
+  topOffset, onCardHover, onCardLeave,
 }: {
   group: CardGroup;
   dragId: string;
   cardWidth: number;
   cardHeight: number;
-  peek: number;
   index: number;
   onAddOne: () => void;
   onRemoveOne: () => void;
   onHover: (card: Card, x: number, y: number) => void;
   onLeave: () => void;
+  onUntag?: (cardName: string) => void;
+  isSelected?: boolean;
+  onSelect?: (cardName: string, addToSelection: boolean) => void;
+  onShowInfo?: () => void;
+  topOffset: number;
+  onCardHover: (index: number) => void;
+  onCardLeave: () => void;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId,
@@ -41,40 +54,30 @@ function DraggableStackCard({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={cn("absolute left-0 group cursor-grab active:cursor-grabbing", isDragging && "opacity-30")}
-      style={{ top: index * peek, width: cardWidth, zIndex: index + 1 }}
-      onMouseEnter={(e) => onHover(group.card, e.clientX, e.clientY)}
+      className={cn(
+        "absolute left-0 group cursor-grab active:cursor-grabbing transition-[top] duration-200 ease-out",
+        isDragging && "opacity-30",
+        isSelected && cn(CARD_RING.selected, "z-50"),
+      )}
+      style={{ top: topOffset, width: cardWidth, zIndex: index + 1 }}
+      data-card-name={group.card.name}
+      onMouseEnter={(e) => { onCardHover(index); onHover(group.card, e.clientX, e.clientY); }}
       onMouseMove={(e) => onHover(group.card, e.clientX, e.clientY)}
-      onMouseLeave={onLeave}
+      onMouseLeave={() => { onCardLeave(); onLeave(); }}
+      onClick={(e) => handleCardClick(e, group.card.name, onSelect, onShowInfo)}
     >
-      {group.card.imageUrl ? (
-        <img
-          src={group.card.imageUrl}
-          alt={group.card.name}
-          className="w-full block rounded-[4%] shadow-sm border border-border/40"
-          draggable={false}
-        />
-      ) : (
-        <div
-          className="bg-muted border border-border rounded-[4%] p-1 flex flex-col"
-          style={{ width: cardWidth, height: cardHeight }}
-        >
-          <span className="text-[9px] text-muted-foreground leading-tight">{group.card.name}</span>
-        </div>
-      )}
-      {group.count > 1 && (
-        <div className="absolute top-1 left-1 bg-black/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white/30 shadow" style={{ zIndex: 10 }}>
-          {group.count}
-        </div>
-      )}
-      <div className="absolute inset-0 rounded-[4%] bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1 pointer-events-none group-hover:pointer-events-auto">
-        <Button size="sm" variant="secondary" className="h-6 w-4/5 text-xs" onClick={(e) => { e.stopPropagation(); onAddOne(); }}>
-          <Plus className="h-3 w-3 mr-1" /> Add
-        </Button>
-        <Button size="sm" variant="ghost" className="h-6 w-4/5 text-xs text-white/80 hover:text-white hover:bg-white/10" onClick={(e) => { e.stopPropagation(); onRemoveOne(); }}>
-          <Minus className="h-3 w-3 mr-1" /> Remove
-        </Button>
-      </div>
+      <CardThumbnail
+        imageUrl={group.card.imageUrl}
+        name={group.card.name}
+        className="block rounded-[4%] border-border/40"
+        fallbackClassName="rounded-[4%]"
+        fallbackStyle={{ width: cardWidth, height: cardHeight }}
+      />
+      <CardCountBadge count={group.count} className="border-white/30 shadow" />
+      <CardHoverOverlay
+        actions={buildCardActions(onAddOne, onRemoveOne, onUntag ? () => onUntag(group.card.name) : undefined)}
+        rounded="rounded-[4%]"
+      />
     </div>
   );
 }
@@ -90,23 +93,42 @@ interface StackColumnProps {
   onRemoveOne: (name: string) => void;
   onHover: (card: Card, x: number, y: number) => void;
   onLeave: () => void;
+  onUntag?: (cardName: string) => void;
+  selectedCards?: Set<string>;
+  onSelectCard?: (cardName: string, addToSelection: boolean) => void;
+  onShowInfo?: (cardName: string) => void;
 }
 
 function StackColumn({
   label, sectionId, groups, cardWidth,
-  onAddOne, onRemoveOne, onHover, onLeave,
+  onAddOne, onRemoveOne, onHover, onLeave, onUntag,
+  selectedCards, onSelectCard, onShowInfo,
 }: StackColumnProps) {
+  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const cardHeight = Math.round(cardWidth * 1.4);
-  const peek = Math.round(cardHeight * 0.28);
-  const totalHeight = groups.length > 0 ? peek * (groups.length - 1) + cardHeight : 0;
+  const peek = Math.round(cardHeight * 0.22);
   const count = groups.reduce((s, g) => s + g.count, 0);
+
+  // When a card is hovered, cards below it slide down to reveal the full card
+  const spreadAmount = cardHeight - peek;
+  const getTop = (i: number) => {
+    const base = i * peek;
+    if (hoveredIdx === null || i <= hoveredIdx) return base;
+    return base + spreadAmount;
+  };
+
+  const totalHeight = groups.length > 0
+    ? (hoveredIdx !== null
+      ? getTop(groups.length - 1) + cardHeight
+      : peek * (groups.length - 1) + cardHeight)
+    : 0;
 
   return (
     <div className="shrink-0 flex flex-col" style={{ width: cardWidth }}>
       <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 truncate">
         {label} <span className="font-normal opacity-60">({count})</span>
       </div>
-      <div className="relative" style={{ height: totalHeight }}>
+      <div className="relative transition-[height] duration-200 ease-out" style={{ height: totalHeight }}>
         {groups.map((g, i) => (
           <DraggableStackCard
             key={g.card.name}
@@ -114,12 +136,18 @@ function StackColumn({
             dragId={`deck-${sectionId}-${g.card.name}`}
             cardWidth={cardWidth}
             cardHeight={cardHeight}
-            peek={peek}
             index={i}
             onAddOne={() => onAddOne(g)}
             onRemoveOne={() => onRemoveOne(g.card.name)}
             onHover={onHover}
             onLeave={onLeave}
+            onUntag={onUntag ? () => onUntag(g.card.name) : undefined}
+            isSelected={selectedCards?.has(g.card.name.toLowerCase())}
+            onSelect={onSelectCard}
+            onShowInfo={onShowInfo ? () => onShowInfo(g.card.name) : undefined}
+            topOffset={getTop(i)}
+            onCardHover={setHoveredIdx}
+            onCardLeave={() => setHoveredIdx(null)}
           />
         ))}
       </div>
@@ -137,11 +165,16 @@ interface CardVisualProps {
   onPickPrint: () => void;
   onHover: (x: number, y: number) => void;
   onLeave: () => void;
+  isSelected?: boolean;
+  onSelect?: (cardName: string, addToSelection: boolean) => void;
+  onShowInfo?: () => void;
+  onUntag?: () => void;
 }
 
 function CardVisual({
   group, dragId,
-  onAddOne, onRemoveOne, onPickPrint, onHover, onLeave,
+  onAddOne, onRemoveOne, onHover, onLeave,
+  isSelected, onSelect, onShowInfo, onUntag,
 }: CardVisualProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId,
@@ -153,39 +186,20 @@ function CardVisual({
       ref={setNodeRef}
       {...listeners}
       {...attributes}
-      className={cn("relative group cursor-grab active:cursor-grabbing select-none", isDragging && "opacity-30")}
+      className={cn(
+        "relative group cursor-grab active:cursor-grabbing select-none transition-[box-shadow]",
+        isDragging && "opacity-30",
+        isSelected && cn(CARD_RING.selected, "rounded-lg"),
+      )}
+      data-card-name={group.card.name}
       onMouseEnter={(e) => onHover(e.clientX, e.clientY)}
       onMouseMove={(e) => onHover(e.clientX, e.clientY)}
       onMouseLeave={onLeave}
+      onClick={(e) => handleCardClick(e, group.card.name, onSelect, onShowInfo)}
     >
-      {group.card.imageUrl ? (
-        <img
-          src={group.card.imageUrl}
-          alt={group.card.name}
-          className="w-full rounded-lg border border-border/50 shadow-sm"
-          draggable={false}
-        />
-      ) : (
-        <div className="w-full aspect-[2.5/3.5] rounded-lg border border-border bg-muted flex items-center justify-center p-2">
-          <span className="text-xs text-center text-muted-foreground font-medium leading-tight">{group.card.name}</span>
-        </div>
-      )}
-      {group.count > 1 && (
-        <div className="absolute top-1 left-1 bg-black/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border border-white/20">
-          {group.count}
-        </div>
-      )}
-      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-1 pointer-events-none group-hover:pointer-events-auto">
-        <Button size="sm" variant="secondary" className="h-6 w-4/5 text-xs" onClick={(e) => { e.stopPropagation(); onAddOne(); }}>
-          <Plus className="h-3 w-3 mr-1" /> Add
-        </Button>
-        <Button size="sm" variant="ghost" className="h-6 w-4/5 text-xs text-white/80 hover:text-white hover:bg-white/10" onClick={(e) => { e.stopPropagation(); onRemoveOne(); }}>
-          <Minus className="h-3 w-3 mr-1" /> Remove
-        </Button>
-        <Button size="sm" variant="ghost" className="h-6 w-4/5 text-xs text-white/80 hover:text-white hover:bg-white/10" onClick={(e) => { e.stopPropagation(); onPickPrint(); }}>
-          <ImageIcon className="h-3 w-3 mr-1" /> Print
-        </Button>
-      </div>
+      <CardThumbnail imageUrl={group.card.imageUrl} name={group.card.name} />
+      <CardCountBadge count={group.count} />
+      <CardHoverOverlay actions={buildCardActions(onAddOne, onRemoveOne, onUntag)} />
     </div>
   );
 }
@@ -205,12 +219,16 @@ interface CardRowProps {
   onPickPrint: () => void;
   onHover: (x: number, y: number) => void;
   onLeave: () => void;
+  isSelected?: boolean;
+  onSelect?: (cardName: string, addToSelection: boolean) => void;
+  onShowInfo?: () => void;
 }
 
 function CardRow({
   group, dragId, isCommander,
-  onAddOne, onRemoveOne, onRemoveAll, onSetCommander, onRemoveCommander, onMoveToSide, onPickPrint,
+  onAddOne, onRemoveOne, onRemoveAll, onSetCommander, onRemoveCommander, onMoveToSide,
   onHover, onLeave,
+  isSelected, onSelect, onShowInfo,
 }: CardRowProps) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: dragId,
@@ -223,13 +241,26 @@ function CardRow({
       {...listeners}
       {...attributes}
       className={cn(
-        "flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5 cursor-grab active:cursor-grabbing select-none",
-        isDragging && "opacity-30"
+        "flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5 cursor-grab active:cursor-grabbing select-none transition-colors",
+        isDragging && "opacity-30",
+        isSelected && "bg-selection/20"
       )}
+      data-card-name={group.card.name}
       onMouseEnter={(e) => onHover(e.clientX, e.clientY)}
       onMouseMove={(e) => onHover(e.clientX, e.clientY)}
       onMouseLeave={onLeave}
+      onClick={(e) => {
+        e.stopPropagation();
+        if (e.shiftKey && onSelect) {
+          onSelect(group.card.name, true);
+        } else if (onShowInfo) {
+          onShowInfo();
+        }
+      }}
     >
+      <div className={cn("w-4 h-4 rounded border flex items-center justify-center shrink-0 transition-colors", isSelected ? "bg-selection border-selection" : "border-muted-foreground/40")}>
+        {isSelected && <span className="text-[8px] text-white font-bold">✓</span>}
+      </div>
       <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">{group.count}</span>
       <span className="text-sm flex-1 truncate" title={group.card.name}>{group.card.name}</span>
       {group.card.manaCost && (
@@ -243,7 +274,7 @@ function CardRow({
       <div className="flex gap-0.5 shrink-0 pointer-events-none group-hover:pointer-events-auto">
         <Button
           size="icon" variant="ghost"
-          className={isCommander ? "h-5 w-5 text-yellow-500" : "h-5 w-5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity"}
+          className={isCommander ? "h-5 w-5 text-commander" : "h-5 w-5 text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-opacity"}
           title={isCommander ? "Remove commander" : "Set as commander"}
           onClick={(e) => { e.stopPropagation(); isCommander ? onRemoveCommander() : onSetCommander(); }}
         >
@@ -252,9 +283,6 @@ function CardRow({
         <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
           <Button size="icon" variant="ghost" className="h-5 w-5" title="Add one" onClick={(e) => { e.stopPropagation(); onAddOne(); }}>
             <Plus className="h-3 w-3" />
-          </Button>
-          <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground" title="Change Print" onClick={(e) => { e.stopPropagation(); onPickPrint(); }}>
-            <ImageIcon className="h-3 w-3" />
           </Button>
           <Button size="icon" variant="ghost" className="h-5 w-5" title="Remove one" onClick={(e) => { e.stopPropagation(); onRemoveOne(); }}>
             <Minus className="h-3 w-3" />
@@ -271,93 +299,11 @@ function CardRow({
   );
 }
 
-// ─── Collapsible Section ──────────────────────────────────────────────────────
+// ─── Unified Collapsible Card Section ─────────────────────────────────────────
 
-interface DeckSectionProps {
+interface CardSectionProps {
   label: string;
-  groups: CardGroup[];
-  commanderName?: string;
-  viewMode: ViewMode;
   sectionId: string;
-  gridCols: string;
-  onAddOne: (g: CardGroup) => void;
-  onRemoveOne: (name: string) => void;
-  onRemoveAll: (name: string) => void;
-  onSetCommander: (card: Card) => void;
-  onRemoveCommander: () => void;
-  onMoveToSide: (name: string) => void;
-  onPickPrint: (name: string) => void;
-  onHover: (card: Card, x: number, y: number) => void;
-  onLeave: () => void;
-}
-
-function DeckSection({
-  label, groups, commanderName, viewMode, sectionId, gridCols,
-  onAddOne, onRemoveOne, onRemoveAll, onSetCommander, onRemoveCommander, onMoveToSide, onPickPrint,
-  onHover, onLeave,
-}: DeckSectionProps) {
-  const [collapsed, setCollapsed] = useState(false);
-  if (groups.length === 0) return null;
-  const count = groups.reduce((s, g) => s + g.count, 0);
-
-  return (
-    <div className="mb-3">
-      <button
-        type="button"
-        className="flex items-center gap-1 w-full text-left mb-1.5 hover:text-foreground text-muted-foreground"
-        onClick={() => setCollapsed((v) => !v)}
-      >
-        {collapsed ? <ChevronRight className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
-        <span className="text-xs font-semibold uppercase tracking-wide">{label}</span>
-        <span className="text-xs text-muted-foreground/60 ml-1">({count})</span>
-      </button>
-
-      {!collapsed && (
-        viewMode === "list" ? (
-          <div className="space-y-0.5">
-            {groups.map((g) => (
-              <CardRow
-                key={g.card.name}
-                group={g}
-                dragId={`deck-${sectionId}-${g.card.name}`}
-                isCommander={commanderName === g.card.name}
-                onAddOne={() => onAddOne(g)}
-                onRemoveOne={() => onRemoveOne(g.card.name)}
-                onRemoveAll={() => onRemoveAll(g.card.name)}
-                onSetCommander={() => onSetCommander(g.card)}
-                onRemoveCommander={onRemoveCommander}
-                onMoveToSide={() => onMoveToSide(g.card.name)}
-                onPickPrint={() => onPickPrint(g.card.name)}
-                onHover={(x, y) => onHover(g.card, x, y)}
-                onLeave={onLeave}
-              />
-            ))}
-          </div>
-        ) : (
-          <div className={cn("grid gap-2", gridCols)}>
-            {groups.map((g) => (
-              <CardVisual
-                key={g.card.name}
-                group={g}
-                dragId={`deck-${sectionId}-${g.card.name}`}
-                onAddOne={() => onAddOne(g)}
-                onRemoveOne={() => onRemoveOne(g.card.name)}
-                onPickPrint={() => onPickPrint(g.card.name)}
-                onHover={(x, y) => onHover(g.card, x, y)}
-                onLeave={onLeave}
-              />
-            ))}
-          </div>
-        )
-      )}
-    </div>
-  );
-}
-
-// ─── Custom Tag Section (droppable) ──────────────────────────────────────────
-
-interface TagSectionProps {
-  tag: string;
   groups: CardGroup[];
   commanderName?: string;
   viewMode: ViewMode;
@@ -371,62 +317,72 @@ interface TagSectionProps {
   onPickPrint: (name: string) => void;
   onHover: (card: Card, x: number, y: number) => void;
   onLeave: () => void;
-  onUntagCard: (cardName: string) => void;
-  onRemoveTag: () => void;
+  selectedCards?: Set<string>;
+  onSelectCard?: (cardName: string, addToSelection: boolean) => void;
+  onShowInfo?: (cardName: string) => void;
+  // Tag-specific props (optional)
+  tag?: string;
+  onUntagCard?: (cardName: string) => void;
+  onRemoveTag?: () => void;
 }
 
-function TagSection({
-  tag, groups, commanderName, viewMode, gridCols,
+function CardSection({
+  label, sectionId, groups, commanderName, viewMode, gridCols,
   onAddOne, onRemoveOne, onRemoveAll, onSetCommander, onRemoveCommander,
-  onMoveToSide, onPickPrint, onHover, onLeave, onUntagCard, onRemoveTag,
-}: TagSectionProps) {
+  onMoveToSide, onPickPrint, onHover, onLeave,
+  selectedCards, onSelectCard, onShowInfo,
+  tag, onUntagCard, onRemoveTag,
+}: CardSectionProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const { setNodeRef, isOver } = useDroppable({ id: `${DROP_ZONE.TAG_PREFIX}${tag}` });
+  const isTagSection = !!tag;
+  const { setNodeRef, isOver } = useDroppable({
+    id: isTagSection ? `${DROP_ZONE.TAG_PREFIX}${tag}` : `section-${sectionId}`,
+    disabled: !isTagSection,
+  });
+
+  if (!isTagSection && groups.length === 0) return null;
   const count = groups.reduce((s, g) => s + g.count, 0);
+  const dragPrefix = isTagSection ? `deck-tag-${tag}` : `deck-${sectionId}`;
+  const effectiveRemoveOne = isTagSection && onUntagCard ? onUntagCard : onRemoveOne;
+
+  const headerExtra = isTagSection && onRemoveTag ? (
+    <Button
+      size="icon" variant="ghost"
+      className="h-5 w-5 text-destructive opacity-0 hover:opacity-100 transition-opacity shrink-0"
+      title={`Remove "${tag}" tag`}
+      onClick={onRemoveTag}
+    >
+      <X className="h-3 w-3" />
+    </Button>
+  ) : undefined;
 
   return (
     <div
-      ref={setNodeRef}
-      className={cn("mb-3 rounded-lg transition-colors p-1 -mx-1", isOver && "bg-primary/10")}
+      ref={isTagSection ? setNodeRef : undefined}
+      className={cn("mb-3", isTagSection && "rounded-lg transition-colors p-1 -mx-1", isOver && "bg-primary/10")}
     >
-      <div className="flex items-center gap-1 mb-1.5">
-        <button
-          type="button"
-          className="flex items-center gap-1 flex-1 text-left hover:text-foreground text-muted-foreground"
-          onClick={() => setCollapsed((v) => !v)}
-        >
-          {collapsed ? <ChevronRight className="h-3 w-3 shrink-0" /> : <ChevronDown className="h-3 w-3 shrink-0" />}
-          <Tag className="h-3 w-3 shrink-0 text-primary/60" />
-          <span className="text-xs font-semibold uppercase tracking-wide">{tag}</span>
-          <span className="text-xs text-muted-foreground/60 ml-1">({count})</span>
-        </button>
-        <Button
-          size="icon"
-          variant="ghost"
-          className="h-5 w-5 text-destructive opacity-0 hover:opacity-100 transition-opacity shrink-0"
-          title={`Remove "${tag}" tag`}
-          onClick={onRemoveTag}
-        >
-          <X className="h-3 w-3" />
-        </Button>
-      </div>
+      <CollapsibleHeader
+        label={label}
+        count={count}
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((v) => !v)}
+        extraContent={headerExtra}
+      />
 
       {!collapsed && (
         groups.length === 0 ? (
-          <div className="border border-dashed border-border/40 rounded py-3 text-center">
-            <p className="text-[10px] text-muted-foreground/40">Drag cards here</p>
-          </div>
+          <EmptyDropZone message="Drag cards here" />
         ) : viewMode === "list" ? (
           <div className="space-y-0.5">
             {groups.map((g) => (
-              <div key={g.card.name} className="flex items-center gap-1">
+              <div key={g.card.name} className={cn("flex items-center gap-1", isTagSection && "group/tag")}>
                 <div className="flex-1 min-w-0">
                   <CardRow
                     group={g}
-                    dragId={`deck-tag-${tag}-${g.card.name}`}
+                    dragId={`${dragPrefix}-${g.card.name}`}
                     isCommander={commanderName === g.card.name}
                     onAddOne={() => onAddOne(g)}
-                    onRemoveOne={() => onRemoveOne(g.card.name)}
+                    onRemoveOne={() => effectiveRemoveOne(g.card.name)}
                     onRemoveAll={() => onRemoveAll(g.card.name)}
                     onSetCommander={() => onSetCommander(g.card)}
                     onRemoveCommander={onRemoveCommander}
@@ -434,17 +390,21 @@ function TagSection({
                     onPickPrint={() => onPickPrint(g.card.name)}
                     onHover={(x, y) => onHover(g.card, x, y)}
                     onLeave={onLeave}
+                    isSelected={selectedCards?.has(g.card.name.toLowerCase())}
+                    onSelect={onSelectCard}
+                    onShowInfo={onShowInfo ? () => onShowInfo(g.card.name) : undefined}
                   />
                 </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  className="h-5 w-5 text-muted-foreground/40 opacity-0 hover:opacity-100 transition-opacity shrink-0"
-                  title="Remove from this tag"
-                  onClick={() => onUntagCard(g.card.name)}
-                >
-                  <Tag className="h-3 w-3" />
-                </Button>
+                {isTagSection && onUntagCard && (
+                  <Button
+                    size="icon" variant="ghost"
+                    className="h-5 w-5 text-muted-foreground/40 opacity-0 group-hover/tag:opacity-100 transition-opacity shrink-0"
+                    title="Remove from this tag"
+                    onClick={() => onUntagCard(g.card.name)}
+                  >
+                    <Tag className="h-3 w-3" />
+                  </Button>
+                )}
               </div>
             ))}
           </div>
@@ -454,12 +414,16 @@ function TagSection({
               <CardVisual
                 key={g.card.name}
                 group={g}
-                dragId={`deck-tag-${tag}-${g.card.name}`}
+                dragId={`${dragPrefix}-${g.card.name}`}
                 onAddOne={() => onAddOne(g)}
-                onRemoveOne={() => onRemoveOne(g.card.name)}
+                onRemoveOne={() => effectiveRemoveOne(g.card.name)}
+                onUntag={isTagSection && onUntagCard ? () => onUntagCard(g.card.name) : undefined}
                 onPickPrint={() => onPickPrint(g.card.name)}
                 onHover={(x, y) => onHover(g.card, x, y)}
                 onLeave={onLeave}
+                isSelected={selectedCards?.has(g.card.name.toLowerCase())}
+                onSelect={onSelectCard}
+                onShowInfo={onShowInfo ? () => onShowInfo(g.card.name) : undefined}
               />
             ))}
           </div>
@@ -473,7 +437,8 @@ function TagSection({
 
 function DroppableStackTag({
   tag, groups, cardWidth,
-  onAddOne, onRemoveOne, onHover, onLeave, onRemoveTag,
+  onAddOne, onRemoveOne, onHover, onLeave, onRemoveTag, onUntagCard,
+  selectedCards, onSelectCard,
 }: {
   tag: string;
   groups: CardGroup[];
@@ -483,13 +448,17 @@ function DroppableStackTag({
   onHover: (card: Card, x: number, y: number) => void;
   onLeave: () => void;
   onRemoveTag: () => void;
+  onUntagCard?: (cardName: string, tag: string) => void;
+  selectedCards?: Set<string>;
+  onSelectCard?: (cardName: string, addToSelection: boolean) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${DROP_ZONE.TAG_PREFIX}${tag}` });
 
   return (
     <div
       ref={setNodeRef}
-      className={cn("shrink-0 rounded-lg transition-colors p-1 -m-1", isOver && "bg-primary/10")}
+      className={cn("shrink-0 rounded-lg transition-colors p-2 -m-1 min-h-[160px]", isOver && "bg-primary/10 border-2 border-dashed border-primary/40")}
+      style={{ minWidth: cardWidth + 8 }}
     >
       {groups.length > 0 ? (
         <StackColumn
@@ -501,9 +470,12 @@ function DroppableStackTag({
           onRemoveOne={onRemoveOne}
           onHover={onHover}
           onLeave={onLeave}
+          onUntag={onUntagCard ? (cardName) => onUntagCard(cardName, tag) : undefined}
+          selectedCards={selectedCards}
+          onSelectCard={onSelectCard}
         />
       ) : (
-        <div className="flex flex-col" style={{ width: cardWidth }}>
+        <div className="flex flex-col h-full" style={{ width: cardWidth }}>
           <div className="flex items-center gap-1 mb-2">
             <Tag className="h-3 w-3 text-primary/60 shrink-0" />
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate">{tag}</span>
@@ -516,7 +488,7 @@ function DroppableStackTag({
               <X className="h-2.5 w-2.5" />
             </Button>
           </div>
-          <div className="border-2 border-dashed border-border/40 rounded-lg py-6 flex items-center justify-center">
+          <div className="border-2 border-dashed border-border/40 rounded-lg flex-1 flex items-center justify-center">
             <p className="text-[10px] text-muted-foreground/40 text-center">Drop cards here</p>
           </div>
         </div>
@@ -555,6 +527,10 @@ export interface DeckListViewProps {
   allMainCards?: Card[];
   onUntagCard?: (cardName: string, tag: string) => void;
   onRemoveTag?: (tag: string) => void;
+  selectedCards?: Set<string>;
+  onSelectCard?: (cardName: string, addToSelection: boolean) => void;
+  onSelectAll?: (cardNames: string[]) => void;
+  onShowInfo?: (cardName: string) => void;
 }
 
 export function DeckListView({
@@ -566,9 +542,50 @@ export function DeckListView({
   onAddToSide, onRemoveFromSide, totalCards,
   customTags, cardTags, allMainCards,
   onUntagCard, onRemoveTag,
+  selectedCards, onSelectCard, onSelectAll,
+  onShowInfo,
 }: DeckListViewProps) {
-  const gridCols = { 1: "grid-cols-5", 2: "grid-cols-4", 3: "grid-cols-3", 4: "grid-cols-2", 5: "grid-cols-1" }[cardSize] ?? "grid-cols-3";
+  const [selectMode, setSelectMode] = useState(false);
+  const gridCols = GRID_COLS[cardSize] ?? "grid-cols-8";
   const cardWidth = CARD_WIDTH_MAP[cardSize] ?? 115;
+
+  const handleMarqueeComplete = useCallback((rect: { left: number; top: number; width: number; height: number }, additive: boolean) => {
+    if (!containerRef.current || !onSelectAll) return;
+    // Convert container-local marquee rect to viewport coordinates
+    const containerRect = containerRef.current.getBoundingClientRect();
+    const mLeft = rect.left + containerRect.left;
+    const mTop = rect.top + containerRect.top;
+    const mRight = mLeft + rect.width;
+    const mBottom = mTop + rect.height;
+
+    const cardEls = containerRef.current.querySelectorAll("[data-card-name]");
+    const selected: string[] = [];
+    cardEls.forEach((el) => {
+      const elRect = el.getBoundingClientRect();
+      if (elRect.right >= mLeft && elRect.left <= mRight && elRect.bottom >= mTop && elRect.top <= mBottom) {
+        const name = el.getAttribute("data-card-name");
+        if (name) selected.push(name);
+      }
+    });
+    if (selected.length > 0) {
+      onSelectAll(additive ? [...(selectedCards ?? []), ...selected] : selected);
+    }
+  }, [onSelectAll, selectedCards]);
+
+  const { containerRef, marqueeRect, handleContainerMouseDown } = useMarquee({
+    onMarqueeComplete: handleMarqueeComplete,
+  });
+
+  const wrappedHandleMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest("[data-card-name]")) return;
+    if (!selectMode) {
+      // In move mode, clicking background clears selection
+      if (onSelectAll) onSelectAll([]);
+      return;
+    }
+    handleContainerMouseDown(e);
+  }, [selectMode, handleContainerMouseDown, onSelectAll]);
 
   const sharedSectionProps = {
     commanderName: commander?.name,
@@ -583,11 +600,69 @@ export function DeckListView({
     onPickPrint,
     onHover,
     onLeave,
+    selectedCards,
+    onSelectCard,
+    onShowInfo,
   };
+
+  const selectModeControls = (
+    <div className="absolute top-1 right-1 z-40 flex items-center gap-1">
+      {(selectedCards?.size ?? 0) > 0 && (
+        <span className="text-[10px] px-1.5 py-0.5 rounded bg-card/90 border text-selection">
+          {selectedCards!.size} selected
+        </span>
+      )}
+      <div className="flex gap-0.5 rounded bg-card/90 border p-0.5 shadow-sm">
+        <button
+          title="Move mode"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => setSelectMode(false)}
+          className={cn(
+            "p-0.5 rounded transition-colors",
+            !selectMode
+              ? "text-foreground bg-muted"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <Move size={12} />
+        </button>
+        <button
+          title="Select mode — drag to rubber-band select cards"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => setSelectMode(true)}
+          className={cn(
+            "p-0.5 rounded transition-colors",
+            selectMode
+              ? "text-foreground bg-muted"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <MousePointer2 size={12} />
+        </button>
+      </div>
+    </div>
+  );
+
+  const marqueeOverlay = marqueeRect && (
+    <div
+      className="absolute pointer-events-none border-2 border-dashed border-selection bg-selection/10 z-[9999] rounded"
+      style={{
+        left: marqueeRect.left,
+        top: marqueeRect.top,
+        width: marqueeRect.width,
+        height: marqueeRect.height,
+      }}
+    />
+  );
 
   if (viewMode === "stack") {
     return (
-      <div className="h-full overflow-auto">
+      <div
+        ref={containerRef}
+        className={cn("h-full overflow-auto relative", selectMode && "cursor-crosshair")}
+        onMouseDown={wrappedHandleMouseDown}
+      >
+        {selectModeControls}
         <div className="flex gap-5 items-start p-3 min-w-max">
           {commander && (
             <StackColumn
@@ -613,6 +688,9 @@ export function DeckListView({
               onRemoveOne={onRemoveOne}
               onHover={onHover}
               onLeave={onLeave}
+              selectedCards={selectedCards}
+              onSelectCard={onSelectCard}
+              onShowInfo={onShowInfo}
             />
           ))}
 
@@ -629,13 +707,17 @@ export function DeckListView({
                 onHover={onHover}
                 onLeave={onLeave}
                 onRemoveTag={() => onRemoveTag?.(tag)}
+                onUntagCard={onUntagCard ?? undefined}
+                selectedCards={selectedCards}
+                onSelectCard={onSelectCard}
               />
             );
           })}
 
           <div
             ref={setSideDropRef}
-            className={cn("shrink-0 rounded-lg transition-colors p-1 -m-1", isOverSide && "bg-primary/10")}
+            className={cn("shrink-0 rounded-lg transition-colors p-2 -m-1 min-h-[160px]", isOverSide && "bg-primary/10 border-2 border-dashed border-primary/40")}
+            style={{ minWidth: cardWidth + 8 }}
           >
             {sideGroups.length > 0 ? (
               <StackColumn
@@ -649,27 +731,45 @@ export function DeckListView({
                 onLeave={onLeave}
               />
             ) : (
-              <div className="flex flex-col" style={{ width: cardWidth }}>
+              <div className="flex flex-col h-full" style={{ width: cardWidth }}>
                 <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Sideboard</div>
-                <div className="border-2 border-dashed border-border/40 rounded-lg py-6 flex items-center justify-center">
+                <div className="border-2 border-dashed border-border/40 rounded-lg flex-1 flex items-center justify-center">
                   <p className="text-[10px] text-muted-foreground/40 text-center">Drop cards here</p>
                 </div>
               </div>
             )}
           </div>
         </div>
+        {marqueeOverlay}
       </div>
     );
   }
 
   return (
-    <ScrollArea className="h-full px-3 py-2">
+    <div className="h-full relative">
+      {selectModeControls}
+      {marqueeRect && (
+        <div
+          className="absolute pointer-events-none border-2 border-dashed border-selection bg-selection/10 z-[9999] rounded"
+          style={{
+            left: marqueeRect.left,
+            top: marqueeRect.top,
+            width: marqueeRect.width,
+            height: marqueeRect.height,
+          }}
+        />
+      )}
+    <ScrollArea
+      ref={containerRef}
+      className={cn("h-full px-3 py-2 relative", selectMode && "cursor-crosshair")}
+      onMouseDown={wrappedHandleMouseDown}
+    >
       {commander && (() => {
         const cmdGroup: CardGroup = { card: commander, count: 1 };
         return (
           <div className="mb-3">
             <div className="flex items-center gap-1 mb-1.5">
-              <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
+              <Crown className="h-3 w-3 text-commander shrink-0" />
               <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Commander</span>
             </div>
             {viewMode === "list" ? (
@@ -679,7 +779,7 @@ export function DeckListView({
                 onMouseMove={(e) => onHover(commander, e.clientX, e.clientY)}
                 onMouseLeave={onLeave}
               >
-                <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
+                <Crown className="h-3 w-3 text-commander shrink-0" />
                 <span className="text-sm flex-1 truncate">{commander.name}</span>
                 {commander.manaCost && (
                   <ManaSymbols cost={commander.manaCost} size="sm" className="shrink-0" />
@@ -692,8 +792,8 @@ export function DeckListView({
             ) : (
               <div className={cn("grid gap-2", gridCols)}>
                 <div className="relative">
-                  <div className="absolute top-1 right-1 z-20 bg-black/70 rounded-full p-0.5 shadow">
-                    <Crown className="h-3.5 w-3.5 text-yellow-400" />
+                  <div className="absolute top-1 right-1 z-20 bg-overlay/70 rounded-full p-0.5 shadow">
+                    <Crown className="h-3.5 w-3.5 text-commander" />
                   </div>
                   <CardVisual
                     group={cmdGroup}
@@ -719,41 +819,97 @@ export function DeckListView({
         </div>
       )}
 
-      {mainSections.map((s) => (
-        <DeckSection
-          key={s.id}
-          label={s.label}
-          groups={s.groups}
-          sectionId={s.id}
-          {...sharedSectionProps}
-        />
-      ))}
-
-      {otherGroups.length > 0 && (
-        <DeckSection
-          label="Other"
-          groups={otherGroups}
-          sectionId="other"
-          {...sharedSectionProps}
-        />
-      )}
-
-      {customTags && customTags.length > 0 && allMainCards && (
+      {viewMode === "list" ? (
         <>
-          <div className="border-t border-border/30 my-3" />
-          {customTags.map((tag) => {
-            const tagGroups = getTaggedGroups(tag, allMainCards, cardTags);
-            return (
-              <TagSection
-                key={tag}
-                tag={tag}
-                groups={tagGroups}
-                {...sharedSectionProps}
-                onUntagCard={(cardName) => onUntagCard?.(cardName, tag)}
-                onRemoveTag={() => onRemoveTag?.(tag)}
-              />
-            );
-          })}
+          {/* Multi-column layout for list view */}
+          <div className="columns-3 gap-4">
+            {mainSections.map((s) => (
+              <div key={s.id} className="break-inside-avoid">
+                <CardSection
+                  label={s.label}
+                  groups={s.groups}
+                  sectionId={s.id}
+                  {...sharedSectionProps}
+                />
+              </div>
+            ))}
+            {otherGroups.length > 0 && (
+              <div className="break-inside-avoid">
+                <CardSection
+                  label="Other"
+                  groups={otherGroups}
+                  sectionId="other"
+                  {...sharedSectionProps}
+                />
+              </div>
+            )}
+          </div>
+
+          {customTags && customTags.length > 0 && allMainCards && (
+            <>
+              <div className="border-t border-border/30 my-3" />
+              <div className="columns-3 gap-4">
+                {customTags.map((tag) => {
+                  const tagGroups = getTaggedGroups(tag, allMainCards, cardTags);
+                  return (
+                    <div key={tag} className="break-inside-avoid">
+                      <CardSection
+                        label={tag}
+                        sectionId={`tag-${tag}`}
+                        tag={tag}
+                        groups={tagGroups}
+                        {...sharedSectionProps}
+                        onUntagCard={(cardName) => onUntagCard?.(cardName, tag)}
+                        onRemoveTag={() => onRemoveTag?.(tag)}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </>
+      ) : (
+        <>
+          {mainSections.map((s) => (
+            <CardSection
+              key={s.id}
+              label={s.label}
+              groups={s.groups}
+              sectionId={s.id}
+              {...sharedSectionProps}
+            />
+          ))}
+
+          {otherGroups.length > 0 && (
+            <CardSection
+              label="Other"
+              groups={otherGroups}
+              sectionId="other"
+              {...sharedSectionProps}
+            />
+          )}
+
+          {customTags && customTags.length > 0 && allMainCards && (
+            <>
+              <div className="border-t border-border/30 my-3" />
+              {customTags.map((tag) => {
+                const tagGroups = getTaggedGroups(tag, allMainCards, cardTags);
+                return (
+                  <CardSection
+                    key={tag}
+                    label={tag}
+                    sectionId={`tag-${tag}`}
+                    tag={tag}
+                    groups={tagGroups}
+                    {...sharedSectionProps}
+                    onUntagCard={(cardName) => onUntagCard?.(cardName, tag)}
+                    onRemoveTag={() => onRemoveTag?.(tag)}
+                  />
+                );
+              })}
+            </>
+          )}
         </>
       )}
 
@@ -817,11 +973,11 @@ export function DeckListView({
                     </div>
                   )}
                   {g.count > 1 && (
-                    <div className="absolute top-1 left-1 bg-black/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                    <div className="absolute top-1 left-1 bg-overlay/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
                       {g.count}
                     </div>
                   )}
-                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-1 pointer-events-none group-hover:pointer-events-auto">
+                  <div className="absolute inset-0 bg-overlay/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-1 pointer-events-none group-hover:pointer-events-auto">
                     <Button size="sm" variant="secondary" className="h-6 w-4/5 text-xs" onClick={() => onMoveToMain(g.card.name)}>
                       → Main
                     </Button>
@@ -836,5 +992,6 @@ export function DeckListView({
         </div>
       </div>
     </ScrollArea>
+    </div>
   );
 }

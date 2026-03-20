@@ -1,4 +1,3 @@
-import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { TablesList } from "@/components/lobby/TablesList";
 import { UserList } from "@/components/lobby/UserList";
 import { ChatComponent } from "@/components/lobby/ChatComponent";
@@ -10,6 +9,8 @@ import { useNavigate } from "react-router-dom";
 import { useServerStore } from "@/stores/useServerStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+import { Wifi, WifiOff, Loader2, Settings, RefreshCw, MessageSquare, Users } from "lucide-react";
 
 export default function Lobby() {
   const navigate = useNavigate();
@@ -24,15 +25,24 @@ export default function Lobby() {
   const [createRoomOpen, setCreateRoomOpen] = useState(false);
   const [deckDialogOpen, setDeckDialogOpen] = useState(false);
   const [refreshingLobby, setRefreshingLobby] = useState(false);
+  const [sidePanel, setSidePanel] = useState<"chat" | "players" | null>(null);
 
-  // Auto-connect on mount if not connected/connecting and username is set
   useEffect(() => {
     if (!connected && !connecting && prefs.serverUsername) {
       connect(prefs.serverHost, prefs.serverPort, prefs.serverUsername, prefs.serverPassword);
     }
   }, []);
 
-  // Navigate to game when server starts a game
+  // Poll lobby data every 5s while connected
+  useEffect(() => {
+    if (!connected) return;
+    const id = setInterval(() => {
+      listRooms();
+      listPlayers();
+    }, 5000);
+    return () => clearInterval(id);
+  }, [connected, listRooms, listPlayers]);
+
   useEffect(() => {
     if (gameStarted && playerOrder.length > 0) {
       const isHost = currentRoom?.host === username;
@@ -41,7 +51,6 @@ export default function Lobby() {
         toast.error("Could not determine your player slot for this game.");
         return;
       }
-      // Reset gameStarted so returning to lobby doesn't re-trigger navigation
       useServerStore.setState({ gameStarted: false });
       navigate('/play', {
         state: {
@@ -77,107 +86,110 @@ export default function Lobby() {
 
   return (
     <div className="h-full w-full flex flex-col">
-      {/* Connection status bar */}
-      {connected && (
-        <div className="px-4 py-1.5 bg-green-500/10 border-b flex items-center gap-2 shrink-0">
-          <span className="h-2 w-2 rounded-full bg-green-500" />
-          <span className="text-xs text-green-700 dark:text-green-400">
-            Connected as {username}
+      {/* ── Header ── */}
+      <div className="px-4 py-3 border-b shrink-0 flex items-center gap-3">
+        <div className="flex-1" />
+
+        {/* Connection status */}
+        <div className={cn(
+          "flex items-center gap-2 text-xs px-2.5 py-1 rounded-full border",
+          connected && "text-primary border-primary/30 bg-primary/5",
+          !connected && error && "text-destructive border-destructive/30 bg-destructive/5",
+          !connected && !error && "text-muted-foreground border-border",
+        )}>
+          {connecting ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : connected ? (
+            <Wifi className="h-3 w-3" />
+          ) : (
+            <WifiOff className="h-3 w-3" />
+          )}
+          <span>
+            {connecting ? "Connecting..." : connected ? username : error ? "Disconnected" : "Not connected"}
           </span>
         </div>
-      )}
-      {!connected && error && (
-        <div className="px-4 py-2 bg-red-500/10 border-b flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-red-500" />
-            <span className="text-sm text-red-700 dark:text-red-400">
-              Connection failed — {error}. Check your server settings.
-            </span>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" onClick={() => connect(prefs.serverHost, prefs.serverPort, prefs.serverUsername, prefs.serverPassword)}>
-              Retry
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => navigate('/settings')}>
-              Settings
-            </Button>
-          </div>
-        </div>
-      )}
-      {!connected && !error && (
-        <div className="px-4 py-2 bg-muted/30 border-b flex items-center justify-between shrink-0">
-          <span className="text-sm text-muted-foreground">
-            {connecting
-              ? 'Connecting to server...'
-              : prefs.serverUsername
-                ? 'Not connected.'
-                : 'Set your username in Settings to connect.'}
-          </span>
-          <Button size="sm" variant="outline" onClick={() => navigate('/settings')}>
-            Settings
+
+        {!connected && error && (
+          <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => connect(prefs.serverHost, prefs.serverPort, prefs.serverUsername, prefs.serverPassword)}>
+            Retry
           </Button>
-        </div>
-      )}
+        )}
+        {!connected && !connecting && (
+          <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => navigate('/settings')}>
+            <Settings className="h-3 w-3 mr-1" /> Settings
+          </Button>
+        )}
 
-      {/* Main content */}
-      <div className="flex-1 min-h-0">
-        <div className="h-full md:hidden flex flex-col">
-          <div className="min-h-0 flex-[6]">
-            <TablesList
-              rooms={rooms}
-              currentRoom={currentRoom}
-              username={username}
-              onNewGame={() => setCreateRoomOpen(true)}
-              onRefresh={refreshLobbyData}
-              refreshing={refreshingLobby}
-              refreshDisabled={!connected || connecting}
-              onJoinRoom={joinRoom}
-              onLeaveRoom={leaveRoom}
-              onSetReady={setReady}
-              onOpenDeckDialog={() => setDeckDialogOpen(true)}
-              onStartGame={startGame}
-            />
+        {connected && (
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              onClick={refreshLobbyData}
+              disabled={refreshingLobby}
+            >
+              <RefreshCw className={cn("h-3 w-3 mr-1", refreshingLobby && "animate-spin")} />
+              Refresh
+            </Button>
+            <Button size="sm" className="h-7 text-xs" onClick={() => setCreateRoomOpen(true)} disabled={currentRoom != null}>
+              New Room
+            </Button>
+            <div className="w-px h-4 bg-border mx-1" />
+            <Button
+              size="icon"
+              variant={sidePanel === "chat" ? "secondary" : "ghost"}
+              className="h-7 w-7 relative"
+              title="Toggle chat"
+              onClick={() => setSidePanel((v) => v === "chat" ? null : "chat")}
+            >
+              <MessageSquare className="h-3.5 w-3.5" />
+            </Button>
+            <Button
+              size="icon"
+              variant={sidePanel === "players" ? "secondary" : "ghost"}
+              className="h-7 w-7 relative"
+              title="Toggle online players"
+              onClick={() => setSidePanel((v) => v === "players" ? null : "players")}
+            >
+              <Users className="h-3.5 w-3.5" />
+              {players.length > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 bg-primary text-primary-foreground text-[8px] rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                  {players.length}
+                </span>
+              )}
+            </Button>
           </div>
-          <div className="min-h-0 flex-[3] border-t">
-            <ChatComponent channelId="Lobby" />
-          </div>
-          <div className="min-h-0 flex-[3] border-t">
-            <UserList players={players} />
-          </div>
+        )}
+      </div>
+
+      {/* ── Main content ── */}
+      <div className="flex-1 min-h-0 flex">
+        {/* Rooms — takes full width when panels are closed */}
+        <div className="flex-1 min-w-0 h-full">
+          <TablesList
+            rooms={rooms}
+            currentRoom={currentRoom}
+            username={username}
+            onNewGame={() => setCreateRoomOpen(true)}
+            onRefresh={refreshLobbyData}
+            refreshing={refreshingLobby}
+            refreshDisabled={!connected || connecting}
+            onJoinRoom={joinRoom}
+            onLeaveRoom={leaveRoom}
+            onSetReady={setReady}
+            onOpenDeckDialog={() => setDeckDialogOpen(true)}
+            onStartGame={startGame}
+          />
         </div>
 
-        <div className="hidden h-full md:block">
-          <ResizablePanelGroup orientation="horizontal">
-            <ResizablePanel defaultSize={75}>
-              <ResizablePanelGroup orientation="vertical">
-                <ResizablePanel defaultSize={70}>
-                  <TablesList
-                    rooms={rooms}
-                    currentRoom={currentRoom}
-                    username={username}
-                    onNewGame={() => setCreateRoomOpen(true)}
-                    onRefresh={refreshLobbyData}
-                    refreshing={refreshingLobby}
-                    refreshDisabled={!connected || connecting}
-                    onJoinRoom={joinRoom}
-                    onLeaveRoom={leaveRoom}
-                    onSetReady={setReady}
-                    onOpenDeckDialog={() => setDeckDialogOpen(true)}
-                    onStartGame={startGame}
-                  />
-                </ResizablePanel>
-                <ResizableHandle />
-                <ResizablePanel defaultSize={30}>
-                  <ChatComponent channelId="Lobby" />
-                </ResizablePanel>
-              </ResizablePanelGroup>
-            </ResizablePanel>
-            <ResizableHandle />
-            <ResizablePanel defaultSize={25} minSize={20}>
-              <UserList players={players} />
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
+        {/* Toggleable side panel */}
+        {sidePanel && (
+          <div className="w-72 shrink-0 border-l h-full">
+            {sidePanel === "chat" && <ChatComponent channelId="Lobby" />}
+            {sidePanel === "players" && <UserList players={players} />}
+          </div>
+        )}
       </div>
 
       <CreateRoomDialog open={createRoomOpen} onOpenChange={setCreateRoomOpen} />

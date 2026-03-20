@@ -33,22 +33,24 @@ interface DeckLabelsModalProps {
 
 export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
   const [newLabel, setNewLabel] = useState("");
-  const { currentDeck, addDeckLabel, removeDeckLabel, saveCurrentDeck } = useDeckStore();
+  const [newLabelColor, setNewLabelColor] = useState("");
+  const { currentDeck, addDeckLabel, removeDeckLabel, updateDeckLabelColor, saveCurrentDeck } = useDeckStore();
   const labels = currentDeck.labels ?? [];
 
   if (!open) return null;
 
-  function handleAdd(label: string) {
+  function handleAdd(label: string, color?: string) {
     const trimmed = label.trim();
     if (!trimmed) return;
-    addDeckLabel(trimmed);
+    addDeckLabel(trimmed, color);
     saveCurrentDeck();
     setNewLabel("");
+    setNewLabelColor("");
     toast.success(`Label "${trimmed}" added`);
   }
 
   const unusedSuggestions = SUGGESTED_LABELS.filter(
-    (s) => !labels.some((l) => l.toLowerCase() === s.toLowerCase()),
+    (s) => !labels.some((l) => l.name.toLowerCase() === s.toLowerCase()),
   );
 
   return (
@@ -65,22 +67,38 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
             {labels.length === 0 ? (
               <p className="text-xs text-muted-foreground italic">No labels yet</p>
             ) : (
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex flex-wrap gap-2">
                 {labels.map((label) => (
-                  <Badge key={label} variant="secondary" className="gap-1 pr-1">
-                    {label}
+                  <div key={label.name} className="flex items-center gap-1.5">
+                    <Badge
+                      variant="secondary"
+                      className="gap-1.5 pr-1"
+                      style={label.color ? { backgroundColor: label.color, color: getContrastColor(label.color) } : undefined}
+                    >
+                      {label.name}
+                    </Badge>
+                    <input
+                      type="color"
+                      value={label.color ?? "#6b7280"}
+                      onChange={(e) => {
+                        updateDeckLabelColor(label.name, e.target.value);
+                        saveCurrentDeck();
+                      }}
+                      className="h-6 w-8 rounded border border-input bg-transparent p-0.5 cursor-pointer"
+                      title="Pick color"
+                    />
                     <button
                       type="button"
-                      className="hover:text-destructive transition-colors"
+                      className="hover:text-destructive transition-colors text-muted-foreground"
                       onClick={() => {
-                        removeDeckLabel(label);
+                        removeDeckLabel(label.name);
                         saveCurrentDeck();
-                        toast.success(`Label "${label}" removed`);
+                        toast.success(`Label "${label.name}" removed`);
                       }}
                     >
-                      <X className="h-3 w-3" />
+                      <X className="h-3.5 w-3.5" />
                     </button>
-                  </Badge>
+                  </div>
                 ))}
               </div>
             )}
@@ -89,21 +107,28 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
           {/* Add custom label */}
           <div>
             <div className="text-sm font-medium text-muted-foreground mb-2">Add Custom Label</div>
-            <div className="flex gap-2">
+            <div className="flex items-center gap-2">
               <Input
                 className="h-8 text-sm flex-1"
                 placeholder="Type a label…"
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") handleAdd(newLabel);
+                  if (e.key === "Enter") handleAdd(newLabel, newLabelColor || undefined);
                 }}
+              />
+              <input
+                type="color"
+                value={newLabelColor || "#6b7280"}
+                onChange={(e) => setNewLabelColor(e.target.value)}
+                className="h-8 w-10 rounded border border-input bg-transparent p-0.5 cursor-pointer"
+                title="Pick color"
               />
               <Button
                 size="sm"
                 className="h-8 gap-1"
                 disabled={!newLabel.trim()}
-                onClick={() => handleAdd(newLabel)}
+                onClick={() => handleAdd(newLabel, newLabelColor || undefined)}
               >
                 <Plus className="h-3.5 w-3.5" />
                 Add
@@ -138,4 +163,12 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
       </Modal.Footer>
     </Modal>
   );
+}
+
+function getContrastColor(hexColor: string): string {
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? "#000000" : "#ffffff";
 }

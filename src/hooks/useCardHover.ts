@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from "react";
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 
 /**
  * Manages the delayed card hover preview with a 500ms debounce.

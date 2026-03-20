@@ -1,5 +1,5 @@
 {
-  "productName": "Bardidina Magica",
+  "productName": "OpenMagic",
   "version": "0.0.0",
   "identifier": "com.forgeweb.app",
   "build": {
@@ -11,7 +11,7 @@
   "app": {
     "windows": [
       {
-        "title": "Bardidina Magica",
+        "title": "OpenMagic",
         "width": 1400,
         "height": 900,
         "resizable": true

@@ -1,4 +1,4 @@
-import type { Card as CardType } from "@/types/xmage";
+import type { Card as CardType } from "@/types/openmagic";
 import { Card } from "@/components/game/Card";
 import { CardPreview } from "@/components/game/CardPreview";
 import { ManaSymbols } from "@/components/game/ManaSymbols";

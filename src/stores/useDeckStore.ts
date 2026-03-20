@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Deck, Card } from '@/types/xmage';
+import type { Deck, Card } from '@/types/openmagic';
 import { STORAGE_KEYS, DEFAULT_DECK_NAME } from '@/lib/constants';
 
 /** Apply a map of name→patch to an array of cards. */
@@ -50,9 +50,11 @@ interface DeckState {
   /** Remove a tag from a card (by name). */
   untagCard: (cardName: string, tag: string) => void;
   /** Add a label to the current deck. */
-  addDeckLabel: (label: string) => void;
+  addDeckLabel: (label: string, color?: string) => void;
   /** Remove a label from the current deck. */
   removeDeckLabel: (label: string) => void;
+  /** Update the color of an existing label. */
+  updateDeckLabelColor: (label: string, color?: string) => void;
 }
 
 const initialDeck: Deck = {
@@ -233,19 +235,28 @@ export const useDeckStore = create<DeckState>()(
             currentDeck: { ...state.currentDeck, cardTags },
           };
         }),
-      addDeckLabel: (label) =>
+      addDeckLabel: (label, color) =>
         set((state) => {
           const existing = state.currentDeck.labels ?? [];
-          if (existing.includes(label)) return state;
+          if (existing.some((l) => l.name.toLowerCase() === label.toLowerCase())) return state;
           return {
-            currentDeck: { ...state.currentDeck, labels: [...existing, label] },
+            currentDeck: { ...state.currentDeck, labels: [...existing, { name: label, color }] },
           };
         }),
       removeDeckLabel: (label) =>
         set((state) => ({
           currentDeck: {
             ...state.currentDeck,
-            labels: (state.currentDeck.labels ?? []).filter((l) => l !== label),
+            labels: (state.currentDeck.labels ?? []).filter((l) => l.name !== label),
+          },
+        })),
+      updateDeckLabelColor: (label, color) =>
+        set((state) => ({
+          currentDeck: {
+            ...state.currentDeck,
+            labels: (state.currentDeck.labels ?? []).map((l) =>
+              l.name === label ? { ...l, color } : l
+            ),
           },
         })),
     }),

@@ -8,7 +8,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useModalKeyboard } from "@/hooks/useModalKeyboard";
 import { useHoverPreview } from "@/hooks/useHoverPreview";
 import { CARD_RING, MODAL_FOOTER_BETWEEN, MULLIGAN_CARD_SIZE } from "../game.styles";
-import type { Card as CardType } from "@/types/xmage";
+import type { Card as CardType } from "@/types/openmagic";
 
 interface MulliganBottomModalProps {
   handCards: CardType[];

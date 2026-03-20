@@ -2,7 +2,7 @@ import { useDeckStore } from "@/stores/useDeckStore";
 import { cn } from "@/lib/utils";
 import { computeCmc, isLand, countColorPips, countGenericMana } from "@/lib/mana";
 import type { ManaColor } from "@/lib/mana";
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
@@ -43,7 +43,7 @@ interface DeckStatsProps {
 export function DeckStats({ cards: propCards }: DeckStatsProps) {
   const { currentDeck } = useDeckStore();
   const cards = propCards ?? currentDeck.cards;
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
 
   const lands: Card[] = [];
   const unknown: Card[] = [];
@@ -101,7 +101,7 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
           {spells.length > 0 && <span>{spells.length} spells</span>}
           {lands.length > 0  && <span>{lands.length} lands</span>}
           {unknown.length > 0 && (
-            <span className="text-amber-500" title="CMC unknown">{unknown.length} ?</span>
+            <span className="text-warning" title="CMC unknown">{unknown.length} ?</span>
           )}
         </div>
 

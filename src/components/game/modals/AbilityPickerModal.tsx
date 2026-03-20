@@ -3,7 +3,7 @@ import { TextWithMana } from "@/components/game/TextWithMana";
 import { useCardImage } from "@/hooks/useCardImage";
 import { CardImageThumbnail } from "@/components/game/CardImageThumbnail";
 import { cn } from "@/lib/utils";
-import type { ActivatableAbilityInfo } from "@/types/xmage";
+import type { ActivatableAbilityInfo } from "@/types/openmagic";
 import { MODAL_CARD_THUMBNAIL } from "../game.styles";
 
 interface AbilityPickerModalProps {

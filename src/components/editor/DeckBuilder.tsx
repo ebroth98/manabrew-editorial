@@ -9,9 +9,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
-  X, Download, Upload, Save, FolderOpen, Trash2,
+  X, Save, FolderOpen, Trash2,
   Pencil, Check, Search, LayoutGrid, List, Layers,
-  Plus, Loader2, Tag, Tags, ChevronDown,
+  Plus, Loader2, ChevronDown,
+  ClipboardPaste, ClipboardCopy, Palette, Bookmark, BookmarkMinus,
+  Group, ArrowUpToLine, ArrowDownToLine,
 } from "lucide-react";
 import { extractColors } from "@/views/myDecks.utils";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
@@ -19,8 +21,8 @@ import { DeckStats } from "./DeckStats";
 import { CardPreview } from "@/components/game/CardPreview";
 import { useState, useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
-import type { Card } from "@/types/xmage";
-import { fetchCardCollection, searchCards, getScryfallImageUrl } from "@/api/scryfall";
+import type { Card } from "@/types/openmagic";
+import { fetchCardCollection, searchCards, getScryfallImageUrl, getCardByName } from "@/api/scryfall";
 import type { ScryfallCard } from "@/types/scryfall";
 import { createEmptyCard } from "@/lib/scryfall.utils";
 import { DROP_ZONE } from "@/lib/constants";
@@ -30,17 +32,17 @@ import { DeckListView } from "./DeckListView";
 import { CardDetailModal } from "./CardDetailModal";
 import { DeckLabelsModal } from "./DeckLabelsModal";
 import { SetName } from "./SetSelect";
+import { useDeckSelection } from "./useDeckSelection";
 import {
   type CardGroup,
   type ViewMode,
-  MAIN_SECTIONS,
-  STACK_TYPE_COLS,
+  type GroupByMode,
+  GROUP_BY_OPTIONS,
   groupCards,
   scryfallCardToPartial,
   exportToArena,
-  computeSectionGroups,
-  computeOtherGroups,
-  computeStackColumns,
+  computeGroupedSections,
+  computeGroupedStackColumns,
 } from "./deckBuilder.utils";
 
 const SIDEBOARD_LINE_REGEX = /^(sideboard|side)$/i;
@@ -190,8 +192,11 @@ export function DeckBuilder() {
   const [hovered, setHovered] = useState<{ card: Card; x: number; y: number } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [cardSize, setCardSize] = useState(3);
+  const [groupBy, setGroupBy] = useState<GroupByMode>("type");
   const nameInputRef = useRef<HTMLInputElement>(null);
   const enrichedNamesRef = useRef(new Set<string>());
+
+  const { selectedCards, isSelected, toggleCard, clearSelection, selectCards } = useDeckSelection();
 
   const { setNodeRef: setMainDropRef, isOver: isOverMain } = useDroppable({ id: DROP_ZONE.MAIN });
   const { setNodeRef: setSideDropRef, isOver: isOverSide } = useDroppable({ id: DROP_ZONE.SIDE });
@@ -214,16 +219,57 @@ export function DeckBuilder() {
     });
   }, [currentDeck.cards, currentDeck.sideboard, enrichDeckCards]);
 
+  // ESC to clear selection
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") clearSelection();
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [clearSelection]);
+
+  // Bulk selection actions
+  function bulkAction(action: (name: string) => void, message: string) {
+    for (const name of selectedCards) action(name);
+    clearSelection();
+    toast.success(message);
+  }
+
+  const handleRemoveSelected = () => bulkAction(
+    (name) => currentDeck.cards.filter((c) => c.name.toLowerCase() === name).forEach((c) => removeFromMain(c.id)),
+    `Removed ${selectedCards.size} cards`,
+  );
+  const handleMoveSelectedToSide = () => bulkAction(
+    (name) => currentDeck.cards.filter((c) => c.name.toLowerCase() === name).forEach((c) => { removeFromMain(c.id); addToSide({ ...c, id: crypto.randomUUID() }); }),
+    `Moved ${selectedCards.size} cards to sideboard`,
+  );
+  const handleMoveSelectedToMain = () => bulkAction(
+    (name) => currentDeck.sideboard.filter((c) => c.name.toLowerCase() === name).forEach((c) => { removeFromSide(c.id); addToMain({ ...c, id: crypto.randomUUID() }); }),
+    `Moved ${selectedCards.size} cards to main`,
+  );
+  const handleTagSelected = (tag: string) => bulkAction((name) => tagCard(name, tag), `Tagged ${selectedCards.size} cards with "${tag}"`);
+  const handleUntagSelected = (tag: string) => bulkAction((name) => untagCard(name, tag), `Untagged ${selectedCards.size} cards from "${tag}"`);
+
+  // Tags that any of the selected cards belong to
+  const selectedCardTags = (() => {
+    if (selectedCards.size === 0 || !currentDeck.cardTags) return [];
+    const tags = new Set<string>();
+    for (const name of selectedCards) {
+      const cardTagList = currentDeck.cardTags[name];
+      if (cardTagList) cardTagList.forEach((t) => tags.add(t));
+    }
+    return [...tags];
+  })();
+
   // Filter
   const filterLc = deckFilter.toLowerCase();
   const filteredMain = filterLc ? currentDeck.cards.filter((c) => c.name.toLowerCase().includes(filterLc)) : currentDeck.cards;
   const filteredSide = filterLc ? currentDeck.sideboard.filter((c) => c.name.toLowerCase().includes(filterLc)) : currentDeck.sideboard;
 
   // Compute groups
-  const sectionGroups = computeSectionGroups(filteredMain, MAIN_SECTIONS);
-  const otherGroups = computeOtherGroups(filteredMain, sectionGroups);
+  const { sections: sectionGroups, otherGroups } = computeGroupedSections(filteredMain, groupBy, currentDeck.customTags, currentDeck.cardTags);
   const sideGroups = groupCards(filteredSide);
-  const stackColsData = computeStackColumns(filteredMain, STACK_TYPE_COLS);
+  const stackColsData = computeGroupedStackColumns(filteredMain, groupBy, currentDeck.customTags, currentDeck.cardTags);
 
   // ── Handlers ──
 
@@ -242,6 +288,12 @@ export function DeckBuilder() {
     toast.success(`Moved ${cardName} to sideboard`);
   }
 
+  function handleShowInfo(cardName: string) {
+    getCardByName(cardName)
+      .then((sc) => setDetailCard(sc))
+      .catch(() => toast.error(`Could not fetch info for "${cardName}"`));
+  }
+
   function handleRemoveOneFromSide(cardName: string) {
     const card = currentDeck.sideboard.findLast((c) => c.name === cardName);
     if (card) removeFromSide(card.id);
@@ -255,6 +307,11 @@ export function DeckBuilder() {
 
   function handleAddOneToMain(group: CardGroup) {
     addToMain({ ...group.card, id: crypto.randomUUID() });
+  }
+
+  function handleAddOneToMainByName(cardName: string) {
+    const existing = currentDeck.cards.find((c) => c.name === cardName);
+    if (existing) addToMain({ ...existing, id: crypto.randomUUID() });
   }
 
   function confirmName() {
@@ -304,9 +361,9 @@ export function DeckBuilder() {
   }
 
   return (
-    <div className="flex flex-col h-full w-full">
-      {/* ── Toolbar ── */}
-      <div className="p-2 border-b flex items-center gap-2 flex-wrap shrink-0">
+    <div className="flex flex-col h-full w-full relative">
+      {/* ── Header: deck name + counts + switch ── */}
+      <div className="px-3 py-2 border-b shrink-0 flex items-center gap-3">
         {editingName ? (
           <div className="flex items-center gap-1 flex-1 min-w-0">
             <Input
@@ -331,121 +388,105 @@ export function DeckBuilder() {
               onClick={() => { setNameInput(currentDeck.name); setEditingName(true); }}>
               <Pencil className="h-3 w-3" />
             </Button>
+            <span className="text-xs text-muted-foreground ml-1">
+              {currentDeck.cards.length}
+              {currentDeck.sideboard.length > 0 && <span className="text-muted-foreground/50"> · SB:{currentDeck.sideboard.length}</span>}
+            </span>
           </div>
         )}
 
-        <div className="flex items-center gap-1 shrink-0 text-xs text-muted-foreground">
-          <span>{currentDeck.cards.length}</span>
-          <span className="text-muted-foreground/50">/</span>
-          <span className="text-muted-foreground/70">SB:{currentDeck.sideboard.length}</span>
-        </div>
+        {savedDecks.length > 0 && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-7 w-7 shrink-0" title="Switch deck">
+                <FolderOpen className="h-3.5 w-3.5" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="min-w-52 max-h-72 overflow-y-auto">
+              {savedDecks.map((s) => {
+                const colors = extractColors(s.deck.cards);
+                return (
+                  <DropdownMenuItem
+                    key={s.id}
+                    onSelect={() => {
+                      loadSavedDeck(s.id);
+                      toast.success(`Loaded "${s.deck.name}"`);
+                    }}
+                    className="gap-2"
+                  >
+                    <div className="w-16 shrink-0 pr-2 mr-2">
+                      {colors.length > 0 ? (
+                        <ManaSymbols cost={colors.map((c) => `{${c}}`).join("")} size="sm" />
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </div>
+                    <span className="flex-1 truncate text-xs">{s.deck.name}</span>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{s.deck.cards.length}</span>
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+      </div>
 
-        {/* View mode toggle */}
-        <div className="flex border rounded-md overflow-hidden shrink-0">
-          {([["list", List, "List"], ["visual", LayoutGrid, "Visual"], ["stack", Layers, "Stack"]] as const).map(([mode, Icon, label]) => (
+      {/* ── Toolbar: view + search + actions ── */}
+      <div className="px-3 py-1.5 border-b shrink-0 flex items-center gap-2">
+        {/* View toggle */}
+        <div className="flex rounded-md border overflow-hidden shrink-0">
+          {([["list", List], ["visual", LayoutGrid], ["stack", Layers]] as const).map(([mode, Icon]) => (
             <button
               key={mode}
               type="button"
-              title={label}
+              title={mode.charAt(0).toUpperCase() + mode.slice(1)}
               onClick={() => setViewMode(mode)}
               className={cn(
-                "px-2 py-1 flex items-center gap-1 text-xs transition-colors border-r last:border-r-0",
+                "p-1.5 transition-colors border-r last:border-r-0",
                 viewMode === mode ? "bg-primary text-primary-foreground" : "hover:bg-muted text-muted-foreground"
               )}
             >
-              <Icon className="h-3 w-3" />
-              <span className="hidden sm:inline">{label}</span>
+              <Icon className="h-3.5 w-3.5" />
             </button>
           ))}
         </div>
 
-        {/* Card size slider */}
+        {/* Group by */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground px-2 py-1 rounded-md border shrink-0 transition-colors">
+              <Group className="h-3 w-3" />
+              <span>{GROUP_BY_OPTIONS.find((o) => o.value === groupBy)?.label}</span>
+              <ChevronDown className="h-3 w-3 opacity-60" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start">
+            {GROUP_BY_OPTIONS.map((opt) => (
+              <DropdownMenuItem
+                key={opt.value}
+                onSelect={() => setGroupBy(opt.value)}
+                className={cn(groupBy === opt.value && "bg-muted font-medium")}
+              >
+                {opt.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+
         {viewMode !== "list" && (
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-xs text-muted-foreground select-none">Size</span>
-            <input
-              type="range"
-              min={1}
-              max={5}
-              step={1}
-              value={cardSize}
-              onChange={(e) => setCardSize(Number(e.target.value))}
-              className="w-16 h-1 cursor-pointer accent-primary"
-              title={`Card size: ${cardSize}`}
-            />
-          </div>
+          <input
+            type="range"
+            min={1}
+            max={5}
+            step={1}
+            value={cardSize}
+            onChange={(e) => setCardSize(Number(e.target.value))}
+            className="w-14 h-1 cursor-pointer accent-primary shrink-0"
+            title={`Card size: ${cardSize}`}
+          />
         )}
 
-        <div className="flex gap-1 shrink-0">
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={handleImport}>
-            <Upload className="h-3 w-3" /> Import
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={handleExport} disabled={currentDeck.cards.length === 0}>
-            <Download className="h-3 w-3" /> Export
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={handleSave}>
-            <Save className="h-3 w-3" /> Save
-          </Button>
-          <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1" onClick={() => setLabelsOpen(true)}>
-            <Tags className="h-3 w-3" /> Labels
-            {(currentDeck.labels?.length ?? 0) > 0 && (
-              <span className="bg-primary text-primary-foreground text-[9px] rounded-full w-4 h-4 flex items-center justify-center">
-                {currentDeck.labels!.length}
-              </span>
-            )}
-          </Button>
-          {savedDecks.length > 0 && (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 shrink-0">
-                  <FolderOpen className="h-3 w-3" />
-                  Switch deck
-                  <ChevronDown className="h-3 w-3 opacity-60" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="min-w-52 max-h-72 overflow-y-auto">
-                {savedDecks.map((s) => {
-                  const colors = extractColors(s.deck.cards);
-                  return (
-                    <DropdownMenuItem
-                      key={s.id}
-                      onSelect={() => {
-                        loadSavedDeck(s.id);
-                        toast.success(`Loaded "${s.deck.name}"`);
-                      }}
-                      className="gap-2"
-                    >
-                      <div className="w-16 shrink-0 pr-2">
-                        {colors.length > 0 ? (
-                          <ManaSymbols cost={colors.map((c) => `{${c}}`).join("")} size="sm" />
-                        ) : (
-                          <span className="text-xs text-muted-foreground">—</span>
-                        )}
-                      </div>
-                      <span className="flex-1 truncate text-xs">{s.deck.name}</span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">{s.deck.cards.length}</span>
-                    </DropdownMenuItem>
-                  );
-                })}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-          <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive"
-            onClick={() => { clearDeck(); toast.success("Deck cleared"); }}>
-            <Trash2 className="h-3 w-3" />
-          </Button>
-        </div>
-      </div>
-
-      {/* ── Quick add + Deck filter + Tag creation ── */}
-      <div className="px-3 py-1.5 border-b shrink-0 flex gap-2">
-        <div className="flex-1 min-w-0">
-          <QuickCardSearch
-            onSelect={(sc) => setDetailCard(sc)}
-            onHover={(card, x, y) => setHovered({ card, x, y })}
-            onLeave={() => setHovered(null)}
-          />
-        </div>
+        {/* Filter / Quick add */}
         <div className="flex-1 min-w-0 relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
           <Input className="h-7 text-xs pl-6 pr-6" placeholder="Filter deck…" value={deckFilter} onChange={(e) => setDeckFilter(e.target.value)} />
@@ -455,22 +496,79 @@ export function DeckBuilder() {
             </button>
           )}
         </div>
-        <div className="shrink-0 relative">
-          <Tag className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
-          <Input
-            className="h-7 text-xs pl-6 w-36"
-            placeholder="Add tag…"
-            value={newTagInput}
-            onChange={(e) => setNewTagInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && newTagInput.trim()) {
-                addCustomTag(newTagInput.trim());
-                setNewTagInput("");
-                toast.success(`Tag "${newTagInput.trim()}" added`);
-              }
-            }}
+        <div className="shrink-0">
+          <QuickCardSearch
+            onSelect={(sc) => setDetailCard(sc)}
+            onHover={(card, x, y) => setHovered({ card, x, y })}
+            onLeave={() => setHovered(null)}
           />
         </div>
+
+        {/* Compact action icons */}
+        <div className="flex items-center rounded-md border bg-muted/30 p-0.5 shrink-0">
+          <Button size="icon" variant="ghost" className="h-7 w-7" title="Import from clipboard" onClick={handleImport}>
+            <ClipboardPaste className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" title="Export to clipboard" onClick={handleExport} disabled={currentDeck.cards.length === 0}>
+            <ClipboardCopy className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7" title="Save deck" onClick={handleSave}>
+            <Save className="h-3.5 w-3.5" />
+          </Button>
+          <Button size="icon" variant="ghost" className="h-7 w-7 relative" title="Labels" onClick={() => setLabelsOpen(true)}>
+            <Palette className="h-3.5 w-3.5" />
+            {(currentDeck.labels?.length ?? 0) > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 bg-primary text-primary-foreground text-[8px] rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                {currentDeck.labels!.length}
+              </span>
+            )}
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="ghost" className="h-7 w-7 relative" title="Manage tags">
+                <Bookmark className="h-3.5 w-3.5" />
+                {(currentDeck.customTags?.length ?? 0) > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 bg-primary text-primary-foreground text-[8px] rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                    {currentDeck.customTags!.length}
+                  </span>
+                )}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              {(currentDeck.customTags ?? []).map((tag) => (
+                <DropdownMenuItem key={tag} className="text-xs justify-between" onSelect={(e) => e.preventDefault()}>
+                  <span>{tag}</span>
+                  <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive shrink-0" onClick={() => { removeCustomTag(tag); toast.success(`Tag "${tag}" removed`); }}>
+                    <X className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuItem>
+              ))}
+              {(currentDeck.customTags ?? []).length > 0 && <div className="border-t my-1" />}
+              <div className="px-2 py-1.5">
+                <Input
+                  className="h-7 text-xs"
+                  placeholder="New tag…"
+                  value={newTagInput}
+                  onChange={(e) => setNewTagInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    e.stopPropagation();
+                    if (e.key === "Enter" && newTagInput.trim()) {
+                      addCustomTag(newTagInput.trim());
+                      toast.success(`Tag "${newTagInput.trim()}" added`);
+                      setNewTagInput("");
+                    }
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive" title="Clear deck"
+            onClick={() => { clearDeck(); toast.success("Deck cleared"); }}>
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+
       </div>
 
       {/* ── Main drop zone (entire scrollable deck area) ── */}
@@ -509,14 +607,93 @@ export function DeckBuilder() {
           allMainCards={currentDeck.cards}
           onUntagCard={untagCard}
           onRemoveTag={removeCustomTag}
+          selectedCards={selectedCards}
+          onSelectCard={toggleCard}
+          onSelectAll={(names) => selectCards(names, true)}
+          onShowInfo={handleShowInfo}
         />
       </div>
+
+      {selectedCards.size > 0 && (
+        <div className="absolute bottom-0 left-0 right-0 bg-background/95 backdrop-blur border-t border-selection/30 px-4 py-2 flex items-center gap-2 z-50">
+          <span className="text-sm font-medium text-selection">{selectedCards.size} card{selectedCards.size !== 1 ? "s" : ""} selected</span>
+          <div className="flex-1" />
+          <Button size="sm" variant="outline" onClick={handleMoveSelectedToMain}>
+            <ArrowUpToLine className="h-3 w-3 mr-1" /> To Main
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleMoveSelectedToSide}>
+            <ArrowDownToLine className="h-3 w-3 mr-1" /> To Sideboard
+          </Button>
+          {(currentDeck.customTags?.length ?? 0) > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <Bookmark className="h-3 w-3 mr-1" /> Tag
+                  <ChevronDown className="h-3 w-3 ml-1 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {currentDeck.customTags!.map((tag) => (
+                  <DropdownMenuItem key={tag} onSelect={() => handleTagSelected(tag)}>
+                    <Bookmark className="h-3 w-3 mr-2 text-primary/60" />
+                    {tag}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          {selectedCardTags.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline">
+                  <BookmarkMinus className="h-3 w-3 mr-1" /> Untag
+                  <ChevronDown className="h-3 w-3 ml-1 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {selectedCardTags.map((tag) => (
+                  <DropdownMenuItem key={tag} onSelect={() => handleUntagSelected(tag)}>
+                    <BookmarkMinus className="h-3 w-3 mr-2 text-destructive" />
+                    {tag}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+          <Button size="sm" variant="destructive" onClick={handleRemoveSelected}>
+            <X className="h-3 w-3 mr-1" /> Remove
+          </Button>
+          <Button size="sm" variant="ghost" onClick={clearSelection}>
+            Clear
+          </Button>
+        </div>
+      )}
 
       <DeckStats />
 
       {hovered && <CardPreview card={hovered.card} mouseX={hovered.x} mouseY={hovered.y} />}
       <PrintPickerModal cardName={printPickerCard} onClose={() => setPrintPickerCard(null)} />
-      <CardDetailModal card={detailCard} onClose={() => setDetailCard(null)} />
+      <CardDetailModal
+        card={detailCard}
+        onClose={() => setDetailCard(null)}
+        deckEditorActions={{
+          onAddOne: handleAddOneToMainByName,
+          onRemoveOne: handleRemoveOneFromMain,
+          onPickPrint: (name) => setPrintPickerCard(name),
+          onSetCommander: (name) => {
+            if (currentDeck.commander?.name === name) {
+              removeCommander();
+            } else {
+              const card = currentDeck.cards.find((c) => c.name === name);
+              if (card) setCommander(card);
+            }
+          },
+          isCommander: detailCard ? currentDeck.commander?.name === detailCard.name : false,
+          customTags: currentDeck.customTags,
+          onTagCard: tagCard,
+          onAddTag: addCustomTag,
+        }}
+      />
       <DeckLabelsModal open={labelsOpen} onClose={() => setLabelsOpen(false)} />
     </div>
   );

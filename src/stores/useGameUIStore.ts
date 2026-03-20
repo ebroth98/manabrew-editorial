@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Card, ActivatableAbilityInfo } from "@/types/xmage";
+import type { Card, ActivatableAbilityInfo } from "@/types/openmagic";
 
 // ── State Shapes ──────────────────────────────────────────────────────────────
 

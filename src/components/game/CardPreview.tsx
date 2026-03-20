@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useCardImage } from "@/hooks/useCardImage";
 import { Loader2 } from "lucide-react";
-import type { Card } from "@/types/xmage";
+import type { Card } from "@/types/openmagic";
 import { CounterDisplay } from "@/components/game/CounterBadge";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { useQuery } from "@tanstack/react-query";

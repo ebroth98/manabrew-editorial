@@ -8,7 +8,7 @@ import { Loader2, LayoutGrid, List, Info, SlidersHorizontal } from "lucide-react
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ScryfallCard } from "@/types/scryfall";
-import type { Card as XMageCard } from "@/types/xmage";
+import type { Card as XMageCard } from "@/types/openmagic";
 import { useDraggable } from "@dnd-kit/core";
 import { CardDetailModal } from "@/components/editor/CardDetailModal";
 import { SetSelect } from "@/components/editor/SetSelect";
@@ -399,7 +399,7 @@ function DraggableCardGrid({
       )}
     >
       <Card card={card} className="w-full" />
-      <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 rounded-lg pointer-events-none group-hover:pointer-events-auto">
+      <div className="absolute inset-0 bg-overlay/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 rounded-lg pointer-events-none group-hover:pointer-events-auto">
         <Button
           size="sm"
           variant="secondary"
@@ -793,7 +793,7 @@ export function CardSearch({ standalone }: CardSearchProps) {
             </div>
           )}
           {status === "error" && (
-            <div className="text-center p-8 text-red-500">Error fetching cards. Please try again.</div>
+            <div className="text-center p-8 text-destructive">Error fetching cards. Please try again.</div>
           )}
           {!effectiveQuery && (
             <p className="text-center text-sm text-muted-foreground py-12">
