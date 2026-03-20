@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
 import { CardOverlayButton } from "@/components/game/CardOverlayButton";
@@ -81,12 +81,21 @@ export function FreeBattlefield({
     positions,
     selectedCardIds,
     draggingCardIds,
+    justDraggedCardIds,
     selectMode,
     setSelectMode,
     marqueeRect,
     handleCardMouseDown,
     handleContainerMouseDown,
   } = useBattlefieldLayout({ cardIds: topLevelIds, bottomReserved, leftReserved, rightReserved, landCardIds });
+
+  const isDraggingAnyCard = draggingCardIds.size > 0;
+
+  useEffect(() => {
+    if (isDraggingAnyCard) {
+      onHoverCard?.(null);
+    }
+  }, [isDraggingAnyCard, onHoverCard]);
 
   // Minimum container height to show all positioned cards (account for attachment offset)
   const minH = Math.max(
@@ -121,8 +130,17 @@ export function FreeBattlefield({
           width: CARD_W,
           ...opts.extraStyle,
         }}
-        onMouseDown={opts.onMouseDown}
-        onMouseEnter={(e) => onHoverCard?.(card, e)}
+        onMouseDown={(e) => {
+          onHoverCard?.(null);
+          opts.onMouseDown?.(e);
+        }}
+        onMouseEnter={(e) => {
+          if (isDraggingAnyCard) {
+            onHoverCard?.(null);
+            return;
+          }
+          onHoverCard?.(card, e);
+        }}
         onMouseLeave={() => onHoverCard?.(null)}
       >
         <Card
@@ -146,9 +164,11 @@ export function FreeBattlefield({
           <CardOverlayButton
             variant="tap"
             label="TAP"
-            onClick={() => onTapLand(card)}
+            onClick={() => {
+              if (justDraggedCardIds.has(card.id)) return;
+              onTapLand(card);
+            }}
             title={`Tap ${card.name} for mana`}
-            stopMouseDown
           />
         )}
 
@@ -156,9 +176,11 @@ export function FreeBattlefield({
           <CardOverlayButton
             variant="untap"
             label="UNTAP"
-            onClick={() => onUntapLand(card)}
+            onClick={() => {
+              if (justDraggedCardIds.has(card.id)) return;
+              onUntapLand(card);
+            }}
             title={`Untap ${card.name} (undo mana)`}
-            stopMouseDown
           />
         )}
 
@@ -166,6 +188,7 @@ export function FreeBattlefield({
           <CardOverlayButton
             variant={isPending ? "pending" : isAttacking ? "attacking" : "choosable"}
             onClick={() => {
+              if (justDraggedCardIds.has(card.id)) return;
               if (card.isChoosable && onClickCard) onClickCard(card);
               else if (isAttacking && onClickAnyCard) onClickAnyCard(card);
             }}

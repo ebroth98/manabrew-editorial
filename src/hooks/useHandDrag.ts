@@ -3,11 +3,17 @@ import type { Card } from "@/types/xmage";
 
 interface UseHandDragOptions {
   battlefieldContainerRef: React.RefObject<HTMLDivElement | null>;
+  handContainerRef: React.RefObject<HTMLDivElement | null>;
   onCastSpell: (cardId: string) => void;
   dismissHover: () => void;
 }
 
-export function useHandDrag({ battlefieldContainerRef, onCastSpell, dismissHover }: UseHandDragOptions) {
+export function useHandDrag({
+  battlefieldContainerRef,
+  handContainerRef,
+  onCastSpell,
+  dismissHover,
+}: UseHandDragOptions) {
   const [draggingHandCard, setDraggingHandCard] = useState<Card | null>(null);
   const [ghostPos, setGhostPos] = useState({ x: 0, y: 0 });
   const [isOverBattlefield, setIsOverBattlefield] = useState(false);
@@ -22,15 +28,31 @@ export function useHandDrag({ battlefieldContainerRef, onCastSpell, dismissHover
     let moved = false;
     const handleMouseMove = (me: MouseEvent) => {
       moved = true;
+      // Hard-disable hover preview during drag; hover timers can be re-armed by
+      // underlying mouseenter events while the cursor crosses cards.
+      dismissHover();
       setGhostPos({ x: me.clientX, y: me.clientY });
 
       if (battlefieldContainerRef.current) {
         const rect = battlefieldContainerRef.current.getBoundingClientRect();
-        const over =
+        let over =
           me.clientX >= rect.left &&
           me.clientX <= rect.right &&
           me.clientY >= rect.top &&
           me.clientY <= rect.bottom;
+
+        // Hand is inside battlefield container — exclude it so dropping
+        // back on the hand cancels instead of casting
+        if (over && handContainerRef.current) {
+          const handRect = handContainerRef.current.getBoundingClientRect();
+          const overHand =
+            me.clientX >= handRect.left &&
+            me.clientX <= handRect.right &&
+            me.clientY >= handRect.top &&
+            me.clientY <= handRect.bottom;
+          if (overHand) over = false;
+        }
+
         isOverBattlefieldRef.current = over;
         setIsOverBattlefield(over);
       }

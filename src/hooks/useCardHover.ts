@@ -24,6 +24,11 @@ export function useCardHover(dismissDeps: unknown[]) {
   }
 
   function handleHoverCard(card: Card | null, e?: React.MouseEvent) {
+    // Never schedule hover preview while the mouse button is held (e.g. drag).
+    if (e && e.buttons !== 0) {
+      dismissHover();
+      return;
+    }
     if (hoverTimerRef.current) {
       clearTimeout(hoverTimerRef.current);
       hoverTimerRef.current = null;
@@ -34,11 +39,17 @@ export function useCardHover(dismissDeps: unknown[]) {
       return;
     }
     if (e) setMousePos({ x: e.clientX, y: e.clientY });
-    hoverTimerRef.current = setTimeout(() => {
+    // If a card is already showing, switch instantly; only debounce the initial show
+    if (hoveredCard) {
       setHoveredCard(card);
       setShowBackFace(false);
-      hoverTimerRef.current = null;
-    }, 500);
+    } else {
+      hoverTimerRef.current = setTimeout(() => {
+        setHoveredCard(card);
+        setShowBackFace(false);
+        hoverTimerRef.current = null;
+      }, 500);
+    }
   }
 
   // Dismiss preview when modals open or prompt changes

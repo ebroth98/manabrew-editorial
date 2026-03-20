@@ -38,7 +38,11 @@ export default function Play() {
   }, [mpState]);
 
   if (isGameActive) {
-    return <Game />;
+    return (
+      <div className="h-full min-h-0 overflow-visible">
+        <Game />
+      </div>
+    );
   }
 
   // Multiplayer: show waiting state while game starts

@@ -9,6 +9,7 @@ import { MidPhaseStrip } from "@/components/game/MidPhaseStrip";
 import { FreeBattlefield, HandDisplay } from "@/components/game/zones";
 import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
+import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
 import {
   ResizablePanelGroup,
   ResizablePanel,
@@ -56,6 +57,8 @@ interface GameBoardProps {
   // Battlefield drag state
   isOverBattlefield: boolean;
   battlefieldContainerRef: React.RefObject<HTMLDivElement | null>;
+  handContainerRef: React.RefObject<HTMLDivElement | null>;
+  draggingCardId?: string;
 
   // Callbacks
   onHandCardDragStart: (card: Card, e: React.MouseEvent) => void;
@@ -97,6 +100,8 @@ export function GameBoard({
   zonePanelOrder,
   isOverBattlefield,
   battlefieldContainerRef,
+  handContainerRef,
+  draggingCardId,
   onHandCardDragStart,
   onHoverCard,
   onFlipCard,
@@ -108,11 +113,13 @@ export function GameBoard({
   onTapLand,
   onUntapLand,
 }: GameBoardProps) {
+  const themeColors = useGameThemeColors();
+
   return (
-    <div className="flex flex-col gap-1 min-h-0 flex-1 overflow-hidden">
+    <div className="game-board-surface flex flex-col gap-1 min-h-0 flex-1 overflow-visible">
       {/* ── Resizable split: opponent (top) / me (bottom) ─── */}
       <ResizablePanelGroup orientation="vertical" className="flex-1 min-h-0">
-        <ResizablePanel defaultSize={45} minSize={20}>
+        <ResizablePanel defaultSize={45} minSize={20} className="overflow-visible">
           {opponents.length <= 1 ? (
             <OpponentHalf
               player={opponents[0]!}
@@ -142,7 +149,7 @@ export function GameBoard({
               {opponents.map((op, i) => (
                 <Fragment key={op.id}>
                   {i > 0 && <ResizableHandle />}
-                  <ResizablePanel>
+                  <ResizablePanel className="overflow-visible">
                     <OpponentHalf
                       player={op}
                       permanents={opponentPermanentsByPlayer.get(op.id) ?? []}
@@ -182,18 +189,23 @@ export function GameBoard({
         </ResizableHandle>
 
         <ResizablePanel defaultSize={60} minSize={35}>
-          <div className="flex flex-col gap-1 h-full overflow-hidden">
-            <div className="flex gap-2 flex-1 min-h-0 overflow-hidden">
+          <div className="flex flex-col gap-1 h-full overflow-visible">
+            <div className="flex gap-2 flex-1 min-h-0 overflow-visible">
               <div
                 ref={battlefieldContainerRef}
-                className="relative flex flex-col flex-1 min-w-0 overflow-hidden"
+                className={cn(
+                  "relative flex flex-col flex-1 min-w-0 overflow-visible rounded-lg border border-transparent",
+                )}
+                style={
+                  priorityPlayerId === me.id
+                    ? {
+                        borderColor: themeColors.activeAction.priority,
+                        boxShadow: `inset 0 0 0 1px ${withAlpha(themeColors.activeAction.priority, 0.85)}`,
+                      }
+                    : undefined
+                }
               >
-                <div
-                  className={cn(
-                    "absolute bottom-1 z-20",
-                    zonePanelSide === "left" ? "left-1" : "right-1",
-                  )}
-                >
+                <div className="absolute bottom-12 left-0 z-30">
                   <ZoneActionColumn
                     libraryCount={me.libraryCount}
                     graveyardCount={graveyard.length}
@@ -225,6 +237,24 @@ export function GameBoard({
                     hasPlayableInExile={
                       promptType === PT.ChooseAction && exile.some((c) => c.isPlayable)
                     }
+                  />
+                </div>
+                <div className="absolute bottom-[-12px] left-[-12px] z-30 max-w-[calc(100%-8px)]">
+                  <PlayerPanel
+                    player={me}
+                    isOpponent={false}
+                    verticalAlign="bottom"
+                    isActiveTurn={activePlayerId === me.id}
+                    isPriorityPlayer={priorityPlayerId === me.id}
+                    isTargetable={playerIsTargetable(me.id)}
+                    onTarget={() => onTargetPlayer(me.id)}
+                    isFlashing={turnFlashPlayerId === me.id}
+                    onOpenCommandZone={() => {
+                      if ((myCommandZone?.length ?? 0) > 0) {
+                        onOpenZone("Your Command Zone", myCommandZone!);
+                      }
+                    }}
+                    commandZoneCount={myCommandZone?.length ?? 0}
                   />
                 </div>
                 <FreeBattlefield
@@ -265,17 +295,18 @@ export function GameBoard({
                   }
                   onUntapLand={onUntapLand}
                   bottomReserved={130}
-                  leftReserved={zonePanelSide === "left" ? ZONE_COLUMN_RESERVED_PX : 0}
-                  rightReserved={zonePanelSide === "right" ? ZONE_COLUMN_RESERVED_PX : 0}
+                  leftReserved={ZONE_COLUMN_RESERVED_PX}
+                  rightReserved={0}
                   isDropActive={isOverBattlefield}
                 />
-                <div className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
+                <div ref={handContainerRef} className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
                   <HandDisplay
                     cards={myHand}
                     onHoverCard={onHoverCard}
                     onFlipCard={onFlipCard}
                     showBackFace={showBackFace}
                     onStartDrag={onHandCardDragStart}
+                    draggingCardId={draggingCardId}
                   />
                 </div>
               </div>
@@ -283,26 +314,6 @@ export function GameBoard({
           </div>
         </ResizablePanel>
       </ResizablePanelGroup>
-
-      <div className="flex items-center gap-2 shrink-0">
-        <div className="flex-1 min-w-0">
-          <PlayerPanel
-            player={me}
-            isOpponent={false}
-            isActiveTurn={activePlayerId === me.id}
-            isPriorityPlayer={priorityPlayerId === me.id}
-            isTargetable={playerIsTargetable(me.id)}
-            onTarget={() => onTargetPlayer(me.id)}
-            isFlashing={turnFlashPlayerId === me.id}
-            onOpenCommandZone={() => {
-              if ((myCommandZone?.length ?? 0) > 0) {
-                onOpenZone("Your Command Zone", myCommandZone!);
-              }
-            }}
-            commandZoneCount={myCommandZone?.length ?? 0}
-          />
-        </div>
-      </div>
     </div>
   );
 }

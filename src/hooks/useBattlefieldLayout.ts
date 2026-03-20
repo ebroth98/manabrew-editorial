@@ -28,6 +28,7 @@ export function useBattlefieldLayout({
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
   const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
   const [draggingCardIds, setDraggingCardIds] = useState<Set<string>>(new Set());
+  const [justDraggedCardIds, setJustDraggedCardIds] = useState<Set<string>>(new Set());
   const [selectMode, setSelectMode] = useState(false);
   const [marquee, setMarquee] = useState<Marquee | null>(null);
 
@@ -186,8 +187,15 @@ export function useBattlefieldLayout({
     const handleMouseUp = () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
+      const draggedIds = dragRef.current?.moved ? [...dragRef.current.cardIds] : [];
       setDraggingCardIds(new Set());
       dragRef.current = null;
+      if (draggedIds.length > 0) {
+        const draggedSet = new Set(draggedIds);
+        setJustDraggedCardIds(draggedSet);
+        // Keep this marker for the current click dispatch turn only.
+        setTimeout(() => setJustDraggedCardIds((prev) => (prev === draggedSet ? new Set() : prev)), 0);
+      }
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -276,6 +284,7 @@ export function useBattlefieldLayout({
     positions,
     selectedCardIds,
     draggingCardIds,
+    justDraggedCardIds,
     selectMode,
     setSelectMode,
     marqueeRect,

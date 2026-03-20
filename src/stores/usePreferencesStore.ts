@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 
 export type ZonePanelSide = 'left' | 'right';
 export type ZonePanelItem = 'library' | 'graveyard' | 'exile';
+export type HandDisplayMode = 'cool' | 'normal';
 
 interface PreferencesState {
   /** Duration of card-play and turn-start flash animations in ms */
@@ -28,6 +29,15 @@ interface PreferencesState {
   zonePanelOrder: ZonePanelItem[];
   setZonePanelSide: (side: ZonePanelSide) => void;
   setZonePanelOrder: (order: ZonePanelItem[]) => void;
+
+  /** Hand display layout style in game */
+  handDisplayMode: HandDisplayMode;
+  setHandDisplayMode: (mode: HandDisplayMode) => void;
+
+  /** Game UI color overrides by dot-path key */
+  gameThemeColorOverrides: Record<string, string>;
+  setGameThemeColorOverride: (path: string, color: string) => void;
+  resetGameThemeColorOverrides: () => void;
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
@@ -52,6 +62,19 @@ export const usePreferencesStore = create<PreferencesState>()(
       zonePanelOrder: ['library', 'graveyard', 'exile'],
       setZonePanelSide: (zonePanelSide) => set({ zonePanelSide }),
       setZonePanelOrder: (zonePanelOrder) => set({ zonePanelOrder }),
+
+      handDisplayMode: 'cool',
+      setHandDisplayMode: (handDisplayMode) => set({ handDisplayMode }),
+
+      gameThemeColorOverrides: {},
+      setGameThemeColorOverride: (path, color) =>
+        set((state) => ({
+          gameThemeColorOverrides: {
+            ...state.gameThemeColorOverrides,
+            [path]: color,
+          },
+        })),
+      resetGameThemeColorOverrides: () => set({ gameThemeColorOverrides: {} }),
     }),
     { name: 'xmage-preferences' },
   ),

@@ -62,7 +62,7 @@ export const ZONE_LABEL = "text-xs font-semibold text-muted-foreground uppercase
 // ── Action panel ──────────────────────────────────────────────────────────
 
 /** Button column layout used in PromptActionController */
-export const PROMPT_BUTTON_COLUMN = "flex flex-col gap-2" as const;
+export const PROMPT_BUTTON_COLUMN = "flex flex-col gap-2 items-start [&_button]:w-fit" as const;
 
 /** Muted hint text used across prompt/modal contexts */
 export const PROMPT_HINT = "text-xs text-muted-foreground" as const;

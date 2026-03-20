@@ -49,7 +49,7 @@ export const useGameUIStore = create<GameUIState>((set) => ({
   abilityPicker: null,
   playModePicker: null,
   viewingZone: null,
-  isActionPanelCollapsed: false,
+  isActionPanelCollapsed: true,
 
   // Actions
   openAbilityPicker: (state) => set({ abilityPicker: state }),
@@ -71,6 +71,6 @@ export const useGameUIStore = create<GameUIState>((set) => ({
       abilityPicker: null,
       playModePicker: null,
       viewingZone: null,
-      isActionPanelCollapsed: false,
+      isActionPanelCollapsed: true,
     }),
 }));

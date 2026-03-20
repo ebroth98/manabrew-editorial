@@ -1,5 +1,7 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import { useServerStore } from "@/stores/useServerStore";
 import type { PlayerInfo } from "@/types/server";
 import { cn } from "@/lib/utils";
 
@@ -8,10 +10,34 @@ interface UserListProps {
 }
 
 export function UserList({ players }: UserListProps) {
+  const { connected, connecting, error } = useServerStore();
+  const { serverHost, serverPort } = usePreferencesStore();
+  const status = connecting
+    ? "CONNECTING"
+    : connected
+      ? "CONNECTED"
+      : error
+        ? "ERROR"
+        : "DISCONNECTED";
+
   return (
     <div className="flex flex-col h-full border-l">
       <div className="p-4 border-b">
         <h3 className="font-semibold text-sm">Online Players ({players.length})</h3>
+        <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+          <span
+            className={cn(
+              "inline-flex items-center gap-1",
+              status === "CONNECTED" && "text-green-500",
+              status === "ERROR" && "text-red-500",
+              status === "DISCONNECTED" && "text-muted-foreground",
+            )}
+          >
+            <span className="w-1.5 h-1.5 rounded-full bg-current inline-block" />
+            {status}
+          </span>
+          <span className="text-muted-foreground">{serverHost}:{serverPort}</span>
+        </div>
       </div>
       <ScrollArea className="flex-1">
         <div className="p-4 space-y-3">

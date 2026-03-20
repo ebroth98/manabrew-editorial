@@ -1,226 +1,148 @@
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { useCallback, useState } from "react";
-import { ChevronLeft, ChevronRight, Settings } from "lucide-react";
+import { useState } from "react";
+import { PanelRightOpen, PanelRightClose } from "lucide-react";
 import type { RightActionPanelProps } from "../game.types";
-import { getPromptLabel } from "../game.utils";
 import { TAB_BUTTON_BASE, TAB_ACTIVE, TAB_INACTIVE } from "../game.styles";
-import { useDragToggle } from "@/hooks/useDragToggle";
-import { PromptActionController } from "./PromptActionController";
-import { StackSection } from "../StackSection";
-import { CombatInfo } from "./CombatInfo";
-import { TurnStateSection } from "../TurnStateSection";
 import { ActionLog } from "./ActionLog";
 import { SnapshotsPanel } from "./SnapshotsPanel";
-import { PromptType } from "@/types/promptType";
+import {
+  DEV_PROMPT_ACTION_OVERRIDES,
+  type DevPromptActionOverride,
+  useGameDevStore,
+} from "@/stores/useGameDevStore";
+
+const DEV_LABELS: Record<DevPromptActionOverride, string> = {
+  chooseAction: "ChooseAction",
+  chooseAttackers: "ChooseAttackers",
+  chooseBlockers: "ChooseBlockers",
+  chooseTargetSpell: "ChooseTargetSpell",
+  payManaCost: "PayManaCost",
+  noAction: "NoAction",
+};
 
 export function RightActionPanel({
   collapsed,
   onToggleCollapse: rawToggle,
-  promptType,
-  isWaitingForResponse,
-  isAutoPassing,
-  availableAttackerIds,
-  pendingAttackers,
-  onPassPriority,
-  onPassUntilEot,
-  isPassingUntilEot,
-  onDeclareAttackers,
-  pendingAttacker,
-  attackerIds,
-  blockAssignments,
-  onDeclareBlockers,
-  stack,
-  onOpenStack,
-  onConcede,
-  resolveCardName,
-  resolvePlayerName,
-  isMyPriority,
-  turn,
-  activePlayerName,
-  isMyTurn,
   gameLog,
   onHoverLogCard,
+  resolveCardName,
+  resolvePlayerName,
   snapshots,
   canRestoreSnapshots,
   onRestoreSnapshot,
-  payManaCostInfo,
-  onPayManaCost,
-  onCancelManaCost,
 }: RightActionPanelProps) {
   const visibleLog = gameLog.filter((entry) => entry.entryType !== "rule");
+  const promptActionOverride = useGameDevStore((s) => s.promptActionOverride);
+  const setPromptActionOverride = useGameDevStore((s) => s.setPromptActionOverride);
+  const clearPromptActionOverride = useGameDevStore((s) => s.clearPromptActionOverride);
 
-  const expand = useCallback(() => { if (collapsed) rawToggle(); }, [collapsed, rawToggle]);
-  const collapse = useCallback(() => { if (!collapsed) rawToggle(); }, [collapsed, rawToggle]);
-  const onDragMouseDown = useDragToggle(expand, collapse, "left");
-
-  const [activeTab, setActiveTab] = useState<"main" | "log" | "snapshots">("main");
-  const needsAction =
-    Boolean(promptType) &&
-    promptType !== PromptType.GameOver &&
-    !isWaitingForResponse &&
-    !isAutoPassing &&
-    !isPassingUntilEot;
-
-  const edgeButtonClass = cn(
-    "h-24 w-4 rounded-l-md rounded-r-none border border-r-0 border-border bg-card/90 px-0",
-    "translate-x-[9px] group-hover:translate-x-0 group-hover:w-6 group-hover:h-28 transition-all duration-150",
-    "hover:bg-card",
-  );
+  const [activeTab, setActiveTab] = useState<"log" | "snapshots" | "dev">("log");
 
   if (collapsed) {
     return (
-      <aside
-        className={cn(
-          "relative w-12 shrink-0 rounded-lg bg-card/90 backdrop-blur-sm transition-colors overflow-visible",
-          needsAction && "bg-green-50/60 dark:bg-green-950/20 shadow-[inset_0_0_0_2px_rgba(34,197,94,0.85)]",
-        )}
-      >
-        <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full z-30 group">
-          <Button
-            size="icon"
-            variant="ghost"
-            className={edgeButtonClass}
-            onClick={rawToggle}
-            onMouseDown={onDragMouseDown}
-            title="Expand action panel"
-          >
-            <ChevronLeft className="h-3 w-3" />
-          </Button>
-        </div>
+      <aside className="absolute top-1.5 right-1.5 z-50">
+        <Button
+          size="icon"
+          variant="outline"
+          className={cn(
+            "h-8 w-8 bg-card/95 backdrop-blur-sm",
+            "border-border/70 shadow-[0_10px_30px_rgba(0,0,0,0.35)]",
+            "text-muted-foreground hover:text-foreground hover:bg-accent/80",
+            "active:bg-accent",
+          )}
+          onClick={rawToggle}
+          title="Open right panel"
+        >
+          <PanelRightOpen className="h-3.5 w-3.5" />
+        </Button>
       </aside>
     );
   }
 
   return (
     <aside
-      className={cn(
-        "relative w-72 shrink-0 rounded-lg bg-card/95 backdrop-blur-sm transition-colors overflow-visible",
-        needsAction && "bg-green-50/40 dark:bg-green-950/10 shadow-[inset_0_0_0_2px_rgba(34,197,94,0.85)]",
-      )}
+      className="absolute right-1.5 top-1.5 bottom-1.5 z-50 w-72 rounded-lg bg-card/95 backdrop-blur-sm transition-colors overflow-visible border border-border/70 shadow-[0_20px_60px_rgba(0,0,0,0.45)]"
     >
-      <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-full z-30 group">
-        <Button
-          size="icon"
-          variant="ghost"
-          className={edgeButtonClass}
-          onClick={rawToggle}
-          onMouseDown={onDragMouseDown}
-          title="Collapse action panel"
-        >
-          <ChevronRight className="h-3 w-3" />
-        </Button>
-      </div>
       <div className="h-full p-3 flex flex-col gap-3 overflow-y-auto">
-        <div className="flex items-center gap-5">
-          <button
-            className={cn(TAB_BUTTON_BASE, activeTab === "main" ? TAB_ACTIVE : TAB_INACTIVE)}
-            onClick={() => setActiveTab("main")}
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-4">
+            <button
+              className={cn(TAB_BUTTON_BASE, activeTab === "log" ? TAB_ACTIVE : TAB_INACTIVE)}
+              onClick={() => setActiveTab("log")}
+            >
+              Log ({visibleLog.length})
+            </button>
+            <button
+              className={cn(TAB_BUTTON_BASE, activeTab === "snapshots" ? TAB_ACTIVE : TAB_INACTIVE)}
+              onClick={() => setActiveTab("snapshots")}
+            >
+              Snapshots ({snapshots.length})
+            </button>
+            <button
+              className={cn(TAB_BUTTON_BASE, activeTab === "dev" ? TAB_ACTIVE : TAB_INACTIVE)}
+              onClick={() => setActiveTab("dev")}
+            >
+              Dev
+            </button>
+          </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            onClick={rawToggle}
+            title="Close right panel"
           >
-            Main
-          </button>
-          <button
-            className={cn(TAB_BUTTON_BASE, activeTab === "log" ? TAB_ACTIVE : TAB_INACTIVE)}
-            onClick={() => setActiveTab("log")}
-          >
-            Log ({visibleLog.length})
-          </button>
-          <button
-            className={cn(TAB_BUTTON_BASE, activeTab === "snapshots" ? TAB_ACTIVE : TAB_INACTIVE)}
-            onClick={() => setActiveTab("snapshots")}
-          >
-            Snapshots ({snapshots.length})
-          </button>
+            <PanelRightClose className="h-3.5 w-3.5" />
+          </Button>
         </div>
 
-        {activeTab === "main" ? (
-          <>
-            <TurnStateSection
-              turn={turn}
-              activePlayerName={activePlayerName}
-              isMyTurn={isMyTurn}
-              isMyPriority={isMyPriority}
-            />
-
-            {isWaitingForResponse && (
-              <p className="text-xs italic text-muted-foreground animate-pulse">Waiting for response...</p>
-            )}
-
-            <StackSection stack={stack} promptType={promptType} onOpenStack={onOpenStack} />
-
-            <CombatInfo
-              promptType={promptType}
-              attackerIds={attackerIds}
-              blockAssignments={blockAssignments}
-              resolveCardName={resolveCardName}
-            />
-
-            <div
-              className={cn(
-                "rounded-lg p-2.5 mt-auto",
-                isMyPriority
-                  ? "bg-purple-50/70 dark:bg-purple-950/25 shadow-[inset_0_0_0_1px_rgba(168,85,247,0.45)]"
-                  : "bg-muted/20",
-              )}
-            >
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <p className="text-xs font-semibold text-muted-foreground">{getPromptLabel(promptType)}</p>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button size="icon" variant="ghost" className="h-6 w-6" title="Prompt options">
-                      <Settings className="h-3.5 w-3.5" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onClick={onConcede}
-                    >
-                      Concede
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-              <PromptActionController
-                promptType={promptType}
-                isWaitingForResponse={isWaitingForResponse}
-                isAutoPassing={isAutoPassing}
-                isPassingUntilEot={isPassingUntilEot}
-                isMyTurn={isMyTurn}
-                availableAttackerIds={availableAttackerIds}
-                pendingAttackers={pendingAttackers}
-                onPassPriority={onPassPriority}
-                onPassUntilEot={onPassUntilEot}
-                onDeclareAttackers={onDeclareAttackers}
-                pendingAttacker={pendingAttacker}
-                blockAssignments={blockAssignments}
-                onDeclareBlockers={onDeclareBlockers}
-                onOpenStack={onOpenStack}
-                payManaCostInfo={payManaCostInfo}
-                onPayManaCost={onPayManaCost}
-                onCancelManaCost={onCancelManaCost}
-              />
-            </div>
-          </>
-        ) : activeTab === "log" ? (
+        {activeTab === "log" ? (
           <ActionLog
             gameLog={gameLog}
             resolveCardName={resolveCardName}
             resolvePlayerName={resolvePlayerName}
             onHoverLogCard={onHoverLogCard}
           />
-        ) : (
+        ) : activeTab === "snapshots" ? (
           <SnapshotsPanel
             snapshots={snapshots}
             canRestoreSnapshots={canRestoreSnapshots}
             onRestoreSnapshot={onRestoreSnapshot}
           />
+        ) : (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-muted-foreground">
+              Force prompt action view (UI only).
+            </p>
+            <div className="grid grid-cols-2 gap-1.5">
+              <button
+                className={cn(
+                  "px-2 py-1.5 rounded text-xs font-medium border",
+                  promptActionOverride === null
+                    ? "border-primary text-primary bg-primary/10"
+                    : "border-border/70 text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                )}
+                onClick={clearPromptActionOverride}
+              >
+                Auto
+              </button>
+              {DEV_PROMPT_ACTION_OVERRIDES.map((override) => (
+                <button
+                  key={override}
+                  className={cn(
+                    "px-2 py-1.5 rounded text-xs font-medium border",
+                    promptActionOverride === override
+                      ? "border-primary text-primary bg-primary/10"
+                      : "border-border/70 text-muted-foreground hover:text-foreground hover:bg-accent/50",
+                  )}
+                  onClick={() => setPromptActionOverride(override)}
+                >
+                  {DEV_LABELS[override]}
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </aside>

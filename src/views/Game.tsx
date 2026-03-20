@@ -1,19 +1,20 @@
 import { useGameStore } from "@/stores/useGameStore";
 import { useGameUIStore } from "@/stores/useGameUIStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
-import { useEffect, useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { Card as XMageCard, Player } from "@/types/xmage";
+import type { Card as XMageCard, Player, StackObject } from "@/types/xmage";
 import { Card } from "@/components/game/Card";
 import { CardPreview } from "@/components/game/CardPreview";
 import { GameModals } from "@/components/game/GameModals";
 import { GameOverScreen } from "@/components/game/GameOverScreen";
 import { GameLoadingScreen } from "@/components/game/GameLoadingScreen";
-import { RightActionPanel } from "@/components/game/panels";
+import { MainActionOverlay, RightActionPanel } from "@/components/game/panels";
+import { StackDisplay } from "@/components/game/panels/StackDisplay";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
 import { PlayModePicker } from "@/components/game/PlayModePicker";
-import { BATTLEFIELD_CARD } from "@/components/game/game.styles";
+import { HAND_CARD } from "@/components/game/game.styles";
 import { useFlashQueue } from "@/hooks/useFlashQueue";
 import { useHandDrag } from "@/hooks/useHandDrag";
 import { useCardHover } from "@/hooks/useCardHover";
@@ -40,6 +41,7 @@ const HOVER_ALLOWED_PROMPTS = new Set<PromptType>([
 ]);
 
 export default function Game() {
+  const USE_STACK_FLASH_PREVIEW = true;
   const {
     gameView,
     currentPrompt,
@@ -173,7 +175,7 @@ export default function Game() {
     const abilities = (currentPrompt?.activatableAbilityIds ?? [])
       .filter((a) => a.cardId === card.id);
     const isManaSource = (currentPrompt?.tappableLandIds ?? []).includes(card.id);
-    const hasManaAbility = isManaSource && !card.types.includes("Land");
+    const hasManaAbility = isManaSource && card.types.includes("Land");
 
     // If the card has both a mana ability and non-mana abilities, show picker
     if (abilities.length > 1 || (abilities.length >= 1 && hasManaAbility)) {
@@ -238,18 +240,37 @@ export default function Game() {
     dismissHover,
     handleFlipCard,
     handleHoverCard,
-  } = useCardHover([viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen, abilityPickerState]);
+  } = useCardHover(
+    [viewingZone, zoneTargetSelector, libraryPeekModal, spellStackModalOpen, abilityPickerState],
+  );
 
   // Hand drag-to-play
   const battlefieldContainerRef = useRef<HTMLDivElement>(null);
+  const handContainerRef = useRef<HTMLDivElement>(null);
   const { draggingHandCard, ghostPos, isOverBattlefield, startHandCardDrag } = useHandDrag({
     battlefieldContainerRef,
+    handContainerRef,
     onCastSpell: handleCastSpell,
     dismissHover,
   });
 
   // Display flash queue
   const activeFlash = useFlashQueue(flashDurationMs);
+
+  // Debounced priority highlight to avoid rapid border strobing during autopass.
+  const [priorityHighlightPlayerId, setPriorityHighlightPlayerId] = useState<string | null>(null);
+  useEffect(() => {
+    const next = gameView?.priorityPlayerId ?? null;
+    if (priorityHighlightPlayerId == null || next == null) {
+      setPriorityHighlightPlayerId(next);
+      return;
+    }
+    if (next === priorityHighlightPlayerId) return;
+    const timer = setTimeout(() => {
+      setPriorityHighlightPlayerId(next);
+    }, 160);
+    return () => clearTimeout(timer);
+  }, [gameView?.priorityPlayerId, priorityHighlightPlayerId]);
 
   // Set up event listeners on mount
   useGameEventListeners();
@@ -360,6 +381,10 @@ export default function Game() {
   }, [gameView]);
 
   const handleLogCardHover = (cardId: string | null, e?: React.MouseEvent) => {
+    if (draggingHandCard) {
+      handleHoverCard(null);
+      return;
+    }
     if (!cardId) {
       handleHoverCard(null);
       return;
@@ -367,6 +392,20 @@ export default function Game() {
     const card = visibleCardsById.get(cardId) ?? stackCardsBySourceId.get(cardId) ?? null;
     handleHoverCard(card, e);
   };
+
+  const handleHoverCardGuarded = (card: XMageCard | null, e?: React.MouseEvent) => {
+    if (draggingHandCard) {
+      handleHoverCard(null);
+      return;
+    }
+    handleHoverCard(card, e);
+  };
+
+  useEffect(() => {
+    if (draggingHandCard) {
+      handleHoverCard(null);
+    }
+  }, [draggingHandCard, handleHoverCard]);
 
   const cardNameById = useMemo(() => {
     const byId = new Map<string, string>();
@@ -383,6 +422,52 @@ export default function Game() {
     () => new Map((gameView?.players ?? []).map((p) => [p.id, p.name] as const)),
     [gameView?.players],
   );
+
+  const resolveStackCard = (stackItem: StackObject): XMageCard =>
+    visibleCardsById.get(stackItem.sourceId) ??
+    stackCardsBySourceId.get(stackItem.sourceId) ?? {
+      id: stackItem.sourceId,
+      name: stackItem.name,
+      setCode: "",
+      cardNumber: "",
+      color: "",
+      manaCost: "",
+      types: [],
+      subtypes: [],
+      supertypes: [],
+      text: stackItem.text,
+      isPlayable: false,
+      isSelected: false,
+      isChoosable: false,
+      controllerId: "",
+      ownerId: "",
+      zoneId: "",
+    };
+
+  const activeFlashCard: XMageCard | null = useMemo(() => {
+    if (!activeFlash || activeFlash.kind !== "card") return null;
+    const knownCard =
+      visibleCardsById.get(activeFlash.cardId) ??
+      stackCardsBySourceId.get(activeFlash.cardId);
+    return {
+      id: activeFlash.cardId,
+      name: activeFlash.cardName,
+      setCode: activeFlash.setCode,
+      cardNumber: knownCard?.cardNumber ?? "",
+      color: knownCard?.color ?? "",
+      manaCost: knownCard?.manaCost ?? "",
+      types: knownCard?.types ?? [],
+      subtypes: knownCard?.subtypes ?? [],
+      supertypes: knownCard?.supertypes ?? [],
+      text: knownCard?.text ?? "",
+      isPlayable: false,
+      isSelected: false,
+      isChoosable: false,
+      controllerId: knownCard?.controllerId ?? "",
+      ownerId: knownCard?.ownerId ?? "",
+      zoneId: knownCard?.zoneId ?? "",
+    };
+  }, [activeFlash, visibleCardsById, stackCardsBySourceId]);
 
   // Auto-return to play menu when game is over
   useEffect(() => {
@@ -423,18 +508,24 @@ export default function Game() {
 
   const turnFlashPlayerId =
     activeFlash?.kind === "turn" ? activeFlash.playerId : null;
+  const effectivePriorityHighlightPlayerId =
+    priorityHighlightPlayerId ?? gameView.priorityPlayerId;
+  const shouldRenderStackFlashCard =
+    activeFlash?.kind === "card";
+  const shouldShowPreStackFlash =
+    activeFlashCard?.types.includes("Land") ?? false;
 
   return (
     <div
       ref={containerRef}
-      className="relative flex flex-col h-full gap-1.5 p-1.5 overflow-hidden"
+      className="relative flex flex-col h-full min-h-0 gap-1.5 p-1.5 overflow-visible"
       style={
         { "--flash-duration": `${flashDurationMs}ms` } as React.CSSProperties
       }
     >
       <ArrowOverlay arrows={arrows} />
 
-      <div className="flex gap-1 min-h-0 flex-1 overflow-hidden">
+      <div className="flex gap-1 min-h-0 flex-1 overflow-visible">
         <GameBoard
           me={me!}
           opponents={displayOpponents}
@@ -448,7 +539,7 @@ export default function Game() {
           opponentExile={gameView.opponentExile ?? []}
           opponentCommandZone={gameView.opponentCommandZone}
           activePlayerId={gameView.activePlayerId}
-          priorityPlayerId={gameView.priorityPlayerId}
+          priorityPlayerId={effectivePriorityHighlightPlayerId}
           step={gameView.step}
           promptType={promptType}
           currentPrompt={currentPrompt}
@@ -462,8 +553,10 @@ export default function Game() {
           zonePanelOrder={zonePanelOrder}
           isOverBattlefield={isOverBattlefield}
           battlefieldContainerRef={battlefieldContainerRef}
+          handContainerRef={handContainerRef}
+          draggingCardId={draggingHandCard?.id}
           onHandCardDragStart={startHandCardDrag}
-          onHoverCard={handleHoverCard}
+          onHoverCard={handleHoverCardGuarded}
           onFlipCard={handleFlipCard}
           onBattlefieldClick={handleBattlefieldClick}
           onAttackerClick={handleAttackerClick}
@@ -486,58 +579,77 @@ export default function Game() {
               : undefined
           }
         />
-
-        <RightActionPanel
-          collapsed={isActionPanelCollapsed}
-          onToggleCollapse={toggleActionPanel}
-          promptType={promptType}
-          isWaitingForResponse={isWaitingForResponse}
-          isAutoPassing={isAutoPassing}
-          isPassingUntilEot={isPassingUntilEot}
-          availableAttackerIds={currentPrompt?.availableAttackerIds ?? []}
-          pendingAttackers={pendingAttackers}
-          onPassPriority={passPriority}
-          onPassUntilEot={activatePassUntilEot}
-          onDeclareAttackers={declareAttackers}
-          pendingAttacker={pendingAttacker}
-          attackerIds={currentPrompt?.attackerIds ?? []}
-          blockAssignments={blockAssignments}
-          onDeclareBlockers={declareBlockers}
-          stack={gameView.stack}
-          onOpenStack={() => setSpellStackModalOpen(true)}
-          onConcede={concede}
-          resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
-          resolvePlayerName={(playerId) => playerNameById.get(playerId) ?? playerId}
-          isMyPriority={gameView.priorityPlayerId === me!.id}
-          turn={gameView.turn}
-          activePlayerName={
-            gameView.players.find((p) => p.id === gameView.activePlayerId)?.name ??
-            "Unknown"
-          }
-          isMyTurn={gameView.activePlayerId === me!.id}
-          gameLog={gameLog}
-          onHoverLogCard={handleLogCardHover}
-          snapshots={snapshots}
-          canRestoreSnapshots={
-            (!isMultiplayer || isHost) &&
-            (promptType === PromptType.ChooseAction ||
-              promptType === PromptType.ChooseAttackers ||
-              promptType === PromptType.ChooseBlockers)
-          }
-          onRestoreSnapshot={restoreSnapshot}
-          payManaCostInfo={
-            promptType === PromptType.PayManaCost && currentPrompt?.manaCost != null
-              ? {
-                  cardName: currentPrompt.cardName ?? "Spell",
-                  manaCost: currentPrompt.manaCost,
-                  manaPool: currentPrompt.gameView?.players?.[0]?.manaPool ?? {},
-                }
-              : null
-          }
-          onPayManaCost={payManaCost}
-          onCancelManaCost={cancelManaCost}
-        />
       </div>
+
+      <RightActionPanel
+        collapsed={isActionPanelCollapsed}
+        onToggleCollapse={toggleActionPanel}
+        gameLog={gameLog}
+        onHoverLogCard={handleLogCardHover}
+        resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
+        resolvePlayerName={(playerId) => playerNameById.get(playerId) ?? playerId}
+        snapshots={snapshots}
+        canRestoreSnapshots={
+          (!isMultiplayer || isHost) &&
+          (promptType === PromptType.ChooseAction ||
+            promptType === PromptType.ChooseAttackers ||
+            promptType === PromptType.ChooseBlockers)
+        }
+        onRestoreSnapshot={restoreSnapshot}
+      />
+
+      <MainActionOverlay
+        promptType={promptType}
+        isWaitingForResponse={isWaitingForResponse}
+        isAutoPassing={isAutoPassing}
+        isPassingUntilEot={isPassingUntilEot}
+        availableAttackerIds={currentPrompt?.availableAttackerIds ?? []}
+        pendingAttackers={pendingAttackers}
+        onPassPriority={passPriority}
+        onPassUntilEot={activatePassUntilEot}
+        onDeclareAttackers={declareAttackers}
+        pendingAttacker={pendingAttacker}
+        attackerIds={currentPrompt?.attackerIds ?? []}
+        blockAssignments={blockAssignments}
+        onDeclareBlockers={declareBlockers}
+        onOpenStack={() => setSpellStackModalOpen(true)}
+        onConcede={concede}
+        resolveCardName={(cardId) => cardNameById.get(cardId) ?? cardId}
+        isMyPriority={gameView.priorityPlayerId === me!.id}
+        turn={gameView.turn}
+        activePlayerName={
+          gameView.players.find((p) => p.id === gameView.activePlayerId)?.name ??
+          "Unknown"
+        }
+        isMyTurn={gameView.activePlayerId === me!.id}
+        step={gameView.step}
+        payManaCostInfo={
+          promptType === PromptType.PayManaCost && currentPrompt?.manaCost != null
+            ? {
+                cardName: currentPrompt.cardName ?? "Spell",
+                manaCost: currentPrompt.manaCost,
+                manaPool: currentPrompt.gameView?.players?.[0]?.manaPool ?? {},
+              }
+            : null
+        }
+        onPayManaCost={payManaCost}
+        onCancelManaCost={cancelManaCost}
+      />
+
+      <StackDisplay
+        stack={gameView.stack}
+        resolveStackCard={resolveStackCard}
+        onOpenStack={() => setSpellStackModalOpen(true)}
+        flashCard={
+          shouldRenderStackFlashCard ? activeFlashCard : null
+        }
+        flashToken={
+          shouldRenderStackFlashCard
+            ? `${activeFlash.cardId}:${activeFlash.cardName}:${activeFlash.setCode}`
+            : null
+        }
+        showPreStackFlash={shouldShowPreStackFlash}
+      />
 
       <GameModals
         promptType={promptType}
@@ -614,7 +726,7 @@ export default function Game() {
       )}
 
       {/* ── Card-play flash overlay ───────────────────────── */}
-      {activeFlash?.kind === "card" &&
+      {!USE_STACK_FLASH_PREVIEW && activeFlash?.kind === "card" &&
         createPortal(
           <div
             className="fixed inset-0 z-[10000] flex items-center justify-center pointer-events-none bg-black/30 animate-card-flash-backdrop"
@@ -656,11 +768,11 @@ export default function Game() {
         createPortal(
           <div
             className="fixed pointer-events-none z-[9999]"
-            style={{ left: ghostPos.x - 35, top: ghostPos.y - 49 }}
+            style={{ left: ghostPos.x - 40, top: ghostPos.y - 56 }}
           >
             <Card
               card={draggingHandCard}
-              className={cn(BATTLEFIELD_CARD, "opacity-70 shadow-2xl ring-2 ring-primary")}
+              className={cn(HAND_CARD, "shadow-2xl ring-2 ring-primary playable-card")}
             />
           </div>,
           document.body,
@@ -670,7 +782,7 @@ export default function Game() {
       {/* Hide when any overlay modal is open or a modal-based prompt is active.
           Allow-list approach: only show the preview for prompt types that do NOT
           open a modal (battlefield interaction, targeting, inline panel prompts). */}
-      {hoveredCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && !spellStackModalOpen &&
+      {hoveredCard && !draggingHandCard && !viewingZone && !zoneTargetSelector && !libraryPeekModal && !spellStackModalOpen &&
        !abilityPickerState &&
        (!promptType || HOVER_ALLOWED_PROMPTS.has(promptType)) && (
         <CardPreview

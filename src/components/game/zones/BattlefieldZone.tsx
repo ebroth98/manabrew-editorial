@@ -15,6 +15,7 @@ export function BattlefieldZone({
   className,
   zoneBg,
   minHeight = 100,
+  topReserved = 0,
   onClickCard,
   onClickAnyCard,
   onHoverCard,
@@ -168,6 +169,7 @@ export function BattlefieldZone({
         className={cn("flex flex-col p-2 border rounded-lg flex-1", zoneBg ?? "bg-muted/20")}
         style={{
           minHeight: `${minHeight}px`,
+          paddingTop: `${8 + topReserved}px`,
           paddingLeft: `${8 + leftReserved}px`,
           paddingRight: `${8 + rightReserved}px`,
         }}

@@ -25,19 +25,19 @@ const { w: CARD_W, h: CARD_H } = FLASH_CARD_SIZE;
 export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: CardPreviewProps) {
   const { data: fetchedUrl, isLoading } = useCardImage(card.name, card.imageUrl, card.isToken, card.color, card.setCode);
   const imageUrl = card.imageUrl ?? fetchedUrl ?? null;
-  
+
   // Fetch double-faced card data if needed
   const { data: doubleFacedData } = useQuery({
     queryKey: ["double-faced-card", card.name, card.isDoubleFaced],
     queryFn: async () => {
       if (!card.isDoubleFaced) return null;
       const cardData = await getCardByName(card.name);
-      
+
       // For double-faced cards, get both faces
       if (cardData.card_faces && cardData.card_faces.length >= 2) {
         const frontFace = cardData.card_faces[0];
         const backFace = cardData.card_faces[1];
-        
+
         return {
           frontImageUrl: frontFace.image_uris?.normal ?? frontFace.image_uris?.large ?? null,
           backImageUrl: backFace.image_uris?.normal ?? backFace.image_uris?.large ?? null,
@@ -55,7 +55,7 @@ export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: Card
   // Determine horizontal placement: prefer right of cursor, flip left if near edge
   const cardWidth = CARD_W;
   const cardHeight = CARD_H;
-  
+
   const spaceRight = window.innerWidth - mouseX;
   const left =
     spaceRight > cardWidth + 24
@@ -70,8 +70,8 @@ export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: Card
 
   // Determine which image to show for double-faced cards
   const hasDoubleFace = !!card.isDoubleFaced && !!doubleFacedData?.backImageUrl;
-  const currentImageUrl = hasDoubleFace && showBackFace 
-    ? doubleFacedData.backImageUrl 
+  const currentImageUrl = hasDoubleFace && showBackFace
+    ? doubleFacedData.backImageUrl
     : (imageUrl || fetchedUrl);
   const currentCardName = hasDoubleFace && showBackFace
     ? doubleFacedData.backName
@@ -129,10 +129,10 @@ export function CardPreview({ card, mouseX, mouseY, showBackFace = false }: Card
                 <div className="text-xs text-muted-foreground">{card.types?.join(" ")}</div>
               )}
               <div className="flex-1 text-xs text-foreground/80 whitespace-pre-wrap">
-                {hasDoubleFace && showBackFace 
-                  ? `Back face: ${doubleFacedData!.backName}` 
-                  : (hasDoubleFace && !showBackFace 
-                    ? `Front face: ${doubleFacedData!.frontName}` 
+                {hasDoubleFace && showBackFace
+                  ? `Back face: ${doubleFacedData!.backName}`
+                  : (hasDoubleFace && !showBackFace
+                    ? `Front face: ${doubleFacedData!.frontName}`
                     : card.text)}
               </div>
               {card.counters && (

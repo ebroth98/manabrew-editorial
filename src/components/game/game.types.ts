@@ -1,4 +1,4 @@
-import type { Card as XMageCard, Player, StackObject } from "@/types/xmage";
+import type { Card as XMageCard, Player } from "@/types/xmage";
 import type { GameLogEntry } from "@/types/gameLog";
 import type { GameSnapshotEntry } from "@/types/gameSnapshot";
 import type { PromptType } from "@/types/promptType";
@@ -45,6 +45,7 @@ export interface BattlefieldZoneProps {
   className?: string;
   zoneBg?: string;
   minHeight?: number;
+  topReserved?: number;
   onClickCard?: (card: XMageCard) => void;
   onClickAnyCard?: (card: XMageCard) => void;
   onHoverCard?: (card: XMageCard | null, e?: React.MouseEvent) => void;
@@ -67,11 +68,22 @@ export interface HandDisplayProps {
   onStartDrag?: (card: XMageCard, e: React.MouseEvent) => void;
   onFlipCard?: () => void;
   showBackFace?: boolean;
+  draggingCardId?: string;
 }
 
 export interface RightActionPanelProps {
   collapsed: boolean;
   onToggleCollapse: () => void;
+  gameLog: GameLogEntry[];
+  onHoverLogCard: (cardId: string | null, e?: React.MouseEvent) => void;
+  resolveCardName: (cardId: string) => string;
+  resolvePlayerName: (playerId: string) => string;
+  snapshots: GameSnapshotEntry[];
+  canRestoreSnapshots: boolean;
+  onRestoreSnapshot: (checkpointId: number) => void;
+}
+
+export interface MainActionOverlayProps {
   promptType?: PromptActionType;
   isWaitingForResponse: boolean;
   isAutoPassing: boolean;
@@ -85,21 +97,14 @@ export interface RightActionPanelProps {
   attackerIds: string[];
   blockAssignments: CombatAssignment[];
   onDeclareBlockers: (assignments: CombatAssignment[]) => void;
-  stack: StackObject[];
   onOpenStack: () => void;
   onConcede: () => void;
   resolveCardName: (cardId: string) => string;
-  resolvePlayerName: (playerId: string) => string;
   isMyPriority: boolean;
   turn: number;
   activePlayerName: string;
   isMyTurn: boolean;
-  gameLog: GameLogEntry[];
-  onHoverLogCard: (cardId: string | null, e?: React.MouseEvent) => void;
-  snapshots: GameSnapshotEntry[];
-  canRestoreSnapshots: boolean;
-  onRestoreSnapshot: (checkpointId: number) => void;
-  // Pay mana cost (inline in action panel)
+  step: string;
   payManaCostInfo: { cardName: string; manaCost: string; manaPool: Record<string, number> } | null;
   onPayManaCost: () => void;
   onCancelManaCost: () => void;

@@ -3,8 +3,11 @@ import { PlayerPanel } from "./PlayerPanel";
 import { BattlefieldZone } from "../zones";
 import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ZONE_COLUMN_RESERVED_PX } from "../game.constants";
+import { useGameThemeColors, withAlpha } from "../game.theme";
 import type { OpponentHalfProps } from "../game.types";
 import { PromptType } from "@/types/promptType";
+
+const OPPONENT_PLAYER_TILE_RESERVED_PX = 92;
 
 export function OpponentHalf({
   player,
@@ -29,25 +32,24 @@ export function OpponentHalf({
   zonePanelSide,
   zonePanelOrder,
 }: OpponentHalfProps) {
+  const themeColors = useGameThemeColors();
+
   return (
-    <div className="flex flex-col gap-1 h-full overflow-hidden">
-      <PlayerPanel
-        player={player}
-        isOpponent
-        isActiveTurn={activePlayerId === player.id}
-        isPriorityPlayer={priorityPlayerId === player.id}
-        isTargetable={isTargetable}
-        onTarget={onTarget}
-        isFlashing={isFlashing}
-        onOpenCommandZone={
-          (commandZone?.length ?? 0) > 0
-            ? () => onOpenZone(`${player.name}'s Command Zone`, commandZone!)
-            : undefined
-        }
-        commandZoneCount={commandZone?.length ?? 0}
-      />
-      <div className="flex gap-2 flex-1 min-h-0 overflow-hidden">
-        <div className="relative flex flex-col gap-1 flex-1 min-w-0 overflow-hidden">
+    <div
+      className={cn(
+        "flex flex-col h-full min-h-0 overflow-visible rounded-lg border border-transparent",
+      )}
+      style={
+        priorityPlayerId === player.id
+          ? {
+              borderColor: themeColors.activeAction.priority,
+              boxShadow: `inset 0 0 0 1px ${withAlpha(themeColors.activeAction.priority, 0.85)}`,
+            }
+          : undefined
+      }
+    >
+      <div className="flex gap-2 flex-1 min-h-0 overflow-visible">
+        <div className="relative flex flex-col gap-1 flex-1 min-w-0 min-h-0 overflow-visible">
           <div
             className={cn(
               "absolute bottom-1 z-20",
@@ -63,6 +65,24 @@ export function OpponentHalf({
               onOpenExile={() => onOpenZone(`${player.name}'s Exile`, exile)}
             />
           </div>
+          <div className="absolute top-[-12px] left-[-12px] z-30 max-w-[calc(100%-8px)]">
+            <PlayerPanel
+              player={player}
+              isOpponent
+              verticalAlign="top"
+              isActiveTurn={activePlayerId === player.id}
+              isPriorityPlayer={priorityPlayerId === player.id}
+              isTargetable={isTargetable}
+              onTarget={onTarget}
+              isFlashing={isFlashing}
+              onOpenCommandZone={
+                (commandZone?.length ?? 0) > 0
+                  ? () => onOpenZone(`${player.name}'s Command Zone`, commandZone!)
+                  : undefined
+              }
+              commandZoneCount={commandZone?.length ?? 0}
+            />
+          </div>
           <BattlefieldZone
             cards={permanents}
             label=""
@@ -72,7 +92,10 @@ export function OpponentHalf({
             showBackFace={showBackFace}
             className="flex-1"
             minHeight={60}
-            leftReserved={zonePanelSide === "left" ? ZONE_COLUMN_RESERVED_PX : 0}
+            leftReserved={
+              (zonePanelSide === "left" ? ZONE_COLUMN_RESERVED_PX : 0) +
+              OPPONENT_PLAYER_TILE_RESERVED_PX
+            }
             rightReserved={zonePanelSide === "right" ? ZONE_COLUMN_RESERVED_PX : 0}
             onClickCard={
               promptType === PromptType.ChooseTargetCard ||
