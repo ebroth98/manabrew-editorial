@@ -4,8 +4,9 @@ import { Badge } from "@/components/ui/badge";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { extractColors, COLOR_MAP } from "@/views/myDecks.utils";
+import { extractColors } from "@/views/myDecks.utils";
 import { inferFormats } from "@/lib/formats";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import type { SavedDeck } from "@/stores/useDeckStore";
 
 interface DeckCardProps {
@@ -20,23 +21,6 @@ interface DeckCardProps {
   onCancelRename: () => void;
   onDelete: () => void;
   onEditNameChange: (name: string) => void;
-}
-
-function ColorPip({ color }: { color: string }) {
-  const style = COLOR_MAP[color];
-  if (!style) return null;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-bold",
-        style.bg,
-        style.border,
-        color === "B" ? "text-gray-100" : "text-gray-700",
-      )}
-    >
-      {style.label}
-    </span>
-  );
 }
 
 export function DeckCard({
@@ -64,14 +48,12 @@ export function DeckCard({
       )}
       onClick={onSelect}
     >
-      {/* Color identity pips */}
-      <div className="flex gap-0.5 w-16 shrink-0">
+      {/* Color identity */}
+      <div className="w-16 shrink-0">
         {deckColors.length > 0 ? (
-          deckColors.map((c) => <ColorPip key={c} color={c} />)
+          <ManaSymbols cost={deckColors.map((c) => `{${c}}`).join("")} size="sm" />
         ) : (
-          <span className="text-xs text-muted-foreground italic">
-            —
-          </span>
+          <span className="text-xs text-muted-foreground italic">—</span>
         )}
       </div>
 

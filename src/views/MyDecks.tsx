@@ -7,7 +7,6 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
-import { cn } from "@/lib/utils";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Plus, Search, Swords, Crown, X, Pencil } from "lucide-react";
 import { toast } from "sonner";
@@ -31,7 +30,6 @@ import {
   extractColors,
   groupCards,
   categorize,
-  COLOR_MAP,
 } from "./myDecks.utils";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -50,23 +48,6 @@ function makeHoverHandlers(
 }
 
 // ── Component ────────────────────────────────────────────────────────────────
-
-function ColorPip({ color }: { color: string }) {
-  const style = COLOR_MAP[color];
-  if (!style) return null;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center w-5 h-5 rounded-full border text-xs font-bold",
-        style.bg,
-        style.border,
-        color === "B" ? "text-gray-100" : "text-gray-700",
-      )}
-    >
-      {style.label}
-    </span>
-  );
-}
 
 export default function MyDecks() {
   const navigate = useNavigate();
@@ -272,11 +253,9 @@ export default function MyDecks() {
                   {selected.deck.sideboard.length > 0 && (
                     <span>{selected.deck.sideboard.length} side</span>
                   )}
-                  <div className="flex gap-1 items-center">
-                    {colors.map((c) => (
-                      <ColorPip key={c} color={c} />
-                    ))}
-                  </div>
+                  {colors.length > 0 && (
+                    <ManaSymbols cost={colors.map((c) => `{${c}}`).join("")} size="sm" />
+                  )}
                   {inferFormats(selected.deck.cards.map((c) => c.name)).map(
                     (f) => (
                       <FormatBadge key={f.id} formatId={f.id} />

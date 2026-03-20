@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertCircle, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Card } from "@/types/xmage";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 
 interface DeckSelectionCardProps {
   id: string;
@@ -17,23 +18,6 @@ interface DeckSelectionCardProps {
   isLegal: boolean;
   validationError?: string;
   onSelect: () => void;
-}
-
-const COLOR_PIP: Record<string, string> = {
-  W: "bg-amber-100 border border-amber-400",
-  U: "bg-blue-500",
-  B: "bg-gray-800 border border-gray-600",
-  R: "bg-red-500",
-  G: "bg-green-600",
-};
-
-function ColorPip({ color }: { color: string }) {
-  return (
-    <span
-      className={cn("inline-block w-2.5 h-2.5 rounded-full shrink-0", COLOR_PIP[color] ?? "bg-gray-400")}
-      title={color}
-    />
-  );
 }
 
 /** Extract unique WUBRG colors present in a card list, in canonical order. */
@@ -106,11 +90,11 @@ export function DeckSelectionCard({
         </div>
       </div>
 
-      {/* Color pips (user decks only) */}
+      {/* Color identity (user decks only) */}
       {!isPreset && (
-        <div className="flex items-center gap-1 mb-1.5 min-h-[10px]">
+        <div className="flex items-center mb-1.5 min-h-[14px]">
           {colorPips.length > 0
-            ? colorPips.map((c) => <ColorPip key={c} color={c} />)
+            ? <ManaSymbols cost={colorPips.map((c) => `{${c}}`).join("")} size="sm" />
             : <span className="text-[10px] text-muted-foreground">Colorless</span>}
         </div>
       )}

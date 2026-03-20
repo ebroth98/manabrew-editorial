@@ -5,6 +5,7 @@ import type { ManaColor } from "@/lib/mana";
 import type { Card } from "@/types/xmage";
 import { useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 
 // CMC 1–7+ buckets with cool→warm colour progression
 const BUCKETS = [
@@ -19,13 +20,13 @@ const BUCKETS = [
 
 const BAR_MAX_PX = 72;
 
-const COLOR_ROWS: { color: ManaColor; label: string; bar: string; dot: string }[] = [
-  { color: "W", label: "W", bar: "bg-yellow-300",  dot: "bg-yellow-300"  },
-  { color: "U", label: "U", bar: "bg-blue-500",    dot: "bg-blue-500"    },
-  { color: "B", label: "B", bar: "bg-zinc-500",    dot: "bg-zinc-500"    },
-  { color: "R", label: "R", bar: "bg-red-500",     dot: "bg-red-500"     },
-  { color: "G", label: "G", bar: "bg-green-500",   dot: "bg-green-500"   },
-  { color: "C", label: "C", bar: "bg-zinc-400",    dot: "bg-zinc-400"    },
+const COLOR_ROWS: { color: ManaColor; label: string; bar: string }[] = [
+  { color: "W", label: "W", bar: "bg-yellow-300"  },
+  { color: "U", label: "U", bar: "bg-blue-500"    },
+  { color: "B", label: "B", bar: "bg-zinc-500"    },
+  { color: "R", label: "R", bar: "bg-red-500"     },
+  { color: "G", label: "G", bar: "bg-green-500"   },
+  { color: "C", label: "C", bar: "bg-zinc-400"    },
 ];
 
 /** Resolve CMC for a card. Returns undefined when genuinely unknown. */
@@ -182,12 +183,12 @@ export function DeckStats({ cards: propCards }: DeckStatsProps) {
                         </span>
                       </div>
                     )}
-                    {activeColors.map(({ color, label, bar, dot }) => {
+                    {activeColors.map(({ color, bar }) => {
                       const pips = pipTotals[color];
                       const pct = totalAll > 0 ? (pips / totalAll) * 100 : 0;
                       return (
                         <div key={color} className="flex items-center gap-2">
-                          <span className={cn("inline-block w-3.5 h-3.5 rounded-full shrink-0 border border-black/20", dot)} title={label} />
+                          <ManaSymbols cost={`{${color}}`} size="sm" />
                           <div className="flex-1 h-2 rounded-full bg-muted overflow-hidden">
                             <div className={cn("h-full rounded-full transition-all duration-300", bar)} style={{ width: `${pct}%` }} />
                           </div>

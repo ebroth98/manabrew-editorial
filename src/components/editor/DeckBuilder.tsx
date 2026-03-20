@@ -3,10 +3,18 @@ import { Button } from "@/components/ui/button";
 import { PrintPickerModal } from "./PrintPickerModal";
 import { Input } from "@/components/ui/input";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   X, Download, Upload, Save, FolderOpen, Trash2,
   Pencil, Check, Search, LayoutGrid, List, Layers,
-  Plus, Loader2, Tag, Tags,
+  Plus, Loader2, Tag, Tags, ChevronDown,
 } from "lucide-react";
+import { extractColors } from "@/views/myDecks.utils";
+import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { DeckStats } from "./DeckStats";
 import { CardPreview } from "@/components/game/CardPreview";
 import { useState, useRef, useEffect, useCallback } from "react";
@@ -18,14 +26,6 @@ import { createEmptyCard } from "@/lib/scryfall.utils";
 import { DROP_ZONE } from "@/lib/constants";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
-import { ManaSymbols } from "@/components/game/ManaSymbols";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import { DeckListView } from "./DeckListView";
 import { CardDetailModal } from "./CardDetailModal";
 import { DeckLabelsModal } from "./DeckLabelsModal";
@@ -187,7 +187,6 @@ export function DeckBuilder() {
   const [deckFilter, setDeckFilter] = useState("");
   const [newTagInput, setNewTagInput] = useState("");
   const [nameInput, setNameInput] = useState(currentDeck.name);
-  const [loadDialogOpen, setLoadDialogOpen] = useState(false);
   const [hovered, setHovered] = useState<{ card: Card; x: number; y: number } | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [cardSize, setCardSize] = useState(3);
@@ -395,38 +394,42 @@ export function DeckBuilder() {
               </span>
             )}
           </Button>
-          <Dialog open={loadDialogOpen} onOpenChange={setLoadDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1">
-                <FolderOpen className="h-3 w-3" /> Load
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Saved Decks</DialogTitle></DialogHeader>
-              {savedDecks.length === 0 ? (
-                <p className="text-sm text-muted-foreground text-center py-4">No saved decks.</p>
-              ) : (
-                <div className="space-y-2 max-h-80 overflow-y-auto">
-                  {savedDecks.map((s) => (
-                    <div key={s.id} className="flex items-center gap-2 p-2 rounded border">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium truncate">{s.deck.name}</p>
-                        <p className="text-xs text-muted-foreground">{s.deck.cards.length} cards · {new Date(s.savedAt).toLocaleDateString()}</p>
+          {savedDecks.length > 0 && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1 shrink-0">
+                  <FolderOpen className="h-3 w-3" />
+                  Switch deck
+                  <ChevronDown className="h-3 w-3 opacity-60" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="min-w-52 max-h-72 overflow-y-auto">
+                {savedDecks.map((s) => {
+                  const colors = extractColors(s.deck.cards);
+                  return (
+                    <DropdownMenuItem
+                      key={s.id}
+                      onSelect={() => {
+                        loadSavedDeck(s.id);
+                        toast.success(`Loaded "${s.deck.name}"`);
+                      }}
+                      className="gap-2"
+                    >
+                      <div className="w-16 shrink-0 pr-2">
+                        {colors.length > 0 ? (
+                          <ManaSymbols cost={colors.map((c) => `{${c}}`).join("")} size="sm" />
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
                       </div>
-                      <Button size="sm" variant="secondary" className="h-7 text-xs"
-                        onClick={() => { loadSavedDeck(s.id); setLoadDialogOpen(false); toast.success(`Loaded "${s.deck.name}"`); }}>
-                        Load
-                      </Button>
-                      <Button size="icon" variant="ghost" className="h-7 w-7 text-destructive"
-                        onClick={() => { deleteSavedDeck(s.id); toast.success("Deck deleted"); }}>
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </DialogContent>
-          </Dialog>
+                      <span className="flex-1 truncate text-xs">{s.deck.name}</span>
+                      <span className="text-[10px] text-muted-foreground shrink-0">{s.deck.cards.length}</span>
+                    </DropdownMenuItem>
+                  );
+                })}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
           <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-destructive"
             onClick={() => { clearDeck(); toast.success("Deck cleared"); }}>
             <Trash2 className="h-3 w-3" />

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords, User, Bot } from "lucide-react";
+import { useDeckStore } from "@/stores/useDeckStore";
 
 interface SelectedDeck {
   id: string;
@@ -28,6 +29,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
   const [opponentDeck, setOpponentDeck] = useState<SelectedDeck | null>(null);
   const [pickingSide, setPickingSide] = useState<PickingSide>("player");
   const [deckSearch, setDeckSearch] = useState("");
+  const { savedDecks, currentDeck } = useDeckStore();
 
   useEffect(() => {
     tauriApi.deck.getPresetDecks()
@@ -46,21 +48,44 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       )
     : presetDecks;
 
+  const userDeckEntries: SelectedDeck[] = [
+    {
+      id: "current",
+      name: currentDeck.name,
+      deckList: currentDeck.cards.map((c) => ({ name: c.name, setCode: c.setCode ?? "" })),
+    },
+    ...savedDecks.map((s) => ({
+      id: s.id,
+      name: s.deck.name,
+      deckList: s.deck.cards.map((c) => ({ name: c.name, setCode: c.setCode ?? "" })),
+    })),
+  ];
+
+  const filteredUserDecks = searchLower
+    ? userDeckEntries.filter((d) => d.name.toLowerCase().includes(searchLower))
+    : userDeckEntries;
+
+  function assignDeck(selected: SelectedDeck) {
+    if (pickingSide === "player") {
+      setPlayerDeck(selected);
+      if (!opponentDeck) setPickingSide("opponent");
+    } else {
+      setOpponentDeck(selected);
+    }
+  }
+
   function selectDeck(deck: PresetDeckInfo) {
-    const selected: SelectedDeck = {
+    assignDeck({
       id: deck.id,
       name: deck.label,
       desc: deck.desc,
       color: deck.color,
       deckList: [{ name: deck.id, setCode: "" }],
-    };
-    if (pickingSide === "player") {
-      setPlayerDeck(selected);
-      // Auto-advance to opponent side after picking player deck
-      if (!opponentDeck) setPickingSide("opponent");
-    } else {
-      setOpponentDeck(selected);
-    }
+    });
+  }
+
+  function selectUserDeck(entry: SelectedDeck) {
+    assignDeck(entry);
   }
 
   function handleRandomOpponent() {
@@ -178,64 +203,123 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       </div>
 
       {/* ── Deck grid ── */}
-      <div className="flex-1 overflow-y-auto px-4 pb-4">
-        {filteredDecks.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic py-4">
-            No decks match your search.
-          </p>
-        ) : (
-          <div className="grid grid-cols-4 gap-2 pt-1">
-            {filteredDecks.map((deck) => {
-              const isPlayerDeck = playerDeck?.id === deck.id;
-              const isOpponentDeck = opponentDeck?.id === deck.id;
-              return (
-                <button
-                  key={deck.id}
-                  type="button"
-                  onClick={() => selectDeck(deck)}
-                  className={cn(
-                    "rounded-lg border p-2.5 text-left transition-all relative",
-                    isPlayerDeck && isOpponentDeck
-                      ? "border-purple-500 bg-purple-500/5 ring-1 ring-purple-500"
-                      : isPlayerDeck
-                        ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500"
-                        : isOpponentDeck
-                          ? "border-red-500 bg-red-500/5 ring-1 ring-red-500"
-                          : "border-border hover:bg-muted/40 hover:shadow-sm"
-                  )}
-                >
-                  {/* Selection badges */}
-                  <div className="absolute top-1 right-1 flex gap-0.5">
-                    {isPlayerDeck && (
-                      <span className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center">
-                        <User className="h-2.5 w-2.5" />
-                      </span>
+      <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-4">
+        {/* User decks */}
+        {filteredUserDecks.length > 0 && (
+          <div>
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pt-2 pb-1">
+              My Decks
+            </p>
+            <div className="grid grid-cols-4 gap-2">
+              {filteredUserDecks.map((entry) => {
+                const isPlayerDeck = playerDeck?.id === entry.id;
+                const isOpponentDeck = opponentDeck?.id === entry.id;
+                return (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    onClick={() => selectUserDeck(entry)}
+                    className={cn(
+                      "rounded-lg border p-2.5 text-left transition-all relative",
+                      isPlayerDeck && isOpponentDeck
+                        ? "border-purple-500 bg-purple-500/5 ring-1 ring-purple-500"
+                        : isPlayerDeck
+                          ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500"
+                          : isOpponentDeck
+                            ? "border-red-500 bg-red-500/5 ring-1 ring-red-500"
+                            : "border-border hover:bg-muted/40 hover:shadow-sm"
                     )}
-                    {isOpponentDeck && (
-                      <span className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center">
-                        <Bot className="h-2.5 w-2.5" />
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="flex items-start justify-between gap-1 mb-1 pr-5">
-                    <span
-                      className={cn(
-                        "font-semibold text-xs leading-tight",
-                        deck.color
+                  >
+                    <div className="absolute top-1 right-1 flex gap-0.5">
+                      {isPlayerDeck && (
+                        <span className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center">
+                          <User className="h-2.5 w-2.5" />
+                        </span>
                       )}
-                    >
-                      {deck.label}
+                      {isOpponentDeck && (
+                        <span className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center">
+                          <Bot className="h-2.5 w-2.5" />
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-semibold text-xs leading-tight block pr-5 truncate">
+                      {entry.name}
                     </span>
-                  </div>
-                  <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2">
-                    {deck.desc}
-                  </p>
-                </button>
-              );
-            })}
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {entry.deckList.length} cards
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
           </div>
         )}
+
+        {/* Preset decks */}
+        <div>
+          {filteredUserDecks.length > 0 && (
+            <p className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold pb-1">
+              Preset Decks
+            </p>
+          )}
+          {filteredDecks.length === 0 ? (
+            <p className="text-xs text-muted-foreground italic py-4">
+              No decks match your search.
+            </p>
+          ) : (
+            <div className="grid grid-cols-4 gap-2 pt-1">
+              {filteredDecks.map((deck) => {
+                const isPlayerDeck = playerDeck?.id === deck.id;
+                const isOpponentDeck = opponentDeck?.id === deck.id;
+                return (
+                  <button
+                    key={deck.id}
+                    type="button"
+                    onClick={() => selectDeck(deck)}
+                    className={cn(
+                      "rounded-lg border p-2.5 text-left transition-all relative",
+                      isPlayerDeck && isOpponentDeck
+                        ? "border-purple-500 bg-purple-500/5 ring-1 ring-purple-500"
+                        : isPlayerDeck
+                          ? "border-blue-500 bg-blue-500/5 ring-1 ring-blue-500"
+                          : isOpponentDeck
+                            ? "border-red-500 bg-red-500/5 ring-1 ring-red-500"
+                            : "border-border hover:bg-muted/40 hover:shadow-sm"
+                    )}
+                  >
+                    {/* Selection badges */}
+                    <div className="absolute top-1 right-1 flex gap-0.5">
+                      {isPlayerDeck && (
+                        <span className="w-4 h-4 rounded-full bg-blue-500 text-white flex items-center justify-center">
+                          <User className="h-2.5 w-2.5" />
+                        </span>
+                      )}
+                      {isOpponentDeck && (
+                        <span className="w-4 h-4 rounded-full bg-red-500 text-white flex items-center justify-center">
+                          <Bot className="h-2.5 w-2.5" />
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-start justify-between gap-1 mb-1 pr-5">
+                      <span
+                        className={cn(
+                          "font-semibold text-xs leading-tight",
+                          deck.color
+                        )}
+                      >
+                        {deck.label}
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground leading-tight line-clamp-2">
+                      {deck.desc}
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* ── Footer: Fight button ── */}

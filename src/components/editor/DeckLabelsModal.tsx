@@ -33,7 +33,7 @@ interface DeckLabelsModalProps {
 
 export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
   const [newLabel, setNewLabel] = useState("");
-  const { currentDeck, addDeckLabel, removeDeckLabel } = useDeckStore();
+  const { currentDeck, addDeckLabel, removeDeckLabel, saveCurrentDeck } = useDeckStore();
   const labels = currentDeck.labels ?? [];
 
   if (!open) return null;
@@ -42,6 +42,7 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
     const trimmed = label.trim();
     if (!trimmed) return;
     addDeckLabel(trimmed);
+    saveCurrentDeck();
     setNewLabel("");
     toast.success(`Label "${trimmed}" added`);
   }
@@ -73,6 +74,7 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
                       className="hover:text-destructive transition-colors"
                       onClick={() => {
                         removeDeckLabel(label);
+                        saveCurrentDeck();
                         toast.success(`Label "${label}" removed`);
                       }}
                     >
