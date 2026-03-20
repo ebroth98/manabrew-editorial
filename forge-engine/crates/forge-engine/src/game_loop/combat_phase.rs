@@ -821,6 +821,8 @@ impl GameLoop {
             // Mirrors Java's Game.copyLastState() called before damage resolution.
             game.copy_last_state();
 
+            // Java parity: consume RNG for replacement effect choices during combat.
+            // TODO: remove once agents are threaded through deal_damage_to_card/player.
             self.consume_replacement_effect_rng_for_combat(game, agents, true);
 
             let fs_unblocked_choices = self.choose_assign_as_unblocked(game, agents, true);
@@ -873,10 +875,8 @@ impl GameLoop {
             // Mirrors Java's Game.copyLastState() called before damage resolution.
             game.copy_last_state();
 
-            // Java parity: consume RNG for replacement effect choices.
-            // Java's ReplacementHandler.runReplaceDamage() calls
-            // chooseSingleReplacementEffect() for each DamageDone replacement
-            // effect (prevention shields, WitherDamage) before damage is applied.
+            // Java parity: consume RNG for replacement effect choices during combat.
+            // TODO: remove once agents are threaded through deal_damage_to_card/player.
             self.consume_replacement_effect_rng_for_combat(game, agents, false);
 
             let unblocked_choices = self.choose_assign_as_unblocked(game, agents, false);
@@ -987,17 +987,9 @@ impl GameLoop {
         choices
     }
 
-    /// Consume RNG calls matching Java's `ReplacementHandler.runReplaceDamage()`
-    /// `chooseSingleReplacementEffect()` loop.
-    ///
-    /// Java collects all DamageDone replacement effects (prevention shields +
-    /// WitherDamage statics) for each combat damage instance, groups them by
-    /// affected player (APNAP), and loops calling `chooseSingleReplacementEffect`
-    /// which calls `ChoiceSpace.pickOne(n)` → `pickIndex(n)` → consumes RNG
-    /// only when n >= 2.
-    ///
-    /// Rust handles prevention and wither mechanically, so we just consume the
-    /// equivalent RNG calls to keep the agent RNG streams aligned.
+    /// Consume RNG calls matching Java's `ReplacementHandler.runReplaceDamage()`.
+    /// TODO: Remove once agents are threaded through deal_damage_to_card/player
+    /// so ReplacementHandler::run() with agents handles this naturally.
     fn consume_replacement_effect_rng_for_combat(
         &self,
         game: &crate::game::GameState,
@@ -1007,14 +999,6 @@ impl GameLoop {
         use crate::ids::PlayerId;
         use forge_foundation::ZoneType;
 
-        // Note: Wither (WitherDamage static) is NOT a replacement effect in
-        // Java — it modifies Card.addDamage() directly. Only prevention shields
-        // create DamageDone replacement effects that trigger chooseSingleRE.
-
-        // Accumulate replacement effect counts per player.
-        // For each creature that will receive combat damage:
-        //   - Count damage prevention Effect cards in Command zone that remember the creature
-        //   - Fallback to damage_prevention counter if no Effect cards exist
         let mut effects_by_player: std::collections::HashMap<PlayerId, usize> =
             std::collections::HashMap::new();
 
@@ -1023,8 +1007,6 @@ impl GameLoop {
             if attacker.zone != ZoneType::Battlefield {
                 continue;
             }
-
-            // Check first-strike filtering
             let has_first_strike = attacker.has_first_strike();
             let has_double_strike = attacker.has_double_strike();
             if first_strike_only && !has_first_strike && !has_double_strike {
@@ -1040,44 +1022,32 @@ impl GameLoop {
                 if blocker.zone != ZoneType::Battlefield {
                     continue;
                 }
-
-                // Blocker receives damage from attacker → count prevention Effect cards
-                // Each PreventDamage activation creates a separate Effect card with a
-                // DamageDone replacement effect (Java's DamagePreventEffect.addPreventNextDamage).
-                let blocker_controller = blocker.controller;
                 let shield_count = self.count_damage_prevention_effects(game, blocker_id);
                 if shield_count > 0 {
-                    *effects_by_player.entry(blocker_controller).or_insert(0) += shield_count;
+                    *effects_by_player.entry(blocker.controller).or_insert(0) += shield_count;
                 }
             }
-
-            // Attacker receives damage from blockers → count prevention Effect cards
             if !blocker_ids.is_empty() {
-                let attacker_controller = attacker.controller;
                 let shield_count = self.count_damage_prevention_effects(game, attacker_id);
                 if shield_count > 0 {
-                    *effects_by_player.entry(attacker_controller).or_insert(0) += shield_count;
+                    *effects_by_player.entry(attacker.controller).or_insert(0) += shield_count;
                 }
             }
         }
 
-        // Consume RNG in APNAP order, matching Java's while-loop:
-        //   while remaining > 0: chooseSingle(remaining); remaining -= 1;
-        // pickIndex(n) consumes RNG only when n >= 2.
         for pid in &game.player_order {
             if let Some(&total) = effects_by_player.get(pid) {
                 let mut remaining = total;
                 while remaining > 0 {
-                    agents[pid.index()].choose_single_replacement_effect(*pid, remaining);
+                    let descs: Vec<String> =
+                        (0..remaining).map(|i| format!("Prevention shield {}", i)).collect();
+                    agents[pid.index()].choose_single_replacement_effect(*pid, &descs);
                     remaining -= 1;
                 }
             }
         }
     }
 
-    /// Count the number of damage prevention replacement effects that apply to a given card.
-    /// In Java, each PreventDamage activation creates a separate Effect card in the Command zone
-    /// with a DamageDone replacement effect. We count all such Effect cards that remember the target.
     fn count_damage_prevention_effects(
         &self,
         game: &crate::game::GameState,
@@ -1087,37 +1057,24 @@ impl GameLoop {
         use forge_foundation::ZoneType;
 
         let mut count = 0;
-
-        // Count Effect cards in Command zone that have damage prevention replacement effects
-        // and remember the target card (mirrors Java's Card.IsRemembered check).
         for card in &game.cards {
             if card.zone != ZoneType::Command {
                 continue;
             }
-            // Check if this is an Effect card with damage prevention (created by PreventDamage)
             if !card.remembered_cards.contains(&target_id) {
                 continue;
             }
-            // Count replacement effects on this Effect card that prevent damage
-            // (Prevent$ True in the params)
             for re in &card.replacement_effects {
                 if re.event == ReplacementType::DamageDone {
-                    if let Some(prevent) = re.params.get("Prevent") {
-                        if prevent == "True" {
-                            count += 1;
-                        }
+                    if re.params.get("Prevent").map(|s| s == "True").unwrap_or(false) {
+                        count += 1;
                     }
                 }
             }
         }
-
-        // Fallback: if no Effect cards found, use the damage_prevention counter
-        // (this handles cases where Rust hasn't implemented Effect card creation yet)
         if count == 0 {
-            let card = &game.cards[target_id.index()];
-            count = card.damage_prevention as usize;
+            count = game.cards[target_id.index()].damage_prevention as usize;
         }
-
         count
     }
 }

@@ -3,7 +3,7 @@ use forge_foundation::ZoneType;
 use crate::card::CounterType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
 use crate::staticability::layer::apply_etb_tapped;

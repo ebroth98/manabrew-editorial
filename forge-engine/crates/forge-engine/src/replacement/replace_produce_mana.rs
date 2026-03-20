@@ -1,0 +1,161 @@
+//! Replacement logic for `Event$ ProduceMana`.
+//!
+//! Mirrors Java `ReplaceProduceMana.java` in `forge/game/replacement/`.
+
+use crate::card::CardInstance;
+use crate::game::GameState;
+use crate::ids::CardId;
+
+use super::replacement_handler::ReplacementEvent;
+use super::replacement_effect::{matches_valid_card, matches_valid_player, ReplacementEffect};
+use super::replacement_result::ReplacementResult;
+use super::replacement_type::ReplacementType;
+
+/// Mirrors Java `ReplaceProduceMana.canReplace()`.
+pub fn can_replace(
+    effect: &ReplacementEffect,
+    event: &ReplacementEvent,
+    game: &GameState,
+    source_card: &CardInstance,
+) -> bool {
+    if effect.event != ReplacementType::ProduceMana {
+        return false;
+    }
+    let (source_id, activator) = match event {
+        ReplacementEvent::ProduceMana {
+            source, activator, ..
+        } => (*source, *activator),
+        _ => return false,
+    };
+    let producing_card = &game.cards[source_id.index()];
+    if let Some(valid) = effect.params.get("ValidCard") {
+        if valid != "Permanent" && valid != "Card" {
+            if !matches_valid_card(valid, producing_card, source_card) {
+                return false;
+            }
+        }
+    }
+    if let Some(valid_player) = effect
+        .params
+        .get("ValidActivator")
+        .or(effect.params.get("ValidPlayer"))
+    {
+        if !matches_valid_player(valid_player, activator, source_card) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Mirrors Java `ReplaceManaEffect.resolve()`.
+pub fn execute(
+    effect: &ReplacementEffect,
+    event: &mut ReplacementEvent,
+    game: &GameState,
+    source_card_id: CardId,
+) -> ReplacementResult {
+    let mana = match event {
+        ReplacementEvent::ProduceMana { mana, .. } => mana,
+        _ => return ReplacementResult::NotReplaced,
+    };
+
+    fn color_word_to_short(s: &str) -> String {
+        match s.to_lowercase().as_str() {
+            "white" | "w" => "W".into(),
+            "blue" | "u" => "U".into(),
+            "black" | "b" => "B".into(),
+            "red" | "r" => "R".into(),
+            "green" | "g" => "G".into(),
+            "colorless" | "c" => "C".into(),
+            _ => s.to_uppercase(),
+        }
+    }
+
+    if let Some(replace_mana) = effect.params.get("ReplaceMana") {
+        let replacement = if replace_mana == "Any" {
+            "W".to_string()
+        } else {
+            color_word_to_short(replace_mana)
+        };
+        *mana = replacement;
+        return ReplacementResult::Updated;
+    } else if let Some(replace_type) = effect.params.get("ReplaceType") {
+        let color = if replace_type == "Any" {
+            "W".to_string()
+        } else {
+            color_word_to_short(replace_type)
+        };
+        let replaced: Vec<&str> = mana.split_whitespace().collect();
+        let new_parts: Vec<String> = replaced.iter().map(|_| color.clone()).collect();
+        *mana = new_parts.join(" ");
+        return ReplacementResult::Updated;
+    } else if let Some(replace_color) = effect.params.get("ReplaceColor") {
+        let color = if replace_color == "Chosen" {
+            let host_card = &game.cards[source_card_id.index()];
+            host_card
+                .chosen_colors
+                .first()
+                .map(|c| color_word_to_short(c))
+                .unwrap_or_else(|| "W".into())
+        } else {
+            color_word_to_short(replace_color)
+        };
+        let replace_only = effect
+            .params
+            .get("ReplaceOnly")
+            .map(|s| color_word_to_short(s));
+        let colored = ["W", "U", "B", "R", "G"];
+        let replaced: Vec<String> = mana
+            .split_whitespace()
+            .map(|tok| {
+                if let Some(ref only) = replace_only {
+                    if tok == only {
+                        color.clone()
+                    } else {
+                        tok.to_string()
+                    }
+                } else if colored.contains(&tok) {
+                    color.clone()
+                } else {
+                    tok.to_string()
+                }
+            })
+            .collect();
+        *mana = replaced.join(" ");
+        return ReplacementResult::Updated;
+    } else if let Some(replace_with) = effect.params.get("ReplaceWith") {
+        let multiplier = if replace_with.contains("Triple") || replace_with.contains("Thrice") {
+            3usize
+        } else if replace_with.contains("Twice") || replace_with.contains("Double") {
+            2usize
+        } else {
+            effect
+                .params
+                .get("ReplaceAmount")
+                .and_then(|s| s.parse::<usize>().ok())
+                .unwrap_or(2)
+        };
+        if multiplier > 1 {
+            let parts: Vec<&str> = mana.split_whitespace().collect();
+            let mut repeated = Vec::new();
+            for _ in 0..multiplier {
+                repeated.extend_from_slice(&parts);
+            }
+            *mana = repeated.join(" ");
+            return ReplacementResult::Updated;
+        }
+    } else if let Some(amount) = effect.params.get("ReplaceAmount") {
+        if let Ok(multiplier) = amount.parse::<usize>() {
+            if multiplier > 1 {
+                let parts: Vec<&str> = mana.split_whitespace().collect();
+                let mut repeated = Vec::new();
+                for _ in 0..multiplier {
+                    repeated.extend_from_slice(&parts);
+                }
+                *mana = repeated.join(" ");
+                return ReplacementResult::Updated;
+            }
+        }
+    }
+    ReplacementResult::Replaced
+}

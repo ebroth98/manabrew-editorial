@@ -1,0 +1,59 @@
+//! Replacement logic for `Event$ GameLoss`.
+//!
+//! Mirrors Java `ReplaceGameLoss.java` in `forge/game/replacement/`.
+
+use crate::card::CardInstance;
+use crate::game::GameState;
+use crate::ids::CardId;
+
+use super::replacement_handler::ReplacementEvent;
+use super::replacement_effect::{matches_valid_player, GameLossReason, ReplacementEffect};
+use super::replacement_result::ReplacementResult;
+use super::replacement_type::ReplacementType;
+
+/// Mirrors Java `ReplaceGameLoss.canReplace()`.
+pub fn can_replace(
+    effect: &ReplacementEffect,
+    event: &ReplacementEvent,
+    _game: &GameState,
+    source_card: &CardInstance,
+) -> bool {
+    if effect.event != ReplacementType::GameLoss {
+        return false;
+    }
+    let (player, reason) = match event {
+        ReplacementEvent::GameLoss { player, reason } => (*player, *reason),
+        _ => return false,
+    };
+    if let Some(valid) = effect.params.get("ValidPlayer") {
+        if !matches_valid_player(valid, player, source_card) {
+            return false;
+        }
+    }
+    if let Some(valid_reason) = effect.params.get("ValidLoseReason") {
+        let matches_reason = valid_reason.split(',').map(str::trim).any(|r| {
+            r.eq_ignore_ascii_case(match reason {
+                GameLossReason::LifeReachedZero => "LifeReachedZero",
+                GameLossReason::Poisoned => "Poisoned",
+                GameLossReason::CommanderDamage => "CommanderDamage",
+                GameLossReason::Milled => "Milled",
+                GameLossReason::OpponentWon => "OpponentWon",
+                GameLossReason::SpellEffect => "SpellEffect",
+            })
+        });
+        if !matches_reason {
+            return false;
+        }
+    }
+    true
+}
+
+/// CantHappen layer prevents the game loss (e.g. Platinum Angel).
+pub fn execute(
+    _effect: &ReplacementEffect,
+    _event: &mut ReplacementEvent,
+    _game: &GameState,
+    _source_card_id: CardId,
+) -> ReplacementResult {
+    ReplacementResult::Replaced
+}

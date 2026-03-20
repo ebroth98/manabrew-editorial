@@ -573,6 +573,14 @@ impl PlayerAgent for TauriAgent {
         choices::choose_mode(self, player, descriptions, min, max, card_name)
     }
 
+    fn choose_single_replacement_effect(
+        &mut self,
+        player: PlayerId,
+        descriptions: &[String],
+    ) -> usize {
+        choices::choose_single_replacement_effect(self, player, descriptions)
+    }
+
     fn choose_optional_trigger(
         &mut self,
         player: PlayerId,

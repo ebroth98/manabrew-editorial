@@ -4,7 +4,7 @@ use super::{emit_zone_trigger, EffectContext};
 use crate::card::CardInstance;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
-use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {

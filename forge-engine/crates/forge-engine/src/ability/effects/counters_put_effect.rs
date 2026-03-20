@@ -4,7 +4,7 @@ use super::{
     parse_counter_type, parse_param, resolve_defined_player, resolve_numeric_svar, EffectContext,
 };
 use crate::event::{RunParams, TriggerType};
-use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {

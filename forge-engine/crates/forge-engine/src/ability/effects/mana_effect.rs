@@ -173,7 +173,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Apply ProduceMana replacement effects (mana doublers)
     {
-        use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+        use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
         let mut event = ReplacementEvent::ProduceMana {
             source: source_id,
             activator: player,

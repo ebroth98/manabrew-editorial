@@ -738,11 +738,15 @@ pub trait PlayerAgent {
     /// Mirrors Java's `PlayerController.chooseSingleReplacementEffect(List<ReplacementEffect>)`.
     ///
     /// `player` — the player who controls the affected object (not necessarily the decider).
-    /// `count` — number of replacement effects to choose from.
+    /// `descriptions` — human-readable descriptions of each candidate effect.
     ///
-    /// Returns the index of the chosen effect (0..count-1).
+    /// Returns the index of the chosen effect (0..descriptions.len()-1).
     /// Default: always pick the first effect (timestamp order).
-    fn choose_single_replacement_effect(&mut self, _player: PlayerId, _count: usize) -> usize {
+    fn choose_single_replacement_effect(
+        &mut self,
+        _player: PlayerId,
+        _descriptions: &[String],
+    ) -> usize {
         0
     }
 }

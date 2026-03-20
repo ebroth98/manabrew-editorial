@@ -546,7 +546,7 @@ impl GameLoop {
 
         // Apply ProduceMana replacement effects (mana doublers like Mirari's Wake)
         if let Some(ref mut ms) = mana_string {
-            use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+            use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
             let mut event = ReplacementEvent::ProduceMana {
                 source: card_id,
                 activator: player,

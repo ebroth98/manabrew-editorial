@@ -496,3 +496,28 @@ pub(super) fn choose_random_discard(
 pub(super) fn choose_land_or_spell(_agent: &mut TauriAgent, _player: PlayerId) -> Option<bool> {
     None
 }
+
+/// Choose which replacement effect to apply when multiple effects match.
+/// Reuses the ChooseMode prompt — structurally identical (pick one from a list).
+pub(super) fn choose_single_replacement_effect(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    descriptions: &[String],
+) -> usize {
+    if descriptions.len() <= 1 {
+        return 0;
+    }
+    agent.send_prompt(AgentPromptInner::ChooseMode {
+        game_view: agent.view(),
+        options: descriptions.to_vec(),
+        min_choices: 1,
+        max_choices: 1,
+        source_card_name: Some("Replacement Effect".to_string()),
+    });
+    match agent.recv_action() {
+        PlayerAction::ModeDecision { chosen_indices } => {
+            chosen_indices.first().copied().unwrap_or(0)
+        }
+        _ => 0,
+    }
+}

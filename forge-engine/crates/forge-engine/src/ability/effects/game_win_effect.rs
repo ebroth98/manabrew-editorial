@@ -1,5 +1,5 @@
 use super::{resolve_defined_player, EffectContext};
-use crate::replacement::handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 

@@ -1204,12 +1204,12 @@ impl PlayerAgent for CapturingAgent {
         self.inner.notify_state_changed();
     }
 
-    fn choose_single_replacement_effect(&mut self, player: PlayerId, count: usize) -> usize {
-        let chosen = self.inner.choose_single_replacement_effect(player, count);
+    fn choose_single_replacement_effect(&mut self, player: PlayerId, descriptions: &[String]) -> usize {
+        let chosen = self.inner.choose_single_replacement_effect(player, descriptions);
         self.record_verbose_decision(
             "choose_single_replacement_effect",
-            (0..count).map(|i| format!("Effect#{}", i)).collect(),
-            format!("Effect#{}", chosen),
+            descriptions.to_vec(),
+            descriptions.get(chosen).cloned().unwrap_or_else(|| format!("Effect#{}", chosen)),
         );
         chosen
     }
