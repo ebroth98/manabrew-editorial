@@ -7,24 +7,7 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-/// Mirrors Java's `AttackRestrictionType.java`.
-/// Tracks conditions under which a creature cannot legally attack.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum AttackRestrictionType {
-    /// Creature can only attack alone (no other attackers allowed).
-    OnlyAlone,
-    /// Creature can't attack alone (must have at least one other attacker).
-    NotAlone,
-    /// Creature can't attack unless another attacking creature has greater power.
-    NeedGreaterPower,
-    /// Creature can't attack unless a black or green creature also attacks.
-    NeedBlackOrGreen,
-    /// Creature can't attack unless at least two other creatures attack
-    /// alongside it.
-    NeedTwoOthers,
-    /// Creature can never attack (e.g. "CARDNAME can't attack").
-    Never,
-}
+pub use super::attack_restriction_type::AttackRestrictionType;
 
 /// Parse attack restrictions from a creature's keywords.
 /// Mirrors Java's `AttackRestriction.setRestrictions()` — matches exact keyword strings.
@@ -101,6 +84,26 @@ pub fn get_restrictions(card: &CardInstance) -> HashSet<AttackRestrictionType> {
     }
 
     restrictions
+}
+
+/// Check if a creature can attack given its restrictions and the number of
+/// other attackers. Mirrors Java's `AttackRestriction.canAttack()`.
+pub fn can_attack(card: &CardInstance, num_attackers: usize) -> bool {
+    let restrictions = get_restrictions(card);
+
+    if restrictions.contains(&AttackRestrictionType::Never) {
+        return false;
+    }
+    if restrictions.contains(&AttackRestrictionType::OnlyAlone) && num_attackers > 1 {
+        return false;
+    }
+    if restrictions.contains(&AttackRestrictionType::NotAlone) && num_attackers <= 1 {
+        return false;
+    }
+    if restrictions.contains(&AttackRestrictionType::NeedTwoOthers) && num_attackers <= 2 {
+        return false;
+    }
+    true
 }
 
 /// Validate chosen attackers against attack restrictions.

@@ -351,15 +351,18 @@ for (const jfile of javaFiles) {
   // Skip files not in the target module when filtering
   if (filterModule && module !== filterModule) continue;
 
+  // Handle "-> skip" mapping: file is intentionally not ported
+  const isSkipped = fileRemapped && fileRemaps[jfile] === 'skip';
+
   if (dir !== currentDir) {
     currentDir = dir;
     console.log('');
     process.stdout.write(`${CYAN}${BOLD}  📂 ${dir}/${RESET}\n`);
   }
 
-  const exists = fs.existsSync(rustPath);
-  const displayRs = fileRemapped ? fileRemaps[jfile] : (rustPath.endsWith('mod.rs') ? 'mod.rs' : expectedRs);
-  const overrideTag = fileRemapped ? ` ${BLUE}⬡ mapped${RESET}` : '';
+  const exists = isSkipped || fs.existsSync(rustPath);
+  const displayRs = isSkipped ? 'skip' : (fileRemapped ? fileRemaps[jfile] : (rustPath.endsWith('mod.rs') ? 'mod.rs' : expectedRs));
+  const overrideTag = isSkipped ? ` ${DIM}(intentionally skipped)${RESET}` : (fileRemapped ? ` ${BLUE}⬡ mapped${RESET}` : '');
   const fileColor = isTrait ? MAGENTA : GREEN;
 
   if (!moduleStats[module]) moduleStats[module] = { ported: 0, total: 0, symbols: 0, symbolsPorted: 0 };
@@ -368,7 +371,12 @@ for (const jfile of javaFiles) {
   moduleStats[module].total++;
 
   const padded = base.padEnd(45);
-  if (exists) {
+  if (isSkipped) {
+    // Skipped file: count as ported, show green
+    totalPorted++;
+    moduleStats[module].ported++;
+    process.stdout.write(`${GREEN}     ${padded} -> ${displayRs}${overrideTag}${RESET}\n`);
+  } else if (exists) {
     totalPorted++;
     moduleStats[module].ported++;
 
@@ -468,7 +476,7 @@ for (const jfile of javaFiles) {
         if (s.remapped) {
           process.stdout.write(`${DIM}${symIndent}${BLUE}✗ ${s.java} -> ${s.rust} (${s.target})${RESET}\n`);
         } else {
-          process.stdout.write(`${DIM}${symIndent}${RED}✗ ${s.java} -> missing${RESET}\n`);
+          process.stdout.write(`${DIM}${symIndent}${RED}✗ ${s.java} -> ${s.rust} (missing)${RESET}\n`);
         }
       }
     } else {
@@ -477,9 +485,9 @@ for (const jfile of javaFiles) {
   } else {
     // Missing file
     if (fileRemapped) {
-      process.stdout.write(`${RED}     ${padded} -> missing${RESET} ${BLUE}⬡ mapped (${displayRs})${RESET}\n`);
+      process.stdout.write(`${RED}     ${padded} -> ${displayRs} (missing)${RESET} ${BLUE}⬡ mapped${RESET}\n`);
     } else {
-      process.stdout.write(`${RED}     ${padded} -> missing${RESET}\n`);
+      process.stdout.write(`${RED}     ${padded} -> ${displayRs} (missing)${RESET}\n`);
     }
 
   }
@@ -558,7 +566,7 @@ if (showCore && (!filterModule || filterModule === 'foundation')) {
         moduleStats['foundation'].ported++;
         process.stdout.write(`${GREEN}     ${padded} -> ${dep.displayRs}${RESET}\n`);
       } else {
-        process.stdout.write(`${RED}     ${padded} -> missing${RESET}\n`);
+        process.stdout.write(`${RED}     ${padded} -> ${dep.displayRs} (missing)${RESET}\n`);
       }
     }
   }
