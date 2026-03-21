@@ -571,6 +571,21 @@ impl GameLoop {
         // Java parity: COMBAT_DECLARE_BLOCKERS is skipped when no attackers remain.
         self.combat.remove_absent_combatants(&game.cards);
         if self.combat.has_attackers() {
+            // Run DeclareBlocker replacement effects before declaring blockers.
+            {
+                use crate::replacement::replacement_handler::{
+                    apply_replacements, ReplacementEvent,
+                };
+                use crate::replacement::ReplacementResult;
+                let mut event = ReplacementEvent::DeclareBlocker {
+                    player: defending,
+                };
+                let result = apply_replacements(game, &mut event);
+                if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+                    // Blockers phase was prevented — skip to damage
+                }
+            }
+
             // Declare Blockers
             self.set_phase(game, agents, PhaseType::CombatDeclareBlockers);
             let attacker_card_ids: Vec<CardId> =
@@ -869,6 +884,19 @@ impl GameLoop {
 
         // Java parity: skip regular combat damage step when no attackers remain.
         if self.combat.has_attackers() {
+            // Run AssignDealDamage replacement effects for each attacker.
+            {
+                use crate::replacement::replacement_handler::{
+                    apply_replacements, ReplacementEvent,
+                };
+                let attacker_ids: Vec<CardId> =
+                    self.combat.attackers.iter().map(|(a, _)| *a).collect();
+                for &attacker_id in &attacker_ids {
+                    let mut event = ReplacementEvent::AssignDealDamage { card: attacker_id };
+                    apply_replacements(game, &mut event);
+                }
+            }
+
             self.set_phase(game, agents, PhaseType::CombatDamage);
 
             // LKI: Snapshot battlefield state before combat damage.

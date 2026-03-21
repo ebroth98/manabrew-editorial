@@ -94,6 +94,9 @@ pub struct GameState {
     // The stack
     pub stack: MagicStack,
 
+    // Day/Night cycle (Innistrad DFC mechanic)
+    pub is_night: bool,
+
     // Turn/phase state
     pub turn: TurnState,
 
@@ -178,6 +181,7 @@ impl GameState {
             players,
             zones,
             stack: MagicStack::new(),
+            is_night: false,
             turn: TurnState::new(player_order[0], player_order.len() as u32),
             player_order,
             game_over: false,

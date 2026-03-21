@@ -1,33 +1,53 @@
 //! Replacement logic for `Event$ LoseMana`.
 //!
 //! Mirrors Java `ReplaceLoseMana.java` in `forge/game/replacement/`.
-//!
-//! TODO: implement — currently returns `false` from `can_replace`.
 
 use crate::card::CardInstance;
 use crate::game::GameState;
 use crate::ids::CardId;
 
 use super::replacement_handler::ReplacementEvent;
-use super::replacement_effect::ReplacementEffect;
+use super::replacement_effect::{matches_valid_player, ReplacementEffect};
 use super::replacement_result::ReplacementResult;
+use super::replacement_type::ReplacementType;
 
-/// Stub — always returns `false`. TODO: implement.
+/// Mirrors Java `ReplaceLoseMana.canReplace()`.
 pub fn can_replace(
-    _effect: &ReplacementEffect,
-    _event: &ReplacementEvent,
+    effect: &ReplacementEffect,
+    event: &ReplacementEvent,
     _game: &GameState,
-    _source_card: &CardInstance,
+    source_card: &CardInstance,
 ) -> bool {
-    false
+    if effect.event != ReplacementType::LoseMana {
+        return false;
+    }
+    let player = match event {
+        ReplacementEvent::LoseMana { player } => *player,
+        _ => return false,
+    };
+    if let Some(valid) = effect.params.get("ValidPlayer") {
+        if !matches_valid_player(valid, player, source_card) {
+            return false;
+        }
+    }
+    true
 }
 
-/// Stub — returns `NotReplaced`. TODO: implement.
+/// Mirrors Java `ReplacementHandler.executeReplacement()` for LoseMana.
 pub fn execute(
-    _effect: &ReplacementEffect,
+    effect: &ReplacementEffect,
     _event: &mut ReplacementEvent,
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    ReplacementResult::NotReplaced
+    if effect
+        .params
+        .get("Prevent")
+        .map(|s| s == "True")
+        .unwrap_or(false)
+        || effect.params.contains_key("Skip")
+    {
+        return ReplacementResult::Skipped;
+    }
+    ReplacementResult::Replaced
 }

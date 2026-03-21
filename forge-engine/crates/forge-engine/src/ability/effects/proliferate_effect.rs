@@ -20,6 +20,18 @@ use crate::spellability::SpellAbility;
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
+    // Run Proliferate replacement effects before proliferating.
+    let mut prolif_event = ReplacementEvent::Proliferate {
+        player: controller,
+        count: 1,
+    };
+    let prolif_result = apply_replacements(ctx.game, &mut prolif_event);
+    if prolif_result == crate::replacement::ReplacementResult::Skipped
+        || prolif_result == crate::replacement::ReplacementResult::Replaced
+    {
+        return;
+    }
+
     // Build unified candidate list: players first, then permanents (matches Java order).
     // Java: list.addAll(game.getPlayers().filter(PlayerPredicates.hasCounters()));
     //       list.addAll(CardLists.filter(game.getCardsIn(ZoneType.Battlefield), CardPredicates.hasCounters()));

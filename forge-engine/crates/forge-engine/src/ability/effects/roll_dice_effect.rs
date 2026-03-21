@@ -1,5 +1,7 @@
 use super::EffectContext;
 use crate::agent::GameLogEvent;
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// `SP$ RollDice` — roll a die and resolve a sub-ability based on the result.
@@ -16,6 +18,16 @@ use crate::spellability::{build_spell_ability, SpellAbility};
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
+
+    // Run RollDice replacement effects before rolling.
+    let mut event = ReplacementEvent::RollDice {
+        player: controller,
+    };
+    let result = apply_replacements(ctx.game, &mut event);
+    if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+        return;
+    }
+
     let sides = sa
         .params
         .get("Sides")

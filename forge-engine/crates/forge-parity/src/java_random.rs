@@ -35,6 +35,7 @@ impl JavaRandom {
     /// Equivalent to `java.util.Random.nextInt(int bound)`.
     pub fn next_int(&mut self, bound: i32) -> i32 {
         assert!(bound > 0, "bound must be positive");
+        let call_before = self.call_count;
         // Power-of-two fast path
         let result = if bound & (bound - 1) == 0 {
             ((bound as i64).wrapping_mul(self.next(31) as i64) >> 31) as i32
@@ -49,11 +50,17 @@ impl JavaRandom {
             }
         };
 
+        if std::env::var("FORGE_RNG_TRACE").is_ok() {
+            eprintln!("[rng-rust #{} ({})] nextInt({}) = {}", call_before + 1, self.label, bound, result);
+        }
         result
     }
 
     /// Fisher-Yates shuffle matching `java.util.Collections.shuffle(list, rng)`.
     pub fn shuffle<T>(&mut self, list: &mut [T]) {
+        if std::env::var("FORGE_RNG_TRACE").is_ok() {
+            eprintln!("[rng-rust ({})] shuffle(len={})", self.label, list.len());
+        }
         for i in (1..list.len()).rev() {
             let j = self.next_int((i + 1) as i32) as usize;
             list.swap(i, j);

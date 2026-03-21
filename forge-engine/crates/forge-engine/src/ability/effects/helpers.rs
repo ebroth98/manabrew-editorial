@@ -318,6 +318,23 @@ pub fn matches_change_type(
         return true;
     }
 
+    // Handle semicolon-separated alternatives (OR).
+    // E.g. "Artifact;Creature" means Artifact OR Creature.
+    // Mirrors Java's CardLists.getValidCards() which splits on "," and ";".
+    if change_type.contains(';') {
+        return change_type
+            .split(';')
+            .any(|alt| matches_change_type(card, alt.trim(), source_chosen_colors));
+    }
+
+    // Handle comma-separated alternatives (OR).
+    // E.g. "Artifact,Creature" means Artifact OR Creature.
+    if change_type.contains(',') {
+        return change_type
+            .split(',')
+            .any(|alt| matches_change_type(card, alt.trim(), source_chosen_colors));
+    }
+
     let parts: Vec<&str> = change_type.split('.').collect();
     let type_part = parts[0];
 

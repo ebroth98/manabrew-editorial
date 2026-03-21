@@ -95,6 +95,11 @@ impl JavaBridge {
             cmd.arg(format!("-Dpreset.decks.dir={}", abs.display()));
         }
 
+        // Forward RNG trace flag to Java engine
+        if std::env::var("FORGE_RNG_TRACE").is_ok() {
+            cmd.arg("-Dforge.parity.rng.trace=true");
+        }
+
         cmd.arg("-jar")
             .arg(jar)
             .arg("--deck1")
@@ -143,6 +148,7 @@ impl JavaBridge {
                         || line.contains("Failed")
                         || line.contains("WARNING")
                         || line.contains("[JAVA-STACK]")
+                        || line.contains("[rng-java")
                     {
                         if line.contains("[det-java") {
                             continue;
@@ -313,6 +319,11 @@ impl JavaServer {
             }
         }
 
+        // Forward RNG trace flag to Java engine
+        if std::env::var("FORGE_RNG_TRACE").is_ok() {
+            cmd.arg("-Dforge.parity.rng.trace=true");
+        }
+
         cmd.arg("-jar").arg(jar).arg("--server");
 
         // Add --forge-home if specified, otherwise auto-detect from JAR path
@@ -357,6 +368,7 @@ impl JavaServer {
                         || line.contains("Failed")
                         || line.contains("WARNING")
                         || line.contains("[JAVA-STACK]")
+                        || line.contains("[rng-java")
                     {
                         if line.contains("[det-java") {
                             continue;

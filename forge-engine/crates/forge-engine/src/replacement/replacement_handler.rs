@@ -95,6 +95,102 @@ pub enum ReplacementEvent {
         activator: PlayerId,
         mana: String,
     },
+
+    /// A permanent is being tapped.
+    Tap { card: CardId },
+
+    /// A permanent is being untapped.
+    Untap { card: CardId },
+
+    /// Life is being reduced (distinct from damage).
+    LifeReduced {
+        player: PlayerId,
+        amount: i32,
+        is_damage: bool,
+    },
+
+    /// Counter(s) are being removed from a permanent.
+    RemoveCounter {
+        target: CardId,
+        counter_type: CounterType,
+        count: i32,
+    },
+
+    /// Damage has been dealt (post-damage).
+    DealtDamage {
+        target: CardId,
+        amount: i32,
+        source: Option<CardId>,
+    },
+
+    /// Multiple cards are being drawn.
+    DrawCards { player: PlayerId, count: i32 },
+
+    /// Cards are being milled.
+    Mill { player: PlayerId, count: i32 },
+
+    /// Life is being paid as a cost.
+    PayLife { player: PlayerId, amount: i32 },
+
+    /// A player is scrying.
+    Scry { player: PlayerId, count: i32 },
+
+    /// An aura/equipment is being attached.
+    Attached { card: CardId, target: CardId },
+
+    /// A phase is beginning.
+    BeginPhase { player: PlayerId },
+
+    /// A turn is beginning.
+    BeginTurn { player: PlayerId },
+
+    /// A creature is exploring.
+    Explore { card: CardId },
+
+    /// Blockers are being declared.
+    DeclareBlocker { player: PlayerId },
+
+    /// Damage is being assigned before dealing.
+    AssignDealDamage { card: CardId },
+
+    /// A DFC is transforming.
+    Transform { card: CardId },
+
+    /// A face-down card is turning face up.
+    TurnFaceUp { card: CardId },
+
+    /// A spell is being copied.
+    CopySpell { player: PlayerId, count: i32 },
+
+    /// A player is proliferating.
+    Proliferate { player: PlayerId, count: i32 },
+
+    /// Cascade is triggering.
+    Cascade { player: PlayerId },
+
+    /// A player is learning.
+    Learn { player: PlayerId },
+
+    /// Mana is being lost.
+    LoseMana { player: PlayerId },
+
+    /// A die is being rolled.
+    RollDice { player: PlayerId },
+
+    /// The planar die is being rolled.
+    RollPlanarDice { player: PlayerId },
+
+    /// A planar dice result is being applied.
+    PlanarDiceResult { player: PlayerId },
+
+    /// A player is planeswalking.
+    Planeswalk { player: PlayerId },
+
+    /// A scheme is being set in motion.
+    SetInMotion { player: PlayerId },
+
+    /// A contraption is being assembled.
+    AssembleContraption { player: PlayerId },
 }
 
 // ── ReplacementHandler struct ─────────────────────────────────────────────────
@@ -230,6 +326,34 @@ fn affected_player_for_event(event: &ReplacementEvent, game: &GameState) -> Play
         ReplacementEvent::GameWin { player } => *player,
         ReplacementEvent::Counter { card } => game.cards[card.index()].controller,
         ReplacementEvent::ProduceMana { activator, .. } => *activator,
+        ReplacementEvent::Tap { card } => game.cards[card.index()].controller,
+        ReplacementEvent::Untap { card } => game.cards[card.index()].controller,
+        ReplacementEvent::LifeReduced { player, .. } => *player,
+        ReplacementEvent::RemoveCounter { target, .. } => game.cards[target.index()].controller,
+        ReplacementEvent::DealtDamage { target, .. } => game.cards[target.index()].controller,
+        ReplacementEvent::DrawCards { player, .. } => *player,
+        ReplacementEvent::Mill { player, .. } => *player,
+        ReplacementEvent::PayLife { player, .. } => *player,
+        ReplacementEvent::Scry { player, .. } => *player,
+        ReplacementEvent::Attached { card, .. } => game.cards[card.index()].controller,
+        ReplacementEvent::BeginPhase { player } => *player,
+        ReplacementEvent::BeginTurn { player } => *player,
+        ReplacementEvent::Explore { card } => game.cards[card.index()].controller,
+        ReplacementEvent::DeclareBlocker { player } => *player,
+        ReplacementEvent::AssignDealDamage { card } => game.cards[card.index()].controller,
+        ReplacementEvent::Transform { card } => game.cards[card.index()].controller,
+        ReplacementEvent::TurnFaceUp { card } => game.cards[card.index()].controller,
+        ReplacementEvent::CopySpell { player, .. } => *player,
+        ReplacementEvent::Proliferate { player, .. } => *player,
+        ReplacementEvent::Cascade { player } => *player,
+        ReplacementEvent::Learn { player } => *player,
+        ReplacementEvent::LoseMana { player } => *player,
+        ReplacementEvent::RollDice { player } => *player,
+        ReplacementEvent::RollPlanarDice { player } => *player,
+        ReplacementEvent::PlanarDiceResult { player } => *player,
+        ReplacementEvent::Planeswalk { player } => *player,
+        ReplacementEvent::SetInMotion { player } => *player,
+        ReplacementEvent::AssembleContraption { player } => *player,
     }
 }
 
@@ -265,7 +389,7 @@ fn collect_effects(
         replace_add_counter, replace_counter, replace_damage, replace_destroy, replace_draw,
         replace_gain_life, replace_game_loss, replace_game_win, replace_moved,
         replace_produce_mana, replace_token,
-        // Stubs
+        // Format/mechanic-specific replacements
         replace_assemble_contraption, replace_assign_deal_damage, replace_attached,
         replace_begin_phase, replace_begin_turn, replace_cascade, replace_copy_spell,
         replace_dealt_damage, replace_declare_blocker, replace_draw_cards, replace_explore,
@@ -328,7 +452,7 @@ fn collect_effects(
                 ReplacementType::ProduceMana => {
                     replace_produce_mana::can_replace(re, event, game, card)
                 }
-                // Stubs — all return false
+                // Format/mechanic-specific replacements
                 ReplacementType::DrawCards => {
                     replace_draw_cards::can_replace(re, event, game, card)
                 }
@@ -440,7 +564,7 @@ fn execute_effect(
         replace_add_counter, replace_counter, replace_damage, replace_destroy, replace_draw,
         replace_gain_life, replace_game_loss, replace_game_win, replace_moved,
         replace_produce_mana, replace_token,
-        // Stubs
+        // Format/mechanic-specific replacements
         replace_assemble_contraption, replace_assign_deal_damage, replace_attached,
         replace_begin_phase, replace_begin_turn, replace_cascade, replace_copy_spell,
         replace_dealt_damage, replace_declare_blocker, replace_draw_cards, replace_explore,
@@ -465,7 +589,7 @@ fn execute_effect(
         ReplacementType::ProduceMana => {
             replace_produce_mana::execute(effect, event, game, card_id)
         }
-        // Stubs — all return NotReplaced
+        // Format/mechanic-specific replacements
         ReplacementType::DrawCards => replace_draw_cards::execute(effect, event, game, card_id),
         ReplacementType::AssembleContraption => {
             replace_assemble_contraption::execute(effect, event, game, card_id)

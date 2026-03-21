@@ -106,8 +106,12 @@ impl GameLoop {
                 event = event.with_target_card(target_id);
             }
             crate::agent::notify_all_agents(agents, event);
+            let is_optional = pt.optional;
             game.stack.push(pt.entry);
             self.log_stack_push(&source_name, &player_name);
+            if std::env::var("FORGE_TRIGGER_TRACE").is_ok() {
+                eprintln!("[trigger-trace] PUSHED trigger to stack: {} optional={} api={}", source_name, is_optional, trigger_api);
+            }
         }
     }
 }

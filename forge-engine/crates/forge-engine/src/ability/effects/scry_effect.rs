@@ -2,6 +2,8 @@ use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
 use crate::event::{RunParams, TriggerType};
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `ScryEffect.java`.
@@ -17,6 +19,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Defined")
         .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
+
+    // Run Scry replacement effects before scrying.
+    let mut event = ReplacementEvent::Scry {
+        player: target,
+        count: num as i32,
+    };
+    let result = apply_replacements(ctx.game, &mut event);
+    if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+        return;
+    }
+    let num = if let ReplacementEvent::Scry { count, .. } = event {
+        count.max(0) as usize
+    } else {
+        num
+    };
 
     if sa.params.contains_key("Optional") {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());

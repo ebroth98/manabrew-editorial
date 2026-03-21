@@ -14,6 +14,19 @@ impl GameLoop {
         ) {
             return;
         }
+        // Run PayLife replacement effects before paying life.
+        {
+            use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+            use crate::replacement::ReplacementResult;
+            let mut event = ReplacementEvent::PayLife {
+                player,
+                amount,
+            };
+            let result = apply_replacements(game, &mut event);
+            if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+                return;
+            }
+        }
         game.player_mut(player).lose_life(amount);
         self.trigger_handler.run_trigger(
             TriggerType::LifeLost,

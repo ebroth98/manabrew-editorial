@@ -1,6 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 /// SP$ Attach / AB$ Attach — attach source Equipment/Aura to target creature.
@@ -30,6 +32,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.game.card(target),
         false,
     ) {
+        return;
+    }
+
+    // Run Attached replacement effects before attaching.
+    let mut event = ReplacementEvent::Attached {
+        card: aura_id,
+        target,
+    };
+    let result = apply_replacements(ctx.game, &mut event);
+    if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
         return;
     }
 

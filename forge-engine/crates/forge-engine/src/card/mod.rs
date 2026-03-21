@@ -189,6 +189,25 @@ pub struct CardInstance {
     pub face_down: bool,
     /// True if this card has Morph or Megamorph and can be cast face-down for {3}.
     pub has_morph: bool,
+    /// True if this card was discarded (CR 400.7k, for TrackDiscarded$ effects).
+    pub discarded: bool,
+    /// True if this card was unearthed (should be exiled at EOT or if leaving battlefield).
+    pub unearthed: bool,
+    /// Class enchantment level (1 = base, 2+ = leveled up).
+    pub class_level: i32,
+    /// Soulbond: paired creature (if any).
+    pub paired_with: Option<CardId>,
+    /// True if this card was manifested (face-down as 2/2 creature).
+    pub manifested: bool,
+    /// True if this card was cloaked (face-down with ward {2}).
+    pub cloaked: bool,
+    /// True if this card was foretold (exiled face-down via Foretell).
+    pub foretold: bool,
+    /// Other card(s) melded/merged with this one. When this card changes zones,
+    /// all melded parts move together (CR 712.4).
+    pub melded_with: Vec<CardId>,
+    /// True if foretold cost was set by an effect (not the card's own Foretell ability).
+    pub foretold_cost_by_effect: bool,
     /// True if this card is currently bestowed (attached as an Aura via Bestow).
     pub is_bestowed: bool,
     pub summoning_sick: bool,
@@ -261,11 +280,13 @@ pub struct CardInstance {
     /// Cards currently attached to this permanent (inverse of `attached_to`).
     pub attachments: Vec<CardId>,
 
-    // Memory for "Remember" parameters
+    // Memory for "Remember" and "Imprint" parameters
     /// Cards remembered by this card (for RememberCountered, etc.)
     pub remembered_cards: Vec<CardId>,
     /// Players remembered by this card (for Player.IsRemembered checks).
     pub remembered_players: Vec<PlayerId>,
+    /// Cards imprinted on this card (for Imprint mechanic, e.g. Chrome Mox).
+    pub imprinted_cards: Vec<CardId>,
     /// CMC values remembered by this card
     pub remembered_cmc: Vec<i32>,
     /// Source card that created this effect card (for Card.EffectSource checks).
@@ -453,6 +474,15 @@ impl CardInstance {
             flipped: false,
             face_down: false,
             has_morph: false,
+            discarded: false,
+            unearthed: false,
+            class_level: 1,
+            paired_with: None,
+            manifested: false,
+            cloaked: false,
+            foretold: false,
+            foretold_cost_by_effect: false,
+            melded_with: Vec::new(),
             is_bestowed: false,
             summoning_sick: true,
             exerted: false,
@@ -481,6 +511,7 @@ impl CardInstance {
             attachments: Vec::new(),
             remembered_cards: Vec::new(),
             remembered_players: Vec::new(),
+            imprinted_cards: Vec::new(),
             remembered_cmc: Vec::new(),
             effect_source: None,
             temp_effect_until_eot: false,

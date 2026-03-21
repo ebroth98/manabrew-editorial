@@ -73,19 +73,35 @@ impl GameLoop {
                     None,
                 );
                 if pay {
-                    // Player pays life — untap the card (it wasn't tapped by apply_etb_tapped
-                    // since we removed the third pass, but ensure untapped state)
-                    game.card_mut(card_id).tapped = false;
-                    game.player_mut(player).lose_life(life_cost);
-                    self.trigger_handler.run_trigger(
-                        TriggerType::LifeLost,
-                        RunParams {
-                            player: Some(player),
-                            life_amount: Some(life_cost),
-                            ..Default::default()
-                        },
-                        false,
-                    );
+                    // Run PayLife replacement effects before paying life.
+                    let skip_life = {
+                        use crate::replacement::replacement_handler::{
+                            apply_replacements, ReplacementEvent,
+                        };
+                        use crate::replacement::ReplacementResult;
+                        let mut event = ReplacementEvent::PayLife {
+                            player,
+                            amount: life_cost,
+                        };
+                        let result = apply_replacements(game, &mut event);
+                        result == ReplacementResult::Skipped
+                            || result == ReplacementResult::Replaced
+                    };
+                    if !skip_life {
+                        // Player pays life — untap the card (it wasn't tapped by apply_etb_tapped
+                        // since we removed the third pass, but ensure untapped state)
+                        game.card_mut(card_id).tapped = false;
+                        game.player_mut(player).lose_life(life_cost);
+                        self.trigger_handler.run_trigger(
+                            TriggerType::LifeLost,
+                            RunParams {
+                                player: Some(player),
+                                life_amount: Some(life_cost),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
                 } else {
                     // Player declines — enter tapped
                     game.card_mut(card_id).tapped = true;
@@ -949,16 +965,32 @@ impl GameLoop {
                 }
 
                 if life_to_pay > 0 {
-                    game.player_mut(player).lose_life(life_to_pay);
-                    self.trigger_handler.run_trigger(
-                        TriggerType::LifeLost,
-                        RunParams {
-                            player: Some(player),
-                            life_amount: Some(life_to_pay),
-                            ..Default::default()
-                        },
-                        false,
-                    );
+                    // Run PayLife replacement effects before paying life for shards.
+                    let skip_life = {
+                        use crate::replacement::replacement_handler::{
+                            apply_replacements, ReplacementEvent,
+                        };
+                        use crate::replacement::ReplacementResult;
+                        let mut event = ReplacementEvent::PayLife {
+                            player,
+                            amount: life_to_pay,
+                        };
+                        let result = apply_replacements(game, &mut event);
+                        result == ReplacementResult::Skipped
+                            || result == ReplacementResult::Replaced
+                    };
+                    if !skip_life {
+                        game.player_mut(player).lose_life(life_to_pay);
+                        self.trigger_handler.run_trigger(
+                            TriggerType::LifeLost,
+                            RunParams {
+                                player: Some(player),
+                                life_amount: Some(life_to_pay),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
                 }
 
                 forge_foundation::ManaCost::from_parts(remaining_shards, mana_cost.generic_cost())
@@ -1972,9 +2004,21 @@ impl GameLoop {
                 .filter(|k| k.eq_ignore_ascii_case("Cascade"))
                 .count();
             if cascade_count > 0 {
-                let caster_mv = game.card(card_id).mana_value();
-                for _ in 0..cascade_count {
-                    self.resolve_cascade(game, agents, player, caster_mv);
+                // Run Cascade replacement effects before cascading.
+                let skip_cascade = {
+                    use crate::replacement::replacement_handler::{
+                        apply_replacements, ReplacementEvent,
+                    };
+                    use crate::replacement::ReplacementResult;
+                    let mut event = ReplacementEvent::Cascade { player };
+                    let result = apply_replacements(game, &mut event);
+                    result == ReplacementResult::Skipped || result == ReplacementResult::Replaced
+                };
+                if !skip_cascade {
+                    let caster_mv = game.card(card_id).mana_value();
+                    for _ in 0..cascade_count {
+                        self.resolve_cascade(game, agents, player, caster_mv);
+                    }
                 }
             }
         }

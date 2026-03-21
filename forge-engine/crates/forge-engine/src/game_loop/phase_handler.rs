@@ -6,6 +6,18 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
+        // Run BeginTurn replacement effects before the turn begins.
+        let active = game.active_player();
+        {
+            use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+            use crate::replacement::ReplacementResult;
+            let mut event = ReplacementEvent::BeginTurn { player: active };
+            let result = apply_replacements(game, &mut event);
+            if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+                return;
+            }
+        }
+
         // Fire TurnBegin trigger at the start of each turn.
         let active = game.active_player();
         self.trigger_handler.run_trigger(
@@ -209,6 +221,22 @@ impl GameLoop {
                 phase,
                 emit_phase_trigger,
             } => {
+                // Run BeginPhase replacement effects before entering the phase.
+                {
+                    use crate::replacement::replacement_handler::{
+                        apply_replacements, ReplacementEvent,
+                    };
+                    use crate::replacement::ReplacementResult;
+                    let active = game.active_player();
+                    let mut event = ReplacementEvent::BeginPhase { player: active };
+                    let result = apply_replacements(game, &mut event);
+                    if result == ReplacementResult::Skipped
+                        || result == ReplacementResult::Replaced
+                    {
+                        return;
+                    }
+                }
+
                 // LKI: Snapshot battlefield state before phase transition.
                 // Mirrors Java PhaseHandler line 1103: game.copyLastState().
                 game.copy_last_state();
@@ -364,12 +392,10 @@ impl GameLoop {
                 return;
             }
 
-            // 1. Process any pending triggers and put them on the stack
-            self.with_shared_state_mutation(game, agents, |this, game, agents| {
-                this.process_triggers(game, agents);
-            });
-
-            // 2. Give players priority
+            // 1. Give players priority (process_triggers + SBA are handled
+            //    inside priority_round at the top of each iteration, matching
+            //    Java's checkStateBasedEffects() → addAllTriggeredAbilitiesToStack()
+            //    before chooseSpellAbilityToPlay()).
             self.priority_round(game, agents, is_main_phase);
 
             if game.game_over {

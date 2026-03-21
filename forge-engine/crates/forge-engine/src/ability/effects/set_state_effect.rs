@@ -1,5 +1,7 @@
 use super::EffectContext;
 use crate::ids::CardId;
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `SetStateEffect.java`.
@@ -46,6 +48,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
 
+            // Run Transform replacement effects before transforming.
+            let mut transform_event = ReplacementEvent::Transform { card: source_id };
+            let transform_result = apply_replacements(ctx.game, &mut transform_event);
+            if transform_result == ReplacementResult::Skipped
+                || transform_result == ReplacementResult::Replaced
+            {
+                return;
+            }
+
             // Perform the transform.
             ctx.game.card_mut(source_id).transform();
 
@@ -68,6 +79,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             card.flipped = !card.flipped;
         }
         "TurnFaceUp" => {
+            // Run TurnFaceUp replacement effects before turning face up.
+            let mut faceup_event = ReplacementEvent::TurnFaceUp { card: source_id };
+            let faceup_result = apply_replacements(ctx.game, &mut faceup_event);
+            if faceup_result == ReplacementResult::Skipped
+                || faceup_result == ReplacementResult::Replaced
+            {
+                return;
+            }
+
             let card = ctx.game.card_mut(source_id);
             if card.face_down {
                 card.face_down = false;

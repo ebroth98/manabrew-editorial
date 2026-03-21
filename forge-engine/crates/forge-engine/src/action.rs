@@ -323,6 +323,13 @@ impl GameState {
         {
             if final_amount > 0 {
                 self.cards[target.index()].damage += final_amount;
+                // Fire DealtDamage replacement event after damage is applied.
+                let mut dealt_event = ReplacementEvent::DealtDamage {
+                    target,
+                    amount: final_amount,
+                    source: None,
+                };
+                apply_replacements(self, &mut dealt_event);
             }
         }
     }
@@ -585,10 +592,12 @@ impl GameState {
     }
 
     /// Untap all permanents controlled by a player.
+    /// Runs Untap replacement effects for each permanent.
     pub fn untap_all(&mut self, player: PlayerId) {
         let cards: Vec<CardId> = self.cards_in_zone(ZoneType::Battlefield, player).to_vec();
         for cid in cards {
-            self.cards[cid.index()].tapped = false;
+            // Use untap() which runs replacement effects
+            self.untap(cid);
         }
     }
 
@@ -660,25 +669,37 @@ impl GameState {
     }
 
     /// Tap a card. Returns true if it was untapped.
+    /// Runs Tap replacement effects before tapping.
     pub fn tap(&mut self, card_id: CardId) -> bool {
-        let card = &mut self.cards[card_id.index()];
-        if !card.tapped {
-            card.tapped = true;
-            true
-        } else {
-            false
+        let card = &self.cards[card_id.index()];
+        if card.tapped {
+            return false;
         }
+        // Run Tap replacement effects.
+        let mut event = ReplacementEvent::Tap { card: card_id };
+        let result = apply_replacements(self, &mut event);
+        if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+            return false; // Tap was prevented
+        }
+        self.cards[card_id.index()].tapped = true;
+        true
     }
 
     /// Untap a card. Returns true if it was tapped.
+    /// Runs Untap replacement effects before untapping.
     pub fn untap(&mut self, card_id: CardId) -> bool {
-        let card = &mut self.cards[card_id.index()];
-        if card.tapped {
-            card.tapped = false;
-            true
-        } else {
-            false
+        let card = &self.cards[card_id.index()];
+        if !card.tapped {
+            return false;
         }
+        // Run Untap replacement effects.
+        let mut event = ReplacementEvent::Untap { card: card_id };
+        let result = apply_replacements(self, &mut event);
+        if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+            return false; // Untap was prevented
+        }
+        self.cards[card_id.index()].tapped = false;
+        true
     }
 
     /// Change the controller of a permanent to `new_controller`.

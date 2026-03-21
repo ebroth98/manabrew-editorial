@@ -1053,6 +1053,9 @@ impl PlayerAgent for CapturingAgent {
         let accept = self
             .inner
             .choose_optional_trigger(player, description, card_name, api);
+        if std::env::var("FORGE_TRIGGER_TRACE").is_ok() {
+            eprintln!("[trigger-trace] choose_optional_trigger: player={} desc={:?} card={:?} api={:?} -> {}", player.0, description, card_name, api, accept);
+        }
         self.record_decision(
             "optional_trigger",
             vec!["DECLINE".to_string(), "ACCEPT".to_string()],

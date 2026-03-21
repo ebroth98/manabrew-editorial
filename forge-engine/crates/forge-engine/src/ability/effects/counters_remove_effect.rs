@@ -3,6 +3,8 @@ use forge_foundation::ZoneType;
 use super::{parse_counter_type, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 /// Resolve `DB$ RemoveCounter` / `AB$ RemoveCounter` / `SP$ RemoveCounter`.
@@ -68,6 +70,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if ctx.game.card(card_id).zone != ZoneType::Battlefield {
         return;
     }
+
+    // Run RemoveCounter replacement effects before removing.
+    let mut event = ReplacementEvent::RemoveCounter {
+        target: card_id,
+        counter_type: counter_type.clone(),
+        count: requested_count,
+    };
+    let result = apply_replacements(ctx.game, &mut event);
+    if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+        return;
+    }
+    let requested_count = if let ReplacementEvent::RemoveCounter { count, .. } = event {
+        count
+    } else {
+        requested_count
+    };
 
     // Compute actual removal count (can't remove more than present).
     let current = ctx.game.card(card_id).counter_count(&counter_type);

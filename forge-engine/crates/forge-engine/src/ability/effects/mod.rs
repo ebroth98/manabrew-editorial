@@ -7,6 +7,101 @@
 pub mod activate_ability_effect;
 pub mod add_phase_effect;
 pub mod add_turn_effect;
+pub mod amass_effect;
+pub mod ascend_effect;
+pub mod bid_life_effect;
+pub mod block_effect;
+pub mod bond_effect;
+pub mod cast_from_effect;
+pub mod change_combatants_effect;
+pub mod change_targets_effect;
+pub mod choose_card_name_effect;
+pub mod choose_generic_effect;
+pub mod control_spell_effect;
+pub mod damage_prevent_effect;
+pub mod life_exchange_variant_effect;
+pub mod replace_counter_effect;
+pub mod replace_damage_effect;
+pub mod replace_mana_effect;
+pub mod replace_split_damage_effect;
+pub mod replace_token_effect;
+pub mod switch_block_effect;
+pub mod text_box_exchange_effect;
+pub mod change_text_effect;
+pub mod change_x_effect;
+pub mod clash_effect;
+pub mod class_level_up_effect;
+pub mod cloak_effect;
+pub mod control_exchange_effect;
+pub mod control_player_effect;
+pub mod counters_move_effect;
+pub mod counters_multiply_effect;
+pub mod counters_note_effect;
+pub mod counters_remove_all_effect;
+pub mod day_time_effect;
+pub mod discover_effect;
+pub mod flip_onto_battlefield_effect;
+pub mod haunt_effect;
+pub mod heist_effect;
+pub mod immediate_trigger_effect;
+pub mod incubate_effect;
+pub mod investigate_effect;
+pub mod learn_effect;
+pub mod manifest_dread_effect;
+pub mod manifest_effect;
+pub mod meld_effect;
+pub mod niche_effects;
+pub mod abandon_effect;
+pub mod advance_crank_effect;
+pub mod airbend_effect;
+pub mod alter_attribute_effect;
+pub mod assemble_contraption_effect;
+pub mod assign_group_effect;
+pub mod becomes_blocked_effect;
+pub mod blank_line_effect;
+pub mod blight_effect;
+pub mod camouflage_effect;
+pub mod change_speed_effect;
+pub mod chaos_ensues_effect;
+pub mod choose_sector_effect;
+pub mod claim_the_prize_effect;
+pub mod damage_resolve_effect;
+pub mod debuff_effect;
+pub mod draft_effect;
+pub mod earthbend_effect;
+pub mod endure_effect;
+pub mod gain_ownership_effect;
+pub mod intensify_effect;
+pub mod lose_perpetual_effect;
+pub mod make_card_effect;
+pub mod multiple_piles_effect;
+pub mod mutate_effect;
+pub mod open_attraction_effect;
+pub mod permanent_creature_effect;
+pub mod permanent_noncreature_effect;
+pub mod planeswalk_effect;
+pub mod radiation_effect;
+pub mod regeneration_effect;
+pub mod remove_from_game_effect;
+pub mod remove_from_match_effect;
+pub mod restart_game_effect;
+pub mod roll_planar_dice_effect;
+pub mod run_chaos_effect;
+pub mod set_in_motion_effect;
+pub mod subgame_effect;
+pub mod unlock_door_effect;
+pub mod reorder_zone_effect;
+pub mod repeat_effect;
+pub mod replace_effect;
+pub mod ring_tempts_effect;
+pub mod seek_effect;
+pub mod store_svar_effect;
+pub mod unattach_effect;
+pub mod venture_effect;
+pub mod villainous_choice_effect;
+pub mod vote_effect;
+pub mod zone_exchange_effect;
+pub mod internal_radiation_effect;
 pub mod animate_all_effect;
 pub mod animate_effect;
 pub mod attach_effect;
@@ -193,6 +288,58 @@ effect_dispatch! {
     "Sacrifice" => sacrifice_effect::resolve,
     "CopyPermanent" => copy_permanent_effect::resolve,
     "Token" => token_effect::resolve,
+    "Amass" => amass_effect::resolve,
+    "Manifest" => manifest_effect::resolve,
+    "ManifestDread" => manifest_dread_effect::resolve,
+    "Cloak" => cloak_effect::resolve,
+    "Investigate" => investigate_effect::resolve,
+    "Incubate" => incubate_effect::resolve,
+    "Seek" => seek_effect::resolve,
+    "Learn" => learn_effect::resolve,
+    "Discover" => discover_effect::resolve,
+    "Meld" => meld_effect::resolve,
+    "ControlExchange" => control_exchange_effect::resolve,
+    "ControlPlayer" => control_player_effect::resolve,
+    "Clash" => clash_effect::resolve,
+    "Vote" => vote_effect::resolve,
+    "VillainousChoice" => villainous_choice_effect::resolve,
+    "Ascend" => ascend_effect::resolve,
+    "DayTime" => day_time_effect::resolve,
+    "Haunt" => haunt_effect::resolve,
+    "Unattach" => unattach_effect::resolve,
+    "FlipOntoBattlefield" => flip_onto_battlefield_effect::resolve,
+    "ClassLevelUp" => class_level_up_effect::resolve,
+    "Venture" => venture_effect::resolve,
+    "RingTempts" => ring_tempts_effect::resolve,
+    "Heist" => heist_effect::resolve,
+    "ImmediateTrigger" => immediate_trigger_effect::resolve,
+    "StoreSVar" => store_svar_effect::resolve,
+    "ChangeTargets" => change_targets_effect::resolve,
+    "ChangeText" => change_text_effect::resolve,
+    "ChangeX" => change_x_effect::resolve,
+    "CountersMove" => counters_move_effect::resolve,
+    "CountersMultiply" => counters_multiply_effect::resolve,
+    "CountersNote" => counters_note_effect::resolve,
+    "CountersRemoveAll" => counters_remove_all_effect::resolve,
+    "ReorderZone" => reorder_zone_effect::resolve,
+    "Repeat" => repeat_effect::resolve,
+    "Replace" => replace_effect::resolve,
+    "BidLife" => bid_life_effect::resolve,
+    "Block" => block_effect::resolve,
+    "Bond" => bond_effect::resolve,
+    "ChooseCardName" => choose_card_name_effect::resolve,
+    "ChooseGeneric" => choose_generic_effect::resolve,
+    "ControlSpell" => control_spell_effect::resolve,
+    "DamagePrevent" => damage_prevent_effect::resolve,
+    "LifeExchangeVariant" => life_exchange_variant_effect::resolve,
+    "ReplaceDamage" => replace_damage_effect::resolve,
+    "ReplaceMana" => replace_mana_effect::resolve,
+    "ReplaceCounter" => replace_counter_effect::resolve,
+    "ReplaceToken" => replace_token_effect::resolve,
+    "ReplaceSplitDamage" => replace_split_damage_effect::resolve,
+    "TextBoxExchange" => text_box_exchange_effect::resolve,
+    "SwitchBlock" => switch_block_effect::resolve,
+    "ChangeCombatants" => change_combatants_effect::resolve,
     "Mana" => mana_effect::resolve,
     "ManaReflected" => mana_reflected_effect::resolve,
     "Mill" => mill_effect::resolve,
@@ -285,6 +432,70 @@ effect_dispatch! {
     "CopySpellAbility" => copy_spell_ability_effect::resolve,
     "TwoPiles" => two_piles_effect::resolve,
     "Encode" => encode_effect::resolve,
+
+    // ── Tier 4: Aliases + Niche Effects ────────────────────────────────
+    // Aliases mapping alternate API names to existing handlers
+    "ExchangeControl" => control_exchange_effect::resolve,
+    "ExchangeControlVariant" => control_gain_variant_effect::resolve,
+    "ExchangeLife" => life_exchange_effect::resolve,
+    "ExchangeLifeVariant" => life_exchange_variant_effect::resolve,
+    "ExchangePower" => power_exchange_effect::resolve,
+    "ExchangeTextBox" => text_box_exchange_effect::resolve,
+    "ExchangeZone" => change_zone_effect::resolve,
+    "GainControlVariant" => control_gain_variant_effect::resolve,
+    "SetLife" => life_set_effect::resolve,
+    "WinsGame" => game_win_effect::resolve,
+    "LosesGame" => game_loss_effect::resolve,
+    "GameDrawn" => game_draw_effect::resolve,
+    "AddOrRemoveCounter" => counters_put_or_remove_effect::resolve,
+    "MultiplyCounter" => counters_multiply_effect::resolve,
+    "RemoveCounterAll" => counters_remove_all_effect::resolve,
+    "TaporUntapAll" => tap_or_untap_all_effect::resolve,
+    "RingTemptsYou" => ring_tempts_effect::resolve,
+    "Regeneration" => regenerate_effect::resolve,
+    "ReplaceEffect" => replace_effect::resolve,
+
+    // Niche/format-specific effects
+    "Abandon" => abandon_effect::resolve,
+    "AdvanceCrank" => advance_crank_effect::resolve,
+    "Airbend" => airbend_effect::resolve,
+    "AlterAttribute" => alter_attribute_effect::resolve,
+    "AssembleContraption" => assemble_contraption_effect::resolve,
+    "AssignGroup" => assign_group_effect::resolve,
+    "BecomesBlocked" => becomes_blocked_effect::resolve,
+    "BlankLine" => blank_line_effect::resolve,
+    "Blight" => blight_effect::resolve,
+    "Camouflage" => camouflage_effect::resolve,
+    "ChangeSpeed" => change_speed_effect::resolve,
+    "ChaosEnsues" => chaos_ensues_effect::resolve,
+    "ChooseSector" => choose_sector_effect::resolve,
+    "ClaimThePrize" => claim_the_prize_effect::resolve,
+    "DamageResolve" => damage_resolve_effect::resolve,
+    "Debuff" => debuff_effect::resolve,
+    "Draft" => draft_effect::resolve,
+    "Earthbend" => earthbend_effect::resolve,
+    "Endure" => endure_effect::resolve,
+    "GainOwnership" => gain_ownership_effect::resolve,
+    "Intensify" => intensify_effect::resolve,
+    "LosePerpetual" => lose_perpetual_effect::resolve,
+    "MakeCard" => make_card_effect::resolve,
+    "MultiplePiles" => multiple_piles_effect::resolve,
+    "Mutate" => mutate_effect::resolve,
+    "OpenAttraction" => open_attraction_effect::resolve,
+    "PermanentCreature" => permanent_creature_effect::resolve,
+    "PermanentNoncreature" => permanent_noncreature_effect::resolve,
+    "Planeswalk" => planeswalk_effect::resolve,
+    "Radiation" => radiation_effect::resolve,
+    "InternalRadiation" => internal_radiation_effect::resolve,
+    "ZoneExchange" => zone_exchange_effect::resolve,
+    "RemoveFromGame" => remove_from_game_effect::resolve,
+    "RemoveFromMatch" => remove_from_match_effect::resolve,
+    "RestartGame" => restart_game_effect::resolve,
+    "RollPlanarDice" => roll_planar_dice_effect::resolve,
+    "RunChaos" => run_chaos_effect::resolve,
+    "SetInMotion" => set_in_motion_effect::resolve,
+    "Subgame" => subgame_effect::resolve,
+    "UnlockDoor" => unlock_door_effect::resolve,
 }
 
 /// Everything an effect needs to resolve.
@@ -325,6 +536,9 @@ fn check_condition(sa: &SpellAbility) -> bool {
 
 /// Check ConditionPresent$ / ConditionZone$ / ConditionCompare$ against game state.
 /// Returns true if the condition is met (or if no condition params exist).
+///
+/// When `ConditionDefined$` is present, check the defined cards instead of
+/// scanning a zone.  Mirrors Java's `SpellAbilityCondition.checkConditions()`.
 fn check_condition_present(
     game: &GameState,
     sa: &SpellAbility,
@@ -335,6 +549,33 @@ fn check_condition_present(
         Some(c) => c.clone(),
         None => return true, // No condition — always passes
     };
+
+    // Parse condition alternatives (comma-separated)
+    let alternatives: Vec<&str> = condition.split(',').map(|s| s.trim()).collect();
+
+    // ── ConditionDefined$ — check specific defined cards, not a zone ──
+    if let Some(cond_defined) = sa.params.get("ConditionDefined") {
+        let defined_cards: Vec<CardId> = match cond_defined.as_str() {
+            "Targeted" => sa.target_chosen.target_card.into_iter().collect(),
+            "Self" => sa.source.into_iter().collect(),
+            "Remembered" => sa
+                .source
+                .map(|sid| game.card(sid).remembered_cards.clone())
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        };
+
+        let count = defined_cards
+            .iter()
+            .filter(|&&cid| matches_condition_filter(game, cid, source_id, player, &alternatives))
+            .count() as i32;
+
+        return if let Some(compare) = sa.params.get("ConditionCompare") {
+            compare_condition(count, compare)
+        } else {
+            count > 0
+        };
+    }
 
     let zone_str = sa
         .params
@@ -350,50 +591,11 @@ fn check_condition_present(
         _ => ZoneType::Battlefield,
     };
 
-    // Parse condition alternatives (comma-separated)
-    let alternatives: Vec<&str> = condition.split(',').map(|s| s.trim()).collect();
-
-    // Count matching cards
+    // Count matching cards in zone
     let cards = game.cards_in_zone(zone, player);
     let count = cards
         .iter()
-        .filter(|&&cid| {
-            if cid == source_id {
-                return false; // Don't count self
-            }
-            let card = game.card(cid);
-            alternatives.iter().any(|alt| {
-                let (base, qualifier) = if let Some((b, q)) = alt.split_once('.') {
-                    (b, Some(q))
-                } else {
-                    (*alt, None)
-                };
-                let type_ok = match base.to_ascii_lowercase().as_str() {
-                    "card" => true,
-                    "creature" => card.is_creature(),
-                    "instant" => card.type_line.is_instant(),
-                    "sorcery" => card.type_line.is_sorcery(),
-                    "artifact" => card.type_line.is_artifact(),
-                    "enchantment" => card.type_line.is_enchantment(),
-                    "land" => card.is_land(),
-                    "planeswalker" => card.type_line.is_planeswalker(),
-                    _ => card.type_line.has_subtype(base),
-                };
-                if !type_ok {
-                    return false;
-                }
-                // Check qualifier
-                if let Some(q) = qualifier {
-                    match q.to_ascii_lowercase().as_str() {
-                        "youctrl" | "youown" => card.controller == player,
-                        "oppctrl" => card.controller != player,
-                        _ => true,
-                    }
-                } else {
-                    true
-                }
-            })
-        })
+        .filter(|&&cid| matches_condition_filter(game, cid, source_id, player, &alternatives))
         .count() as i32;
 
     // Check ConditionCompare$ (e.g. "GE2", "EQ0")
@@ -402,6 +604,59 @@ fn check_condition_present(
     } else {
         count > 0
     }
+}
+
+/// Check if a card matches a condition filter expression.
+/// Handles type matching + qualifier checks (YouCtrl, OppCtrl, ChosenCtrl, etc.).
+fn matches_condition_filter(
+    game: &GameState,
+    cid: CardId,
+    source_id: CardId,
+    player: PlayerId,
+    alternatives: &[&str],
+) -> bool {
+    if cid == source_id {
+        return false; // Don't count self
+    }
+    let card = game.card(cid);
+    let source = game.card(source_id);
+    alternatives.iter().any(|alt| {
+        let (base, qualifier) = if let Some((b, q)) = alt.split_once('.') {
+            (b, Some(q))
+        } else {
+            (*alt, None)
+        };
+        let type_ok = match base.to_ascii_lowercase().as_str() {
+            "card" => true,
+            "creature" => card.is_creature(),
+            "instant" => card.type_line.is_instant(),
+            "sorcery" => card.type_line.is_sorcery(),
+            "artifact" => card.type_line.is_artifact(),
+            "enchantment" => card.type_line.is_enchantment(),
+            "land" => card.is_land(),
+            "planeswalker" => card.type_line.is_planeswalker(),
+            _ => card.type_line.has_subtype(base),
+        };
+        if !type_ok {
+            return false;
+        }
+        // Check qualifier
+        if let Some(q) = qualifier {
+            match q.to_ascii_lowercase().as_str() {
+                "youctrl" | "youown" => card.controller == player,
+                "oppctrl" => card.controller != player,
+                "chosenctrl" => {
+                    // Card must be controlled by the secretly chosen player
+                    source
+                        .chosen_player
+                        .map_or(false, |chosen| card.controller == chosen)
+                }
+                _ => true,
+            }
+        } else {
+            true
+        }
+    })
 }
 
 /// Compare a value against a condition string (e.g. "GE2", "EQ0", "LE3").
@@ -993,6 +1248,108 @@ fn detect_api_type_from_text(ability: &str) -> &'static str {
         "SacrificeAll"
     } else if ability.contains("Sacrifice") {
         "Sacrifice"
+    } else if ability.contains("Amass") {
+        "Amass"
+    } else if ability.contains("ManifestDread") {
+        "ManifestDread"
+    } else if ability.contains("Manifest") {
+        "Manifest"
+    } else if ability.contains("Cloak") {
+        "Cloak"
+    } else if ability.contains("Investigate") {
+        "Investigate"
+    } else if ability.contains("Incubate") {
+        "Incubate"
+    } else if ability.contains("Seek") {
+        "Seek"
+    } else if ability.contains("Learn") {
+        "Learn"
+    } else if ability.contains("Discover") {
+        "Discover"
+    } else if ability.contains("Meld") {
+        "Meld"
+    } else if ability.contains("ControlExchange") {
+        "ControlExchange"
+    } else if ability.contains("ControlPlayer") {
+        "ControlPlayer"
+    } else if ability.contains("Clash") {
+        "Clash"
+    } else if ability.contains("Vote") {
+        "Vote"
+    } else if ability.contains("VillainousChoice") {
+        "VillainousChoice"
+    } else if ability.contains("Ascend") {
+        "Ascend"
+    } else if ability.contains("DayTime") {
+        "DayTime"
+    } else if ability.contains("Haunt") {
+        "Haunt"
+    } else if ability.contains("Unattach") {
+        "Unattach"
+    } else if ability.contains("FlipOntoBattlefield") {
+        "FlipOntoBattlefield"
+    } else if ability.contains("ClassLevelUp") {
+        "ClassLevelUp"
+    } else if ability.contains("Venture") {
+        "Venture"
+    } else if ability.contains("RingTempts") {
+        "RingTempts"
+    } else if ability.contains("Heist") {
+        "Heist"
+    } else if ability.contains("ImmediateTrigger") {
+        "ImmediateTrigger"
+    } else if ability.contains("StoreSVar") {
+        "StoreSVar"
+    } else if ability.contains("ChangeTargets") {
+        "ChangeTargets"
+    } else if ability.contains("ChangeText") {
+        "ChangeText"
+    } else if ability.contains("ChangeX") {
+        "ChangeX"
+    } else if ability.contains("CountersMove") {
+        "CountersMove"
+    } else if ability.contains("CountersMultiply") {
+        "CountersMultiply"
+    } else if ability.contains("CountersNote") {
+        "CountersNote"
+    } else if ability.contains("CountersRemoveAll") {
+        "CountersRemoveAll"
+    } else if ability.contains("ReorderZone") {
+        "ReorderZone"
+    } else if ability.contains("Repeat") && !ability.contains("RepeatEach") {
+        "Repeat"
+    } else if ability.contains("ReplaceSplitDamage") {
+        "ReplaceSplitDamage"
+    } else if ability.contains("ReplaceDamage") {
+        "ReplaceDamage"
+    } else if ability.contains("ReplaceMana") {
+        "ReplaceMana"
+    } else if ability.contains("ReplaceCounter") {
+        "ReplaceCounter"
+    } else if ability.contains("ReplaceToken") {
+        "ReplaceToken"
+    } else if ability.contains("Replace") {
+        "Replace"
+    } else if ability.contains("BidLife") {
+        "BidLife"
+    } else if ability.contains("Bond") {
+        "Bond"
+    } else if ability.contains("ChooseCardName") {
+        "ChooseCardName"
+    } else if ability.contains("ChooseGeneric") {
+        "ChooseGeneric"
+    } else if ability.contains("ControlSpell") {
+        "ControlSpell"
+    } else if ability.contains("DamagePrevent") {
+        "DamagePrevent"
+    } else if ability.contains("LifeExchangeVariant") {
+        "LifeExchangeVariant"
+    } else if ability.contains("TextBoxExchange") {
+        "TextBoxExchange"
+    } else if ability.contains("SwitchBlock") {
+        "SwitchBlock"
+    } else if ability.contains("ChangeCombatants") {
+        "ChangeCombatants"
     } else if ability.contains("Token") {
         "Token"
     } else if ability.contains("DrainMana") {

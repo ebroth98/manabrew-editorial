@@ -56,6 +56,18 @@ pub struct PlayerState {
 
     // Mana expend tracking: cumulative mana spent on spells this turn (for Expend triggers).
     pub mana_expended_this_turn: i32,
+
+    /// Mindslaver effect: another player controls this player's decisions.
+    pub controlled_by: Option<PlayerId>,
+
+    /// City's Blessing (Ascend). Once gained, lasts for the rest of the game.
+    pub has_city_blessing: bool,
+    /// The Ring tempts you — current ring level (0-4).
+    pub ring_level: i32,
+    /// The Ring-bearer creature (if any).
+    pub ring_bearer: Option<crate::ids::CardId>,
+    /// Radiation counters (Fallout set mechanic).
+    pub radiation_counters: i32,
 }
 
 impl PlayerState {
@@ -85,6 +97,11 @@ impl PlayerState {
             energy_counters: 0,
             mana_shards: 0,
             mana_expended_this_turn: 0,
+            controlled_by: None,
+            has_city_blessing: false,
+            ring_level: 0,
+            ring_bearer: None,
+            radiation_counters: 0,
         }
     }
 

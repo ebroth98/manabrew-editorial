@@ -60,6 +60,9 @@ impl GameLoop {
         // A spell or ability is countered by game rules if ALL of its targets
         // are illegal on resolution. Walk the SA chain; if every targeting node
         // has only invalid targets, the whole thing fizzles.
+        if std::env::var("FORGE_TRIGGER_TRACE").is_ok() && entry.optional_trigger_decider.is_some() {
+            eprintln!("[trigger-trace] RESOLVING optional trigger from stack: {} api={:?}", stack_item_name, entry.spell_ability.api);
+        }
         if Self::has_fizzled(&entry.spell_ability, game) {
             crate::agent::notify_all_agents(
                 agents,

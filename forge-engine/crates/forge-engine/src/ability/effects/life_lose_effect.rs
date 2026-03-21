@@ -1,5 +1,7 @@
 use super::{resolve_defined_player_with_sa, resolve_numeric_svar, EffectContext};
 use crate::event::{RunParams, TriggerType};
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -21,6 +23,30 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     ) {
         return;
     }
+
+    // Run LifeReduced replacement effects before losing life.
+    let mut event = ReplacementEvent::LifeReduced {
+        player: target,
+        amount,
+        is_damage: false,
+    };
+    let result = apply_replacements(ctx.game, &mut event);
+    if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+        return;
+    }
+    let amount = if let ReplacementEvent::LifeReduced {
+        amount: final_amount,
+        ..
+    } = event
+    {
+        final_amount
+    } else {
+        amount
+    };
+    if amount <= 0 {
+        return;
+    }
+
     ctx.game.player_mut(target).lose_life(amount);
 
     // Set AFLifeLost SVar on source card so chained sub-abilities (e.g. GainLife) can read it.

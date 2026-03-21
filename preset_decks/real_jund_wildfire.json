@@ -1,0 +1,33 @@
+{
+  "label": "Jund Wildfire",
+  "desc": "Real Pauper deck: Cleansing Wildfire artifact lands Jund value (Jund Wildfire archetype)",
+  "color": "text-red-400",
+  "opponent": "real_mono_black_sacrifice",
+  "ai_eligible": false,
+  "order": 105,
+  "cards": [
+    { "name": "Blood Fountain", "count": 2 },
+    { "name": "Cast Down", "count": 3 },
+    { "name": "Cleansing Wildfire", "count": 4 },
+    { "name": "Drossforge Bridge", "count": 4 },
+    { "name": "Eviscerator's Insight", "count": 2 },
+    { "name": "Fanatical Offering", "count": 3 },
+    { "name": "Forest", "count": 2 },
+    { "name": "Galvanic Blast", "count": 2 },
+    { "name": "Ichor Wellspring", "count": 4 },
+    { "name": "Krark-Clan Shaman", "count": 2 },
+    { "name": "Lembas", "count": 2 },
+    { "name": "Makeshift Munitions", "count": 1 },
+    { "name": "Mountain", "count": 1 },
+    { "name": "Nihil Spellbomb", "count": 1 },
+    { "name": "Nyxborn Hydra", "count": 2 },
+    { "name": "Pulse of Murasa", "count": 2 },
+    { "name": "Refurbished Familiar", "count": 4 },
+    { "name": "Slagwoods Bridge", "count": 4 },
+    { "name": "Swamp", "count": 3 },
+    { "name": "Toxin Analysis", "count": 2 },
+    { "name": "Twisted Landscape", "count": 4 },
+    { "name": "Vault of Whispers", "count": 2 },
+    { "name": "Writhing Chrysalis", "count": 4 }
+  ]
+}

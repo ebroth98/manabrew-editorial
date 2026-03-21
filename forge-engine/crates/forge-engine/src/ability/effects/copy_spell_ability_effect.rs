@@ -1,4 +1,6 @@
 use super::EffectContext;
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 /// `SP$ CopySpellAbility` — copy the top spell on the stack.
@@ -14,6 +16,16 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
+
+    // Run CopySpell replacement effects before copying.
+    let mut event = ReplacementEvent::CopySpell {
+        player: controller,
+        count: 1,
+    };
+    let result = apply_replacements(ctx.game, &mut event);
+    if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+        return;
+    }
 
     // Find the spell to copy — default: top of stack (excluding self)
     let stack_entry = {

@@ -2,6 +2,8 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, parse_param, resolve_defined_player, EffectContext};
 use crate::event::{RunParams, TriggerType};
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `MillEffect.java`.
@@ -21,6 +23,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         })
         .unwrap_or(sa.activating_player);
+
+    // Run Mill replacement effects before milling.
+    let mut event = ReplacementEvent::Mill {
+        player: target,
+        count: num as i32,
+    };
+    let result = apply_replacements(ctx.game, &mut event);
+    if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+        return;
+    }
+    let num = if let ReplacementEvent::Mill { count, .. } = event {
+        count.max(0) as usize
+    } else {
+        num
+    };
 
     let lib_len = ctx.game.cards_in_zone(ZoneType::Library, target).len();
     let count = num.min(lib_len);

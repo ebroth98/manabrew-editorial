@@ -24,7 +24,7 @@ pub mod replace_moved;
 pub mod replace_produce_mana;
 pub mod replace_token;
 
-// Stubs (TODO: implement)
+// Format/mechanic-specific replacement modules
 pub mod replace_assemble_contraption;
 pub mod replace_assign_deal_damage;
 pub mod replace_attached;

@@ -1338,7 +1338,20 @@ fn deal_combat_damage_to_player(
                 source_controller,
             )
         {
-            game.player_mut(source_controller).gain_life(amount);
+            // Run GainLife replacement effects (e.g. Tainted Remedy).
+            let mut gl_event = crate::replacement::replacement_handler::ReplacementEvent::GainLife {
+                player: source_controller,
+                amount,
+            };
+            let gl_result = crate::replacement::replacement_handler::apply_replacements(game, &mut gl_event);
+            if gl_result != crate::replacement::ReplacementResult::Skipped
+                && gl_result != crate::replacement::ReplacementResult::Replaced
+            {
+                let final_amount = if let crate::replacement::replacement_handler::ReplacementEvent::GainLife { amount: a, .. } = gl_event { a } else { amount };
+                if final_amount > 0 {
+                    game.player_mut(source_controller).gain_life(final_amount);
+                }
+            }
         }
     }
 }
@@ -1381,7 +1394,20 @@ fn deal_combat_damage_to_card(
                 source_controller,
             )
         {
-            game.player_mut(source_controller).gain_life(amount);
+            // Run GainLife replacement effects (e.g. Tainted Remedy).
+            let mut gl_event = crate::replacement::replacement_handler::ReplacementEvent::GainLife {
+                player: source_controller,
+                amount,
+            };
+            let gl_result = crate::replacement::replacement_handler::apply_replacements(game, &mut gl_event);
+            if gl_result != crate::replacement::ReplacementResult::Skipped
+                && gl_result != crate::replacement::ReplacementResult::Replaced
+            {
+                let final_amount = if let crate::replacement::replacement_handler::ReplacementEvent::GainLife { amount: a, .. } = gl_event { a } else { amount };
+                if final_amount > 0 {
+                    game.player_mut(source_controller).gain_life(final_amount);
+                }
+            }
         }
         // Record damage in source's damage history
         game.card_mut(source)

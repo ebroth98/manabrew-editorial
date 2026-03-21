@@ -170,6 +170,23 @@ pub enum TriggerType {
     Exploited,
     /// Cumulative upkeep was paid (or not). Mirrors Java TriggerType.PayCumulativeUpkeep.
     PayCumulativeUpkeep,
+    // ── Niche trigger types (Planechase, Unfinity, Ikoria, etc.) ──
+    /// Chaos ensues (Planechase chaos die result).
+    ChaosEnsues,
+    /// A player planeswalked to a new plane (Planechase).
+    Planeswalk,
+    /// A player claimed the prize from an attraction (Unfinity).
+    ClaimPrize,
+    /// A player advanced their crank counter (Unstable).
+    CrankAdvanced,
+    /// A Case enchantment was solved (MKM).
+    CaseSolved,
+    /// A creature became saddled (OTJ).
+    BecomesSaddled,
+    /// A scheme was set in motion (Archenemy).
+    SetInMotion,
+    /// A creature mutated onto another (IKO).
+    Mutates,
 }
 
 /// Typed event parameter keys — mirrors Java AbilityKey enum.

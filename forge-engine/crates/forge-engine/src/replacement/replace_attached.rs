@@ -1,33 +1,60 @@
 //! Replacement logic for `Event$ Attached`.
 //!
 //! Mirrors Java `ReplaceAttached.java` in `forge/game/replacement/`.
-//!
-//! TODO: implement — currently returns `false` from `can_replace`.
 
 use crate::card::CardInstance;
 use crate::game::GameState;
 use crate::ids::CardId;
 
 use super::replacement_handler::ReplacementEvent;
-use super::replacement_effect::ReplacementEffect;
+use super::replacement_effect::{matches_valid_card, ReplacementEffect};
 use super::replacement_result::ReplacementResult;
+use super::replacement_type::ReplacementType;
 
-/// Stub — always returns `false`. TODO: implement.
+/// Mirrors Java `ReplaceAttached.canReplace()`.
 pub fn can_replace(
-    _effect: &ReplacementEffect,
-    _event: &ReplacementEvent,
-    _game: &GameState,
-    _source_card: &CardInstance,
+    effect: &ReplacementEffect,
+    event: &ReplacementEvent,
+    game: &GameState,
+    source_card: &CardInstance,
 ) -> bool {
-    false
+    if effect.event != ReplacementType::Attached {
+        return false;
+    }
+    let (card, target) = match event {
+        ReplacementEvent::Attached { card, target } => (*card, *target),
+        _ => return false,
+    };
+    let attach_card = &game.cards[card.index()];
+    if let Some(valid) = effect.params.get("ValidCard") {
+        if !matches_valid_card(valid, attach_card, source_card) {
+            return false;
+        }
+    }
+    let target_card = &game.cards[target.index()];
+    if let Some(valid_target) = effect.params.get("ValidTarget") {
+        if !matches_valid_card(valid_target, target_card, source_card) {
+            return false;
+        }
+    }
+    true
 }
 
-/// Stub — returns `NotReplaced`. TODO: implement.
+/// Mirrors Java `ReplacementHandler.executeReplacement()` for Attached.
 pub fn execute(
-    _effect: &ReplacementEffect,
+    effect: &ReplacementEffect,
     _event: &mut ReplacementEvent,
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    ReplacementResult::NotReplaced
+    if effect
+        .params
+        .get("Prevent")
+        .map(|s| s == "True")
+        .unwrap_or(false)
+        || effect.params.contains_key("Skip")
+    {
+        return ReplacementResult::Skipped;
+    }
+    ReplacementResult::Replaced
 }

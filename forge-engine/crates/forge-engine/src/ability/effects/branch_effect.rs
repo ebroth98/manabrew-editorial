@@ -39,7 +39,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     sub_sa.replicate_count = sa.replicate_count;
     sub_sa.is_copy = sa.is_copy;
 
-    super::resolve_effect(ctx, &sub_sa);
+    // Walk the full sub-ability chain, just like Java's AbilityUtils.resolve()
+    // which follows getSubAbility() after each node. Without this, linked effects
+    // (e.g. DBShuffle after DBChangeZoneAll2 in Celestial Reunion) would be skipped.
+    let mut cur_opt: Option<SpellAbility> = Some(sub_sa);
+    while let Some(cur_sa) = cur_opt {
+        super::resolve_effect(ctx, &cur_sa);
+        cur_opt = cur_sa.sub_ability.map(|b| *b);
+        if ctx.game.game_over {
+            break;
+        }
+    }
 }
 
 fn evaluate_branch_condition(ctx: &EffectContext, sa: &SpellAbility) -> bool {

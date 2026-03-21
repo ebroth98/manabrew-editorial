@@ -49,9 +49,28 @@ impl GameLoop {
                 game.turn.priority_player = priority_player;
             });
 
-            // Check SBA before any player gets priority
+            // Mirrors Java's checkStateBasedEffects():
+            //   do { checkStateEffects(); } while (addAllTriggeredAbilitiesToStack());
+            // SBA check may cause triggers (e.g. creature dies → death triggers),
+            // and processing triggers may cause more SBA (e.g. token creation
+            // causing legend rule). Loop until stable.
             loop {
-                if !super::check_sba(game, &mut self.trigger_handler, agents) {
+                let sba_changed = super::check_sba(game, &mut self.trigger_handler, agents);
+                if game.game_over {
+                    return;
+                }
+                // Process pending triggers and put them on the stack.
+                // Mirrors Java's addAllTriggeredAbilitiesToStack() inside
+                // checkStateBasedEffects(). This must happen BEFORE the player
+                // gets to choose an action, so triggers are already on the stack
+                // when the player sees their options.
+                let stack_before = game.stack.len();
+                self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                    this.process_triggers(game, agents);
+                });
+                let triggers_added = game.stack.len() > stack_before;
+                // Keep looping while either SBA changed state or new triggers were added
+                if !sba_changed && !triggers_added {
                     break;
                 }
             }

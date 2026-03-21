@@ -1,0 +1,135 @@
+//! Incubate effect — create Incubator artifact token with +1/+1 counters.
+//!
+//! Ported 1:1 from Java's `IncubateEffect.java`.
+//! Incubate N: Create an Incubator token with N +1/+1 counters on it.
+//! (It's a transforming double-faced token. Pay {2}: Transform it.
+//! It becomes a 0/0 Phyrexian artifact creature.)
+
+use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+
+use super::{emit_zone_trigger, parse_counter_type, EffectContext};
+use crate::card::CardInstance;
+use crate::event::{RunParams, TriggerType};
+use crate::ids::CardId;
+use crate::spellability::SpellAbility;
+
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0);
+    let times = super::resolve_numeric_svar(ctx.game, sa, "Times", 1).max(0) as usize;
+    let controller = sa.activating_player;
+
+    let players = if let Some(def) = sa.defined_player() {
+        super::resolve_defined_players(def, controller, ctx.game)
+    } else {
+        vec![controller]
+    };
+
+    for &pid in &players {
+        for _ in 0..times {
+            create_incubator_token(ctx, sa, pid, amount);
+        }
+    }
+}
+
+/// Create a single Incubator token with N +1/+1 counters.
+fn create_incubator_token(
+    ctx: &mut EffectContext,
+    _sa: &SpellAbility,
+    player: crate::ids::PlayerId,
+    counter_amount: i32,
+) {
+    // Try registered token template first
+    if let Some(template) = ctx
+        .token_templates
+        .get("incubator_c_0_0_a_phyrexian")
+        .cloned()
+    {
+        // RNG sync
+        ctx.rng.next_int(1);
+        ctx.rng.next_int(1);
+
+        let mut token = template;
+        token.owner = player;
+        token.controller = player;
+        token.is_token = true;
+
+        let token_id = ctx.game.create_card(token);
+        ctx.game
+            .move_card(token_id, ZoneType::Battlefield, player);
+
+        // Add +1/+1 counters
+        if counter_amount > 0 {
+            let ct = parse_counter_type("P1P1");
+            ctx.game.card_mut(token_id).add_counter(&ct, counter_amount);
+        }
+
+        ctx.trigger_handler
+            .register_active_trigger(ctx.game, token_id);
+
+        ctx.trigger_handler.run_trigger(
+            TriggerType::TokenCreated,
+            RunParams {
+                card: Some(token_id),
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
+
+        emit_zone_trigger(
+            ctx.trigger_handler,
+            token_id,
+            ZoneType::None,
+            ZoneType::Battlefield,
+        );
+    } else {
+        // Fallback: create inline Incubator token
+        ctx.rng.next_int(1);
+        ctx.rng.next_int(1);
+
+        let mut token = CardInstance::new(
+            CardId(0),
+            "Incubator Token".to_string(),
+            player,
+            CardTypeLine::parse("Artifact - Incubator"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        token.controller = player;
+        token.is_token = true;
+
+        let token_id = ctx.game.create_card(token);
+        ctx.game
+            .move_card(token_id, ZoneType::Battlefield, player);
+
+        // Add +1/+1 counters
+        if counter_amount > 0 {
+            let ct = parse_counter_type("P1P1");
+            ctx.game.card_mut(token_id).add_counter(&ct, counter_amount);
+        }
+
+        ctx.trigger_handler
+            .register_active_trigger(ctx.game, token_id);
+
+        ctx.trigger_handler.run_trigger(
+            TriggerType::TokenCreated,
+            RunParams {
+                card: Some(token_id),
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
+
+        emit_zone_trigger(
+            ctx.trigger_handler,
+            token_id,
+            ZoneType::None,
+            ZoneType::Battlefield,
+        );
+    }
+}

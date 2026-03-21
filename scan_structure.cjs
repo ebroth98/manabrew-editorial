@@ -66,10 +66,129 @@ const BOLD = '\x1b[1m';
 const DIM = '\x1b[2m';
 const RESET = '\x1b[0m';
 
-// Java interface pattern: starts with I followed by an uppercase letter (e.g. ICombat, IIdentifiable)
-function isJavaInterface(filename) {
-  const name = filename.replace(/\.java$/, '');
-  return /^I[A-Z]/.test(name);
+const MAGENTA = '\x1b[0;35m';
+const LIGHT_BLUE = '\x1b[0;96m';
+
+// Detect if a Java file declares an abstract class or interface from its source
+// Returns { kind: 'abstract'|'interface', name: string } or null
+// For interfaces, strips the I prefix (IFoo -> Foo) since Rust traits don't use it
+function detectTraitSource(filePath) {
+  const content = fs.readFileSync(filePath, 'utf-8');
+  // interface Foo
+  const ifaceRe = /^\s*public\s+interface\s+(\w+)/m;
+  const ifaceMatch = ifaceRe.exec(content);
+  if (ifaceMatch) {
+    let name = ifaceMatch[1];
+    // Strip I prefix: ISpellAbility -> SpellAbility
+    if (/^I[A-Z]/.test(name)) name = name.slice(1);
+    return { kind: 'interface', name };
+  }
+  // abstract class Foo
+  const abstractRe = /^\s*public\s+abstract\s+class\s+(\w+)/m;
+  const abstractMatch = abstractRe.exec(content);
+  if (abstractMatch) return { kind: 'abstract', name: abstractMatch[1] };
+  return null;
+}
+
+// Extract the body of a block starting after an opening `{`, handling nested braces
+function extractBlockBody(content, startIndex) {
+  let depth = 1;
+  let i = startIndex;
+  const body = [];
+  while (i < content.length && depth > 0) {
+    if (content[i] === '{') depth++;
+    else if (content[i] === '}') depth--;
+    if (depth > 0) body.push(content[i]);
+    i++;
+  }
+  return body.join('');
+}
+
+// Extract fn names from a block body
+function extractFnsFromBody(body, requirePub) {
+  const methods = [];
+  const re = requirePub
+    ? /pub\s+(?:async\s+)?fn\s+([a-z_]\w*)\s*[(<]/g
+    : /fn\s+([a-z_]\w*)\s*[(<]/g;
+  let m;
+  while ((m = re.exec(body)) !== null) {
+    methods.push(m[1]);
+  }
+  return [...new Set(methods)];
+}
+
+// Search all .rs files in a directory for `pub trait Name` or `impl Name`
+// Returns { kind: 'trait'|'impl', relFile, methods } or null
+// Prefers trait over impl if both exist
+function findTypeInModule(rustDir, typeName) {
+  if (!fs.existsSync(rustDir) || !fs.statSync(rustDir).isDirectory()) return null;
+  const files = fs.readdirSync(rustDir).filter(f => f.endsWith('.rs'));
+
+  let implResult = null;
+
+  for (const file of files) {
+    const filePath = path.join(rustDir, file);
+    const content = fs.readFileSync(filePath, 'utf-8');
+
+    // Check for pub trait (preferred)
+    const traitRe = new RegExp(`pub\\s+trait\\s+${typeName}\\b[^{]*\\{`);
+    const traitMatch = traitRe.exec(content);
+    if (traitMatch) {
+      const body = extractBlockBody(content, traitMatch.index + traitMatch[0].length);
+      // Trait methods don't need pub — they're public by default
+      const methods = extractFnsFromBody(body, false);
+      return { kind: 'trait', relFile: file, methods };
+    }
+
+    // Check for impl Name (not impl Trait for Name)
+    const implRe = new RegExp(`impl\\s+${typeName}\\s*\\{`, 'g');
+    let implMatch;
+    const implMethods = [];
+    while ((implMatch = implRe.exec(content)) !== null) {
+      // Make sure it's not `impl SomeTrait for Name`
+      const before = content.slice(Math.max(0, implMatch.index - 50), implMatch.index);
+      if (/for\s*$/.test(before)) continue;
+      const body = extractBlockBody(content, implMatch.index + implMatch[0].length);
+      implMethods.push(...extractFnsFromBody(body, true));
+    }
+    if (implMethods.length > 0 && !implResult) {
+      implResult = { kind: 'impl', relFile: file, methods: [...new Set(implMethods)] };
+    }
+  }
+
+  return implResult;
+}
+
+// Convenience: search a single file for trait or impl
+function findTypeInFile(filePath, typeName) {
+  if (!fs.existsSync(filePath)) return null;
+  const content = fs.readFileSync(filePath, 'utf-8');
+  const dir = path.dirname(filePath);
+  const file = path.basename(filePath);
+
+  // Check trait
+  const traitRe = new RegExp(`pub\\s+trait\\s+${typeName}\\b[^{]*\\{`);
+  const traitMatch = traitRe.exec(content);
+  if (traitMatch) {
+    const body = extractBlockBody(content, traitMatch.index + traitMatch[0].length);
+    return { kind: 'trait', relFile: file, methods: extractFnsFromBody(body, false) };
+  }
+
+  // Check impl
+  const implRe = new RegExp(`impl\\s+${typeName}\\s*\\{`, 'g');
+  let implMatch;
+  const implMethods = [];
+  while ((implMatch = implRe.exec(content)) !== null) {
+    const before = content.slice(Math.max(0, implMatch.index - 50), implMatch.index);
+    if (/for\s*$/.test(before)) continue;
+    const body = extractBlockBody(content, implMatch.index + implMatch[0].length);
+    implMethods.push(...extractFnsFromBody(body, true));
+  }
+  if (implMethods.length > 0) {
+    return { kind: 'impl', relFile: file, methods: [...new Set(implMethods)] };
+  }
+
+  return null;
 }
 
 function camelToSnake(name) {
@@ -78,6 +197,34 @@ function camelToSnake(name) {
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
     .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
     .toLowerCase() + '.rs';
+}
+
+// IFoo.java -> trait_foo.rs, FooBase.java -> trait_foo.rs
+function traitFileName(javaName) {
+  let name = javaName.replace(/\.java$/, '');
+  // Strip I prefix for interfaces
+  if (/^I[A-Z]/.test(name)) name = name.slice(1);
+  // Strip Base suffix for abstract base classes
+  if (/Base$/.test(name)) name = name.replace(/Base$/, '');
+  // Convert to snake_case and add trait_ prefix
+  const snake = name
+    .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1_$2')
+    .toLowerCase();
+  return 'trait_' + snake + '.rs';
+}
+
+// Check from filename if this is an interface (IFoo pattern)
+function isJavaInterface(filename) {
+  const name = filename.replace(/\.java$/, '');
+  return /^I[A-Z]/.test(name);
+}
+
+// Check from source if this is an abstract class
+function isAbstractClass(filePath) {
+  if (!fs.existsSync(filePath)) return false;
+  const content = fs.readFileSync(filePath, 'utf-8');
+  return /^\s*public\s+abstract\s+class\s+/m.test(content);
 }
 
 // Convert a camelCase method name to snake_case
@@ -140,7 +287,7 @@ function walkJava(dir, rel = '') {
     const relPath = rel ? `${rel}/${entry.name}` : entry.name;
     if (entry.isDirectory()) {
       results.push(...walkJava(fullPath, relPath));
-    } else if (entry.name.endsWith('.java')) {
+    } else if (entry.name.endsWith('.java') && entry.name !== 'package-info.java') {
       results.push(relPath);
     }
   }
@@ -160,11 +307,25 @@ let currentDir = null;
 for (const jfile of javaFiles) {
   const dir = path.dirname(jfile);
   const base = path.basename(jfile);
-  const expectedRs = camelToSnake(base);
+  const baseName = base.replace(/\.java$/, '').toLowerCase();
+  const javaFullPath = dir === '.' ? path.join(JAVA_ROOT, base) : path.join(JAVA_ROOT, dir, base);
+
+  // Determine if this file maps to a trait_ file
+  // IFoo -> reliable from filename, FooBase -> check source for abstract
+  let isTrait = false;
+  let expectedRs;
+  if (isJavaInterface(base)) {
+    isTrait = true;
+    expectedRs = traitFileName(base);
+  } else if (/Base\.java$/.test(base) && isAbstractClass(javaFullPath)) {
+    isTrait = true;
+    expectedRs = traitFileName(base);
+  } else {
+    expectedRs = camelToSnake(base);
+  }
 
   let rustPath, module;
   let fileRemapped = false;
-  const baseName = base.replace(/\.java$/, '').toLowerCase();
 
   // Check file remap first
   if (fileRemaps[jfile]) {
@@ -178,8 +339,7 @@ for (const jfile of javaFiles) {
     rustPath = path.join(RUST_ROOT, dir, expectedRs);
     module = dir.split('/')[0];
     // If class name matches folder name (case insensitive), also check mod.rs
-    const folderName = path.basename(dir).toLowerCase();
-    if (baseName === folderName && !fs.existsSync(rustPath)) {
+    if (baseName === path.basename(dir).toLowerCase() && !fs.existsSync(rustPath)) {
       const modRsPath = path.join(RUST_ROOT, dir, 'mod.rs');
       if (fs.existsSync(modRsPath)) {
         rustPath = modRsPath;
@@ -196,36 +356,50 @@ for (const jfile of javaFiles) {
     process.stdout.write(`${CYAN}${BOLD}  📂 ${dir}/${RESET}\n`);
   }
 
-  const isInterface = isJavaInterface(base);
   const exists = fs.existsSync(rustPath);
   const displayRs = fileRemapped ? fileRemaps[jfile] : (rustPath.endsWith('mod.rs') ? 'mod.rs' : expectedRs);
   const overrideTag = fileRemapped ? ` ${BLUE}⬡ mapped${RESET}` : '';
+  const fileColor = isTrait ? MAGENTA : GREEN;
 
   if (!moduleStats[module]) moduleStats[module] = { ported: 0, total: 0, symbols: 0, symbolsPorted: 0 };
 
-  if (!isInterface) {
-    totalFiles++;
-    moduleStats[module].total++;
-  }
+  totalFiles++;
+  moduleStats[module].total++;
 
   const padded = base.padEnd(45);
-  if (isInterface && !exists) {
-    process.stdout.write(`${WHITE}     ${padded} -> interface (skipped)${RESET}\n`);
-  } else if (exists) {
-    if (!isInterface) {
-      totalPorted++;
-      moduleStats[module].ported++;
-    }
+  if (exists) {
+    totalPorted++;
+    moduleStats[module].ported++;
 
-    // Symbol matching (only for ported, non-interface files)
-    if (showSymbols && !isInterface) {
-      const javaPath = dir === '.' ? path.join(JAVA_ROOT, base) : path.join(JAVA_ROOT, dir, base);
-      const javaMethods = extractJavaMethods(javaPath);
-      const rustFns = extractRustFns(rustPath);
+    // Symbol matching
+    if (showSymbols) {
+      const javaMethods = extractJavaMethods(javaFullPath);
+
+      // Detect abstract class / interface from source -> check trait/impl methods
+      const traitSource = detectTraitSource(javaFullPath);
+      let rustSymbols;
+      let typeInfo = null; // { kind: 'trait'|'impl', name, file } or { name, file: null } (missing)
+
+      if (traitSource) {
+        const typeName = traitSource.name;
+        // Always check the matched Rust file — trait/impl must be in the same file
+        const result = findTypeInFile(rustPath, typeName);
+
+        if (result) {
+          rustSymbols = new Set(result.methods);
+          typeInfo = { kind: result.kind, name: typeName, file: result.relFile };
+        } else {
+          // Not found in this file — fall back to pub fn but flag it
+          rustSymbols = extractRustFns(rustPath);
+          typeInfo = { name: typeName, file: null };
+        }
+      } else {
+        rustSymbols = extractRustFns(rustPath);
+      }
 
       // Also load symbols from remap target files
       const fileSymRemaps = symbolRemaps[jfile] || {};
-      const extraRustFnSets = {};  // rustFile -> Set of fns (lazy loaded)
+      const extraRustFnSets = {};
 
       const matched = [];
       const missing = [];
@@ -233,7 +407,6 @@ for (const jfile of javaFiles) {
         const snake = methodToSnake(m);
 
         if (fileSymRemaps[m]) {
-          // Symbol has a remap override
           const remap = fileSymRemaps[m];
           const remapRustPath = path.join(RUST_ROOT, remap.rustFile);
           if (!extraRustFnSets[remap.rustFile]) {
@@ -246,7 +419,7 @@ for (const jfile of javaFiles) {
           } else {
             missing.push({ java: m, rust: remap.rustSymbol, remapped: true, target: remap.rustFile });
           }
-        } else if (rustFns.has(snake)) {
+        } else if (rustSymbols.has(snake)) {
           matched.push({ java: m, rust: snake });
         } else {
           missing.push({ java: m, rust: snake });
@@ -266,34 +439,48 @@ for (const jfile of javaFiles) {
         if (symPct >= 80) symColor = GREEN;
         else if (symPct >= 40) symColor = YELLOW;
         else symColor = RED;
-        process.stdout.write(`${GREEN}     ${padded} -> ${displayRs}${overrideTag}  ${symColor}${symPorted}/${symTotal} symbols (${symPct}%)${RESET}\n`);
+        process.stdout.write(`${fileColor}     ${padded} -> ${displayRs}${overrideTag}  ${symColor}${symPorted}/${symTotal} symbols (${symPct}%)${RESET}\n`);
       } else {
-        process.stdout.write(`${GREEN}     ${padded} -> ${displayRs}${overrideTag}${RESET}\n`);
+        process.stdout.write(`${fileColor}     ${padded} -> ${displayRs}${overrideTag}${RESET}\n`);
       }
 
+      // Type info on its own indented line
+      if (typeInfo) {
+        if (typeInfo.file && typeInfo.kind === 'trait') {
+          process.stdout.write(`${GREEN}        ◆ ${typeInfo.name} -> ${MAGENTA}trait${GREEN} ${typeInfo.name}${RESET}\n`);
+        } else if (typeInfo.file && typeInfo.kind === 'impl') {
+          process.stdout.write(`${GREEN}        ◇ ${typeInfo.name} -> ${LIGHT_BLUE}impl${GREEN} ${typeInfo.name}${RESET}\n`);
+        } else {
+          process.stdout.write(`${RED}        ◇ ${typeInfo.name} -> missing${RESET}\n`);
+        }
+      }
+
+      const symIndent = typeInfo ? '            ' : '        ';
       for (const s of matched) {
         if (s.remapped) {
-          process.stdout.write(`${DIM}        ${BLUE}⬡ ${s.java} -> ${s.rust} (${s.target})${RESET}\n`);
+          process.stdout.write(`${DIM}${symIndent}${BLUE}⬡ ${s.java} -> ${s.rust} (${s.target})${RESET}\n`);
         } else {
-          process.stdout.write(`${DIM}        ${GREEN}✓ ${s.java} -> ${s.rust}${RESET}\n`);
+          process.stdout.write(`${DIM}${symIndent}${GREEN}✓ ${s.java} -> ${s.rust}${RESET}\n`);
         }
       }
       for (const s of missing) {
         if (s.remapped) {
-          process.stdout.write(`${DIM}        ${BLUE}✗ ${s.java} -> ${s.rust} (${s.target})${RESET}\n`);
+          process.stdout.write(`${DIM}${symIndent}${BLUE}✗ ${s.java} -> ${s.rust} (${s.target})${RESET}\n`);
         } else {
-          process.stdout.write(`${DIM}        ${RED}✗ ${s.java} -> ${s.rust}${RESET}\n`);
+          process.stdout.write(`${DIM}${symIndent}${RED}✗ ${s.java} -> missing${RESET}\n`);
         }
       }
     } else {
-      process.stdout.write(`${GREEN}     ${padded} -> ${displayRs}${overrideTag}${RESET}\n`);
+      process.stdout.write(`${fileColor}     ${padded} -> ${displayRs}${overrideTag}${RESET}\n`);
     }
   } else {
+    // Missing file
     if (fileRemapped) {
       process.stdout.write(`${RED}     ${padded} -> missing${RESET} ${BLUE}⬡ mapped (${displayRs})${RESET}\n`);
     } else {
       process.stdout.write(`${RED}     ${padded} -> missing${RESET}\n`);
     }
+
   }
 }
 

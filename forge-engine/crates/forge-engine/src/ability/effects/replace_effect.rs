@@ -1,0 +1,24 @@
+//! Replace effect — generic replacement effect registration.
+//!
+//! Ported from Java's `ReplaceEffect.java`.
+//! Registers or modifies a replacement effect on the game state.
+
+use super::EffectContext;
+use crate::spellability::SpellAbility;
+
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    // Generic replacement effects are handled by the replacement handler system.
+    // This effect type is primarily a marker — the actual replacement logic
+    // is defined by the ReplacementEffect on the source card and processed
+    // by the replacement_handler module.
+
+    // Some Replace effects store values for their replacement:
+    if let Some(source_id) = sa.source {
+        if let Some(val) = sa.params.get("ReplaceWith") {
+            ctx.game
+                .card_mut(source_id)
+                .svars
+                .insert("ReplaceWith".to_string(), val.clone());
+        }
+    }
+}

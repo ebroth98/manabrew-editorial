@@ -1,5 +1,7 @@
 use super::{parse_param, resolve_defined_player, EffectContext};
 use crate::event::{RunParams, TriggerType};
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -9,6 +11,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Defined")
         .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
+
+    // Run DrawCards replacement effects before drawing multiple cards.
+    if num > 1 {
+        let mut event = ReplacementEvent::DrawCards {
+            player: target,
+            count: num,
+        };
+        let result = apply_replacements(ctx.game, &mut event);
+        if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+            return;
+        }
+    }
+
     if sa.params.contains_key("Optional") {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         let accepted = ctx.agents[target.index()].confirm_action(

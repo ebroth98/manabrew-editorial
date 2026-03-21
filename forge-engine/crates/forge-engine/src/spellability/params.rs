@@ -100,6 +100,79 @@ impl SpellAbility {
         self.is_param_true("RememberChanged")
     }
 
+    /// Get `Optional$` as boolean.
+    pub fn is_optional(&self) -> bool {
+        self.is_param_true("Optional")
+    }
+
+    /// Get `GainControl$` as boolean.
+    pub fn is_gain_control(&self) -> bool {
+        self.is_param_true("GainControl")
+    }
+
+    /// Get `ForgetChanged$` as boolean.
+    pub fn is_forget_changed(&self) -> bool {
+        self.is_param_true("ForgetChanged")
+    }
+
+    /// Get `Imprint$` as boolean.
+    pub fn is_imprint(&self) -> bool {
+        self.is_param_true("Imprint")
+    }
+
+    /// Get `FaceDown$` as boolean.
+    pub fn is_face_down(&self) -> bool {
+        self.is_param_true("FaceDown")
+    }
+
+    /// Get `ExileFaceDown$` as boolean.
+    pub fn is_exile_face_down(&self) -> bool {
+        self.is_param_true("ExileFaceDown")
+    }
+
+    /// Get `Transformed$` as boolean.
+    pub fn is_transformed(&self) -> bool {
+        self.is_param_true("Transformed")
+    }
+
+    /// Get `AtRandom$` as boolean.
+    pub fn is_at_random(&self) -> bool {
+        self.is_param_true("AtRandom")
+    }
+
+    /// Get `Reveal$` as boolean (default true for searches — NoReveal overrides).
+    pub fn is_reveal(&self) -> bool {
+        !self.is_param_true("NoReveal")
+    }
+
+    /// Get `ChangeNum$` as usize, defaulting to 1.
+    pub fn change_num(&self) -> usize {
+        self.params
+            .get("ChangeNum")
+            .and_then(|v| v.trim().parse::<usize>().ok())
+            .unwrap_or(1)
+    }
+
+    /// Get `Chooser$` player reference.
+    pub fn chooser(&self) -> Option<&str> {
+        self.params.get("Chooser").map(|s| s.as_str())
+    }
+
+    /// Get `AttachedTo$` target definition.
+    pub fn attached_to(&self) -> Option<&str> {
+        self.params.get("AttachedTo").map(|s| s.as_str())
+    }
+
+    /// Get `DestinationAlternative$` zone.
+    pub fn destination_alternative(&self) -> Option<&str> {
+        self.params.get("DestinationAlternative").map(|s| s.as_str())
+    }
+
+    /// Get `SelectPrompt$` custom prompt text.
+    pub fn select_prompt(&self) -> Option<&str> {
+        self.params.get("SelectPrompt").map(|s| s.as_str())
+    }
+
     // ── Numeric params ─────────────────────────────────────────────────────
 
     /// Get a numeric param by key, returning None if absent or non-numeric.

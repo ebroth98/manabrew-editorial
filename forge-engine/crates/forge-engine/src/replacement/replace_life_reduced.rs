@@ -1,33 +1,68 @@
 //! Replacement logic for `Event$ LifeReduced`.
 //!
 //! Mirrors Java `ReplaceLifeReduced.java` in `forge/game/replacement/`.
-//!
-//! TODO: implement — currently returns `false` from `can_replace`.
 
 use crate::card::CardInstance;
 use crate::game::GameState;
 use crate::ids::CardId;
 
 use super::replacement_handler::ReplacementEvent;
-use super::replacement_effect::ReplacementEffect;
+use super::replacement_effect::{matches_valid_player, ReplacementEffect};
 use super::replacement_result::ReplacementResult;
+use super::replacement_type::ReplacementType;
 
-/// Stub — always returns `false`. TODO: implement.
+/// Mirrors Java `ReplaceLifeReduced.canReplace()`.
 pub fn can_replace(
-    _effect: &ReplacementEffect,
-    _event: &ReplacementEvent,
+    effect: &ReplacementEffect,
+    event: &ReplacementEvent,
     _game: &GameState,
-    _source_card: &CardInstance,
+    source_card: &CardInstance,
 ) -> bool {
-    false
+    if effect.event != ReplacementType::LifeReduced {
+        return false;
+    }
+    let (player, _amount, is_damage) = match event {
+        ReplacementEvent::LifeReduced {
+            player,
+            amount,
+            is_damage,
+        } => (*player, *amount, *is_damage),
+        _ => return false,
+    };
+    if let Some(valid) = effect.params.get("ValidPlayer") {
+        if !matches_valid_player(valid, player, source_card) {
+            return false;
+        }
+    }
+    // Check IsDamage filter if present.
+    if let Some(is_dmg) = effect.params.get("IsDamage") {
+        let expected = is_dmg.eq_ignore_ascii_case("True");
+        if is_damage != expected {
+            return false;
+        }
+    }
+    true
 }
 
-/// Stub — returns `NotReplaced`. TODO: implement.
+/// Mirrors Java `ReplacementHandler.executeReplacement()` for LifeReduced.
 pub fn execute(
-    _effect: &ReplacementEffect,
-    _event: &mut ReplacementEvent,
+    effect: &ReplacementEffect,
+    event: &mut ReplacementEvent,
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    ReplacementResult::NotReplaced
+    let amount = match event {
+        ReplacementEvent::LifeReduced { amount, .. } => amount,
+        _ => return ReplacementResult::NotReplaced,
+    };
+    if effect
+        .params
+        .get("Prevent")
+        .map(|s| s == "True")
+        .unwrap_or(false)
+    {
+        *amount = 0;
+        return ReplacementResult::Prevented;
+    }
+    ReplacementResult::Replaced
 }

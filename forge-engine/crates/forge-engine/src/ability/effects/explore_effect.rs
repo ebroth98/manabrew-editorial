@@ -3,6 +3,8 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger, EffectContext};
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
+use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
 /// `SP$ Explore` — target creature explores.
@@ -33,6 +35,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         Some(id) if ctx.game.card(id).zone == ZoneType::Battlefield => id,
         _ => return,
     };
+
+    // Run Explore replacement effects before exploring.
+    let mut event = ReplacementEvent::Explore { card: explorer_id };
+    let result = apply_replacements(ctx.game, &mut event);
+    if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
+        return;
+    }
 
     // Parse Num parameter for multiple explores (e.g. Jadelight Ranger explores twice).
     // Mirrors Java's `AbilityUtils.calculateAmount(host, sa.getParamOrDefault("Num", "1"), sa)`.
