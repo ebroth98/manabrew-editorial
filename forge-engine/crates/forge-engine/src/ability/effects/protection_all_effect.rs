@@ -73,7 +73,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game
                 .card_mut(cid)
                 .pump_keywords
-                .push(prot_keyword.clone());
+                .add(&prot_keyword);
         }
     }
 }

@@ -76,9 +76,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Step 4: Apply PumpKeywords$ (extra keywords on the copy)
     if let Some(pump_kws) = sa.params.get(keys::PUMP_KEYWORDS) {
         for kw in pump_kws.split(',') {
-            let kw = kw.trim().to_string();
+            let kw = kw.trim();
             if !kw.is_empty() {
-                ctx.game.cards[clone_target_id.index()].keywords.push(kw);
+                ctx.game.cards[clone_target_id.index()].keywords.add(kw);
             }
         }
     }

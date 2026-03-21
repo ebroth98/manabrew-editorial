@@ -38,7 +38,7 @@ fn cloak_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId
         ctx.game.card_mut(card_id).base_power = Some(2);
         ctx.game.card_mut(card_id).base_toughness = Some(2);
         // Ward {2} while cloaked
-        ctx.game.card_mut(card_id).pump_keywords.push("Ward:2".to_string());
+        ctx.game.card_mut(card_id).pump_keywords.add("Ward:2");
         ctx.game.card_mut(card_id).controller = player;
 
         if sa.is_tapped() {

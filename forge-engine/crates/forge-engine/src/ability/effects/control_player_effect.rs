@@ -5,7 +5,6 @@
 //! The controlled player's decisions are made by the controller.
 
 use super::EffectContext;
-use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 

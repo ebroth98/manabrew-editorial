@@ -7,7 +7,6 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
-use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {

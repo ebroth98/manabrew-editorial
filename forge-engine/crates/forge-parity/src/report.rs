@@ -8,6 +8,7 @@ const ANSI_RESET: &str = "\x1b[0m";
 const ANSI_GREEN: &str = "\x1b[32m";
 const ANSI_RED: &str = "\x1b[31m";
 const ANSI_YELLOW: &str = "\x1b[33m";
+#[allow(dead_code)]
 const ANSI_BLUE: &str = "\x1b[34m";
 const ANSI_ORANGE: &str = "\x1b[38;5;208m";
 const ANSI_DIM: &str = "\x1b[90m";

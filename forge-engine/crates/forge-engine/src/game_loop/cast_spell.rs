@@ -1225,8 +1225,7 @@ impl GameLoop {
                 let is_mega = game
                     .card(card_id)
                     .keywords
-                    .iter()
-                    .any(|k| k.starts_with("Megamorph:"));
+                    .any_starts_with("Megamorph:");
                 sa.alt_cost = Some(if is_mega {
                     crate::spellability::AlternativeCost::Megamorph
                 } else {
@@ -1634,7 +1633,7 @@ impl GameLoop {
                         if valid_ok {
                             for keyword in kw.split('&').map(str::trim) {
                                 if !keyword.is_empty() {
-                                    game.card_mut(card_id).keywords.push(keyword.to_string());
+                                    game.card_mut(card_id).keywords.add(keyword);
                                 }
                             }
                         }
@@ -1989,7 +1988,7 @@ impl GameLoop {
             let cascade_count = game
                 .card(card_id)
                 .keywords
-                .iter()
+                .iter_strings()
                 .filter(|k| k.eq_ignore_ascii_case("Cascade"))
                 .count();
             if cascade_count > 0 {

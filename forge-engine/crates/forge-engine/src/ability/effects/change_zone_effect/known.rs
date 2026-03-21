@@ -5,11 +5,11 @@
 
 use forge_foundation::ZoneType;
 
-use super::helpers::{matches_with_context, resolve_destination};
+use super::helpers::resolve_destination;
 use super::move_cards::move_cards;
 use super::search::resolve_defined_player_choice;
 use super::stack::resolve_stack_removal;
-use super::super::{resolve_defined_player_with_sa, EffectContext};
+use super::super::EffectContext;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;

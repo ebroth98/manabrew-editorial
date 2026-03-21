@@ -37,7 +37,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 }
 
 /// Implement the Learn choice: get Lesson from sideboard OR discard+draw.
-fn learn_lesson(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId) {
+fn learn_lesson(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
     // Collect options: Lesson cards from sideboard + cards in hand
     let sideboard_lessons: Vec<crate::ids::CardId> = ctx
         .game

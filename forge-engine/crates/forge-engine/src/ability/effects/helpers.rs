@@ -266,13 +266,8 @@ fn matches_valid_cards_qualifier(
         fc::BASIC => card.type_line.is_basic(),
         fc::KICKED => card.kicked,
         fc::WITH_FLYING => {
-            card.keywords
-                .iter()
-                .any(|k| k.eq_ignore_ascii_case("Flying"))
-                || card
-                    .granted_keywords
-                    .iter()
-                    .any(|k| k.eq_ignore_ascii_case("Flying"))
+            card.keywords.contains_string_ignore_case("Flying")
+                || card.granted_keywords.contains_string_ignore_case("Flying")
         }
         _ => {
             // "attacking Opponent" / "attacking Planeswalker" — space-separated combat qualifier
@@ -421,7 +416,7 @@ pub fn discard_with_madness_replacement(
         super::emit_zone_trigger(trigger_handler, card_id, ZoneType::Hand, ZoneType::Exile);
         game.card_mut(card_id)
             .granted_keywords
-            .push(crate::card::KEYWORD_MADNESS_EXILED.to_string());
+            .add(crate::card::KEYWORD_MADNESS_EXILED);
     } else {
         game.move_card(card_id, ZoneType::Graveyard, owner);
         trigger_handler.register_active_trigger(game, card_id);

@@ -97,7 +97,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.card_mut(card_id).power_modifier += att_bonus;
             ctx.game.card_mut(card_id).toughness_modifier += def_bonus;
             for kw in &keywords {
-                ctx.game.card_mut(card_id).pump_keywords.push(kw.clone());
+                ctx.game.card_mut(card_id).pump_keywords.add(kw);
             }
         }
     }

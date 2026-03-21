@@ -250,7 +250,7 @@ impl GameLoop {
                 // Mirrors Java's CardFactoryUtil.createETBReplacement — the keyword
                 // format is ETBReplacement:Layer:SVarName[:Optional[:ValidCard[:Zone]]].
                 {
-                    let keywords = game.card(card_id).keywords.clone();
+                    let keywords = game.card(card_id).keywords.as_string_list();
                     for kw in &keywords {
                         if !kw.starts_with("ETBReplacement") {
                             continue;
@@ -426,7 +426,7 @@ impl GameLoop {
                 if alt_cost == Some(crate::spellability::AlternativeCost::Dash) {
                     game.card_mut(card_id)
                         .pump_keywords
-                        .push("Haste".to_string());
+                        .add("Haste");
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::Phase,
@@ -451,7 +451,7 @@ impl GameLoop {
                 if alt_cost == Some(crate::spellability::AlternativeCost::Warp) {
                     game.card_mut(card_id)
                         .keywords
-                        .push(crate::card::KEYWORD_WARP_EXILED.to_string());
+                        .add(crate::card::KEYWORD_WARP_EXILED);
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::Phase,
@@ -525,7 +525,7 @@ impl GameLoop {
                 if alt_cost == Some(crate::spellability::AlternativeCost::Blitz) {
                     game.card_mut(card_id)
                         .pump_keywords
-                        .push("Haste".to_string());
+                        .add("Haste");
                     let trig_id = game.card(card_id).triggers.len() as u32;
                     let dies_trigger = crate::trigger::Trigger {
                         id: trig_id,

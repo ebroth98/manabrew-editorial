@@ -12,7 +12,7 @@ use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let controller = sa.activating_player;
+    let _controller = sa.activating_player;
 
     // Get all permanents on the battlefield (except the source)
     let source = sa.source;

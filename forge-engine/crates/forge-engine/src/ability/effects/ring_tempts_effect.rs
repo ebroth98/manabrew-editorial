@@ -23,7 +23,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
-fn ring_tempts(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId) {
+fn ring_tempts(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
     // Increment ring level (max 4)
     let current_level = ctx.game.player(player).ring_level;
     if current_level < 4 {

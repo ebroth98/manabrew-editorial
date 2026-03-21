@@ -367,7 +367,7 @@ fn choose_targets_for(
                 } else {
                     Vec::new()
                 };
-            let mut valid_cards: Vec<CardId> =
+            let valid_cards: Vec<CardId> =
                 target_restrictions::get_all_candidates_any_filtered(game, &tr.valid_tgts, player)
                     .into_iter()
                     .filter(|&cid| {
@@ -388,7 +388,7 @@ fn choose_targets_for(
                 filter.as_deref(),
                 player,
             );
-            let mut valid: Vec<CardId> =
+            let valid: Vec<CardId> =
                 target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
                     .into_iter()
                     .filter(|&cid| {

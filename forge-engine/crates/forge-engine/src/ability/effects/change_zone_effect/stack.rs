@@ -4,9 +4,8 @@
 
 use forge_foundation::ZoneType;
 
-use super::helpers::apply_post_move;
 use super::super::{emit_zone_trigger, parse_counter_type, EffectContext};
-use crate::ids::{CardId, PlayerId};
+use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
 
 /// Remove a spell from the stack and move it to a destination zone.

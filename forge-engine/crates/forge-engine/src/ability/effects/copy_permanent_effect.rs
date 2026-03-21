@@ -36,7 +36,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         original.color,
         original.base_power,
         original.base_toughness,
-        original.keywords.clone(),
+        original.keywords.as_string_list(),
         original.abilities.clone(),
     );
     copy.triggers = original.triggers.clone();
@@ -80,9 +80,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Apply PumpKeywords$ (e.g. "Haste" added temporarily to the copy).
     if let Some(pump_kws) = sa.params.get(keys::PUMP_KEYWORDS) {
         for kw in pump_kws.split(',') {
-            let kw = kw.trim().to_string();
+            let kw = kw.trim();
             if !kw.is_empty() {
-                copy.keywords.push(kw);
+                copy.keywords.add(kw);
             }
         }
     }
@@ -90,9 +90,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Apply AddKeywords$ (e.g. additional keywords on the copy).
     if let Some(add_kws) = sa.params.get(keys::ADD_KEYWORDS) {
         for kw in add_kws.split(" & ") {
-            let kw = kw.trim().to_string();
+            let kw = kw.trim();
             if !kw.is_empty() {
-                copy.keywords.push(kw);
+                copy.keywords.add(kw);
             }
         }
     }

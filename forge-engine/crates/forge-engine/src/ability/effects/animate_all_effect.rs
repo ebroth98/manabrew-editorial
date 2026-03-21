@@ -114,9 +114,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // AnimateAll uses " & " as keyword separator (unlike Animate which uses ",")
         if let Some(ref kws) = keywords_str {
             for kw in kws.split('&') {
-                let kw = kw.trim().to_string();
+                let kw = kw.trim();
                 if !kw.is_empty() {
-                    ctx.game.cards[card_id.index()].pump_keywords.push(kw);
+                    ctx.game.cards[card_id.index()].pump_keywords.add(kw);
                 }
             }
         }

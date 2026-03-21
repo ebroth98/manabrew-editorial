@@ -396,17 +396,17 @@ pub fn card_to_dto(
         // Merge intrinsic keywords with those granted by continuous effects (layer 6)
         // and temporary pump keywords (KW$ parameter, until end of turn).
         keywords: {
-            let mut all = card.keywords.clone();
+            let mut all_kw = card.keywords.as_string_list();
             for k in card
                 .granted_keywords
-                .iter()
-                .chain(card.pump_keywords.iter())
+                .iter_strings()
+                .chain(card.pump_keywords.iter_strings())
             {
-                if !all.iter().any(|e| e.eq_ignore_ascii_case(k)) {
-                    all.push(k.clone());
+                if !all_kw.iter().any(|e| e.eq_ignore_ascii_case(k)) {
+                    all_kw.push(k.to_string());
                 }
             }
-            all
+            all_kw
         },
         counters,
         damage: card.damage,
@@ -448,8 +448,8 @@ pub fn card_to_dto(
         ),
         is_plotted: card
             .keywords
-            .iter()
-            .chain(card.granted_keywords.iter())
+            .iter_strings()
+            .chain(card.granted_keywords.iter_strings())
             .any(|kw| kw.starts_with(forge_engine_core::card::KEYWORD_PLOTTED_PREFIX)),
         is_warp_exiled: card.has_keyword(forge_engine_core::card::KEYWORD_WARP_EXILED),
     }

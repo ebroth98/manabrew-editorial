@@ -258,9 +258,9 @@ pub fn validate_blocks(game: &GameState, combat: &CombatState) -> Vec<(CardId, C
             let blocker = game.card(blocker_id);
             let cant_block_alone = blocker
                 .keywords
-                .iter()
-                .chain(blocker.granted_keywords.iter())
-                .chain(blocker.pump_keywords.iter())
+                .iter_strings()
+                .chain(blocker.granted_keywords.iter_strings())
+                .chain(blocker.pump_keywords.iter_strings())
                 .any(|kw| kw.to_lowercase().contains("can't block alone"));
 
             if cant_block_alone && num_blockers == 1 {
@@ -288,9 +288,9 @@ pub fn must_block_an_attacker(game: &GameState, combat: &CombatState, blocker_id
 pub fn get_lure_type(card: &CardInstance) -> LureType {
     for kw in card
         .keywords
-        .iter()
-        .chain(card.granted_keywords.iter())
-        .chain(card.pump_keywords.iter())
+        .iter_strings()
+        .chain(card.granted_keywords.iter_strings())
+        .chain(card.pump_keywords.iter_strings())
     {
         let lower = kw.to_lowercase();
         if lower.contains("all creatures able to block") && lower.contains("do so") {
@@ -353,9 +353,9 @@ pub fn can_block_more_creatures(game: &GameState, combat: &CombatState, blocker_
     let card = game.card(blocker_id);
     for kw in card
         .keywords
-        .iter()
-        .chain(card.granted_keywords.iter())
-        .chain(card.pump_keywords.iter())
+        .iter_strings()
+        .chain(card.granted_keywords.iter_strings())
+        .chain(card.pump_keywords.iter_strings())
     {
         let lower = kw.to_lowercase();
         if lower.contains("can block any number of creatures") {

@@ -89,7 +89,7 @@ impl GameState {
                 // Apply ETB-tapped effects (intrinsic + extrinsic).
                 apply_etb_tapped(self, card_id);
                 // Keyword ETB counters: K:etbCounter:TYPE:N
-                let etb_keywords = self.cards[card_id.index()].keywords.clone();
+                let etb_keywords = self.cards[card_id.index()].keywords.as_string_list();
                 for kw in etb_keywords {
                     let mut parts = kw.split(':');
                     let head = parts.next().unwrap_or_default();

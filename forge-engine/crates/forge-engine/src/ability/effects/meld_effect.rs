@@ -8,7 +8,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
-use crate::ids::{CardId, PlayerId};
+use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -57,7 +57,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     for &card_id in &cards_to_exile {
         // canExiledBy check
-        if ctx.game.card(card_id).keywords.iter().any(|k| k.eq_ignore_ascii_case("CantBeExiled")) {
+        if ctx.game.card(card_id).keywords.contains_string_ignore_case("CantBeExiled") {
             continue;
         }
         let old_zone = ctx.game.card(card_id).zone;

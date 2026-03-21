@@ -59,7 +59,7 @@ impl CardInstance {
 
         // TypeCycling: K:TypeCycling:{type}:{cost} → AB$ ChangeZone | Cost$ {cost} Discard<1/CARDNAME> | ActivationZone$ Hand
         // Mirrors Java CardFactoryUtil lines 3852-3864.
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
             if let Some(rest) = kw.strip_prefix("TypeCycling:") {
                 let parts: Vec<&str> = rest.splitn(2, ':').collect();
                 if parts.len() == 2 {
@@ -117,8 +117,8 @@ impl CardInstance {
 
         // Adapt: K:Adapt:N:cost → AB$ PutCounter with Adapt$ True gate.
         // Mirrors Java CardFactoryUtil lines 2665-2684.
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(rest) = kw.strip_prefix("Adapt:") {
+        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+            if let Some(rest) = crate::keyword::extract_keyword_cost_str(&kw, "Adapt") {
                 let parts: Vec<&str> = rest.splitn(2, ':').collect();
                 if parts.len() == 2 {
                     let magnitude = parts[0].trim();
@@ -138,8 +138,8 @@ impl CardInstance {
         // Crew: K:Crew:N → AB$ Animate (tap creatures with total power ≥N).
         // Mirrors Java CardFactoryUtil lines 3820-3835.
         // Uses tapXType<Any/Creature.Other+withTotalPowerGE{N}> matching Java's format.
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(n_str) = kw.strip_prefix("Crew:") {
+        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Crew") {
                 let n = n_str.trim();
                 let ab_text = format!(
                     "AB$ Animate | Cost$ tapXType<Any/Creature.Other+withTotalPowerGE{{{}}}> | Defined$ Self | Types$ Artifact,Creature | Secondary$ True | SpellDescription$ Crew {}",
@@ -154,8 +154,8 @@ impl CardInstance {
 
         // Embalm: K:Embalm:cost → AB$ CopyPermanent from graveyard.
         // Mirrors Java CardFactoryUtil lines 2879-2891.
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost_str) = kw.strip_prefix("Embalm:") {
+        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+            if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Embalm") {
                 let cost = cost_str.trim();
                 let ab_text = format!(
                     "AB$ CopyPermanent | Cost$ {} ExileFromGrave<1/CARDNAME> | ActivationZone$ Graveyard | SorcerySpeed$ True | Defined$ Self | SetColor$ White | AddTypes$ Zombie | SpellDescription$ Embalm",
@@ -170,8 +170,8 @@ impl CardInstance {
 
         // Eternalize: K:Eternalize:cost → AB$ CopyPermanent from graveyard as 4/4.
         // Mirrors Java CardFactoryUtil lines 3023-3052.
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost_str) = kw.strip_prefix("Eternalize:") {
+        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+            if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Eternalize") {
                 let cost = cost_str.trim();
                 let ab_text = format!(
                     "AB$ CopyPermanent | Cost$ {} ExileFromGrave<1/CARDNAME> | ActivationZone$ Graveyard | SorcerySpeed$ True | Defined$ Self | SetColor$ Black | SetPower$ 4 | SetToughness$ 4 | AddTypes$ Zombie | SpellDescription$ Eternalize",
@@ -189,8 +189,8 @@ impl CardInstance {
         // Rust cost parser normalizes this and the combat loop applies the enlist payment.
         if self
             .keywords
-            .iter()
-            .chain(self.granted_keywords.iter())
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
             .any(|k| k.eq_ignore_ascii_case("Enlist"))
         {
             let raw = "S:Mode$ OptionalAttackCost | ValidCard$ Card.Self | Cost$ Enlist<1/CARDNAME/creature> | Secondary$ True";
@@ -203,8 +203,8 @@ impl CardInstance {
         // The actual casting logic is in game_action_util (playable check + cost handling).
         if self
             .keywords
-            .iter()
-            .chain(self.granted_keywords.iter())
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
             .any(|k| k.starts_with("Morph:") || k.starts_with("Megamorph:"))
         {
             self.has_morph = true;
@@ -230,7 +230,7 @@ impl CardInstance {
     pub fn generate_keyword_triggers(&mut self) {
         let mut next_id = self.triggers.len() as u32;
 
-        for kw in self.keywords.clone() {
+        for kw in self.keywords.as_string_list() {
             // Prowess: +1/+1 when you cast a noncreature spell
             if kw == "Prowess" {
                 let raw = "Mode$ SpellCast | ValidCard$ Card.nonCreature | ValidActivatingPlayer$ You | Execute$ TrigProwess | TriggerZones$ Battlefield | TriggerDescription$ Prowess";
@@ -246,7 +246,7 @@ impl CardInstance {
             }
 
             // Bushido N: +N/+N when blocking or becoming blocked
-            if let Some(n_str) = kw.strip_prefix("Bushido:") {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Bushido") {
                 if n_str.parse::<i32>().is_ok() {
                     let raw1 = format!("Mode$ Blocks | ValidCard$ Card.Self | Execute$ TrigBushido | TriggerZones$ Battlefield | TriggerDescription$ Bushido {n_str}");
                     if let Some(mut trig) = parse_trigger(&raw1, &mut next_id) {
@@ -268,7 +268,7 @@ impl CardInstance {
 
             // Annihilator N: when this creature attacks, defending player sacrifices N permanents.
             // Mirrors Java CardFactoryUtil lines 723-736.
-            if let Some(n_str) = kw.strip_prefix("Annihilator:") {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Annihilator") {
                 if n_str.parse::<i32>().is_ok() {
                     let raw = format!(
                         "Mode$ Attacks | ValidCard$ Card.Self | Execute$ TrigAnnihilator | TriggerZones$ Battlefield | TriggerDescription$ Annihilator {n_str}"
@@ -287,7 +287,7 @@ impl CardInstance {
 
             // Afflict N: when this creature becomes blocked, defending player loses N life.
             // Mirrors Java CardFactoryUtil lines 695-708.
-            if let Some(n_str) = kw.strip_prefix("Afflict:") {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Afflict") {
                 if n_str.parse::<i32>().is_ok() {
                     let raw = format!(
                         "Mode$ AttackerBlocked | ValidCard$ Card.Self | TriggerZones$ Battlefield | Secondary$ True | Execute$ TrigAfflict | TriggerDescription$ Afflict {n_str}"
@@ -339,7 +339,7 @@ impl CardInstance {
             // Afterlife N: when this creature dies, create N 1/1 white and black Spirit
             // creature tokens with flying.
             // Mirrors Java CardFactoryUtil lines 709-722.
-            if let Some(n_str) = kw.strip_prefix("Afterlife:") {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Afterlife") {
                 if n_str.parse::<i32>().is_ok() {
                     let raw = format!(
                         "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self | TriggerZones$ Battlefield | Execute$ TrigAfterlife | TriggerDescription$ Afterlife {n_str}"
@@ -377,7 +377,7 @@ impl CardInstance {
             // Mirrors Java CardFactoryUtil lines 1132-1151.
             // Java uses DB$ Token with UnlessCost$ AddCounter<N/P1P1> | UnlessPayer$ You:
             // default is tokens, unless the controller "pays" by putting counters instead.
-            if let Some(n_str) = kw.strip_prefix("Fabricate:") {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Fabricate") {
                 if n_str.parse::<i32>().is_ok() {
                     let raw = format!(
                         "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigFabricate | Secondary$ True | TriggerDescription$ Fabricate {n_str}"
@@ -401,7 +401,7 @@ impl CardInstance {
             // Modular N: enters with N +1/+1 counters; when it dies, move its +1/+1
             // counters to target artifact creature.
             // Mirrors Java CardFactoryUtil lines 1579-1596 & 2425-2436.
-            if let Some(n_str) = kw.strip_prefix("Modular:") {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Modular") {
                 if let Ok(n) = n_str.parse::<i32>() {
                     // ETB counters: set on the card instance so they're added as a
                     // replacement effect when entering the battlefield (not a trigger,
@@ -441,7 +441,7 @@ impl CardInstance {
             // Mirrors Java CardFactoryUtil lines 2055-2069.
             // The opponent is prompted via confirm_action to pay the Ward cost;
             // if they decline, the spell is countered.
-            if let Some(cost_str) = kw.strip_prefix("Ward:") {
+            if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Ward") {
                 let raw = "Mode$ BecomesTarget | ValidCard$ Card.Self | Execute$ TrigWard | TriggerZones$ Battlefield | TriggerDescription$ Ward";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigWard".to_string();
@@ -471,7 +471,7 @@ impl CardInstance {
             // Renown N — when this creature deals combat damage to a player, if it's not
             // renowned, put N +1/+1 counters on it and it becomes renowned.
             // Mirrors Java CardFactoryUtil lines 1744-1756.
-            if let Some(n_str) = kw.strip_prefix("Renown:") {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Renown") {
                 if n_str.parse::<i32>().is_ok() {
                     let raw = format!(
                         "Mode$ DamageDone | ValidSource$ Card.Self | ValidTarget$ Player | CombatDamage$ True | Execute$ TrigRenown | TriggerZones$ Battlefield | TriggerDescription$ Renown {n_str}"
@@ -526,7 +526,7 @@ impl CardInstance {
             // Bloodthirst N — if an opponent was dealt damage this turn, this creature
             // enters the battlefield with N additional +1/+1 counters.
             // Mirrors Java CardFactoryUtil lines 2164-2182.
-            if let Some(n_str) = kw.strip_prefix("Bloodthirst:") {
+            if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Bloodthirst") {
                 if n_str.parse::<i32>().is_ok() {
                     let raw = format!(
                         "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigBloodthirst | TriggerDescription$ Bloodthirst {n_str}"
@@ -609,7 +609,7 @@ impl CardInstance {
             // Flow: discard → exile (replacement) → ChangesZone trigger fires →
             // optional trigger prompt → Play effect with Optional$ True →
             // if not played, card moves to graveyard.
-            if let Some(madness_cost) = kw.strip_prefix("Madness:") {
+            if let Some(madness_cost) = crate::keyword::extract_keyword_cost_str(&kw, "Madness") {
                 let raw = "Mode$ ChangesZone | Origin$ Hand | Destination$ Exile | ValidCard$ Card.Self | OptionalDecider$ You | Secondary$ True | TriggerZones$ Exile | TriggerDescription$ You may cast this card for its madness cost.";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigMadnessPlay".to_string();

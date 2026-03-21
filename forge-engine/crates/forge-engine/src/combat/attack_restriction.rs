@@ -16,9 +16,9 @@ pub fn get_restrictions(card: &CardInstance) -> HashSet<AttackRestrictionType> {
 
     for kw in card
         .keywords
-        .iter()
-        .chain(card.granted_keywords.iter())
-        .chain(card.pump_keywords.iter())
+        .iter_strings()
+        .chain(card.granted_keywords.iter_strings())
+        .chain(card.pump_keywords.iter_strings())
     {
         // Java matches on exact keyword strings with "CARDNAME" prefix stripped.
         // We use contains() on lowercased text for flexibility.

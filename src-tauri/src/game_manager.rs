@@ -35,10 +35,12 @@ pub struct GameManager {
 }
 
 pub struct GameSession {
+    #[allow(dead_code)]
     pub game_id: String,
     pub response_tx: mpsc::Sender<PlayerAction>,
     /// Per-remote-player response channels (player_index → sender).
     pub remote_response_txs: HashMap<usize, mpsc::Sender<PlayerAction>>,
+    #[allow(dead_code)]
     pub thread_handle: Option<thread::JoinHandle<()>>,
     pub is_multiplayer: bool,
     pub is_host: bool,

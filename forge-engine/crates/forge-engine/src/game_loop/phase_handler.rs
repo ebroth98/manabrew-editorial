@@ -731,7 +731,7 @@ impl GameLoop {
                     if !game.card(card_id).has_haste() {
                         game.card_mut(card_id)
                             .granted_keywords
-                            .push("Haste".to_string());
+                            .add("Haste");
                     }
                 }
             }

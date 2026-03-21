@@ -234,8 +234,8 @@ pub fn resolve_earthbend(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.game.card_mut(card_id).type_line.core_types.insert(CoreType::Creature);
 
         // Add Haste keyword
-        if !ctx.game.card(card_id).keywords.iter().any(|k| k.eq_ignore_ascii_case("Haste")) {
-            ctx.game.card_mut(card_id).keywords.push("Haste".to_string());
+        if !ctx.game.card(card_id).keywords.contains_string_ignore_case("Haste") {
+            ctx.game.card_mut(card_id).keywords.add("Haste");
         }
 
         // Add +1/+1 counters
@@ -1100,15 +1100,15 @@ pub fn resolve_alter_attribute(ctx: &mut EffectContext, sa: &SpellAbility) {
                 "Suspect" | "Suspected" => {
                     if activate {
                         // Suspected creatures have menace and can't block
-                        if !ctx.game.card(card_id).keywords.iter().any(|k| k == "Menace") {
-                            ctx.game.card_mut(card_id).keywords.push("Menace".to_string());
+                        if !ctx.game.card(card_id).keywords.contains_string("Menace") {
+                            ctx.game.card_mut(card_id).keywords.add("Menace");
                         }
                         ctx.game.card_mut(card_id).svars.insert(
                             "Suspected".to_string(),
                             "True".to_string(),
                         );
                     } else {
-                        ctx.game.card_mut(card_id).keywords.retain(|k| k != "Menace");
+                        ctx.game.card_mut(card_id).keywords.remove("Menace");
                         ctx.game.card_mut(card_id).svars.remove("Suspected");
                     }
                 }
@@ -1288,11 +1288,9 @@ pub fn resolve_mutate(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Copy all keywords from host to target (abilities merge)
-    let host_keywords = ctx.game.card(source).keywords.clone();
+    let host_keywords = ctx.game.card(source).keywords.as_string_list();
     for kw in host_keywords {
-        if !ctx.game.card(target).keywords.contains(&kw) {
-            ctx.game.card_mut(target).keywords.push(kw);
-        }
+        ctx.game.card_mut(target).keywords.add(&kw);
     }
 
     // Move host to "merged" zone (track via svar)

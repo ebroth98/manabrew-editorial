@@ -7,7 +7,7 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_change_type, EffectContext};
-use crate::ids::{CardId, PlayerId};
+use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 

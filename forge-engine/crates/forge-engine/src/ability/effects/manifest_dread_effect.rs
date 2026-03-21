@@ -6,7 +6,6 @@
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
-use crate::event::{RunParams, TriggerType};
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 
@@ -28,7 +27,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 }
 
 /// One iteration of manifest dread: look at top 2, pick one to manifest, rest to graveyard.
-fn manifest_dread_once(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId) {
+fn manifest_dread_once(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
     let lib = ctx.game.cards_in_zone(ZoneType::Library, player).to_vec();
     // Top 2 cards (last 2 in the vec since top = end)
     let top2: Vec<CardId> = lib.into_iter().rev().take(2).collect();

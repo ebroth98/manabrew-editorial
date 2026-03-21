@@ -10,7 +10,6 @@ use forge_foundation::ZoneType;
 use crate::parsing::keys;
 
 use super::{emit_zone_trigger, EffectContext};
-use crate::event::{RunParams, TriggerType};
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 

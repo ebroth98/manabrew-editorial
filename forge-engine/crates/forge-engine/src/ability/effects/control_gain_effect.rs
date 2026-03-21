@@ -67,7 +67,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if let Some(kws_str) = sa.params.get(keys::ADD_KWS) {
         let keywords: Vec<String> = kws_str.split(" & ").map(|s| s.to_string()).collect();
         for kw in keywords {
-            ctx.game.card_mut(target_card).granted_keywords.push(kw);
+            ctx.game.card_mut(target_card).granted_keywords.add(&kw);
         }
     }
 }

@@ -247,6 +247,7 @@ pub fn is_preset_id(id: &str) -> bool {
 ///
 /// Loads the preset for player 0 and the opponent deck (from the JSON's
 /// `opponent` field) for player 1.
+#[allow(dead_code)]
 pub fn build_preset_decks(game: &mut GameState, preset_id: &str, p0: PlayerId, p1: PlayerId) {
     let preset = match get_preset_by_id(preset_id) {
         Some(p) => p,

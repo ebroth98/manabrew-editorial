@@ -54,7 +54,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Determine winner
-    let player_wins = p_cmc > o_cmc;
+    let _player_wins = p_cmc > o_cmc;
 
     // WinSubAbility / OtherwiseSubAbility — resolved via sub-ability chain
     // The SA's sub_ability handles this via the Branch mechanism in Java.

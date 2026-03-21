@@ -192,7 +192,7 @@ pub(crate) fn assemble_card(
                 color: back_face.resolved_color(),
                 base_power: back_face.int_power,
                 base_toughness: back_face.int_toughness,
-                keywords: back_face.keywords.clone(),
+                keywords: crate::keyword::keyword_collection::KeywordCollection::from_strings(&back_face.keywords),
                 abilities: back_face.abilities.clone(),
                 triggers: back_triggers,
                 svars: back_face.svars.clone(),

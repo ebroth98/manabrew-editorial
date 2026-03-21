@@ -68,7 +68,7 @@ fn format_keywords(card: &CardInstance) -> String {
     if card.keywords.is_empty() {
         String::new()
     } else {
-        format!(" {{{}}}", card.keywords.join(", "))
+        format!(" {{{}}}", card.keywords.as_string_list().join(", "))
     }
 }
 

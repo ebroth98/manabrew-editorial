@@ -92,7 +92,7 @@ pub(super) fn get_land_subtypes(subtypes: &[String]) -> Vec<String> {
 pub(super) fn find_search_limit(ctx: &EffectContext, _search_player: PlayerId, searcher: PlayerId) -> Option<usize> {
     for card in ctx.game.cards.iter() {
         if card.zone != ZoneType::Battlefield || card.controller == searcher { continue; }
-        for kw in &card.keywords {
+        for kw in card.keywords.iter_strings() {
             if let Some(rest) = kw.strip_prefix("LimitSearchLibrary:") {
                 if let Ok(n) = rest.trim().parse::<usize>() { return Some(n); }
             }
@@ -105,7 +105,7 @@ pub(super) fn find_search_limit(ctx: &EffectContext, _search_player: PlayerId, s
 pub(super) fn find_opposition_agent(ctx: &EffectContext, searcher: PlayerId) -> Option<PlayerId> {
     for card in ctx.game.cards.iter() {
         if card.zone != ZoneType::Battlefield || card.controller == searcher { continue; }
-        for kw in &card.keywords {
+        for kw in card.keywords.iter_strings() {
             if kw.eq_ignore_ascii_case("OppositionAgent") || kw.contains("ControlSearching") {
                 return Some(card.controller);
             }
@@ -119,7 +119,7 @@ pub(super) fn find_opposition_agent(ctx: &EffectContext, searcher: PlayerId) -> 
 pub(super) fn can_search_library(ctx: &EffectContext, searcher: PlayerId) -> bool {
     for card in ctx.game.cards.iter() {
         if card.zone != ZoneType::Battlefield { continue; }
-        for kw in &card.keywords {
+        for kw in card.keywords.iter_strings() {
             if kw.eq_ignore_ascii_case("CantSearchLibrary") { return false; }
             if kw.starts_with("CantSearchLibraryUnlessPaid") && card.controller != searcher { return false; }
         }
@@ -170,7 +170,7 @@ pub(super) fn apply_pre_move(
 ) -> bool {
     // canExiledBy check
     if dest_zone == ZoneType::Exile {
-        if ctx.game.card(card_id).keywords.iter().any(|k| k.eq_ignore_ascii_case("CantBeExiled")) {
+        if ctx.game.card(card_id).keywords.contains_string_ignore_case("CantBeExiled") {
             return false;
         }
     }
@@ -259,7 +259,7 @@ pub(super) fn apply_post_move(
             ctx.game.card_mut(card_id).attacking_player = Some(ctx.game.opponent_of(controller));
         }
         if sa.param_is_true(keys::UNEARTH) {
-            ctx.game.card_mut(card_id).pump_keywords.push("Haste".to_string());
+            ctx.game.card_mut(card_id).pump_keywords.add("Haste");
             ctx.game.card_mut(card_id).summoning_sick = false;
             ctx.game.card_mut(card_id).unearthed = true;
             ctx.trigger_handler.register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
@@ -329,7 +329,7 @@ pub(super) fn apply_post_move(
 
         // Warp keyword
         let is_warp = sa.params.has(keys::WARP)
-            || (sa.trigger_source.is_some() && ctx.game.card(card_id).keywords.iter().any(|k| k.eq_ignore_ascii_case("Warp")));
+            || (sa.trigger_source.is_some() && ctx.game.card(card_id).keywords.contains_string_ignore_case("Warp"));
         if is_warp { create_warp_effect(ctx, sa, card_id); }
     }
 

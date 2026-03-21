@@ -351,14 +351,7 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             }
             EffectKind::GrantKeyword(kw) => {
                 let card = &mut game.cards[effect.target.index()];
-                // Avoid duplicates (case-insensitive).
-                if !card
-                    .granted_keywords
-                    .iter()
-                    .any(|k| k.eq_ignore_ascii_case(&kw))
-                {
-                    card.granted_keywords.push(kw);
-                }
+                card.granted_keywords.add(&kw);
             }
         }
     }

@@ -21,7 +21,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     ctx.game
         .card_mut(card_id)
         .keywords
-        .push(make_plotted_keyword(turn));
+        .add(&make_plotted_keyword(turn));
 
     crate::agent::notify_all_agents(
         ctx.agents,

@@ -596,7 +596,7 @@ impl GameLoop {
                         });
                     }
                 }
-            } else if let Some(plotted_turn) = card.keywords.iter().chain(card.granted_keywords.iter()).find_map(|kw| {
+            } else if let Some(plotted_turn) = card.keywords.iter_strings().chain(card.granted_keywords.iter_strings()).find_map(|kw| {
                 crate::card::parse_plotted_turn(kw)
             }) {
                 // Plot: plotted card in exile can be cast for free on a LATER turn

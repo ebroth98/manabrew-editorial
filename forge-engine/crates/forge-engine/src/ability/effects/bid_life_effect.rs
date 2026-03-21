@@ -22,7 +22,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
         // Agent chooses a bid amount — confirm_action returns bool,
         // so we use choose_number if available, or default to 0/life
-        let max_bid = ctx.game.player(pid).life;
+        let _max_bid = ctx.game.player(pid).life;
         // Simplified: AI bids 0, player bids via confirm
         let bid = if pid == controller { 1 } else { 0 };
 

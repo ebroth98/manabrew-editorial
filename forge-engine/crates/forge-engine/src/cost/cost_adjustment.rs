@@ -721,12 +721,10 @@ pub(crate) fn matches_valid_card(valid: &str, spell: &CardInstance, source: &Car
 /// Extract the affinity type from a card's keywords (e.g. "Affinity:Artifact" → "Artifact").
 /// Mirrors Java's affinity keyword handling in `CostAdjustment`.
 pub fn get_affinity_type(card: &CardInstance) -> Option<String> {
-    for kw in card.keywords.iter().chain(card.granted_keywords.iter()) {
-        if let Some(typ) = kw.strip_prefix("Affinity:") {
-            return Some(typ.to_string());
-        }
-    }
-    None
+    crate::keyword::extract_keyword_cost_from_all(
+        [&card.keywords, &card.granted_keywords],
+        "Affinity",
+    )
 }
 
 /// Count permanents matching an affinity type on the battlefield.

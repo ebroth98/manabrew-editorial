@@ -71,6 +71,7 @@ fn filter_decks(decks: Vec<String>, exclude_prefixes: &[String]) -> Vec<String> 
 }
 
 /// Truncate a trace string to at most `max_lines` lines to limit memory usage.
+#[allow(dead_code)]
 fn truncate_trace(trace: &str, max_lines: usize) -> String {
     let lines: Vec<&str> = trace.lines().collect();
     if lines.len() <= max_lines {
@@ -245,6 +246,7 @@ struct Cli {
 }
 
 /// Resolve issue_threshold: CLI flag > env var > default (5)
+#[allow(dead_code)]
 fn resolve_issue_threshold(cli_val: i64) -> i64 {
     if cli_val != 5 {
         return cli_val;
@@ -257,6 +259,7 @@ fn resolve_issue_threshold(cli_val: i64) -> i64 {
 }
 
 /// Resolve github_repo: CLI flag > env var
+#[allow(dead_code)]
 fn resolve_github_repo(cli_val: Option<String>) -> Option<String> {
     cli_val.or_else(|| std::env::var("GITHUB_REPO").ok().filter(|s| !s.is_empty()))
 }

@@ -6,6 +6,9 @@ pub mod filter_constants;
 mod keyword_gen;
 pub mod valid_filter;
 
+/// Type alias for the Keyword enum, used by keyword helper methods.
+use crate::keyword::keyword_instance::Keyword as Kw;
+
 // ── Keyword marker constants ──────────────────────────────────────────
 // These are synthetic keywords injected at runtime to track card state.
 // Using constants avoids magic strings scattered across the codebase.
@@ -125,7 +128,7 @@ pub struct CardOtherPart {
     pub color: ColorSet,
     pub base_power: Option<i32>,
     pub base_toughness: Option<i32>,
-    pub keywords: Vec<String>,
+    pub keywords: crate::keyword::keyword_collection::KeywordCollection,
     pub abilities: Vec<String>,
     pub triggers: Vec<Trigger>,
     pub svars: BTreeMap<String, String>,
@@ -220,13 +223,14 @@ pub struct CardInstance {
     pub counters: BTreeMap<CounterType, i32>,
 
     // Keywords intrinsic to this card (from its card definition).
-    pub keywords: Vec<String>,
+    // Now stored as a `KeywordCollection` for structured typed lookups.
+    pub keywords: crate::keyword::keyword_collection::KeywordCollection,
     /// Keywords granted by continuous static effects (Layer 6).
     /// Reset and recomputed each time [`layer::apply_continuous_effects`] runs.
-    pub granted_keywords: Vec<String>,
+    pub granted_keywords: crate::keyword::keyword_collection::KeywordCollection,
     /// Keywords granted temporarily by pump effects (`KW$` parameter) until end of turn.
     /// Cleared during step_cleanup alongside power_modifier / toughness_modifier.
-    pub pump_keywords: Vec<String>,
+    pub pump_keywords: crate::keyword::keyword_collection::KeywordCollection,
     /// Number of triggers added temporarily by `DB$ Animate | Triggers$` effects.
     /// At cleanup, this many triggers are popped from the end of the `triggers` vec.
     pub pump_trigger_count: usize,
@@ -492,9 +496,9 @@ impl CardInstance {
             exerted: false,
             damage: 0,
             counters: BTreeMap::new(),
-            keywords,
-            granted_keywords: Vec::new(),
-            pump_keywords: Vec::new(),
+            keywords: crate::keyword::keyword_collection::KeywordCollection::from_strings(&keywords),
+            granted_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
+            pump_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
             pump_trigger_count: 0,
             abilities,
             activated_abilities,
@@ -667,140 +671,133 @@ impl CardInstance {
     }
 
     pub fn has_keyword(&self, kw: &str) -> bool {
-        self.keywords.iter().any(|k| k.eq_ignore_ascii_case(kw))
-            || self
-                .granted_keywords
-                .iter()
-                .any(|k| k.eq_ignore_ascii_case(kw))
-            || self
-                .pump_keywords
-                .iter()
-                .any(|k| k.eq_ignore_ascii_case(kw))
+        self.keywords.contains_string_ignore_case(kw)
+            || self.granted_keywords.contains_string_ignore_case(kw)
+            || self.pump_keywords.contains_string_ignore_case(kw)
+    }
+
+    /// Check for a keyword using the typed Keyword enum.
+    /// Checks the structured `keyword_collection` first (O(1) HashMap lookup),
+    /// then falls back to string matching on granted/pump keywords.
+    /// Mirrors Java's `Card.hasKeyword(Keyword)`.
+    pub fn has_keyword_enum(&self, kw: Kw) -> bool {
+        self.keywords.contains_keyword(kw)
+            || self.granted_keywords.contains_keyword(kw)
+            || self.pump_keywords.contains_keyword(kw)
     }
 
     pub fn has_haste(&self) -> bool {
-        self.has_keyword("Haste")
+        self.has_keyword_enum(crate::keyword::keyword_instance::Keyword::Haste)
     }
 
     pub fn has_flying(&self) -> bool {
-        self.has_keyword("Flying")
+        self.has_keyword_enum(crate::keyword::keyword_instance::Keyword::Flying)
     }
 
     pub fn has_reach(&self) -> bool {
-        self.has_keyword("Reach")
+        self.has_keyword_enum(Kw::Reach)
     }
 
     pub fn has_first_strike(&self) -> bool {
-        self.has_keyword("First Strike")
+        self.has_keyword_enum(Kw::FirstStrike)
     }
 
     pub fn has_double_strike(&self) -> bool {
-        self.has_keyword("Double Strike")
+        self.has_keyword_enum(Kw::DoubleStrike)
     }
 
     pub fn has_trample(&self) -> bool {
-        self.has_keyword("Trample")
+        self.has_keyword_enum(Kw::Trample)
     }
 
     pub fn has_deathtouch(&self) -> bool {
-        self.has_keyword("Deathtouch")
+        self.has_keyword_enum(Kw::Deathtouch)
     }
 
     pub fn has_lifelink(&self) -> bool {
-        self.has_keyword("Lifelink")
+        self.has_keyword_enum(Kw::Lifelink)
     }
 
     pub fn has_vigilance(&self) -> bool {
-        self.has_keyword("Vigilance")
+        self.has_keyword_enum(Kw::Vigilance)
     }
 
     pub fn has_defender(&self) -> bool {
-        self.has_keyword("Defender")
+        self.has_keyword_enum(Kw::Defender)
     }
 
     pub fn has_hexproof(&self) -> bool {
-        self.has_keyword("Hexproof")
+        self.has_keyword_enum(Kw::Hexproof)
     }
 
     pub fn has_shroud(&self) -> bool {
-        self.has_keyword("Shroud")
+        self.has_keyword_enum(Kw::Shroud)
     }
 
     pub fn has_menace(&self) -> bool {
-        self.has_keyword("Menace")
+        self.has_keyword_enum(Kw::Menace)
     }
 
     pub fn has_fear(&self) -> bool {
-        self.has_keyword("Fear")
+        self.has_keyword_enum(Kw::Fear)
     }
 
     pub fn has_intimidate(&self) -> bool {
-        self.has_keyword("Intimidate")
+        self.has_keyword_enum(Kw::Intimidate)
     }
 
     pub fn has_shadow(&self) -> bool {
-        self.has_keyword("Shadow")
+        self.has_keyword_enum(Kw::Shadow)
     }
 
     pub fn has_skulk(&self) -> bool {
-        self.has_keyword("Skulk")
+        self.has_keyword_enum(Kw::Skulk)
     }
 
     pub fn has_horsemanship(&self) -> bool {
-        self.has_keyword("Horsemanship")
+        self.has_keyword_enum(Kw::Horsemanship)
     }
 
     pub fn has_indestructible(&self) -> bool {
-        self.has_keyword("Indestructible")
+        self.has_keyword_enum(Kw::Indestructible)
     }
 
     pub fn has_infect(&self) -> bool {
-        self.has_keyword("Infect")
+        self.has_keyword_enum(Kw::Infect)
     }
 
     pub fn has_wither(&self) -> bool {
-        self.has_keyword("Wither")
+        self.has_keyword_enum(Kw::Wither)
     }
 
     pub fn has_prowess(&self) -> bool {
-        self.has_keyword("Prowess")
+        self.has_keyword_enum(Kw::Prowess)
     }
 
-    /// Check if card has Rebound keyword.
     pub fn has_rebound(&self) -> bool {
-        self.has_keyword("Rebound")
+        self.has_keyword_enum(Kw::Rebound)
     }
 
     /// Check "Hexproof from <color>" variants (e.g. "Hexproof from blue").
     pub fn has_hexproof_from(&self, color: &str) -> bool {
         let target = format!("Hexproof from {}", color);
-        self.keywords
-            .iter()
-            .any(|k| k.eq_ignore_ascii_case(&target))
-            || self
-                .granted_keywords
-                .iter()
-                .any(|k| k.eq_ignore_ascii_case(&target))
+        self.keywords.contains_string_ignore_case(&target)
+            || self.granted_keywords.contains_string_ignore_case(&target)
     }
 
     /// Get Toxic count (e.g. "Toxic:1" → Some(1)).
     pub fn get_toxic_count(&self) -> Option<i32> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(n) = kw.strip_prefix("Toxic:") {
-                return n.parse().ok();
-            }
-        }
-        None
+        self.get_keyword_cost("Toxic")
+            .and_then(|s| s.parse().ok())
     }
 
     /// Whether this card has the Storm keyword.
     pub fn has_storm(&self) -> bool {
-        self.has_keyword("Storm")
+        self.has_keyword_enum(Kw::Storm)
     }
 
-    /// Whether this card has the Cascade keyword.
     pub fn has_cascade(&self) -> bool {
-        self.has_keyword("Cascade")
+        self.has_keyword_enum(Kw::Cascade)
     }
 
     /// Converted mana cost (mana value).
@@ -811,19 +808,14 @@ impl CardInstance {
     /// Check "Protection from <quality>" (e.g. "Protection from red").
     pub fn has_protection_from(&self, quality: &str) -> bool {
         let target = format!("Protection from {}", quality);
-        self.keywords
-            .iter()
-            .any(|k| k.eq_ignore_ascii_case(&target))
-            || self
-                .granted_keywords
-                .iter()
-                .any(|k| k.eq_ignore_ascii_case(&target))
+        self.keywords.contains_string_ignore_case(&target)
+            || self.granted_keywords.contains_string_ignore_case(&target)
     }
 
     /// Get all "Protection from X" values this card has.
     pub fn get_protections(&self) -> Vec<String> {
         let mut prots = Vec::new();
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
             if let Some(from) = kw.strip_prefix("Protection from ") {
                 prots.push(from.to_lowercase());
             }

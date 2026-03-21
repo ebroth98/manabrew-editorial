@@ -23,7 +23,7 @@ impl CardInstance {
     /// Stored as keyword `AltCostSacrifice:N:Type` where N is the count and Type is the filter.
     /// Returns `Some((amount, type_filter))` if present.
     pub fn get_sacrifice_alt_cost(&self) -> Option<(i32, String)> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
             if let Some(rest) = kw.strip_prefix(super::KEYWORD_ALT_COST_SACRIFICE_PREFIX) {
                 let mut parts = rest.splitn(2, ':');
                 let amount = parts
@@ -43,7 +43,7 @@ impl CardInstance {
     /// and IsPresent is the condition string (e.g. `Forest.YouCtrl`).
     /// Returns `Some((life_amount, condition))` if present.
     pub fn get_gainlife_alt_cost(&self) -> Option<(i32, String)> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
+        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
             if let Some(rest) = kw.strip_prefix(super::KEYWORD_ALT_COST_GAINLIFE_PREFIX) {
                 let mut parts = rest.splitn(2, ':');
                 let amount = parts
@@ -103,18 +103,11 @@ impl CardInstance {
     }
 
     /// Get escape cost and exile count (e.g. "Escape:1 B B:4" → Some(("1 B B", 4))).
+    /// Delegates parsing to the keyword module.
     pub fn get_escape_cost(&self) -> Option<(String, i32)> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(rest) = kw.strip_prefix("Escape:") {
-                // Format: "mana_cost:exile_count"
-                if let Some(colon_pos) = rest.rfind(':') {
-                    let mana = rest[..colon_pos].trim().to_string();
-                    let exile = rest[colon_pos + 1..].trim().parse().unwrap_or(0);
-                    return Some((mana, exile));
-                }
-            }
-        }
-        None
+        crate::keyword::extract_escape(&self.keywords)
+            .or_else(|| crate::keyword::extract_escape(&self.granted_keywords))
+            .map(|info| (info.mana_cost, info.exile_count))
     }
 
     /// Get overload cost (e.g. "Overload:3 R" → Some("3 R")).
@@ -133,17 +126,11 @@ impl CardInstance {
     }
 
     /// Get suspend cost and time counters (e.g. "Suspend:1 U:3" → Some(("1 U", 3))).
+    /// Delegates parsing to the keyword module.
     pub fn get_suspend_cost(&self) -> Option<(String, i32)> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(rest) = kw.strip_prefix("Suspend:") {
-                if let Some(colon_pos) = rest.rfind(':') {
-                    let mana = rest[..colon_pos].trim().to_string();
-                    let counters = rest[colon_pos + 1..].trim().parse().unwrap_or(0);
-                    return Some((mana, counters));
-                }
-            }
-        }
-        None
+        crate::keyword::extract_suspend(&self.keywords)
+            .or_else(|| crate::keyword::extract_suspend(&self.granted_keywords))
+            .map(|info| (info.mana_cost, info.time_counters))
     }
 
     /// Get foretell cost (e.g. "Foretell:W W" → Some("W W")).
@@ -161,25 +148,18 @@ impl CardInstance {
         self.get_keyword_cost("Offering")
     }
 
-    /// Generic keyword cost parser — looks for "Keyword:cost" in keywords vec.
+    /// Generic keyword cost parser — delegates to the keyword module.
+    /// Looks for "Keyword:cost" in intrinsic and granted keywords.
     pub fn get_keyword_cost(&self, keyword: &str) -> Option<String> {
-        let prefix = format!("{}:", keyword);
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix(&prefix) {
-                return Some(cost.to_string());
-            }
-        }
-        None
+        crate::keyword::extract_keyword_cost_from_all(
+            [&self.keywords, &self.granted_keywords],
+            keyword,
+        )
     }
 
     /// Get Ward cost (e.g. "Ward:2" → Some("2"), "Ward:{U}" → Some("{U}")).
     pub fn get_ward_cost(&self) -> Option<String> {
-        for kw in self.keywords.iter().chain(self.granted_keywords.iter()) {
-            if let Some(cost) = kw.strip_prefix("Ward:") {
-                return Some(cost.to_string());
-            }
-        }
-        None
+        self.get_keyword_cost("Ward")
     }
 
     /// Get Flashback cost (e.g. "Flashback:2 R" → Some("2 R")).

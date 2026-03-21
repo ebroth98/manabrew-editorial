@@ -201,10 +201,10 @@ pub(super) fn resolve_hidden_origin(
 
 /// Offer Panglacial Wurm cast during library search (CR 702.113).
 fn offer_panglacial_cast(
-    ctx: &mut EffectContext, sa: &SpellAbility, controller: PlayerId, zone_cards: &mut Vec<crate::ids::CardId>,
+    ctx: &mut EffectContext, _sa: &SpellAbility, controller: PlayerId, zone_cards: &mut Vec<crate::ids::CardId>,
 ) {
     let panglacial: Vec<_> = zone_cards.iter().copied()
-        .filter(|&cid| ctx.game.card(cid).keywords.iter().any(|k| k.eq_ignore_ascii_case("Panglacial")))
+        .filter(|&cid| ctx.game.card(cid).keywords.contains_string_ignore_case("Panglacial"))
         .collect();
     for pg_id in panglacial {
         let name = ctx.game.card(pg_id).card_name.clone();

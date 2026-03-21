@@ -100,7 +100,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 /// Create a 0/0 black {Type} Army creature token.
 fn create_army_token(
     ctx: &mut EffectContext,
-    sa: &SpellAbility,
+    _sa: &SpellAbility,
     controller: crate::ids::PlayerId,
     amass_type: &str,
 ) {

@@ -71,10 +71,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let chosen = ctx.agents[controller.index()].choose_color(controller, &choices);
         if let Some(color) = chosen {
             let prot_kw = format!("Protection from {}", color.to_lowercase());
-            ctx.game.card_mut(card_id).pump_keywords.push(prot_kw);
+            ctx.game.card_mut(card_id).pump_keywords.add(&prot_kw);
         }
     } else {
         // Static protection grant
-        ctx.game.card_mut(card_id).pump_keywords.push(gains);
+        ctx.game.card_mut(card_id).pump_keywords.add(&gains);
     }
 }

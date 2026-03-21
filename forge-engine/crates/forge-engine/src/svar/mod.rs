@@ -40,7 +40,7 @@ pub fn resolve_numeric_svar(
     default: i32,
 ) -> i32 {
     let val_str = match sa.params.get(param_name) {
-        Some(v) if !v.is_empty() => v.clone(),
+        Some(v) if !v.is_empty() => v.to_string(),
         _ => return default,
     };
 
