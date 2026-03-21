@@ -1,0 +1,6 @@
+# Scan map — override file and symbol mappings for scan_structure
+#
+# File remap:    path/File.java -> path/target.rs
+# Symbol remap:  path/File.java/javaMethod -> path/target.rs/rust_fn
+#
+# Lines starting with # are comments. Blank lines are ignored.
