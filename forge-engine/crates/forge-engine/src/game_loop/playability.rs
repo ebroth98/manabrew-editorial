@@ -359,14 +359,16 @@ impl GameLoop {
 
                 // Check additional non-mana costs from SP$ line (e.g. Sac<1/Creature>,
                 // BeholdExile<...>) through shared cost payability logic.
+                // Use the _for_spell variant so CantSacrifice statics (e.g. Yasharn)
+                // can properly evaluate ValidCause$ Spell restrictions.
                 let spell_cost = Self::parse_spell_cost(&card.abilities);
                 let sp_additional_ok = if let Some(ref sc) = spell_cost {
-                    crate::cost::can_pay_ignoring_mana(sc, game, card_id, player)
+                    crate::cost::can_pay_ignoring_mana_for_spell(sc, game, card_id, player)
                 } else {
                     true
                 };
                 let raised_additional_ok = if let Some(ref rc) = raise_cost {
-                    crate::cost::can_pay_ignoring_mana(rc, game, card_id, player)
+                    crate::cost::can_pay_ignoring_mana_for_spell(rc, game, card_id, player)
                 } else {
                     true
                 };
@@ -514,7 +516,7 @@ impl GameLoop {
                 let fb_cost = crate::cost::parse_cost(&fb_cost_str);
                 let fb_mana = Self::mana_from_cost(&fb_cost);
                 available_mana.can_pay(&fb_mana)
-                    && crate::cost::can_pay_ignoring_mana(&fb_cost, game, card_id, player)
+                    && crate::cost::can_pay_ignoring_mana_for_spell(&fb_cost, game, card_id, player)
             } else {
                 false
             };

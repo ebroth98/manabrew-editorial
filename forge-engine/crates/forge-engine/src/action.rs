@@ -168,8 +168,8 @@ impl GameState {
                     let lki_p = card.power();
                     let lki_t = card.toughness();
                     let card = &mut self.cards[card_id.index()];
-                    card.lki_power = lki_p;
-                    card.lki_toughness = lki_t;
+                    card.lki_power = Some(lki_p);
+                    card.lki_toughness = Some(lki_t);
                 }
 
                 // Reset battlefield state when leaving (including static modifiers).
@@ -379,6 +379,17 @@ impl GameState {
         mut trigger_handler: Option<&mut TriggerHandler>,
         mut legend_keep_fn: Option<&mut dyn FnMut(PlayerId, &[CardId]) -> CardId>,
     ) -> bool {
+        // Capture battlefield state before SBA processing. Used by DisableTriggers
+        // (Hushbringer) to check LKI — if a creature with DisableTriggers dies in
+        // the same SBA batch as another creature, it still suppresses death triggers.
+        // Mirrors Java's LastStateBattlefield passed through RunParams.
+        self.pre_sba_battlefield = self
+            .cards
+            .iter()
+            .filter(|c| c.zone == ZoneType::Battlefield)
+            .map(|c| c.id)
+            .collect();
+
         let mut any_changes = false;
 
         // Check players with 0 or less life

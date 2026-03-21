@@ -86,6 +86,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
+    if std::env::var("FORGE_LIFE_TRACE").is_ok() {
+        let src_name = sa.source.map(|id| ctx.game.card(id).card_name.clone()).unwrap_or_default();
+        eprintln!("[DEAL_DAMAGE_TRACE] source={} damage={} target_player={:?} target_card={:?}", src_name, damage, target_player, sa.target_chosen.target_card);
+    }
+
     if let Some(target_player) = target_player {
         let source_has_infect = if let Some(src_id) = sa.source {
             let src = ctx.game.card(src_id);
@@ -110,6 +115,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         } else {
             ctx.game.deal_damage_to_player(target_player, damage);
+        }
+
+        // Record damage dealt by source for TotalDamageDoneByThisTurn SVar
+        if let Some(src_id) = sa.source {
+            if damage > 0 {
+                ctx.game.card_mut(src_id).total_damage_done_this_turn += damage;
+                ctx.game.card_mut(src_id).damage_history.record_damage(damage, false);
+            }
         }
 
         // Fire DamageDone trigger
@@ -165,6 +178,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             } else {
                 ctx.game.deal_damage_to_card(target_card, damage);
+            }
+
+            // Record damage dealt by source for TotalDamageDoneByThisTurn SVar
+            if let Some(src_id) = sa.source {
+                if damage > 0 {
+                    ctx.game.card_mut(src_id).total_damage_done_this_turn += damage;
+                    ctx.game.card_mut(src_id).damage_history.record_damage(damage, false);
+                }
             }
 
             // Fire DamageDone trigger
@@ -238,6 +259,39 @@ fn evaluate_svar_expr(ctx: &EffectContext, sa: &SpellAbility, expr: &str) -> i32
     // Count$Kicked.X.Y — delegate to shared evaluator
     if expr.starts_with("Count$Kicked.") {
         return super::evaluate_svar(expr, sa);
+    }
+    // Count$ expressions — delegate to shared game-aware resolver
+    if expr.starts_with("Count$") {
+        if let Some(source_id) = sa.source {
+            return crate::svar::resolve_count_svar_for_sa(
+                expr,
+                ctx.game,
+                source_id,
+                sa.activating_player,
+                sa,
+            );
+        }
+    }
+    // Sacrificed$CardPower / Sacrificed$CardToughness — LKI from cost payment.
+    // Used by Rite of Consumption: SVar:X:Sacrificed$CardPower
+    if expr == "Sacrificed$CardPower" || expr == "Sacrificed$CardToughness" {
+        if let Some(sac_id) = ctx.game.last_sacrificed_card {
+            let sac_card = ctx.game.card(sac_id);
+            let val = if expr.ends_with("Power") {
+                sac_card.lki_power.unwrap_or(sac_card.base_power.unwrap_or(0))
+            } else {
+                sac_card.lki_toughness.unwrap_or(sac_card.base_toughness.unwrap_or(0))
+            };
+            if std::env::var("FORGE_LIFE_TRACE").is_ok() {
+                eprintln!("[SVAR_TRACE] {} = {} (card={} lki_power={:?} base_power={:?})",
+                    expr, val, sac_card.card_name, sac_card.lki_power, sac_card.base_power);
+            }
+            return val;
+        }
+        if std::env::var("FORGE_LIFE_TRACE").is_ok() {
+            eprintln!("[SVAR_TRACE] {} => no last_sacrificed_card!", expr);
+        }
+        return 0;
     }
     match expr {
         // X mana cost paid value

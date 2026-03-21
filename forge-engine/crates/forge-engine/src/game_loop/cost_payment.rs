@@ -2614,6 +2614,22 @@ impl GameLoop {
                     continue;
                 }
                 let owner = game.card(chosen).owner;
+                // Capture sacrificed creature's power/toughness for Sacrificed$CardPower
+                // SVar (used by Rite of Consumption, Altar's Reap, etc.).
+                // Must be before move_card clears counters and resets stats.
+                // Store LKI on the sacrificed card, and remember the card on the
+                // spell's source so the SVar resolver can find it.
+                {
+                    let sac_power = game.card(chosen).power();
+                    let sac_toughness = game.card(chosen).toughness();
+                    game.card_mut(chosen).lki_power = Some(sac_power);
+                    game.card_mut(chosen).lki_toughness = Some(sac_toughness);
+                    // Store as last sacrificed card for SVar lookup.
+                    // The SVar resolver reads this from the spell source's svars.
+                    // Since we don't have the source card_id here, store it
+                    // as a game-level transient for the SVar resolver to find.
+                    game.last_sacrificed_card = Some(chosen);
+                }
                 // Capture +1/+1 counter count BEFORE move_card clears counters.
                 // Needed for Modular death triggers (CR 702.43b).
                 let lki_p1p1 = *game
@@ -2631,17 +2647,11 @@ impl GameLoop {
                     },
                     false,
                 );
-                // Clear temporary Animate triggers BEFORE emitting
-                // ChangesZone so they are not pre-matched by flush.
-                {
-                    let card = game.card_mut(chosen);
-                    let pt = card.pump_trigger_count;
-                    if pt > 0 {
-                        let new_len = card.triggers.len().saturating_sub(pt);
-                        card.triggers.truncate(new_len);
-                        card.pump_trigger_count = 0;
-                    }
-                }
+                // NOTE: pump triggers (e.g. Supernatural Stamina's death-return
+                // trigger) must NOT be cleared here. They need to fire during the
+                // ChangesZone event below. Cleanup happens in move_card when the
+                // card actually changes zones — after the trigger has been matched
+                // and queued by emit_zone_trigger + flush_waiting_triggers.
                 crate::ability::effects::emit_zone_trigger_with_lki_counters(
                     &mut self.trigger_handler,
                     chosen,

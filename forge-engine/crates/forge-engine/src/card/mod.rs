@@ -385,9 +385,11 @@ pub struct CardInstance {
     pub total_damage_done_this_turn: i32,
     /// Last-known information: power when this card last left the battlefield.
     /// Mirrors Java's LKI system for `TriggeredCard$CardPower`.
-    pub lki_power: i32,
+    /// `None` means LKI was never captured; `Some(0)` means power was 0.
+    pub lki_power: Option<i32>,
     /// Last-known information: toughness when this card last left the battlefield.
-    pub lki_toughness: i32,
+    /// `None` means LKI was never captured; `Some(0)` means toughness was 0.
+    pub lki_toughness: Option<i32>,
     /// Damage history tracking (attacks, blocks, damage dealt).
     /// Mirrors Java `CardDamageHistory`.
     #[serde(skip)]
@@ -548,8 +550,8 @@ impl CardInstance {
             encoded_cards: Vec::new(),
             damage_sources_this_turn: Vec::new(),
             total_damage_done_this_turn: 0,
-            lki_power: 0,
-            lki_toughness: 0,
+            lki_power: None,
+            lki_toughness: None,
             damage_history: damage_history::DamageHistory::default(),
             must_block_cards: Vec::new(),
             etb_counters_p1p1: 0,

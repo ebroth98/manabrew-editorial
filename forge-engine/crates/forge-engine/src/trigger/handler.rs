@@ -490,9 +490,19 @@ impl TriggerHandler {
             game.card(cause_card_id).is_creature()
         };
 
-        // Check all cards on the battlefield for DisableTriggers static abilities
+        // Check cards for DisableTriggers static abilities.
+        // For LTB triggers (Origin=Battlefield), also check cards that were on the
+        // battlefield at the start of the current SBA check (pre_sba_battlefield).
+        // This handles the case where a DisableTriggers source (e.g. Hushbringer)
+        // dies in the same SBA batch as the trigger source — Hushbringer was on the
+        // battlefield when the batch started, so its DisableTriggers still applies.
+        // Mirrors Java's StaticAbilityDisableTriggers.disabled() which uses
+        // lastStateBattlefield for LTB triggers (lines 20-27).
+        let is_ltb = params.origin == Some(ZoneType::Battlefield);
         for card in game.cards.iter() {
-            if card.zone != ZoneType::Battlefield {
+            let on_battlefield = card.zone == ZoneType::Battlefield;
+            let was_on_battlefield = is_ltb && game.pre_sba_battlefield.contains(&card.id);
+            if !on_battlefield && !was_on_battlefield {
                 continue;
             }
             for sa in &card.static_abilities {

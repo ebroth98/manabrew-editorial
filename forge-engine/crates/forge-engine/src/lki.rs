@@ -158,16 +158,16 @@ impl crate::game::GameState {
 ///
 /// Returns 0 if no LKI data exists.
 pub fn resolve_lki_power(game: &crate::game::GameState, trigger_src: CardId) -> i32 {
-    let lki = game.card(trigger_src).lki_power;
-    if lki != 0 {
+    // Check per-card LKI captured at zone-change time (most accurate).
+    // Some(0) is a valid LKI value (e.g. creature with -1/-1 counters reducing power to 0).
+    if let Some(lki) = game.card(trigger_src).lki_power {
         return lki;
     }
-    // lki_power is 0 — could be base 0/X creature or power was reduced to 0 by effects.
-    // Check snapshot for pre-resolution state.
+    // No per-card LKI — fall back to periodic snapshot.
     if let Some(snapshot) = game.get_lki_snapshot(trigger_src) {
         return snapshot.power;
     }
-    lki
+    0
 }
 
 /// Resolve LKI toughness for a trigger source card.
@@ -178,12 +178,13 @@ pub fn resolve_lki_power(game: &crate::game::GameState, trigger_src: CardId) -> 
 ///
 /// Returns 0 if no LKI data exists.
 pub fn resolve_lki_toughness(game: &crate::game::GameState, trigger_src: CardId) -> i32 {
-    let lki = game.card(trigger_src).lki_toughness;
-    if lki != 0 {
+    // Check per-card LKI captured at zone-change time (most accurate).
+    if let Some(lki) = game.card(trigger_src).lki_toughness {
         return lki;
     }
+    // No per-card LKI — fall back to periodic snapshot.
     if let Some(snapshot) = game.get_lki_snapshot(trigger_src) {
         return snapshot.toughness;
     }
-    lki
+    0
 }

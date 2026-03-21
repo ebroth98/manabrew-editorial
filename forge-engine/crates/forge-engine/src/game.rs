@@ -145,6 +145,19 @@ pub struct GameState {
     /// Updated by `copy_last_state()` at key game checkpoints.
     #[serde(skip)]
     pub last_state_battlefield: Vec<crate::lki::CardSnapshot>,
+
+    /// Snapshot of cards on the battlefield at the start of the current SBA check.
+    /// Used by `DisableTriggers` (Hushbringer) to check LKI — a creature that dies
+    /// in the same batch as another creature still suppresses the other's death trigger.
+    /// Mirrors Java's `LastStateBattlefield` passed through `RunParams`.
+    /// Set at the start of `check_state_based_actions_with_triggers`, cleared after.
+    #[serde(skip)]
+    pub pre_sba_battlefield: Vec<CardId>,
+
+    /// Last card sacrificed as a cost (for `Sacrificed$CardPower` SVar resolution).
+    /// Mirrors Java's `sa.getPaidList("SacrificedCards")`.
+    #[serde(skip)]
+    pub last_sacrificed_card: Option<CardId>,
 }
 
 impl GameState {
@@ -196,6 +209,8 @@ impl GameState {
             next_card_id: 0,
             next_zone_timestamp: 0,
             last_state_battlefield: Vec::new(),
+            pre_sba_battlefield: Vec::new(),
+            last_sacrificed_card: None,
         }
     }
 

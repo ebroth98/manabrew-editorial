@@ -1349,6 +1349,46 @@ pub fn can_pay_ignoring_mana(
     can_pay_inner(cost, game, None, source, player, None)
 }
 
+/// Check if a cost can be paid ignoring mana requirements, for a spell.
+/// Passes a minimal SpellAbility with `is_spell = true` so that CantSacrifice
+/// checks (e.g. Yasharn) can properly evaluate `ValidCause$ Spell` restrictions.
+pub fn can_pay_ignoring_mana_for_spell(
+    cost: &Cost,
+    game: &GameState,
+    source: CardId,
+    player: PlayerId,
+) -> bool {
+    let stub = SpellAbility {
+        is_spell: true,
+        source: Some(source),
+        activating_player: player,
+        api: None,
+        targeting_player: None,
+        ability_text: String::new(),
+        params: std::collections::BTreeMap::new(),
+        target_restrictions: None,
+        target_chosen: crate::spellability::TargetChoices::default(),
+        pay_costs: None,
+        sub_ability: None,
+        is_trigger: false,
+        is_activated: false,
+        trigger_source: None,
+        trigger_index: None,
+        alt_cost: None,
+        kicked: false,
+        buyback_paid: false,
+        overloaded: false,
+        is_copy: false,
+        kick_count: 0,
+        replicate_count: 0,
+        optional_generic_cost_paid: false,
+        trigger_remembered_amount: 0,
+        x_mana_cost_paid: 0,
+        discarded_cost_cards: Vec::new(),
+    };
+    can_pay_inner(cost, game, None, source, player, Some(&stub))
+}
+
 /// Shared implementation for cost payability checks.
 /// When `available_mana` is None, mana costs are skipped.
 fn can_pay_inner(

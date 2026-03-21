@@ -68,6 +68,30 @@ pub fn resolve_numeric_svar(
                         sa,
                     );
                 }
+                // Sacrificed$CardPower / Sacrificed$CardToughness — LKI from cost payment
+                // Mirrors Java's AbilityUtils which reads from sa.getPaidList("SacrificedCards").
+                // The sacrificed card's ID is stored on the source card as SacrificedCardId,
+                // and its LKI power/toughness is on the sacrificed card itself.
+                if svar_expr == "Sacrificed$CardPower" || svar_expr == "Sacrificed$CardToughness" {
+                    if let Some(sac_id) = game.last_sacrificed_card {
+                        let sac_card = game.card(sac_id);
+                        let val = if svar_expr.ends_with("Power") {
+                            sac_card.lki_power.unwrap_or(sac_card.base_power.unwrap_or(0))
+                        } else {
+                            sac_card.lki_toughness.unwrap_or(sac_card.base_toughness.unwrap_or(0))
+                        };
+                        if std::env::var("FORGE_LIFE_TRACE").is_ok() {
+                            eprintln!("[SVAR_TRACE] {} = {} (card={} lki_power={:?} base_power={:?})",
+                                svar_expr, val, sac_card.card_name, sac_card.lki_power, sac_card.base_power);
+                        }
+                        return val;
+                    }
+                    if std::env::var("FORGE_LIFE_TRACE").is_ok() {
+                        eprintln!("[SVAR_TRACE] {} => no last_sacrificed_card!", svar_expr);
+                    }
+                    return 0;
+                }
+
                 // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI resolution
                 if svar_expr == "TriggeredCard$CardPower" {
                     if let Some(trigger_src) = sa.trigger_source {
