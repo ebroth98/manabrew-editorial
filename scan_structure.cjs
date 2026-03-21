@@ -19,6 +19,7 @@ if (modIdx !== -1) {
   }
 }
 const showSymbols = process.argv.includes('--symbols');
+const showCore = process.argv.includes('--core');
 
 // ── Scan map: file & symbol overrides ──
 const SCAN_MAP_PATH = path.join(__dirname, 'scan_map.pmap');
@@ -484,6 +485,85 @@ for (const jfile of javaFiles) {
   }
 }
 
+// ── Foundation dependencies (forge-core -> forge-foundation) ──
+if (showCore && (!filterModule || filterModule === 'foundation')) {
+  const FOUNDATION_RUST = path.join(__dirname, 'forge-engine/crates/forge-foundation/src');
+
+  // Scan forge-game imports to find which forge-core classes are actually used
+  const usedClasses = new Set();
+  const allJavaFiles = walkJava(JAVA_ROOT);
+  for (const jfile of allJavaFiles) {
+    const dir = path.dirname(jfile);
+    const base = path.basename(jfile);
+    const javaPath = dir === '.' ? path.join(JAVA_ROOT, base) : path.join(JAVA_ROOT, dir, base);
+    const content = fs.readFileSync(javaPath, 'utf-8');
+    const importRe = /^import\s+(forge\.[^;]+);/gm;
+    let m;
+    while ((m = importRe.exec(content)) !== null) {
+      const imp = m[1];
+      if (imp.startsWith('forge.game.')) continue;
+      if (imp.endsWith('.*')) continue;
+      const parts = imp.split('.');
+      const classIdx = parts.findIndex((p, i) => i > 0 && /^[A-Z]/.test(p));
+      if (classIdx === -1) continue;
+      const className = parts[classIdx];
+      const pkgPath = parts.slice(1, classIdx).join('/');
+      usedClasses.add(pkgPath ? `${pkgPath}/${className}` : className);
+    }
+  }
+
+  // Group by sub-package
+  const coreByDir = {};
+  for (const entry of usedClasses) {
+    const parts = entry.split('/');
+    const className = parts[parts.length - 1];
+    const subDir = parts.slice(0, -1).join('/') || '.';
+
+    if (!coreByDir[subDir]) coreByDir[subDir] = [];
+    const expectedRs = camelToSnake(`${className}.java`);
+    // Check flat in foundation/src/ first, then in subdirectory
+    let rustPath = path.join(FOUNDATION_RUST, expectedRs);
+    let displayRs = expectedRs;
+    if (!fs.existsSync(rustPath) && subDir !== '.') {
+      rustPath = path.join(FOUNDATION_RUST, subDir, expectedRs);
+      displayRs = `${subDir}/${expectedRs}`;
+    }
+    const exists = fs.existsSync(rustPath);
+
+    coreByDir[subDir].push({ className, base: `${className}.java`, displayRs, exists });
+  }
+
+  if (!moduleStats['foundation']) moduleStats['foundation'] = { ported: 0, total: 0, symbols: 0, symbolsPorted: 0 };
+
+  const sortedCoreDirs = Object.keys(coreByDir).sort();
+  let currentCoreDir = null;
+
+  for (const subDir of sortedCoreDirs) {
+    const deps = coreByDir[subDir].sort((a, b) => a.className.localeCompare(b.className));
+
+    for (const dep of deps) {
+      const displayDir = subDir === '.' ? 'foundation' : `foundation/${subDir}`;
+      if (displayDir !== currentCoreDir) {
+        currentCoreDir = displayDir;
+        console.log('');
+        process.stdout.write(`${CYAN}${BOLD}  📦 ${displayDir}/${RESET}\n`);
+      }
+
+      totalFiles++;
+      moduleStats['foundation'].total++;
+
+      const padded = dep.base.padEnd(45);
+      if (dep.exists) {
+        totalPorted++;
+        moduleStats['foundation'].ported++;
+        process.stdout.write(`${GREEN}     ${padded} -> ${dep.displayRs}${RESET}\n`);
+      } else {
+        process.stdout.write(`${RED}     ${padded} -> missing${RESET}\n`);
+      }
+    }
+  }
+}
+
 // Summary
 console.log('\n');
 console.log(`${BOLD}═══════════════════════════════════════════════════════════════${RESET}`);
@@ -540,3 +620,4 @@ if (showSymbols && totalSymbols > 0) {
 }
 console.log('');
 console.log(`${BOLD}═══════════════════════════════════════════════════════════════${RESET}`);
+
