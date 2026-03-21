@@ -739,6 +739,7 @@ export default function Game() {
         onNumberDecision={numberDecision}
         onCardNameDecision={cardNameDecision}
         onDamageOrderDecision={(orderedBlockerIds) => respond({ type: "damageAssignmentOrderDecision", orderedBlockerIds })}
+        onCombatDamageAssignmentDecision={(assignments) => respond({ type: "combatDamageAssignmentDecision", assignments })}
         onPayCombatCost={payCombatCost}
         onDeclineCombatCost={declineCombatCost}
         onDelveDecision={delveDecision}

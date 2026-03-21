@@ -41,3 +41,8 @@ export interface PayManaCostProps extends PromptActionLayoutProps {
   onPayManaCost?: () => void;
   onCancelManaCost?: () => void;
 }
+
+export interface PromptRequiredProps extends PromptActionLayoutProps {
+  hidden: boolean;
+  onOpenPrompt: () => void;
+}

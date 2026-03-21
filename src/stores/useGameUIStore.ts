@@ -29,6 +29,7 @@ interface GameUIState {
   playModePicker: PlayModePickerState | null;
   viewingZone: ViewingZoneState | null;
   isActionPanelCollapsed: boolean;
+  promptModalHidden: boolean;
 
   // Actions
   openAbilityPicker: (state: AbilityPickerState) => void;
@@ -39,6 +40,8 @@ interface GameUIState {
   closeZoneViewer: () => void;
   toggleActionPanel: () => void;
   setActionPanelCollapsed: (collapsed: boolean) => void;
+  hidePromptModal: () => void;
+  showPromptModal: () => void;
   resetAll: () => void;
 }
 
@@ -50,6 +53,7 @@ export const useGameUIStore = create<GameUIState>((set) => ({
   playModePicker: null,
   viewingZone: null,
   isActionPanelCollapsed: true,
+  promptModalHidden: false,
 
   // Actions
   openAbilityPicker: (state) => set({ abilityPicker: state }),
@@ -65,6 +69,8 @@ export const useGameUIStore = create<GameUIState>((set) => ({
     set((state) => ({ isActionPanelCollapsed: !state.isActionPanelCollapsed })),
   setActionPanelCollapsed: (collapsed) =>
     set({ isActionPanelCollapsed: collapsed }),
+  hidePromptModal: () => set({ promptModalHidden: true }),
+  showPromptModal: () => set({ promptModalHidden: false }),
 
   resetAll: () =>
     set({
@@ -72,5 +78,6 @@ export const useGameUIStore = create<GameUIState>((set) => ({
       playModePicker: null,
       viewingZone: null,
       isActionPanelCollapsed: true,
+      promptModalHidden: false,
     }),
 }));

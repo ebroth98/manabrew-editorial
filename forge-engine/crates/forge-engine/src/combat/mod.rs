@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
+use crate::agent::PlayerAgent;
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -131,6 +132,14 @@ impl CombatState {
             .collect()
     }
 
+    pub fn get_attackers_for(&self, blocker: CardId) -> Vec<CardId> {
+        self.blockers
+            .iter()
+            .filter(|(b, _)| *b == blocker)
+            .map(|(_, a)| *a)
+            .collect()
+    }
+
     pub fn has_attackers(&self) -> bool {
         !self.attackers.is_empty()
     }
@@ -250,6 +259,7 @@ impl CombatState {
     pub fn resolve_damage_step(
         &self,
         game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
         first_strike_only: bool,
         as_unblocked_choices: &HashSet<CardId>,
     ) -> Vec<CombatDamageEvent> {
@@ -259,6 +269,8 @@ impl CombatState {
         }
 
         let mut events = Vec::new();
+        let mut blocker_damage_allocations: HashMap<(CardId, CardId), i32> = HashMap::new();
+        let mut computed_blocker_allocations: HashSet<CardId> = HashSet::new();
         // Java parity: combat damage in a step is simultaneous, so replacement checks
         // like Phyrexian Unlife's life condition must use life totals from step start.
         let life_at_step_start: Vec<i32> = game.players.iter().map(|p| p.life).collect();
@@ -278,7 +290,7 @@ impl CombatState {
             }
             let attacker_has_fs = attacker.has_first_strike();
             let attacker_has_ds = attacker.has_double_strike();
-            let _attacker_has_trample = attacker.has_trample();
+            let attacker_has_trample = attacker.has_trample();
             let attacker_has_deathtouch = attacker.has_deathtouch();
             let attacker_has_lifelink = attacker.has_lifelink();
             let defending_player = defender.controlling_player(game);
@@ -298,6 +310,13 @@ impl CombatState {
                 );
             let attacker_toxic_count = attacker.get_toxic_count();
             let attacker_controller = attacker.controller;
+            let can_divide_damage_as_choose = attacker.has_keyword(
+                "You may assign CARDNAME's combat damage divided as you choose among defending player and/or any number of creatures they control.",
+            );
+            let can_assign_unblocked_to_creature = attacker.has_keyword(
+                "If CARDNAME is unblocked, you may have it assign its combat damage to a creature defending player controls.",
+            );
+            let has_trample_planeswalker = attacker.has_keyword("Trample:Planeswalker");
 
             // Determine if this attacker deals damage in this step
             let attacker_deals_damage = if first_strike_only {
@@ -341,6 +360,149 @@ impl CombatState {
                 // Unblocked — damage goes to defender (player or permanent)
                 if !attacker_deals_damage || attacker_power <= 0 {
                     continue;
+                }
+
+                let defending_creatures = defending_player_creatures(game, defender);
+                if can_divide_damage_as_choose
+                    && !defending_creatures.is_empty()
+                    && agents[attacker_controller.index()].confirm_action(
+                        attacker_controller,
+                        Some("AlternativeDamageAssignment"),
+                        &format!(
+                            "Assign {} combat damage divided as you choose among defending player and/or creatures they control?",
+                            game.card(attacker_id).card_name
+                        ),
+                        &[],
+                        Some(&game.card(attacker_id).card_name),
+                        None,
+                    )
+                {
+                    let assignments = agents[attacker_controller.index()].assign_combat_damage(
+                        game,
+                        attacker_controller,
+                        attacker_id,
+                        &defending_creatures,
+                        Some(DefenderId::Player(defending_player)),
+                        attacker_power,
+                    );
+                    let (to_creatures, to_player) = validate_damage_assignment(
+                        game,
+                        attacker_id,
+                        &defending_creatures,
+                        Some(DefenderId::Player(defending_player)),
+                        attacker_power,
+                        &assignments,
+                    );
+
+                    for &(target_id, dmg) in &to_creatures {
+                        deal_combat_damage_to_card(
+                            game,
+                            attacker_id,
+                            target_id,
+                            dmg,
+                            attacker_has_deathtouch,
+                            attacker_has_lifelink,
+                            attacker_controller,
+                            attacker_has_wither || attacker_has_infect_for_creature,
+                        );
+                        events.push(CombatDamageEvent {
+                            source: attacker_id,
+                            target_player: None,
+                            target_card: Some(target_id),
+                            amount: dmg,
+                            is_combat: true,
+                            lifelink_player: if attacker_has_lifelink {
+                                Some(attacker_controller)
+                            } else {
+                                None
+                            },
+                            lifelink_amount: if attacker_has_lifelink { dmg } else { 0 },
+                        });
+                    }
+                    if to_player > 0 {
+                        deal_combat_damage_to_player(
+                            game,
+                            defending_player,
+                            to_player,
+                            attacker_has_lifelink,
+                            attacker_controller,
+                            attacker_has_infect_for_player,
+                            attacker_toxic_count,
+                        );
+                        events.push(CombatDamageEvent {
+                            source: attacker_id,
+                            target_player: Some(defending_player),
+                            target_card: None,
+                            amount: to_player,
+                            is_combat: true,
+                            lifelink_player: if attacker_has_lifelink {
+                                Some(attacker_controller)
+                            } else {
+                                None
+                            },
+                            lifelink_amount: if attacker_has_lifelink { to_player } else { 0 },
+                        });
+                        if game.card(attacker_id).is_commander {
+                            *game
+                                .player_mut(defending_player)
+                                .commander_damage_received
+                                .entry(attacker_id.0)
+                                .or_insert(0) += to_player;
+                        }
+                    }
+                    continue;
+                }
+
+                if can_assign_unblocked_to_creature
+                    && !self.is_blocked(attacker_id)
+                    && !defending_creatures.is_empty()
+                    && agents[attacker_controller.index()].confirm_action(
+                        attacker_controller,
+                        Some("AlternativeDamageAssignment"),
+                        &format!(
+                            "Assign {} combat damage to a creature defending player controls?",
+                            game.card(attacker_id).card_name
+                        ),
+                        &[],
+                        Some(&game.card(attacker_id).card_name),
+                        None,
+                    )
+                {
+                    if let Some(chosen) =
+                        agents[attacker_controller.index()].choose_target_card(
+                            attacker_controller,
+                            &defending_creatures,
+                        )
+                    {
+                        deal_combat_damage_to_card(
+                            game,
+                            attacker_id,
+                            chosen,
+                            attacker_power,
+                            attacker_has_deathtouch,
+                            attacker_has_lifelink,
+                            attacker_controller,
+                            attacker_has_wither || attacker_has_infect_for_creature,
+                        );
+                        events.push(CombatDamageEvent {
+                            source: attacker_id,
+                            target_player: None,
+                            target_card: Some(chosen),
+                            amount: attacker_power,
+                            is_combat: true,
+                            lifelink_player: if attacker_has_lifelink {
+                                Some(attacker_controller)
+                            } else {
+                                None
+                            },
+                            lifelink_amount: if attacker_has_lifelink {
+                                attacker_power
+                            } else {
+                                0
+                            },
+                        });
+                        continue;
+                    }
                 }
                 match defender {
                     DefenderId::Player(defending_player) => {
@@ -420,53 +582,83 @@ impl CombatState {
                 } else {
                     0
                 };
-
-                // --- Compute damage assignment for each blocker (Java-parity) ---
-                // Java's DeterministicController assigns lethal to each blocker
-                // in order, then puts all remaining damage on the last blocker.
-                // We pre-compute the total per blocker so each gets a single
-                // damage event (critical for DamageDoneOnce triggers like Raptor
-                // Hatchling that should only fire once per blocker).
-                let alive_blockers: Vec<CardId> = blockers
+                // Java-parity full damage assignment callback:
+                // - prompt for exact assignment when needed (trample or multi-block)
+                // - validate strictly (panic on invalid response; no fallback)
+                let mut alive_blockers: Vec<CardId> = blockers
                     .iter()
                     .copied()
                     .filter(|&bid| game.card(bid).zone == ZoneType::Battlefield)
                     .collect();
-                let mut damage_assignments: Vec<(CardId, i32)> = Vec::new();
-                {
-                    let mut dmg_left = remaining_damage;
-                    for (idx, &blocker_id) in alive_blockers.iter().enumerate() {
-                        if dmg_left <= 0 {
-                            break;
+                let mut effective_defender = defender;
+                if has_trample_planeswalker {
+                    if let DefenderId::Permanent(target_id) = defender {
+                        if !alive_blockers.contains(&target_id) {
+                            alive_blockers.push(target_id);
                         }
-                        let is_last = idx == alive_blockers.len() - 1;
-                        let attacker_prevented = crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
-                            &game.cards,
-                            game.card(blocker_id),
-                            game.card(attacker_id),
-                        );
-                        if attacker_prevented {
-                            continue;
-                        }
+                        effective_defender = DefenderId::Player(defending_player);
+                    }
+                }
 
-                        let damage_to_blocker = if is_last {
-                            // Last blocker gets ALL remaining damage (matches Java).
-                            dmg_left
-                        } else if attacker_has_deathtouch {
-                            1.min(dmg_left)
-                        } else {
-                            let blocker_toughness = game.card(blocker_id).toughness();
-                            let blocker_damage = game.card(blocker_id).damage;
-                            let remaining_toughness = blocker_toughness - blocker_damage;
-                            dmg_left.min(remaining_toughness.max(0))
-                        };
-
-                        if damage_to_blocker > 0 {
-                            damage_assignments.push((blocker_id, damage_to_blocker));
-                            dmg_left -= damage_to_blocker;
+                let defending_creatures = defending_player_creatures(game, effective_defender);
+                let use_divide_as_choose = can_divide_damage_as_choose
+                    && !defending_creatures.is_empty()
+                    && agents[attacker_controller.index()].confirm_action(
+                        attacker_controller,
+                        Some("AlternativeDamageAssignment"),
+                        &format!(
+                            "Assign {} combat damage divided as you choose among defending player and/or creatures they control?",
+                            game.card(attacker_id).card_name
+                        ),
+                        &[],
+                        Some(&game.card(attacker_id).card_name),
+                        None,
+                    );
+                if use_divide_as_choose {
+                    for cid in defending_creatures {
+                        if !alive_blockers.contains(&cid) {
+                            alive_blockers.push(cid);
                         }
                     }
                 }
+
+                let can_assign_to_defender = attacker_has_trample || use_divide_as_choose;
+                if alive_blockers.is_empty() && !can_assign_to_defender {
+                    continue;
+                }
+                let must_prompt_assignment = can_assign_to_defender || alive_blockers.len() > 1;
+
+                let assignments = if must_prompt_assignment {
+                    let controller = game.card(attacker_id).controller;
+                    let defender_for_prompt = if can_assign_to_defender {
+                        Some(effective_defender)
+                    } else {
+                        None
+                    };
+                    agents[controller.index()].assign_combat_damage(
+                        game,
+                        controller,
+                        attacker_id,
+                        &alive_blockers,
+                        defender_for_prompt,
+                        remaining_damage,
+                    )
+                } else if let Some(&only_blocker) = alive_blockers.first() {
+                    vec![(Some(only_blocker), remaining_damage)]
+                } else if can_assign_to_defender {
+                    vec![(None, remaining_damage)]
+                } else {
+                    Vec::new()
+                };
+
+                let (damage_assignments, defender_damage) = validate_damage_assignment(
+                    game,
+                    attacker_id,
+                    &alive_blockers,
+                    can_assign_to_defender.then_some(effective_defender),
+                    remaining_damage,
+                    &assignments,
+                );
 
                 // --- Pre-compute blocker → attacker damage BEFORE applying any damage ---
                 // Combat damage is simultaneous (rule 510.2). We must read blocker
@@ -518,6 +710,28 @@ impl CombatState {
                         game.card(blocker_id).power()
                     };
                     if blocker_power > 0 {
+                        if !computed_blocker_allocations.contains(&blocker_id) {
+                            let per_attacker = compute_blocker_damage_allocations(
+                                self,
+                                game,
+                                agents,
+                                first_strike_only,
+                                blocker_id,
+                                blocker_power,
+                            );
+                            for (target_attacker, dmg) in per_attacker {
+                                blocker_damage_allocations
+                                    .insert((blocker_id, target_attacker), dmg);
+                            }
+                            computed_blocker_allocations.insert(blocker_id);
+                        }
+                        let assigned_to_this_attacker = blocker_damage_allocations
+                            .get(&(blocker_id, attacker_id))
+                            .copied()
+                            .unwrap_or(0);
+                        if assigned_to_this_attacker <= 0 {
+                            continue;
+                        }
                         let blocker_has_infect = blocker_card.has_infect();
                         let blocker_has_wither = blocker_card.has_wither()
                             || crate::staticability::static_ability_wither_damage::is_wither_damage(
@@ -526,7 +740,7 @@ impl CombatState {
                             );
                         blocker_damage_infos.push(BlockerDamageInfo {
                             blocker_id,
-                            power: blocker_power,
+                            power: assigned_to_this_attacker,
                             has_deathtouch: blocker_card.has_deathtouch(),
                             has_lifelink: blocker_card.has_lifelink(),
                             has_wither_or_infect: blocker_has_wither || blocker_has_infect,
@@ -567,6 +781,75 @@ impl CombatState {
                     });
                 }
 
+                if defender_damage > 0 {
+                    match effective_defender {
+                        DefenderId::Player(defending_player) => {
+                            deal_combat_damage_to_player(
+                                game,
+                                defending_player,
+                                defender_damage,
+                                attacker_has_lifelink,
+                                attacker_controller,
+                                attacker_has_infect_for_player,
+                                attacker_toxic_count,
+                            );
+                            events.push(CombatDamageEvent {
+                                source: attacker_id,
+                                target_player: Some(defending_player),
+                                target_card: None,
+                                amount: defender_damage,
+                                is_combat: true,
+                                lifelink_player: if attacker_has_lifelink {
+                                    Some(attacker_controller)
+                                } else {
+                                    None
+                                },
+                                lifelink_amount: if attacker_has_lifelink {
+                                    defender_damage
+                                } else {
+                                    0
+                                },
+                            });
+                            if game.card(attacker_id).is_commander {
+                                *game
+                                    .player_mut(defending_player)
+                                    .commander_damage_received
+                                    .entry(attacker_id.0)
+                                    .or_insert(0) += defender_damage;
+                            }
+                        }
+                        DefenderId::Permanent(target_id) => {
+                            deal_combat_damage_to_card(
+                                game,
+                                attacker_id,
+                                target_id,
+                                defender_damage,
+                                attacker_has_deathtouch,
+                                attacker_has_lifelink,
+                                attacker_controller,
+                                attacker_has_wither || attacker_has_infect_for_creature,
+                            );
+                            events.push(CombatDamageEvent {
+                                source: attacker_id,
+                                target_player: None,
+                                target_card: Some(target_id),
+                                amount: defender_damage,
+                                is_combat: true,
+                                lifelink_player: if attacker_has_lifelink {
+                                    Some(attacker_controller)
+                                } else {
+                                    None
+                                },
+                                lifelink_amount: if attacker_has_lifelink {
+                                    defender_damage
+                                } else {
+                                    0
+                                },
+                            });
+                        }
+                    }
+                }
+
                 for info in &blocker_damage_infos {
                     // Blocker may have been removed by an SBA or replacement
                     if game.card(info.blocker_id).zone != ZoneType::Battlefield {
@@ -597,13 +880,247 @@ impl CombatState {
                     });
                 }
 
-                // Note: excess damage was already assigned to the last blocker
-                // above (matching Java's DeterministicController behavior).
+                // Note: non-trample excess is validated/flushed to last blocker;
+                // trample excess is applied to defender.
             }
         }
 
         events
     }
+}
+
+fn validate_damage_assignment(
+    game: &GameState,
+    attacker_id: CardId,
+    blockers_in_order: &[CardId],
+    defender: Option<DefenderId>,
+    total_damage: i32,
+    assignments: &[(Option<CardId>, i32)],
+) -> (Vec<(CardId, i32)>, i32) {
+    if total_damage <= 0 {
+        return (Vec::new(), 0);
+    }
+
+    let mut per_blocker: HashMap<CardId, i32> = HashMap::new();
+    let mut defender_damage = 0;
+    let mut assigned_total = 0;
+
+    let mut invalid = false;
+
+    for &(assignee, amount) in assignments {
+        if amount < 0 {
+            invalid = true;
+            break;
+        }
+        if amount == 0 {
+            continue;
+        }
+        assigned_total += amount;
+        match assignee {
+            Some(blocker_id) => {
+                if !blockers_in_order.contains(&blocker_id) {
+                    invalid = true;
+                    break;
+                }
+                *per_blocker.entry(blocker_id).or_insert(0) += amount;
+            }
+            None => {
+                if defender.is_none() {
+                    invalid = true;
+                    break;
+                }
+                defender_damage += amount;
+            }
+        }
+    }
+
+    if assigned_total != total_damage {
+        invalid = true;
+    }
+
+    let has_deathtouch = game.card(attacker_id).has_deathtouch();
+    let mut can_move_to_next = true;
+    for &blocker_id in blockers_in_order {
+        if game.card(blocker_id).zone != ZoneType::Battlefield {
+            continue;
+        }
+        if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+            &game.cards,
+            game.card(blocker_id),
+            game.card(attacker_id),
+        ) {
+            continue;
+        }
+
+        let assigned = per_blocker.get(&blocker_id).copied().unwrap_or(0);
+        let lethal = if has_deathtouch {
+            1
+        } else if game.card(blocker_id).type_line.is_planeswalker() {
+            game
+                .card(blocker_id)
+                .counter_count(&crate::card::CounterType::Loyalty)
+                .max(0)
+        } else {
+            let blocker = game.card(blocker_id);
+            (blocker.toughness() - blocker.damage).max(0)
+        };
+
+        if !can_move_to_next && assigned > 0 {
+            invalid = true;
+            break;
+        }
+        if assigned < lethal {
+            can_move_to_next = false;
+        }
+    }
+
+    if defender_damage > 0 && !can_move_to_next {
+        invalid = true;
+    }
+
+    if invalid {
+        return fallback_damage_assignment(game, attacker_id, blockers_in_order, defender, total_damage);
+    }
+
+    let mut ordered_blocker_assignments: Vec<(CardId, i32)> = Vec::new();
+    for &blocker_id in blockers_in_order {
+        if let Some(amount) = per_blocker.get(&blocker_id).copied() {
+            if amount > 0 {
+                ordered_blocker_assignments.push((blocker_id, amount));
+            }
+        }
+    }
+
+    (ordered_blocker_assignments, defender_damage)
+}
+
+fn fallback_damage_assignment(
+    game: &GameState,
+    attacker_id: CardId,
+    blockers_in_order: &[CardId],
+    defender: Option<DefenderId>,
+    total_damage: i32,
+) -> (Vec<(CardId, i32)>, i32) {
+    if total_damage <= 0 {
+        return (Vec::new(), 0);
+    }
+
+    let mut assignments: Vec<(CardId, i32)> = Vec::new();
+    let mut damage_left = total_damage;
+    let has_deathtouch = game.card(attacker_id).has_deathtouch();
+
+    for &blocker_id in blockers_in_order {
+        if damage_left <= 0 {
+            break;
+        }
+        if game.card(blocker_id).zone != ZoneType::Battlefield {
+            continue;
+        }
+        if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+            &game.cards,
+            game.card(blocker_id),
+            game.card(attacker_id),
+        ) {
+            continue;
+        }
+
+        let lethal = if has_deathtouch {
+            1
+        } else if game.card(blocker_id).type_line.is_planeswalker() {
+            game
+                .card(blocker_id)
+                .counter_count(&crate::card::CounterType::Loyalty)
+                .max(0)
+        } else {
+            let blocker = game.card(blocker_id);
+            (blocker.toughness() - blocker.damage).max(0)
+        };
+        let assign = lethal.min(damage_left);
+        if assign > 0 {
+            assignments.push((blocker_id, assign));
+            damage_left -= assign;
+        }
+    }
+
+    if damage_left > 0 {
+        if defender.is_some() {
+            return (assignments, damage_left);
+        }
+        if let Some((_, amount)) = assignments.last_mut() {
+            *amount += damage_left;
+        } else if let Some(&first) = blockers_in_order.first() {
+            assignments.push((first, damage_left));
+        }
+        return (assignments, 0);
+    }
+
+    (assignments, 0)
+}
+
+fn defending_player_creatures(game: &GameState, defender: DefenderId) -> Vec<CardId> {
+    let defending_player = defender.controlling_player(game);
+    game.cards_in_zone(ZoneType::Battlefield, defending_player)
+        .iter()
+        .copied()
+        .filter(|&cid| game.card(cid).is_creature())
+        .collect()
+}
+
+fn compute_blocker_damage_allocations(
+    combat: &CombatState,
+    game: &GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    first_strike_only: bool,
+    blocker_id: CardId,
+    blocker_power: i32,
+) -> Vec<(CardId, i32)> {
+    if blocker_power <= 0 {
+        return Vec::new();
+    }
+
+    let blocker = game.card(blocker_id);
+    let has_fs = blocker.has_first_strike();
+    let has_ds = blocker.has_double_strike();
+    let deals_this_step = if first_strike_only {
+        has_fs || has_ds
+    } else {
+        !has_fs || has_ds
+    };
+    if !deals_this_step {
+        return Vec::new();
+    }
+
+    let attackers_for_blocker: Vec<CardId> = combat
+        .get_attackers_for(blocker_id)
+        .into_iter()
+        .filter(|&aid| game.card(aid).zone == ZoneType::Battlefield)
+        .collect();
+    if attackers_for_blocker.is_empty() {
+        return Vec::new();
+    }
+
+    if attackers_for_blocker.len() == 1 {
+        return vec![(attackers_for_blocker[0], blocker_power)];
+    }
+
+    let controller = blocker.controller;
+    let assignments = agents[controller.index()].assign_combat_damage(
+        game,
+        controller,
+        blocker_id,
+        &attackers_for_blocker,
+        None,
+        blocker_power,
+    );
+    let (per_attacker, _to_defender) = validate_damage_assignment(
+        game,
+        blocker_id,
+        &attackers_for_blocker,
+        None,
+        blocker_power,
+        &assignments,
+    );
+    per_attacker
 }
 
 // ── Combat helper functions ─────────────────────────────────────────

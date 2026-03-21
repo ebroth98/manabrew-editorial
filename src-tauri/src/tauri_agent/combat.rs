@@ -8,6 +8,23 @@ use crate::prompt::{AgentPromptInner, BlockAssignment, PlayerAction};
 
 use super::TauriAgent;
 
+fn fallback_combat_assignment(
+    blockers_in_order: &[CardId],
+    defender: Option<DefenderId>,
+    total_damage: i32,
+) -> Vec<(Option<CardId>, i32)> {
+    if total_damage <= 0 {
+        return Vec::new();
+    }
+    if let Some(first) = blockers_in_order.first().copied() {
+        return vec![(Some(first), total_damage)];
+    }
+    if defender.is_some() {
+        return vec![(None, total_damage)];
+    }
+    Vec::new()
+}
+
 pub(super) fn choose_attackers(
     agent: &mut TauriAgent,
     _player: PlayerId,
@@ -114,6 +131,59 @@ pub(super) fn choose_damage_assignment_order(
             }
         }
         _ => blockers.to_vec(),
+    }
+}
+
+pub(super) fn choose_combat_damage_assignment(
+    agent: &mut TauriAgent,
+    _player: PlayerId,
+    attacker: CardId,
+    blockers_in_order: &[CardId],
+    defender: Option<DefenderId>,
+    total_damage: i32,
+    attacker_has_deathtouch: bool,
+) -> Vec<(Option<CardId>, i32)> {
+    let attacker_id = card_id_str(attacker);
+    let blocker_ids: Vec<String> = blockers_in_order.iter().map(|&b| card_id_str(b)).collect();
+    let defender_id = defender.map(|d| match d {
+        DefenderId::Player(pid) => format!("player-{}", pid.0),
+        DefenderId::Permanent(cid) => format!("card-{}", cid.0),
+    });
+    let view = agent.view();
+    agent.send_prompt(AgentPromptInner::ChooseCombatDamageAssignment {
+        game_view: view,
+        attacker_id,
+        blocker_ids: blocker_ids.clone(),
+        defender_id: defender_id.clone(),
+        total_damage,
+        attacker_has_deathtouch,
+    });
+
+    match agent.recv_action() {
+        PlayerAction::CombatDamageAssignmentDecision { assignments } => assignments
+            .into_iter()
+            .map(|entry| {
+                if defender_id
+                    .as_ref()
+                    .map(|d| d == &entry.assignee_id)
+                    .unwrap_or(false)
+                {
+                    (None, entry.damage)
+                } else {
+                    if let Some(blocker) = parse_card_id(&entry.assignee_id) {
+                        if blockers_in_order.contains(&blocker) {
+                            (Some(blocker), entry.damage)
+                        } else {
+                            (None, 0)
+                        }
+                    } else {
+                        (None, 0)
+                    }
+                }
+            })
+            .filter(|(_, damage)| *damage > 0)
+            .collect(),
+        _ => fallback_combat_assignment(blockers_in_order, defender, total_damage),
     }
 }
 

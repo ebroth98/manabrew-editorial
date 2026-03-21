@@ -360,6 +360,7 @@ public class DeterministicController extends PlayerController {
             CardCollectionView remaining, int damageDealt, GameEntity defender, boolean overrideOrder) {
         Map<Card, Integer> result = new LinkedHashMap<>();
         int damageLeft = damageDealt;
+        final boolean canTrampleToDefender = defender != null && attacker.hasKeyword("Trample");
         for (Card blocker : blockers) {
             int lethal = ComputerUtilCombat.getEnoughDamageToKill(blocker, damageLeft, attacker, false, false);
             int assign = Math.min(lethal, damageLeft);
@@ -367,9 +368,14 @@ public class DeterministicController extends PlayerController {
             damageLeft -= assign;
             if (damageLeft <= 0) break;
         }
-        if (damageLeft > 0 && !blockers.isEmpty()) {
-            Card last = blockers.get(blockers.size() - 1);
-            result.put(last, result.getOrDefault(last, 0) + damageLeft);
+        if (damageLeft > 0) {
+            if (canTrampleToDefender) {
+                // Java controller contract: null key means defending entity.
+                result.put(null, damageLeft);
+            } else if (!blockers.isEmpty()) {
+                Card last = blockers.get(blockers.size() - 1);
+                result.put(last, result.getOrDefault(last, 0) + damageLeft);
+            }
         }
         return result;
     }

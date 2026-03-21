@@ -99,6 +99,12 @@ export interface AgentPrompt {
   blockerIds?: string[];
   /** chooseDamageAssignmentOrder: blocker CardDto info */
   blockerCards?: Card[];
+  /** chooseCombatDamageAssignment: defender id ("player-{i}" or "card-{i}") */
+  defenderId?: string | null;
+  /** chooseCombatDamageAssignment: total damage to assign */
+  totalDamage?: number;
+  /** chooseCombatDamageAssignment: attacker has deathtouch */
+  attackerHasDeathtouch?: boolean;
   /** payManaCost: the card being cast */
   cardId?: string;
   /** payManaCost: card display name */

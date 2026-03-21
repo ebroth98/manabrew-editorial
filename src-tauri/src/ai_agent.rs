@@ -175,6 +175,20 @@ pub fn spawn_ai_prompt_responder(
                         ordered_blocker_ids: blocker_ids,
                     })
                 }
+                AgentPromptInner::ChooseCombatDamageAssignment {
+                    blocker_ids,
+                    total_damage,
+                    ..
+                } => {
+                    let mut assignments = Vec::new();
+                    if let Some(first) = blocker_ids.first() {
+                        assignments.push(crate::prompt::CombatDamageAssignmentEntry {
+                            assignee_id: first.clone(),
+                            damage: total_damage.max(0),
+                        });
+                    }
+                    Some(PlayerAction::CombatDamageAssignmentDecision { assignments })
+                }
                 AgentPromptInner::PayCombatCost {
                     tappable_land_ids,
                     mana_pool_total,

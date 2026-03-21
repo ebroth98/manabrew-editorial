@@ -72,6 +72,7 @@ export const PROMPT_LABELS: Record<string, string> = {
   [PromptType.ChooseImprovise]: "Choose artifacts to tap for Improvise",
   [PromptType.SpecifyManaCombo]: "Choose mana colors",
   [PromptType.ChooseDamageAssignmentOrder]: "Order blockers for damage assignment",
+  [PromptType.ChooseCombatDamageAssignment]: "Assign combat damage",
   [PromptType.ChooseCardsForEffect]: "Choose cards for effect",
   [PromptType.ChoosePhyrexian]: "Pay Phyrexian mana with life?",
   [PromptType.ChooseExertAttackers]: "Choose attackers to exert",

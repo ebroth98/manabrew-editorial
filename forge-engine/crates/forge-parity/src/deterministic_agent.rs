@@ -584,6 +584,73 @@ impl PlayerAgent for DeterministicAgent {
         Some(attacker)
     }
 
+    fn assign_combat_damage(
+        &mut self,
+        game: &GameState,
+        _player: PlayerId,
+        attacker: CardId,
+        blockers_in_order: &[CardId],
+        defender_id: Option<DefenderId>,
+        damage_to_assign: i32,
+    ) -> Vec<(Option<CardId>, i32)> {
+        let mut out: Vec<(Option<CardId>, i32)> = Vec::new();
+        if damage_to_assign <= 0 {
+            return out;
+        }
+
+        let has_deathtouch = game.card(attacker).has_deathtouch();
+        let has_trample = game.card(attacker).has_trample();
+        let can_assign_defender = has_trample && defender_id.is_some();
+        let mut damage_left = damage_to_assign;
+        let mut last_target: Option<CardId> = None;
+
+        for &blocker in blockers_in_order {
+            if damage_left <= 0 {
+                break;
+            }
+            if game.card(blocker).zone != forge_foundation::ZoneType::Battlefield {
+                continue;
+            }
+            if forge_engine_core::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+                &game.cards,
+                game.card(blocker),
+                game.card(attacker),
+            ) {
+                continue;
+            }
+            last_target = Some(blocker);
+            let lethal = if has_deathtouch {
+                1
+            } else if game.card(blocker).type_line.is_planeswalker() {
+                game.card(blocker).counter_count(&forge_engine_core::card::CounterType::Loyalty)
+            } else {
+                (game.card(blocker).toughness() - game.card(blocker).damage).max(0)
+            };
+            let assign = lethal.min(damage_left);
+            if assign > 0 {
+                out.push((Some(blocker), assign));
+                damage_left -= assign;
+            }
+        }
+
+        if damage_left > 0 {
+            if can_assign_defender {
+                out.push((None, damage_left));
+            } else if let Some(last) = last_target {
+                if let Some((_, d)) = out
+                    .iter_mut()
+                    .find(|(assignee, _)| assignee.map(|id| id == last).unwrap_or(false))
+                {
+                    *d += damage_left;
+                } else {
+                    out.push((Some(last), damage_left));
+                }
+            }
+        }
+
+        out
+    }
+
     fn choose_target_spell(&mut self, _player: PlayerId, valid: &[u32]) -> Option<u32> {
         if valid.is_empty() {
             return None;

@@ -23,6 +23,7 @@ export const PromptType = {
   ChooseExertAttackers: "chooseExertAttackers",
   ChooseEnlistAttackers: "chooseEnlistAttackers",
   ChooseDamageAssignmentOrder: "chooseDamageAssignmentOrder",
+  ChooseCombatDamageAssignment: "chooseCombatDamageAssignment",
   PayCombatCost: "payCombatCost",
 
   // Targeting

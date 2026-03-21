@@ -31,6 +31,7 @@ export const HANDLED_PROMPT_TYPES = new Set<PromptType>([
   PromptType.ChooseCardName,
   PromptType.ChooseDiscard,
   PromptType.ChooseDamageAssignmentOrder,
+  PromptType.ChooseCombatDamageAssignment,
   PromptType.PayCombatCost,
   PromptType.PayManaCost,
   PromptType.ChooseDelve,

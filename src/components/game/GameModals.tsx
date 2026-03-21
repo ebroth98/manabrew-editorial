@@ -4,9 +4,10 @@ import { TargetModals } from "@/components/game/modals/TargetModals";
 import type { LibraryPeekMode } from "@/components/game/modals";
 import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
+import type { PromptType } from "@/types/promptType";
 
 interface GameModalsProps {
-  promptType?: string;
+  promptType?: PromptType;
   currentPrompt: AgentPrompt | null;
   // Zone viewer
   viewingZone: { title: string; cards: XMageCard[]; onClickCard?: (cardId: string) => void } | null;
@@ -48,6 +49,7 @@ interface GameModalsProps {
   onNumberDecision: (chosenNumber: number | null) => void;
   onCardNameDecision: (chosenName: string | null) => void;
   onDamageOrderDecision: (orderedBlockerIds: string[]) => void;
+  onCombatDamageAssignmentDecision: (assignments: { assigneeId: string; damage: number }[]) => void;
   // Pay combat cost
   onPayCombatCost: () => void;
   onDeclineCombatCost: () => void;
@@ -105,6 +107,7 @@ export function GameModals({
   onNumberDecision,
   onCardNameDecision,
   onDamageOrderDecision,
+  onCombatDamageAssignmentDecision,
   onPayCombatCost,
   onDeclineCombatCost,
   onDelveDecision,
@@ -133,6 +136,7 @@ export function GameModals({
         onNumberDecision={onNumberDecision}
         onCardNameDecision={onCardNameDecision}
         onDamageOrderDecision={onDamageOrderDecision}
+        onCombatDamageAssignmentDecision={onCombatDamageAssignmentDecision}
         onReorderLibraryDecision={onReorderLibraryDecision}
         onManaComboDecision={onManaComboDecision}
         onExploreDecision={onExploreDecision}

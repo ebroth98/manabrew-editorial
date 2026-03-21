@@ -828,7 +828,7 @@ impl GameLoop {
             let fs_unblocked_choices = self.choose_assign_as_unblocked(game, agents, true);
             let fs_events = self
                 .combat
-                .resolve_damage_step(game, true, &fs_unblocked_choices);
+                .resolve_damage_step(game, agents, true, &fs_unblocked_choices);
             // Record damage in source damage history for player-targeted combat damage
             for event in &fs_events {
                 if event.target_player.is_some() && event.amount > 0 {
@@ -882,7 +882,7 @@ impl GameLoop {
             let unblocked_choices = self.choose_assign_as_unblocked(game, agents, false);
             let dmg_events = self
                 .combat
-                .resolve_damage_step(game, false, &unblocked_choices);
+                .resolve_damage_step(game, agents, false, &unblocked_choices);
             // Record damage in source damage history for player-targeted combat damage
             for event in &dmg_events {
                 if event.target_player.is_some() && event.amount > 0 {

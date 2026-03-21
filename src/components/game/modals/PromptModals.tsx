@@ -8,8 +8,10 @@ import {
   ChooseNumberModal,
   ChooseCardNameModal,
   DamageOrderModal,
+  VAssignCombatDamageModal,
   ReorderLibraryModal,
   SpecifyManaComboModal,
+  PromptModalController,
 } from "@/components/game/modals";
 import type { Card as XMageCard } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
@@ -32,6 +34,7 @@ interface PromptModalsProps {
   onNumberDecision: (chosenNumber: number | null) => void;
   onCardNameDecision: (chosenName: string | null) => void;
   onDamageOrderDecision: (orderedBlockerIds: string[]) => void;
+  onCombatDamageAssignmentDecision: (assignments: { assigneeId: string; damage: number }[]) => void;
   onReorderLibraryDecision: (orderedCardIds: string[]) => void;
   onManaComboDecision: (chosenColors: string[]) => void;
   onExploreDecision: (putInGraveyard: boolean) => void;
@@ -52,13 +55,37 @@ export function PromptModals({
   onNumberDecision,
   onCardNameDecision,
   onDamageOrderDecision,
+  onCombatDamageAssignmentDecision,
   onReorderLibraryDecision,
   onManaComboDecision,
   onExploreDecision,
   onAssistDecision,
 }: PromptModalsProps) {
+  const isActivePromptModal =
+    (promptType === PT.Mulligan && currentPrompt != null) ||
+    (promptType === PT.MulliganPutBack && currentPrompt?.cards != null && currentPrompt?.count != null) ||
+    (promptType === PT.ChooseMode && currentPrompt?.options != null) ||
+    (promptType === PT.ChooseOptionalTrigger && currentPrompt?.description != null) ||
+    (promptType === PT.ChooseColor && currentPrompt?.validColors != null) ||
+    (promptType === PT.ChooseType && currentPrompt?.validTypes != null) ||
+    (promptType === PT.ChooseNumber && currentPrompt?.min != null && currentPrompt?.max != null) ||
+    (promptType === PT.ChooseCardName && currentPrompt?.validNames != null) ||
+    (promptType === PT.ChooseDamageAssignmentOrder && currentPrompt?.blockerIds != null) ||
+    (promptType === PT.ChooseCombatDamageAssignment
+      && currentPrompt?.attackerId != null
+      && currentPrompt?.blockerIds != null
+      && currentPrompt?.totalDamage != null
+      && currentPrompt?.gameView != null) ||
+    (promptType === PT.ReorderLibrary && currentPrompt?.cards != null) ||
+    (promptType === PT.SpecifyManaCombo && currentPrompt?.availableColors != null && currentPrompt?.amount != null) ||
+    (promptType === PT.ExploreDecision && currentPrompt?.revealedCardName != null) ||
+    (promptType === PT.HelpPayAssist && currentPrompt?.maxGeneric != null);
+
   return (
-    <>
+    <PromptModalController
+      isActive={isActivePromptModal}
+      promptStateKey={currentPrompt}
+    >
       {promptType === PT.Mulligan && currentPrompt && (
         <MulliganModal
           handCards={myHand}
@@ -143,6 +170,22 @@ export function PromptModals({
         />
       )}
 
+      {promptType === PT.ChooseCombatDamageAssignment
+        && currentPrompt?.attackerId
+        && currentPrompt?.blockerIds
+        && currentPrompt?.totalDamage != null
+        && currentPrompt?.gameView && (
+          <VAssignCombatDamageModal
+            attackerId={currentPrompt.attackerId}
+            blockerIds={currentPrompt.blockerIds}
+            defenderId={currentPrompt.defenderId}
+            totalDamage={currentPrompt.totalDamage}
+            attackerHasDeathtouch={currentPrompt.attackerHasDeathtouch}
+            gameView={currentPrompt.gameView}
+            onConfirm={onCombatDamageAssignmentDecision}
+          />
+      )}
+
       {promptType === PT.ReorderLibrary && currentPrompt?.cards != null && (
         <ReorderLibraryModal
           cards={currentPrompt.cards}
@@ -178,6 +221,6 @@ export function PromptModals({
           onConfirm={(n) => onAssistDecision(n ?? 0)}
         />
       )}
-    </>
+    </PromptModalController>
   );
 }

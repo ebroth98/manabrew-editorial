@@ -333,6 +333,22 @@ pub enum AgentPromptInner {
         #[serde(rename = "blockerCards")]
         blocker_cards: Vec<CardDto>,
     },
+    /// Choose exact combat damage assignment amounts.
+    ChooseCombatDamageAssignment {
+        #[serde(rename = "gameView")]
+        game_view: GameViewDto,
+        #[serde(rename = "attackerId")]
+        attacker_id: String,
+        #[serde(rename = "blockerIds")]
+        blocker_ids: Vec<String>,
+        /// Defender ID ("player-{i}" or "card-{i}") if defender is a legal assignee.
+        #[serde(rename = "defenderId")]
+        defender_id: Option<String>,
+        #[serde(rename = "totalDamage")]
+        total_damage: i32,
+        #[serde(rename = "attackerHasDeathtouch")]
+        attacker_has_deathtouch: bool,
+    },
     /// Pay an attack cost (Propaganda, Ghostly Prison).
     PayCombatCost {
         #[serde(rename = "gameView")]
@@ -517,6 +533,7 @@ impl AgentPromptInner {
             | AgentPromptInner::ChooseNumber { game_view, .. }
             | AgentPromptInner::ChooseCardName { game_view, .. }
             | AgentPromptInner::ChooseDamageAssignmentOrder { game_view, .. }
+            | AgentPromptInner::ChooseCombatDamageAssignment { game_view, .. }
             | AgentPromptInner::ChooseExertAttackers { game_view, .. }
             | AgentPromptInner::ChooseEnlistAttackers { game_view, .. }
             | AgentPromptInner::ReorderLibrary { game_view, .. }
@@ -692,6 +709,10 @@ pub enum PlayerAction {
         #[serde(rename = "orderedBlockerIds")]
         ordered_blocker_ids: Vec<String>,
     },
+    /// Response to ChooseCombatDamageAssignment: exact assignee→damage map.
+    CombatDamageAssignmentDecision {
+        assignments: Vec<CombatDamageAssignmentEntry>,
+    },
     /// Response to ChooseExertAttackers: IDs of attackers to exert.
     ExertDecision {
         #[serde(rename = "chosenAttackerIds")]
@@ -772,6 +793,14 @@ pub struct BlockAssignment {
 pub struct AttackAssignment {
     pub attacker_id: String,
     pub defender_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CombatDamageAssignmentEntry {
+    /// "card-{i}" for blockers or defender ID (e.g. "player-{i}" / "card-{i}").
+    pub assignee_id: String,
+    pub damage: i32,
 }
 
 /// A defender identifier sent to/from the frontend.

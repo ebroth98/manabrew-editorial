@@ -1,7 +1,8 @@
 import { createPortal } from "react-dom";
-import { useEffect } from "react";
-import { X } from "lucide-react";
+import { useContext, useEffect } from "react";
+import { Minus, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { PromptModalChromeContext } from "./PromptModalController";
 
 interface ModalProps {
   children: React.ReactNode;
@@ -27,6 +28,8 @@ interface ModalProps {
  * Use the compound sub-components (Modal.Header, Modal.Body, etc.) for consistent layout.
  */
 export function Modal({ children, onClose, maxWidth = "max-w-2xl", maxHeight = "max-h-[80vh]", className, backdropClassName }: ModalProps) {
+  const promptChrome = useContext(PromptModalChromeContext);
+
   useEffect(() => {
     if (!onClose) return;
     function handleKey(e: KeyboardEvent) {
@@ -42,14 +45,25 @@ export function Modal({ children, onClose, maxWidth = "max-w-2xl", maxHeight = "
       onClick={onClose}
     >
       <div
+        data-modal-panel="true"
         className={cn(
-          "bg-card border rounded-xl shadow-2xl flex flex-col w-full mx-4 animate-in fade-in zoom-in-95 duration-200",
+          "relative bg-card border rounded-xl shadow-2xl flex flex-col w-full mx-4 animate-in fade-in zoom-in-95 duration-200",
           maxWidth,
           maxHeight,
           className,
         )}
         onClick={(e) => e.stopPropagation()}
       >
+        {promptChrome.showMinimize && promptChrome.onMinimize && (
+          <button
+            className="absolute -top-3 -right-3 z-10 rounded-full border border-border bg-card p-1.5 shadow-[0_8px_20px_rgba(0,0,0,0.35)] hover:bg-muted transition-colors"
+            onClick={promptChrome.onMinimize}
+            title="Minimize prompt"
+            type="button"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+        )}
         {children}
       </div>
     </div>,

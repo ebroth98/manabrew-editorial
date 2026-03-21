@@ -1,6 +1,7 @@
 import {
   PayCombatCostModal,
   ChooseCardsModal,
+  PromptModalController,
 } from "@/components/game/modals";
 import {
   KickerModal,
@@ -46,8 +47,23 @@ export function CostModals({
   onConvokeDecision,
   onImproviseDecision,
 }: CostModalsProps) {
+  const isActiveCostModal =
+    (promptType === PT.ChoosePhyrexian && currentPrompt?.phyrexianColor != null) ||
+    (promptType === PT.ChooseKicker && currentPrompt?.kickerCost != null) ||
+    (promptType === PT.ChooseBuyback && currentPrompt?.buybackCost != null) ||
+    (promptType === PT.ChooseMultikicker && currentPrompt?.cost != null) ||
+    (promptType === PT.ChooseReplicate && currentPrompt?.cost != null) ||
+    (promptType === PT.ChooseAlternativeCost && currentPrompt?.options != null) ||
+    (promptType === PT.PayCombatCost && currentPrompt?.description != null) ||
+    (promptType === PT.ChooseDelve && currentPrompt?.zoneCards != null) ||
+    (promptType === PT.ChooseConvoke && currentPrompt?.validCardIds != null) ||
+    (promptType === PT.ChooseImprovise && currentPrompt?.validCardIds != null);
+
   return (
-    <>
+    <PromptModalController
+      isActive={isActiveCostModal}
+      promptStateKey={currentPrompt}
+    >
       {promptType === PT.ChoosePhyrexian && currentPrompt?.phyrexianColor != null && (
         <PhyrexianModal
           phyrexianColor={currentPrompt.phyrexianColor}
@@ -144,6 +160,6 @@ export function CostModals({
           onConfirm={onImproviseDecision}
         />
       )}
-    </>
+    </PromptModalController>
   );
 }

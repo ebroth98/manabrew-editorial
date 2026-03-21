@@ -502,6 +502,27 @@ impl PlayerAgent for TauriAgent {
         combat::choose_damage_assignment_order(self, player, attacker, blockers)
     }
 
+    fn assign_combat_damage(
+        &mut self,
+        game: &GameState,
+        player: PlayerId,
+        attacker: CardId,
+        blockers_in_order: &[CardId],
+        defender_id: Option<DefenderId>,
+        damage_to_assign: i32,
+    ) -> Vec<(Option<CardId>, i32)> {
+        let attacker_has_deathtouch = game.card(attacker).has_deathtouch();
+        combat::choose_combat_damage_assignment(
+            self,
+            player,
+            attacker,
+            blockers_in_order,
+            defender_id,
+            damage_to_assign,
+            attacker_has_deathtouch,
+        )
+    }
+
     fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
         targeting::choose_target_player(self, player, valid)
     }

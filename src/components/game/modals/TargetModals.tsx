@@ -5,6 +5,7 @@ import {
   SpellStackModal,
   ChooseCardsModal,
   AbilityPickerModal,
+  PromptModalController,
 } from "@/components/game/modals";
 import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
 import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/openmagic";
@@ -64,6 +65,11 @@ export function TargetModals({
   onExertDecision,
   onEnlistDecision,
 }: TargetModalsProps) {
+  const isActiveTargetPromptModal =
+    (promptType === PT.ChooseCardsForEffect && currentPrompt?.zoneCards != null) ||
+    (promptType === PT.ChooseExertAttackers && currentPrompt?.attackerCards != null) ||
+    (promptType === PT.ChooseEnlistAttackers && currentPrompt?.attackerCards != null);
+
   return (
     <>
       {viewingZone && (
@@ -113,37 +119,42 @@ export function TargetModals({
         />
       )}
 
-      {promptType === PT.ChooseCardsForEffect && currentPrompt?.zoneCards != null && (
-        <ChooseCardsModal
-          cards={currentPrompt.zoneCards}
-          minChoices={currentPrompt.minChoices ?? 1}
-          maxChoices={currentPrompt.maxChoices ?? 1}
-          sourceCardName={currentPrompt.sourceCardName}
-          onConfirm={onChooseCardsDecision}
-        />
-      )}
+      <PromptModalController
+        isActive={isActiveTargetPromptModal}
+        promptStateKey={currentPrompt}
+      >
+        {promptType === PT.ChooseCardsForEffect && currentPrompt?.zoneCards != null && (
+          <ChooseCardsModal
+            cards={currentPrompt.zoneCards}
+            minChoices={currentPrompt.minChoices ?? 1}
+            maxChoices={currentPrompt.maxChoices ?? 1}
+            sourceCardName={currentPrompt.sourceCardName}
+            onConfirm={onChooseCardsDecision}
+          />
+        )}
 
-      {promptType === PT.ChooseExertAttackers && currentPrompt?.attackerCards != null && (
-        <ChooseCardsModal
-          cards={currentPrompt.attackerCards}
-          minChoices={0}
-          maxChoices={currentPrompt.attackerCards.length}
-          sourceCardName="Exert Attackers"
-          description="Choose which attacking creatures to exert. Exerted creatures won't untap during your next untap step."
-          onConfirm={onExertDecision}
-        />
-      )}
+        {promptType === PT.ChooseExertAttackers && currentPrompt?.attackerCards != null && (
+          <ChooseCardsModal
+            cards={currentPrompt.attackerCards}
+            minChoices={0}
+            maxChoices={currentPrompt.attackerCards.length}
+            sourceCardName="Exert Attackers"
+            description="Choose which attacking creatures to exert. Exerted creatures won't untap during your next untap step."
+            onConfirm={onExertDecision}
+          />
+        )}
 
-      {promptType === PT.ChooseEnlistAttackers && currentPrompt?.attackerCards != null && (
-        <ChooseCardsModal
-          cards={currentPrompt.attackerCards}
-          minChoices={0}
-          maxChoices={currentPrompt.attackerCards.length}
-          sourceCardName="Enlist Attackers"
-          description="Choose which attacking creatures to enlist. Enlisted creatures tap a non-attacking creature to add its power."
-          onConfirm={onEnlistDecision}
-        />
-      )}
+        {promptType === PT.ChooseEnlistAttackers && currentPrompt?.attackerCards != null && (
+          <ChooseCardsModal
+            cards={currentPrompt.attackerCards}
+            minChoices={0}
+            maxChoices={currentPrompt.attackerCards.length}
+            sourceCardName="Enlist Attackers"
+            description="Choose which attacking creatures to enlist. Enlisted creatures tap a non-attacking creature to add its power."
+            onConfirm={onEnlistDecision}
+          />
+        )}
+      </PromptModalController>
     </>
   );
 }

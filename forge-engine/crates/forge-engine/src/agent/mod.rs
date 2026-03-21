@@ -132,6 +132,87 @@ pub trait PlayerAgent {
         blockers.to_vec()
     }
 
+    /// Choose exact combat damage assignment for one blocked attacker.
+    ///
+    /// `blockers_in_order` are in assignment order. `defender_id` is provided
+    /// only when damage can legally be assigned to the defender (e.g. trample).
+    ///
+    /// Return pairs of `(assignee, damage)` where:
+    /// - `Some(card_id)` assigns to a blocker
+    /// - `None` assigns to defender
+    ///
+    /// Default behavior mirrors Java deterministic assignment: assign lethal in
+    /// order, then assign excess to defender if allowed, else to last blocker.
+    fn assign_combat_damage(
+        &mut self,
+        game: &GameState,
+        _player: PlayerId,
+        attacker: CardId,
+        blockers_in_order: &[CardId],
+        defender_id: Option<DefenderId>,
+        damage_to_assign: i32,
+    ) -> Vec<(Option<CardId>, i32)> {
+        let mut out: Vec<(Option<CardId>, i32)> = Vec::new();
+        if damage_to_assign <= 0 {
+            return out;
+        }
+
+        let mut dmg_left = damage_to_assign;
+        let has_deathtouch = game.card(attacker).has_deathtouch();
+        let can_assign_to_defender = defender_id.is_some() && game.card(attacker).has_trample();
+        let mut last_blocker: Option<CardId> = None;
+
+        for &blocker_id in blockers_in_order {
+            if dmg_left <= 0 {
+                break;
+            }
+            if game.card(blocker_id).zone != forge_foundation::ZoneType::Battlefield {
+                continue;
+            }
+            if crate::staticability::static_ability_colorless_damage_source::target_is_protected_from_source(
+                &game.cards,
+                game.card(blocker_id),
+                game.card(attacker),
+            ) {
+                continue;
+            }
+            last_blocker = Some(blocker_id);
+
+            let lethal = if has_deathtouch {
+                1
+            } else if game.card(blocker_id).type_line.is_planeswalker() {
+                game
+                    .card(blocker_id)
+                    .counter_count(&crate::card::CounterType::Loyalty)
+                    .max(0)
+            } else {
+                let blocker = game.card(blocker_id);
+                (blocker.toughness() - blocker.damage).max(0)
+            };
+            let assign = lethal.min(dmg_left);
+            if assign > 0 {
+                out.push((Some(blocker_id), assign));
+                dmg_left -= assign;
+            }
+        }
+
+        if dmg_left > 0 {
+            if can_assign_to_defender {
+                out.push((None, dmg_left));
+            } else if let Some(last) = last_blocker {
+                if let Some((_, amount)) = out
+                    .iter_mut()
+                    .find(|(assignee, _)| assignee.map(|id| id == last).unwrap_or(false))
+                {
+                    *amount += dmg_left;
+                } else {
+                    out.push((Some(last), dmg_left));
+                }
+            }
+        }
+        out
+    }
+
     /// Choose a target player (e.g. for Lightning Bolt targeting a player).
     fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId>;
 

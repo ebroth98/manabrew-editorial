@@ -5,6 +5,7 @@ import { ChooseAttackers } from "./prompt-actions/ChooseAttackers";
 import { ChooseBlockers } from "./prompt-actions/ChooseBlockers";
 import { ChooseTargetSpell } from "./prompt-actions/ChooseTargetSpell";
 import { PayManaCost } from "./prompt-actions/PayManaCost";
+import { PromptRequired } from "./prompt-actions/PromptRequired";
 import { NoAction } from "./prompt-actions/NoAction";
 import { PromptType } from "@/types/promptType";
 import type { PromptButtonLayout } from "./PromptActionButton";
@@ -12,6 +13,7 @@ import {
   type PromptActionViewKey,
   useGameDevStore,
 } from "@/stores/useGameDevStore";
+import { useGameUIStore } from "@/stores/useGameUIStore";
 
 const PROMPT_TO_VIEW_KEY: Record<string, PromptActionViewKey> = {
   [PromptType.ChooseAction]: "chooseAction",
@@ -20,40 +22,41 @@ const PROMPT_TO_VIEW_KEY: Record<string, PromptActionViewKey> = {
   [PromptType.ChooseTargetSpell]: "chooseTargetSpell",
   [PromptType.PayManaCost]: "payManaCost",
 
-  [PromptType.Mulligan]: "noAction",
-  [PromptType.MulliganPutBack]: "noAction",
+  [PromptType.Mulligan]: "promptRequired",
+  [PromptType.MulliganPutBack]: "promptRequired",
   [PromptType.ChooseTargetPlayer]: "noAction",
   [PromptType.ChooseTargetCard]: "noAction",
   [PromptType.ChooseTargetAny]: "noAction",
   [PromptType.ChooseTargetCardFromZone]: "noAction",
-  [PromptType.ChooseMode]: "noAction",
-  [PromptType.ChooseOptionalTrigger]: "noAction",
-  [PromptType.ChooseKicker]: "noAction",
-  [PromptType.ChooseBuyback]: "noAction",
-  [PromptType.ChooseMultikicker]: "noAction",
-  [PromptType.ChooseReplicate]: "noAction",
-  [PromptType.ChooseAlternativeCost]: "noAction",
+  [PromptType.ChooseMode]: "promptRequired",
+  [PromptType.ChooseOptionalTrigger]: "promptRequired",
+  [PromptType.ChooseKicker]: "promptRequired",
+  [PromptType.ChooseBuyback]: "promptRequired",
+  [PromptType.ChooseMultikicker]: "promptRequired",
+  [PromptType.ChooseReplicate]: "promptRequired",
+  [PromptType.ChooseAlternativeCost]: "promptRequired",
   [PromptType.Scry]: "noAction",
   [PromptType.Surveil]: "noAction",
   [PromptType.Dig]: "noAction",
   [PromptType.ChooseDiscard]: "noAction",
-  [PromptType.PayCombatCost]: "noAction",
-  [PromptType.ChooseColor]: "noAction",
-  [PromptType.ChooseType]: "noAction",
-  [PromptType.ChooseNumber]: "noAction",
-  [PromptType.ChooseCardName]: "noAction",
-  [PromptType.ChooseDelve]: "noAction",
-  [PromptType.ChooseConvoke]: "noAction",
-  [PromptType.ChooseImprovise]: "noAction",
-  [PromptType.SpecifyManaCombo]: "noAction",
-  [PromptType.ChooseDamageAssignmentOrder]: "noAction",
-  [PromptType.ChooseCardsForEffect]: "noAction",
-  [PromptType.ChoosePhyrexian]: "noAction",
-  [PromptType.ChooseExertAttackers]: "noAction",
-  [PromptType.ChooseEnlistAttackers]: "noAction",
-  [PromptType.ReorderLibrary]: "noAction",
-  [PromptType.ExploreDecision]: "noAction",
-  [PromptType.HelpPayAssist]: "noAction",
+  [PromptType.PayCombatCost]: "promptRequired",
+  [PromptType.ChooseColor]: "promptRequired",
+  [PromptType.ChooseType]: "promptRequired",
+  [PromptType.ChooseNumber]: "promptRequired",
+  [PromptType.ChooseCardName]: "promptRequired",
+  [PromptType.ChooseDelve]: "promptRequired",
+  [PromptType.ChooseConvoke]: "promptRequired",
+  [PromptType.ChooseImprovise]: "promptRequired",
+  [PromptType.SpecifyManaCombo]: "promptRequired",
+  [PromptType.ChooseDamageAssignmentOrder]: "promptRequired",
+  [PromptType.ChooseCombatDamageAssignment]: "promptRequired",
+  [PromptType.ChooseCardsForEffect]: "promptRequired",
+  [PromptType.ChoosePhyrexian]: "promptRequired",
+  [PromptType.ChooseExertAttackers]: "promptRequired",
+  [PromptType.ChooseEnlistAttackers]: "promptRequired",
+  [PromptType.ReorderLibrary]: "promptRequired",
+  [PromptType.ExploreDecision]: "promptRequired",
+  [PromptType.HelpPayAssist]: "promptRequired",
 };
 
 interface PromptActionControllerProps {
@@ -101,6 +104,8 @@ export function PromptActionController({
   onCancelManaCost,
 }: PromptActionControllerProps) {
   const promptActionOverride = useGameDevStore((s) => s.promptActionOverride);
+  const promptModalHidden = useGameUIStore((s) => s.promptModalHidden);
+  const showPromptModal = useGameUIStore((s) => s.showPromptModal);
 
   const renderers: Record<PromptActionViewKey, () => ReactElement> = {
     chooseAction: () => (
@@ -147,6 +152,14 @@ export function PromptActionController({
         payManaCostInfo={payManaCostInfo}
         onPayManaCost={onPayManaCost}
         onCancelManaCost={onCancelManaCost}
+      />
+    ),
+    promptRequired: () => (
+      <PromptRequired
+        buttonLayout={buttonLayout}
+        isWaitingForResponse={isWaitingForResponse}
+        hidden={promptModalHidden}
+        onOpenPrompt={showPromptModal}
       />
     ),
     passingUntilEot: () => (
