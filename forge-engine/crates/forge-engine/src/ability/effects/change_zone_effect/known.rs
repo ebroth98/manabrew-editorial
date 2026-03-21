@@ -11,6 +11,7 @@ use super::search::resolve_defined_player_choice;
 use super::stack::resolve_stack_removal;
 use super::super::{resolve_defined_player_with_sa, EffectContext};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Resolve zone changes from known/visible zones or targeted cards.
@@ -26,7 +27,7 @@ pub(super) fn resolve_known_origin(
     let controller = sa.activating_player;
 
     // Unimprint$ — clear before processing (Java line 506)
-    if sa.param_is_true("Unimprint") {
+    if sa.param_is_true(keys::UNIMPRINT) {
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).imprinted_cards.clear();
         }

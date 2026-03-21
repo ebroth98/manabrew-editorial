@@ -1,4 +1,5 @@
 use super::{resolve_defined_players, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ SkipPhase` — make a player skip their next occurrence of a phase.
@@ -18,15 +19,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let phase = sa
         .params
-        .get("Phase")
-        .or_else(|| sa.params.get("Step"))
-        .map(|s| s.as_str())
+        .get(keys::PHASE)
+        .or_else(|| sa.params.get(keys::STEP))
         .unwrap_or("");
 
     let defined = sa
         .params
-        .get("Defined")
-        .map(|s| s.as_str())
+        .get(keys::DEFINED)
         .unwrap_or("You");
 
     let targets = resolve_defined_players(defined, controller, ctx.game);

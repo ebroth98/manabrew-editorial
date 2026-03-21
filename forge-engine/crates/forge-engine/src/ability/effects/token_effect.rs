@@ -4,6 +4,7 @@ use super::{emit_zone_trigger, EffectContext};
 use crate::card::CardInstance;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
@@ -62,10 +63,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
 /// Check if the SA has inline token definition params.
 fn has_inline_token_params(sa: &SpellAbility) -> bool {
-    sa.params.contains_key("TokenPower")
-        || sa.params.contains_key("TokenToughness")
-        || sa.params.contains_key("TokenTypes")
-        || sa.params.contains_key("TokenName")
+    sa.params.has(keys::TOKEN_POWER)
+        || sa.params.has(keys::TOKEN_TOUGHNESS)
+        || sa.params.has(keys::TOKEN_TYPES)
+        || sa.params.has(keys::TOKEN_NAME)
 }
 
 /// Build a CardInstance template from inline token params.
@@ -73,30 +74,29 @@ fn has_inline_token_params(sa: &SpellAbility) -> bool {
 fn build_inline_token(sa: &SpellAbility, owner: crate::ids::PlayerId) -> CardInstance {
     let name = sa
         .params
-        .get("TokenName")
-        .cloned()
+        .get_cloned(keys::TOKEN_NAME)
         .unwrap_or_else(|| "Token".to_string());
     let power = sa
         .params
-        .get("TokenPower")
+        .get(keys::TOKEN_POWER)
         .and_then(|s| s.parse::<i32>().ok());
     let toughness = sa
         .params
-        .get("TokenToughness")
+        .get(keys::TOKEN_TOUGHNESS)
         .and_then(|s| s.parse::<i32>().ok());
     let type_line = sa
         .params
-        .get("TokenTypes")
+        .get(keys::TOKEN_TYPES)
         .map(|s| CardTypeLine::parse(s))
         .unwrap_or_else(|| CardTypeLine::parse("Creature"));
     let colors = sa
         .params
-        .get("TokenColors")
+        .get(keys::TOKEN_COLORS)
         .map(|s| parse_token_colors(s))
         .unwrap_or(ColorSet::COLORLESS);
     let keywords: Vec<String> = sa
         .params
-        .get("TokenKeywords")
+        .get(keys::TOKEN_KEYWORDS)
         .map(|s| s.split('&').map(|k| k.trim().to_string()).collect())
         .unwrap_or_default();
 

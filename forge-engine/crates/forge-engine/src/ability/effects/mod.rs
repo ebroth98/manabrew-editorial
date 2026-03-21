@@ -217,6 +217,8 @@ use forge_foundation::ZoneType;
 use crate::agent::PlayerAgent;
 use crate::card::CardInstance;
 use crate::cost::{parse_cost, Cost, CostPart};
+use crate::parsing::compare::compare_expr;
+use crate::parsing::keys;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -520,13 +522,13 @@ pub struct EffectContext<'a> {
 /// Mirrors Java's `SpellAbility.checkConditions()`.
 fn check_condition(sa: &SpellAbility) -> bool {
     // Check Condition$ Kicked (most common pattern: simple kicked gate)
-    if let Some(cond) = sa.params.get("Condition") {
+    if let Some(cond) = sa.params.get(keys::CONDITION) {
         if cond == "Kicked" {
             return sa.kicked;
         }
     }
     // Check ConditionCheckSVar$ Kicked (SVar-based kicked gate)
-    if let Some(cond) = sa.params.get("ConditionCheckSVar") {
+    if let Some(cond) = sa.params.get(keys::CONDITION_CHECK_SVAR) {
         if cond == "Kicked" || cond == "X:Kicked" {
             return sa.kicked;
         }
@@ -545,8 +547,8 @@ fn check_condition_present(
     player: PlayerId,
     source_id: CardId,
 ) -> bool {
-    let condition = match sa.params.get("ConditionPresent") {
-        Some(c) => c.clone(),
+    let condition = match sa.params.get_cloned(keys::CONDITION_PRESENT) {
+        Some(c) => c,
         None => return true, // No condition — always passes
     };
 
@@ -554,8 +556,8 @@ fn check_condition_present(
     let alternatives: Vec<&str> = condition.split(',').map(|s| s.trim()).collect();
 
     // ── ConditionDefined$ — check specific defined cards, not a zone ──
-    if let Some(cond_defined) = sa.params.get("ConditionDefined") {
-        let defined_cards: Vec<CardId> = match cond_defined.as_str() {
+    if let Some(cond_defined) = sa.params.get(keys::CONDITION_DEFINED) {
+        let defined_cards: Vec<CardId> = match cond_defined {
             "Targeted" => sa.target_chosen.target_card.into_iter().collect(),
             "Self" => sa.source.into_iter().collect(),
             "Remembered" => sa
@@ -570,8 +572,8 @@ fn check_condition_present(
             .filter(|&&cid| matches_condition_filter(game, cid, source_id, player, &alternatives))
             .count() as i32;
 
-        return if let Some(compare) = sa.params.get("ConditionCompare") {
-            compare_condition(count, compare)
+        return if let Some(compare) = sa.params.get(keys::CONDITION_COMPARE) {
+            compare_expr(count, compare)
         } else {
             count > 0
         };
@@ -579,8 +581,7 @@ fn check_condition_present(
 
     let zone_str = sa
         .params
-        .get("ConditionZone")
-        .map(String::as_str)
+        .get(keys::CONDITION_ZONE)
         .unwrap_or("Battlefield");
 
     let zone = match zone_str.to_ascii_lowercase().as_str() {
@@ -599,8 +600,8 @@ fn check_condition_present(
         .count() as i32;
 
     // Check ConditionCompare$ (e.g. "GE2", "EQ0")
-    if let Some(compare) = sa.params.get("ConditionCompare") {
-        compare_condition(count, compare)
+    if let Some(compare) = sa.params.get(keys::CONDITION_COMPARE) {
+        compare_expr(count, compare)
     } else {
         count > 0
     }
@@ -659,47 +660,6 @@ fn matches_condition_filter(
     })
 }
 
-/// Compare a value against a condition string (e.g. "GE2", "EQ0", "LE3").
-fn compare_condition(value: i32, compare: &str) -> bool {
-    if let Some(n) = compare
-        .strip_prefix("GE")
-        .and_then(|s| s.parse::<i32>().ok())
-    {
-        return value >= n;
-    }
-    if let Some(n) = compare
-        .strip_prefix("GT")
-        .and_then(|s| s.parse::<i32>().ok())
-    {
-        return value > n;
-    }
-    if let Some(n) = compare
-        .strip_prefix("LE")
-        .and_then(|s| s.parse::<i32>().ok())
-    {
-        return value <= n;
-    }
-    if let Some(n) = compare
-        .strip_prefix("LT")
-        .and_then(|s| s.parse::<i32>().ok())
-    {
-        return value < n;
-    }
-    if let Some(n) = compare
-        .strip_prefix("EQ")
-        .and_then(|s| s.parse::<i32>().ok())
-    {
-        return value == n;
-    }
-    if let Some(n) = compare
-        .strip_prefix("NE")
-        .and_then(|s| s.parse::<i32>().ok())
-    {
-        return value != n;
-    }
-    true
-}
-
 /// Resolve a single SpellAbility node's effect by dispatching on its API type.
 /// Mirrors Java's `AbilityUtils.resolveApiAbility(sa)`.
 pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -719,8 +679,8 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Handle Repeat$ — repeat the effect N times (for Multikicker/Replicate-like scaling).
     // Mirrors Java's AbilityUtils.handleRepeatParam().
-    let repeat_count = if let Some(repeat_val) = sa.params.get("Repeat") {
-        match repeat_val.as_str() {
+    let repeat_count = if let Some(repeat_val) = sa.params.get(keys::REPEAT) {
+        match repeat_val {
             "KickerNum" => sa.kick_count as i32,
             _ => 1,
         }
@@ -731,8 +691,8 @@ pub fn resolve_effect(ctx: &mut EffectContext, sa: &SpellAbility) {
     for _ in 0..repeat_count {
         if let Some(unless_cost) = sa
             .params
-            .get("UnlessCost")
-            .map(|s| s.trim())
+            .get(keys::UNLESS_COST)
+            .map(|s: &str| s.trim())
             .filter(|s| !s.is_empty())
         {
             resolve_effect_with_unless_cost(ctx, sa, unless_cost);
@@ -779,7 +739,7 @@ fn resolve_effect_with_unless_cost(ctx: &mut EffectContext, sa: &SpellAbility, u
         }
     }
 
-    let is_switched = sa.params.contains_key("UnlessSwitched");
+    let is_switched = sa.params.has(keys::UNLESS_SWITCHED);
     if already_paid == is_switched {
         resolve_effect_once(ctx, sa);
     }
@@ -788,8 +748,7 @@ fn resolve_effect_with_unless_cost(ctx: &mut EffectContext, sa: &SpellAbility, u
 fn resolve_unless_payers(sa: &SpellAbility, game: &GameState) -> Vec<PlayerId> {
     let pays = sa
         .params
-        .get("UnlessPayer")
-        .map(|s| s.as_str())
+        .get(keys::UNLESS_PAYER)
         .unwrap_or("TargetedController");
     if pays.eq_ignore_ascii_case("TargetedController") {
         if let Some(pid) = sa.target_chosen.target_player {

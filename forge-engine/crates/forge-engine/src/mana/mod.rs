@@ -6,6 +6,7 @@ use crate::card::CardInstance;
 use crate::cost::CostPart;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 
 pub mod auto_pay;
 pub mod computer_util_mana;
@@ -1082,11 +1083,10 @@ pub(crate) fn compute_reflected_atoms(
 ) -> Vec<u16> {
     let reflect_prop = ab
         .params
-        .get("ReflectProperty")
-        .map(|s| s.as_str())
+        .get(keys::REFLECT_PROPERTY)
         .unwrap_or("Is");
-    let valid = ab.params.get("Valid").map(|s| s.as_str()).unwrap_or("Card");
-    let include_colorless = ab.params.get("ColorOrType").map_or(false, |v| v == "Type");
+    let valid = ab.params.get(keys::VALID).unwrap_or("Card");
+    let include_colorless = ab.params.get(keys::COLOR_OR_TYPE) == Some("Type");
     let battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
     let mut reflected_atoms: Vec<u16> = Vec::new();
     for other_id in &battlefield {
@@ -1105,7 +1105,7 @@ pub(crate) fn compute_reflected_atoms(
         if reflect_prop == "Produce" {
             for other_ab in &other.activated_abilities {
                 if other_ab.is_mana_ability {
-                    if let Some(prod) = other_ab.params.get("Produced") {
+                    if let Some(prod) = other_ab.params.get(keys::PRODUCED) {
                         for atom in produced_to_atoms(prod, &other.chosen_colors) {
                             if !reflected_atoms.contains(&atom) {
                                 reflected_atoms.push(atom);
@@ -1204,19 +1204,19 @@ fn land_pain_damage(card: &CardInstance, chosen_atom: u16) -> i32 {
             continue;
         }
         // Skip abilities without SubAbility (no pain)
-        let sub_svar_name = match ab.params.get("SubAbility") {
+        let sub_svar_name = match ab.params.get(keys::SUB_ABILITY) {
             Some(name) => name,
             None => continue,
         };
         // Check if this ability produces the chosen atom
-        if let Some(produced) = ab.params.get("Produced") {
+        if let Some(produced) = ab.params.get(keys::PRODUCED) {
             let atoms = produced_to_atoms(produced, &card.chosen_colors);
             if atoms.contains(&chosen_atom) {
                 // Look up the SVar to find damage amount
                 if let Some(sub_text) = card.svars.get(sub_svar_name) {
-                    let sub_params = crate::trigger::parse_pipe_params(sub_text);
-                    if sub_params.get("DB").map_or(false, |v| v == "DealDamage") {
-                        if let Some(num_str) = sub_params.get("NumDmg") {
+                    let sub_params = crate::parsing::Params::from_raw(sub_text);
+                    if sub_params.get(crate::parsing::keys::DB).map_or(false, |v| v == "DealDamage") {
+                        if let Some(num_str) = sub_params.get(crate::parsing::keys::NUM_DMG) {
                             return num_str.parse::<i32>().unwrap_or(0);
                         }
                     }
@@ -1273,7 +1273,7 @@ pub fn land_mana_atoms(card: &CardInstance) -> Vec<u16> {
         if ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_))) {
             continue;
         }
-        if let Some(produced) = ab.params.get("Produced") {
+        if let Some(produced) = ab.params.get(keys::PRODUCED) {
             if produced == "Combo ColorIdentity" {
                 // In a non-Commander game there is no commander identity, so this land
                 // produces no mana — matches Java Forge's ManaEffect which skips
@@ -1456,7 +1456,7 @@ pub fn calculate_available_mana_excluding(
             // ManaReflected: check what colors other permanents can produce.
             // For playability purposes, optimistically add all colors that
             // matching permanents could produce.
-            if ab.params.get("AB").map_or(false, |v| v == "ManaReflected") {
+            if ab.params.get(keys::AB) == Some("ManaReflected") {
                 let reflected_atoms = compute_reflected_atoms(game, player, card_id, ab);
                 // Resolve Amount parameter (e.g. Incubation Druid produces 3 when adapted).
                 let amount = resolve_mana_ability_amount(game, card_id, player, ab);
@@ -1482,7 +1482,7 @@ pub fn calculate_available_mana_excluding(
                         source_colors.push(src_mask);
                     }
                 }
-            } else if let Some(produced) = ab.params.get("Produced") {
+            } else if let Some(produced) = ab.params.get(keys::PRODUCED) {
                 if produced == "Combo ColorIdentity" {
                     // Commander Color Identity support: in non-commander games this remains empty.
                     let command_cards = game.cards_in_zone(ZoneType::Command, player).to_vec();
@@ -1570,8 +1570,8 @@ fn resolve_mana_ability_amount(
     player: PlayerId,
     ab: &crate::ability::activated::ActivatedAbility,
 ) -> i32 {
-    let amount_str = match ab.params.get("Amount") {
-        Some(v) if !v.is_empty() => v.clone(),
+    let amount_str = match ab.params.get(keys::AMOUNT) {
+        Some(v) if !v.is_empty() => v,
         _ => return 1,
     };
     // Direct number

@@ -19,7 +19,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Determine target
     let target = sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get("Defined").map(|s| s.as_str()) {
+        match sa.params.get(crate::parsing::keys::DEFINED) {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => sa.source,
@@ -31,7 +31,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         _ => return,
     };
 
-    let gains = sa.params.get("Gains").cloned().unwrap_or_default();
+    let gains = sa.params.get(crate::parsing::keys::GAINS).unwrap_or("").to_string();
 
     // Mirrors Java ProtectEffect: `isChoice = sa.getParam("Gains").contains("Choice")`
     // Handles both `Gains$ Choice` (Gods Willing) and `Gains$ Protection from chosen color`.
@@ -42,7 +42,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // `AnyColor` expands to the 5 Magic colors.
         let choices = sa
             .params
-            .get("Choices")
+            .get(crate::parsing::keys::CHOICES)
             .map(|s| {
                 if s.contains("AnyColor") {
                     vec![

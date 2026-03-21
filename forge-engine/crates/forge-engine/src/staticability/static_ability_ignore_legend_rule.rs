@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn ignore_legend_rule(cards: &[CardInstance], card: &CardInstance) -> bool {
@@ -11,7 +12,7 @@ pub fn ignore_legend_rule(cards: &[CardInstance], card: &CardInstance) -> bool {
             .filter(|sa| sa.mode == StaticMode::IgnoreLegendRule)
         {
             if !matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 card,
                 source,
             ) {
@@ -53,18 +54,17 @@ fn is_present_condition_met(
     st_ab: &crate::staticability::StaticAbility,
     source: &CardInstance,
 ) -> bool {
-    let Some(is_present) = st_ab.params.get("IsPresent") else {
+    let Some(is_present) = st_ab.params.get(keys::IS_PRESENT) else {
         return true;
     };
     let count = cards
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield)
-        .filter(|c| matches_valid_card(Some(is_present.as_str()), c, source))
+        .filter(|c| matches_valid_card(Some(is_present), c, source))
         .count() as i32;
     let cmp = st_ab
         .params
-        .get("PresentCompare")
-        .map(String::as_str)
+        .get(keys::PRESENT_COMPARE)
         .unwrap_or("GE1");
     match cmp {
         "EQ2" => count == 2,

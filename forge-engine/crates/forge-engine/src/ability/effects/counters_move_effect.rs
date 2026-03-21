@@ -4,11 +4,12 @@
 //! Move N counters of a type from one permanent to another.
 
 use super::{parse_counter_type, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let counter_type_str = sa.params.get("CounterType").cloned().unwrap_or_else(|| "P1P1".to_string());
+    let counter_type_str = sa.params.get(keys::COUNTER_TYPE).map(|s| s.to_string()).unwrap_or_else(|| "P1P1".to_string());
     let counter_type = parse_counter_type(&counter_type_str);
     let amount = super::resolve_numeric_svar(ctx.game, sa, "CounterNum", 1).max(0);
 

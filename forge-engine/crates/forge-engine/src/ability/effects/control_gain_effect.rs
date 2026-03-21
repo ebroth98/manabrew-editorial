@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::event::{RunParams, TriggerType};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// SP$ ControlGain — gain control of target permanent until end of turn or permanently.
@@ -50,7 +51,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Schedule controller return at end of turn if LoseControl$ EOT
     if sa
         .params
-        .get("LoseControl")
+        .get(keys::LOSE_CONTROL)
         .map(|v| v == "EOT")
         .unwrap_or(false)
     {
@@ -58,12 +59,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Handle Untap parameter
-    if sa.params.contains_key("Untap") {
+    if sa.params.has(keys::UNTAP) {
         ctx.game.untap(target_card);
     }
 
     // Handle AddKWs parameter (add keywords)
-    if let Some(kws_str) = sa.params.get("AddKWs") {
+    if let Some(kws_str) = sa.params.get(keys::ADD_KWS) {
         let keywords: Vec<String> = kws_str.split(" & ").map(|s| s.to_string()).collect();
         for kw in keywords {
             ctx.game.card_mut(target_card).granted_keywords.push(kw);

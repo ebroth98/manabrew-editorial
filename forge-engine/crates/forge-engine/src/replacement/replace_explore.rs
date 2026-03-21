@@ -3,6 +3,7 @@
 //! Mirrors Java `ReplaceExplore.java` in `forge/game/replacement/`.
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
 
@@ -30,8 +31,8 @@ pub fn can_replace(
     // Java uses ValidExplorer with the same semantics as ValidCard.
     if let Some(valid) = effect
         .params
-        .get("ValidExplorer")
-        .or(effect.params.get("ValidCard"))
+        .get(keys::VALID_EXPLORER)
+        .or(effect.params.get(keys::VALID_CARD))
     {
         if !matches_valid_card(valid, target_card, source_card) {
             return false;
@@ -49,10 +50,10 @@ pub fn execute(
 ) -> ReplacementResult {
     if effect
         .params
-        .get("Prevent")
+        .get(keys::PREVENT)
         .map(|s| s == "True")
         .unwrap_or(false)
-        || effect.params.contains_key("Skip")
+        || effect.params.has(keys::SKIP)
     {
         return ReplacementResult::Skipped;
     }

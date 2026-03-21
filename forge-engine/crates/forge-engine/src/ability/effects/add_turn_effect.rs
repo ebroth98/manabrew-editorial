@@ -1,5 +1,6 @@
 use super::{parse_param, resolve_defined_player, EffectContext};
 use crate::game::ExtraTurn;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ AddTurn` — give a player extra turns.
@@ -19,12 +20,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
     let num_turns = parse_param(&sa.ability_text, "NumTurns$ ").unwrap_or(1);
-    let skip_untap = sa.params.get("SkipUntap").is_some();
+    let skip_untap = sa.params.has(keys::SKIP_UNTAP);
 
     let defined = sa
         .params
-        .get("Defined")
-        .map(|s| s.as_str())
+        .get(keys::DEFINED)
         .unwrap_or("You");
 
     let target = resolve_defined_player(defined, controller, ctx.game).unwrap_or(controller);

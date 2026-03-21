@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use super::{parse_counter_type, parse_param, resolve_numeric_svar, EffectContext};
 use crate::agent::BinaryChoiceKind;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ CountersPutOrRemove` — choose add/remove on target card counters.
@@ -26,7 +27,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let counter_type = sa
         .params
-        .get("CounterType")
+        .get(keys::COUNTER_TYPE)
         .map(|s| parse_counter_type(s))
         .or_else(|| {
             // Sort keys for deterministic fallback (HashMap iteration is random).
@@ -97,7 +98,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             },
             false,
         );
-        if sa.params.get("RememberRemovedCards").is_some() {
+        if sa.params.has(keys::REMEMBER_REMOVED_CARDS) {
             ctx.game.card_mut(source_id).add_remembered_card(target_id);
         }
     }

@@ -17,7 +17,7 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let target = sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get("Defined").map(|s| s.as_str()) {
+        match sa.params.get(crate::parsing::keys::DEFINED) {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => None,

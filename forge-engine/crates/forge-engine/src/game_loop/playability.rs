@@ -116,8 +116,8 @@ impl GameLoop {
                     let has_phyrexian = base.shards().iter().any(|s| s.is_phyrexian());
                     if has_phyrexian {
                         let ai_phy_param = card.abilities.iter().find_map(|ab| {
-                            let params = crate::trigger::parse_pipe_params(ab);
-                            params.get("AIPhyrexianPayment").cloned()
+                            let params = Params::from_raw(ab);
+                            params.get_cloned(keys::AI_PHYREXIAN_PAYMENT)
                         });
                         let phyrexian_life_allowed = match ai_phy_param.as_deref() {
                             Some("Never") => false,
@@ -262,15 +262,15 @@ impl GameLoop {
                 // Spree: base cost + cheapest ModeCost must be affordable
                 let normal_ok = if card.has_keyword("Spree") && normal_ok {
                     let ability_text = card.abilities.first().cloned().unwrap_or_default();
-                    let ability_params = crate::trigger::parse_pipe_params(&ability_text);
-                    if let Some(choices_str) = ability_params.get("Choices") {
+                    let ability_params = Params::from_raw(&ability_text);
+                    if let Some(choices_str) = ability_params.get(keys::CHOICES) {
                         let min_mode_cost = choices_str
                             .split(',')
                             .filter_map(|name| {
                                 card.svars.get(name).and_then(|svar_val| {
-                                    let params = crate::trigger::parse_pipe_params(svar_val);
+                                    let params = Params::from_raw(svar_val);
                                     params
-                                        .get("ModeCost")
+                                        .get(keys::MODE_COST)
                                         .map(|c| forge_foundation::ManaCost::parse(c).cmc())
                                 })
                             })
@@ -383,7 +383,7 @@ impl GameLoop {
                     let all_valid = card
                         .abilities
                         .iter()
-                        .filter(|ab| parse_pipe_params(ab).contains_key("SP"))
+                        .filter(|ab| Params::from_raw(ab).has(keys::SP))
                         .all(|ab| {
                             target_restrictions::has_candidates_in_chain(
                                 game,

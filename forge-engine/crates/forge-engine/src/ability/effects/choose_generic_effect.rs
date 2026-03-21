@@ -4,12 +4,13 @@
 //! Present a list of choices, player picks one, resolve the corresponding sub-ability.
 
 use super::EffectContext;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
-    let choices: Vec<String> = sa.params.get("Choices")
+    let choices: Vec<String> = sa.params.get(keys::CHOICES)
         .map(|s| s.split(',').map(|c| c.trim().to_string()).collect())
         .unwrap_or_default();
 

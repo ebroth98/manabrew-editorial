@@ -52,7 +52,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Creature".to_string());
     let activating_player = sa.activating_player;
 
@@ -60,7 +60,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let pump_zone_str = sa
         .params
         .get("PumpZone")
-        .map(|s| s.as_str())
         .unwrap_or("Battlefield");
     let pump_zone = match pump_zone_str {
         s if s.eq_ignore_ascii_case("Hand") => ZoneType::Hand,

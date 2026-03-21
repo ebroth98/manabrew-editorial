@@ -39,8 +39,8 @@ impl GameLoop {
             // Per-game activation cap (e.g. "GameActivationLimit$ 1").
             if let Some(limit) = ab
                 .params
-                .get("GameActivationLimit")
-                .and_then(|v| v.trim().parse::<u32>().ok())
+                .get(keys::GAME_ACTIVATION_LIMIT)
+                .and_then(|v| v.parse::<u32>().ok())
             {
                 let used = game
                     .card(card_id)
@@ -53,7 +53,7 @@ impl GameLoop {
                 }
             }
             // PowerUp: once-per-game restriction
-            if ab.params.get("PowerUp").map_or(false, |v| v == "True") {
+            if ab.params.is_true(keys::POWER_UP) {
                 let card = game.card(card_id);
                 if card
                     .activations_this_game
@@ -65,7 +65,7 @@ impl GameLoop {
                     return false;
                 }
             }
-            if ab.params.get("SorcerySpeed").map_or(false, |v| v == "True") && !can_play_sorcery {
+            if ab.params.is_true(keys::SORCERY_SPEED) && !can_play_sorcery {
                 return false;
             }
             // Activated abilities that require targets should only be offered
@@ -137,10 +137,7 @@ impl GameLoop {
             }
             for ab in &card.activated_abilities {
                 // Skip abilities with ActivationZone$ Hand — they're for hand, not battlefield
-                if ab
-                    .params
-                    .get("ActivationZone")
-                    .map_or(false, |z| z == "Hand")
+                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Hand")
                 {
                     continue;
                 }
@@ -155,10 +152,7 @@ impl GameLoop {
         for card_id in hand {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab
-                    .params
-                    .get("ActivationZone")
-                    .map_or(false, |z| z == "Hand")
+                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Hand")
                 {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
@@ -172,10 +166,7 @@ impl GameLoop {
         for card_id in graveyard {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab
-                    .params
-                    .get("ActivationZone")
-                    .map_or(false, |z| z == "Graveyard")
+                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Graveyard")
                 {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
@@ -189,10 +180,7 @@ impl GameLoop {
         for card_id in exile {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab
-                    .params
-                    .get("ActivationZone")
-                    .map_or(false, |z| z == "Exile")
+                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Exile")
                 {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
@@ -253,7 +241,7 @@ impl GameLoop {
         ab: &crate::ability::activated::ActivatedAbility,
     ) -> bool {
         // Pay costs
-        let api = ab.params.get("AB").map(String::as_str);
+        let api = ab.params.get(keys::AB);
         if !self.pay_ability_cost(
             game,
             agents,
@@ -305,7 +293,7 @@ impl GameLoop {
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
     ) {
-        let api = ab.params.get("AB").map(String::as_str);
+        let api = ab.params.get(keys::AB);
         if !self.pay_ability_cost(
             game,
             agents,
@@ -320,7 +308,7 @@ impl GameLoop {
         }
 
         // If this is a ManaReflected ability, delegate to the effect resolver
-        if ab.params.get("AB").map_or(false, |v| v == "ManaReflected") {
+        if ab.params.get(keys::AB) == Some("ManaReflected") {
             let sa = SpellAbility::new_simple(Some(card_id), player, &ab.ability_text);
             self.resolve_single_effect(game, agents, &sa, None);
             // Fire triggers
@@ -348,16 +336,13 @@ impl GameLoop {
         // Check if source permanent is snow (snow mana tracking)
         let source_is_snow = game.card(card_id).type_line.is_snow();
         // Check for mana restrictions (RestrictValid$) and uncounterability (AddsNoCounter$)
-        let mana_restriction = ab.params.get("RestrictValid").cloned();
-        let adds_no_counter = ab
-            .params
-            .get("AddsNoCounter")
-            .map_or(false, |v| v == "True");
-        let adds_keywords = ab.params.get("AddsKeywords").cloned();
-        let adds_keywords_valid = ab.params.get("AddsKeywordsValid").cloned();
-        let adds_counters = ab.params.get("AddsCounters").cloned();
-        let adds_counters_valid = ab.params.get("AddsCountersValid").cloned();
-        let triggers_when_spent = ab.params.get("TriggersWhenSpent").cloned();
+        let mana_restriction = ab.params.get_cloned(keys::RESTRICT_VALID);
+        let adds_no_counter = ab.params.is_true(keys::ADDS_NO_COUNTER);
+        let adds_keywords = ab.params.get_cloned(keys::ADDS_KEYWORDS);
+        let adds_keywords_valid = ab.params.get_cloned(keys::ADDS_KEYWORDS_VALID);
+        let adds_counters = ab.params.get_cloned(keys::ADDS_COUNTERS);
+        let adds_counters_valid = ab.params.get_cloned(keys::ADDS_COUNTERS_VALID);
+        let triggers_when_spent = ab.params.get_cloned(keys::TRIGGERS_WHEN_SPENT);
 
         // Helper: convert a ManaAtom to its short letter for mana strings.
         fn atom_to_letter(atom: u16) -> &'static str {
@@ -375,7 +360,7 @@ impl GameLoop {
         // Determine the final mana string to produce
         let mut mana_string: Option<String> = None;
 
-        if let Some(produced) = ab.params.get("Produced") {
+        if let Some(produced) = ab.params.get(keys::PRODUCED) {
             if produced.starts_with("Special") {
                 // Delegate to the special mana handler in mana_effect
                 let special = produced.strip_prefix("Special ").unwrap_or("");
@@ -484,13 +469,13 @@ impl GameLoop {
 
         // Apply Amount$ multiplier (e.g. Rofellos produces mana equal to Forests)
         if let Some(ref mut ms) = mana_string {
-            if let Some(amount_str) = ab.params.get("Amount") {
+            if let Some(amount_str) = ab.params.get(keys::AMOUNT) {
                 let amount = if let Ok(n) = amount_str.parse::<i32>() {
                     n
                 } else {
                     // Try to resolve as SVar on the source card
                     if let Some(svar_expr) =
-                        game.card(card_id).svars.get(amount_str.as_str()).cloned()
+                        game.card(card_id).svars.get(amount_str).cloned()
                     {
                         crate::ability::effects::resolve_count_svar(
                             &svar_expr, game, card_id, player,
@@ -501,7 +486,7 @@ impl GameLoop {
                 };
                 if amount > 1 {
                     // Check if this is combo/any mana (multiple color choices)
-                    let produced = ab.params.get("Produced").map(String::as_str).unwrap_or("");
+                    let produced = ab.params.get(keys::PRODUCED).unwrap_or("");
                     let is_combo = produced.contains("Any")
                         || produced.starts_with("Combo")
                         || produced.contains(',');
@@ -580,7 +565,7 @@ impl GameLoop {
         }
 
         // Resolve SubAbility chain (e.g. DealDamage on pain lands)
-        if let Some(sub_svar_name) = ab.params.get("SubAbility") {
+        if let Some(sub_svar_name) = ab.params.get(keys::SUB_ABILITY) {
             if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name).cloned() {
                 let sub_sa = SpellAbility::new_simple(Some(card_id), player, &sub_text);
                 self.resolve_single_effect(game, agents, &sub_sa, None);
@@ -650,7 +635,7 @@ impl GameLoop {
         }
 
         // PowerUp: reduce cost by card's mana cost if it entered the battlefield this turn
-        let adjusted_cost = if ab.params.get("PowerUp").map_or(false, |v| v == "True")
+        let adjusted_cost = if ab.params.is_true(keys::POWER_UP)
             && game.card(card_id).entered_battlefield_this_turn
         {
             let mut cost = ab.cost.clone();
@@ -668,7 +653,7 @@ impl GameLoop {
         };
 
         // Pay costs
-        let api = ab.params.get("AB").map(String::as_str);
+        let api = ab.params.get(keys::AB);
         if !self.pay_ability_cost(
             game,
             agents,
@@ -706,9 +691,9 @@ impl GameLoop {
         self.log_stack_push(&format!("{} ability", card_name), &game.player(player).name);
         let ability_kind = ab
             .params
-            .get("AB")
-            .cloned()
-            .unwrap_or_else(|| "Unknown".to_string());
+            .get(keys::AB)
+            .unwrap_or("Unknown")
+            .to_string();
         let mut event = crate::agent::GameLogEvent::action(format!(
             "Activated ability: {} | source={}",
             ability_kind, card_name

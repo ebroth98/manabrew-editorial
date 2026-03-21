@@ -3,12 +3,13 @@ use crate::agent::PlayerAgent;
 use crate::agent::TargetChoice;
 use crate::game::GameState;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::spellability::target_restrictions::{
     get_all_battlefield_permanents_filtered, get_all_candidates_creature_filtered,
     get_all_candidates_spells, get_valid_cards_in_zone, TargetKind,
 };
 use crate::spellability::{build_spell_ability, SpellAbility};
-use crate::trigger::parse_pipe_params;
+use crate::parsing::Params;
 
 /// `SP$ Charm` — modal spell: player chooses N effects from a list.
 ///
@@ -35,14 +36,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         None => return,
     };
 
-    let choices_str = sa.params.get("Choices").cloned().unwrap_or_default();
+    let choices_str = sa.params.get_cloned(keys::CHOICES).unwrap_or_default();
     if choices_str.is_empty() {
         return;
     }
 
-    let charm_num = resolve_numeric_svar(ctx.game, sa, "CharmNum", 1).max(0) as usize;
+    let charm_num = resolve_numeric_svar(ctx.game, sa, keys::CHARM_NUM, 1).max(0) as usize;
     let min_charm_num =
-        resolve_numeric_svar(ctx.game, sa, "MinCharmNum", charm_num as i32).max(0) as usize;
+        resolve_numeric_svar(ctx.game, sa, keys::MIN_CHARM_NUM, charm_num as i32).max(0) as usize;
 
     let player = sa.activating_player;
 
@@ -64,10 +65,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let mode_descriptions: Vec<String> = mode_texts
         .iter()
         .map(|text| {
-            let params = parse_pipe_params(text);
+            let params = Params::from_raw(text);
             params
-                .get("SpellDescription")
-                .cloned()
+                .get_cloned(keys::SPELL_DESCRIPTION)
                 .unwrap_or_else(|| text.clone())
         })
         .collect();
@@ -91,7 +91,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .collect();
 
     // Check if Entwine was paid (SA flag) — if so, auto-select all modes
-    let entwine_paid = sa.params.get("Entwine").map(|_| true).unwrap_or(false) || sa.kicked; // Entwine is sometimes represented as kicked
+    let entwine_paid = sa.params.has(keys::ENTWINE) || sa.kicked; // Entwine is sometimes represented as kicked
 
     // Check source card for Entwine/Escalate keywords
     let has_entwine = ctx.game.card(source_id).get_entwine_cost().is_some();
@@ -171,7 +171,7 @@ pub fn make_choices_precast(
         None => return true,
     };
 
-    let choices_str = sa.params.get("Choices").cloned().unwrap_or_default();
+    let choices_str = sa.params.get_cloned(keys::CHOICES).unwrap_or_default();
     if choices_str.is_empty() {
         return true;
     }
@@ -190,10 +190,9 @@ pub fn make_choices_precast(
     let mode_descriptions: Vec<String> = mode_texts
         .iter()
         .map(|text| {
-            let params = parse_pipe_params(text);
+            let params = Params::from_raw(text);
             params
-                .get("SpellDescription")
-                .cloned()
+                .get_cloned(keys::SPELL_DESCRIPTION)
                 .unwrap_or_else(|| text.clone())
         })
         .collect();
@@ -215,11 +214,11 @@ pub fn make_choices_precast(
 
     let has_entwine = game.card(source_id).get_entwine_cost().is_some();
     let has_escalate = game.card(source_id).get_escalate_cost().is_some();
-    let can_repeat = sa.params.contains_key("CanRepeatModes");
+    let can_repeat = sa.params.has(keys::CAN_REPEAT_MODES);
 
-    let mut charm_num = resolve_numeric_svar(game, sa, "CharmNum", 1).max(0) as usize;
+    let mut charm_num = resolve_numeric_svar(game, sa, keys::CHARM_NUM, 1).max(0) as usize;
     let min_charm_num =
-        resolve_numeric_svar(game, sa, "MinCharmNum", charm_num as i32).max(0) as usize;
+        resolve_numeric_svar(game, sa, keys::MIN_CHARM_NUM, charm_num as i32).max(0) as usize;
     if has_escalate {
         charm_num = mode_texts.len();
     }
@@ -230,7 +229,7 @@ pub fn make_choices_precast(
     let pre_selected = game.card_mut(source_id).chosen_modes.take();
     let chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
         pre
-    } else if sa.params.contains_key("Entwine") || (has_entwine && sa.kicked) {
+    } else if sa.params.has(keys::ENTWINE) || (has_entwine && sa.kicked) {
         valid_mode_indices.clone()
     } else {
         let card_name = game.card(source_id).card_name.clone();
@@ -279,8 +278,8 @@ pub(crate) fn can_make_choices_precast(
     source_id: crate::ids::CardId,
     charm_sa_text: &str,
 ) -> bool {
-    let sa_params = parse_pipe_params(charm_sa_text);
-    let Some(choices_str) = sa_params.get("Choices") else {
+    let sa_params = Params::from_raw(charm_sa_text);
+    let Some(choices_str) = sa_params.get(keys::CHOICES) else {
         return true;
     };
 
@@ -299,7 +298,7 @@ pub(crate) fn can_make_choices_precast(
     }
 
     let mut charm_num: usize = sa_params
-        .get("CharmNum")
+        .get(keys::CHARM_NUM)
         .and_then(|s| {
             s.parse().ok().or_else(|| {
                 // If not a plain integer, try resolving as an SVar from the source card.
@@ -311,7 +310,7 @@ pub(crate) fn can_make_choices_precast(
         })
         .unwrap_or(1);
     let min_charm_num: usize = sa_params
-        .get("MinCharmNum")
+        .get(keys::MIN_CHARM_NUM)
         .and_then(|s| {
             s.parse().ok().or_else(|| {
                 game.card(source_id)
@@ -321,7 +320,7 @@ pub(crate) fn can_make_choices_precast(
             })
         })
         .unwrap_or(charm_num);
-    let can_repeat = sa_params.contains_key("CanRepeatModes");
+    let can_repeat = sa_params.has(keys::CAN_REPEAT_MODES);
 
     let valid_count = mode_texts
         .iter()

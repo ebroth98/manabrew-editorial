@@ -12,6 +12,7 @@ use super::super::{
 use crate::card::CardInstance;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::parse_static_ability;
 
@@ -135,8 +136,8 @@ pub(super) fn resolve_destination(
     let lib_position = sa.library_position().unwrap_or("").to_string();
     if let Some(alt_dest_str) = sa.destination_alternative() {
         if let Some(alt_zone) = parse_zone_type(alt_dest_str) {
-            let alt_lib_pos = sa.params.get("LibraryPositionAlternative")
-                .map(|s| s.as_str()).unwrap_or("0").to_string();
+            let alt_lib_pos = sa.params.get(keys::LIBRARY_POSITION_ALTERNATIVE)
+                .unwrap_or("0").to_string();
             let chooser = sa.activating_player;
             ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
             let options = vec![format!("{:?}", dest_zone), format!("{:?}", alt_zone)];
@@ -210,7 +211,7 @@ pub(super) fn apply_pre_move(
         }
 
         // AttachedToPlayer$ — Curses
-        if let Some(atp_def) = sa.params.get("AttachedToPlayer") {
+        if let Some(atp_def) = sa.params.get(keys::ATTACHED_TO_PLAYER) {
             let players = resolve_defined_players(atp_def, sa.activating_player, ctx.game);
             if players.is_empty() { return false; }
         }
@@ -236,7 +237,7 @@ pub(super) fn apply_post_move(
     if sa.is_imprint() {
         if let Some(sid) = sa.source {
             let cm = ctx.game.card_mut(sid);
-            if sa.param_is_true("ImprintLast") { cm.imprinted_cards.clear(); }
+            if sa.param_is_true(keys::IMPRINT_LAST) { cm.imprinted_cards.clear(); }
             cm.imprinted_cards.push(card_id);
         }
     }
@@ -254,10 +255,10 @@ pub(super) fn apply_post_move(
     if dest_zone == ZoneType::Battlefield {
         if sa.is_tapped() { ctx.game.tap(card_id); }
         if sa.is_gain_control() { ctx.game.card_mut(card_id).controller = controller; }
-        if sa.param_is_true("Ninjutsu") {
+        if sa.param_is_true(keys::NINJUTSU) {
             ctx.game.card_mut(card_id).attacking_player = Some(ctx.game.opponent_of(controller));
         }
-        if sa.param_is_true("Unearth") {
+        if sa.param_is_true(keys::UNEARTH) {
             ctx.game.card_mut(card_id).pump_keywords.push("Haste".to_string());
             ctx.game.card_mut(card_id).summoning_sick = false;
             ctx.game.card_mut(card_id).unearthed = true;
@@ -267,7 +268,7 @@ pub(super) fn apply_post_move(
                 controller, source_card: card_id, target_card: Some(card_id), remembered_amount: 0,
             });
         }
-        if sa.param_is_true("Attacking") {
+        if sa.param_is_true(keys::ATTACKING) {
             ctx.game.card_mut(card_id).attacking_player = Some(ctx.game.opponent_of(controller));
         }
         if let Some(ct_str) = sa.with_counters_type() {
@@ -276,7 +277,7 @@ pub(super) fn apply_post_move(
         ctx.trigger_handler.register_active_trigger(ctx.game, card_id);
 
         // AttachAfter$
-        if let Some(attach_def) = sa.params.get("AttachAfter") {
+        if let Some(attach_def) = sa.params.get(keys::ATTACH_AFTER) {
             let valid: Vec<CardId> = battlefield_card_ids(ctx).into_iter()
                 .filter(|&cid| cid != card_id && matches_change_type(ctx.game.card(cid), attach_def, &[]))
                 .collect();
@@ -301,7 +302,7 @@ pub(super) fn apply_post_move(
                 // when the host leaves. Permanent exile (like Stalking Leonin) should NOT
                 // set exiled_by, otherwise the SBA code will incorrectly return the card
                 // when the source leaves play.
-                let has_return_duration = sa.params.get("Duration").map_or(false, |d|
+                let has_return_duration = sa.params.get(keys::DURATION).map_or(false, |d|
                     d.eq_ignore_ascii_case("UntilHostLeavesPlay")
                     || d.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT")
                     || d.eq_ignore_ascii_case("UntilYourNextTurn")
@@ -321,21 +322,21 @@ pub(super) fn apply_post_move(
             card: Some(card_id), origin: Some(old_zone), destination: Some(dest_zone), ..Default::default()
         }, false);
 
-        if sa.param_is_true("Foretold") {
+        if sa.param_is_true(keys::FORETOLD) {
             ctx.game.card_mut(card_id).foretold = true;
-            if sa.param_is_true("ForetoldCost") { ctx.game.card_mut(card_id).foretold_cost_by_effect = true; }
+            if sa.param_is_true(keys::FORETOLD_COST) { ctx.game.card_mut(card_id).foretold_cost_by_effect = true; }
         }
 
         // Warp keyword
-        let is_warp = sa.params.contains_key("Warp")
+        let is_warp = sa.params.has(keys::WARP)
             || (sa.trigger_source.is_some() && ctx.game.card(card_id).keywords.iter().any(|k| k.eq_ignore_ascii_case("Warp")));
         if is_warp { create_warp_effect(ctx, sa, card_id); }
     }
 
-    if sa.param_is_true("TrackDiscarded") { ctx.game.card_mut(card_id).discarded = true; }
+    if sa.param_is_true(keys::TRACK_DISCARDED) { ctx.game.card_mut(card_id).discarded = true; }
 
     // Champion$
-    if sa.param_is_true("Champion") {
+    if sa.param_is_true(keys::CHAMPION) {
         ctx.trigger_handler.run_trigger(TriggerType::ChangesZone, RunParams {
             card: Some(card_id), origin: Some(old_zone), destination: Some(dest_zone),
             player: Some(controller), ..Default::default()
@@ -343,7 +344,7 @@ pub(super) fn apply_post_move(
     }
 
     // WithNotedCounters$
-    if sa.param_is_true("WithNotedCounters") {
+    if sa.param_is_true(keys::WITH_NOTED_COUNTERS) {
         if let Some(sid) = sa.source {
             let noted = ctx.game.card(sid).remembered_cmc.clone();
             let amount: i32 = noted.iter().sum();

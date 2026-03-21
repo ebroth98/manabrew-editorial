@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -69,13 +70,13 @@ fn any_common(
             }) {
                 continue;
             }
-            if let Some(for_cost) = st_ab.params.get("ForCost") {
+            if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
                 if for_cost.eq_ignore_ascii_case("True") != is_cost {
                     continue;
                 }
             }
             if !matches_valid_player(
-                st_ab.params.get("ValidPlayer").map(String::as_str),
+                st_ab.params.get(keys::VALID_PLAYER),
                 player,
                 card.controller,
             ) {

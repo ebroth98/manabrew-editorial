@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn must_attack(cards: &[CardInstance], attacker: &CardInstance) -> bool {
@@ -11,7 +12,7 @@ pub fn must_attack(cards: &[CardInstance], attacker: &CardInstance) -> bool {
             .filter(|sa| sa.mode == StaticMode::MustAttack)
         {
             if matches_valid_creature(
-                st_ab.params.get("ValidCreature").map(String::as_str),
+                st_ab.params.get(keys::VALID_CREATURE),
                 attacker,
                 source,
             ) {

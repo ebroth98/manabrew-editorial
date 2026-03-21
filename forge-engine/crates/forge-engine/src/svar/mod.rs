@@ -15,6 +15,7 @@
 use crate::card::filter_constants as fc;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::compare::compare_expr;
 use crate::spellability::SpellAbility;
 
 /// Resolve a numeric parameter from a SpellAbility, expanding SVar references.
@@ -397,31 +398,7 @@ pub fn resolve_count_svar_for_sa(
 
                 // Parse operator + threshold from cond_parts[0], e.g. "GE1"
                 let cond = cond_parts[0];
-                let (op, threshold) = if let Some(t) = cond.strip_prefix("GE") {
-                    ("GE", t.parse::<i32>().unwrap_or(0))
-                } else if let Some(t) = cond.strip_prefix("GT") {
-                    ("GT", t.parse::<i32>().unwrap_or(0))
-                } else if let Some(t) = cond.strip_prefix("LE") {
-                    ("LE", t.parse::<i32>().unwrap_or(0))
-                } else if let Some(t) = cond.strip_prefix("LT") {
-                    ("LT", t.parse::<i32>().unwrap_or(0))
-                } else if let Some(t) = cond.strip_prefix("EQ") {
-                    ("EQ", t.parse::<i32>().unwrap_or(0))
-                } else if let Some(t) = cond.strip_prefix("NE") {
-                    ("NE", t.parse::<i32>().unwrap_or(0))
-                } else {
-                    ("GE", 0)
-                };
-
-                let result = match op {
-                    "GE" => svar_val >= threshold,
-                    "GT" => svar_val > threshold,
-                    "LE" => svar_val <= threshold,
-                    "LT" => svar_val < threshold,
-                    "EQ" => svar_val == threshold,
-                    "NE" => svar_val != threshold,
-                    _ => false,
-                };
+                let result = compare_expr(svar_val, cond);
 
                 let if_true = cond_parts[1].parse::<i32>().unwrap_or(0);
                 let if_false = cond_parts[2].parse::<i32>().unwrap_or(0);
@@ -529,29 +506,5 @@ fn check_counter_qualifier(card: &crate::card::CardInstance, qual: &str) -> bool
     let counter_type = crate::ability::effects::parse_counter_type(parts[1]);
     let count = *card.counters.get(&counter_type).unwrap_or(&0);
 
-    let (op, threshold) = if let Some(t) = cond.strip_prefix("GE") {
-        ("GE", t.parse::<i32>().unwrap_or(0))
-    } else if let Some(t) = cond.strip_prefix("GT") {
-        ("GT", t.parse::<i32>().unwrap_or(0))
-    } else if let Some(t) = cond.strip_prefix("LE") {
-        ("LE", t.parse::<i32>().unwrap_or(0))
-    } else if let Some(t) = cond.strip_prefix("LT") {
-        ("LT", t.parse::<i32>().unwrap_or(0))
-    } else if let Some(t) = cond.strip_prefix("EQ") {
-        ("EQ", t.parse::<i32>().unwrap_or(0))
-    } else if let Some(t) = cond.strip_prefix("NE") {
-        ("NE", t.parse::<i32>().unwrap_or(0))
-    } else {
-        return true;
-    };
-
-    match op {
-        "GE" => count >= threshold,
-        "GT" => count > threshold,
-        "LE" => count <= threshold,
-        "LT" => count < threshold,
-        "EQ" => count == threshold,
-        "NE" => count != threshold,
-        _ => true,
-    }
+    compare_expr(count, cond)
 }

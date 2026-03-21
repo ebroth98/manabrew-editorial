@@ -3,6 +3,7 @@ use forge_foundation::ZoneType;
 
 use super::{mana_atom_from_produced, EffectContext};
 use crate::mana::{color_name_to_mana_atom, Mana};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Resolve DB$ ManaReflected — produce mana of a color/type that reflects other cards.
@@ -22,18 +23,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let reflect_property = sa
         .params
-        .get("ReflectProperty")
-        .cloned()
+        .get(keys::REFLECT_PROPERTY)
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Is".to_string());
     let color_or_type = sa
         .params
-        .get("ColorOrType")
-        .cloned()
+        .get(keys::COLOR_OR_TYPE)
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Color".to_string());
     let valid = sa
         .params
-        .get("Valid")
-        .cloned()
+        .get(keys::VALID)
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Card".to_string());
 
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1);
@@ -54,7 +55,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Read metadata from the ability
-    let restriction = sa.params.get("RestrictValid").cloned();
+    let restriction = sa.params.get(keys::RESTRICT_VALID).map(|s| s.to_string());
     let source_is_snow = ctx.game.card(source_id).type_line.is_snow();
 
     // Sort available colors in WUBRG(C) order to match Java's ColorSet iteration.
@@ -197,7 +198,7 @@ fn get_colors_from_mana_abilities(
             if !ab.is_mana_ability {
                 continue;
             }
-            if let Some(produced) = ab.params.get("Produced") {
+            if let Some(produced) = ab.params.get(keys::PRODUCED) {
                 // Parse produced colors
                 for tok in produced.replace(',', " ").split_whitespace() {
                     let lower = tok.to_lowercase();
@@ -262,7 +263,7 @@ fn get_colors_from_produced(sa: &SpellAbility, color_or_type: &str) -> Vec<u16> 
     let mut colors = Vec::new();
 
     // Check if there's a Produced$ on the SA itself
-    if let Some(produced) = sa.params.get("Produced") {
+    if let Some(produced) = sa.params.get(keys::PRODUCED) {
         for tok in produced.replace(',', " ").split_whitespace() {
             if let Some(atom) = mana_atom_from_produced(tok) {
                 if !colors.contains(&atom) {

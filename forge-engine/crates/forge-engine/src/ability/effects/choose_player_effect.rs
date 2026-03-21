@@ -1,4 +1,5 @@
 use super::{resolve_defined_players, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ ChoosePlayer` — the activating player chooses a player.
@@ -14,12 +15,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let defined = sa
         .params
-        .get("Defined")
-        .map(|s| s.as_str())
+        .get(keys::DEFINED)
         .unwrap_or("You");
     let choosers = resolve_defined_players(defined, controller, ctx.game);
 
-    let valid_players: Vec<_> = if let Some(choices) = sa.params.get("Choices") {
+    let valid_players: Vec<_> = if let Some(choices) = sa.params.get(keys::CHOICES) {
         resolve_defined_players(choices, controller, ctx.game)
             .into_iter()
             .filter(|&pid| ctx.game.player(pid).is_alive())
@@ -48,9 +48,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 source.chosen_player_controller = Some(chooser);
                 source.chosen_player_revealed = !sa
                     .params
-                    .get("Secretly")
-                    .map(|v| v.eq_ignore_ascii_case("True"))
-                    .unwrap_or(false);
+                    .is_true(keys::SECRETLY);
             }
         }
     }

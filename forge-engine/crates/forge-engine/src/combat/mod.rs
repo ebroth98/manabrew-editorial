@@ -12,6 +12,7 @@ use crate::agent::PlayerAgent;
 use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::staticability::static_ability::StaticMode;
 
 /// Identifies the target of an attack: a player or a permanent (planeswalker/battle).
@@ -1245,7 +1246,7 @@ fn cant_block_by(game: &GameState, attacker_id: CardId, blocker_id: CardId) -> b
             }
 
             // ValidAttacker$ — the attacker must match for this restriction to apply.
-            if let Some(valid_attacker) = sa.params.get("ValidAttacker") {
+            if let Some(valid_attacker) = sa.params.get(keys::VALID_ATTACKER) {
                 if !matches_valid_card(attacker, valid_attacker, source) {
                     continue;
                 }
@@ -1253,7 +1254,7 @@ fn cant_block_by(game: &GameState, attacker_id: CardId, blocker_id: CardId) -> b
 
             // ValidBlocker$ — if the blocker matches ANY comma-separated validator,
             // the restriction applies to this blocker.
-            if let Some(valid_blocker) = sa.params.get("ValidBlocker") {
+            if let Some(valid_blocker) = sa.params.get(keys::VALID_BLOCKER) {
                 let blocker_matches = valid_blocker
                     .split(',')
                     .any(|v| matches_valid_card(blocker, v.trim(), source));

@@ -3,6 +3,7 @@
 //! Mirrors Java `ReplaceGameLoss.java` in `forge/game/replacement/`.
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
 
@@ -25,12 +26,12 @@ pub fn can_replace(
         ReplacementEvent::GameLoss { player, reason } => (*player, *reason),
         _ => return false,
     };
-    if let Some(valid) = effect.params.get("ValidPlayer") {
+    if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
         if !matches_valid_player(valid, player, source_card) {
             return false;
         }
     }
-    if let Some(valid_reason) = effect.params.get("ValidLoseReason") {
+    if let Some(valid_reason) = effect.params.get(keys::VALID_LOSE_REASON) {
         let matches_reason = valid_reason.split(',').map(str::trim).any(|r| {
             r.eq_ignore_ascii_case(match reason {
                 GameLossReason::LifeReachedZero => "LifeReachedZero",

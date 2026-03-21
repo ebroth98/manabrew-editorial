@@ -1,4 +1,5 @@
 use super::{resolve_defined_players, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `ActivateAbilityEffect` for the common `ManaAbility$ True`
@@ -7,14 +8,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let defined = sa
         .params
-        .get("Defined")
-        .map(String::as_str)
+        .get(keys::DEFINED)
         .unwrap_or("You");
     let only_mana = sa
         .params
-        .get("ManaAbility")
-        .map_or(false, |v| v.eq_ignore_ascii_case("True"));
-    let type_filter = sa.params.get("Type").map(String::as_str).unwrap_or("Card");
+        .is_true(keys::MANA_ABILITY);
+    let type_filter = sa.params.get(keys::TYPE).unwrap_or("Card");
 
     let players = resolve_defined_players(defined, controller, ctx.game);
     for pid in players {
@@ -44,7 +43,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 // current engine scope, resolve the first legal mana ability.
                 let maybe_mana_ab = card.activated_abilities.iter().find(|ab| {
                     (!only_mana || ab.is_mana_ability)
-                        && ab.params.get("AB") == Some(&"Mana".to_string())
+                        && ab.params.get(keys::AB) == Some("Mana")
                 });
                 let Some(mana_ab) = maybe_mana_ab else {
                     continue;
@@ -54,7 +53,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     card.is_land(),
                     card.tapped,
                     card.chosen_colors.clone(),
-                    mana_ab.params.get("Produced").cloned(),
+                    mana_ab.params.get_cloned(keys::PRODUCED),
                     mana_ab.cost.has_tap,
                 )
             };

@@ -14,11 +14,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Some Replace effects store values for their replacement:
     if let Some(source_id) = sa.source {
-        if let Some(val) = sa.params.get("ReplaceWith") {
+        if let Some(val) = sa.params.get(crate::parsing::keys::REPLACE_WITH) {
             ctx.game
                 .card_mut(source_id)
                 .svars
-                .insert("ReplaceWith".to_string(), val.clone());
+                .insert("ReplaceWith".to_string(), val.to_string());
         }
     }
 }

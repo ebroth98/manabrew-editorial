@@ -19,7 +19,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let choices_filter = sa
         .params
         .get("Choices")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Permanent".to_string());
 
     let player_ids = ctx.game.player_order.clone();

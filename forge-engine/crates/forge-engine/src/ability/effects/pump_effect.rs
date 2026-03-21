@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_numeric_svar, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -13,7 +14,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Parse KW$ parameter for keyword grants (e.g. "KW$ Haste" or "KW$ Flying & Trample")
     let keywords: Vec<String> = sa
         .params
-        .get("KW")
+        .get(keys::KW)
         .map(|kw_str| {
             kw_str
                 .split('&')
@@ -25,7 +26,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Overload: apply pump to ALL valid creatures instead of the chosen target.
     if sa.overloaded {
-        let valid_tgts = sa.params.get("ValidTgts").cloned().unwrap_or_default();
+        let valid_tgts = sa.params.get(keys::VALID_TGTS).map(|s| s.to_string()).unwrap_or_default();
         let all_bf: Vec<crate::ids::CardId> = ctx
             .game
             .player_order

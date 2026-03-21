@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
@@ -7,6 +5,7 @@ use crate::card::valid_filter;
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::{keys, Params};
 
 /// Mirrors Java's abstract Trigger class.
 /// In Java, each TriggerType has a subclass (TriggerChangesZone, TriggerPhase, etc.)
@@ -16,7 +15,7 @@ pub struct Trigger {
     pub id: u32,
     pub mode: TriggerMode,
     /// Raw parsed parameters — mirrors Java's mapParams: Map<String,String>.
-    pub params: BTreeMap<String, String>,
+    pub params: Params,
     /// Zones where host card must be for trigger to be active.
     /// Default: [Battlefield].
     pub active_zones: Vec<ZoneType>,
@@ -1110,39 +1109,20 @@ fn parse_phase(s: &str) -> Option<PhaseType> {
     }
 }
 
-/// Mirrors the pipe-param parsing used throughout Java Forge.
-/// Parses "Key1$ Value1 | Key2$ Value2" into a BTreeMap.
-pub fn parse_pipe_params(raw: &str) -> BTreeMap<String, String> {
-    let mut map = BTreeMap::new();
-    for part in raw.split('|') {
-        let part = part.trim();
-        if let Some(idx) = part.find("$ ") {
-            let key = part[..idx].trim().to_string();
-            let value = part[idx + 2..].trim().to_string();
-            map.insert(key, value);
-        } else if let Some(idx) = part.find('$') {
-            let key = part[..idx].trim().to_string();
-            let value = part[idx + 1..].trim().to_string();
-            map.insert(key, value);
-        }
-    }
-    map
-}
-
 /// Mirrors Java's TriggerHandler.parseTrigger().
 /// Parses raw "Mode$ ChangesZone | Origin$ Any | ..." into Trigger struct.
 pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
-    let params = parse_pipe_params(raw);
+    let params = Params::from_raw(raw);
 
-    let mode_str = params.get("Mode")?;
-    let mode = match mode_str.as_str() {
+    let mode_str = params.get(keys::MODE)?;
+    let mode = match mode_str {
         "ChangesZone" => {
             let origin =
                 params
-                    .get("Origin")
+                    .get(keys::ORIGIN)
                     .and_then(|s| if s == "Any" { None } else { parse_zone(s) });
             let destination =
-                params.get("Destination").and_then(
+                params.get(keys::DESTINATION).and_then(
                     |s| {
                         if s == "Any" {
                             None
@@ -1151,7 +1131,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
                         }
                     },
                 );
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::ChangesZone {
                 origin,
                 destination,
@@ -1159,36 +1139,30 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "Phase" => {
-            let phase = params.get("Phase").and_then(|s| parse_phase(s));
-            let valid_player = params.get("ValidPlayer").cloned();
+            let phase = params.get(keys::PHASE).and_then(|s| parse_phase(s));
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::Phase {
                 phase,
                 valid_player,
             }
         }
         "SpellCast" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
             TriggerMode::SpellCast {
                 valid_card,
                 valid_activating_player,
             }
         }
         "Attacks" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let alone = params
-                .get("Alone")
-                .map(|s| s.eq_ignore_ascii_case("True"))
-                .unwrap_or(false);
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let alone = params.is_true(keys::ALONE);
             TriggerMode::Attacks { valid_card, alone }
         }
         "DamageDone" => {
-            let valid_source = params.get("ValidSource").cloned();
-            let valid_target = params.get("ValidTarget").cloned();
-            let combat_damage_only = params
-                .get("CombatDamage")
-                .map(|s| s.eq_ignore_ascii_case("True"))
-                .unwrap_or(false);
+            let valid_source = params.get_cloned(keys::VALID_SOURCE);
+            let valid_target = params.get_cloned(keys::VALID_TARGET);
+            let combat_damage_only = params.is_true(keys::COMBAT_DAMAGE);
             TriggerMode::DamageDone {
                 valid_source,
                 valid_target,
@@ -1196,9 +1170,9 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "Countered" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_cause = params.get("ValidCause").cloned();
-            let valid_sa = params.get("ValidSA").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_cause = params.get_cloned(keys::VALID_CAUSE);
+            let valid_sa = params.get_cloned(keys::VALID_SA);
             TriggerMode::Countered {
                 valid_card,
                 valid_cause,
@@ -1207,59 +1181,57 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         }
         // ── New trigger modes (issue #19) ──
         "Blocks" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_blocked = params.get("ValidBlocked").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_blocked = params.get_cloned(keys::VALID_BLOCKED);
             TriggerMode::Blocks {
                 valid_card,
                 valid_blocked,
             }
         }
         "AttackerBlocked" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::AttackerBlocked { valid_card }
         }
         "AttackerUnblocked" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::AttackerUnblocked { valid_card }
         }
         "LifeGained" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::LifeGained { valid_player }
         }
         "LifeLost" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::LifeLost { valid_player }
         }
         "CounterAdded" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let counter_type = params.get("CounterType").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let counter_type = params.get_cloned(keys::COUNTER_TYPE);
             TriggerMode::CounterAdded {
                 valid_card,
                 counter_type,
             }
         }
         "CounterRemoved" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let counter_type = params.get("CounterType").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let counter_type = params.get_cloned(keys::COUNTER_TYPE);
             TriggerMode::CounterRemoved {
                 valid_card,
                 counter_type,
             }
         }
         "Sacrificed" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::Sacrificed {
                 valid_card,
                 valid_player,
             }
         }
         "Drawn" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_player = params.get("ValidPlayer").cloned();
-            let number = params
-                .get("Number")
-                .and_then(|s| s.trim().parse::<i32>().ok());
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let number = params.as_i32(keys::NUMBER);
             TriggerMode::Drawn {
                 valid_card,
                 valid_player,
@@ -1267,76 +1239,73 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "Milled" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::Milled {
                 valid_card,
                 valid_player,
             }
         }
         "Taps" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Taps { valid_card }
         }
         "Untaps" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Untaps { valid_card }
         }
         "Transformed" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Transformed { valid_card }
         }
         "TurnFaceUp" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::TurnFaceUp { valid_card }
         }
         "Attached" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Attached { valid_card }
         }
         "Unattached" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Unattached { valid_card }
         }
         "LandPlayed" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::LandPlayed { valid_card }
         }
         "BecomesTarget" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::BecomesTarget { valid_card }
         }
         "TapsForMana" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::TapsForMana { valid_card }
         }
         "AbilityActivated" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
             TriggerMode::AbilityActivated {
                 valid_card,
                 valid_activating_player,
             }
         }
         "Explored" | "Explores" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Explored { valid_card }
         }
         "BecomeMonstrous" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::BecomeMonstrous { valid_card }
         }
         "BecomeMonarch" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::BecomeMonarch { valid_player }
         }
         "DamageDealtOnce" => {
-            let valid_source = params.get("ValidSource").cloned();
-            let valid_target = params.get("ValidTarget").cloned();
-            let combat_damage_only = params
-                .get("CombatDamage")
-                .map(|s| s.eq_ignore_ascii_case("True"))
-                .unwrap_or(false);
+            let valid_source = params.get_cloned(keys::VALID_SOURCE);
+            let valid_target = params.get_cloned(keys::VALID_TARGET);
+            let combat_damage_only = params.is_true(keys::COMBAT_DAMAGE);
             TriggerMode::DamageDealtOnce {
                 valid_source,
                 valid_target,
@@ -1344,41 +1313,41 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "Destroyed" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Destroyed { valid_card }
         }
         "Exiled" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Exiled { valid_card }
         }
         "CollectEvidence" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::CollectEvidence { valid_player }
         }
         "Forage" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::Forage { valid_player }
         }
         "Enlisted" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_enlisted = params.get("ValidEnlisted").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_enlisted = params.get_cloned(keys::VALID_ENLISTED);
             TriggerMode::Enlisted {
                 valid_card,
                 valid_enlisted,
             }
         }
         "FlippedCoin" => {
-            let valid_player = params.get("ValidPlayer").cloned();
-            let valid_result = params.get("ValidResult").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let valid_result = params.get_cloned(keys::VALID_RESULT);
             TriggerMode::FlippedCoin {
                 valid_player,
                 valid_result,
             }
         }
         "RolledDie" => {
-            let valid_player = params.get("ValidPlayer").cloned();
-            let valid_result = params.get("ValidResult").cloned();
-            let valid_sides = params.get("ValidSides").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let valid_result = params.get_cloned(keys::VALID_RESULT);
+            let valid_sides = params.get_cloned(keys::VALID_SIDES);
             TriggerMode::RolledDie {
                 valid_player,
                 valid_result,
@@ -1386,9 +1355,9 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "RolledDieOnce" => {
-            let valid_player = params.get("ValidPlayer").cloned();
-            let valid_result = params.get("ValidResult").cloned();
-            let valid_sides = params.get("ValidSides").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
+            let valid_result = params.get_cloned(keys::VALID_RESULT);
+            let valid_sides = params.get_cloned(keys::VALID_SIDES);
             TriggerMode::RolledDieOnce {
                 valid_player,
                 valid_result,
@@ -1396,22 +1365,22 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "TokenCreated" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::TokenCreated { valid_card }
         }
         // SpellCastOrCopy: used by Magecraft — fires on both cast and copy.
         // We treat it as SpellCast here; the caller can duplicate it as SpellCopied.
         "SpellCastOrCopy" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
             TriggerMode::SpellCast {
                 valid_card,
                 valid_activating_player,
             }
         }
         "SpellCopied" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
             TriggerMode::SpellCopied {
                 valid_card,
                 valid_activating_player,
@@ -1420,11 +1389,11 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         // ── New trigger modes (issue #54) ──
         "AttackersDeclared" => {
             let valid_player = params
-                .get("AttackingPlayer")
-                .or_else(|| params.get("ValidPlayer"))
-                .cloned();
-            let valid_attackers = params.get("ValidAttackers").cloned();
-            let valid_attackers_amount = params.get("ValidAttackersAmount").cloned();
+                .get(keys::ATTACKING_PLAYER)
+                .or_else(|| params.get(keys::VALID_PLAYER))
+                .map(|s| s.to_string());
+            let valid_attackers = params.get_cloned(keys::VALID_ATTACKERS);
+            let valid_attackers_amount = params.get_cloned(keys::VALID_ATTACKERS_AMOUNT);
             TriggerMode::AttackersDeclared {
                 valid_player,
                 valid_attackers,
@@ -1435,16 +1404,16 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         "ChangesZoneAll" => {
             let origin =
                 params
-                    .get("Origin")
+                    .get(keys::ORIGIN)
                     .and_then(|s| if s == "Any" { None } else { parse_zone(s) });
             let destination =
                 params
-                    .get("Destination")
+                    .get(keys::DESTINATION)
                     .and_then(|s| if s == "Any" { None } else { parse_zone(s) });
             let valid_card = params
-                .get("ValidCards")
-                .or_else(|| params.get("ValidCard"))
-                .cloned();
+                .get(keys::VALID_CARDS)
+                .or_else(|| params.get(keys::VALID_CARD))
+                .map(|s| s.to_string());
             TriggerMode::ChangesZoneAll {
                 origin,
                 destination,
@@ -1452,20 +1421,17 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "ChangesController" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::ChangesController { valid_card }
         }
         "TurnBegin" | "NewTurn" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::TurnBegin { valid_player }
         }
         "DamageDoneOnce" => {
-            let valid_source = params.get("ValidSource").cloned();
-            let valid_target = params.get("ValidTarget").cloned();
-            let combat_damage_only = params
-                .get("CombatDamage")
-                .map(|s| s.eq_ignore_ascii_case("True"))
-                .unwrap_or(false);
+            let valid_source = params.get_cloned(keys::VALID_SOURCE);
+            let valid_target = params.get_cloned(keys::VALID_TARGET);
+            let combat_damage_only = params.is_true(keys::COMBAT_DAMAGE);
             TriggerMode::DamageDoneOnce {
                 valid_source,
                 valid_target,
@@ -1473,21 +1439,21 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "SpellCastAll" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
             TriggerMode::SpellCastAll {
                 valid_card,
                 valid_activating_player,
             }
         }
         "LifeLostAll" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::LifeLostAll { valid_player }
         }
         "CounterAddedOnce" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let counter_type = params.get("CounterType").cloned();
-            let valid_source = params.get("ValidSource").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let counter_type = params.get_cloned(keys::COUNTER_TYPE);
+            let valid_source = params.get_cloned(keys::VALID_SOURCE);
             TriggerMode::CounterAddedOnce {
                 valid_card,
                 counter_type,
@@ -1495,152 +1461,151 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "DiscardedAll" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::DiscardedAll {
                 valid_card,
                 valid_player,
             }
         }
         "SacrificedOnce" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::SacrificedOnce {
                 valid_card,
                 valid_player,
             }
         }
         "Cycled" | "Cycling" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::Cycled {
                 valid_card,
                 valid_player,
             }
         }
         "PhasedIn" | "PhaseIn" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::PhasedIn { valid_card }
         }
         "PhasedOut" | "PhaseOut" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::PhasedOut { valid_card }
         }
         "Always" => TriggerMode::Always,
         "Immediate" => TriggerMode::Immediate,
         "Surveil" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::Surveil { valid_player }
         }
         "Scry" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::Scry { valid_player }
         }
         "Foretell" | "Foretold" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Foretell { valid_card }
         }
         "SearchedLibrary" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::SearchedLibrary { valid_player }
         }
         "Shuffled" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::Shuffled { valid_player }
         }
         "ManaAdded" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::ManaAdded { valid_card }
         }
         "TokenCreatedOnce" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::TokenCreatedOnce { valid_card }
         }
         "TapAll" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::TapAll { valid_card }
         }
         "UntapAll" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::UntapAll { valid_card }
         }
         "BecomesTargetOnce" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::BecomesTargetOnce { valid_card }
         }
         "AttackerBlockedByCreature" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_blocked = params.get("ValidBlocked").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_blocked = params.get_cloned(keys::VALID_BLOCKED);
             TriggerMode::AttackerBlockedByCreature {
                 valid_card,
                 valid_blocked,
             }
         }
         "AttackerBlockedOnce" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::AttackerBlockedOnce { valid_card }
         }
         "AttackerUnblockedOnce" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::AttackerUnblockedOnce { valid_card }
         }
         "SpellCastOnce" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
             TriggerMode::SpellCastOnce {
                 valid_card,
                 valid_activating_player,
             }
         }
         "SpellCastOfType" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_activating_player = params.get("ValidActivatingPlayer").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_activating_player = params.get_cloned(keys::VALID_ACTIVATING_PLAYER);
             TriggerMode::SpellCastOfType {
                 valid_card,
                 valid_activating_player,
             }
         }
         "DamageAll" => {
-            let valid_source = params.get("ValidSource").cloned();
-            let valid_target = params.get("ValidTarget").cloned();
+            let valid_source = params.get_cloned(keys::VALID_SOURCE);
+            let valid_target = params.get_cloned(keys::VALID_TARGET);
             TriggerMode::DamageAll {
                 valid_source,
                 valid_target,
             }
         }
         "DamagePreventedOnce" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::DamagePreventedOnce { valid_card }
         }
         "ExcessDamage" => {
-            let valid_source = params.get("ValidSource").cloned();
-            let valid_target = params.get("ValidTarget").cloned();
+            let valid_source = params.get_cloned(keys::VALID_SOURCE);
+            let valid_target = params.get_cloned(keys::VALID_TARGET);
             TriggerMode::ExcessDamage {
                 valid_source,
                 valid_target,
             }
         }
         "LifeGainedAll" => {
-            let valid_player = params.get("ValidPlayer").cloned();
+            let valid_player = params.get_cloned(keys::VALID_PLAYER);
             TriggerMode::LifeGainedAll { valid_player }
         }
         "CounterRemovedOnce" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let counter_type = params.get("CounterType").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let counter_type = params.get_cloned(keys::COUNTER_TYPE);
             TriggerMode::CounterRemovedOnce {
                 valid_card,
                 counter_type,
             }
         }
         "Exerted" => {
-            let valid_card = params.get("ValidCard").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
             TriggerMode::Exerted { valid_card }
         }
         "ManaExpend" => {
-            let valid_player = params.get("Player").cloned();
+            let valid_player = params.get_cloned(keys::PLAYER);
             let amount = params
-                .get("Amount")
-                .and_then(|s| s.parse().ok())
+                .as_i32(keys::AMOUNT)
                 .unwrap_or(1);
             TriggerMode::ManaExpend {
                 valid_player,
@@ -1648,8 +1613,8 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             }
         }
         "Exploited" => {
-            let valid_card = params.get("ValidCard").cloned();
-            let valid_source = params.get("ValidSource").cloned();
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            let valid_source = params.get_cloned(keys::VALID_SOURCE);
             TriggerMode::Exploited {
                 valid_card,
                 valid_source,
@@ -1660,7 +1625,7 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
 
     // Parse active zones (default: Battlefield)
     let active_zones = params
-        .get("TriggerZones")
+        .get(keys::TRIGGER_ZONES)
         .map(|s| {
             s.split(',')
                 .filter_map(|z| parse_zone(z.trim()))
@@ -1668,11 +1633,10 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
         })
         .unwrap_or_else(|| vec![ZoneType::Battlefield]);
 
-    let execute = params.get("Execute").cloned().unwrap_or_default();
-    let optional = params.contains_key("OptionalDecider");
+    let execute = params.get_cloned(keys::EXECUTE).unwrap_or_default();
+    let optional = params.has(keys::OPTIONAL_DECIDER);
     let description = params
-        .get("TriggerDescription")
-        .cloned()
+        .get_cloned(keys::TRIGGER_DESCRIPTION)
         .unwrap_or_default();
 
     let id = *next_id;
@@ -1696,12 +1660,12 @@ mod tests {
 
     #[test]
     fn parse_pipe_params_basic() {
-        let params = parse_pipe_params("Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw");
-        assert_eq!(params.get("Mode").unwrap(), "ChangesZone");
-        assert_eq!(params.get("Origin").unwrap(), "Any");
-        assert_eq!(params.get("Destination").unwrap(), "Battlefield");
-        assert_eq!(params.get("ValidCard").unwrap(), "Card.Self");
-        assert_eq!(params.get("Execute").unwrap(), "TrigDraw");
+        let params = Params::from_raw("Mode$ ChangesZone | Origin$ Any | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigDraw");
+        assert_eq!(params.get("Mode"), Some("ChangesZone"));
+        assert_eq!(params.get("Origin"), Some("Any"));
+        assert_eq!(params.get("Destination"), Some("Battlefield"));
+        assert_eq!(params.get("ValidCard"), Some("Card.Self"));
+        assert_eq!(params.get("Execute"), Some("TrigDraw"));
     }
 
     #[test]

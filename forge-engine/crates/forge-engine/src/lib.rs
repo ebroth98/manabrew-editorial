@@ -17,6 +17,7 @@ pub mod ids;
 pub mod lki;
 pub mod mana;
 pub mod mulligan;
+pub mod parsing;
 pub mod phase;
 pub mod player;
 pub mod replacement;

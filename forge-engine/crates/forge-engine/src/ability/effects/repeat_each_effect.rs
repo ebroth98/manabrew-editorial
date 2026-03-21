@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards, parse_zone_type, resolve_defined_players, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, SpellAbility};
 
 /// `SP$ RepeatEach` — loop a sub-ability over cards or players.
@@ -21,8 +22,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
     // Get the sub-ability SVar name
-    let sub_svar_name = match sa.params.get("RepeatSubAbility") {
-        Some(name) => name.clone(),
+    let sub_svar_name = match sa.params.get_cloned(keys::REPEAT_SUB_ABILITY) {
+        Some(name) => name,
         None => return,
     };
 
@@ -33,11 +34,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     // Determine iteration mode: cards or players
-    if let Some(repeat_cards_filter) = sa.params.get("RepeatCards").cloned() {
+    if let Some(repeat_cards_filter) = sa.params.get_cloned(keys::REPEAT_CARDS) {
         // Card iteration path
         let zone = sa
             .params
-            .get("Zone")
+            .get(keys::ZONE)
             .and_then(|s| parse_zone_type(s))
             .unwrap_or(ZoneType::Battlefield);
 
@@ -71,7 +72,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         // Clean up remembered cards
         ctx.game.card_mut(source_id).remembered_cards.clear();
-    } else if let Some(repeat_players) = sa.params.get("RepeatPlayers").cloned() {
+    } else if let Some(repeat_players) = sa.params.get_cloned(keys::REPEAT_PLAYERS) {
         // Player iteration path
         let players = resolve_defined_players(&repeat_players, controller, ctx.game);
 

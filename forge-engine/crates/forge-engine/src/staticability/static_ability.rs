@@ -10,13 +10,13 @@
 //! S$ Mode$ CantAttack | Affected$ Creature.YouControl | Description$ Creatures you control can't attack.
 //! ```
 
-use std::collections::BTreeMap;
-
 use forge_foundation::ColorSet;
 use serde::{Deserialize, Serialize};
 
 use crate::card::CardInstance;
 use crate::game::GameState;
+use crate::parsing::Params;
+use crate::parsing::keys;
 
 // ── Mode ────────────────────────────────────────────────────────────────────
 
@@ -138,9 +138,9 @@ pub enum Layer {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StaticAbility {
     pub mode: StaticMode,
-    /// Raw key→value pairs parsed from the pipe-separated script line.
+    /// Parsed key→value parameters from the pipe-separated script line.
     /// Keys do NOT include the trailing `$`.
-    pub params: BTreeMap<String, String>,
+    pub params: Params,
 }
 
 impl StaticAbility {
@@ -154,17 +154,17 @@ impl StaticAbility {
         }
         // Presence of specific params determines the layer (mirrors Java
         // `StaticAbilityContinuous.getLayer()`).
-        if self.params.contains_key("AddPower") || self.params.contains_key("AddToughness") {
+        if self.params.has(keys::ADD_POWER) || self.params.has(keys::ADD_TOUGHNESS) {
             Some(Layer::ModifyPT)
-        } else if self.params.contains_key("SetPower") || self.params.contains_key("SetToughness") {
+        } else if self.params.has(keys::SET_POWER) || self.params.has(keys::SET_TOUGHNESS) {
             Some(Layer::SetPT)
-        } else if self.params.contains_key("AddKeyword") {
+        } else if self.params.has(keys::ADD_KEYWORD) {
             Some(Layer::Ability)
-        } else if self.params.contains_key("GainControl") {
+        } else if self.params.has(keys::GAIN_CONTROL) {
             Some(Layer::Control)
-        } else if self.params.contains_key("AddType") || self.params.contains_key("RemoveType") {
+        } else if self.params.has(keys::ADD_TYPE) || self.params.has(keys::REMOVE_TYPE) {
             Some(Layer::Type)
-        } else if self.params.contains_key("AddColor") {
+        } else if self.params.has(keys::ADD_COLOR) {
             Some(Layer::Color)
         } else {
             None
@@ -406,18 +406,10 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         return None;
     };
 
-    // Parse "|"-separated "Key$ Value" pairs.
-    let mut params: BTreeMap<String, String> = BTreeMap::new();
-    for segment in body.split('|') {
-        let seg = segment.trim();
-        if let Some(idx) = seg.find("$ ") {
-            let key = seg[..idx].trim().to_string();
-            let val = seg[idx + 2..].trim().to_string();
-            params.insert(key, val);
-        }
-    }
+    // Parse "|"-separated "Key$ Value" pairs using central parser.
+    let params = Params::from_raw(body);
 
-    let mode = match params.get("Mode").map(String::as_str) {
+    let mode = match params.get(keys::MODE) {
         Some("Continuous") => StaticMode::Continuous,
         Some("CantAttack") => StaticMode::CantAttack,
         Some("CantBlock") => StaticMode::CantBlock,
@@ -525,8 +517,8 @@ mod tests {
         let raw = "S$ Mode$ Continuous | Affected$ Creature.YouControl | AddPower$ 1 | AddToughness$ 1 | Description$ Creatures you control get +1/+1.";
         let sa = parse_static_ability(raw).expect("should parse");
         assert_eq!(sa.mode, StaticMode::Continuous);
-        assert_eq!(sa.params["AddPower"], "1");
-        assert_eq!(sa.params["AddToughness"], "1");
+        assert_eq!(sa.params.get("AddPower"), Some("1"));
+        assert_eq!(sa.params.get("AddToughness"), Some("1"));
         assert_eq!(sa.continuous_layer(), Some(Layer::ModifyPT));
     }
 
@@ -550,7 +542,7 @@ mod tests {
         let raw = "S$ Mode$ Continuous | Affected$ Creature.YouControl | AddKeyword$ Flying | Description$ Creatures you control have flying.";
         let sa = parse_static_ability(raw).expect("should parse");
         assert_eq!(sa.continuous_layer(), Some(Layer::Ability));
-        assert_eq!(sa.params["AddKeyword"], "Flying");
+        assert_eq!(sa.params.get("AddKeyword"), Some("Flying"));
     }
 
     #[test]

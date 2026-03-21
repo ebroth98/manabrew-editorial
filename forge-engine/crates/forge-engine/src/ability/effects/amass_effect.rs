@@ -7,6 +7,7 @@
 //! If the Army isn't a {Type}, it becomes a {Type} in addition to its other types.
 
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+use crate::parsing::keys;
 
 use super::{emit_zone_trigger, parse_counter_type, EffectContext};
 use crate::card::CardInstance;
@@ -21,7 +22,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let amass_type = sa
         .params
         .get("Type")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Zombie".to_string());
 
     // Step 1: If no Army on battlefield, create one
@@ -72,7 +73,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     // RememberAmass$
-    if sa.param_is_true("RememberAmass") {
+    if sa.param_is_true(keys::REMEMBER_AMASS) {
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).add_remembered_card(target);
         }

@@ -19,7 +19,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let filter = sa
         .params
         .get("Valid")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Card".to_string());
 
     let zone = sa

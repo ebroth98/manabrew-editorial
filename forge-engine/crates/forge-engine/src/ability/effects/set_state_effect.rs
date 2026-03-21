@@ -1,5 +1,6 @@
 use super::EffectContext;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -13,7 +14,7 @@ use crate::spellability::SpellAbility;
 ///
 /// If the condition passes, transforms the source DFC card to its other face.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let mode = sa.params.get("Mode").map(String::as_str).unwrap_or("");
+    let mode = sa.params.get(keys::MODE).unwrap_or("");
 
     let source_id = match sa.source {
         Some(id) => id,
@@ -23,17 +24,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     match mode {
         "Transform" => {
             // Evaluate optional condition.
-            if let Some(cond_defined) = sa.params.get("ConditionDefined") {
+            if let Some(cond_defined) = sa.params.get(keys::CONDITION_DEFINED) {
                 if cond_defined.eq_ignore_ascii_case("Remembered") {
                     let cond_present = sa
                         .params
-                        .get("ConditionPresent")
-                        .cloned()
+                        .get(keys::CONDITION_PRESENT)
+                        .map(|s| s.to_string())
                         .unwrap_or_default();
                     let cond_compare = sa
                         .params
-                        .get("ConditionCompare")
-                        .cloned()
+                        .get(keys::CONDITION_COMPARE)
+                        .map(|s| s.to_string())
                         .unwrap_or_default();
 
                     let remembered: Vec<CardId> = ctx.game.card(source_id).remembered_cards.clone();
@@ -100,7 +101,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     .retain(|ab| !ab.ability_text.contains("Mode$ TurnFaceUp"));
 
                 // Megamorph: add a +1/+1 counter when turning face-up
-                if sa.param_is_true("Mega") {
+                if sa.param_is_true(keys::MEGA) {
                     card.add_counter(&crate::card::CounterType::P1P1, 1);
                 }
 

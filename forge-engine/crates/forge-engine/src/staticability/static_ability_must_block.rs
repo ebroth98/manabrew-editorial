@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn blocks_each_combat_if_able(cards: &[CardInstance], creature: &CardInstance) -> bool {
@@ -11,7 +12,7 @@ pub fn blocks_each_combat_if_able(cards: &[CardInstance], creature: &CardInstanc
             .filter(|sa| sa.mode == StaticMode::MustBlock)
         {
             if matches_valid_creature(
-                st_ab.params.get("ValidCreature").map(String::as_str),
+                st_ab.params.get(keys::VALID_CREATURE),
                 creature,
                 source,
             ) {

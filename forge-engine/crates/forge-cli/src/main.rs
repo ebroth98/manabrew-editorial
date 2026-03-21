@@ -7,6 +7,7 @@ use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::parsing::keys;
 use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use rand::SeedableRng;
@@ -427,8 +428,7 @@ impl PlayerAgent for InteractiveAgent {
                 .activated_abilities
                 .iter()
                 .find(|a| a.ability_index == ab_idx)
-                .and_then(|a| a.params.get("SpellDescription"))
-                .map(|s| s.as_str())
+                .and_then(|a| a.params.get(keys::SPELL_DESCRIPTION))
                 .unwrap_or("Activate ability");
             println!(
                 "  {}{}{}: Activate {} - {}",

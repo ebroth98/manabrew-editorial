@@ -6,6 +6,7 @@ use crate::spellability::SpellAbility;
 use crate::staticability::parse_static_ability;
 
 use super::{resolve_defined_player, resolve_defined_players, EffectContext};
+use crate::parsing::keys;
 
 /// Mirrors Java's `EffectEffect` for static-ability effect cards in command.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -24,7 +25,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
     let static_refs: Vec<String> = sa
         .params
-        .get("StaticAbilities")
+        .get(keys::STATIC_ABILITIES)
         .map(|v| {
             v.split(',')
                 .map(str::trim)
@@ -38,16 +39,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    let duration = sa.params.get("Duration").map(String::as_str);
+    let duration = sa.params.get(keys::DURATION);
     let effect_name = sa
         .params
-        .get("Name")
-        .cloned()
+        .get_cloned(keys::NAME)
         .unwrap_or_else(|| format!("{} Effect", host_name));
     let effect_owner_defined = sa
         .params
-        .get("EffectOwner")
-        .map(String::as_str)
+        .get(keys::EFFECT_OWNER)
         .unwrap_or("You");
 
     let parsed_static_abilities = static_refs
@@ -112,7 +111,7 @@ fn apply_duration_flags(effect: &mut CardInstance, duration: Option<&str>, sourc
 fn apply_forget_on_moved_flags(effect: &mut CardInstance, sa: &SpellAbility) {
     if let Some(zone) = sa
         .params
-        .get("ForgetOnMoved")
+        .get(keys::FORGET_ON_MOVED)
         .and_then(|z| parse_zone_name(z))
     {
         effect.forget_on_moved_origin = Some(zone);
@@ -141,7 +140,7 @@ fn apply_remembered(
     host_remembered_cards: &[CardId],
     host_remembered_players: &[crate::ids::PlayerId],
 ) {
-    let Some(remember) = sa.params.get("RememberObjects").map(String::as_str) else {
+    let Some(remember) = sa.params.get(keys::REMEMBER_OBJECTS) else {
         return;
     };
     for token in remember.split(',').map(str::trim).filter(|s| !s.is_empty()) {

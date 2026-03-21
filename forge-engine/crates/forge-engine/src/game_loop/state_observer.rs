@@ -1,4 +1,5 @@
 use super::*;
+use crate::parsing::keys;
 
 impl GameLoop {
     pub(crate) fn notify_phase_changed(
@@ -180,7 +181,7 @@ fn compute_unspent_mana_colors(game: &GameState, player: crate::ids::PlayerId) -
                 continue;
             }
             // ValidPlayer$ — check if this affects the given player
-            if let Some(valid_player) = st_ab.params.get("ValidPlayer") {
+            if let Some(valid_player) = st_ab.params.get(keys::VALID_PLAYER) {
                 match valid_player.to_ascii_lowercase().as_str() {
                     "you" => {
                         if card.controller != player {
@@ -198,7 +199,7 @@ fn compute_unspent_mana_colors(game: &GameState, player: crate::ids::PlayerId) -
                 continue; // Default: controller only
             }
             // ManaType$ — specific color, or all if absent
-            if let Some(mana_type) = st_ab.params.get("ManaType") {
+            if let Some(mana_type) = st_ab.params.get(keys::MANA_TYPE) {
                 keep |= ManaAtom::from_name(&mana_type.to_ascii_lowercase());
             } else {
                 // All mana types
@@ -228,7 +229,7 @@ fn has_mana_burn(game: &GameState, player: crate::ids::PlayerId) -> bool {
             if st_ab.mode != StaticMode::ManaBurn {
                 continue;
             }
-            if let Some(valid_player) = st_ab.params.get("ValidPlayer") {
+            if let Some(valid_player) = st_ab.params.get(keys::VALID_PLAYER) {
                 match valid_player.to_ascii_lowercase().as_str() {
                     "you" => {
                         if card.controller != player {

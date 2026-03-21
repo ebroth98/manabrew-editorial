@@ -7,6 +7,7 @@
 //! The card can be turned face-up by paying its mana cost if it's a creature.
 
 use forge_foundation::ZoneType;
+use crate::parsing::keys;
 
 use super::{emit_zone_trigger, EffectContext};
 use crate::event::{RunParams, TriggerType};
@@ -43,7 +44,7 @@ fn manifest_for_player(
         // Default: top N cards of library
         let lib = ctx.game.cards_in_zone(ZoneType::Library, player).to_vec();
         lib.into_iter().rev().take(amount).collect()
-    } else if let Some(choice_zone_str) = sa.params.get("ChoiceZone") {
+    } else if let Some(choice_zone_str) = sa.params.get(crate::parsing::keys::CHOICE_ZONE) {
         // Player chooses from a specific zone
         let zone = super::parse_zone_type(choice_zone_str).unwrap_or(ZoneType::Hand);
         let zone_cards = ctx.game.cards_in_zone(zone, player).to_vec();
@@ -98,7 +99,7 @@ fn manifest_single_card(
         .register_active_trigger(ctx.game, card_id);
 
     // RememberManifested$
-    if sa.param_is_true("RememberManifested") {
+    if sa.param_is_true(keys::REMEMBER_MANIFESTED) {
         if let Some(source_id) = sa.source {
             ctx.game.card_mut(source_id).add_remembered_card(card_id);
         }

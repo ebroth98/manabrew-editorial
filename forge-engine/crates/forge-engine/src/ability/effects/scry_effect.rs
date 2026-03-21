@@ -35,7 +35,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         num
     };
 
-    if sa.params.contains_key("Optional") {
+    if sa.params.has(crate::parsing::keys::OPTIONAL) {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         let accepted = ctx.agents[target.index()].confirm_action(
             target,

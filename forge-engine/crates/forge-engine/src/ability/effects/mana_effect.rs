@@ -1,6 +1,7 @@
 use forge_foundation::mana::ManaAtom;
 
 use super::{mana_atom_from_produced, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Resolve DB$ Mana — produce mana as a sub-ability effect.
@@ -12,22 +13,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         None => return,
     };
 
-    let produced = match sa.params.get("Produced") {
-        Some(p) => p.clone(),
+    let produced = match sa.params.get(keys::PRODUCED) {
+        Some(p) => p.to_string(),
         None => return,
     };
 
     // Read metadata params from the ability
-    let restriction = sa.params.get("RestrictValid").cloned();
+    let restriction = sa.params.get_cloned(keys::RESTRICT_VALID);
     let adds_no_counter = sa
         .params
-        .get("AddsNoCounter")
+        .get(keys::ADDS_NO_COUNTER)
         .map_or(false, |v| v == "True");
-    let adds_keywords = sa.params.get("AddsKeywords").cloned();
-    let adds_keywords_valid = sa.params.get("AddsKeywordsValid").cloned();
-    let adds_counters = sa.params.get("AddsCounters").cloned();
-    let adds_counters_valid = sa.params.get("AddsCountersValid").cloned();
-    let triggers_when_spent = sa.params.get("TriggersWhenSpent").cloned();
+    let adds_keywords = sa.params.get_cloned(keys::ADDS_KEYWORDS);
+    let adds_keywords_valid = sa.params.get_cloned(keys::ADDS_KEYWORDS_VALID);
+    let adds_counters = sa.params.get_cloned(keys::ADDS_COUNTERS);
+    let adds_counters_valid = sa.params.get_cloned(keys::ADDS_COUNTERS_VALID);
+    let triggers_when_spent = sa.params.get_cloned(keys::TRIGGERS_WHEN_SPENT);
 
     // Handle Special mana production types (mirrors Java handleSpecialMana)
     if produced.starts_with("Special") {

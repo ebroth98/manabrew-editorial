@@ -4,6 +4,7 @@ use super::{emit_zone_trigger_with_lki_counters, matches_change_type, EffectCont
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Perform the actual sacrifice of a card: fire triggers, move to graveyard, emit zone change.
@@ -89,7 +90,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Mirrors Java SacrificeEffect lines 52-75: when CumulativeUpkeep$ is set,
     // add an Age counter, build merged cost (base cost × age counters),
     // ask player to pay, sacrifice if not paid.
-    if let Some(cum_cost_str) = sa.params.get("CumulativeUpkeep").cloned() {
+    if let Some(cum_cost_str) = sa.params.get_cloned(keys::CUMULATIVE_UPKEEP) {
         let source_id = match sa.source {
             Some(cid) if ctx.game.card(cid).zone == ZoneType::Battlefield => cid,
             _ => return,
@@ -146,28 +147,27 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let sac_valid = sa
         .params
-        .get("SacValid")
-        .cloned()
+        .get_cloned(keys::SAC_VALID)
         .unwrap_or_else(|| "Self".to_string());
     let defined = sa
         .params
-        .get("Defined")
+        .get(keys::DEFINED)
         .map(|s| s.to_lowercase())
         .unwrap_or_default();
 
     // How many permanents to sacrifice (e.g. Annihilator N).
     let amount: usize = sa
         .params
-        .get("Amount")
+        .get(keys::AMOUNT)
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
 
     // Detect Exploit keyword sacrifice — fires TriggerType::Exploited after each sacrifice.
-    let is_exploit = sa.params.get("Exploit").map_or(false, |v| v == "True");
+    let is_exploit = sa.params.is_true(keys::EXPLOIT);
     let exploit_source = if is_exploit { sa.source } else { None };
 
-    let optional = sa.params.contains_key("Optional");
-    let is_strict = sa.params.contains_key("StrictAmount");
+    let optional = sa.params.has(keys::OPTIONAL);
+    let is_strict = sa.params.has(keys::STRICT_AMOUNT);
 
     // "Defined$ Player" means each player sacrifices (e.g. Innocent Blood).
     // "Defined$ TriggeredDefendingPlayer" means the defending player from an attack trigger.

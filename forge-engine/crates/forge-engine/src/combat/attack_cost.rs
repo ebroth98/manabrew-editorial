@@ -8,6 +8,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
 use crate::combat::DefenderId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Compute the total generic mana cost required for `attacker` to attack `defender`.
@@ -33,15 +34,15 @@ pub fn get_attack_cost(
             }
 
             // Check ValidCard$ matches the attacker
-            if let Some(valid) = sa.params.get("ValidCard") {
+            if let Some(valid) = sa.params.get(keys::VALID_CARD) {
                 if !matches_valid_for_cost(attacker, valid) {
                     continue;
                 }
             }
 
             // Check Target$ — who is being defended
-            if let Some(target_param) = sa.params.get("Target") {
-                match target_param.as_str() {
+            if let Some(target_param) = sa.params.get(keys::TARGET) {
+                match target_param {
                     "You" => {
                         // Only applies when attacking the source's controller
                         let defends_controller = match defender {
@@ -61,7 +62,7 @@ pub fn get_attack_cost(
             }
 
             // Parse Cost$ parameter as generic mana amount
-            if let Some(cost_str) = sa.params.get("Cost") {
+            if let Some(cost_str) = sa.params.get(keys::COST) {
                 if let Ok(cost) = cost_str.trim().parse::<i32>() {
                     total_cost += cost;
                 }

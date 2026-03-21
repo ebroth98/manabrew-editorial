@@ -7,6 +7,7 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -70,7 +71,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     ctx.game.card_mut(card2).controller = player1;
 
     // RememberExchanged$
-    if sa.param_is_true("RememberExchanged") {
+    if sa.param_is_true(keys::REMEMBER_EXCHANGED) {
         if let Some(sid) = sa.source {
             ctx.game.card_mut(sid).add_remembered_card(card1);
             ctx.game.card_mut(sid).add_remembered_card(card2);

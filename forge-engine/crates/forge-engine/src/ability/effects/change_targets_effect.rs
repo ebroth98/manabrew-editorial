@@ -10,6 +10,7 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -27,7 +28,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Handle RandomTarget mode: pick a random new legal target
-    if sa.param_is_true("RandomTarget") {
+    if sa.param_is_true(keys::RANDOM_TARGET) {
         // Find all creatures/permanents on battlefield as candidates
         let candidates: Vec<CardId> = ctx
             .game
@@ -55,7 +56,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Handle DefinedMagnet mode: redirect to a specific permanent
-    if let Some(magnet_def) = sa.params.get("DefinedMagnet") {
+    if let Some(magnet_def) = sa.params.get(keys::DEFINED_MAGNET) {
         let new_target = if magnet_def == "Self" {
             sa.source
         } else if magnet_def == "ParentTarget" {

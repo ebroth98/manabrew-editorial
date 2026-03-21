@@ -1,9 +1,8 @@
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::cost::{parse_cost, Cost};
-use crate::trigger::parse_pipe_params;
+use crate::parsing::keys;
+use crate::parsing::Params;
 
 /// A parsed activated ability from a card's A: line.
 /// Mirrors Java's SpellAbility with AB$ prefix.
@@ -18,7 +17,7 @@ pub struct ActivatedAbility {
     /// Whether this is a mana ability (resolves without using the stack).
     pub is_mana_ability: bool,
     /// Parsed pipe-delimited parameters.
-    pub params: BTreeMap<String, String>,
+    pub params: Params,
 }
 
 /// Parse an ability string into an ActivatedAbility, if it's an AB$ line.
@@ -29,26 +28,26 @@ pub struct ActivatedAbility {
 /// - `"AB$ DealDamage | Cost$ T | ValidTgts$ Any | NumDmg$ 1 | ..."`
 /// - `"AB$ ChangeZone | Cost$ Sac<1/CARDNAME> | Origin$ Library | ..."`
 pub fn parse_activated_ability(raw: &str, index: usize) -> Option<ActivatedAbility> {
-    let params = parse_pipe_params(raw);
+    let params = Params::from_raw(raw);
 
     // Check if any key contains "AB" — the main key is something like "AB" with value "Mana"
     // In practice the format is "AB$ Mana | Cost$ T | ..."
-    // After parse_pipe_params, we get {"AB": "Mana", "Cost": "T", ...}
-    let has_ab = params.keys().any(|k| k == "AB");
+    // After Params::from_raw, we get {"AB": "Mana", "Cost": "T", ...}
+    let has_ab = params.has(keys::AB);
     if !has_ab {
         return None;
     }
 
     // Extract cost
-    let cost_str = params.get("Cost").map(|s| s.as_str()).unwrap_or("");
+    let cost_str = params.get(keys::COST).unwrap_or("");
     let cost = parse_cost(cost_str);
 
     // Determine if this is a mana ability:
     // - Effect type is "Mana"
     // - No ValidTgts$ (targeting makes it non-mana)
     // - No loyalty cost
-    let ab_type = params.get("AB").map(|s| s.as_str()).unwrap_or("");
-    let has_targets = params.contains_key("ValidTgts");
+    let ab_type = params.get(keys::AB).unwrap_or("");
+    let has_targets = params.has(keys::VALID_TGTS);
     let is_mana_ability = (ab_type.eq_ignore_ascii_case("Mana")
         || ab_type.eq_ignore_ascii_case("ManaReflected"))
         && !has_targets;
@@ -72,7 +71,7 @@ mod tests {
         let ab = parse_activated_ability(raw, 0).unwrap();
         assert!(ab.is_mana_ability);
         assert!(ab.cost.has_tap);
-        assert_eq!(ab.params.get("Produced").unwrap(), "G");
+        assert_eq!(ab.params.get(keys::PRODUCED).unwrap(), "G");
     }
 
     #[test]
@@ -81,7 +80,7 @@ mod tests {
         let ab = parse_activated_ability(raw, 0).unwrap();
         assert!(!ab.is_mana_ability);
         assert!(ab.cost.has_tap);
-        assert_eq!(ab.params.get("NumDmg").unwrap(), "1");
+        assert_eq!(ab.params.get(keys::NUM_DMG).unwrap(), "1");
     }
 
     #[test]
@@ -90,8 +89,8 @@ mod tests {
         let ab = parse_activated_ability(raw, 0).unwrap();
         assert!(!ab.is_mana_ability);
         assert!(!ab.cost.has_tap);
-        assert_eq!(ab.params.get("Origin").unwrap(), "Library");
-        assert_eq!(ab.params.get("Destination").unwrap(), "Battlefield");
+        assert_eq!(ab.params.get(keys::ORIGIN).unwrap(), "Library");
+        assert_eq!(ab.params.get(keys::DESTINATION).unwrap(), "Battlefield");
     }
 
     #[test]

@@ -19,16 +19,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let valid_filter = sa
         .params
-        .get("ValidCards")
-        .cloned()
-        .unwrap_or_else(|| "Creature.YouCtrl".to_string());
-    let gains = sa.params.get("Gains").cloned().unwrap_or_default();
+        .get(crate::parsing::keys::VALID_CARDS)
+        .unwrap_or("Creature.YouCtrl")
+        .to_string();
+    let gains = sa.params.get(crate::parsing::keys::GAINS).unwrap_or("").to_string();
 
     // If choosing a color, do it once for all targets
     let prot_keyword = if gains.contains("chosen color") {
         let choices = sa
             .params
-            .get("Choices")
+            .get(crate::parsing::keys::CHOICES)
             .map(|s| {
                 s.split(',')
                     .map(|c| c.trim().to_string())

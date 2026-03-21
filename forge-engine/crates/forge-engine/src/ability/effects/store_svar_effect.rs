@@ -4,13 +4,14 @@
 //! Stores a calculated value into a named SVar on the source card.
 
 use super::EffectContext;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let Some(source_id) = sa.source else { return };
 
-    let svar_name = sa.params.get("SVarName").cloned().unwrap_or_default();
-    let svar_value = sa.params.get("SVarValue").cloned().unwrap_or_default();
+    let svar_name = sa.params.get(keys::SVAR_NAME).map(|s| s.to_string()).unwrap_or_default();
+    let svar_value = sa.params.get(keys::SVAR_VALUE).map(|s| s.to_string()).unwrap_or_default();
 
     if svar_name.is_empty() {
         return;

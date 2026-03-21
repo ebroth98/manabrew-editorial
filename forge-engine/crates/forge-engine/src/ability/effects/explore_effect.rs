@@ -5,6 +5,7 @@ use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ Explore` — target creature explores.
@@ -24,7 +25,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Determine the exploring creature
     let explorer = sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get("Defined").map(|s| s.as_str()) {
+        match sa.params.get(crate::parsing::keys::DEFINED) {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => sa.source,
@@ -47,8 +48,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Mirrors Java's `AbilityUtils.calculateAmount(host, sa.getParamOrDefault("Num", "1"), sa)`.
     let amount: i32 = sa
         .params
-        .get("Num")
-        .and_then(|v| v.parse().ok())
+        .as_i32(keys::NUM)
         .unwrap_or(1);
 
     for _ in 0..amount {

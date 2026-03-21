@@ -6,6 +6,7 @@ use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::parsing::Params;
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
@@ -110,7 +111,7 @@ fn make_control_magic(owner: PlayerId) -> CardInstance {
 
     let sa = forge_engine_core::staticability::StaticAbility {
         mode: forge_engine_core::staticability::StaticMode::Continuous,
-        params,
+        params: Params::from_map(params),
     };
 
     card.static_abilities.push(sa);

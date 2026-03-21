@@ -4,14 +4,14 @@ use super::{
     parse_counter_type, parse_param, resolve_defined_player, resolve_numeric_svar, EffectContext,
 };
 use crate::event::{RunParams, TriggerType};
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let counter_type_str = sa
         .params
-        .get("CounterType")
-        .map(|s| s.as_str())
+        .get(keys::COUNTER_TYPE)
         .unwrap_or("P1P1");
     let counter_type = parse_counter_type(counter_type_str);
     // Support SVar references for CounterNum (e.g. Count$Kicked.4.0 for kicker cards)
@@ -20,7 +20,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Modular death triggers: override the static Modular N with the
     // actual LKI +1/+1 counter count from the dying creature (CR 702.43b).
     // trigger_remembered_amount is set by the death path's LKI capture.
-    if sa.params.get("Modular").map_or(false, |v| v == "true") && sa.trigger_remembered_amount > 0 {
+    if sa.params.is_true(keys::MODULAR) && sa.trigger_remembered_amount > 0 {
         count = sa.trigger_remembered_amount;
     }
 
@@ -32,7 +32,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Check for Defined$ — if targeting a player (e.g. Defined$ You for energy),
     // handle player-level counters like ENERGY instead of card counters.
-    if let Some(defined) = sa.params.get("Defined") {
+    if let Some(defined) = sa.params.get(keys::DEFINED) {
         if let Some(target_player) = resolve_defined_player(defined, controller, ctx.game) {
             match counter_type_str.to_uppercase().as_str() {
                 "ENERGY" => {
@@ -51,15 +51,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Resolve target card: mirror Java's getDefinedEntitiesOrTargeted().
     // When the SA uses targeting (ValidTgts$), use the chosen target.
     // Otherwise fall back to the Defined$ parameter (default "Self").
-    let uses_targeting = sa.params.contains_key("ValidTgts");
-    let target_id = if uses_targeting && !sa.params.contains_key("Defined") {
+    let uses_targeting = sa.params.has(keys::VALID_TGTS);
+    let target_id = if uses_targeting && !sa.params.has(keys::DEFINED) {
         // Targeting mode — use the actual chosen target (Necropede death trigger, etc.)
         sa.target_chosen.target_card
     } else {
         let defined = sa
             .params
-            .get("Defined")
-            .map(|s| s.as_str())
+            .get(keys::DEFINED)
             .unwrap_or("Self");
         match defined {
             // Java AbilityUtils "TriggeredTarget*" / "Targeted" resolve from actual
@@ -80,7 +79,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Mirrors Java CountersPutEffect lines 498-501.
     let is_adapt = sa
         .params
-        .get("Adapt")
+        .get(keys::ADAPT)
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
     if is_adapt {
@@ -95,7 +94,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let is_monstrosity = sa
         .params
-        .get("Monstrosity")
+        .get(keys::MONSTROSITY)
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
     if is_monstrosity && ctx.game.card(card_id).monstrous {
@@ -140,7 +139,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Mark creature as renowned after successfully placing counters.
     if sa
         .params
-        .get("Renown")
+        .get(keys::RENOWN)
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false)
     {

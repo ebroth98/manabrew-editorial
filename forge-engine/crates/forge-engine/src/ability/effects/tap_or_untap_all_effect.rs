@@ -27,14 +27,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let valid_filter = sa
         .params
-        .get("ValidCards")
-        .cloned()
-        .unwrap_or_else(|| "Permanent".to_string());
+        .get(crate::parsing::keys::VALID_CARDS)
+        .unwrap_or("Permanent")
+        .to_string();
 
     let restrict_controllers: Option<Vec<PlayerId>> =
         if let Some(pid) = sa.target_chosen.target_player {
             Some(vec![pid])
-        } else if let Some(defined) = sa.params.get("Defined") {
+        } else if let Some(defined) = sa.params.get(crate::parsing::keys::DEFINED) {
             Some(resolve_defined_players(defined, controller, ctx.game))
         } else {
             None

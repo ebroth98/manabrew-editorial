@@ -18,7 +18,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let defined = sa
         .params
         .get("Defined")
-        .map(|s| s.as_str())
         .unwrap_or("You");
 
     let target = resolve_defined_player(defined, controller, ctx.game).unwrap_or(controller);

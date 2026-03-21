@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn combat_damage_uses_toughness(cards: &[CardInstance], card: &CardInstance) -> bool {
@@ -14,7 +15,7 @@ pub fn combat_damage_uses_toughness(cards: &[CardInstance], card: &CardInstance)
             .filter(|sa| sa.mode == StaticMode::CombatDamageToughness)
         {
             if matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 card,
                 source,
             ) {

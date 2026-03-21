@@ -6,10 +6,11 @@
 
 use super::EffectContext;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let controller_def = sa.params.get("Controller").cloned().unwrap_or_else(|| "You".to_string());
+    let controller_def = sa.params.get(keys::CONTROLLER).map(|s| s.to_string()).unwrap_or_else(|| "You".to_string());
     let controller = super::resolve_defined_players(&controller_def, sa.activating_player, ctx.game)
         .into_iter()
         .next()

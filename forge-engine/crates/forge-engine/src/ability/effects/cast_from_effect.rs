@@ -50,7 +50,7 @@ pub fn cast_card_from_effect(
     // Java: newSA.getRestrictions().setZone(null)
     // In Rust, the zone check happens at a higher level; we bypass by
     // marking the spell as cast-from-effect.
-    spell_sa.params.insert("CastFromPlayEffect".to_string(), "True".to_string());
+    spell_sa.params.put("CastFromPlayEffect".to_string(), "True".to_string());
 
     // Strip mana cost if requested (Discover, Cascade, etc.)
     // Java: copyWithNoManaCost() — removes Mana cost parts, keeps non-mana costs
@@ -58,7 +58,7 @@ pub fn cast_card_from_effect(
         if let Some(ref mut cost) = spell_sa.pay_costs {
             cost.parts.retain(|part| !matches!(part, crate::cost::CostPart::Mana(_)));
         }
-        spell_sa.params.insert("WithoutManaCost".to_string(), "True".to_string());
+        spell_sa.params.put("WithoutManaCost".to_string(), "True".to_string());
     }
 
     // Make costs mandatory (Java: setMandatory(true) for 118.8c)

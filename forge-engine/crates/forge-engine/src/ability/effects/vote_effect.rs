@@ -9,6 +9,7 @@ use std::collections::HashMap;
 
 use super::EffectContext;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -27,9 +28,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Get vote choices (from Choices$ param or VoteMessage$)
-    let choices: Vec<String> = if let Some(choices_str) = sa.params.get("Choices") {
+    let choices: Vec<String> = if let Some(choices_str) = sa.params.get(keys::CHOICES) {
         choices_str.split(',').map(|s| s.trim().to_string()).collect()
-    } else if let Some(msg) = sa.params.get("VoteMessage") {
+    } else if let Some(msg) = sa.params.get(keys::VOTE_MESSAGE) {
         // Parse choice names from message — usually "A or B"
         msg.split(" or ")
             .map(|s| s.trim().to_string())
@@ -82,7 +83,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .collect();
 
     // Store vote results for sub-abilities
-    if sa.param_is_true("StoreVoteNum") {
+    if sa.param_is_true(keys::STORE_VOTE_NUM) {
         if let Some(source_id) = sa.source {
             for (choice, voters_list) in &vote_counts {
                 let svar_name = format!("VoteNum{}", choice);
@@ -93,7 +94,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // RememberVotedObjects$
-    if sa.param_is_true("RememberVotedObjects") {
+    if sa.param_is_true(keys::REMEMBER_VOTED_OBJECTS) {
         // Remember the winning choice indices (simplified)
         if let Some(source_id) = sa.source {
             for winner in &winners {

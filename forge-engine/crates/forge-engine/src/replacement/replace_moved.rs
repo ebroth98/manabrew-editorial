@@ -5,6 +5,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
 
@@ -31,18 +32,18 @@ pub fn can_replace(
         } => (*card, *origin, *destination),
         _ => return false,
     };
-    if let Some(dest) = effect.params.get("Destination") {
+    if let Some(dest) = effect.params.get(keys::DESTINATION) {
         if !zone_matches(dest, destination) {
             return false;
         }
     }
-    if let Some(orig) = effect.params.get("Origin") {
+    if let Some(orig) = effect.params.get(keys::ORIGIN) {
         if !zone_matches(orig, origin) {
             return false;
         }
     }
     let moving_card = &game.cards[moving_id.index()];
-    if let Some(valid) = effect.params.get("ValidCard") {
+    if let Some(valid) = effect.params.get(keys::VALID_CARD) {
         if !matches_valid_card(valid, moving_card, source_card) {
             return false;
         }
@@ -61,7 +62,7 @@ pub fn execute(
         ReplacementEvent::Moved { destination, .. } => destination,
         _ => return ReplacementResult::NotReplaced,
     };
-    if let Some(new_dest) = effect.params.get("NewDestination") {
+    if let Some(new_dest) = effect.params.get(keys::NEW_DESTINATION) {
         let new_zone = match new_dest.trim() {
             "Exile" => Some(ZoneType::Exile),
             "Graveyard" => Some(ZoneType::Graveyard),

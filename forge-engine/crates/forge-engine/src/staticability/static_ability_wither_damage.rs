@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, CardInstance};
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn is_wither_damage(cards: &[CardInstance], source_card: &CardInstance) -> bool {
@@ -11,7 +12,7 @@ pub fn is_wither_damage(cards: &[CardInstance], source_card: &CardInstance) -> b
             .filter(|sa| sa.mode == StaticMode::WitherDamage)
         {
             if matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 source_card,
                 source,
             ) {

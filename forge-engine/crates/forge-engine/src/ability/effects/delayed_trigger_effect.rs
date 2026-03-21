@@ -1,5 +1,6 @@
 use super::{evaluate_svar, resolve_defined_player, EffectContext};
 use crate::event::TriggerType;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::{parse_trigger, TriggerMode};
 
@@ -17,11 +18,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     };
 
-    let execute_svar = if let Some(exec) = sa.params.get("Execute") {
+    let execute_svar = if let Some(exec) = sa.params.get(keys::EXECUTE) {
         if let Some(svar_text) = ctx.game.card(source_id).svars.get(exec) {
             svar_text.clone()
         } else {
-            exec.clone()
+            exec.to_string()
         }
     } else {
         return;
@@ -30,7 +31,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let mut remembered_amount = 0;
     if sa
         .params
-        .get("RememberNumber")
+        .get(keys::REMEMBER_NUMBER)
         .is_some_and(|v| v.eq_ignore_ascii_case("True"))
     {
         remembered_amount += ctx
@@ -41,7 +42,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .copied()
             .sum::<i32>();
     }
-    if let Some(svar_name) = sa.params.get("RememberSVarAmount") {
+    if let Some(svar_name) = sa.params.get(keys::REMEMBER_SVAR_AMOUNT) {
         if let Some(expr) = ctx.game.card(source_id).svars.get(svar_name) {
             remembered_amount += evaluate_svar(expr, sa);
         }
@@ -49,7 +50,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Full ThisTurn / NextTurn / UpcomingTurn routing is still broader work;
     // current parity-critical cards use direct registration.
-    let controller = if let Some(def_player) = sa.params.get("DelayedTriggerDefinedPlayer") {
+    let controller = if let Some(def_player) = sa.params.get(keys::DELAYED_TRIGGER_DEFINED_PLAYER) {
         resolve_defined_player(def_player, sa.activating_player, ctx.game)
             .unwrap_or(sa.activating_player)
     } else {

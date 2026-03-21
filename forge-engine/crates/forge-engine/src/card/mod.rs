@@ -1,4 +1,5 @@
 mod alt_costs;
+mod card_assembly;
 pub mod card_property;
 pub mod damage_history;
 pub mod filter_constants;
@@ -40,9 +41,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::ability::activated::{parse_activated_ability, ActivatedAbility};
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::parse_or_warn;
 use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::staticability::{parse_static_ability, StaticAbility};
-use crate::trigger::{parse_trigger, Trigger};
+use crate::trigger::Trigger;
 
 /// Build the full `"Plotted:{turn}"` keyword string.
 pub fn make_plotted_keyword(turn: u32) -> String {
@@ -436,21 +438,21 @@ impl CardInstance {
         let activated_abilities: Vec<ActivatedAbility> = abilities
             .iter()
             .enumerate()
-            .filter_map(|(i, raw)| parse_activated_ability(raw, i))
+            .filter_map(|(i, raw)| parse_or_warn(parse_activated_ability(raw, i), "ActivatedAbility", raw))
             .collect();
 
         // Parse replacement effects from R$ lines in card abilities.
         // Mirrors Java Card constructor calling ReplacementHandler registration.
         let replacement_effects: Vec<ReplacementEffect> = abilities
             .iter()
-            .filter_map(|raw| parse_replacement_effect(raw))
+            .filter_map(|raw| parse_or_warn(parse_replacement_effect(raw), "ReplacementEffect", raw))
             .collect();
 
         // Parse static abilities from S$ lines.
         // Mirrors Java Forge Card constructor calling StaticAbility.create().
         let static_abilities: Vec<StaticAbility> = abilities
             .iter()
-            .filter_map(|raw| parse_static_ability(raw))
+            .filter_map(|raw| parse_or_warn(parse_static_ability(raw), "StaticAbility", raw))
             .collect();
 
         let mut card = CardInstance {
@@ -585,129 +587,17 @@ impl CardInstance {
     /// - Intrinsic mana abilities (basic land subtypes)
     /// - Keyword-generated abilities and triggers (Cycling, Prowess, Bushido)
     pub fn from_rules(rules: &CardRules, owner: PlayerId) -> Self {
-        let face = &rules.main_part;
-        let mut next_trigger_id = 0u32;
+        // Phase 1: Parse raw text into components
+        let mut components = card_assembly::parse_card_components(&rules.main_part);
 
-        // Parse triggers from T: lines
-        let mut triggers: Vec<Trigger> = Vec::new();
-        let mut spell_cast_or_copy_raw: Vec<String> = Vec::new();
-        for raw in &face.triggers {
-            if let Some(trig) = parse_trigger(raw, &mut next_trigger_id) {
-                triggers.push(trig);
-                if raw.contains("Mode$ SpellCastOrCopy") {
-                    spell_cast_or_copy_raw.push(raw.clone());
-                }
-            }
-        }
-        // Duplicate SpellCastOrCopy triggers as SpellCopied (for Magecraft)
-        for raw in &spell_cast_or_copy_raw {
-            let converted = raw.replace("Mode$ SpellCastOrCopy", "Mode$ SpellCopied");
-            if let Some(trig) = parse_trigger(&converted, &mut next_trigger_id) {
-                triggers.push(trig);
-            }
-        }
+        // Phase 2: Synthesize derived triggers/keywords (Magecraft, Exert, etc.)
+        // Pass 0 as existing trigger count — keyword-generated triggers are added
+        // by the constructor in Phase 3, so we don't know the count yet.
+        // The synthesize step uses this for trigger ID assignment.
+        card_assembly::synthesize_derived(&mut components, 0);
 
-        let mut card = CardInstance::new(
-            CardId(0),
-            face.name.clone(),
-            owner,
-            face.type_line.clone(),
-            face.mana_cost.clone(),
-            face.resolved_color(),
-            face.int_power,
-            face.int_toughness,
-            face.keywords.clone(),
-            face.abilities.clone(),
-        );
-
-        // Append card-text triggers to keyword-generated ones (from generate_keyword_triggers)
-        card.triggers.extend(triggers);
-        // Merge card-text SVars (keyword-generated SVars already set by constructor)
-        for (k, v) in &face.svars {
-            card.svars.entry(k.clone()).or_insert_with(|| v.clone());
-        }
-
-        // Parse static abilities from S: lines
-        for raw in &face.static_abilities {
-            // Convert Mode$ AlternativeCost | Cost$ GainLife<N> to keyword for runtime detection
-            if let Some(kw) = parse_gainlife_alt_cost_keyword(raw) {
-                card.keywords.push(kw);
-            }
-            // Convert Mode$ AlternativeCost | Cost$ Sac<N/Type> to keyword for runtime detection
-            if let Some(kw) = parse_sacrifice_alt_cost_keyword(raw) {
-                card.keywords.push(kw);
-            }
-            let prefixed = format!("S$ {}", raw);
-            if let Some(sa) = parse_static_ability(&prefixed) {
-                card.static_abilities.push(sa);
-            }
-        }
-
-        // OptionalAttackCost with Exert + Trigger$: register an Exerted trigger
-        // so the trigger handler fires the SVar when the creature is exerted.
-        // Mirrors Java's OptionalCostAttack creating a triggered ability from
-        // the Trigger$ parameter when the exert cost is paid.
-        {
-            let mut next_trig_id = card.triggers.len() as u32;
-            for sa in &card.static_abilities {
-                if sa.mode != crate::staticability::StaticMode::OptionalAttackCost {
-                    continue;
-                }
-                let has_exert = sa
-                    .params
-                    .get("Cost")
-                    .map(|c| c.contains("Exert"))
-                    .unwrap_or(false);
-                let trigger_svar = sa.params.get("Trigger").cloned();
-                if has_exert {
-                    if let Some(svar_name) = trigger_svar {
-                        let raw = format!(
-                            "Mode$ Exerted | ValidCard$ Card.Self | Execute$ {} | TriggerZones$ Battlefield",
-                            svar_name
-                        );
-                        if let Some(mut trig) = parse_trigger(&raw, &mut next_trig_id) {
-                            trig.execute = svar_name;
-                            card.triggers.push(trig);
-                        }
-                    }
-                }
-            }
-        }
-
-        // Parse replacement effects from R: lines
-        for raw in &face.replacements {
-            let prefixed = format!("R$ {}", raw);
-            if let Some(re) = parse_replacement_effect(&prefixed) {
-                card.replacement_effects.push(re);
-            }
-        }
-
-        // Double-faced cards
-        if rules.split_type.is_dual_faced() {
-            if let Some(ref back_face) = rules.other_part {
-                let mut back_trigger_id = 0u32;
-                let back_triggers: Vec<_> = back_face
-                    .triggers
-                    .iter()
-                    .filter_map(|raw| parse_trigger(raw, &mut back_trigger_id))
-                    .collect();
-
-                card.other_part = Some(CardOtherPart {
-                    name: back_face.name.clone(),
-                    type_line: back_face.type_line.clone(),
-                    mana_cost: back_face.mana_cost.clone(),
-                    color: back_face.resolved_color(),
-                    base_power: back_face.int_power,
-                    base_toughness: back_face.int_toughness,
-                    keywords: back_face.keywords.clone(),
-                    abilities: back_face.abilities.clone(),
-                    triggers: back_triggers,
-                    svars: back_face.svars.clone(),
-                });
-            }
-        }
-
-        card
+        // Phase 3: Assemble into CardInstance
+        card_assembly::assemble_card(rules, owner, components)
     }
 
     /// Effective power, accounting for all layer effects and counters.
@@ -1101,7 +991,7 @@ impl CardInstance {
                 .abilities
                 .iter()
                 .enumerate()
-                .filter_map(|(i, raw)| parse_activated_ability(raw, i))
+                .filter_map(|(i, raw)| parse_or_warn(parse_activated_ability(raw, i), "ActivatedAbility", raw))
                 .collect();
 
             self.is_transformed = !self.is_transformed;

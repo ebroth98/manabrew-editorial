@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) -> i32 {
@@ -19,13 +20,13 @@ pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) ->
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantDraw)
         {
-            let valid_player = st_ab.params.get("ValidPlayer").map(String::as_str);
+            let valid_player = st_ab.params.get(keys::VALID_PLAYER);
             if !matches_valid_player(valid_player, player, card.controller) {
                 continue;
             }
             let limit = st_ab
                 .params
-                .get("DrawLimit")
+                .get(keys::DRAW_LIMIT)
                 .and_then(|s| s.parse::<i32>().ok())
                 .unwrap_or(0);
             let drawn = game.player(player).drawn_this_turn;

@@ -20,8 +20,8 @@ use crate::spellability::SpellAbility;
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let counter_type = sa
         .params
-        .get("CounterType")
-        .map(|s| parse_counter_type(s))
+        .get(crate::parsing::keys::COUNTER_TYPE)
+        .map(parse_counter_type)
         .unwrap_or(crate::card::CounterType::P1P1);
     let count = resolve_numeric_svar(ctx.game, sa, "CounterNum", 1);
     if count <= 0 {
@@ -29,7 +29,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Determine source of counters
-    let from_id = match sa.params.get("Source").map(|s| s.as_str()) {
+    let from_id = match sa.params.get(crate::parsing::keys::SOURCE) {
         Some("Targeted") => sa.target_chosen.target_card,
         Some("ParentTarget") => ctx.parent_target_card,
         _ => sa.source, // Default: Self
@@ -37,7 +37,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Determine destination for counters
     let to_id = sa.target_chosen.target_card.or_else(|| {
-        match sa.params.get("Defined").map(|s| s.as_str()) {
+        match sa.params.get(crate::parsing::keys::DEFINED) {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => None,

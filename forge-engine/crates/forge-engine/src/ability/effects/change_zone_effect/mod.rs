@@ -18,6 +18,7 @@ mod stack;
 use forge_foundation::ZoneType;
 
 use super::{parse_zone_type, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Top-level resolve dispatcher — mirrors Java's `resolve()` which splits on
@@ -42,7 +43,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let primary_origin = origins[0];
 
     // Java parity: sa.isHidden() && !sa.isNinjutsu() → hidden path
-    if (primary_origin.is_hidden() || sa.is_hidden()) && !sa.param_is_true("Ninjutsu") {
+    if (primary_origin.is_hidden() || sa.is_hidden()) && !sa.param_is_true(keys::NINJUTSU) {
         hidden::resolve_hidden_origin(ctx, sa, primary_origin, dest_zone);
     } else {
         known::resolve_known_origin(ctx, sa, primary_origin, dest_zone);

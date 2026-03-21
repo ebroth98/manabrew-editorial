@@ -2,6 +2,7 @@ use forge_foundation::{ColorSet, ZoneType};
 
 use super::{matches_valid_cards, EffectContext};
 use crate::card::AnimateState;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ AnimateAll` — animate all matching permanents on the battlefield.
@@ -23,28 +24,27 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let valid_filter = sa
         .params
-        .get("ValidCards")
-        .cloned()
+        .get_cloned(keys::VALID_CARDS)
         .unwrap_or_else(|| "Card".to_string());
 
-    let power_str = sa.params.get("Power").cloned();
-    let toughness_str = sa.params.get("Toughness").cloned();
-    let types_str = sa.params.get("Types").cloned();
-    let keywords_str = sa.params.get("Keywords").cloned();
-    let colors_str = sa.params.get("Colors").cloned();
+    let power_str = sa.params.get_cloned(keys::POWER);
+    let toughness_str = sa.params.get_cloned(keys::TOUGHNESS);
+    let types_str = sa.params.get_cloned(keys::TYPES);
+    let keywords_str = sa.params.get_cloned(keys::KEYWORDS);
+    let colors_str = sa.params.get_cloned(keys::COLORS);
     let overwrite_colors = sa
         .params
-        .get("OverwriteColors")
+        .get(keys::OVERWRITE_COLORS)
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
     let remove_creature_types = sa
         .params
-        .get("RemoveCreatureTypes")
+        .get(keys::REMOVE_CREATURE_TYPES)
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
     let remove_all_abilities = sa
         .params
-        .get("RemoveAllAbilities")
+        .get(keys::REMOVE_ALL_ABILITIES)
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
 

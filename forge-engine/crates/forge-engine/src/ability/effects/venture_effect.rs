@@ -195,7 +195,7 @@ fn create_dungeon(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId) 
     let dungeon_name = sa
         .params
         .get("Dungeon")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| {
             // Auto-choose first dungeon (agent would pick in full implementation)
             let idx = ctx.rng.next_int(DUNGEONS.len() as i32) as usize % DUNGEONS.len();

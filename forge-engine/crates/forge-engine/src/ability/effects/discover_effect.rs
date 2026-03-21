@@ -8,6 +8,7 @@
 use forge_foundation::ZoneType;
 
 use super::cast_from_effect;
+use crate::parsing::keys;
 use super::{emit_zone_trigger, EffectContext};
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
@@ -57,7 +58,7 @@ fn discover_for_player(
 
         if !is_land && cmc <= max_cmc {
             found = Some(top);
-            if sa.param_is_true("RememberDiscovered") {
+            if sa.param_is_true(keys::REMEMBER_DISCOVERED) {
                 if let Some(sid) = sa.source {
                     ctx.game.card_mut(sid).add_remembered_card(top);
                 }

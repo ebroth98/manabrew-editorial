@@ -36,7 +36,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let counter_type_str = sa
         .params
         .get("CounterType")
-        .map(|s| s.as_str())
         .unwrap_or("P1P1");
     if counter_type_str.eq_ignore_ascii_case("Any") || counter_type_str.eq_ignore_ascii_case("All")
     {
@@ -124,7 +123,6 @@ fn resolve_target_card(ctx: &EffectContext, sa: &SpellAbility) -> Option<CardId>
     let defined = sa
         .params
         .get("Defined")
-        .map(|s| s.as_str())
         .unwrap_or("Self");
 
     match defined {

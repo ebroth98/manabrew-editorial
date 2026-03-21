@@ -1,4 +1,5 @@
 use super::EffectContext;
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -32,7 +33,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let stack_entries: Vec<_> = ctx.game.stack.iter().collect();
         // Find the topmost spell that isn't *this* effect's source
         stack_entries.iter().rev().find_map(|entry| {
-            if Some(entry.id) != sa.params.get("StackId").and_then(|s| s.parse().ok()) {
+            if Some(entry.id) != sa.params.get(keys::STACK_ID).and_then(|s| s.parse().ok()) {
                 Some((*entry).clone())
             } else {
                 None

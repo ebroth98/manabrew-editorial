@@ -8,6 +8,7 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::{emit_zone_trigger, EffectContext};
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
@@ -83,7 +84,7 @@ fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::
     }
 
     // RememberInvestigatingPlayers$
-    if sa.param_is_true("RememberInvestigatingPlayers") {
+    if sa.param_is_true(keys::REMEMBER_INVESTIGATING_PLAYERS) {
         if let Some(sid) = sa.source {
             ctx.game.card_mut(sid).remembered_players.push(player);
         }

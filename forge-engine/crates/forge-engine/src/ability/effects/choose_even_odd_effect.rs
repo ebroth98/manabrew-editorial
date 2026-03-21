@@ -1,6 +1,7 @@
 use super::{resolve_defined_players, EffectContext};
 use crate::agent::BinaryChoiceKind;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseEvenOdd` — chosen player picks odd or even.
@@ -12,7 +13,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let players: Vec<PlayerId> = if let Some(pid) = sa.target_chosen.target_player {
         vec![pid]
-    } else if let Some(defined) = sa.params.get("Defined") {
+    } else if let Some(defined) = sa.params.get(keys::DEFINED) {
         resolve_defined_players(defined, sa.activating_player, ctx.game)
     } else {
         vec![sa.activating_player]

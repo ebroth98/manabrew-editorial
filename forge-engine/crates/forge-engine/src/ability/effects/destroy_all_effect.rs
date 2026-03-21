@@ -24,7 +24,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let valid_cards_filter = sa
         .params
         .get("ValidCards")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Creature".to_string());
 
     let activating_player = sa.activating_player;

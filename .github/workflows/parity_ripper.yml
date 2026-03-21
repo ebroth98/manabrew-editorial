@@ -1,13 +1,13 @@
 name: Parity tests go BRRRR
 
 on:
-  pull_request:
-    paths:
-      - "forge/**"
-      - "forge-engine/**"
-      - "Cargo.toml"
-      - "Cargo.lock"
-      - ".github/workflows/parity-self-hosted.yml"
+  # pull_request:
+  #   paths:
+  #     - "forge/**"
+  #     - "forge-engine/**"
+  #     - "Cargo.toml"
+  #     - "Cargo.lock"
+  #     - ".github/workflows/parity-self-hosted.yml"
   workflow_dispatch:
 
 concurrency:

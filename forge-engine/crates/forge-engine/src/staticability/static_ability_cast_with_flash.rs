@@ -2,8 +2,9 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, CardInstance};
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
-use crate::trigger::parse_pipe_params;
+use crate::parsing::Params;
 
 pub fn any_with_flash(
     cards: &[CardInstance],
@@ -21,20 +22,20 @@ pub fn any_with_flash(
             .filter(|sa| sa.mode == StaticMode::CastWithFlash)
         {
             if !matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 spell_card,
                 source,
             ) {
                 continue;
             }
             if !matches_valid_player(
-                st_ab.params.get("Caster").map(String::as_str),
+                st_ab.params.get(keys::CASTER),
                 caster,
                 source.controller,
             ) {
                 continue;
             }
-            if let Some(valid_sa) = st_ab.params.get("ValidSA") {
+            if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
                 // "Spell" matches any card being cast as a spell (creatures,
                 // sorceries, etc.) — not just cards with explicit SP$ lines.
                 // Java treats the inherent spell ability of a card as matching.
@@ -68,8 +69,8 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
 }
 
 fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
-    let params = parse_pipe_params(ability_line);
-    if !params.contains_key("SP") {
+    let params = Params::from_raw(ability_line);
+    if !params.has(keys::SP) {
         return false;
     }
     let tokens: Vec<&str> = valid_sa
@@ -85,9 +86,9 @@ fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
         .iter()
         .all(|tok| match tok.to_ascii_lowercase().as_str() {
             "spell" => true,
-            "istargeting" => params.contains_key("ValidTgts"),
+            "istargeting" => params.has(keys::VALID_TGTS),
             "xcost" => {
-                params.get("Cost").map(|c| c.contains('X')).unwrap_or(false)
+                params.get(keys::COST).map(|c| c.contains('X')).unwrap_or(false)
                     || ability_line.contains("X")
             }
             _ => false,

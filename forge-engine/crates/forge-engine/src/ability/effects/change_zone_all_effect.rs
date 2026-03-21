@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, matches_change_type, parse_zone_type, EffectContext};
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 fn matches_change_zone_all_filter(
@@ -105,24 +106,22 @@ fn matches_change_zone_all_filter(
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let origin_str = sa
         .params
-        .get("Origin")
-        .map(|s| s.as_str())
+        .get(keys::ORIGIN)
         .unwrap_or("Battlefield");
     let destination_str = sa
         .params
-        .get("Destination")
-        .map(|s| s.as_str())
+        .get(keys::DESTINATION)
         .unwrap_or("Graveyard");
     // Forge uses ChangeType$ as the primary filter for ChangeZoneAll; fall back to ValidCards$.
     let valid_cards_filter = sa
         .params
-        .get("ChangeType")
-        .or_else(|| sa.params.get("ValidCards"))
-        .cloned()
+        .get(keys::CHANGE_TYPE)
+        .or_else(|| sa.params.get(keys::VALID_CARDS))
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Card".to_string());
     let tapped = sa
         .params
-        .get("Tapped")
+        .get(keys::TAPPED)
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
 
@@ -141,7 +140,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // exiled permanents when the source leaves the battlefield (e.g. Deputy of Detention).
     let until_host_leaves = sa
         .params
-        .get("Duration")
+        .get(keys::DURATION)
         .map(|d| {
             d.eq_ignore_ascii_case("UntilHostLeavesPlay")
                 || d.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT")

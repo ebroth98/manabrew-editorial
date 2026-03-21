@@ -18,9 +18,9 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let etb = sa.params.get("ETB").is_some();
-    let remember_tapped = sa.params.get("RememberTapped").is_some();
-    let always_remember = sa.params.get("AlwaysRemember").is_some();
+    let etb = sa.params.has(crate::parsing::keys::ETB);
+    let remember_tapped = sa.params.has(crate::parsing::keys::REMEMBER_TAPPED);
+    let always_remember = sa.params.has(crate::parsing::keys::ALWAYS_REMEMBER);
 
     // Targeted: use the chosen target card.
     if let Some(target_card) = sa.target_chosen.target_card {

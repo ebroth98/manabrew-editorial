@@ -5,6 +5,7 @@
 //! initialization in `CardInstance::from_rules()`.
 
 use crate::ability::activated::parse_activated_ability;
+use crate::parsing::keys;
 use crate::staticability::parse_static_ability;
 use crate::trigger::parse_trigger;
 
@@ -24,7 +25,7 @@ impl CardInstance {
         for &(subtype, letter, desc) in SUBTYPE_MANA {
             if self.type_line.has_subtype(subtype) {
                 let already_produces = self.activated_abilities.iter().any(|ab| {
-                    ab.is_mana_ability && ab.params.get("Produced").map_or(false, |p| p == letter)
+                    ab.is_mana_ability && ab.params.get(keys::PRODUCED) == Some(letter)
                 });
                 if !already_produces {
                     let raw = format!(

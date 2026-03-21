@@ -4,11 +4,12 @@
 //! Store counter amounts for later use (e.g. "noted P1P1 counters").
 
 use super::{parse_counter_type, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let Some(source_id) = sa.source else { return };
-    let counter_type_str = sa.params.get("CounterType").cloned().unwrap_or_else(|| "P1P1".to_string());
+    let counter_type_str = sa.params.get(keys::COUNTER_TYPE).map(|s| s.to_string()).unwrap_or_else(|| "P1P1".to_string());
     let counter_type = parse_counter_type(&counter_type_str);
 
     let targets: Vec<crate::ids::CardId> = if sa.uses_targeting() {

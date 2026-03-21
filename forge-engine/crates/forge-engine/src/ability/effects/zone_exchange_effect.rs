@@ -8,6 +8,7 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -16,8 +17,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Determine the two zones
     let zone1 = sa
         .params
-        .get("Zone1")
-        .map(|z| match z.as_str() {
+        .get(keys::ZONE1)
+        .map(|z| match z {
             "Hand" => ZoneType::Hand,
             "Graveyard" => ZoneType::Graveyard,
             "Library" => ZoneType::Library,
@@ -28,8 +29,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let zone2 = sa
         .params
-        .get("Zone2")
-        .map(|z| match z.as_str() {
+        .get(keys::ZONE2)
+        .map(|z| match z {
             "Battlefield" => ZoneType::Battlefield,
             "Graveyard" => ZoneType::Graveyard,
             "Library" => ZoneType::Library,
@@ -39,7 +40,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or(ZoneType::Hand);
 
     // Object 1: defined card or source
-    let object1 = if let Some(def) = sa.params.get("Object") {
+    let object1 = if let Some(def) = sa.params.get(keys::OBJECT) {
         if def == "Self" {
             sa.source
         } else {

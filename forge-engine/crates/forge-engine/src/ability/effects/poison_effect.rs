@@ -45,7 +45,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let defined = sa
         .params
         .get("Defined")
-        .map(|s| s.as_str())
         .unwrap_or("Opponent");
 
     // Special case: "Player" means ALL alive players (distinct from

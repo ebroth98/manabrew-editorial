@@ -8,6 +8,7 @@ use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -24,7 +25,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     // RememberClasher$
-    if sa.param_is_true("RememberClasher") {
+    if sa.param_is_true(keys::REMEMBER_CLASHER) {
         if let Some(sid) = sa.source {
             ctx.game.card_mut(sid).remembered_players.push(opponent);
         }

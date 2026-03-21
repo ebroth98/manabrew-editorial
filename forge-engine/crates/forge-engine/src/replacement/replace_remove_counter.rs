@@ -3,6 +3,7 @@
 //! Mirrors Java `ReplaceRemoveCounter.java` in `forge/game/replacement/`.
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
 
@@ -26,7 +27,7 @@ pub fn can_replace(
         _ => return false,
     };
     let target_card = &game.cards[target.index()];
-    if let Some(valid) = effect.params.get("ValidCard") {
+    if let Some(valid) = effect.params.get(keys::VALID_CARD) {
         if !matches_valid_card(valid, target_card, source_card) {
             return false;
         }
@@ -47,7 +48,7 @@ pub fn execute(
     };
     if effect
         .params
-        .get("Prevent")
+        .get(keys::PREVENT)
         .map(|s| s == "True")
         .unwrap_or(false)
     {

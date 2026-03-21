@@ -7,6 +7,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Compute the total generic mana cost required for `blocker` to block `attacker`.
@@ -31,14 +32,14 @@ pub fn get_block_cost(
             }
 
             // Check ValidCard$ matches the blocker
-            if let Some(valid) = sa.params.get("ValidCard") {
+            if let Some(valid) = sa.params.get(keys::VALID_CARD) {
                 if !matches_valid_for_cost(blocker, valid) {
                     continue;
                 }
             }
 
             // Parse Cost$ parameter as generic mana amount
-            if let Some(cost_str) = sa.params.get("Cost") {
+            if let Some(cost_str) = sa.params.get(keys::COST) {
                 if let Ok(cost) = cost_str.trim().parse::<i32>() {
                     total_cost += cost;
                 }

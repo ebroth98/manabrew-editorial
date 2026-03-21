@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
 use crate::event::{RunParams, TriggerType};
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -21,13 +22,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Determine destination (default: graveyard).
     let dest_zone = sa
         .params
-        .get("Destination")
+        .get(keys::DESTINATION)
         .and_then(|d| super::parse_zone_type(d))
         .unwrap_or(ZoneType::Graveyard);
 
     // UnlessCost$: ask the targeted spell's controller whether they want to pay.
     // If they pay, the spell is not countered (Ward, Mana Leak, etc.).
-    if let Some(unless_cost) = sa.params.get("UnlessCost") {
+    if let Some(unless_cost) = sa.params.get(keys::UNLESS_COST) {
         if let Some(entry) = ctx.game.stack.find_by_id(entry_id) {
             let spell_controller = entry.spell_ability.activating_player;
             let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
@@ -67,12 +68,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             let owner = ctx.game.card(source_card).owner;
 
             // Remember parameters if needed
-            if sa.params.contains_key("RememberCountered") {
+            if sa.params.has(keys::REMEMBER_COUNTERED) {
                 ctx.game
                     .card_mut(sa.source.unwrap())
                     .add_remembered_card(source_card);
             }
-            if sa.params.contains_key("RememberCounteredCMC") {
+            if sa.params.has(keys::REMEMBER_COUNTERED_CMC) {
                 // Store CMC value
                 let cmc = ctx.game.card(source_card).mana_cost.cmc();
                 ctx.game

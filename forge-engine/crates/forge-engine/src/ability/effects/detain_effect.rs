@@ -24,7 +24,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Defined$ mode (e.g. DetainAll pattern)
-    if let Some(valid_filter) = sa.params.get("ValidCards") {
+    if let Some(valid_filter) = sa.params.get(crate::parsing::keys::VALID_CARDS) {
         let player_ids = ctx.game.player_order.clone();
         let mut targets: Vec<CardId> = Vec::new();
         for &pid in &player_ids {

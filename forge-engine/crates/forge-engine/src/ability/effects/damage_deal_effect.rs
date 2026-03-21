@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -32,7 +33,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Overload: deal damage to ALL valid creatures instead of the chosen target.
     if sa.overloaded {
-        let valid_tgts = sa.params.get("ValidTgts").cloned().unwrap_or_default();
+        let valid_tgts = sa.params.get(keys::VALID_TGTS).map(|s| s.to_string()).unwrap_or_default();
         let all_bf: Vec<crate::ids::CardId> = ctx
             .game
             .player_order
@@ -203,8 +204,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
             if sa
                 .params
-                .get("RememberDamagedCreature")
-                .is_some_and(|v| v.eq_ignore_ascii_case("True"))
+                .is_true(keys::REMEMBER_DAMAGED_CREATURE)
             {
                 if let Some(src_id) = sa.source {
                     let src = ctx.game.card_mut(src_id);
@@ -228,8 +228,8 @@ fn resolve_damage_amount(ctx: &EffectContext, sa: &SpellAbility) -> i32 {
 
     // NumDmg$ <var> — look up the SVar on the source card and evaluate it.
     // Example: NumDmg$ X with SVar:X:ParentTargeted$CardPower
-    let var_name = match sa.params.get("NumDmg") {
-        Some(v) if !v.is_empty() => v.as_str(),
+    let var_name = match sa.params.get(keys::NUM_DMG) {
+        Some(v) if !v.is_empty() => v,
         _ => return 0,
     };
 

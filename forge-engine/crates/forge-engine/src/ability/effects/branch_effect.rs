@@ -1,4 +1,5 @@
 use super::EffectContext;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `DB$ Branch` — resolve one of two sub-abilities based on a condition SVar.
@@ -6,9 +7,9 @@ use crate::spellability::SpellAbility;
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let take_true_branch = evaluate_branch_condition(ctx, sa);
     let key = if take_true_branch {
-        "TrueSubAbility"
+        keys::TRUE_SUB_ABILITY
     } else {
-        "FalseSubAbility"
+        keys::FALSE_SUB_ABILITY
     };
 
     let Some(sub_svar_name) = sa.params.get(key) else {
@@ -53,7 +54,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 }
 
 fn evaluate_branch_condition(ctx: &EffectContext, sa: &SpellAbility) -> bool {
-    let Some(condition_svar) = sa.params.get("BranchConditionSVar") else {
+    let Some(condition_svar) = sa.params.get(keys::BRANCH_CONDITION_SVAR) else {
         return true;
     };
     let Some(source_id) = sa.source else {

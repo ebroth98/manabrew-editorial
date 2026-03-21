@@ -9,15 +9,16 @@ use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let Some(host_card_id) = sa.source else { return };
     let controller = sa.activating_player;
 
-    let prim_name = sa.params.get("Primary").cloned().unwrap_or_default();
-    let sec_name = sa.params.get("Secondary").cloned().unwrap_or_default();
-    let sec_type = sa.params.get("SecondaryType").cloned().unwrap_or_else(|| "Creature".to_string());
+    let prim_name = sa.params.get(keys::PRIMARY).map(|s| s.to_string()).unwrap_or_default();
+    let sec_name = sa.params.get(keys::SECONDARY).map(|s| s.to_string()).unwrap_or_default();
+    let sec_type = sa.params.get(keys::SECONDARY_TYPE).map(|s| s.to_string()).unwrap_or_else(|| "Creature".to_string());
 
     // Find a permanent you control and own named "Secondary" matching SecondaryType
     let candidates: Vec<CardId> = ctx.game.cards.iter()
@@ -108,7 +109,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     emit_zone_trigger(ctx.trigger_handler, primary, old_zone, ZoneType::Battlefield);
 
     // Attacking$ combat entry
-    if sa.param_is_true("Attacking") {
+    if sa.param_is_true(keys::ATTACKING) {
         let defender = ctx.game.opponent_of(controller);
         ctx.game.card_mut(primary).attacking_player = Some(defender);
     }

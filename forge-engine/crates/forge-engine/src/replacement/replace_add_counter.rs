@@ -3,6 +3,7 @@
 //! Mirrors Java `ReplaceAddCounter.java` in `forge/game/replacement/`.
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
 
@@ -26,7 +27,7 @@ pub fn can_replace(
         _ => return false,
     };
     let target_card = &game.cards[target.index()];
-    if let Some(valid) = effect.params.get("ValidCard") {
+    if let Some(valid) = effect.params.get(keys::VALID_CARD) {
         if !matches_valid_card(valid, target_card, source_card) {
             return false;
         }
@@ -45,8 +46,8 @@ pub fn execute(
         ReplacementEvent::AddCounter { count, .. } => count,
         _ => return ReplacementResult::NotReplaced,
     };
-    if let Some(replace) = effect.params.get("ReplaceWith") {
-        match replace.as_str() {
+    if let Some(replace) = effect.params.get(keys::REPLACE_WITH) {
+        match replace {
             "AddOneMoreCounter" | "AddOneMoreCounters" => {
                 *count += 1;
                 return ReplacementResult::Updated;

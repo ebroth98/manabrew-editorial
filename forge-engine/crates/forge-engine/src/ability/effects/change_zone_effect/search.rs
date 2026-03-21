@@ -7,6 +7,7 @@ use forge_foundation::ZoneType;
 use super::helpers::{get_land_subtypes, matches_with_context};
 use super::super::{resolve_defined_player_with_sa, EffectContext};
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// EACH clause search: one card per clause separated by "&".
@@ -67,12 +68,12 @@ pub(super) fn resolve_multi_search(
     let max = change_num.min(candidates.len());
     if max == 0 { return Vec::new(); }
 
-    let diff_names = sa.param_is_true("DifferentNames");
-    let diff_cmc = sa.param_is_true("DifferentCMC");
-    let diff_power = sa.param_is_true("DifferentPower");
-    let share_land = sa.param_is_true("ShareLandType");
-    let budget_cmc: Option<i32> = sa.param_as_i32("WithTotalCMC");
-    let budget_power: Option<i32> = sa.param_as_i32("WithTotalPower");
+    let diff_names = sa.param_is_true(keys::DIFFERENT_NAMES);
+    let diff_cmc = sa.param_is_true(keys::DIFFERENT_CMC);
+    let diff_power = sa.param_is_true(keys::DIFFERENT_POWER);
+    let share_land = sa.param_is_true(keys::SHARE_LAND_TYPE);
+    let budget_cmc: Option<i32> = sa.param_as_i32(keys::WITH_TOTAL_CMC);
+    let budget_power: Option<i32> = sa.param_as_i32(keys::WITH_TOTAL_POWER);
 
     if diff_names || diff_cmc || diff_power || share_land || budget_cmc.is_some() || budget_power.is_some() {
         return resolve_constrained_multi(ctx, sa, candidates, chooser, max,

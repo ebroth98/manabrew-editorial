@@ -9,6 +9,7 @@ use forge_foundation::{CoreType, ZoneType};
 use super::EffectContext;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -128,7 +129,7 @@ pub fn resolve_claim_the_prize(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     // Get defined cards (attractions) — defaults to Self
-    let attractions = if let Some(def) = sa.params.get("Defined") {
+    let attractions = if let Some(def) = sa.params.get(keys::DEFINED) {
         if def == "Self" {
             vec![source]
         } else {
@@ -182,7 +183,7 @@ pub fn resolve_draft(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
     // Get spellbook names
-    let spellbook = match sa.params.get("Spellbook") {
+    let spellbook = match sa.params.get(keys::SPELLBOOK) {
         Some(sb) => sb.split(',').map(|s| s.trim().replace(';', ",")).collect::<Vec<_>>(),
         None => return,
     };
@@ -198,7 +199,7 @@ pub fn resolve_draft(ctx: &mut EffectContext, sa: &SpellAbility) {
         let chosen_name = &spellbook[ctx.rng.next_int(spellbook.len() as i32) as usize % spellbook.len()];
 
         // Remember the drafted card name on source
-        if sa.param_is_true("RememberDrafted") {
+        if sa.param_is_true(keys::REMEMBER_DRAFTED) {
             ctx.game.card_mut(source).svars.insert(
                 "DraftedCard".to_string(),
                 chosen_name.clone(),
@@ -330,8 +331,8 @@ pub fn resolve_make_card(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Determine target zone
     let zone = sa
         .params
-        .get("Zone")
-        .map(|z| match z.as_str() {
+        .get(keys::ZONE)
+        .map(|z| match z {
             "Hand" => ZoneType::Hand,
             "Battlefield" => ZoneType::Battlefield,
             "Graveyard" => ZoneType::Graveyard,
@@ -341,7 +342,7 @@ pub fn resolve_make_card(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or(ZoneType::Library);
 
     // Get card name(s) to conjure
-    let names: Vec<String> = if let Some(name) = sa.params.get("Name") {
+    let names: Vec<String> = if let Some(name) = sa.params.get(keys::NAME) {
         if name == "ChosenName" {
             // Use named card from source
             if let Some(chosen) = ctx.game.card(source).svars.get("ChosenName") {
@@ -350,9 +351,9 @@ pub fn resolve_make_card(ctx: &mut EffectContext, sa: &SpellAbility) {
                 vec![]
             }
         } else {
-            vec![name.clone()]
+            vec![name.to_string()]
         }
-    } else if let Some(names_str) = sa.params.get("Names") {
+    } else if let Some(names_str) = sa.params.get(keys::NAMES) {
         names_str.split(',').map(|s| s.trim().replace(';', ",")).collect()
     } else {
         // Spellbook/Choices — digital-only card generation
@@ -378,10 +379,10 @@ pub fn resolve_make_card(ctx: &mut EffectContext, sa: &SpellAbility) {
             );
             card.controller = controller;
 
-            if sa.param_is_true("Tapped") {
+            if sa.param_is_true(keys::TAPPED) {
                 card.tapped = true;
             }
-            if sa.param_is_true("FaceDown") {
+            if sa.param_is_true(keys::FACE_DOWN) {
                 card.face_down = true;
             }
 
@@ -390,17 +391,17 @@ pub fn resolve_make_card(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.move_card(card_id, zone, controller);
             super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, zone);
 
-            if sa.param_is_true("RememberMade") {
+            if sa.param_is_true(keys::REMEMBER_MADE) {
                 ctx.game.card_mut(source).add_remembered_card(card_id);
             }
-            if sa.param_is_true("ImprintMade") {
+            if sa.param_is_true(keys::IMPRINT_MADE) {
                 ctx.game.card_mut(source).imprinted_cards.push(card_id);
             }
         }
     }
 
     // Shuffle library if cards went there without a specific position
-    if zone == ZoneType::Library && !sa.params.contains_key("LibraryPosition") {
+    if zone == ZoneType::Library && !sa.params.has(keys::LIBRARY_POSITION) {
         {
             let lib = ctx.game.zone_mut(ZoneType::Library, controller);
             ctx.rng.shuffle_cards(&mut lib.cards);
@@ -424,13 +425,13 @@ pub fn resolve_multiple_piles(ctx: &mut EffectContext, sa: &SpellAbility) {
         .and_then(|s| s.parse::<usize>().ok())
         .unwrap_or(2);
 
-    let random_chosen = sa.param_is_true("RandomChosen");
+    let random_chosen = sa.param_is_true(keys::RANDOM_CHOSEN);
 
     // Get the zone to pull cards from
     let zone = sa
         .params
-        .get("Zone")
-        .map(|z| match z.as_str() {
+        .get(keys::ZONE)
+        .map(|z| match z {
             "Hand" => ZoneType::Hand,
             "Graveyard" => ZoneType::Graveyard,
             "Library" => ZoneType::Library,
@@ -479,7 +480,7 @@ pub fn resolve_open_attraction(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(1);
 
-    let players = if let Some(def) = sa.params.get("Defined") {
+    let players = if let Some(def) = sa.params.get(keys::DEFINED) {
         super::resolve_defined_players(def, sa.activating_player, ctx.game)
     } else {
         vec![sa.activating_player]
@@ -504,7 +505,7 @@ pub fn resolve_open_attraction(ctx: &mut EffectContext, sa: &SpellAbility) {
                 ctx.game.move_card(card_id, ZoneType::Battlefield, player_id);
                 super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Battlefield);
 
-                if sa.param_is_true("Remember") {
+                if sa.param_is_true(keys::REMEMBER) {
                     ctx.game.card_mut(source).add_remembered_card(card_id);
                 }
             }
@@ -537,7 +538,7 @@ fn resolve_permanent_common(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
     // Check if it should enter tapped (sneak/dash)
-    if sa.param_is_true("Sneak") || sa.param_is_true("Tapped") {
+    if sa.param_is_true(keys::SNEAK) || sa.param_is_true(keys::TAPPED) {
         ctx.game.card_mut(source).tapped = true;
     }
 
@@ -641,7 +642,7 @@ pub fn resolve_restart_game(ctx: &mut EffectContext, sa: &SpellAbility) {
     ];
 
     // Optional: RestrictFromZone — leave some cards in a zone
-    let leave_zone = sa.params.get("RestrictFromZone").and_then(|z| match z.as_str() {
+    let leave_zone = sa.params.get(keys::RESTRICT_FROM_ZONE).and_then(|z| match z {
         "Battlefield" => Some(ZoneType::Battlefield),
         "Hand" => Some(ZoneType::Hand),
         "Graveyard" => Some(ZoneType::Graveyard),
@@ -865,7 +866,7 @@ pub fn resolve_subgame(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Remember winners/losers if requested
     if let Some(source) = sa.source {
-        if let Some(remember) = sa.params.get("RememberPlayers") {
+        if let Some(remember) = sa.params.get(keys::REMEMBER_PLAYERS) {
             for (i, &pid) in player_ids.iter().enumerate() {
                 let is_winner = i != loser_idx;
                 if (remember == "Win" && is_winner) || (remember == "NotWin" && !is_winner) {
@@ -893,8 +894,7 @@ pub fn resolve_unlock_door(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let mode = sa
         .params
-        .get("Mode")
-        .map(|s| s.as_str())
+        .get(keys::MODE)
         .unwrap_or("ThisDoor");
 
     for card_id in targets {
@@ -946,7 +946,7 @@ pub fn resolve_unlock_door(ctx: &mut EffectContext, sa: &SpellAbility) {
 /// Ported from Java's AdvanceCrankEffect: advances the player's CRANK!
 /// counter to the next sprocket and cranks contraptions on that sprocket.
 pub fn resolve_advance_crank(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let players = if let Some(def) = sa.params.get("Defined") {
+    let players = if let Some(def) = sa.params.get(keys::DEFINED) {
         super::resolve_defined_players(def, sa.activating_player, ctx.game)
     } else {
         vec![sa.activating_player]
@@ -995,7 +995,7 @@ pub fn resolve_airbend(ctx: &mut EffectContext, sa: &SpellAbility) {
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
         vec![target]
     } else if let Some(source) = sa.source {
-        if let Some(def) = sa.params.get("Defined") {
+        if let Some(def) = sa.params.get(keys::DEFINED) {
             if def == "Self" {
                 vec![source]
             } else {
@@ -1039,13 +1039,13 @@ pub fn resolve_alter_attribute(ctx: &mut EffectContext, sa: &SpellAbility) {
     let attributes: Vec<String> = sa
         .params
         .get("Attributes")
-        .map(|a| a.split(',').map(|s| s.trim().to_string()).collect())
+        .map(|a: &str| a.split(',').map(|s| s.trim().to_string()).collect())
         .unwrap_or_default();
 
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
         vec![target]
     } else if let Some(source) = sa.source {
-        if let Some(def) = sa.params.get("Defined") {
+        if let Some(def) = sa.params.get(keys::DEFINED) {
             if def == "Self" {
                 vec![source]
             } else {
@@ -1140,7 +1140,7 @@ pub fn resolve_alter_attribute(ctx: &mut EffectContext, sa: &SpellAbility) {
                 _ => {}
             }
 
-            if sa.param_is_true("RememberAltered") {
+            if sa.param_is_true(keys::REMEMBER_ALTERED) {
                 if let Some(source) = sa.source {
                     ctx.game.card_mut(source).add_remembered_card(card_id);
                 }
@@ -1205,7 +1205,7 @@ pub fn resolve_assemble_contraption(ctx: &mut EffectContext, sa: &SpellAbility) 
                 .svars
                 .insert("Sprocket".to_string(), sprocket);
 
-            if sa.param_is_true("Remember") {
+            if sa.param_is_true(keys::REMEMBER) {
                 ctx.game.card_mut(source).add_remembered_card(card_id);
             }
         }
@@ -1251,7 +1251,7 @@ pub fn resolve_mutate(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Get the target creature to mutate onto
     let target = if let Some(target) = sa.target_chosen.target_card {
         target
-    } else if let Some(def) = sa.params.get("Defined") {
+    } else if let Some(def) = sa.params.get(keys::DEFINED) {
         if def == "Self" {
             return; // Can't mutate onto self
         }
@@ -1337,7 +1337,7 @@ pub fn resolve_mutate(ctx: &mut EffectContext, sa: &SpellAbility) {
 /// Ported from Java's OwnershipGainEffect: changes the owner of target cards
 /// to the defined player.
 pub fn resolve_gain_ownership(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let new_owner = if let Some(def) = sa.params.get("DefinedPlayer") {
+    let new_owner = if let Some(def) = sa.params.get(keys::DEFINED_PLAYER) {
         let players = super::resolve_defined_players(def, sa.activating_player, ctx.game);
         players.into_iter().next().unwrap_or(sa.activating_player)
     } else {

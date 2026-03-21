@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards, EffectContext};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ Goad` — goad target creature(s). Goaded creatures must attack each
@@ -26,7 +27,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Mass goad: ValidCards$ filter
-    if let Some(valid_filter) = sa.params.get("ValidCards") {
+    if let Some(valid_filter) = sa.params.get(keys::VALID_CARDS) {
         let player_ids = ctx.game.player_order.clone();
         let mut targets: Vec<CardId> = Vec::new();
         for &pid in &player_ids {

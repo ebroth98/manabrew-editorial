@@ -16,13 +16,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let mode = sa
         .params
         .get("ChangeController")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "CardOwner".to_string());
 
     let filter = sa
         .params
         .get("AllValid")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Permanent".to_string());
 
     // Collect all matching permanents on the battlefield

@@ -28,9 +28,14 @@
 //! - Attachment: EnchantedBy
 
 use forge_foundation::color::Color;
+use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::game::GameState;
 use crate::ids::PlayerId;
+use crate::parsing::compare::compare_expr;
+use crate::parsing::keys;
+use crate::parsing::Params;
 
 /// Check if a card matches a filter expression like "Creature.YouCtrl".
 /// Returns true if `valid` is empty or the card satisfies all parts.
@@ -399,4 +404,149 @@ fn check_cmc_condition(rest: &str, card: &CardInstance) -> bool {
         }
     }
     true // fallback: unknown format passes
+}
+
+// ── Common requirement checks ───────────────────────────────────────────────
+//
+// These mirror Java's `CardTraitBase.meetsCommonRequirements()` — shared
+// validation logic used by triggers, static abilities, replacement effects,
+// and cost adjustment. Previously duplicated in 4+ locations.
+
+/// Check the `IsPresent$` / `PresentCompare$` / `PresentPlayer$` /
+/// `PresentZone$` parameter group.
+///
+/// Counts cards matching the `IsPresent$` filter in the specified zone for
+/// the specified player(s), then compares the count against `PresentCompare$`.
+///
+/// Mirrors Java's `meetsCommonRequirements()` IsPresent block.
+pub fn check_is_present(
+    game: &GameState,
+    params: &Params,
+    source: &CardInstance,
+) -> bool {
+    let Some(is_present) = params.get(keys::IS_PRESENT) else {
+        return true; // no IsPresent param — passes
+    };
+
+    let present_compare = params.get(keys::PRESENT_COMPARE).unwrap_or("GE1");
+    let present_player = params.get(keys::PRESENT_PLAYER).unwrap_or("Any");
+    let present_zone = params
+        .get(keys::PRESENT_ZONE)
+        .and_then(parse_zone_name)
+        .unwrap_or(ZoneType::Battlefield);
+
+    let candidate_players: Vec<PlayerId> = match present_player {
+        p if p.eq_ignore_ascii_case("You") => vec![source.controller],
+        p if p.eq_ignore_ascii_case("Opponent") => vec![game.opponent_of(source.controller)],
+        _ => game.players.iter().map(|p| p.id).collect(),
+    };
+
+    let mut count = 0i32;
+    for pid in candidate_players {
+        for &cid in game.cards_in_zone(present_zone, pid) {
+            if matches_valid_card(is_present, game.card(cid), source) {
+                count += 1;
+            }
+        }
+    }
+
+    compare_expr(count, present_compare)
+}
+
+/// Check the `CheckSVar$` / `SVarCompare$` parameter group.
+///
+/// Resolves the named SVar on the source card and compares its value.
+/// Mirrors Java's `meetsCommonRequirements()` CheckSVar block.
+pub fn check_svar_condition(
+    game: &GameState,
+    params: &Params,
+    source: &CardInstance,
+) -> bool {
+    let Some(check_name) = params.get(keys::CHECK_SVAR) else {
+        return true;
+    };
+    let Some(compare) = params.get(keys::SVAR_COMPARE) else {
+        return true;
+    };
+
+    // Resolve the SVar value — first check card SVars, then try direct parse.
+    let raw_value = source.svars.get(check_name).map(|s| s.as_str()).unwrap_or("0");
+    let value = if raw_value.starts_with("Count$") {
+        let count_expr = &raw_value["Count$".len()..];
+        crate::svar::resolve_count_svar(count_expr, game, source.id, source.controller)
+    } else {
+        raw_value.parse::<i32>().unwrap_or(0)
+    };
+
+    compare_expr(value, compare)
+}
+
+/// Check the `Condition$` parameter for game-state conditions.
+///
+/// Supports: PlayerTurn, NotPlayerTurn, Metalcraft, Delirium.
+/// Mirrors Java's `meetsCommonRequirements()` condition checks.
+pub fn check_condition(
+    game: &GameState,
+    params: &Params,
+    source: &CardInstance,
+) -> bool {
+    let Some(condition) = params.get(keys::CONDITION) else {
+        return true;
+    };
+    match condition {
+        "PlayerTurn" => game.active_player() == source.controller,
+        "NotPlayerTurn" => game.active_player() != source.controller,
+        "Metalcraft" => {
+            game.cards_in_zone(ZoneType::Battlefield, source.controller)
+                .iter()
+                .filter(|&&cid| game.card(cid).type_line.is_artifact())
+                .count()
+                >= 3
+        }
+        "Delirium" => {
+            let graveyard = game.cards_in_zone(ZoneType::Graveyard, source.controller);
+            let mut types = std::collections::HashSet::new();
+            for &cid in graveyard {
+                let card = game.card(cid);
+                if card.is_creature() { types.insert("creature"); }
+                if card.type_line.is_instant() { types.insert("instant"); }
+                if card.type_line.is_sorcery() { types.insert("sorcery"); }
+                if card.type_line.is_artifact() { types.insert("artifact"); }
+                if card.type_line.is_enchantment() { types.insert("enchantment"); }
+                if card.is_land() { types.insert("land"); }
+                if card.type_line.is_planeswalker() { types.insert("planeswalker"); }
+            }
+            types.len() >= 4
+        }
+        _ => true, // unknown condition — permissive fallback
+    }
+}
+
+/// Convenience: run all common requirement checks from a `Params` instance.
+///
+/// Checks `IsPresent$`, `CheckSVar$`, and `Condition$` in sequence.
+/// Returns `false` if any check fails.
+///
+/// Mirrors Java's `CardTraitBase.meetsCommonRequirements()`.
+pub fn meets_common_requirements(
+    game: &GameState,
+    params: &Params,
+    source: &CardInstance,
+) -> bool {
+    check_is_present(game, params, source)
+        && check_svar_condition(game, params, source)
+        && check_condition(game, params, source)
+}
+
+/// Parse a zone name string into ZoneType.
+fn parse_zone_name(name: &str) -> Option<ZoneType> {
+    match name.to_ascii_lowercase().as_str() {
+        "battlefield" => Some(ZoneType::Battlefield),
+        "graveyard" => Some(ZoneType::Graveyard),
+        "hand" => Some(ZoneType::Hand),
+        "library" => Some(ZoneType::Library),
+        "exile" => Some(ZoneType::Exile),
+        "command" => Some(ZoneType::Command),
+        _ => None,
+    }
 }

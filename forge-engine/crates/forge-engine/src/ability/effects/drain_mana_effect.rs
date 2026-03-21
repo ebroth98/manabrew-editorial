@@ -1,4 +1,5 @@
 use super::{resolve_defined_players, EffectContext};
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
@@ -8,8 +9,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let defined = sa
         .params
-        .get("Defined")
-        .map(String::as_str)
+        .get(crate::parsing::keys::DEFINED)
         .unwrap_or("You");
 
     let mut drained_total = 0i32;
@@ -44,10 +44,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         pool.empty();
     }
 
-    if sa
-        .params
-        .get("DrainMana")
-        .is_some_and(|v| v.eq_ignore_ascii_case("True"))
+    if sa.params.is_true(keys::DRAIN_MANA)
         && drained_total > 0
     {
         // Preserve original colors (mirrors Java behavior)
@@ -56,10 +53,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     }
 
-    if sa
-        .params
-        .get("RememberDrainedMana")
-        .is_some_and(|v| v.eq_ignore_ascii_case("True"))
+    if sa.params.is_true(keys::REMEMBER_DRAINED_MANA)
     {
         if let Some(source_id) = sa.source {
             ctx.game
@@ -84,7 +78,7 @@ fn has_mana_burn(game: &crate::game::GameState, player: crate::ids::PlayerId) ->
             if st_ab.mode != StaticMode::ManaBurn {
                 continue;
             }
-            if let Some(valid_player) = st_ab.params.get("ValidPlayer") {
+            if let Some(valid_player) = st_ab.params.get(keys::VALID_PLAYER) {
                 match valid_player.to_ascii_lowercase().as_str() {
                     "you" => {
                         if card.controller != player {

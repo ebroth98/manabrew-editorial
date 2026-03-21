@@ -11,14 +11,13 @@
 //! R$ Event$ Destroy | ValidCard$ Card.Self | Description$ ~ is indestructible.
 //! ```
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, CardInstance};
 use crate::ids::PlayerId;
+use crate::parsing::{keys, Params};
 
 // Re-export so existing `use crate::replacement::replacement_effect::{ReplacementType, ReplacementLayer}`
 // paths keep working.
@@ -53,7 +52,7 @@ pub struct ReplacementEffect {
     pub layer: ReplacementLayer,
     /// Raw key→value pairs parsed from the pipe-separated script line.
     /// Keys do NOT include the trailing `$`.
-    pub params: BTreeMap<String, String>,
+    pub params: Params,
     /// Zones where this effect is active. Empty = active everywhere.
     /// Parsed from `ActiveZones$` parameter.
     pub active_zones: Vec<ZoneType>,
@@ -71,8 +70,7 @@ impl ReplacementEffect {
     /// Returns a human-readable description for this effect (from `Description$`).
     pub fn description(&self) -> &str {
         self.params
-            .get("Description")
-            .map(String::as_str)
+            .get(keys::DESCRIPTION)
             .unwrap_or("Replacement effect")
     }
 }
@@ -141,30 +139,22 @@ pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
     };
 
     // Parse "|"-separated "Key$ Value" pairs.
-    let mut params: BTreeMap<String, String> = BTreeMap::new();
-    for segment in body.split('|') {
-        let seg = segment.trim();
-        if let Some(idx) = seg.find("$ ") {
-            let key = seg[..idx].trim().to_string();
-            let val = seg[idx + 2..].trim().to_string();
-            params.insert(key, val);
-        }
-    }
+    let params = Params::from_raw(body);
 
-    let event = match params.get("Event").map(String::as_str) {
+    let event = match params.get(keys::EVENT) {
         Some(s) => ReplacementType::from_event_str(s),
         None => return None,
     };
 
     // Parse the layer (defaults to Other if not specified).
     let layer = params
-        .get("Layer")
+        .get(keys::LAYER)
         .and_then(|s| ReplacementLayer::from_layer_str(s))
         .unwrap_or(ReplacementLayer::Other);
 
     // Parse ActiveZones$ (comma- or space-separated list of zone names).
     let active_zones = params
-        .get("ActiveZones")
+        .get(keys::ACTIVE_ZONES)
         .map(|s| parse_zone_list(s))
         .unwrap_or_default();
 
@@ -205,7 +195,7 @@ mod tests {
         let re = parse_replacement_effect(raw).expect("should parse");
         assert_eq!(re.event, ReplacementType::DamageDone);
         assert_eq!(re.layer, ReplacementLayer::Other);
-        assert_eq!(re.params["Prevent"], "True");
+        assert_eq!(re.params.get(keys::PREVENT).unwrap(), "True");
         assert_eq!(re.active_zones, vec![ZoneType::Battlefield]);
     }
 
@@ -214,7 +204,7 @@ mod tests {
         let raw = "R$ Event$ Draw | ValidPlayer$ You | Description$ Skip your draw step.";
         let re = parse_replacement_effect(raw).expect("should parse");
         assert_eq!(re.event, ReplacementType::Draw);
-        assert_eq!(re.params["ValidPlayer"], "You");
+        assert_eq!(re.params.get(keys::VALID_PLAYER).unwrap(), "You");
         assert!(re.active_zones.is_empty());
     }
 
@@ -223,7 +213,7 @@ mod tests {
         let raw = "R$ Event$ Destroy | ValidCard$ Card.Self | Description$ ~ is indestructible.";
         let re = parse_replacement_effect(raw).expect("should parse");
         assert_eq!(re.event, ReplacementType::Destroy);
-        assert_eq!(re.params["ValidCard"], "Card.Self");
+        assert_eq!(re.params.get(keys::VALID_CARD).unwrap(), "Card.Self");
     }
 
     #[test]
@@ -231,9 +221,9 @@ mod tests {
         let raw = "R$ Event$ Moved | Destination$ Graveyard | Origin$ Battlefield | ValidCard$ Card.Self | NewDestination$ Exile | Description$ If ~ would die, exile it instead.";
         let re = parse_replacement_effect(raw).expect("should parse");
         assert_eq!(re.event, ReplacementType::Moved);
-        assert_eq!(re.params["Destination"], "Graveyard");
-        assert_eq!(re.params["Origin"], "Battlefield");
-        assert_eq!(re.params["NewDestination"], "Exile");
+        assert_eq!(re.params.get(keys::DESTINATION).unwrap(), "Graveyard");
+        assert_eq!(re.params.get(keys::ORIGIN).unwrap(), "Battlefield");
+        assert_eq!(re.params.get(keys::NEW_DESTINATION).unwrap(), "Exile");
     }
 
     #[test]

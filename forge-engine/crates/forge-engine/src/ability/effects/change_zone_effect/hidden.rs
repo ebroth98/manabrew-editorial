@@ -5,6 +5,7 @@
 
 use forge_foundation::ZoneType;
 
+use crate::parsing::keys;
 use super::helpers::{
     can_search_library, find_opposition_agent, find_search_limit,
     matches_with_context, resolve_destination,
@@ -87,7 +88,7 @@ pub(super) fn resolve_hidden_origin(
             // (line 1509), so Defined moves never trigger a search shuffle.
             // The shuffle is handled separately by a SubAbility$ DBShuffle if needed.
             let mut sa_no_shuffle = sa.clone();
-            sa_no_shuffle.params.insert("NoShuffle".to_string(), "True".to_string());
+            sa_no_shuffle.params.put("NoShuffle".to_string(), "True".to_string());
             move_cards(ctx, &sa_no_shuffle, &valid, origin_zone, dest_zone, &lib_position, controller);
         }
         // For known defined types (Remembered, Imprinted, etc.), always return
@@ -144,7 +145,7 @@ pub(super) fn resolve_hidden_origin(
     }
 
     // RememberSearched$
-    if sa.param_is_true("RememberSearched") {
+    if sa.param_is_true(keys::REMEMBER_SEARCHED) {
         if let Some(sid) = sa.source {
             ctx.game.card_mut(sid).remembered_players.push(search_player);
         }
@@ -173,7 +174,7 @@ pub(super) fn resolve_hidden_origin(
     };
 
     // Exactly$ — must find exactly ChangeNum or fail
-    if sa.param_is_true("Exactly") && cards_to_move.len() != change_num {
+    if sa.param_is_true(keys::EXACTLY) && cards_to_move.len() != change_num {
         if origin_zone == ZoneType::Library {
             let lib = ctx.game.zone_mut(ZoneType::Library, search_player);
             ctx.rng.shuffle_cards(&mut lib.cards);
@@ -182,14 +183,14 @@ pub(super) fn resolve_hidden_origin(
     }
 
     // Reveal chosen cards (NoLooking$ suppresses)
-    if !sa.param_is_true("NoLooking") && sa.is_reveal() && !cards_to_move.is_empty() && origin_zone == ZoneType::Library {
+    if !sa.param_is_true(keys::NO_LOOKING) && sa.is_reveal() && !cards_to_move.is_empty() && origin_zone == ZoneType::Library {
         for agent in ctx.agents.iter_mut() {
             agent.on_library_peek(ctx.game, &cards_to_move);
         }
     }
 
     // RememberLKI$
-    if sa.param_is_true("RememberLKI") {
+    if sa.param_is_true(keys::REMEMBER_LKI) {
         if let Some(sid) = sa.source {
             for &cid in &cards_to_move { ctx.game.card_mut(sid).add_remembered_card(cid); }
         }

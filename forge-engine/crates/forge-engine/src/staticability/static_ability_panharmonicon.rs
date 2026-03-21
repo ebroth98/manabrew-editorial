@@ -3,6 +3,7 @@ use forge_foundation::ZoneType;
 use crate::card::CardInstance;
 use crate::event::RunParams;
 use crate::game::GameState;
+use crate::parsing::keys;
 use crate::ids::CardId;
 use crate::trigger::Trigger;
 use crate::trigger::TriggerMode;
@@ -25,12 +26,12 @@ pub fn extra_triggers(
             .iter()
             .filter(|sa| sa.mode == crate::staticability::StaticMode::Panharmonicon)
         {
-            if let Some(valid_card) = st_ab.params.get("ValidCard") {
+            if let Some(valid_card) = st_ab.params.get(keys::VALID_CARD) {
                 if !matches_valid_card(valid_card, trig_host, source) {
                     continue;
                 }
             }
-            if let Some(valid_mode) = st_ab.params.get("ValidMode") {
+            if let Some(valid_mode) = st_ab.params.get(keys::VALID_MODE) {
                 let trig_mode = trigger_mode_name(&trigger.mode);
                 if !valid_mode
                     .split(',')
@@ -40,7 +41,7 @@ pub fn extra_triggers(
                     continue;
                 }
             }
-            if let Some(valid_zone) = st_ab.params.get("ValidZone") {
+            if let Some(valid_zone) = st_ab.params.get(keys::VALID_ZONE) {
                 if !zone_list_matches(valid_zone, trig_host.zone) {
                     continue;
                 }
@@ -154,7 +155,7 @@ fn mode_specific_matches(
             } else {
                 run_params.card
             };
-            if let Some(valid_cause) = st_ab.params.get("ValidCause") {
+            if let Some(valid_cause) = st_ab.params.get(keys::VALID_CAUSE) {
                 let Some(cid) = moved else {
                     return false;
                 };
@@ -166,12 +167,12 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(origin_filter) = st_ab.params.get("Origin") {
+            if let Some(origin_filter) = st_ab.params.get(keys::ORIGIN) {
                 if !matches_zone(origin_filter, run_params.origin) {
                     return false;
                 }
             }
-            if let Some(dest_filter) = st_ab.params.get("Destination") {
+            if let Some(dest_filter) = st_ab.params.get(keys::DESTINATION) {
                 if !matches_zone(dest_filter, run_params.destination) {
                     return false;
                 }
@@ -179,7 +180,7 @@ fn mode_specific_matches(
             true
         }
         TriggerMode::Attacks { .. } => {
-            if let Some(valid_cause) = st_ab.params.get("ValidCause") {
+            if let Some(valid_cause) = st_ab.params.get(keys::VALID_CAUSE) {
                 let Some(attacker) = run_params.attacker else {
                     return false;
                 };
@@ -194,7 +195,7 @@ fn mode_specific_matches(
             true
         }
         TriggerMode::SpellCast { .. } => {
-            if let Some(valid_cause) = st_ab.params.get("ValidCause") {
+            if let Some(valid_cause) = st_ab.params.get(keys::VALID_CAUSE) {
                 let Some(spell_card) = run_params.spell_card else {
                     return false;
                 };
@@ -206,7 +207,7 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(valid_activator) = st_ab.params.get("ValidActivator") {
+            if let Some(valid_activator) = st_ab.params.get(keys::VALID_ACTIVATOR) {
                 let Some(spell_controller) = run_params.spell_controller else {
                     return false;
                 };
@@ -217,13 +218,13 @@ fn mode_specific_matches(
             true
         }
         TriggerMode::DamageDone { .. } => {
-            if let Some(combat_damage) = st_ab.params.get("CombatDamage") {
+            if let Some(combat_damage) = st_ab.params.get(keys::COMBAT_DAMAGE) {
                 let wanted = combat_damage.eq_ignore_ascii_case("True");
                 if run_params.is_combat_damage != Some(wanted) {
                     return false;
                 }
             }
-            if let Some(valid_source) = st_ab.params.get("ValidSource") {
+            if let Some(valid_source) = st_ab.params.get(keys::VALID_SOURCE) {
                 let Some(source_id) = run_params.damage_source else {
                     return false;
                 };
@@ -235,7 +236,7 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(valid_target) = st_ab.params.get("ValidTarget") {
+            if let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET) {
                 if let Some(target_card) = run_params.damage_target_card {
                     if !matches_valid_card_for_controller(
                         valid_target,
@@ -253,13 +254,13 @@ fn mode_specific_matches(
             true
         }
         TriggerMode::DamageDealtOnce { .. } => {
-            if let Some(combat_damage) = st_ab.params.get("CombatDamage") {
+            if let Some(combat_damage) = st_ab.params.get(keys::COMBAT_DAMAGE) {
                 let wanted = combat_damage.eq_ignore_ascii_case("True");
                 if run_params.is_combat_damage != Some(wanted) {
                     return false;
                 }
             }
-            if let Some(valid_source) = st_ab.params.get("ValidSource") {
+            if let Some(valid_source) = st_ab.params.get(keys::VALID_SOURCE) {
                 let Some(source_id) = run_params.damage_source else {
                     return false;
                 };
@@ -271,7 +272,7 @@ fn mode_specific_matches(
                     return false;
                 }
             }
-            if let Some(valid_target) = st_ab.params.get("ValidTarget") {
+            if let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET) {
                 if let Some(target_card) = run_params.damage_target_card {
                     if !matches_valid_card_for_controller(
                         valid_target,

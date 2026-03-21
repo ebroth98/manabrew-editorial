@@ -2,9 +2,10 @@ use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
-use crate::trigger::parse_pipe_params;
+use crate::parsing::Params;
 
 pub fn cant_target(
     cards: &[CardInstance],
@@ -19,7 +20,7 @@ pub fn cant_target(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantTarget)
         {
-            if let Some(affected_zone) = st_ab.params.get("AffectedZone") {
+            if let Some(affected_zone) = st_ab.params.get(keys::AFFECTED_ZONE) {
                 let zones: Vec<&str> = affected_zone.split(',').map(|s| s.trim()).collect();
                 if !zones.iter().any(|z| zone_matches(target.zone, z)) {
                     continue;
@@ -29,20 +30,20 @@ pub fn cant_target(
             }
 
             if !matches_valid_target(
-                st_ab.params.get("ValidTarget").map(String::as_str),
+                st_ab.params.get(keys::VALID_TARGET),
                 target,
                 source,
             ) {
                 continue;
             }
             if !matches_valid_activator(
-                st_ab.params.get("Activator").map(String::as_str),
+                st_ab.params.get(keys::ACTIVATOR),
                 activator,
                 source.controller,
             ) {
                 continue;
             }
-            if let Some(valid_sa) = st_ab.params.get("ValidSA") {
+            if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
                 let Some(sa) = source_sa else {
                     continue;
                 };
@@ -51,7 +52,7 @@ pub fn cant_target(
                 }
             }
             if let (Some(valid_source), Some(src)) = (
-                st_ab.params.get("ValidSource").map(String::as_str),
+                st_ab.params.get(keys::VALID_SOURCE),
                 source_card,
             ) {
                 if !matches_valid_target(Some(valid_source), src, source) {
@@ -65,7 +66,7 @@ pub fn cant_target(
 }
 
 fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
-    let params = parse_pipe_params(ability_line);
+    let params = Params::from_raw(ability_line);
     let tokens: Vec<&str> = valid_sa
         .split(',')
         .map(|s| s.trim())
@@ -77,10 +78,10 @@ fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
     tokens
         .iter()
         .all(|tok| match tok.to_ascii_lowercase().as_str() {
-            "spell" => params.contains_key("SP"),
-            "istargeting" => params.contains_key("ValidTgts"),
+            "spell" => params.has(keys::SP),
+            "istargeting" => params.has(keys::VALID_TGTS),
             "xcost" => {
-                params.get("Cost").map(|c| c.contains('X')).unwrap_or(false)
+                params.get(keys::COST).map(|c| c.contains('X')).unwrap_or(false)
                     || ability_line.contains("X")
             }
             _ => false,

@@ -4,12 +4,13 @@
 //! Double the number of each type of counter on target permanent.
 
 use super::{parse_counter_type, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let multiplier = super::resolve_numeric_svar(ctx.game, sa, "Multiplier", 2).max(0);
-    let counter_type_filter = sa.params.get("CounterType").cloned();
+    let counter_type_filter = sa.params.get_cloned(keys::COUNTER_TYPE);
 
     let targets: Vec<crate::ids::CardId> = if sa.uses_targeting() {
         sa.target_chosen.target_card.into_iter().collect()

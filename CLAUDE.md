@@ -19,6 +19,9 @@ More importalty, you must keep equal (identical structure of file, and interface
 You cannot make up different file names.
 If you're working on a moudle, make sure to use the scan-feature-parity skill to track progress.
 
+## File structure and naming precision
+When implementing or modifying code, you MUST follow the existing file structure and symbol naming with precision. Do not guess or invent file paths, function names, struct names, or module organization. If you are unsure about the correct name, path, or structure, use the `scan-feature-parity` skill to verify before writing code. Getting file names or symbol names wrong causes merge conflicts and breaks parity with the Java reference.
+
 ## Agent Workflow
 
 For any non-trivial development task (new features, significant refactoring, multi-file changes), you MUST load the `crew-orchestrator` skill first and follow its full workflow:

@@ -11,14 +11,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let num: usize = sa
         .params
-        .get("NumCards")
-        .and_then(|s| s.parse().ok())
+        .as_usize(crate::parsing::keys::NUM_CARDS)
         .unwrap_or(1);
 
     // Determine target player: either from targeting or Defined$
     let target_player: PlayerId = if let Some(pid) = sa.target_chosen.target_player {
         pid
-    } else if let Some(defined) = sa.params.get("Defined") {
+    } else if let Some(defined) = sa.params.get(crate::parsing::keys::DEFINED) {
         match resolve_defined_player(defined, controller, ctx.game) {
             Some(pid) => pid,
             None => return,
@@ -32,7 +31,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .cards_in_zone(ZoneType::Hand, target_player)
         .to_vec();
 
-    if sa.params.contains_key("Optional") {
+    if sa.params.has(crate::parsing::keys::OPTIONAL) {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.as_str());
         let accepted = ctx.agents[target_player.index()].confirm_action(
             target_player,
@@ -53,7 +52,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // use their seeded RNG for parity testing.
     let is_random = sa
         .params
-        .get("Mode")
+        .get(crate::parsing::keys::MODE)
         .map_or(false, |m| m.eq_ignore_ascii_case("Random"));
 
     let to_discard = if is_random {

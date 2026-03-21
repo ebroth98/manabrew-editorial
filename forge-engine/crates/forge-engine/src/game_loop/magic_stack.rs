@@ -9,14 +9,14 @@ impl GameLoop {
         }
         if let Some(kind) = sa
             .params
-            .get("SP")
-            .or_else(|| sa.params.get("DB"))
-            .or_else(|| sa.params.get("AB"))
+            .get(keys::SP)
+            .or_else(|| sa.params.get(keys::DB))
+            .or_else(|| sa.params.get(keys::AB))
         {
-            return kind.clone();
+            return kind.to_string();
         }
         if sa.is_trigger {
-            if let Some(mode) = sa.params.get("Mode") {
+            if let Some(mode) = sa.params.get(keys::MODE) {
                 return format!("Trigger({mode})");
             }
             return "Trigger".to_string();
@@ -196,7 +196,7 @@ impl GameLoop {
                 let is_cycling = entry
                     .spell_ability
                     .params
-                    .get("PrecostDesc")
+                    .get(keys::PRECOST_DESC)
                     .map_or(false, |d| d.to_lowercase().contains("cycling"));
                 if is_cycling {
                     if let Some(source_card) = entry.spell_ability.source {
@@ -215,7 +215,7 @@ impl GameLoop {
                 // Ninjutsu: add the ninja to combat as an attacker.
                 // The change_zone_effect already set attacking_player; here we
                 // register it in the CombatState so it participates in damage.
-                if entry.spell_ability.param_is_true("Ninjutsu") {
+                if entry.spell_ability.param_is_true(keys::NINJUTSU) {
                     if let Some(source_card) = entry.spell_ability.source {
                         if game.card(source_card).zone == ZoneType::Battlefield {
                             if let Some(def_pid) = game.card(source_card).attacking_player {
@@ -277,9 +277,9 @@ impl GameLoop {
                             let card_name = game.card(card_id).card_name.clone();
                             // Extract SpellDescription from the SVar for a better prompt
                             let desc = {
-                                let params = parse_pipe_params(&svar_text);
+                                let params = Params::from_raw(&svar_text);
                                 params
-                                    .get("SpellDescription")
+                                    .get(keys::SPELL_DESCRIPTION)
                                     .map(|d| d.replace("CARDNAME", &card_name))
                                     .unwrap_or_else(|| {
                                         format!("Use {} replacement ability?", card_name)
@@ -534,7 +534,7 @@ impl GameLoop {
                             destination: Some(ZoneType::Graveyard),
                             valid_card: Some("Card.Self".to_string()),
                         },
-                        params: std::collections::BTreeMap::new(),
+                        params: crate::parsing::Params::default(),
                         active_zones: vec![ZoneType::Battlefield],
                         execute: "BlitzDiesDraw".to_string(),
                         optional: false,
@@ -734,7 +734,7 @@ impl GameLoop {
                 }
 
                 // CantFizzle param (e.g. Gilded Drake) overrides fizzle
-                if sa.params.contains_key("CantFizzle") {
+                if sa.params.has(keys::CANT_FIZZLE) {
                     fizzle = Some(false);
                 }
             }

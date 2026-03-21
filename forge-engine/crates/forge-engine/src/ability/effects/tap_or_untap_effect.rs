@@ -3,6 +3,7 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::agent::BinaryChoiceKind;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ TapOrUntap` — choose tap or untap for the targeted/defined permanent.
@@ -19,7 +20,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if let Some(target) = sa.target_chosen.target_card {
         candidates.push(target);
     } else if let Some(source) = sa.source {
-        if sa.params.get("Defined").map(|s| s.as_str()) == Some("Self") {
+        if sa.params.get(crate::parsing::keys::DEFINED) == Some("Self") {
             candidates.push(source);
         }
     }
@@ -28,11 +29,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(card_id).zone != ZoneType::Battlefield {
             continue;
         }
-        let should_tap = if sa
-            .params
-            .get("Toggle")
-            .map(|s| s == "True")
-            .unwrap_or(false)
+        let should_tap = if sa.params.is_true(keys::TOGGLE)
         {
             !ctx.game.card(card_id).tapped
         } else {

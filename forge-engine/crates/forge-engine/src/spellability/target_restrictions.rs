@@ -4,14 +4,13 @@
 //! of targets a spell can select, checks for valid candidates, and retrieves
 //! all valid target candidates.
 
-use std::collections::BTreeMap;
-
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
 use crate::card::card_property;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::{keys, Params};
 use crate::spellability::SpellAbility;
 
 /// What kinds of targets a spell can select.
@@ -62,25 +61,23 @@ pub struct TargetRestrictions {
 impl TargetRestrictions {
     /// Construct from parsed pipe params. Returns `None` if no `ValidTgts$`
     /// parameter exists (mirrors Java: null targetRestrictions means no targeting).
-    pub fn new(params: &BTreeMap<String, String>) -> Option<Self> {
-        let valid_tgts_str = params.get("ValidTgts")?;
+    pub fn new(params: &Params) -> Option<Self> {
+        let valid_tgts_str = params.get(keys::VALID_TGTS)?;
         let valid_tgts: Vec<String> = valid_tgts_str
             .split(',')
             .map(|s| s.trim().to_string())
             .collect();
-        let origin_zone = params.get("Origin").and_then(|v| parse_zone_type(v));
+        let origin_zone = params.get(keys::ORIGIN).and_then(|v| parse_zone_type(v));
         let mut target_kind = parse_target_kind_enhanced(&valid_tgts[0], origin_zone);
         let min_targets = params
-            .get("TargetMin")
-            .cloned()
+            .get_cloned(keys::TARGET_MIN)
             .unwrap_or_else(|| "1".to_string());
         let max_targets = params
-            .get("TargetMax")
-            .cloned()
+            .get_cloned(keys::TARGET_MAX)
             .unwrap_or_else(|| "1".to_string());
 
         // Parse TargetType$ parameter if present (used by counterspells)
-        let target_type_filter = params.get("TargetType").cloned();
+        let target_type_filter = params.get_cloned(keys::TARGET_TYPE);
 
         // If TargetType$ Spell is specified, override to Spell targeting
         // This handles cases like Counterspell: "ValidTgts$ Card | TargetType$ Spell"
@@ -206,7 +203,7 @@ fn resolve_target_count_expr(expr: &str, game: &GameState, sa: &SpellAbility) ->
     let mut sa_tmp = sa.clone();
     sa_tmp
         .params
-        .insert("__target_count__".to_string(), expr.to_string());
+        .put("__target_count__".to_string(), expr.to_string());
     crate::ability::effects::resolve_numeric_svar(game, &sa_tmp, "__target_count__", 1)
 }
 
@@ -292,9 +289,9 @@ fn parse_target_kind(val: &str) -> TargetKind {
 /// Enhanced version that also considers `Origin$` for zone targeting.
 /// Convenience wrapper for code that doesn't have parsed params yet.
 pub fn parse_valid_targets(ability: &str) -> TargetKind {
-    let params = crate::trigger::parse_pipe_params(ability);
-    let origin_zone = params.get("Origin").and_then(|v| parse_zone_type(v));
-    match params.get("ValidTgts") {
+    let params = Params::from_raw(ability);
+    let origin_zone = params.get(keys::ORIGIN).and_then(|v| parse_zone_type(v));
+    match params.get(keys::VALID_TGTS) {
         Some(val) => parse_target_kind_enhanced(val, origin_zone),
         None => TargetKind::None,
     }
@@ -308,7 +305,7 @@ pub fn has_candidates(
     ability: &str,
     source: Option<CardId>,
 ) -> bool {
-    let params = crate::trigger::parse_pipe_params(ability);
+    let params = Params::from_raw(ability);
     match TargetRestrictions::new(&params) {
         Some(tr) => tr.has_candidates(game, player, source),
         None => true, // No targeting = always valid
@@ -324,7 +321,7 @@ pub fn has_candidates_in_chain(
     ability: &str,
     source: Option<CardId>,
 ) -> bool {
-    let params = crate::trigger::parse_pipe_params(ability);
+    let params = Params::from_raw(ability);
     if let Some(tr) = TargetRestrictions::new(&params) {
         let min_targets = if let Some(card_id) = source {
             let sa = crate::spellability::build_spell_ability(game, card_id, ability, player);
@@ -338,7 +335,7 @@ pub fn has_candidates_in_chain(
         }
     }
 
-    if let Some(sub_svar_name) = params.get("SubAbility") {
+    if let Some(sub_svar_name) = params.get(keys::SUB_ABILITY) {
         if let Some(card_id) = source {
             if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name) {
                 let sub_text = sub_text.clone();
@@ -730,8 +727,7 @@ mod tests {
 
     #[test]
     fn target_restrictions_from_params() {
-        let mut params = BTreeMap::new();
-        params.insert("ValidTgts".into(), "Creature.OppCtrl".into());
+        let params = Params::from_raw("ValidTgts$ Creature.OppCtrl");
         let tr = TargetRestrictions::new(&params).unwrap();
         assert_eq!(tr.target_kind, TargetKind::Creature(Some("OppCtrl".into())));
         assert_eq!(tr.min_targets, "1");
@@ -740,9 +736,7 @@ mod tests {
 
     #[test]
     fn target_restrictions_from_params_graveyard_origin() {
-        let mut params = BTreeMap::new();
-        params.insert("Origin".into(), "Graveyard".into());
-        params.insert("ValidTgts".into(), "Creature.YouCtrl".into());
+        let params = Params::from_raw("Origin$ Graveyard | ValidTgts$ Creature.YouCtrl");
         let tr = TargetRestrictions::new(&params).unwrap();
         assert_eq!(
             tr.target_kind,
@@ -755,7 +749,7 @@ mod tests {
 
     #[test]
     fn no_valid_tgts_returns_none() {
-        let params = BTreeMap::new();
+        let params = Params::from_raw("");
         assert!(TargetRestrictions::new(&params).is_none());
     }
 

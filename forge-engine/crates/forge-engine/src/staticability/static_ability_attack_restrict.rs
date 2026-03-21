@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn global_attack_restrict(cards: &[CardInstance]) -> Option<i32> {
@@ -12,12 +13,12 @@ pub fn global_attack_restrict(cards: &[CardInstance]) -> Option<i32> {
             .iter()
             .filter(|sa| sa.mode == StaticMode::AttackRestrict)
         {
-            if st_ab.params.contains_key("ValidDefender") {
+            if st_ab.params.has(keys::VALID_DEFENDER) {
                 continue;
             }
             let m = st_ab
                 .params
-                .get("MaxAttackers")
+                .get(keys::MAX_ATTACKERS)
                 .map(|s| eval_amount(source, s))
                 .unwrap_or(1);
             max = Some(max.map_or(m, |x| x.min(m)));
@@ -34,7 +35,7 @@ pub fn attack_restrict_num_for_defender(cards: &[CardInstance], defender: Player
             .iter()
             .filter(|sa| sa.mode == StaticMode::AttackRestrict)
         {
-            let Some(valid_defender) = st_ab.params.get("ValidDefender").map(String::as_str) else {
+            let Some(valid_defender) = st_ab.params.get(keys::VALID_DEFENDER) else {
                 continue;
             };
             if !matches_valid_defender(valid_defender, defender, source.controller) {
@@ -42,7 +43,7 @@ pub fn attack_restrict_num_for_defender(cards: &[CardInstance], defender: Player
             }
             let m = st_ab
                 .params
-                .get("MaxAttackers")
+                .get(keys::MAX_ATTACKERS)
                 .map(|s| eval_amount(source, s))
                 .unwrap_or(1);
             max = Some(max.map_or(m, |x| x.min(m)));

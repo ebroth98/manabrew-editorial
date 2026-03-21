@@ -10,7 +10,8 @@ use forge_carddb::{CardDatabase, CardFace};
 use forge_engine_core::ability::effects::IMPLEMENTED_API_TYPES;
 use forge_engine_core::replacement::parse_replacement_effect;
 use forge_engine_core::staticability::parse_static_ability;
-use forge_engine_core::trigger::{parse_pipe_params, parse_trigger};
+use forge_engine_core::parsing::{keys, Params};
+use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::color::Color;
 use forge_foundation::CardSplitType;
 
@@ -256,9 +257,9 @@ fn check_abilities_implemented(face: &CardFace) -> bool {
 
     // Check trigger execute SVars
     for raw in &face.triggers {
-        let params = parse_pipe_params(raw);
-        if let Some(execute_svar) = params.get("Execute") {
-            if let Some(svar_text) = face.svars.get(execute_svar.as_str()) {
+        let params = Params::from_raw(raw);
+        if let Some(execute_svar) = params.get(keys::EXECUTE) {
+            if let Some(svar_text) = face.svars.get(execute_svar) {
                 if !check_ability_chain_implemented(svar_text, &face.svars, 0) {
                     return false;
                 }
@@ -268,9 +269,9 @@ fn check_abilities_implemented(face: &CardFace) -> bool {
 
     // Check replacement effect execute SVars
     for raw in &face.replacements {
-        let params = parse_pipe_params(raw);
-        if let Some(execute_svar) = params.get("Execute") {
-            if let Some(svar_text) = face.svars.get(execute_svar.as_str()) {
+        let params = Params::from_raw(raw);
+        if let Some(execute_svar) = params.get(keys::EXECUTE) {
+            if let Some(svar_text) = face.svars.get(execute_svar) {
                 if !check_ability_chain_implemented(svar_text, &face.svars, 0) {
                     return false;
                 }
@@ -293,23 +294,23 @@ fn check_ability_chain_implemented(
         return false;
     }
 
-    let params = parse_pipe_params(raw);
+    let params = Params::from_raw(raw);
 
     // Extract API type from SP$, DB$, or AB$
     let api_type = params
-        .get("SP")
-        .or_else(|| params.get("DB"))
-        .or_else(|| params.get("AB"));
+        .get(keys::SP)
+        .or_else(|| params.get(keys::DB))
+        .or_else(|| params.get(keys::AB));
 
     if let Some(api) = api_type {
-        if !IMPLEMENTED_API_TYPES.contains(&api.as_str()) {
+        if !IMPLEMENTED_API_TYPES.contains(&api) {
             return false;
         }
     }
 
     // Follow SubAbility chain
-    if let Some(sub_svar_name) = params.get("SubAbility") {
-        if let Some(sub_text) = svars.get(sub_svar_name.as_str()) {
+    if let Some(sub_svar_name) = params.get(keys::SUB_ABILITY) {
+        if let Some(sub_text) = svars.get(sub_svar_name) {
             if !check_ability_chain_implemented(sub_text, svars, depth + 1) {
                 return false;
             }

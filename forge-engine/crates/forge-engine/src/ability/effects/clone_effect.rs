@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards, parse_zone_type, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ Clone` — one card becomes a copy of another.
@@ -29,8 +30,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     // Step 2: Determine the clone target (what to copy ONTO)
-    let clone_target_id = if let Some(defined) = sa.params.get("CloneTarget") {
-        match defined.as_str() {
+    let clone_target_id = if let Some(defined) = sa.params.get(keys::CLONE_TARGET) {
+        match defined {
             "Self" => source_id,
             "ParentTarget" => ctx.parent_target_card.unwrap_or(source_id),
             "Remembered" => ctx
@@ -73,7 +74,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .collect();
 
     // Step 4: Apply PumpKeywords$ (extra keywords on the copy)
-    if let Some(pump_kws) = sa.params.get("PumpKeywords") {
+    if let Some(pump_kws) = sa.params.get(keys::PUMP_KEYWORDS) {
         for kw in pump_kws.split(',') {
             let kw = kw.trim().to_string();
             if !kw.is_empty() {
@@ -99,8 +100,8 @@ fn resolve_clone_source(
     }
 
     // Check Defined$
-    if let Some(defined) = sa.params.get("Defined") {
-        match defined.as_str() {
+    if let Some(defined) = sa.params.get(keys::DEFINED) {
+        match defined {
             "Remembered" => {
                 if let Some(src) = sa.source {
                     return ctx.game.card(src).remembered_cards.first().copied();
@@ -114,10 +115,10 @@ fn resolve_clone_source(
     }
 
     // Check Choices — player selects from valid cards
-    if let Some(filter) = sa.params.get("Choices").cloned() {
+    if let Some(filter) = sa.params.get(keys::CHOICES).map(|s| s.to_string()) {
         let zone = sa
             .params
-            .get("ChoiceZone")
+            .get(keys::CHOICE_ZONE)
             .and_then(|s| parse_zone_type(s))
             .unwrap_or(ZoneType::Battlefield);
 

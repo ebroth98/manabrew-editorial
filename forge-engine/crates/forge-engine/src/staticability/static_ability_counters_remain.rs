@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn counters_remain(cards: &[CardInstance], card: &CardInstance, destination: ZoneType) -> bool {
@@ -20,13 +21,13 @@ pub fn counters_remain(cards: &[CardInstance], card: &CardInstance, destination:
                 || (source.id == card.id
                     && st_ab
                         .params
-                        .get("EffectZone")
+                        .get(keys::EFFECT_ZONE)
                         .is_some_and(|z| z.eq_ignore_ascii_case("All")));
             if !active {
                 continue;
             }
             if matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 card,
                 source,
             ) {

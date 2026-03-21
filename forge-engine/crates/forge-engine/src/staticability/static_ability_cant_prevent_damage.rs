@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, CardInstance};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Check whether damage from `source_id` cannot be prevented.
@@ -43,7 +44,7 @@ fn applies(
     host: &CardInstance,
     is_combat: bool,
 ) -> bool {
-    if let Some(flag) = st_ab.params.get("IsCombat") {
+    if let Some(flag) = st_ab.params.get(keys::IS_COMBAT) {
         let required = flag.eq_ignore_ascii_case("True");
         if required != is_combat {
             return false;
@@ -51,7 +52,7 @@ fn applies(
     }
 
     valid_filter::matches_valid_card_opt(
-        st_ab.params.get("ValidSource").map(String::as_str),
+        st_ab.params.get(keys::VALID_SOURCE),
         damage_source,
         host,
     )

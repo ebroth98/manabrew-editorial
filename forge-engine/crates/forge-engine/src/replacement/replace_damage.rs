@@ -3,6 +3,7 @@
 //! Mirrors Java `ReplaceDamage.java` in `forge/game/replacement/`.
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
 
@@ -30,7 +31,7 @@ pub fn can_replace(
     if amount <= 0 {
         return false;
     }
-    if let Some(valid_target) = effect.params.get("ValidTarget") {
+    if let Some(valid_target) = effect.params.get(keys::VALID_TARGET) {
         let target_matches = match valid_target.trim() {
             "Player" => target_is_player,
             "Card" | "Creature" | "Permanent" => !target_is_player,
@@ -58,7 +59,7 @@ pub fn execute(
     };
     if effect
         .params
-        .get("Prevent")
+        .get(keys::PREVENT)
         .map(|s| s == "True")
         .unwrap_or(false)
     {

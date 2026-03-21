@@ -19,7 +19,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let phase_mode = sa
         .params
         .get("PhaseInOrOut")
-        .map(|s| s.as_str())
         .unwrap_or("Out");
 
     // Targeted: use the chosen target card.

@@ -36,7 +36,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Defined$ resolution
-    match sa.params.get("Defined").map(|s| s.as_str()) {
+    match sa.params.get(crate::parsing::keys::DEFINED) {
         Some("Self") => {
             if let Some(source) = sa.source {
                 if ctx.game.card(source).zone == ZoneType::Battlefield {

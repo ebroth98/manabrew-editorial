@@ -2,6 +2,7 @@ use forge_foundation::{ColorSet, ZoneType};
 
 use super::EffectContext;
 use crate::card::AnimateState;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::parse_trigger;
 
@@ -25,15 +26,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Determine target card
     let target_ids = resolve_animate_targets(ctx, sa, controller);
 
-    let power_str = sa.params.get("Power").cloned();
-    let toughness_str = sa.params.get("Toughness").cloned();
-    let types_str = sa.params.get("Types").cloned();
-    let keywords_str = sa.params.get("Keywords").cloned();
-    let colors_str = sa.params.get("Colors").cloned();
-    let triggers_str = sa.params.get("Triggers").cloned();
+    let power_str = sa.params.get_cloned(keys::POWER);
+    let toughness_str = sa.params.get_cloned(keys::TOUGHNESS);
+    let types_str = sa.params.get_cloned(keys::TYPES);
+    let keywords_str = sa.params.get_cloned(keys::KEYWORDS);
+    let colors_str = sa.params.get_cloned(keys::COLORS);
+    let triggers_str = sa.params.get_cloned(keys::TRIGGERS);
     let overwrite_types = sa
         .params
-        .get("OverwriteTypes")
+        .get(keys::OVERWRITE_TYPES)
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false);
 
@@ -168,8 +169,8 @@ fn resolve_animate_targets(
     }
 
     // Check Defined$ param
-    if let Some(defined) = sa.params.get("Defined") {
-        match defined.as_str() {
+    if let Some(defined) = sa.params.get(keys::DEFINED) {
+        match defined {
             "Self" => {
                 if let Some(src) = sa.source {
                     return vec![src];

@@ -18,7 +18,7 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let etb = sa.params.get("ETB").is_some();
+    let etb = sa.params.has(crate::parsing::keys::ETB);
 
     let target_card = resolve_untap_target(ctx, sa);
 
@@ -33,7 +33,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 fn resolve_untap_target(ctx: &EffectContext, sa: &SpellAbility) -> Option<CardId> {
     sa.target_chosen
         .target_card
-        .or_else(|| match sa.params.get("Defined").map(|s| s.as_str()) {
+        .or_else(|| match sa.params.get(crate::parsing::keys::DEFINED) {
             Some("Self") => sa.source,
             Some("ParentTarget") => ctx.parent_target_card,
             _ => None,

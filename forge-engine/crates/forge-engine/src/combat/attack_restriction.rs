@@ -4,6 +4,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Mirrors Java's `AttackRestrictionType.java`.
@@ -62,8 +63,8 @@ pub fn get_restrictions(card: &CardInstance) -> HashSet<AttackRestrictionType> {
     // Check static abilities for CantAttack with restriction subtypes
     for st_ab in &card.static_abilities {
         if st_ab.mode == StaticMode::CantAttack {
-            if let Some(restriction) = st_ab.params.get("Restriction") {
-                match restriction.as_str() {
+            if let Some(restriction) = st_ab.params.get(keys::RESTRICTION) {
+                match restriction {
                     "OnlyAlone" => {
                         restrictions.insert(AttackRestrictionType::OnlyAlone);
                     }

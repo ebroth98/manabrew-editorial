@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{CardInstance, CounterType};
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn max_counter(
@@ -15,7 +16,7 @@ pub fn max_counter(
             .iter()
             .filter(|sa| sa.mode == StaticMode::MaxCounter)
         {
-            if let Some(s) = st_ab.params.get("CounterType") {
+            if let Some(s) = st_ab.params.get(keys::COUNTER_TYPE) {
                 if let Some(parsed) = parse_counter_type_opt(s) {
                     if parsed != *counter_type {
                         continue;
@@ -23,7 +24,7 @@ pub fn max_counter(
                 }
             }
             if !matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 target,
                 source,
             ) {
@@ -31,7 +32,7 @@ pub fn max_counter(
             }
             let value = st_ab
                 .params
-                .get("MaxNum")
+                .get(keys::MAX_NUM)
                 .and_then(|s| s.parse::<i32>().ok())
                 .unwrap_or(0);
             result = Some(result.map_or(value, |v| v.min(value)));

@@ -2,8 +2,6 @@ pub mod params;
 pub mod target_choices;
 pub mod target_restrictions;
 
-use std::collections::BTreeMap;
-
 use serde::{Deserialize, Serialize};
 
 use crate::ability::effects::resolve_defined_players;
@@ -12,7 +10,7 @@ use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
-use crate::trigger::parse_pipe_params;
+use crate::parsing::{keys, Params};
 use forge_foundation::ZoneType;
 
 pub use target_choices::TargetChoices;
@@ -81,7 +79,7 @@ pub struct SpellAbility {
     /// The raw ability text (pipe-delimited params).
     pub ability_text: String,
     /// Parsed pipe-delimited parameters.
-    pub params: BTreeMap<String, String>,
+    pub params: Params,
     /// Targeting restrictions parsed from `ValidTgts$`.
     /// `None` means this ability doesn't use targeting.
     /// Mirrors Java's `targetRestrictions` field.
@@ -142,9 +140,7 @@ impl SpellAbility {
     /// Check if a parameter is set to "True" (case-insensitive).
     /// Common pattern for boolean params like `Ninjutsu$ True`, `Mega$ True`, etc.
     pub fn param_is_true(&self, key: &str) -> bool {
-        self.params
-            .get(key)
-            .map_or(false, |v| v.eq_ignore_ascii_case("True"))
+        self.params.is_true(key)
     }
 
     /// Get the chosen targets. Mirrors Java's `getTargets()`.
@@ -216,14 +212,14 @@ impl SpellAbility {
 
     /// Create a simple SpellAbility for tests and triggers.
     pub fn new_simple(source: Option<CardId>, player: PlayerId, ability_text: &str) -> Self {
-        let params = parse_pipe_params(ability_text);
+        let params = Params::from_raw(ability_text);
         let api = params
-            .get("SP")
-            .or_else(|| params.get("DB"))
-            .or_else(|| params.get("AB"))
-            .cloned();
+            .get(keys::SP)
+            .or_else(|| params.get(keys::DB))
+            .or_else(|| params.get(keys::AB))
+            .map(|s| s.to_string());
         let target_restrictions = TargetRestrictions::new(&params);
-        let cost = params.get("Cost").map(|s| parse_cost(s));
+        let cost = params.get(keys::COST).map(parse_cost);
 
         SpellAbility {
             api,
@@ -265,17 +261,17 @@ pub fn build_spell_ability(
     ability_text: &str,
     player: PlayerId,
 ) -> SpellAbility {
-    let params = parse_pipe_params(ability_text);
+    let params = Params::from_raw(ability_text);
     let api = params
-        .get("SP")
-        .or_else(|| params.get("DB"))
-        .or_else(|| params.get("AB"))
-        .cloned();
+        .get(keys::SP)
+        .or_else(|| params.get(keys::DB))
+        .or_else(|| params.get(keys::AB))
+        .map(|s| s.to_string());
     let target_restrictions = TargetRestrictions::new(&params);
-    let cost = params.get("Cost").map(|s| parse_cost(s));
+    let cost = params.get(keys::COST).map(parse_cost);
 
     // Recursively build sub-ability chain from SVars
-    let sub_ability = if let Some(sub_svar_name) = params.get("SubAbility") {
+    let sub_ability = if let Some(sub_svar_name) = params.get(keys::SUB_ABILITY) {
         if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name).cloned() {
             Some(Box::new(build_spell_ability(
                 game, card_id, &sub_text, player,
@@ -459,7 +455,7 @@ fn choose_targeting_player(
     game: &GameState,
     agents: &mut [Box<dyn PlayerAgent>],
 ) -> Option<PlayerId> {
-    if let Some(defined) = sa.params.get("TargetingPlayer") {
+    if let Some(defined) = sa.params.get(keys::TARGETING_PLAYER) {
         let candidates = resolve_defined_players(defined, sa.activating_player, game);
         if candidates.is_empty() {
             return None;

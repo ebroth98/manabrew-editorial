@@ -27,7 +27,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let valid_filter = sa
         .params
         .get("Valid")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Card".to_string());
 
     let found_dest = sa

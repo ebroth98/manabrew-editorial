@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Check if a player can spend mana as though it were any color/type
@@ -26,21 +27,21 @@ pub fn can_spend_mana_as_any_color(
             .filter(|sa| sa.mode == StaticMode::ManaConvert)
         {
             // Check ValidPlayer$
-            if let Some(valid_player) = st_ab.params.get("ValidPlayer") {
+            if let Some(valid_player) = st_ab.params.get(keys::VALID_PLAYER) {
                 if !matches_valid_player(valid_player, player, source) {
                     continue;
                 }
             }
 
             // Check ValidCard$ (what spell this applies to)
-            if let Some(valid_card) = st_ab.params.get("ValidCard") {
+            if let Some(valid_card) = st_ab.params.get(keys::VALID_CARD) {
                 if !matches_valid_card(valid_card, spell_card, source) {
                     continue;
                 }
             }
 
             // Check ManaConversion$ — we support the dominant pattern
-            if let Some(conversion) = st_ab.params.get("ManaConversion") {
+            if let Some(conversion) = st_ab.params.get(keys::MANA_CONVERSION) {
                 if conversion.contains("AnyColor") || conversion.contains("AnyType") {
                     return true;
                 }

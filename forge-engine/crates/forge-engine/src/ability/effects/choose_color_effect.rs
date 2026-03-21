@@ -1,4 +1,5 @@
 use super::{resolve_defined_players, EffectContext};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ ChooseColor` — player(s) choose a color.
@@ -21,13 +22,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Determine which player(s) choose
     let defined = sa
         .params
-        .get("Defined")
-        .cloned()
+        .get(keys::DEFINED)
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "You".to_string());
     let players = resolve_defined_players(&defined, controller, ctx.game);
 
     // Valid colors
-    let valid_colors: Vec<String> = if let Some(choices) = sa.params.get("Choices") {
+    let valid_colors: Vec<String> = if let Some(choices) = sa.params.get(keys::CHOICES) {
         choices
             .split(',')
             .map(|s| s.trim().to_string())

@@ -6,10 +6,10 @@ use forge_foundation::mana::ManaAtom;
 impl GameLoop {
     pub(crate) fn parse_spell_cost(abilities: &[String]) -> Option<crate::cost::Cost> {
         for ability in abilities {
-            let params = parse_pipe_params(ability);
+            let params = Params::from_raw(ability);
             // Only process SP$ lines (spell abilities)
-            if params.contains_key("SP") {
-                if let Some(cost_str) = params.get("Cost") {
+            if params.has(keys::SP) {
+                if let Some(cost_str) = params.get(keys::COST) {
                     return Some(parse_cost(cost_str));
                 }
             }
@@ -273,7 +273,7 @@ impl GameLoop {
             let abilities_for_spell = game.card(card_id).abilities.clone();
             let spell_ability_text = abilities_for_spell
                 .iter()
-                .find(|a| parse_pipe_params(a).contains_key("SP"))
+                .find(|a| Params::from_raw(a).has(keys::SP))
                 .cloned()
                 .unwrap_or_default();
 
@@ -672,9 +672,9 @@ impl GameLoop {
             {
                 let abilities = game.card(card_id).abilities.clone();
                 let ability_text = abilities.first().cloned().unwrap_or_default();
-                let ability_params = crate::trigger::parse_pipe_params(&ability_text);
+                let ability_params = Params::from_raw(&ability_text);
                 let num_modes = ability_params
-                    .get("Choices")
+                    .get(keys::CHOICES)
                     .map(|c| c.split(',').count())
                     .unwrap_or(1);
                 if num_modes > 1 {
@@ -711,8 +711,8 @@ impl GameLoop {
             let mana_cost = if game.card(card_id).has_keyword("Spree") {
                 let abilities = game.card(card_id).abilities.clone();
                 let ability_text = abilities.first().cloned().unwrap_or_default();
-                let ability_params = crate::trigger::parse_pipe_params(&ability_text);
-                if let Some(choices_str) = ability_params.get("Choices") {
+                let ability_params = Params::from_raw(&ability_text);
+                if let Some(choices_str) = ability_params.get(keys::CHOICES) {
                     let choice_names: Vec<&str> = choices_str.split(',').collect();
                     let svars = game.card(card_id).svars.clone();
                     // Extract ModeCost and description for each mode
@@ -720,14 +720,13 @@ impl GameLoop {
                     let mut mode_descriptions: Vec<String> = Vec::new();
                     for name in &choice_names {
                         if let Some(svar_val) = svars.get(*name) {
-                            let params = crate::trigger::parse_pipe_params(svar_val);
+                            let params = Params::from_raw(svar_val);
                             let cost = params
-                                .get("ModeCost")
+                                .get(keys::MODE_COST)
                                 .map(|c| forge_foundation::ManaCost::parse(c))
                                 .unwrap_or_else(|| forge_foundation::ManaCost::generic(0));
                             let desc = params
-                                .get("SpellDescription")
-                                .cloned()
+                                .get_cloned(keys::SPELL_DESCRIPTION)
                                 .unwrap_or_else(|| name.to_string());
                             mode_descriptions.push(format!("+ {} — {}", cost, desc));
                             mode_costs.push(cost);
@@ -1275,14 +1274,6 @@ impl GameLoop {
                         &targeting_game,
                         &sa,
                     );
-                eprintln!(
-                    "[RUST-CAST-CHECK] {} meets_must_target={} target={:?}",
-                    card_name,
-                    meets,
-                    sa.target_chosen
-                        .target_card
-                        .map(|c| (c.0, targeting_game.card(c).card_name.clone()))
-                );
                 if !meets {
                     eprintln!(
                         "[RUST-MUST-TARGET] Cast rejected for {} — MustTarget restriction not met",
@@ -1574,8 +1565,7 @@ impl GameLoop {
                 use crate::replacement::replacement_effect::{
                     ReplacementEffect, ReplacementLayer, ReplacementType,
                 };
-                let mut params = std::collections::BTreeMap::new();
-                params.insert("ValidCard".to_string(), "Card.Self".to_string());
+                let params = crate::parsing::Params::from_raw("ValidCard$ Card.Self");
                 game.card_mut(card_id)
                     .replacement_effects
                     .push(ReplacementEffect {
@@ -1710,11 +1700,10 @@ impl GameLoop {
                         if let Some(trigger_svar) =
                             game.card(*source_id).svars.get(svar_name).cloned()
                         {
-                            let params = crate::trigger::parse_pipe_params(&trigger_svar);
+                            let params = Params::from_raw(&trigger_svar);
                             // Check ValidCard$ filter against the spell being cast
                             let valid = params
-                                .get("ValidCard")
-                                .map(String::as_str)
+                                .get(keys::VALID_CARD)
                                 .unwrap_or("Card");
                             let card = game.card(card_id);
                             let valid_ok = valid == "Card"
@@ -1725,7 +1714,7 @@ impl GameLoop {
                                 || (valid.contains("cmcGE5") && card.mana_cost.cmc() >= 5)
                                 || (valid.contains("IsCommander") && card.is_commander);
                             if valid_ok {
-                                if let Some(execute) = params.get("Execute") {
+                                if let Some(execute) = params.get(keys::EXECUTE) {
                                     if let Some(exec_svar) =
                                         game.card(*source_id).svars.get(execute).cloned()
                                     {

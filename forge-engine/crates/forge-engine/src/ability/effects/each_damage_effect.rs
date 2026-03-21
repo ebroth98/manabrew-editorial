@@ -19,7 +19,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let valid_filter = sa
         .params
         .get("ValidCards")
-        .cloned()
+        .map(|s| s.to_string())
         .unwrap_or_else(|| "Creature".to_string());
     let fixed_dmg = parse_param(&sa.ability_text, "NumDmg$ ").or_else(|| {
         let v = resolve_numeric_svar(ctx.game, sa, "NumDmg", -1);

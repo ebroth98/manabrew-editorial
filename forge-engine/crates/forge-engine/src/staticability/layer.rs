@@ -33,8 +33,10 @@
 
 use forge_foundation::ZoneType;
 
+use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::replacement::replacement_effect::ReplacementType;
 use crate::staticability::{CardFilter, Layer, StaticAbility, StaticMode};
 
@@ -121,27 +123,24 @@ pub fn apply_continuous_effects(game: &mut GameState) {
 
         // IsPresent$ — conditional activation (e.g. "Card.Self+untapped").
         // If the condition is not met, skip this static ability entirely.
-        if let Some(_is_present) = sa.params.get("IsPresent") {
-            if !check_is_present(game, *source_id, sa) {
-                continue;
-            }
+        if !valid_filter::check_is_present(game, &sa.params, source_card) {
+            continue;
         }
 
         // CharacteristicDefining statics always affect only the host card.
         // Mirrors Java StaticAbilityContinuous.getAffectedCards() line 1036.
         let is_cda = sa
             .params
-            .get("CharacteristicDefining")
+            .get(keys::CHARACTERISTIC_DEFINING)
             .map(|v| v.eq_ignore_ascii_case("True"))
             .unwrap_or(false);
 
         // Determine which cards are affected by this static ability.
         let affected_str = sa
             .params
-            .get("Affected")
-            .or_else(|| sa.params.get("ValidCards"))
-            .or_else(|| sa.params.get("ValidCard"))
-            .map(String::as_str)
+            .get(keys::AFFECTED)
+            .or_else(|| sa.params.get(keys::VALID_CARDS))
+            .or_else(|| sa.params.get(keys::VALID_CARD))
             .unwrap_or("Creature.YouControl");
         let targets: Vec<CardId> = if is_cda {
             // CDAs always affect only the source card itself.
@@ -192,11 +191,11 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                 for target in targets {
                     // Java parity: one continuous static can contribute effects in
                     // multiple layers (e.g. Brothers Yamazaki adds both +2/+2 and Haste).
-                    if sa.params.contains_key("GainControl") {
-                        let Some(gain_control) = sa.params.get("GainControl") else {
+                    if sa.params.has(keys::GAIN_CONTROL) {
+                        let Some(gain_control) = sa.params.get(keys::GAIN_CONTROL) else {
                             continue;
                         };
-                        let new_controller = match gain_control.as_str() {
+                        let new_controller = match gain_control {
                             "You" | "YouCtrl" => source_card.controller,
                             "Opponent" => game.opponent_of(source_card.controller),
                             _ => continue,
@@ -210,16 +209,16 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
-                    if sa.params.contains_key("AddPower") || sa.params.contains_key("AddToughness")
+                    if sa.params.has(keys::ADD_POWER) || sa.params.has(keys::ADD_TOUGHNESS)
                     {
                         let p = sa
                             .params
-                            .get("AddPower")
+                            .get(keys::ADD_POWER)
                             .and_then(|s| s.parse::<i32>().ok())
                             .unwrap_or(0);
                         let t = sa
                             .params
-                            .get("AddToughness")
+                            .get(keys::ADD_TOUGHNESS)
                             .and_then(|s| s.parse::<i32>().ok())
                             .unwrap_or(0);
                         pending.push(PendingEffect {
@@ -232,10 +231,10 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
-                    if sa.params.contains_key("SetPower") || sa.params.contains_key("SetToughness")
+                    if sa.params.has(keys::SET_POWER) || sa.params.has(keys::SET_TOUGHNESS)
                     {
-                        let sp = resolve_set_pt_param(game, &sa, *source_id, "SetPower");
-                        let st = resolve_set_pt_param(game, &sa, *source_id, "SetToughness");
+                        let sp = resolve_set_pt_param(game, &sa, *source_id, keys::SET_POWER);
+                        let st = resolve_set_pt_param(game, &sa, *source_id, keys::SET_TOUGHNESS);
                         pending.push(PendingEffect {
                             layer: Layer::SetPT,
                             target,
@@ -246,9 +245,9 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                         });
                     }
 
-                    if sa.params.contains_key("AddKeyword") {
+                    if sa.params.has(keys::ADD_KEYWORD) {
                         // AddKeyword$ supports multiple keywords separated by " & ".
-                        let kws = sa.params.get("AddKeyword").cloned().unwrap_or_default();
+                        let kws = sa.params.get_cloned(keys::ADD_KEYWORD).unwrap_or_default();
                         for kw in kws.split('&').map(str::trim).filter(|s| !s.is_empty()) {
                             pending.push(PendingEffect {
                                 layer: Layer::Ability,
@@ -386,9 +385,8 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
                 if sa.mode == StaticMode::ETBTapped {
                     let filter_str = sa
                         .params
-                        .get("ValidCards")
-                        .or_else(|| sa.params.get("Affected"))
-                        .cloned()
+                        .get_cloned(keys::VALID_CARDS)
+                        .or_else(|| sa.params.get_cloned(keys::AFFECTED))
                         // Default: the card itself (intrinsic self-ETBTapped).
                         .unwrap_or_else(|| "Card.Self".to_string());
                     Some((c.id, filter_str))
@@ -426,15 +424,15 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
         .flat_map(|c| {
             c.replacement_effects.iter().filter_map(move |re| {
                 if re.event == ReplacementType::Moved
-                    && re.params.get("ReplaceWith").map(|s| s.as_str()) == Some("ETBTapped")
-                    && re.params.get("Destination").map(|s| s.as_str()) == Some("Battlefield")
+                    && re.params.get(keys::REPLACE_WITH) == Some("ETBTapped")
+                    && re.params.get(keys::DESTINATION) == Some("Battlefield")
                     && re.active_in_zone(ZoneType::Battlefield)
                 {
                     let filter = re
                         .params
                         .get("ValidCard")
-                        .cloned()
-                        .unwrap_or_else(|| "Card.Self".to_string());
+                        .unwrap_or("Card.Self")
+                        .to_string();
                     Some((c.id, filter))
                 } else {
                     None
@@ -471,10 +469,10 @@ pub fn get_etb_unless_life_cost(card: &crate::card::CardInstance) -> Option<i32>
         if re.event != ReplacementType::Moved {
             continue;
         }
-        if re.params.get("Destination").map(|s| s.as_str()) != Some("Battlefield") {
+        if re.params.get(keys::DESTINATION) != Some("Battlefield") {
             continue;
         }
-        if let Some(svar_name) = re.params.get("ReplaceWith") {
+        if let Some(svar_name) = re.params.get(keys::REPLACE_WITH) {
             if svar_name == "ETBTapped" {
                 continue;
             }
@@ -496,84 +494,6 @@ pub fn get_etb_unless_life_cost(card: &crate::card::CardInstance) -> Option<i32>
     None
 }
 
-/// Check the `IsPresent$` condition for a static ability.
-///
-/// Supported forms:
-/// - `"Card.Self+untapped"` — the source card must be untapped
-/// - `"Card.Self+tapped"` — the source card must be tapped
-/// - `"Card.Self"` — always true (source on battlefield is implied)
-/// - General forms (e.g. `"Permanent.namedBrothers Yamazaki"`) — count
-///   matching cards on the battlefield and compare against `PresentCompare$`.
-///
-/// Mirrors Java `StaticAbility.checkConditions()` → `isPresent$` handling.
-fn check_is_present(game: &GameState, source_id: CardId, sa: &StaticAbility) -> bool {
-    let condition = match sa.params.get("IsPresent") {
-        Some(c) => c.as_str(),
-        None => return true,
-    };
-
-    let parts: Vec<&str> = condition.split('+').collect();
-    let base = parts.first().copied().unwrap_or("");
-
-    // For "Card.Self" forms, check the source card itself.
-    if base == "Card.Self" || base.eq_ignore_ascii_case("card.self") {
-        let card = game.card(source_id);
-        for &qualifier in &parts[1..] {
-            match qualifier.to_lowercase().as_str() {
-                "untapped" => {
-                    if card.tapped {
-                        return false;
-                    }
-                }
-                "tapped" => {
-                    if !card.tapped {
-                        return false;
-                    }
-                }
-                "startedtheturnuntapped" => {
-                    if card.started_turn_tapped {
-                        return false;
-                    }
-                }
-                "startedtheturntapped" => {
-                    if !card.started_turn_tapped {
-                        return false;
-                    }
-                }
-                _ => {
-                    eprintln!("[WARN] Unknown IsPresent qualifier: {:?}", qualifier);
-                }
-            }
-        }
-        return true;
-    }
-
-    // General IsPresent$ — count matching cards on the battlefield using CardFilter
-    // and compare against PresentCompare$ (defaults to GE1).
-    let filter = CardFilter::parse(condition);
-    let source_card = game.card(source_id);
-    let count = game
-        .cards
-        .iter()
-        .filter(|c| c.zone == ZoneType::Battlefield && filter.matches_with_game(c, source_card, game))
-        .count() as i32;
-
-    let cmp = sa
-        .params
-        .get("PresentCompare")
-        .map(String::as_str)
-        .unwrap_or("GE1");
-    match cmp {
-        "EQ0" => count == 0,
-        "EQ1" => count == 1,
-        "EQ2" => count == 2,
-        "GE1" => count >= 1,
-        "GE2" => count >= 2,
-        "LE1" => count <= 1,
-        _ => count >= 1,
-    }
-}
-
 /// Check if a card has a "enters tapped unless you reveal a <type> from hand" effect.
 ///
 /// Looks for `R:Event$ Moved | Destination$ Battlefield | ReplaceWith$ <SVar>`
@@ -585,10 +505,10 @@ pub fn get_etb_unless_reveal_cost(card: &crate::card::CardInstance) -> Option<(i
         if re.event != ReplacementType::Moved {
             continue;
         }
-        if re.params.get("Destination").map(|s| s.as_str()) != Some("Battlefield") {
+        if re.params.get(keys::DESTINATION) != Some("Battlefield") {
             continue;
         }
-        if let Some(svar_name) = re.params.get("ReplaceWith") {
+        if let Some(svar_name) = re.params.get(keys::REPLACE_WITH) {
             if svar_name == "ETBTapped" {
                 continue;
             }

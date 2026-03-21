@@ -7,6 +7,8 @@ use crate::cost::{can_pay_ignoring_mana, get_sacrifice_targets, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
+use crate::parsing::keys;
+
 use super::mana_cost_being_paid::{can_pay_for_shard_with_color, ManaCostBeingPaid};
 use super::{
     all_basic_subtype_atoms, atom_short, basic_land_mana_atom, compute_reflected_atoms,
@@ -730,7 +732,7 @@ fn group_sources_by_mana_color(
                 continue;
             }
             // Handle ManaReflected abilities (e.g. Incubation Druid)
-            if ab.params.get("AB").map_or(false, |v| v == "ManaReflected") {
+            if ab.params.get(keys::AB) == Some("ManaReflected") {
                 let reflected_atoms = compute_reflected_atoms(game, player, card_id, ab);
                 if !reflected_atoms.is_empty() {
                     explicit_mana_added = true;
@@ -753,7 +755,7 @@ fn group_sources_by_mana_color(
                 continue;
             }
 
-            let Some(produced) = ab.params.get("Produced") else {
+            let Some(produced) = ab.params.get(keys::PRODUCED) else {
                 continue;
             };
             if produced == "Combo ColorIdentity" {
@@ -918,7 +920,7 @@ fn score_mana_producing_card(game: &GameState, card_id: CardId, player: PlayerId
 
     for ab in &card.activated_abilities {
         if ab.is_mana_ability {
-            let produced = ab.params.get("Produced").map(|s| s.as_str());
+            let produced = ab.params.get(keys::PRODUCED);
             score += score_mana_ability(game, card_id, ab, produced);
             has_mana_ability = true;
         } else if can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
@@ -961,7 +963,7 @@ fn score_mana_ability(
     let card = game.card(card_id);
 
     if let Some(produced) =
-        produced_override.or_else(|| ab.params.get("Produced").map(String::as_str))
+        produced_override.or_else(|| ab.params.get(keys::PRODUCED))
     {
         let mana_text = ability_mana_text_for_score(produced, &card.chosen_colors);
         if mana_text == "Any" {
@@ -995,12 +997,12 @@ fn score_mana_ability(
     // non-undoable abilities (those with side-effect SubAbilities like DealDamage).
     // Also adds +2 for any SubAbility presence. This heavily de-prioritizes pain
     // lands (e.g. Yavimaya Coast's colored mana ability with DealDamage sub).
-    if let Some(sub_name) = ab.params.get("SubAbility") {
+    if let Some(sub_name) = ab.params.get(keys::SUB_ABILITY) {
         score += 2;
         // Check if the SubAbility is non-undoable (damage, discard, etc.)
         if let Some(sub_text) = card.svars.get(sub_name) {
-            let sub_params = crate::trigger::parse_pipe_params(sub_text);
-            let sub_type = sub_params.get("DB").map(String::as_str).unwrap_or("");
+            let sub_params = crate::parsing::Params::from_raw(sub_text);
+            let sub_type = sub_params.get(crate::parsing::keys::DB).unwrap_or("");
             if matches!(
                 sub_type,
                 "DealDamage" | "LoseLife" | "Discard" | "Destroy" | "Sacrifice" | "Mill"
@@ -1178,7 +1180,7 @@ fn parse_mana_ability_amount_with_game(
     card_id: Option<CardId>,
     player: Option<PlayerId>,
 ) -> i32 {
-    let Some(amount_str) = ab.params.get("Amount") else {
+    let Some(amount_str) = ab.params.get(keys::AMOUNT) else {
         return 1;
     };
     // Try direct integer parse first
@@ -1187,7 +1189,7 @@ fn parse_mana_ability_amount_with_game(
     }
     // It's an SVar reference — resolve it using the source card's SVars
     if let (Some(game), Some(cid), Some(pid)) = (game, card_id, player) {
-        if let Some(svar_expr) = game.card(cid).svars.get(amount_str.as_str()) {
+        if let Some(svar_expr) = game.card(cid).svars.get(amount_str) {
             if svar_expr.starts_with("Count$") {
                 return crate::ability::effects::resolve_count_svar(svar_expr, game, cid, pid);
             }

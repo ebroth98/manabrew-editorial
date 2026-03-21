@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::{CardInstance, CounterType};
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn any_cant_put_counter_on_card(
@@ -16,19 +17,19 @@ pub fn any_cant_put_counter_on_card(
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
             if !counter_type_matches(
-                st_ab.params.get("CounterType").map(String::as_str),
+                st_ab.params.get(keys::COUNTER_TYPE),
                 &counter_type,
             ) {
                 continue;
             }
             if !matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 target,
                 source,
             ) {
                 continue;
             }
-            if st_ab.params.contains_key("ValidPlayer") {
+            if st_ab.params.has(keys::VALID_PLAYER) {
                 continue;
             }
             return true;
@@ -49,19 +50,19 @@ pub fn any_cant_put_counter_on_player(
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
             if !counter_type_matches(
-                st_ab.params.get("CounterType").map(String::as_str),
+                st_ab.params.get(keys::COUNTER_TYPE),
                 &counter_type,
             ) {
                 continue;
             }
             if !matches_valid_player(
-                st_ab.params.get("ValidPlayer").map(String::as_str),
+                st_ab.params.get(keys::VALID_PLAYER),
                 player,
                 source.controller,
             ) {
                 continue;
             }
-            if st_ab.params.contains_key("ValidCard") {
+            if st_ab.params.has(keys::VALID_CARD) {
                 continue;
             }
             return true;

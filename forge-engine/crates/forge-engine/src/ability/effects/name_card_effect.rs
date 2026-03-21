@@ -17,9 +17,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
     // Build the valid names list
-    let valid_names: Vec<String> = if let Some(list) = sa.params.get("ChooseFromList") {
+    let valid_names: Vec<String> = if let Some(list) = sa.params.get(crate::parsing::keys::CHOOSE_FROM_LIST) {
         list.split(',').map(|s| s.trim().to_string()).collect()
-    } else if sa.params.get("ChooseFromDefinedCards").is_some() {
+    } else if sa.params.has(crate::parsing::keys::CHOOSE_FROM_DEFINED_CARDS) {
         // Use remembered cards from source
         if let Some(source_id) = sa.source {
             ctx.game

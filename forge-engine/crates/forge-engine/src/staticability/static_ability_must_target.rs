@@ -2,11 +2,12 @@ use forge_foundation::ZoneType;
 
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::target_restrictions;
 use crate::spellability::target_restrictions::TargetKind;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
-use crate::trigger::parse_pipe_params;
+use crate::parsing::Params;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MustTargetRestriction {
@@ -79,7 +80,7 @@ pub fn meets_must_target_restriction(game: &GameState, sa: &SpellAbility) -> boo
     let mut current = Some(sa);
     let mut uses_targeting = false;
     while let Some(node) = current {
-        if node.uses_targeting() && !node.params.contains_key("TargetingPlayer") {
+        if node.uses_targeting() && !node.params.has(crate::parsing::keys::TARGETING_PLAYER) {
             uses_targeting = true;
             let choices = get_targetable_card_choices(game, node);
             is_restrictions_met(game, &mut restrictions, &choices, node);
@@ -113,7 +114,7 @@ fn get_restrictions(game: &GameState, sa: &SpellAbility) -> Vec<MustTargetRestri
             .iter()
             .filter(|sa| sa.mode == StaticMode::MustTarget)
         {
-            if let Some(valid_sa) = st_ab.params.get("ValidSA") {
+            if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
                 if !spell_ability_matches(
                     valid_sa,
                     &sa.ability_text,
@@ -123,12 +124,12 @@ fn get_restrictions(game: &GameState, sa: &SpellAbility) -> Vec<MustTargetRestri
                     continue;
                 }
             }
-            let Some(valid_target) = st_ab.params.get("ValidTarget").cloned() else {
+            let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET).map(|s| s.to_string()) else {
                 continue;
             };
             let zone = st_ab
                 .params
-                .get("ValidZone")
+                .get(keys::VALID_ZONE)
                 .and_then(|s| parse_zone(s))
                 .unwrap_or(ZoneType::Battlefield);
             let r = MustTargetRestriction { valid_target, zone };
@@ -270,7 +271,7 @@ fn spell_ability_matches(
     activating_player: crate::ids::PlayerId,
     source_controller: crate::ids::PlayerId,
 ) -> bool {
-    let params = parse_pipe_params(ability_line);
+    let params = Params::from_raw(ability_line);
     let tokens: Vec<&str> = valid_sa
         .split(',')
         .map(|s| s.trim())
@@ -296,11 +297,11 @@ fn spell_ability_matches(
             return false;
         }
         match base {
-            "spell" => params.contains_key("SP"),
-            "activated" => params.contains_key("AB"),
-            "istargeting" => params.contains_key("ValidTgts"),
+            "spell" => params.has(keys::SP),
+            "activated" => params.has(keys::AB),
+            "istargeting" => params.has(keys::VALID_TGTS),
             "xcost" => {
-                params.get("Cost").map(|c| c.contains('X')).unwrap_or(false)
+                params.get(keys::COST).map(|c| c.contains('X')).unwrap_or(false)
                     || ability_line.contains("X")
             }
             _ => false,

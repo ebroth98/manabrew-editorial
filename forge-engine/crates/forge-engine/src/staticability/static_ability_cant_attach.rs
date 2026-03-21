@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn cant_attach(
@@ -16,28 +17,28 @@ pub fn cant_attach(
             .filter(|sa| sa.mode == StaticMode::CantAttach)
         {
             if !matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 attachment,
                 source,
             ) {
                 continue;
             }
             if !matches_valid_card(
-                st_ab.params.get("Target").map(String::as_str),
+                st_ab.params.get(keys::TARGET),
                 target,
                 source,
             ) {
                 continue;
             }
-            if let Some(valid_card_to_target) = st_ab.params.get("ValidCardToTarget") {
+            if let Some(valid_card_to_target) = st_ab.params.get(keys::VALID_CARD_TO_TARGET) {
                 if !matches_valid_card_for_target(attachment, valid_card_to_target, target) {
                     continue;
                 }
             }
-            if (check_sba || !st_ab.params.contains_key("ExceptionSBA"))
-                && st_ab.params.contains_key("Exceptions")
+            if (check_sba || !st_ab.params.has(keys::EXCEPTION_SBA))
+                && st_ab.params.has(keys::EXCEPTIONS)
                 && matches_valid_card(
-                    st_ab.params.get("Exceptions").map(String::as_str),
+                    st_ab.params.get(keys::EXCEPTIONS),
                     attachment,
                     source,
                 )

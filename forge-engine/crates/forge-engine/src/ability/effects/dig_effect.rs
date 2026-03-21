@@ -4,6 +4,7 @@ use super::{
     emit_zone_trigger, matches_change_type, parse_param, parse_zone_type, resolve_defined_player,
     EffectContext,
 };
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Mirrors Java's `DigEffect.java`.
@@ -15,15 +16,15 @@ use crate::spellability::SpellAbility;
 /// The rest go to DestinationZone2 (default Library bottom).
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let dig_num = parse_param(&sa.ability_text, "DigNum$ ").unwrap_or(1) as usize;
-    let optional = sa.params.contains_key("Optional");
+    let optional = sa.params.has(keys::OPTIONAL);
     let change_all = sa
         .params
-        .get("ChangeNum")
+        .get(keys::CHANGE_NUM)
         .map(|s| s.eq_ignore_ascii_case("All"))
         .unwrap_or(false);
     let any_number = sa
         .params
-        .get("ChangeNum")
+        .get(keys::CHANGE_NUM)
         .map(|s| s.eq_ignore_ascii_case("Any"))
         .unwrap_or(false);
     let change_num = if change_all || any_number {
@@ -34,23 +35,23 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let dest_zone1 = sa
         .params
-        .get("DestinationZone")
+        .get(keys::DESTINATION_ZONE)
         .and_then(|s| parse_zone_type(s))
         .unwrap_or(ZoneType::Hand);
     let dest_zone2 = sa
         .params
-        .get("DestinationZone2")
+        .get(keys::DESTINATION_ZONE_2)
         .and_then(|s| parse_zone_type(s))
         .unwrap_or(ZoneType::Library);
 
     // Library position for zone2 placement: -1 = bottom, 0 = top
     let lib_position2: i32 = sa
         .params
-        .get("LibraryPosition2")
+        .get(keys::LIBRARY_POSITION_2)
         .and_then(|s| s.parse().ok())
         .unwrap_or(-1);
 
-    let change_valid = sa.params.get("ChangeValid").cloned().unwrap_or_default();
+    let change_valid = sa.params.get(keys::CHANGE_VALID).map(|s| s.to_string()).unwrap_or_default();
 
     // Determine the player whose library we dig through.
     let dig_player = sa
@@ -58,7 +59,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .target_player
         .or_else(|| {
             sa.params
-                .get("Defined")
+                .get(keys::DEFINED)
                 .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
         })
         .unwrap_or(sa.activating_player);
@@ -94,13 +95,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Java DigEffect only prompts for optional skip when PromptToSkipOptionalAbility is set.
     // Otherwise Optional$ True is modeled by allowing 0 selected cards in choose_dig.
-    let may_be_skipped = sa.params.contains_key("PromptToSkipOptionalAbility");
+    let may_be_skipped = sa.params.has(keys::PROMPT_TO_SKIP_OPTIONAL_ABILITY);
     if optional && may_be_skipped && !valid.is_empty() {
         let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());
         let prompt = sa
             .params
-            .get("OptionalAbilityPrompt")
-            .map(String::as_str)
+            .get(keys::OPTIONAL_ABILITY_PROMPT)
             .unwrap_or("Would you like to proceed with this optional ability?");
         let accepted = ctx.agents[dig_player.index()].confirm_action(
             dig_player,

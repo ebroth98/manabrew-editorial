@@ -30,8 +30,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let sides = sa
         .params
-        .get("Sides")
-        .and_then(|s| s.parse::<i32>().ok())
+        .as_i32(crate::parsing::keys::SIDES)
         .unwrap_or(20);
 
     // Roll the die
@@ -49,7 +48,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     );
 
     // Parse ResultSubAbilities$ and find the matching threshold
-    if let Some(result_str) = sa.params.get("ResultSubAbilities") {
+    if let Some(result_str) = sa.params.get(crate::parsing::keys::RESULT_SUB_ABILITIES) {
         let mut thresholds: Vec<(i32, String)> = Vec::new();
         for entry in result_str.split(',') {
             let parts: Vec<&str> = entry.splitn(2, ':').collect();

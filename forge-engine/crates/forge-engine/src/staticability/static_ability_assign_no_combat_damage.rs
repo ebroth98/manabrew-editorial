@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn assign_no_combat_damage(cards: &[CardInstance], card: &CardInstance) -> bool {
@@ -14,7 +15,7 @@ pub fn assign_no_combat_damage(cards: &[CardInstance], card: &CardInstance) -> b
             .filter(|sa| sa.mode == StaticMode::AssignNoCombatDamage)
         {
             if matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 card,
                 source,
             ) {

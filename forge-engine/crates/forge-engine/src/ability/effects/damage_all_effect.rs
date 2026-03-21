@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards, resolve_numeric_svar, EffectContext};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ DamageAll` — deal N damage to all matching permanents and/or players.
@@ -22,11 +23,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    let valid_cards_filter = sa.params.get("ValidCards").cloned().unwrap_or_default();
+    let valid_cards_filter = sa.params.get(keys::VALID_CARDS).map(|s| s.to_string()).unwrap_or_default();
     let valid_players = sa
         .params
-        .get("ValidPlayers")
-        .map(|s| s.as_str())
+        .get(keys::VALID_PLAYERS)
         .unwrap_or("")
         .to_string();
     let activating_player = sa.activating_player;

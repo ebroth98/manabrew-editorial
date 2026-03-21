@@ -16,7 +16,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let extra_phase = sa
         .params
         .get("ExtraPhase")
-        .map(|s| s.as_str())
         .unwrap_or("Combat");
 
     let amount = parse_param(&sa.ability_text, "Amount$ ").unwrap_or(1) as u32;

@@ -325,7 +325,7 @@ impl PlayerAgent for TauriAgent {
                 let desc = ab
                     .params
                     .get("SpellDescription")
-                    .cloned()
+                    .map(|s| s.to_string())
                     .unwrap_or_else(|| ab.ability_text.clone());
                 self.ability_descriptions
                     .insert((card_id.0, ab.ability_index), (desc, ab.is_mana_ability));

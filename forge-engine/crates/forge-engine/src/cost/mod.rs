@@ -1,3 +1,4 @@
+mod cost_parser;
 pub mod cost_add_mana;
 pub mod cost_adjustment;
 pub mod cost_behold;
@@ -44,7 +45,7 @@ pub mod payment_decision;
 use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
-use crate::ability::effects::{matches_change_type, matches_valid_cards, parse_counter_type};
+use crate::ability::effects::{matches_change_type, matches_valid_cards};
 use crate::card::{CardInstance, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -57,7 +58,7 @@ use crate::staticability::static_ability_cant_sacrifice::cant_sacrifice;
 
 const DYNAMIC_X_SENTINEL: i32 = i32::MIN;
 
-fn parse_i32_or_x(inner: &str, default: i32) -> i32 {
+pub(super) fn parse_i32_or_x(inner: &str, default: i32) -> i32 {
     let trimmed = inner.trim();
     if trimmed.eq_ignore_ascii_case("X") {
         DYNAMIC_X_SENTINEL
@@ -335,605 +336,25 @@ impl Cost {
 /// - `"AddCounter<1/LOYALTY>"` → add a loyalty counter
 /// - `"SubCounter<1/LOYALTY/CARDNAME>"` → remove loyalty counter
 pub fn parse_cost(raw: &str) -> Cost {
+    let tokens = split_cost_tokens(raw);
     let mut parts = Vec::new();
     let mut has_tap = false;
     let mut mandatory = false;
     let mut mana_tokens: Vec<&str> = Vec::new();
 
-    // Split on spaces, but keep <...> groups together
-    let tokens = split_cost_tokens(raw);
-
     for token in &tokens {
-        if *token == "T" {
-            parts.push(CostPart::Tap);
-            has_tap = true;
-        } else if *token == "Q" || *token == "Untap" {
-            // Q = untap cost
-            parts.push(CostPart::Untap);
-        } else if *token == "Mandatory" {
-            mandatory = true;
-        } else if token.starts_with("Mana<") {
-            // Mana<cost[\restriction]>
-            if let Some(inner) = token
-                .strip_prefix("Mana<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let mana_text = inner.split('\\').next().unwrap_or(inner);
-                let mana_cost = ManaCost::parse(mana_text);
-                parts.push(CostPart::Mana(mana_cost));
+        match cost_parser::parse_cost_token(token) {
+            cost_parser::TokenResult::Part(part) => parts.push(part),
+            cost_parser::TokenResult::Tap => {
+                parts.push(CostPart::Tap);
+                has_tap = true;
             }
-        } else if token.starts_with("Sac<") {
-            // Parse Sac<amount/filter>
-            if let Some(inner) = token.strip_prefix("Sac<").and_then(|s| s.strip_suffix('>')) {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Sacrifice {
-                    amount,
-                    type_filter: filter,
-                });
+            cost_parser::TokenResult::Mandatory => {
+                mandatory = true;
             }
-        } else if token.starts_with("Discard<") {
-            // Parse Discard<amount/filter>
-            if let Some(inner) = token
-                .strip_prefix("Discard<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Discard {
-                    amount,
-                    type_filter: filter,
-                });
+            cost_parser::TokenResult::Mana => {
+                mana_tokens.push(token);
             }
-        } else if token.starts_with("PayLife<") {
-            if let Some(inner) = token
-                .strip_prefix("PayLife<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = inner.parse::<i32>().unwrap_or(0);
-                parts.push(CostPart::PayLife(amount));
-            }
-        } else if token.starts_with("SubCounter<") {
-            // Parse SubCounter<amount/counterType/source>.
-            // We currently support paying from source only (CARDNAME/NICKNAME).
-            if let Some(inner) = token
-                .strip_prefix("SubCounter<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let mut it = inner.split('/');
-                let amount = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
-                let counter_type_str = it.next().unwrap_or("P1P1");
-                let source = it.next().unwrap_or("CARDNAME");
-                if source.eq_ignore_ascii_case("CARDNAME")
-                    || source.eq_ignore_ascii_case("NICKNAME")
-                {
-                    parts.push(CostPart::SubCounter {
-                        amount,
-                        counter_type: parse_counter_type(counter_type_str),
-                    });
-                }
-            }
-        } else if token.starts_with("AddCounter<") {
-            // Parse AddCounter<amount/counterType[/target]>
-            if let Some(inner) = token
-                .strip_prefix("AddCounter<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let mut it = inner.split('/');
-                let amount = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
-                let counter_type_str = it.next().unwrap_or("LOYALTY");
-                // third segment is target; we default to source (CARDNAME)
-                parts.push(CostPart::AddCounter {
-                    amount,
-                    counter_type: parse_counter_type(counter_type_str),
-                });
-            }
-        } else if token.starts_with("PayEnergy<") {
-            if let Some(inner) = token
-                .strip_prefix("PayEnergy<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = inner.parse::<i32>().unwrap_or(1);
-                parts.push(CostPart::PayEnergy(amount));
-            }
-        } else if token.starts_with("PayShards<") {
-            if let Some(inner) = token
-                .strip_prefix("PayShards<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = parse_i32_or_x(inner, 1);
-                parts.push(CostPart::PayShards(amount));
-            }
-        } else if token.starts_with("ChooseColor<") {
-            if let Some(inner) = token
-                .strip_prefix("ChooseColor<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = parse_i32_or_x(inner, 1);
-                parts.push(CostPart::ChooseColor(amount));
-            }
-        } else if token.starts_with("ChooseCreatureType<") {
-            if let Some(inner) = token
-                .strip_prefix("ChooseCreatureType<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = parse_i32_or_x(inner, 1);
-                parts.push(CostPart::ChooseCreatureType(amount));
-            }
-        } else if token.starts_with("FlipCoin<") {
-            if let Some(inner) = token
-                .strip_prefix("FlipCoin<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = parse_i32_or_x(inner, 1);
-                parts.push(CostPart::FlipCoin(amount));
-            }
-        } else if token.starts_with("RollDice<") {
-            if let Some(inner) = token
-                .strip_prefix("RollDice<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let mut it = inner.splitn(4, '/');
-                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
-                let sides = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(6);
-                let result_svar = it.next().unwrap_or("").to_string();
-                parts.push(CostPart::RollDice {
-                    amount,
-                    sides,
-                    result_svar,
-                });
-            }
-        } else if token.starts_with("Exile<") {
-            // Exile<amount/filter> — from battlefield
-            if let Some(inner) = token
-                .strip_prefix("Exile<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Exile {
-                    amount,
-                    type_filter: filter,
-                    from: ZoneType::Battlefield,
-                });
-            }
-        } else if token.starts_with("ExileFromHand<") {
-            if let Some(inner) = token
-                .strip_prefix("ExileFromHand<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Exile {
-                    amount,
-                    type_filter: filter,
-                    from: ZoneType::Hand,
-                });
-            }
-        } else if token.starts_with("ExileFromGrave<") {
-            if let Some(inner) = token
-                .strip_prefix("ExileFromGrave<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Exile {
-                    amount,
-                    type_filter: filter,
-                    from: ZoneType::Graveyard,
-                });
-            }
-        } else if token.starts_with("ExileFromTop<") {
-            if let Some(inner) = token
-                .strip_prefix("ExileFromTop<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Exile {
-                    amount,
-                    type_filter: filter,
-                    from: ZoneType::Library,
-                });
-            }
-        } else if token.starts_with("ExileAnyGrave<") {
-            // ExileAnyGrave<amount/filter> — exile from ANY player's graveyard
-            if let Some(inner) = token
-                .strip_prefix("ExileAnyGrave<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::ExileFromAnyGrave {
-                    amount,
-                    type_filter: filter,
-                });
-            }
-        } else if token.starts_with("ExileSameGrave<") {
-            // ExileSameGrave<amount/filter> — exile from the same graveyard
-            if let Some(inner) = token
-                .strip_prefix("ExileSameGrave<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter_dynamic(inner);
-                parts.push(CostPart::ExileFromSameGrave {
-                    amount,
-                    type_filter: filter,
-                });
-            }
-        } else if token.starts_with("ExileCtrlOrGrave<") {
-            if let Some(inner) = token
-                .strip_prefix("ExileCtrlOrGrave<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::ExileCtrlOrGrave {
-                    amount,
-                    type_filter: filter,
-                });
-            }
-        } else if token.starts_with("ExileFromStack<") {
-            if let Some(inner) = token
-                .strip_prefix("ExileFromStack<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter_dynamic(inner);
-                parts.push(CostPart::ExileFromStack {
-                    amount,
-                    type_filter: filter,
-                });
-            }
-        } else if token.starts_with("Return<") {
-            // Return<amount/filter> — return permanent(s) to hand
-            if let Some(inner) = token
-                .strip_prefix("Return<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Return {
-                    amount,
-                    type_filter: filter,
-                });
-            }
-        } else if token.starts_with("tapXType<") {
-            // tapXType<amount/filter[/desc]> or tapXType<Any/filter+withTotalPowerGE{N}>
-            if let Some(inner) = token
-                .strip_prefix("tapXType<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                // Check for +withTotalPowerGE{N} suffix on the filter
-                let (final_filter, min_total_power) =
-                    if let Some(idx) = filter.find("+withTotalPowerGE") {
-                        let power_str = &filter[idx + "+withTotalPowerGE".len()..];
-                        let power: i32 = power_str
-                            .trim_start_matches('{')
-                            .trim_end_matches('}')
-                            .parse()
-                            .unwrap_or(0);
-                        (filter[..idx].to_string(), Some(power))
-                    } else {
-                        (filter, None)
-                    };
-                parts.push(CostPart::TapType {
-                    amount,
-                    type_filter: final_filter,
-                    min_total_power,
-                });
-            }
-        } else if token.starts_with("untapYType<") {
-            // untapYType<amount/filter[/desc]>
-            if let Some(inner) = token
-                .strip_prefix("untapYType<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::UntapType {
-                    amount,
-                    type_filter: filter,
-                });
-            }
-        } else if token.starts_with("DamageYou<") {
-            if let Some(inner) = token
-                .strip_prefix("DamageYou<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = inner.parse::<i32>().unwrap_or(1);
-                parts.push(CostPart::DamageYou(amount));
-            }
-        } else if token.starts_with("Draw<") {
-            if let Some(inner) = token
-                .strip_prefix("Draw<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = inner.parse::<i32>().unwrap_or(1);
-                parts.push(CostPart::Draw(amount));
-            }
-        } else if token.starts_with("Mill<") {
-            if let Some(inner) = token
-                .strip_prefix("Mill<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = inner.parse::<i32>().unwrap_or(1);
-                parts.push(CostPart::Mill(amount));
-            }
-        } else if token.starts_with("Reveal<") {
-            if let Some(inner) = token
-                .strip_prefix("Reveal<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Reveal {
-                    amount,
-                    type_filter: filter,
-                    from: RevealFrom::All,
-                });
-            }
-        } else if token.starts_with("ChooseCard<") {
-            if let Some(inner) = token
-                .strip_prefix("ChooseCard<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Reveal {
-                    amount,
-                    type_filter: filter,
-                    from: RevealFrom::Hand,
-                });
-            }
-        } else if token.starts_with("RevealFromExile<") {
-            if let Some(inner) = token
-                .strip_prefix("RevealFromExile<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Reveal {
-                    amount,
-                    type_filter: filter,
-                    from: RevealFrom::Exile,
-                });
-            }
-        } else if token.starts_with("RevealOrChoose<") {
-            if let Some(inner) = token
-                .strip_prefix("RevealOrChoose<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::Reveal {
-                    amount,
-                    type_filter: filter,
-                    from: RevealFrom::HandOrBattlefield,
-                });
-            }
-        } else if token.starts_with("Behold<") {
-            if let Some(inner) = token
-                .strip_prefix("Behold<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter_dynamic(inner);
-                parts.push(CostPart::Behold {
-                    amount,
-                    type_filter: filter,
-                    exile: false,
-                });
-            }
-        } else if token.starts_with("BeholdExile<") {
-            if let Some(inner) = token
-                .strip_prefix("BeholdExile<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter_dynamic(inner);
-                parts.push(CostPart::Behold {
-                    amount,
-                    type_filter: filter,
-                    exile: true,
-                });
-            }
-        } else if token.starts_with("Exert<") {
-            // Exert<amount/filter[/desc]> — exert the source creature
-            if let Some(inner) = token
-                .strip_prefix("Exert<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter_dynamic(inner);
-                parts.push(CostPart::Exert {
-                    amount,
-                    type_filter: filter,
-                });
-            } else {
-                parts.push(CostPart::Exert {
-                    amount: 1,
-                    type_filter: "CARDNAME".to_string(),
-                });
-            }
-        } else if token.starts_with("GainLife<") {
-            if let Some(inner) = token
-                .strip_prefix("GainLife<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = inner.parse::<i32>().unwrap_or(1);
-                parts.push(CostPart::GainLife(amount));
-            }
-        } else if token.starts_with("GainControl<") {
-            // GainControl<amount/filter[/desc]>
-            if let Some(inner) = token
-                .strip_prefix("GainControl<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::GainControl {
-                    amount,
-                    type_filter: filter,
-                });
-            }
-        } else if token.starts_with("RemoveAnyCounter<") {
-            // RemoveAnyCounter<amount/counterType/typeFilter[/desc]>
-            // counterType can be "Any" meaning any counter.
-            if let Some(inner) = token
-                .strip_prefix("RemoveAnyCounter<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let mut it = inner.split('/');
-                let amount = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(1);
-                let counter_str = it.next().unwrap_or("Any");
-                let type_filter = it.next().unwrap_or("Permanent").to_string();
-                let counter_type =
-                    if counter_str.eq_ignore_ascii_case("Any") || counter_str.is_empty() {
-                        None
-                    } else {
-                        Some(parse_counter_type(counter_str))
-                    };
-                parts.push(CostPart::RemoveAnyCounter {
-                    amount,
-                    type_filter,
-                    counter_type,
-                });
-            }
-        } else if token.starts_with("Unattach<") {
-            // Unattach<type[/desc]> — unattach the source equipment from its host
-            parts.push(CostPart::Unattach);
-        } else if token.starts_with("Waterbend<") {
-            // Waterbend<N> — pay N generic mana, can tap artifacts/creatures to help
-            if let Some(inner) = token
-                .strip_prefix("Waterbend<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = inner.parse::<i32>().unwrap_or(0);
-                parts.push(CostPart::Waterbend { amount });
-            }
-        } else if token.starts_with("AddMana<") {
-            // AddMana<amount/type> — add mana to pool as cost
-            if let Some(inner) = token
-                .strip_prefix("AddMana<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, mana_type) = parse_amount_filter(inner);
-                parts.push(CostPart::AddMana { amount, mana_type });
-            }
-        } else if token.starts_with("ExiledMoveToGrave<") {
-            // ExiledMoveToGrave<amount/filter[/desc]>
-            if let Some(inner) = token
-                .strip_prefix("ExiledMoveToGrave<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let (amount, filter) = parse_amount_filter(inner);
-                parts.push(CostPart::ExiledMoveToGrave {
-                    amount,
-                    type_filter: filter,
-                });
-            }
-        } else if token.starts_with("CollectEvidence<") {
-            if let Some(inner) = token
-                .strip_prefix("CollectEvidence<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = parse_i32_or_x(inner, 1);
-                parts.push(CostPart::CollectEvidence(amount));
-            }
-        } else if token.starts_with("PutCardToLibFromHand<") {
-            if let Some(inner) = token
-                .strip_prefix("PutCardToLibFromHand<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let mut it = inner.splitn(4, '/');
-                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
-                let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
-                let type_filter = it.next().unwrap_or("Card").to_string();
-                parts.push(CostPart::PutCardToLib {
-                    amount,
-                    lib_pos,
-                    type_filter,
-                    from: ZoneType::Hand,
-                    same_zone: false,
-                });
-            }
-        } else if token.starts_with("PutCardToLibFromGrave<") {
-            if let Some(inner) = token
-                .strip_prefix("PutCardToLibFromGrave<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let mut it = inner.splitn(4, '/');
-                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
-                let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
-                let type_filter = it.next().unwrap_or("Card").to_string();
-                parts.push(CostPart::PutCardToLib {
-                    amount,
-                    lib_pos,
-                    type_filter,
-                    from: ZoneType::Graveyard,
-                    same_zone: false,
-                });
-            }
-        } else if token.starts_with("PutCardToLibFromSameGrave<") {
-            if let Some(inner) = token
-                .strip_prefix("PutCardToLibFromSameGrave<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let mut it = inner.splitn(4, '/');
-                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
-                let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
-                let type_filter = it.next().unwrap_or("Card").to_string();
-                parts.push(CostPart::PutCardToLib {
-                    amount,
-                    lib_pos,
-                    type_filter,
-                    from: ZoneType::Graveyard,
-                    same_zone: true,
-                });
-            }
-        } else if token.starts_with("PutCardToLibFromBattlefield<") {
-            if let Some(inner) = token
-                .strip_prefix("PutCardToLibFromBattlefield<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let mut it = inner.splitn(4, '/');
-                let amount = it.next().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
-                let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
-                let type_filter = it.next().unwrap_or("Card").to_string();
-                parts.push(CostPart::PutCardToLib {
-                    amount,
-                    lib_pos,
-                    type_filter,
-                    from: ZoneType::Battlefield,
-                    same_zone: false,
-                });
-            }
-        } else if token.starts_with("Enlist<") {
-            if let Some(inner) = token
-                .strip_prefix("Enlist<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let pieces: Vec<&str> = inner.split('/').collect();
-                let amount = pieces.first().map(|s| parse_i32_or_x(s, 1)).unwrap_or(1);
-                // Java payload is usually Enlist<1/CARDNAME/creature> where the
-                // third segment is the effective enlist target description.
-                let filter = if pieces.len() >= 3 {
-                    pieces[2]
-                } else {
-                    pieces.get(1).copied().unwrap_or("")
-                }
-                .to_string();
-                parts.push(CostPart::Enlist {
-                    amount,
-                    type_filter: filter,
-                });
-            }
-        } else if token.starts_with("RevealChosen<") {
-            if let Some(inner) = token
-                .strip_prefix("RevealChosen<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let reveal_type = inner.split('/').next().unwrap_or("Player").to_string();
-                parts.push(CostPart::RevealChosen { reveal_type });
-            }
-        } else if token.starts_with("Blight<") {
-            if let Some(inner) = token
-                .strip_prefix("Blight<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
-                let amount = parse_i32_or_x(inner, 1);
-                parts.push(CostPart::Blight(amount));
-            }
-        } else if token.starts_with("PromiseGift") {
-            parts.push(CostPart::PromiseGift);
-        } else if *token == "Forage" {
-            parts.push(CostPart::Forage);
-        } else {
-            // Accumulate as mana token
-            mana_tokens.push(token);
         }
     }
 
@@ -958,7 +379,7 @@ pub fn parse_cost(raw: &str) -> Cost {
 
 /// Parse `"amount/filter"` inner content, returning (amount, filter).
 /// If there's no slash, defaults to amount=1 and filter=inner.
-fn parse_amount_filter(inner: &str) -> (i32, String) {
+pub(super) fn parse_amount_filter(inner: &str) -> (i32, String) {
     if let Some(slash_idx) = inner.find('/') {
         let amt = parse_i32_or_x(&inner[..slash_idx], 1);
         // Strip any trailing description (second slash)
@@ -974,7 +395,7 @@ fn parse_amount_filter(inner: &str) -> (i32, String) {
     }
 }
 
-fn parse_amount_filter_dynamic(inner: &str) -> (i32, String) {
+pub(super) fn parse_amount_filter_dynamic(inner: &str) -> (i32, String) {
     if let Some(slash_idx) = inner.find('/') {
         let amt = parse_i32_or_x(&inner[..slash_idx], 1);
         let rest = &inner[slash_idx + 1..];
@@ -1365,7 +786,7 @@ pub fn can_pay_ignoring_mana_for_spell(
         api: None,
         targeting_player: None,
         ability_text: String::new(),
-        params: std::collections::BTreeMap::new(),
+        params: crate::parsing::Params::default(),
         target_restrictions: None,
         target_chosen: crate::spellability::TargetChoices::default(),
         pay_costs: None,

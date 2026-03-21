@@ -3,6 +3,7 @@
 //! Mirrors Java `ReplacePlanarDiceResult.java` in `forge/game/replacement/`.
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
 
@@ -26,7 +27,7 @@ pub fn can_replace(
         ReplacementEvent::PlanarDiceResult { player } => *player,
         _ => return false,
     };
-    if let Some(valid) = effect.params.get("ValidPlayer") {
+    if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
         if !matches_valid_player(valid, player, source_card) {
             return false;
         }
@@ -43,10 +44,10 @@ pub fn execute(
 ) -> ReplacementResult {
     if effect
         .params
-        .get("Prevent")
+        .get(keys::PREVENT)
         .map(|s| s == "True")
         .unwrap_or(false)
-        || effect.params.contains_key("Skip")
+        || effect.params.has(keys::SKIP)
     {
         return ReplacementResult::Skipped;
     }

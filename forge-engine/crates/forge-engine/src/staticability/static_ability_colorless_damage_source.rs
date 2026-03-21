@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn colorless_damage_source(cards: &[CardInstance], source_card: &CardInstance) -> bool {
@@ -11,7 +12,7 @@ pub fn colorless_damage_source(cards: &[CardInstance], source_card: &CardInstanc
             .filter(|sa| sa.mode == StaticMode::ColorlessDamageSource)
         {
             if matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 source_card,
                 source,
             ) {

@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::CardInstance;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn ignore_hexproof(cards: &[CardInstance], target: &CardInstance, activator: PlayerId) -> bool {
@@ -24,7 +25,7 @@ fn any_ignore(
     {
         for st_ab in source.static_abilities.iter().filter(|sa| sa.mode == mode) {
             if !matches_valid_player(
-                st_ab.params.get("Activator").map(String::as_str),
+                st_ab.params.get(keys::ACTIVATOR),
                 activator,
                 source.controller,
                 source,
@@ -32,7 +33,7 @@ fn any_ignore(
                 continue;
             }
             if !matches_valid_entity(
-                st_ab.params.get("ValidEntity").map(String::as_str),
+                st_ab.params.get(keys::VALID_ENTITY),
                 target,
                 source,
             ) {

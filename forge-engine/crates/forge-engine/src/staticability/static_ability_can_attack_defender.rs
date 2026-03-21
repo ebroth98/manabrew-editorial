@@ -1,8 +1,9 @@
 use forge_foundation::ZoneType;
 
 use crate::ability::effects::parse_counter_type;
-use crate::card::{valid_filter, CardInstance};
+use crate::card::CardInstance;
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn can_attack_defender(
@@ -20,14 +21,14 @@ pub fn can_attack_defender(
             .filter(|sa| sa.mode == StaticMode::CanAttackDefender)
         {
             if !matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 card,
                 source,
             ) {
                 continue;
             }
             if !matches_valid_attacked(
-                st_ab.params.get("ValidAttacked").map(String::as_str),
+                st_ab.params.get(keys::VALID_ATTACKED),
                 defender,
                 source.controller,
             ) {

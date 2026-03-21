@@ -6,6 +6,8 @@ use crate::card::valid_filter;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::compare::compare_expr;
+use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, StackEntry};
 use crate::trigger::TriggerMode;
 
@@ -511,14 +513,14 @@ impl TriggerHandler {
                 }
 
                 // ValidCause$ — must match the card changing zones
-                if let Some(valid_cause) = sa.params.get("ValidCause") {
+                if let Some(valid_cause) = sa.params.get(keys::VALID_CAUSE) {
                     if valid_cause == "Creature" && !cause_is_creature {
                         continue;
                     }
                 }
 
                 // ValidMode$ — must match the trigger's mode
-                if let Some(valid_mode) = sa.params.get("ValidMode") {
+                if let Some(valid_mode) = sa.params.get(keys::VALID_MODE) {
                     let modes: Vec<&str> = valid_mode.split(',').collect();
                     if !modes.iter().any(|m| *m == "ChangesZone") {
                         continue;
@@ -526,7 +528,7 @@ impl TriggerHandler {
                 }
 
                 // Origin$ — the event's origin zone must match
-                if let Some(origin) = sa.params.get("Origin") {
+                if let Some(origin) = sa.params.get(keys::ORIGIN) {
                     let event_origin = params
                         .origin
                         .map(|z| format!("{:?}", z))
@@ -537,7 +539,7 @@ impl TriggerHandler {
                 }
 
                 // Destination$ — the event's destination zone must match
-                if let Some(dest) = sa.params.get("Destination") {
+                if let Some(dest) = sa.params.get(keys::DESTINATION) {
                     let event_dest = params
                         .destination
                         .map(|z| format!("{:?}", z))
@@ -730,51 +732,18 @@ impl TriggerHandler {
         // Mirrors Java's TriggerSpellAbilityCast.checkActivatorThisTurnCast():
         // "EQ2" means the activating player must have cast exactly 2 spells
         // this turn (including the one triggering).
-        if let Some(cond) = trigger.params.get("ActivatorThisTurnCast") {
+        if let Some(cond) = trigger.params.get(keys::ACTIVATOR_THIS_TURN_CAST) {
             let caster = params.spell_controller.unwrap_or(host_controller);
             let count = game.player(caster).spells_cast_this_turn;
-            if !compare_count_condition(count, cond) {
+            if !compare_expr(count, cond.trim()) {
                 return false;
             }
         }
 
         // Mirrors Java Trigger.requirementsCheck() -> meetsCommonRequirements():
         // apply common IsPresent$/PresentCompare$/PresentPlayer$/PresentZone$ checks.
-        if let Some(is_present) = trigger.params.get("IsPresent") {
-            let present_compare = trigger
-                .params
-                .get("PresentCompare")
-                .map(String::as_str)
-                .unwrap_or("GE1");
-            let present_player = trigger
-                .params
-                .get("PresentPlayer")
-                .map(String::as_str)
-                .unwrap_or("Any");
-            let present_zone = trigger
-                .params
-                .get("PresentZone")
-                .and_then(|z| parse_zone_name(z))
-                .unwrap_or(ZoneType::Battlefield);
-
-            let candidate_players: Vec<PlayerId> = match present_player {
-                p if p.eq_ignore_ascii_case("You") => vec![host_controller],
-                p if p.eq_ignore_ascii_case("Opponent") => vec![game.opponent_of(host_controller)],
-                _ => game.players.iter().map(|p| p.id).collect(),
-            };
-
-            let mut present_count = 0i32;
-            for pid in candidate_players {
-                for &cid in game.cards_in_zone(present_zone, pid) {
-                    if valid_filter::matches_valid_card(is_present, game.card(cid), card) {
-                        present_count += 1;
-                    }
-                }
-            }
-
-            if !compare_count_condition(present_count, present_compare) {
-                return false;
-            }
+        if !valid_filter::check_is_present(game, &trigger.params, card) {
+            return false;
         }
 
         true
@@ -795,36 +764,3 @@ impl Default for TriggerHandler {
     }
 }
 
-/// Parse conditions like "EQ2", "GE3", "LT1" used by ActivatorThisTurnCast$
-/// and similar trigger parameters. Mirrors Java's `Expressions.compare()`.
-fn compare_count_condition(count: i32, cond: &str) -> bool {
-    let cond = cond.trim();
-    if let Some(n_str) = cond.strip_prefix("EQ") {
-        count == n_str.trim().parse::<i32>().unwrap_or(0)
-    } else if let Some(n_str) = cond.strip_prefix("GE") {
-        count >= n_str.trim().parse::<i32>().unwrap_or(0)
-    } else if let Some(n_str) = cond.strip_prefix("GT") {
-        count > n_str.trim().parse::<i32>().unwrap_or(0)
-    } else if let Some(n_str) = cond.strip_prefix("LE") {
-        count <= n_str.trim().parse::<i32>().unwrap_or(0)
-    } else if let Some(n_str) = cond.strip_prefix("LT") {
-        count < n_str.trim().parse::<i32>().unwrap_or(0)
-    } else if let Some(n_str) = cond.strip_prefix("NE") {
-        count != n_str.trim().parse::<i32>().unwrap_or(0)
-    } else {
-        true // Unknown condition — allow trigger
-    }
-}
-
-fn parse_zone_name(name: &str) -> Option<ZoneType> {
-    match name.to_ascii_lowercase().as_str() {
-        "battlefield" => Some(ZoneType::Battlefield),
-        "graveyard" => Some(ZoneType::Graveyard),
-        "hand" => Some(ZoneType::Hand),
-        "library" => Some(ZoneType::Library),
-        "exile" => Some(ZoneType::Exile),
-        "stack" => Some(ZoneType::Stack),
-        "command" => Some(ZoneType::Command),
-        _ => None,
-    }
-}

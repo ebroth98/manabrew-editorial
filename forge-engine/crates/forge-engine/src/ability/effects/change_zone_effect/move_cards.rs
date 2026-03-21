@@ -8,6 +8,7 @@ use super::helpers::{apply_post_move, apply_pre_move, resolve_dest_owner};
 use super::super::{emit_zone_trigger, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Move collected cards to destination zone and apply all post-move effects.
@@ -32,9 +33,9 @@ pub(super) fn move_cards(
     // Card ordering for library destination (Java lines 529-539)
     let mut ordered = cards.to_vec();
     if dest_zone == ZoneType::Library && ordered.len() > 1 && !sa.is_shuffle() {
-        if sa.param_is_true("RandomOrder") {
+        if sa.param_is_true(keys::RANDOM_ORDER) {
             ctx.rng.shuffle_cards(&mut ordered);
-        } else if sa.param_is_true("ShuffleChangedPile") {
+        } else if sa.param_is_true(keys::SHUFFLE_CHANGED_PILE) {
             ctx.rng.shuffle_cards(&mut ordered);
         }
     }
@@ -42,7 +43,7 @@ pub(super) fn move_cards(
     let mut searched_owners: Vec<PlayerId> = Vec::new();
 
     // ForgetOtherRemembered$ — clear before processing (Java line 510)
-    if sa.param_is_true("ForgetOtherRemembered") {
+    if sa.param_is_true(keys::FORGET_OTHER_REMEMBERED) {
         if let Some(sid) = sa.source { ctx.game.card_mut(sid).remembered_cards.clear(); }
     }
 
@@ -78,19 +79,19 @@ pub(super) fn move_cards(
     }
 
     // Searched$ — force trigger even without Library origin
-    if sa.param_is_true("Searched") && origin_zone != ZoneType::Library {
+    if sa.param_is_true(keys::SEARCHED) && origin_zone != ZoneType::Library {
         ctx.trigger_handler.run_trigger(TriggerType::SearchedLibrary, RunParams {
             player: Some(controller), ..Default::default()
         }, false);
     }
 
     // AtEOT$ delayed triggers
-    if let Some(eot_svar) = sa.params.get("AtEOT") {
+    if let Some(eot_svar) = sa.params.get(keys::AT_EOT) {
         for &cid in &moved {
             ctx.trigger_handler.register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
                 mode: TriggerType::Phase,
                 trigger_mode: crate::trigger::TriggerMode::Always,
-                execute_svar: eot_svar.clone(),
+                execute_svar: eot_svar.to_string(),
                 controller,
                 source_card: sa.source.unwrap_or(cid),
                 target_card: Some(cid),
@@ -100,7 +101,7 @@ pub(super) fn move_cards(
     }
 
     // Duration$ UntilHostLeavesPlay — mark exiled cards for return
-    if let Some(duration) = sa.params.get("Duration") {
+    if let Some(duration) = sa.params.get(keys::DURATION) {
         if duration.eq_ignore_ascii_case("UntilHostLeavesPlay")
             || duration.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT")
         {
@@ -111,8 +112,8 @@ pub(super) fn move_cards(
     }
 
     // Shuffle after library search
-    let shuffle_param = sa.params.get("Shuffle").map(String::as_str);
-    let no_shuffle = shuffle_param == Some("False") || sa.param_is_true("NoShuffle");
+    let shuffle_param = sa.params.get(keys::SHUFFLE);
+    let no_shuffle = shuffle_param == Some("False") || sa.param_is_true(keys::NO_SHUFFLE);
     let force_shuffle = sa.is_shuffle();
     if !no_shuffle && (origin_zone == ZoneType::Library || force_shuffle) && dest_zone != ZoneType::Library {
         let players = if !searched_owners.is_empty() { searched_owners } else { vec![controller] };

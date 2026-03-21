@@ -16,6 +16,7 @@ use crate::agent::GameLogEvent;
 use crate::card::PARAM_MADNESS_PLAY;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -42,7 +43,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
 /// Resolve the target card from `Defined$` parameter.
 fn resolve_target_card(sa: &SpellAbility) -> Option<CardId> {
-    let defined = sa.params.get("Defined").cloned().unwrap_or_default();
+    let defined = sa.params.get(keys::DEFINED).map(|s| s.to_string()).unwrap_or_default();
     if let Some(uid_str) = defined.strip_prefix("CardUID_") {
         uid_str.parse::<u32>().ok().map(CardId)
     } else {
@@ -58,7 +59,7 @@ fn prompt_optional_play(
     card_id: CardId,
     controller: crate::ids::PlayerId,
 ) -> bool {
-    if !sa.param_is_true("Optional") {
+    if !sa.param_is_true(keys::OPTIONAL) {
         return true;
     }
     let card_name = ctx.game.card(card_id).card_name.clone();
@@ -139,7 +140,7 @@ fn resolve_madness_play(ctx: &mut EffectContext, sa: &SpellAbility, card_id: Car
         return;
     }
 
-    let play_cost = sa.params.get("PlayCost").cloned();
+    let play_cost = sa.params.get(keys::PLAY_COST).map(|s| s.to_string());
 
     // Pay madness mana cost BEFORE target setup (matches Java's cast flow order).
     if let Some(ref cost_str) = play_cost {

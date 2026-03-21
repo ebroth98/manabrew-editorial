@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, CardInstance};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
@@ -16,19 +17,19 @@ pub fn cant_exile(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantExile)
         {
-            if let Some(for_cost) = st_ab.params.get("ForCost") {
+            if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
                 if for_cost.eq_ignore_ascii_case("True") != is_cost {
                     continue;
                 }
             }
             if !matches_valid_card(
-                st_ab.params.get("ValidCard").map(String::as_str),
+                st_ab.params.get(keys::VALID_CARD),
                 card,
                 source,
             ) {
                 continue;
             }
-            if !matches_valid_cause(st_ab.params.get("ValidCause").map(String::as_str), cause) {
+            if !matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause) {
                 continue;
             }
             return true;
@@ -72,11 +73,11 @@ fn matches_valid_cause(valid: Option<&str>, cause: Option<&SpellAbility>) -> boo
 
         for qualifier in segments {
             let q = qualifier.trim();
-            if q.eq_ignore_ascii_case("EffectSource") && !cause.params.contains_key("EffectSource")
+            if q.eq_ignore_ascii_case("EffectSource") && !cause.params.has(keys::EFFECT_SOURCE)
             {
                 return false;
             }
-            if q.eq_ignore_ascii_case("!EffectSource") && cause.params.contains_key("EffectSource")
+            if q.eq_ignore_ascii_case("!EffectSource") && cause.params.has(keys::EFFECT_SOURCE)
             {
                 return false;
             }
