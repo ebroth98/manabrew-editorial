@@ -7,6 +7,11 @@
 # Lines starting with # are comments. Blank lines are ignored.
 
 combat/CombatView.java -> skip
+card/IHasCardView.java -> skip
+card/CardView.java -> skip
+card/IHasCardView.java -> skip
+card/CardFaceView.java -> skip
+
 
 # Directory modules — Rust uses mod.rs inside a directory when an effect
 # is split across multiple sub-modules. Cannot have both file.rs and file/ in Rust.

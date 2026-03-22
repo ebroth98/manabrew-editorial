@@ -1,13 +1,13 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 /// Check whether damage from `source_id` cannot be prevented.
 /// Mirrors Java's StaticAbilityCantPreventDamage.cantPreventDamage().
-pub fn cant_prevent_damage(cards: &[CardInstance], source_id: CardId, is_combat: bool) -> bool {
+pub fn cant_prevent_damage(cards: &[Card], source_id: CardId, is_combat: bool) -> bool {
     let source_card = &cards[source_id.index()];
 
     for static_source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
@@ -41,8 +41,8 @@ pub fn cant_prevent_damage(cards: &[CardInstance], source_id: CardId, is_combat:
 /// Mirrors Java's `StaticAbilityCantPreventDamage.applyCantPreventDamage()`.
 pub fn apply_cant_prevent_damage(
     st_ab: &crate::staticability::static_ability::StaticAbility,
-    damage_source: &CardInstance,
-    host: &CardInstance,
+    damage_source: &Card,
+    host: &Card,
     is_combat: bool,
 ) -> bool {
     applies(st_ab, damage_source, host, is_combat)
@@ -50,8 +50,8 @@ pub fn apply_cant_prevent_damage(
 
 fn applies(
     st_ab: &crate::staticability::static_ability::StaticAbility,
-    damage_source: &CardInstance,
-    host: &CardInstance,
+    damage_source: &Card,
+    host: &Card,
     is_combat: bool,
 ) -> bool {
     if let Some(flag) = st_ab.params.get(keys::IS_COMBAT) {

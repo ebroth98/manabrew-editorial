@@ -65,7 +65,7 @@ impl AttackingBand {
     ///
     /// Full "bands with" keyword support is stubbed — returns `true` for
     /// single-creature bands, which covers 99.9% of actual play.
-    pub fn is_valid_band(band: &[CardId], cards: &[crate::card::CardInstance], share_damage: bool) -> bool {
+    pub fn is_valid_band(band: &[CardId], cards: &[crate::card::Card], share_damage: bool) -> bool {
         if band.is_empty() {
             return false;
         }
@@ -85,7 +85,7 @@ impl AttackingBand {
     }
 
     /// Check if `card` can join this existing band.
-    pub fn can_join_band(&self, card: CardId, cards: &[crate::card::CardInstance]) -> bool {
+    pub fn can_join_band(&self, card: CardId, cards: &[crate::card::Card]) -> bool {
         let mut new_band: Vec<CardId> = self.attackers.clone();
         new_band.push(card);
         Self::is_valid_band(&new_band, cards, false)

@@ -1,6 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::card::perpetual::perpetual_interface::PerpetualInterface;
+use crate::card::perpetual::perpetual_new_pt;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ PowerExchange` — swap power between two creatures.
@@ -31,8 +33,39 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    let p1 = ctx.game.card(c1).power();
-    let p2 = ctx.game.card(c2).power();
+    let base_power = sa.params.get("BasePower").is_some();
+    let p1 = if base_power {
+        ctx.game.card(c1).base_power.unwrap_or(0)
+    } else {
+        ctx.game.card(c1).power()
+    };
+    let p2 = if base_power {
+        ctx.game.card(c2).base_power.unwrap_or(0)
+    } else {
+        ctx.game.card(c2).power()
+    };
+    let is_perpetual = sa
+        .params
+        .get("Duration")
+        .map(|d| d.eq_ignore_ascii_case("Perpetual"))
+        .unwrap_or(false);
+
+    if is_perpetual {
+        let ts = ctx.game.next_effect_timestamp();
+        perpetual_new_pt::PerpetualNewPt {
+            timestamp: ts,
+            power: Some(p2),
+            toughness: None,
+        }
+        .apply_effect(ctx.game.card_mut(c1));
+        perpetual_new_pt::PerpetualNewPt {
+            timestamp: ts,
+            power: Some(p1),
+            toughness: None,
+        }
+        .apply_effect(ctx.game.card_mut(c2));
+        return;
+    }
 
     // Calculate the modifier deltas needed to swap powers
     let c1_base = ctx
@@ -47,8 +80,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or(ctx.game.card(c2).base_power.unwrap_or(0));
 
     // Set power modifiers so effective power = the other's power
-    ctx.game.card_mut(c1).power_modifier = p2 - c1_base - ctx.game.card(c1).static_power_modifier;
-    ctx.game.card_mut(c2).power_modifier = p1 - c2_base - ctx.game.card(c2).static_power_modifier;
+    let c1_static = ctx.game.card(c1).static_power_modifier;
+    let c2_static = ctx.game.card(c2).static_power_modifier;
+    ctx.game
+        .card_mut(c1)
+        .set_power_modifier(p2 - c1_base - c1_static);
+    ctx.game
+        .card_mut(c2)
+        .set_power_modifier(p1 - c2_base - c2_static);
 }
 
 #[cfg(test)]
@@ -58,7 +97,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -70,7 +109,7 @@ mod tests {
         let mut game = GameState::new(&["Alice", "Bob"], 20);
         let p0 = PlayerId(0);
 
-        let c1 = game.create_card(CardInstance::new(
+        let c1 = game.create_card(Card::new(
             CardId(0),
             "Bear".into(),
             p0,
@@ -84,7 +123,7 @@ mod tests {
         ));
         game.move_card(c1, ZoneType::Battlefield, p0);
 
-        let c2 = game.create_card(CardInstance::new(
+        let c2 = game.create_card(Card::new(
             CardId(0),
             "Dragon".into(),
             p0,

@@ -67,7 +67,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.agents[controller.index()].choose_cards_for_effect(controller, &valid, 1, amount);
 
     // Store on source card
-    ctx.game.card_mut(source_id).chosen_cards = chosen.clone();
+    ctx.game.card_mut(source_id).set_chosen_cards(chosen.clone());
 
     // Optionally remember
     if remember {

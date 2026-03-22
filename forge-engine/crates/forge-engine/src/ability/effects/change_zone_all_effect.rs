@@ -185,7 +185,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // when the source leaves the battlefield.
             if dest_zone == ZoneType::Exile {
                 if let Some(src_id) = exile_source {
-                    ctx.game.card_mut(card_id).exiled_by = Some(src_id);
+                    ctx.game.card_mut(card_id).set_exiled_by(Some(src_id));
                 }
             }
             if dest_zone == ZoneType::Battlefield {
@@ -203,7 +203,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 #[cfg(test)]
 mod tests {
     use super::matches_change_zone_all_filter;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -215,7 +215,7 @@ mod tests {
         let p1 = PlayerId(1);
 
         let make = |name: &str, owner: PlayerId, type_line: &str| {
-            CardInstance::new(
+            Card::new(
                 CardId(0),
                 name.to_string(),
                 owner,

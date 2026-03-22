@@ -759,7 +759,7 @@ mod tests {
 
         let mut game = GameState::new(&["Alice", "Bob"], 20);
         let p0 = PlayerId(0);
-        let mut card = crate::card::CardInstance::new(
+        let mut card = crate::card::Card::new(
             CardId(0),
             "Valley Rally".to_string(),
             p0,

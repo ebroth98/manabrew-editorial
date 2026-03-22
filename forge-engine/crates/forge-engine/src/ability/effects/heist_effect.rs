@@ -22,12 +22,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let Some(&top) = lib.last() else { break };
 
         let old_zone = ctx.game.card(top).zone;
-        ctx.game.card_mut(top).face_down = true;
+        ctx.game.card_mut(top).set_face_down(true);
         ctx.game.move_card(top, ZoneType::Exile, target_player);
 
         // Mark with exiled_by so controller can look at and cast it
         if let Some(sid) = sa.source {
-            ctx.game.card_mut(top).exiled_by = Some(sid);
+            ctx.game.card_mut(top).set_exiled_by(Some(sid));
         }
 
         emit_zone_trigger(ctx.trigger_handler, top, old_zone, ZoneType::Exile);

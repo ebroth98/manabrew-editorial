@@ -1,21 +1,21 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn ignore_hexproof(cards: &[CardInstance], target: &CardInstance, activator: PlayerId) -> bool {
+pub fn ignore_hexproof(cards: &[Card], target: &Card, activator: PlayerId) -> bool {
     any_ignore(cards, target, activator, StaticMode::IgnoreHexproof)
 }
 
-pub fn ignore_shroud(cards: &[CardInstance], target: &CardInstance, activator: PlayerId) -> bool {
+pub fn ignore_shroud(cards: &[Card], target: &Card, activator: PlayerId) -> bool {
     any_ignore(cards, target, activator, StaticMode::IgnoreShroud)
 }
 
 fn any_ignore(
-    cards: &[CardInstance],
-    target: &CardInstance,
+    cards: &[Card],
+    target: &Card,
     activator: PlayerId,
     mode: StaticMode,
 ) -> bool {
@@ -49,7 +49,7 @@ fn matches_valid_player(
     valid: Option<&str>,
     player: PlayerId,
     source_controller: PlayerId,
-    source: &CardInstance,
+    source: &Card,
 ) -> bool {
     match valid {
         None => true,
@@ -67,7 +67,7 @@ fn matches_valid_player(
     }
 }
 
-fn matches_valid_entity(valid: Option<&str>, target: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_entity(valid: Option<&str>, target: &Card, source: &Card) -> bool {
     let Some(expr) = valid else {
         return true;
     };

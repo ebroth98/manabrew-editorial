@@ -31,9 +31,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let attached_to = ctx.game.card(card_id).attached_to;
         if let Some(host_id) = attached_to {
             // Remove from host's attachments list
-            ctx.game.card_mut(host_id).attachments.retain(|&id| id != card_id);
+            ctx.game.card_mut(host_id).remove_attachment(card_id);
             // Clear the attachment link
-            ctx.game.card_mut(card_id).attached_to = None;
+            ctx.game.card_mut(card_id).set_attached_to(None);
         }
     }
 }

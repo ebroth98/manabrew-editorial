@@ -57,10 +57,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if let Some(chosen_type) = chosen {
         if let Some(source_id) = sa.source {
-            let source = ctx.game.card_mut(source_id);
-            source.chosen_type = Some(chosen_type);
-            source.chosen_type_controller = Some(controller);
-            source.chosen_type_revealed = false;
+            ctx.game
+                .card_mut(source_id)
+                .set_chosen_type(Some(chosen_type), Some(controller), false);
         }
     }
 }

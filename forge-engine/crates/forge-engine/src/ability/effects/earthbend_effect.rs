@@ -23,15 +23,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
 
         // Set base P/T to 0/0
-        ctx.game.card_mut(card_id).base_power = Some(0);
-        ctx.game.card_mut(card_id).base_toughness = Some(0);
+        ctx.game.card_mut(card_id).set_base_pt(Some(0), Some(0));
 
         // Add Creature core type
-        ctx.game.card_mut(card_id).type_line.core_types.insert(CoreType::Creature);
+        ctx.game.card_mut(card_id).add_type(CoreType::Creature.name());
 
         // Add Haste keyword
         if !ctx.game.card(card_id).keywords.contains_string_ignore_case("Haste") {
-            ctx.game.card_mut(card_id).keywords.add("Haste");
+            ctx.game.card_mut(card_id).add_intrinsic_keyword("Haste");
         }
 
         // Add +1/+1 counters
@@ -39,9 +38,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ctx.game.card_mut(card_id).add_counter(&counter_type, num);
 
         // Mark for return-on-death (delayed trigger tracked via svar)
-        ctx.game.card_mut(card_id).svars.insert(
-            "EarthbendReturn".to_string(),
-            "True".to_string(),
-        );
+        ctx.game.card_mut(card_id).set_s_var("EarthbendReturn", "True");
     }
 }

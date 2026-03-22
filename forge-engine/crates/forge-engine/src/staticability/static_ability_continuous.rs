@@ -1,14 +1,14 @@
 //! Java parity bridge for `StaticAbilityContinuous.java`.
 //! Canonical CR613 recomputation lives in `layer.rs`.
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::game::GameState;
 use crate::parsing::keys;
 use crate::staticability::{Layer, StaticAbility};
 
 pub fn apply_continuous_ability(
     st_ab: &StaticAbility,
-    source: &CardInstance,
+    source: &Card,
     game: &mut GameState,
     layer: Layer,
 ) {
@@ -21,11 +21,11 @@ pub fn apply_continuous_ability(
     crate::staticability::layer::apply_continuous_effects(game);
 }
 
-pub fn resolve(st_ab: &StaticAbility, source: &CardInstance, game: &GameState) {
+pub fn resolve(st_ab: &StaticAbility, source: &Card, game: &GameState) {
     let _ = run(st_ab, source, game);
 }
 
-pub fn can_play(st_ab: &StaticAbility, card: &CardInstance, _game: &GameState) -> bool {
+pub fn can_play(st_ab: &StaticAbility, card: &Card, _game: &GameState) -> bool {
     if !st_ab.zones_check(card.zone) {
         return false;
     }
@@ -35,6 +35,6 @@ pub fn can_play(st_ab: &StaticAbility, card: &CardInstance, _game: &GameState) -
     crate::card::valid_filter::matches_valid_card_opt(st_ab.params.get(keys::AFFECTED), card, card)
 }
 
-pub fn run(st_ab: &StaticAbility, source: &CardInstance, game: &GameState) -> bool {
+pub fn run(st_ab: &StaticAbility, source: &Card, game: &GameState) -> bool {
     st_ab.check_conditions(source, game)
 }

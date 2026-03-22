@@ -77,7 +77,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         "Flip" => {
             // Toggle the flipped state.
             let card = ctx.game.card_mut(source_id);
-            card.flipped = !card.flipped;
+            card.set_flipped(!card.flipped);
         }
         "TurnFaceUp" => {
             // Run TurnFaceUp replacement effects before turning face up.
@@ -91,10 +91,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
             let card = ctx.game.card_mut(source_id);
             if card.face_down {
-                card.face_down = false;
+                card.set_face_down(false);
                 // Restore original P/T by clearing the face-down overrides
-                card.static_set_power = None;
-                card.static_set_toughness = None;
+                card.set_static_set_pt(None, None);
 
                 // Remove the synthetic morph turn-face-up ability
                 card.activated_abilities
@@ -122,7 +121,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         "TurnFaceDown" => {
             let card = ctx.game.card_mut(source_id);
             if !card.face_down {
-                card.face_down = true;
+                card.set_face_down(true);
             }
         }
         _ => {

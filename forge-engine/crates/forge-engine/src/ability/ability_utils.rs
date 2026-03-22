@@ -8,7 +8,7 @@
 use forge_foundation::{ColorSet, ZoneType};
 
 use crate::card::filter_constants as fc;
-use crate::card::{CardInstance, CounterType};
+use crate::card::{Card, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
@@ -171,26 +171,7 @@ pub fn resolve_defined_players(
 /// falling back to P1P1, so cards like Stocking the Pantry get the correct
 /// SUPPLY counters.
 pub fn parse_counter_type(s: &str) -> CounterType {
-    match s.to_uppercase().as_str() {
-        "P1P1" | "+1/+1" => CounterType::P1P1,
-        "M1M1" | "-1/-1" => CounterType::M1M1,
-        "LOYALTY" => CounterType::Loyalty,
-        "CHARGE" => CounterType::Charge,
-        "QUEST" => CounterType::Quest,
-        "STUDY" => CounterType::Study,
-        "AGE" => CounterType::Age,
-        "FADE" => CounterType::Fade,
-        "TIME" => CounterType::Time,
-        "DEPLETION" => CounterType::Depletion,
-        "STORAGE" => CounterType::Storage,
-        "MINING" => CounterType::Mining,
-        "BRICK" => CounterType::Brick,
-        "LEVEL" => CounterType::Level,
-        "LORE" => CounterType::Lore,
-        "PAGE" => CounterType::Page,
-        "DREAM" => CounterType::Dream,
-        other => CounterType::Named(other.to_string()),
-    }
+    crate::card::counter_type::parse_counter_type(s)
 }
 
 // ── Zone Type Parsing ────────────────────────────────────────────────
@@ -220,7 +201,7 @@ pub fn parse_zone_type(s: &str) -> Option<ZoneType> {
 /// resolve `YouCtrl` / `OppCtrl` qualifiers.
 ///
 /// Mirrors Java's `CardLists.getValidCards()` + `CardProperty.cardHasProperty()`.
-pub fn matches_valid_cards(card: &CardInstance, filter: &str, activating_player: PlayerId) -> bool {
+pub fn matches_valid_cards(card: &Card, filter: &str, activating_player: PlayerId) -> bool {
     if filter.is_empty() || filter == fc::CARD {
         return true;
     }
@@ -236,7 +217,7 @@ pub fn matches_valid_cards(card: &CardInstance, filter: &str, activating_player:
 }
 
 fn matches_valid_cards_single(
-    card: &CardInstance,
+    card: &Card,
     filter: &str,
     activating_player: PlayerId,
 ) -> bool {
@@ -293,7 +274,7 @@ fn matches_valid_cards_single(
 }
 
 fn matches_valid_cards_qualifier(
-    card: &CardInstance,
+    card: &Card,
     qualifier: &str,
     activating_player: PlayerId,
 ) -> bool {
@@ -344,7 +325,7 @@ fn matches_valid_cards_qualifier(
 /// of the spell/ability (for `ChosenColor` qualifier support). Pass `&[]` when
 /// no source card context is available.
 pub fn matches_change_type(
-    card: &CardInstance,
+    card: &Card,
     change_type: &str,
     source_chosen_colors: &[String],
 ) -> bool {
@@ -484,7 +465,7 @@ pub fn discard_with_madness_replacement(
 }
 
 /// Remove the `MadnessExiled` marker from a card's granted keywords.
-pub fn remove_madness_exiled_marker(card: &mut CardInstance) {
+pub fn remove_madness_exiled_marker(card: &mut Card) {
     card.granted_keywords
         .retain(|k| k != crate::card::KEYWORD_MADNESS_EXILED);
 }

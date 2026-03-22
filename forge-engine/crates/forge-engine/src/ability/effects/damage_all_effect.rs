@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards, resolve_numeric_svar, EffectContext};
+use crate::card::card_damage_map::DamageTarget;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -30,6 +31,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or("")
         .to_string();
     let activating_player = sa.activating_player;
+    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
+    if sa.params.has("DamageMap") {
+        ctx.game.ensure_pending_damage_maps();
+    }
 
     let player_ids = ctx.game.player_order.clone();
 
@@ -93,7 +98,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
             if source_has_infect_keyword || source_has_wither {
                 // Infect/Wither: damage to creatures as -1/-1 counters
-                if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                if use_damage_map {
+                    if let Some(src_id) = source {
+                        if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                            map.put(src_id, DamageTarget::Card(card_id), num_dmg);
+                        }
+                    }
+                } else if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                     &ctx.game.cards,
                     ctx.game.card(card_id),
                     &crate::card::CounterType::M1M1,
@@ -102,22 +113,30 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         .card_mut(card_id)
                         .add_counter(&crate::card::CounterType::M1M1, num_dmg);
                 }
+            } else if use_damage_map {
+                if let Some(src_id) = source {
+                    if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                        map.put(src_id, DamageTarget::Card(card_id), num_dmg);
+                    }
+                }
             } else {
                 ctx.game.deal_damage_to_card(card_id, num_dmg);
             }
 
             // Fire DamageDone trigger per card
-            ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::DamageDone,
-                crate::event::RunParams {
-                    damage_source: source,
-                    damage_target_card: Some(card_id),
-                    damage_amount: Some(num_dmg),
-                    is_combat_damage: Some(false),
-                    ..Default::default()
-                },
-                false,
-            );
+            if !use_damage_map {
+                ctx.trigger_handler.run_trigger(
+                    crate::event::TriggerType::DamageDone,
+                    crate::event::RunParams {
+                        damage_source: source,
+                        damage_target_card: Some(card_id),
+                        damage_amount: Some(num_dmg),
+                        is_combat_damage: Some(false),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
         }
     }
 
@@ -141,29 +160,43 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false
             };
             if source_has_infect {
-                if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+                if use_damage_map {
+                    if let Some(src_id) = source {
+                        if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                            map.put(src_id, DamageTarget::Player(pid), num_dmg);
+                        }
+                    }
+                } else if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                     &ctx.game.cards,
                     pid,
                     &crate::card::CounterType::Poison,
                 ) {
                     ctx.game.player_mut(pid).poison_counters += num_dmg;
                 }
+            } else if use_damage_map {
+                if let Some(src_id) = source {
+                    if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                        map.put(src_id, DamageTarget::Player(pid), num_dmg);
+                    }
+                }
             } else {
                 ctx.game.deal_damage_to_player(pid, num_dmg);
             }
 
             // Fire DamageDone trigger per player
-            ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::DamageDone,
-                crate::event::RunParams {
-                    damage_source: source,
-                    damage_target_player: Some(pid),
-                    damage_amount: Some(num_dmg),
-                    is_combat_damage: Some(false),
-                    ..Default::default()
-                },
-                false,
-            );
+            if !use_damage_map {
+                ctx.trigger_handler.run_trigger(
+                    crate::event::TriggerType::DamageDone,
+                    crate::event::RunParams {
+                        damage_source: source,
+                        damage_target_player: Some(pid),
+                        damage_amount: Some(num_dmg),
+                        is_combat_damage: Some(false),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
         }
     }
 }
@@ -175,7 +208,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -183,7 +216,7 @@ mod tests {
     use crate::trigger::handler::TriggerHandler;
 
     fn make_creature(game: &mut GameState, owner: PlayerId) -> CardId {
-        let c = CardInstance::new(
+        let c = Card::new(
             CardId(0),
             "Bear".into(),
             owner,

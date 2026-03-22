@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::card::card_damage_map::DamageTarget;
 use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
@@ -14,6 +15,11 @@ use crate::spellability::SpellAbility;
 ///
 /// Mirrors Java's `FightEffect.resolve()`.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
+    if sa.params.has("DamageMap") {
+        ctx.game.ensure_pending_damage_maps();
+    }
+
     // The explicitly targeted card is always the "other" fighter (opponent's creature).
     let target = match sa.target_chosen.target_card {
         Some(c) => c,
@@ -49,6 +55,24 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
+    if sa.params.has("Optional") {
+        let decider = sa
+            .source
+            .map(|cid| ctx.game.card(cid).controller)
+            .unwrap_or(sa.activating_player);
+        ctx.agents[decider.index()].snapshot_state(ctx.game, ctx.mana_pools);
+        if !ctx.agents[decider.index()].confirm_action(
+            decider,
+            Some("Fight"),
+            "Would you like those creatures to fight?",
+            &[],
+            None,
+            None,
+        ) {
+            return;
+        }
+    }
+
     let source_power = ctx.game.card(source).power();
     let target_power = ctx.game.card(target).power();
 
@@ -76,10 +100,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .push(target);
     }
     // Deal damage simultaneously
-    ctx.game.deal_damage_to_card(target, source_power);
-    ctx.game.deal_damage_to_card(source, target_power);
+    if use_damage_map {
+        if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+            map.put(source, DamageTarget::Card(target), source_power);
+            map.put(target, DamageTarget::Card(source), target_power);
+        }
+    } else {
+        ctx.game.deal_damage_to_card(target, source_power);
+        ctx.game.deal_damage_to_card(source, target_power);
+    }
 
-    // Fire Fight triggers
+    // Fire per-fighter and batched fight triggers (matches Java FightEffect).
     ctx.trigger_handler.run_trigger(
         TriggerType::Fight,
         RunParams {
@@ -89,4 +120,24 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         },
         false,
     );
+    ctx.trigger_handler.run_trigger(
+        TriggerType::Fight,
+        RunParams {
+            card: Some(target),
+            card2: Some(source),
+            ..Default::default()
+        },
+        false,
+    );
+    ctx.trigger_handler.run_trigger(
+        TriggerType::FightOnce,
+        RunParams {
+            card: Some(source),
+            card2: Some(target),
+            ..Default::default()
+        },
+        false,
+    );
+
+    let _ = crate::ability::spell_ability_effect::replace_dying(ctx.game, sa);
 }

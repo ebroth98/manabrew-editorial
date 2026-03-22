@@ -8,7 +8,7 @@
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::{emit_zone_trigger, parse_counter_type, EffectContext};
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
@@ -49,9 +49,9 @@ fn create_incubator_token(
         ctx.rng.next_int(1);
 
         let mut token = template;
-        token.owner = player;
-        token.controller = player;
-        token.is_token = true;
+        token.set_owner(player);
+        token.set_controller(player);
+        token.set_is_token(true);
 
         let token_id = ctx.game.create_card(token);
         ctx.game
@@ -87,7 +87,7 @@ fn create_incubator_token(
         ctx.rng.next_int(1);
         ctx.rng.next_int(1);
 
-        let mut token = CardInstance::new(
+        let mut token = Card::new(
             CardId(0),
             "Incubator Token".to_string(),
             player,
@@ -99,8 +99,8 @@ fn create_incubator_token(
             vec![],
             vec![],
         );
-        token.controller = player;
-        token.is_token = true;
+        token.set_controller(player);
+        token.set_is_token(true);
 
         let token_id = ctx.game.create_card(token);
         ctx.game

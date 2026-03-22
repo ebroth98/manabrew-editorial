@@ -5,6 +5,7 @@ import { STORAGE_KEYS } from '@/lib/constants';
 export type ZonePanelSide = 'left' | 'right';
 export type ZonePanelItem = 'library' | 'graveyard' | 'exile';
 export type HandDisplayMode = 'cool' | 'normal';
+export type HandSize = 'small' | 'medium' | 'large';
 
 interface PreferencesState {
   /** App color theme preset id */
@@ -38,6 +39,10 @@ interface PreferencesState {
   /** Hand display layout style in game */
   handDisplayMode: HandDisplayMode;
   setHandDisplayMode: (mode: HandDisplayMode) => void;
+
+  /** Hand card size */
+  handSize: HandSize;
+  setHandSize: (size: HandSize) => void;
 
   /** App theme color overrides (CSS variable name → HSL value) */
   appThemeColorOverrides: Record<string, string>;
@@ -78,6 +83,9 @@ export const usePreferencesStore = create<PreferencesState>()(
 
       handDisplayMode: 'cool',
       setHandDisplayMode: (handDisplayMode) => set({ handDisplayMode }),
+
+      handSize: 'medium',
+      setHandSize: (handSize) => set({ handSize }),
 
       appThemeColorOverrides: {},
       setAppThemeColorOverride: (key, hsl) =>

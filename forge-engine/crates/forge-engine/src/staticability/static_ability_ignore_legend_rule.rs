@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn ignore_legend_rule(cards: &[CardInstance], card: &CardInstance) -> bool {
+pub fn ignore_legend_rule(cards: &[Card], card: &Card) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
             .static_abilities
@@ -27,7 +27,7 @@ pub fn ignore_legend_rule(cards: &[CardInstance], card: &CardInstance) -> bool {
     false
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     let Some(expr) = valid else {
         return true;
     };
@@ -50,9 +50,9 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
 }
 
 fn is_present_condition_met(
-    cards: &[CardInstance],
+    cards: &[Card],
     st_ab: &crate::staticability::StaticAbility,
-    source: &CardInstance,
+    source: &Card,
 ) -> bool {
     let Some(is_present) = st_ab.params.get(keys::IS_PRESENT) else {
         return true;

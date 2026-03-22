@@ -24,7 +24,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     // Store the chosen name on the source card
-    ctx.game.card_mut(source_id).svars.insert("ChosenName".to_string(), named);
+    ctx.game.card_mut(source_id).set_s_var("ChosenName", named);
 
     if sa.param_is_true(keys::REMEMBER_CHOSEN) {
         // Remember the name for later checks

@@ -2,7 +2,7 @@ use forge_foundation::mana::ManaAtom;
 use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::cost::CostPart;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -926,7 +926,7 @@ impl ManaPool {
 // ── Mana helpers ────────────────────────────────────────────────────
 
 /// Determine what mana atom a basic land produces based on its subtypes.
-pub fn basic_land_mana_atom(card: &CardInstance) -> Option<u16> {
+pub fn basic_land_mana_atom(card: &Card) -> Option<u16> {
     if card.type_line.has_subtype("Plains") {
         Some(ManaAtom::WHITE)
     } else if card.type_line.has_subtype("Island") {
@@ -1178,7 +1178,7 @@ pub fn parse_combo_colors(produced: &str) -> Vec<String> {
 /// Returns all ManaAtom values that correspond to the card's basic land subtypes.
 /// Multi-subtype lands (e.g. Breeding Pool = Forest + Island) return all matching atoms.
 /// Unlike `basic_land_mana_atom`, this returns ALL subtypes not just the first match.
-pub(crate) fn all_basic_subtype_atoms(card: &CardInstance) -> Vec<u16> {
+pub(crate) fn all_basic_subtype_atoms(card: &Card) -> Vec<u16> {
     let mut atoms = Vec::new();
     let subtypes = [
         ("Plains", ManaAtom::WHITE),
@@ -1198,7 +1198,7 @@ pub(crate) fn all_basic_subtype_atoms(card: &CardInstance) -> Vec<u16> {
 /// Returns the pain damage (if any) that a land deals when tapped for the given atom.
 /// Checks the land's mana abilities for one that produces the given atom and has a
 /// SubAbility$ pointing to a DealDamage SVar. Returns the damage amount, or 0.
-fn land_pain_damage(card: &CardInstance, chosen_atom: u16) -> i32 {
+fn land_pain_damage(card: &Card, chosen_atom: u16) -> i32 {
     for ab in &card.activated_abilities {
         if !ab.is_mana_ability {
             continue;
@@ -1262,7 +1262,7 @@ pub(crate) fn tap_land_for_mana(
 /// - Combo ColorIdentity → nothing (non-Commander game; no commander identity)
 /// - Colorless (`Produced$ C`) → COLORLESS
 /// - Implicit basic-land-subtype abilities (e.g. Breeding Pool = Forest + Island → G + U)
-pub fn land_mana_atoms(card: &CardInstance) -> Vec<u16> {
+pub fn land_mana_atoms(card: &Card) -> Vec<u16> {
     let mut atoms = Vec::new();
     for ab in &card.activated_abilities {
         if !ab.is_mana_ability {
@@ -1595,7 +1595,7 @@ fn resolve_mana_ability_amount(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use forge_foundation::ManaCost;
@@ -1603,11 +1603,11 @@ mod tests {
 
     #[test]
     fn basic_land_detection() {
-        use crate::card::CardInstance;
+        use crate::card::Card;
         use crate::ids::{CardId, PlayerId};
         use forge_foundation::ColorSet;
 
-        let card = CardInstance::new(
+        let card = Card::new(
             CardId(0),
             "Mountain".to_string(),
             PlayerId(0),
@@ -1715,7 +1715,7 @@ mod tests {
         let p0 = PlayerId(0);
 
         let make_land = |id: usize, name: &str, abilities: Vec<&str>| {
-            CardInstance::new(
+            Card::new(
                 CardId(id as u32),
                 name.to_string(),
                 p0,

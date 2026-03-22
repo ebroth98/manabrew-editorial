@@ -1,16 +1,16 @@
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn cant_phase_in(cards: &[CardInstance], card: &CardInstance) -> bool {
+pub fn cant_phase_in(cards: &[Card], card: &Card) -> bool {
     cant_phase(cards, card, StaticMode::CantPhaseIn)
 }
 
-pub fn cant_phase_out(cards: &[CardInstance], card: &CardInstance) -> bool {
+pub fn cant_phase_out(cards: &[Card], card: &Card) -> bool {
     cant_phase(cards, card, StaticMode::CantPhaseOut)
 }
 
-fn cant_phase(cards: &[CardInstance], card: &CardInstance, mode: StaticMode) -> bool {
+fn cant_phase(cards: &[Card], card: &Card, mode: StaticMode) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
         for st_ab in source.static_abilities.iter().filter(|sa| sa.mode == mode && sa.zones_check(source.zone)) {
             if valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {

@@ -49,9 +49,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             let choice_idx = if chose_first { 0 } else { 1.min(choice_names.len() - 1) };
             ctx.game
                 .card_mut(source_id)
-                .remembered_cmc
-                .push(choice_idx as i32);
-            ctx.game.card_mut(source_id).remembered_players.push(pid);
+                .add_remembered_cmc(choice_idx as i32);
+            ctx.game.card_mut(source_id).add_remembered_player(pid);
         }
     }
 }

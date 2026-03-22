@@ -17,8 +17,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Swap abilities text
     let abilities1 = ctx.game.card(card1).abilities.clone();
     let abilities2 = ctx.game.card(card2).abilities.clone();
-    ctx.game.card_mut(card1).abilities = abilities2;
-    ctx.game.card_mut(card2).abilities = abilities1;
+    ctx.game.card_mut(card1).set_abilities(abilities2);
+    ctx.game.card_mut(card2).set_abilities(abilities1);
 
     // Re-register triggers
     ctx.trigger_handler.register_active_trigger(ctx.game, card1);

@@ -164,14 +164,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if lib_position2 == 0 {
                 // top of library
                 ctx.game.zone_mut(ZoneType::Library, owner).cards.push(id);
-                ctx.game.cards[id.index()].zone = ZoneType::Library;
+                ctx.game.card_mut(id).set_zone(ZoneType::Library);
             } else {
                 // bottom of library
                 ctx.game
                     .zone_mut(ZoneType::Library, owner)
                     .cards
                     .insert(0, id);
-                ctx.game.cards[id.index()].zone = ZoneType::Library;
+                ctx.game.card_mut(id).set_zone(ZoneType::Library);
             }
         } else {
             let dest_owner = if dest_zone2 == ZoneType::Battlefield {
@@ -191,7 +191,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::{PassAgent, PlayerAgent};
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::combat::DefenderId;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
@@ -201,7 +201,7 @@ mod tests {
     use std::collections::HashMap;
 
     fn make_land(game: &mut GameState, owner: PlayerId) -> CardId {
-        let c = CardInstance::new(
+        let c = Card::new(
             CardId(0),
             "Island".into(),
             owner,

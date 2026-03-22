@@ -45,10 +45,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         Some(entry) => entry,
         None => return, // Nothing to copy
     };
+    if crate::card::card_factory::spell_ability_cant_be_copied(&ctx.game.cards, &original.spell_ability) {
+        return;
+    }
 
-    // Clone the spell ability with same targets
-    let mut copy = original.spell_ability.clone();
-    copy.activating_player = controller;
+    // Clone the spell ability with same targets using CardFactory parity helper.
+    let copy = crate::card::card_factory::copy_spell_ability(&original.spell_ability, controller);
 
     // Push the copy onto the stack (it will resolve like a normal spell)
     let copy_entry = crate::spellability::StackEntry {

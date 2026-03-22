@@ -1,5 +1,5 @@
 use forge_foundation::ZoneType;
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::compare::compare_expr;
@@ -12,9 +12,9 @@ use crate::staticability::StaticMode;
 /// Sets the cast SA on the card, then iterates all cards in static-ability
 /// source zones plus the card itself, checking CantBeCast static abilities.
 pub fn cant_be_cast_ability(
-    cards: &[CardInstance],
+    cards: &[Card],
     spell: &SpellAbility,
-    card: &CardInstance,
+    card: &Card,
     activator: PlayerId,
 ) -> bool {
     cant_be_cast_ability_in_context(cards, spell, card, activator, None)
@@ -23,9 +23,9 @@ pub fn cant_be_cast_ability(
 /// Context-aware variant used by playability/casting code where full game
 /// timing checks (e.g. OnlySorcerySpeed) are available.
 pub fn cant_be_cast_ability_in_context(
-    cards: &[CardInstance],
+    cards: &[Card],
     spell: &SpellAbility,
-    card: &CardInstance,
+    card: &Card,
     activator: PlayerId,
     game: Option<&GameState>,
 ) -> bool {
@@ -58,8 +58,8 @@ pub fn cant_be_cast_ability_in_context(
 pub fn apply_cant_be_cast_ability(
     st_ab: &crate::staticability::StaticAbility,
     spell: &SpellAbility,
-    card: &CardInstance,
-    source: &CardInstance,
+    card: &Card,
+    source: &Card,
     activator: PlayerId,
     game: Option<&GameState>,
 ) -> bool {
@@ -167,9 +167,9 @@ pub fn apply_cant_be_cast_ability(
 /// If the spell is a trigger, it cannot be blocked by CantBeActivated.
 /// Then iterates all cards in static-ability source zones.
 pub fn cant_be_activated_ability(
-    cards: &[CardInstance],
+    cards: &[Card],
     spell: &SpellAbility,
-    card: &CardInstance,
+    card: &Card,
     activator: PlayerId,
 ) -> bool {
     // Java: if (spell.isTrigger()) return false;
@@ -195,8 +195,8 @@ pub fn cant_be_activated_ability(
 pub fn apply_cant_be_activated_ability(
     st_ab: &crate::staticability::StaticAbility,
     spell: &SpellAbility,
-    card: &CardInstance,
-    source: &CardInstance,
+    card: &Card,
+    source: &Card,
     activator: PlayerId,
 ) -> bool {
     // ValidCard check
@@ -245,8 +245,8 @@ pub fn apply_cant_be_activated_ability(
 ///
 /// Iterates all cards in static-ability source zones checking CantPlayLand.
 pub fn cant_play_land_ability(
-    cards: &[CardInstance],
-    card: &CardInstance,
+    cards: &[Card],
+    card: &Card,
     player: PlayerId,
 ) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
@@ -266,8 +266,8 @@ pub fn cant_play_land_ability(
 /// Checks: ValidCard, Origin, Player, IgnoreEffectPlayers.
 pub fn apply_cant_play_land_ability(
     st_ab: &crate::staticability::StaticAbility,
-    card: &CardInstance,
-    source: &CardInstance,
+    card: &Card,
+    source: &Card,
     player: PlayerId,
 ) -> bool {
     // ValidCard check

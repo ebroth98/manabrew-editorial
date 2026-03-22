@@ -24,6 +24,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for card_id in targets {
         if ctx.game.card(card_id).zone != ZoneType::Battlefield { continue; }
         // Mark creature as "must block" — the combat system checks this flag
-        ctx.game.card_mut(card_id).must_block = true;
+        ctx.game.card_mut(card_id).set_must_block(true);
     }
 }

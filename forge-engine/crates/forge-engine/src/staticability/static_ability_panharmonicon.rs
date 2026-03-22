@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::keys;
@@ -66,8 +66,8 @@ pub fn handle_panharmonicon(
 
 pub fn apply_panharmonicon_ability(
     st_ab: &crate::staticability::StaticAbility,
-    source: &CardInstance,
-    trigger_host: &CardInstance,
+    source: &Card,
+    trigger_host: &Card,
 ) -> bool {
     if let Some(valid_card) = st_ab.params.get(keys::VALID_CARD) {
         if !matches_valid_card(valid_card, trigger_host, source) {
@@ -83,6 +83,8 @@ fn trigger_mode_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::Phase { .. } => "Phase",
         crate::trigger::TriggerMode::SpellCast { .. } => "SpellCast",
         crate::trigger::TriggerMode::Attacks { .. } => "Attacks",
+        crate::trigger::TriggerMode::Fight { .. } => "Fight",
+        crate::trigger::TriggerMode::FightOnce { .. } => "FightOnce",
         crate::trigger::TriggerMode::DamageDone { .. } => "DamageDone",
         crate::trigger::TriggerMode::Countered { .. } => "Countered",
         crate::trigger::TriggerMode::Blocks { .. } => "Blocks",
@@ -365,13 +367,13 @@ fn matches_valid_player(
     true
 }
 
-fn matches_valid_card(valid: &str, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
     matches_any_valid_card_token(valid, card, source.controller, Some(source.id))
 }
 
 fn matches_valid_card_for_controller(
     valid: &str,
-    card: &CardInstance,
+    card: &Card,
     source_controller: crate::ids::PlayerId,
 ) -> bool {
     matches_any_valid_card_token(valid, card, source_controller, None)
@@ -379,7 +381,7 @@ fn matches_valid_card_for_controller(
 
 fn matches_any_valid_card_token(
     valid: &str,
-    card: &CardInstance,
+    card: &Card,
     source_controller: crate::ids::PlayerId,
     source_id: Option<CardId>,
 ) -> bool {
@@ -392,7 +394,7 @@ fn matches_any_valid_card_token(
 
 fn matches_valid_card_token(
     token: &str,
-    card: &CardInstance,
+    card: &Card,
     source_controller: crate::ids::PlayerId,
     source_id: Option<CardId>,
 ) -> bool {

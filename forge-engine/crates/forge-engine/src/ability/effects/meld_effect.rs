@@ -89,9 +89,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Transform primary to meld state
-    ctx.game.card_mut(primary).is_transformed = true;
-    if let Some(ref other) = ctx.game.card(primary).other_part {
-        ctx.game.card_mut(primary).card_name = other.name.clone();
+    ctx.game.card_mut(primary).set_transformed(true);
+    if let Some(other_name) = ctx.game.card(primary).other_part.as_ref().map(|o| o.name.clone()) {
+        ctx.game.card_mut(primary).set_card_name(other_name);
     }
 
     // Link secondary to primary via melded_with
@@ -99,7 +99,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Tapped$
     if sa.is_tapped() {
-        ctx.game.card_mut(primary).tapped = true;
+        ctx.game.card_mut(primary).set_tapped(true);
     }
 
     // Move primary to battlefield (melded form)
@@ -111,6 +111,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Attacking$ combat entry
     if sa.param_is_true(keys::ATTACKING) {
         let defender = ctx.game.opponent_of(controller);
-        ctx.game.card_mut(primary).attacking_player = Some(defender);
+        ctx.game.card_mut(primary).set_attacking_player(defender);
     }
 }

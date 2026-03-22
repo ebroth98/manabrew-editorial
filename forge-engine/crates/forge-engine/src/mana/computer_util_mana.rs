@@ -1202,7 +1202,7 @@ fn parse_mana_ability_amount_with_game(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use forge_foundation::{CardTypeLine, ColorSet};
 
     fn make_card(
@@ -1211,8 +1211,8 @@ mod tests {
         name: &str,
         type_line: &str,
         abilities: Vec<&str>,
-    ) -> CardInstance {
-        CardInstance::new(
+    ) -> Card {
+        Card::new(
             CardId(id),
             name.to_string(),
             owner,

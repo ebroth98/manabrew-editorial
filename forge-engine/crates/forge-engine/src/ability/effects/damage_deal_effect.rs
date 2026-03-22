@@ -1,11 +1,16 @@
 use forge_foundation::ZoneType;
 
 use super::{parse_param, resolve_defined_player, EffectContext};
+use crate::card::card_damage_map::DamageTarget;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let damage = resolve_damage_amount(ctx, sa);
+    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
+    if sa.params.has("DamageMap") {
+        ctx.game.ensure_pending_damage_maps();
+    }
 
     // For triggered abilities, resolve Defined$ for target
     let target_player = sa.target_chosen.target_player.or_else(|| {
@@ -56,11 +61,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     .damage_sources_this_turn
                     .contains(&src_id)
                 {
-                    ctx.game.card_mut(cid).damage_sources_this_turn.push(src_id);
+                    ctx.game.card_mut(cid).add_damage_source_this_turn(src_id);
                 }
             }
             if source_has_infect_keyword || source_has_wither {
-                if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                if use_damage_map {
+                    if let Some(src_id) = sa.source {
+                        if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                            map.put(src_id, DamageTarget::Card(cid), damage);
+                        }
+                    }
+                } else if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                     &ctx.game.cards,
                     ctx.game.card(cid),
                     &crate::card::CounterType::M1M1,
@@ -69,20 +80,28 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         .card_mut(cid)
                         .add_counter(&crate::card::CounterType::M1M1, damage);
                 }
+            } else if use_damage_map {
+                if let Some(src_id) = sa.source {
+                    if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                        map.put(src_id, DamageTarget::Card(cid), damage);
+                    }
+                }
             } else {
                 ctx.game.deal_damage_to_card(cid, damage);
             }
-            ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::DamageDone,
-                crate::event::RunParams {
-                    damage_source: sa.source,
-                    damage_target_card: Some(cid),
-                    damage_amount: Some(damage),
-                    is_combat_damage: Some(false),
-                    ..Default::default()
-                },
-                false,
-            );
+            if !use_damage_map {
+                ctx.trigger_handler.run_trigger(
+                    crate::event::TriggerType::DamageDone,
+                    crate::event::RunParams {
+                        damage_source: sa.source,
+                        damage_target_card: Some(cid),
+                        damage_amount: Some(damage),
+                        is_combat_damage: Some(false),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
         }
         return;
     }
@@ -102,37 +121,53 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         };
         if source_has_infect {
             // Infect: deal damage to players as poison counters
-            if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
+            if use_damage_map {
+                if let Some(src_id) = sa.source {
+                    if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                        map.put(src_id, DamageTarget::Player(target_player), damage);
+                    }
+                }
+            } else if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_player(
                 &ctx.game.cards,
                 target_player,
                 &crate::card::CounterType::Poison,
             ) {
                 ctx.game.player_mut(target_player).poison_counters += damage;
             }
+        } else if use_damage_map {
+            if let Some(src_id) = sa.source {
+                if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                    map.put(src_id, DamageTarget::Player(target_player), damage);
+                }
+            }
         } else {
             ctx.game.deal_damage_to_player(target_player, damage);
         }
 
         // Record damage dealt by source for TotalDamageDoneByThisTurn SVar
-        if let Some(src_id) = sa.source {
+        if !use_damage_map {
+            if let Some(src_id) = sa.source {
             if damage > 0 {
                 ctx.game.card_mut(src_id).total_damage_done_this_turn += damage;
                 ctx.game.card_mut(src_id).damage_history.record_damage(damage, false);
             }
         }
+        }
 
         // Fire DamageDone trigger
-        ctx.trigger_handler.run_trigger(
-            crate::event::TriggerType::DamageDone,
-            crate::event::RunParams {
-                damage_source: sa.source,
-                damage_target_player: Some(target_player),
-                damage_amount: Some(damage),
-                is_combat_damage: Some(false),
-                ..Default::default()
-            },
-            false,
-        );
+        if !use_damage_map {
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::DamageDone,
+                crate::event::RunParams {
+                    damage_source: sa.source,
+                    damage_target_player: Some(target_player),
+                    damage_amount: Some(damage),
+                    is_combat_damage: Some(false),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
     }
     if let Some(target_card) = sa.target_chosen.target_card {
         if ctx.game.card(target_card).zone == ZoneType::Battlefield {
@@ -163,7 +198,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
             if source_has_infect_keyword || source_has_wither {
                 // Infect/Wither: damage to creatures as -1/-1 counters
-                if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
+                if use_damage_map {
+                    if let Some(src_id) = sa.source {
+                        if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                            map.put(src_id, DamageTarget::Card(target_card), damage);
+                        }
+                    }
+                } else if !crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card(
                     &ctx.game.cards,
                     ctx.game.card(target_card),
                     &crate::card::CounterType::M1M1,
@@ -172,30 +213,40 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         .card_mut(target_card)
                         .add_counter(&crate::card::CounterType::M1M1, damage);
                 }
+            } else if use_damage_map {
+                if let Some(src_id) = sa.source {
+                    if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                        map.put(src_id, DamageTarget::Card(target_card), damage);
+                    }
+                }
             } else {
                 ctx.game.deal_damage_to_card(target_card, damage);
             }
 
             // Record damage dealt by source for TotalDamageDoneByThisTurn SVar
-            if let Some(src_id) = sa.source {
-                if damage > 0 {
-                    ctx.game.card_mut(src_id).total_damage_done_this_turn += damage;
-                    ctx.game.card_mut(src_id).damage_history.record_damage(damage, false);
+            if !use_damage_map {
+                if let Some(src_id) = sa.source {
+                    if damage > 0 {
+                        ctx.game.card_mut(src_id).total_damage_done_this_turn += damage;
+                        ctx.game.card_mut(src_id).damage_history.record_damage(damage, false);
+                    }
                 }
             }
 
             // Fire DamageDone trigger
-            ctx.trigger_handler.run_trigger(
-                crate::event::TriggerType::DamageDone,
-                crate::event::RunParams {
-                    damage_source: sa.source,
-                    damage_target_card: Some(target_card),
-                    damage_amount: Some(damage),
-                    is_combat_damage: Some(false),
-                    ..Default::default()
-                },
-                false,
-            );
+            if !use_damage_map {
+                ctx.trigger_handler.run_trigger(
+                    crate::event::TriggerType::DamageDone,
+                    crate::event::RunParams {
+                        damage_source: sa.source,
+                        damage_target_card: Some(target_card),
+                        damage_amount: Some(damage),
+                        is_combat_damage: Some(false),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            }
 
             if sa
                 .params
@@ -203,9 +254,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             {
                 if let Some(src_id) = sa.source {
                     let src = ctx.game.card_mut(src_id);
-                    if !src.remembered_cards.contains(&target_card) {
-                        src.remembered_cards.push(target_card);
-                    }
+                    src.add_remembered_card(target_card);
                 }
             }
         }

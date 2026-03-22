@@ -40,7 +40,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if let Some(chosen_name) = chosen {
         if let Some(source_id) = sa.source {
-            ctx.game.card_mut(source_id).named_cards.push(chosen_name);
+            ctx.game.card_mut(source_id).add_named_card(&chosen_name);
         }
     }
 }

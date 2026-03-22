@@ -4,7 +4,7 @@ use super::attack_requirement::{self, AttackRequirement};
 use super::attack_restriction::{self, AttackRestrictionType};
 use super::global_attack_restrictions::GlobalAttackRestrictions;
 use super::DefenderId;
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::{CardId, PlayerId};
 
 /// Constraints on which creatures can and must attack.
@@ -34,7 +34,7 @@ pub struct AttackRestriction {
 impl AttackRestriction {
     pub fn new(
         attacker: CardId,
-        cards: &[CardInstance],
+        cards: &[Card],
         possible_defenders: &[DefenderId],
         game: &crate::game::GameState,
     ) -> Self {
@@ -77,7 +77,7 @@ impl AttackRestriction {
         &self,
         defender: DefenderId,
         attackers: &[(CardId, DefenderId)],
-        cards: &[CardInstance],
+        cards: &[Card],
     ) -> bool {
         if !self.can_attack(defender) {
             return false;
@@ -89,7 +89,7 @@ impl AttackRestriction {
     pub fn get_violations(
         &self,
         attackers: &[(CardId, DefenderId)],
-        cards: &[CardInstance],
+        cards: &[Card],
     ) -> std::collections::HashSet<AttackRestrictionType> {
         let mut violations = std::collections::HashSet::new();
         let n = attackers.len();
@@ -207,7 +207,7 @@ impl AttackConstraints {
     /// with a greedy approach that works correctly for 2-player games.
     pub fn get_legal_attackers(
         &self,
-        cards: &[CardInstance],
+        cards: &[Card],
     ) -> (Vec<(CardId, DefenderId)>, i32) {
         let max = self
             .global_restrictions
@@ -335,7 +335,7 @@ impl AttackConstraints {
     pub fn count_violations(
         &self,
         attackers: &[(CardId, DefenderId)],
-        cards: &[CardInstance],
+        cards: &[Card],
     ) -> i32 {
         if !self.global_restrictions.is_legal(attackers) {
             return -1;
@@ -367,7 +367,7 @@ impl AttackConstraints {
 
     /// Build a sorted list of attack candidates from requirements.
     /// Higher-priority (more requirements) come first.
-    fn get_sorted_filtered_requirements(&self, cards: &[CardInstance]) -> Vec<Attack> {
+    fn get_sorted_filtered_requirements(&self, cards: &[Card]) -> Vec<Attack> {
         let mut result = Vec::new();
 
         for (&attacker_id, req) in &self.requirements {

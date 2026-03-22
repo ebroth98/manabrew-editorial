@@ -1,17 +1,17 @@
-//! Keyword-based ability and trigger generation for CardInstance.
+//! Keyword-based ability and trigger generation for Card.
 //!
 //! These functions translate keywords like "Cycling", "Prowess", "Bushido", etc. into
 //! concrete activated abilities and triggered abilities. They're called during card
-//! initialization in `CardInstance::from_rules()`.
+//! initialization in `Card::from_rules()`.
 
 use crate::ability::activated::parse_activated_ability;
 use crate::parsing::keys;
 use crate::staticability::parse_static_ability;
 use crate::trigger::parse_trigger;
 
-use super::CardInstance;
+use super::Card;
 
-impl CardInstance {
+impl Card {
     /// Generate intrinsic mana abilities for basic land subtypes (Plains → {W}, etc.).
     /// Mirrors Java's `CardFactoryUtil.addIntrinsicAbilities()`.
     pub(super) fn generate_basic_land_mana_abilities(&mut self) {
@@ -195,7 +195,7 @@ impl CardInstance {
         {
             let raw = "S:Mode$ OptionalAttackCost | ValidCard$ Card.Self | Cost$ Enlist<1/CARDNAME/creature> | Secondary$ True";
             if let Some(sa) = parse_static_ability(raw) {
-                self.static_abilities.push(sa);
+                self.add_static_ability(sa);
             }
         }
 
@@ -236,7 +236,7 @@ impl CardInstance {
                 let raw = "Mode$ SpellCast | ValidCard$ Card.nonCreature | ValidActivatingPlayer$ You | Execute$ TrigProwess | TriggerZones$ Battlefield | TriggerDescription$ Prowess";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigProwess".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigProwess".to_string())
@@ -251,12 +251,12 @@ impl CardInstance {
                     let raw1 = format!("Mode$ Blocks | ValidCard$ Card.Self | Execute$ TrigBushido | TriggerZones$ Battlefield | TriggerDescription$ Bushido {n_str}");
                     if let Some(mut trig) = parse_trigger(&raw1, &mut next_id) {
                         trig.execute = "TrigBushido".to_string();
-                        self.triggers.push(trig);
+                        self.add_trigger(trig);
                     }
                     let raw2 = format!("Mode$ AttackerBlocked | ValidCard$ Card.Self | Execute$ TrigBushido | TriggerZones$ Battlefield | TriggerDescription$ Bushido {n_str}");
                     if let Some(mut trig) = parse_trigger(&raw2, &mut next_id) {
                         trig.execute = "TrigBushido".to_string();
-                        self.triggers.push(trig);
+                        self.add_trigger(trig);
                     }
                     self.svars
                         .entry("TrigBushido".to_string())
@@ -275,7 +275,7 @@ impl CardInstance {
                     );
                     if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
                         trig.execute = "TrigAnnihilator".to_string();
-                        self.triggers.push(trig);
+                        self.add_trigger(trig);
                     }
                     self.svars
                         .entry("TrigAnnihilator".to_string())
@@ -294,7 +294,7 @@ impl CardInstance {
                     );
                     if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
                         trig.execute = "TrigAfflict".to_string();
-                        self.triggers.push(trig);
+                        self.add_trigger(trig);
                     }
                     self.svars
                         .entry("TrigAfflict".to_string())
@@ -311,7 +311,7 @@ impl CardInstance {
                 let raw = "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self+counters_EQ0_P1P1 | TriggerZones$ Battlefield | Execute$ TrigUndying | TriggerDescription$ Undying";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigUndying".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigUndying".to_string())
@@ -327,7 +327,7 @@ impl CardInstance {
                 let raw = "Mode$ ChangesZone | Origin$ Battlefield | Destination$ Graveyard | ValidCard$ Card.Self+counters_EQ0_M1M1 | TriggerZones$ Battlefield | Execute$ TrigPersist | TriggerDescription$ Persist";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigPersist".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigPersist".to_string())
@@ -346,7 +346,7 @@ impl CardInstance {
                     );
                     if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
                         trig.execute = "TrigAfterlife".to_string();
-                        self.triggers.push(trig);
+                        self.add_trigger(trig);
                     }
                     self.svars
                         .entry("TrigAfterlife".to_string())
@@ -362,7 +362,7 @@ impl CardInstance {
                 let raw = "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigExploit | TriggerDescription$ Exploit";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigExploit".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigExploit".to_string())
@@ -384,7 +384,7 @@ impl CardInstance {
                     );
                     if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
                         trig.execute = "TrigFabricate".to_string();
-                        self.triggers.push(trig);
+                        self.add_trigger(trig);
                     }
                     self.svars
                         .entry("TrigFabricate".to_string())
@@ -415,7 +415,7 @@ impl CardInstance {
                     if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
                         trig.execute = "TrigModular".to_string();
                         trig.optional = true;
-                        self.triggers.push(trig);
+                        self.add_trigger(trig);
                     }
                     // Put +1/+1 counters on target artifact creature.
                     // Uses SP$ Charm with a single mode so the charm system handles
@@ -445,7 +445,7 @@ impl CardInstance {
                 let raw = "Mode$ BecomesTarget | ValidCard$ Card.Self | Execute$ TrigWard | TriggerZones$ Battlefield | TriggerDescription$ Ward";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigWard".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigWard".to_string())
@@ -458,7 +458,7 @@ impl CardInstance {
                 let raw = "Mode$ Attacks | ValidCard$ Creature.YouCtrl | Alone$ True | Execute$ TrigExalted | TriggerZones$ Battlefield | TriggerDescription$ Exalted";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigExalted".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigExalted".to_string())
@@ -478,7 +478,7 @@ impl CardInstance {
                     );
                     if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
                         trig.execute = "TrigRenown".to_string();
-                        self.triggers.push(trig);
+                        self.add_trigger(trig);
                     }
                     self.svars
                         .entry("TrigRenown".to_string())
@@ -495,7 +495,7 @@ impl CardInstance {
                 let raw = "Mode$ AttackerBlockedByCreature | ValidBlocked$ Card.Self | ValidCard$ Creature.withoutFlanking | Execute$ TrigFlanking | TriggerZones$ Battlefield | TriggerDescription$ Flanking";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigFlanking".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigFlanking".to_string())
@@ -511,7 +511,7 @@ impl CardInstance {
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigExtort".to_string();
                     trig.optional = true;
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigExtort".to_string())
@@ -533,7 +533,7 @@ impl CardInstance {
                     );
                     if let Some(mut trig) = parse_trigger(&raw, &mut next_id) {
                         trig.execute = "TrigBloodthirst".to_string();
-                        self.triggers.push(trig);
+                        self.add_trigger(trig);
                     }
                     self.svars
                         .entry("TrigBloodthirst".to_string())
@@ -549,7 +549,7 @@ impl CardInstance {
                 let raw = "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigRiot | TriggerDescription$ Riot";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigRiot".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigRiot".to_string())
@@ -573,7 +573,7 @@ impl CardInstance {
                 let raw = "Mode$ ChangesZone | Destination$ Battlefield | ValidCard$ Card.Self | Execute$ TrigUnleash | TriggerDescription$ Unleash";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigUnleash".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigUnleash".to_string())
@@ -593,7 +593,7 @@ impl CardInstance {
                 let raw = "Mode$ Phase | Phase$ Upkeep | ValidPlayer$ You | TriggerZones$ Battlefield | TriggerDescription$ Cumulative upkeep";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigCumulativeUpkeep".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigCumulativeUpkeep".to_string())
@@ -613,7 +613,7 @@ impl CardInstance {
                 let raw = "Mode$ ChangesZone | Origin$ Hand | Destination$ Exile | ValidCard$ Card.Self | OptionalDecider$ You | Secondary$ True | TriggerZones$ Exile | TriggerDescription$ You may cast this card for its madness cost.";
                 if let Some(mut trig) = parse_trigger(raw, &mut next_id) {
                     trig.execute = "TrigMadnessPlay".to_string();
-                    self.triggers.push(trig);
+                    self.add_trigger(trig);
                 }
                 self.svars
                     .entry("TrigMadnessPlay".to_string())

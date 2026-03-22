@@ -5,7 +5,7 @@ use forge_foundation::{PhaseType, ZoneType};
 
 use crate::ability::effects::{self, EffectContext};
 use crate::agent::{CombatCostAction, MainPhaseAction, ManaCostAction, PlayerAgent};
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::combat::{self, CombatState};
 use crate::cost::{self, parse_cost, CostPart};
 use crate::event::{RunParams, TriggerType};
@@ -35,7 +35,7 @@ pub struct GameLoop {
     pub game_log: GameLog,
     /// Token templates keyed by their script filename stem (e.g. "r_1_1_goblin").
     /// Populated at game start by the Tauri layer; used by the Token effect handler.
-    pub token_templates: HashMap<String, CardInstance>,
+    pub token_templates: HashMap<String, Card>,
     /// Pluggable RNG for game effects (shuffles, coin flips, dice rolls).
     /// Default: ThreadRngAdapter (non-deterministic). For parity testing,
     /// replace with a JavaRandom-backed implementation.
@@ -96,7 +96,7 @@ impl GameLoop {
 
     /// Register a token template by its script filename stem (e.g. "r_1_1_goblin").
     /// Called at game start by the Tauri layer for every token script in the token DB.
-    pub fn register_token(&mut self, script_name: impl Into<String>, template: CardInstance) {
+    pub fn register_token(&mut self, script_name: impl Into<String>, template: Card) {
         self.token_templates.insert(script_name.into(), template);
     }
 
@@ -446,7 +446,7 @@ mod tests {
     use rand::SeedableRng;
 
     use crate::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
-    use crate::card::CardInstance;
+    use crate::card::Card;
 
     use super::*;
 
@@ -635,8 +635,8 @@ mod tests {
         fn notify(&mut self, _message: &str) {}
     }
 
-    fn zero_cost_instant(owner: PlayerId) -> CardInstance {
-        CardInstance::new(
+    fn zero_cost_instant(owner: PlayerId) -> Card {
+        Card::new(
             CardId(0),
             "Test Instant".to_string(),
             owner,
@@ -650,8 +650,8 @@ mod tests {
         )
     }
 
-    fn mana_land(owner: PlayerId, name: &str, produced: &str) -> CardInstance {
-        CardInstance::new(
+    fn mana_land(owner: PlayerId, name: &str, produced: &str) -> Card {
+        Card::new(
             CardId(0),
             name.to_string(),
             owner,
@@ -668,8 +668,8 @@ mod tests {
         )
     }
 
-    fn vanilla_spell(owner: PlayerId, name: &str, cost: &str) -> CardInstance {
-        CardInstance::new(
+    fn vanilla_spell(owner: PlayerId, name: &str, cost: &str) -> Card {
+        Card::new(
             CardId(0),
             name.to_string(),
             owner,
@@ -683,8 +683,8 @@ mod tests {
         )
     }
 
-    fn evoked_etb_creature(owner: PlayerId) -> CardInstance {
-        let mut card = CardInstance::new(
+    fn evoked_etb_creature(owner: PlayerId) -> Card {
+        let mut card = Card::new(
             CardId(0),
             "Mulldrifter Test".to_string(),
             owner,
@@ -703,7 +703,7 @@ mod tests {
             &mut next_trigger_id,
         )
         .expect("valid ETB trigger");
-        card.triggers.push(etb_draw);
+        card.add_trigger(etb_draw);
         card.svars.insert(
             "TrigDraw".to_string(),
             "DB$ Draw | NumCards$ 2 | Defined$ You".to_string(),
@@ -716,8 +716,8 @@ mod tests {
         name: &str,
         type_line: &str,
         abilities: Vec<&str>,
-    ) -> CardInstance {
-        CardInstance::new(
+    ) -> Card {
+        Card::new(
             CardId(0),
             name.to_string(),
             owner,

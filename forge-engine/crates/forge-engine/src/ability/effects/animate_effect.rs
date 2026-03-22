@@ -3,9 +3,16 @@ use forge_foundation::{ColorSet, ZoneType};
 use super::trait_animate_effect::parse_animate_params;
 use super::EffectContext;
 use crate::card::AnimateState;
+use crate::card::card_trait_changes::CardTraitChanges;
+use crate::card::perpetual::perpetual_interface::PerpetualInterface;
+use crate::card::perpetual::{
+    perpetual_abilities, perpetual_colors, perpetual_incorporate, perpetual_keywords,
+    perpetual_mana_cost, perpetual_new_pt, perpetual_types,
+};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::parse_trigger;
+use forge_foundation::ManaCost;
 
 /// `SP$ Animate` — turn a non-creature permanent into a creature (or modify creature stats).
 ///
@@ -44,6 +51,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let colors_str = anim_params.colors.map(|c| c.join(","));
     let triggers_str = sa.params.get_cloned(keys::TRIGGERS);
     let overwrite_types = anim_params.overwrite_types;
+    let incorporate_cost = sa.params.get_cloned("Incorporate");
+    let mana_cost_override = sa.params.get_cloned("ManaCost");
+    let is_perpetual = sa
+        .params
+        .get(keys::DURATION)
+        .map(|d| d.eq_ignore_ascii_case("Perpetual"))
+        .unwrap_or(false);
+    let resolve_ts = ctx.game.next_effect_timestamp();
 
     // Resolve Triggers$ SVars from the source card into parsed Trigger objects.
     // These will be temporarily added to each target card.
@@ -75,39 +90,85 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue;
         }
 
+        let effect_ts = if is_perpetual { Some(resolve_ts) } else { None };
+
+        if let Some(ref mc) = incorporate_cost {
+            let ts = resolve_ts;
+            perpetual_incorporate::PerpetualIncorporate {
+                timestamp: ts,
+                incorporate: ManaCost::parse(mc),
+            }
+            .apply_effect(ctx.game.card_mut(card_id));
+        }
+        if let Some(ref mc) = mana_cost_override {
+            if let Some(ts) = effect_ts {
+                perpetual_mana_cost::PerpetualManaCost {
+                    timestamp: ts,
+                    mana_cost: ManaCost::parse(mc),
+                }
+                .apply_effect(ctx.game.card_mut(card_id));
+            }
+        }
+
         // Save original state (only if not already animated this turn)
         if ctx.game.card(card_id).animate_state.is_none() {
-            let card = &ctx.game.cards[card_id.index()];
-            ctx.game.cards[card_id.index()].animate_state = Some(AnimateState {
-                original_type_line: card.type_line.clone(),
-                original_base_power: card.base_power,
-                original_base_toughness: card.base_toughness,
-                original_color: card.color,
-            });
+            let original_type_line = ctx.game.card(card_id).type_line.clone();
+            let original_base_power = ctx.game.card(card_id).base_power;
+            let original_base_toughness = ctx.game.card(card_id).base_toughness;
+            let original_color = ctx.game.card(card_id).color;
+            ctx.game.card_mut(card_id).set_animate_state(Some(AnimateState {
+                original_type_line,
+                original_base_power,
+                original_base_toughness,
+                original_color,
+            }));
         }
 
         // Apply type changes
         if let Some(ref types) = types_str {
             if overwrite_types {
-                ctx.game.cards[card_id.index()].type_line = forge_foundation::CardTypeLine::new();
+                ctx.game
+                    .card_mut(card_id)
+                    .set_type_line(forge_foundation::CardTypeLine::new());
             }
             for t in types.split(',') {
                 let t = t.trim();
                 if !t.is_empty() {
-                    ctx.game.cards[card_id.index()].type_line.add_type(t);
+                    if let Some(ts) = effect_ts {
+                        perpetual_types::PerpetualTypes {
+                            timestamp: ts,
+                            add_types: vec![t.to_string()],
+                        }
+                        .apply_effect(ctx.game.card_mut(card_id));
+                    } else {
+                        ctx.game.card_mut(card_id).add_type(t);
+                    }
                 }
             }
         }
 
         // Apply P/T
-        if let Some(ref p) = power_str {
-            if let Ok(val) = p.trim().parse::<i32>() {
-                ctx.game.cards[card_id.index()].base_power = Some(val);
+        let parsed_power = power_str
+            .as_deref()
+            .and_then(|p| p.trim().parse::<i32>().ok());
+        let parsed_toughness = toughness_str
+            .as_deref()
+            .and_then(|t| t.trim().parse::<i32>().ok());
+        if let Some(ts) = effect_ts {
+            if parsed_power.is_some() || parsed_toughness.is_some() {
+                perpetual_new_pt::PerpetualNewPt {
+                    timestamp: ts,
+                    power: parsed_power,
+                    toughness: parsed_toughness,
+                }
+                .apply_effect(ctx.game.card_mut(card_id));
             }
-        }
-        if let Some(ref t) = toughness_str {
-            if let Ok(val) = t.trim().parse::<i32>() {
-                ctx.game.cards[card_id.index()].base_toughness = Some(val);
+        } else {
+            if let Some(val) = parsed_power {
+                ctx.game.card_mut(card_id).set_base_power(Some(val));
+            }
+            if let Some(val) = parsed_toughness {
+                ctx.game.card_mut(card_id).set_base_toughness(Some(val));
             }
         }
 
@@ -116,7 +177,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             for kw in kws.split(',') {
                 let kw = kw.trim().to_string();
                 if !kw.is_empty() {
-                    ctx.game.cards[card_id.index()].pump_keywords.add(&kw);
+                    if let Some(ts) = effect_ts {
+                        perpetual_keywords::PerpetualKeywords {
+                            timestamp: ts,
+                            add_keywords: vec![kw],
+                            remove_keywords: Vec::new(),
+                            remove_all: false,
+                        }
+                        .apply_effect(ctx.game.card_mut(card_id));
+                    } else {
+                        ctx.game.card_mut(card_id).add_pump_keyword(&kw);
+                    }
                 }
             }
         }
@@ -127,17 +198,37 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if !parsed_triggers.is_empty() {
             let source_id = sa.source.unwrap_or(crate::ids::CardId(0));
             let source_svars = ctx.game.card(source_id).svars.clone();
-            for trig in &parsed_triggers {
-                ctx.game.cards[card_id.index()].triggers.push(trig.clone());
-                ctx.game.cards[card_id.index()].pump_trigger_count += 1;
-                // Copy the Execute SVar from source to target so trigger resolution
-                // can find it (e.g. SupernaturalStaminaTrigChangeZone)
-                if !trig.execute.is_empty() {
-                    if let Some(exec_svar) = source_svars.get(&trig.execute) {
-                        ctx.game.cards[card_id.index()]
-                            .svars
-                            .entry(trig.execute.clone())
-                            .or_insert_with(|| exec_svar.clone());
+            if let Some(ts) = effect_ts {
+                let changes = CardTraitChanges {
+                    triggers: parsed_triggers.clone(),
+                    ..Default::default()
+                };
+                perpetual_abilities::PerpetualAbilities {
+                    timestamp: ts,
+                    changes,
+                }
+                .apply_effect(ctx.game.card_mut(card_id));
+                for trig in &parsed_triggers {
+                    if !trig.execute.is_empty() {
+                        if let Some(exec_svar) = source_svars.get(&trig.execute) {
+                            ctx.game
+                                .card_mut(card_id)
+                                .set_s_var_if_absent(trig.execute.clone(), exec_svar.clone());
+                        }
+                    }
+                }
+            } else {
+                for trig in &parsed_triggers {
+                    ctx.game.card_mut(card_id).add_trigger(trig.clone());
+                    ctx.game.card_mut(card_id).increment_pump_trigger_count();
+                    // Copy the Execute SVar from source to target so trigger resolution
+                    // can find it (e.g. SupernaturalStaminaTrigChangeZone)
+                    if !trig.execute.is_empty() {
+                        if let Some(exec_svar) = source_svars.get(&trig.execute) {
+                            ctx.game
+                                .card_mut(card_id)
+                                .set_s_var_if_absent(trig.execute.clone(), exec_svar.clone());
+                        }
                     }
                 }
             }
@@ -159,7 +250,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     _ => {}
                 }
             }
-            ctx.game.cards[card_id.index()].color = new_color;
+            if let Some(ts) = effect_ts {
+                perpetual_colors::PerpetualColors {
+                    timestamp: ts,
+                    colors: new_color,
+                    overwrite: true,
+                }
+                .apply_effect(ctx.game.card_mut(card_id));
+            } else {
+                ctx.game.card_mut(card_id).set_color(new_color);
+            }
         }
     }
 }

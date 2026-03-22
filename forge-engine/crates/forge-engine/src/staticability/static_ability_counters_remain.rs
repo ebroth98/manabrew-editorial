@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn counters_remain(cards: &[CardInstance], card: &CardInstance, destination: ZoneType) -> bool {
+pub fn counters_remain(cards: &[Card], card: &Card, destination: ZoneType) -> bool {
     if matches!(
         destination,
         ZoneType::Library | ZoneType::Hand | ZoneType::None
@@ -40,8 +40,8 @@ pub fn counters_remain(cards: &[CardInstance], card: &CardInstance, destination:
 
 pub fn apply_counters_remain_ability(
     st_ab: &crate::staticability::StaticAbility,
-    source: &CardInstance,
-    card: &CardInstance,
+    source: &Card,
+    card: &Card,
     destination: ZoneType,
 ) -> bool {
     if matches!(destination, ZoneType::Library | ZoneType::Hand | ZoneType::None) {
@@ -56,7 +56,7 @@ pub fn apply_counters_remain_ability(
     active && matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,

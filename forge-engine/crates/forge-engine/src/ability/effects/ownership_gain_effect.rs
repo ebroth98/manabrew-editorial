@@ -25,7 +25,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     for card_id in targets {
         // Change ownership — in Magic this is extremely rare (silver-bordered only)
-        ctx.game.card_mut(card_id).owner = new_owner;
-        ctx.game.card_mut(card_id).controller = new_owner;
+        ctx.game.card_mut(card_id).set_owner(new_owner);
+        ctx.game.card_mut(card_id).set_controller(new_owner);
     }
 }

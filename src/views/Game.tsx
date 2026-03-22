@@ -14,7 +14,8 @@ import { StackDisplay } from "@/components/game/panels/StackDisplay";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
 import { PlayModePicker } from "@/components/game/PlayModePicker";
-import { HAND_CARD } from "@/components/game/game.styles";
+import { HAND_CARD_BASES } from "@/components/game/game.styles";
+import { useHandScale } from "@/hooks/useHandScale";
 import { useFlashQueue } from "@/hooks/useFlashQueue";
 import { useHandDrag } from "@/hooks/useHandDrag";
 import { useCardHover } from "@/hooks/useCardHover";
@@ -100,6 +101,10 @@ export default function Game() {
   const flashDurationMs = usePreferencesStore((s) => s.flashDurationMs);
   const zonePanelSide = usePreferencesStore((s) => s.zonePanelSide);
   const zonePanelOrder = usePreferencesStore((s) => s.zonePanelOrder);
+  const handSize = usePreferencesStore((s) => s.handSize);
+  const vScale = useHandScale();
+  const ghostCardW = Math.round(HAND_CARD_BASES[handSize].cardW * vScale);
+  const ghostCardH = Math.round(HAND_CARD_BASES[handSize].cardH * vScale);
   const themeColors = useGameThemeColors();
   const location = useLocation();
   const devExtraOpponents = ((location.state as { devExtraOpponents?: number } | null)?.devExtraOpponents ?? 0);
@@ -808,11 +813,12 @@ export default function Game() {
         createPortal(
           <div
             className="fixed pointer-events-none z-[9999]"
-            style={{ left: ghostPos.x - 40, top: ghostPos.y - 56 }}
+            style={{ left: ghostPos.x - ghostCardW / 2, top: ghostPos.y - ghostCardH / 2 }}
           >
             <Card
               card={draggingHandCard}
-              className={cn(HAND_CARD, "shadow-2xl ring-2 ring-primary playable-card")}
+              className={cn("shadow-2xl ring-2 ring-primary playable-card")}
+              style={{ width: ghostCardW, height: ghostCardH }}
             />
           </div>,
           document.body,

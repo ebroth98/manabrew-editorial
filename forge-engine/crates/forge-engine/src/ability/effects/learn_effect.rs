@@ -86,7 +86,7 @@ fn learn_lesson(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
     } else if card_zone == ZoneType::Hand {
         // Discard from hand, then draw 1
         let old_zone = ctx.game.card(card_id).zone;
-        ctx.game.card_mut(card_id).discarded = true;
+        ctx.game.card_mut(card_id).set_discarded(true);
         ctx.game
             .move_card(card_id, ZoneType::Graveyard, ctx.game.card(card_id).owner);
 

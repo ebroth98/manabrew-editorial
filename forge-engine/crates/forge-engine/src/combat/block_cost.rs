@@ -6,7 +6,7 @@
 
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
@@ -19,9 +19,9 @@ use crate::staticability::StaticMode;
 /// S:Mode$ CantBlockUnless | ValidCard$ Creature | Cost$ 1
 /// ```
 pub fn get_block_cost(
-    cards: &[CardInstance],
-    blocker: &CardInstance,
-    _attacker: &CardInstance,
+    cards: &[Card],
+    blocker: &Card,
+    _attacker: &Card,
 ) -> i32 {
     let mut total_cost = 0;
 
@@ -51,7 +51,7 @@ pub fn get_block_cost(
 }
 
 /// Simple valid-card check for cost statics.
-fn matches_valid_for_cost(card: &CardInstance, valid: &str) -> bool {
+fn matches_valid_for_cost(card: &Card, valid: &str) -> bool {
     let parts: Vec<&str> = valid.split('.').collect();
     for part in parts {
         match part {

@@ -579,6 +579,8 @@ impl TriggerHandler {
             TriggerMode::Phase { .. } => TriggerType::Phase,
             TriggerMode::SpellCast { .. } => TriggerType::SpellCast,
             TriggerMode::Attacks { .. } => TriggerType::Attacks,
+            TriggerMode::Fight { .. } => TriggerType::Fight,
+            TriggerMode::FightOnce { .. } => TriggerType::FightOnce,
             TriggerMode::DamageDone { .. } => TriggerType::DamageDone,
             TriggerMode::Countered { .. } => TriggerType::Countered,
             // New trigger modes (issue #19)
@@ -763,4 +765,3 @@ impl Default for TriggerHandler {
         Self::new()
     }
 }
-

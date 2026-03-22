@@ -1,15 +1,15 @@
 use forge_foundation::ZoneType;
 
 use crate::card::valid_filter;
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn cant_attach(
-    cards: &[CardInstance],
-    attachment: &CardInstance,
-    target: &CardInstance,
+    cards: &[Card],
+    attachment: &Card,
+    target: &Card,
     check_sba: bool,
 ) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
@@ -56,9 +56,9 @@ pub fn cant_attach(
 /// Java parity alias for single-ability evaluation.
 pub fn apply_cant_attach_ability(
     st_ab: &crate::staticability::StaticAbility,
-    source: &CardInstance,
-    attachment: &CardInstance,
-    target: &CardInstance,
+    source: &Card,
+    attachment: &Card,
+    target: &Card,
     activator: PlayerId,
 ) -> bool {
     matches_valid_card(st_ab.params.get(keys::VALID_CARD), attachment, source)
@@ -70,7 +70,7 @@ pub fn apply_cant_attach_ability(
         )
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     let Some(expr) = valid else {
         return true;
     };
@@ -95,7 +95,7 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
     })
 }
 
-fn matches_valid_card_for_target(card: &CardInstance, valid: &str, target: &CardInstance) -> bool {
+fn matches_valid_card_for_target(card: &Card, valid: &str, target: &Card) -> bool {
     valid.split(',').any(|clause| {
         clause
             .split('+')

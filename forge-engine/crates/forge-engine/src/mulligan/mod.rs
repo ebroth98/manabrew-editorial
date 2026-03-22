@@ -139,7 +139,7 @@ fn mulligan_order(player_order: &[PlayerId], first_player: PlayerId) -> Vec<Play
 mod tests {
     use super::*;
     use crate::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::combat::DefenderId;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
@@ -240,8 +240,8 @@ mod tests {
         fn notify(&mut self, _: &str) {}
     }
 
-    fn filler_card(owner: PlayerId) -> CardInstance {
-        CardInstance::new(
+    fn filler_card(owner: PlayerId) -> Card {
+        Card::new(
             CardId(0),
             "Filler".to_string(),
             owner,

@@ -48,10 +48,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         // Update the spell's target on the stack
         // In our simplified stack model, we update the card's svar to track new target
-        ctx.game.card_mut(target_spell_card).svars.insert(
-            "RedirectedTarget".to_string(),
-            format!("{}", new_target.0),
-        );
+        ctx.game
+            .card_mut(target_spell_card)
+            .set_s_var("RedirectedTarget", format!("{}", new_target.0));
         return;
     }
 
@@ -68,10 +67,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         };
 
         if let Some(new_tgt) = new_target {
-            ctx.game.card_mut(target_spell_card).svars.insert(
-                "RedirectedTarget".to_string(),
-                format!("{}", new_tgt.0),
-            );
+            ctx.game
+                .card_mut(target_spell_card)
+                .set_s_var("RedirectedTarget", format!("{}", new_tgt.0));
         }
         return;
     }
@@ -101,9 +99,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             false,
         )
     {
-        ctx.game.card_mut(target_spell_card).svars.insert(
-            "RedirectedTarget".to_string(),
-            format!("{}", chosen.0),
-        );
+        ctx.game
+            .card_mut(target_spell_card)
+            .set_s_var("RedirectedTarget", format!("{}", chosen.0));
     }
 }

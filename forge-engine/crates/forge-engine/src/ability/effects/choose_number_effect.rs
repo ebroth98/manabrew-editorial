@@ -36,7 +36,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if let Some(num) = chosen {
         if let Some(source_id) = sa.source {
-            ctx.game.card_mut(source_id).chosen_number = Some(num);
+            ctx.game.card_mut(source_id).set_chosen_number(Some(num));
         }
     }
 }

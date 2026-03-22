@@ -14,7 +14,7 @@
 //!    - Lightweight `CardSnapshot` structs for all battlefield cards
 //!    - Stale snapshots persist after cards leave (for LKI lookups)
 //!
-//! 2. **Per-card LKI** (`CardInstance.lki_power` / `lki_toughness`):
+//! 2. **Per-card LKI** (`Card.lki_power` / `lki_toughness`):
 //!    - Saved in `action.rs::change_zone()` when a card leaves the battlefield
 //!    - Captures the exact power/toughness at zone-change time
 //!    - Primary source for trigger SVars
@@ -51,7 +51,7 @@
 //! - `Game.lastStateBattlefield` → `GameState.last_state_battlefield`
 //! - `Card.getPower()` (during trigger) → `resolve_lki_power()`
 
-use crate::card::{CardInstance, CounterType};
+use crate::card::{Card, CounterType};
 use crate::ids::{CardId, PlayerId};
 use forge_foundation::ZoneType;
 use std::collections::BTreeMap;
@@ -73,7 +73,7 @@ pub struct CardSnapshot {
 
 impl CardSnapshot {
     /// Create a snapshot from a live card.
-    pub fn from_card(card: &CardInstance) -> Self {
+    pub fn from_card(card: &Card) -> Self {
         Self {
             id: card.id,
             controller: card.controller,

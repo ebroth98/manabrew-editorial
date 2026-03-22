@@ -31,17 +31,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         match mode {
             "ThisDoor" => {
                 // Unlock the door specified by the spell ability's card state
-                ctx.game.card_mut(card_id).svars.insert(
-                    "DoorUnlocked".to_string(),
-                    "True".to_string(),
-                );
+                ctx.game.card_mut(card_id).set_s_var("DoorUnlocked", "True");
             }
             "Unlock" => {
                 // Unlock a chosen locked room
-                ctx.game.card_mut(card_id).svars.insert(
-                    "DoorUnlocked".to_string(),
-                    "True".to_string(),
-                );
+                ctx.game.card_mut(card_id).set_s_var("DoorUnlocked", "True");
             }
             "LockOrUnlock" => {
                 // Toggle lock state
@@ -52,15 +46,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     .get("DoorUnlocked")
                     .map_or(true, |v| v != "True");
                 if is_locked {
-                    ctx.game.card_mut(card_id).svars.insert(
-                        "DoorUnlocked".to_string(),
-                        "True".to_string(),
-                    );
+                    ctx.game.card_mut(card_id).set_s_var("DoorUnlocked", "True");
                 } else {
-                    ctx.game
-                        .card_mut(card_id)
-                        .svars
-                        .remove("DoorUnlocked");
+                    ctx.game.card_mut(card_id).remove_s_var("DoorUnlocked");
                 }
             }
             _ => {}

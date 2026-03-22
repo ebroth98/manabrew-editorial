@@ -225,7 +225,7 @@ use forge_foundation::ZoneType;
 
 use crate::ability::api_type::ApiType;
 use crate::agent::PlayerAgent;
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::cost::{parse_cost, Cost, CostPart};
 use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
@@ -497,7 +497,7 @@ pub struct EffectContext<'a> {
     pub game: &'a mut GameState,
     pub agents: &'a mut [Box<dyn PlayerAgent>],
     pub trigger_handler: &'a mut TriggerHandler,
-    pub token_templates: &'a HashMap<String, CardInstance>,
+    pub token_templates: &'a HashMap<String, Card>,
     pub mana_pools: &'a mut Vec<ManaPool>,
     /// CardId of the parent SA's chosen target card, propagated through the
     /// sub-ability chain so that `Defined$ ParentTarget` effects can resolve it.

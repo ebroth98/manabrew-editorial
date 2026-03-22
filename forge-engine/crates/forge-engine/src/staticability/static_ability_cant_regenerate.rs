@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn cant_regenerate(cards: &[CardInstance], target: &CardInstance) -> bool {
+pub fn cant_regenerate(cards: &[Card], target: &Card) -> bool {
     for source in cards
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command)
@@ -25,13 +25,13 @@ pub fn cant_regenerate(cards: &[CardInstance], target: &CardInstance) -> bool {
 
 pub fn apply_cant_regenerate_ability(
     st_ab: &crate::staticability::StaticAbility,
-    target: &CardInstance,
-    source: &CardInstance,
+    target: &Card,
+    source: &Card,
 ) -> bool {
     matches_valid_card(st_ab.params.get(keys::VALID_CARD), target, source)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,

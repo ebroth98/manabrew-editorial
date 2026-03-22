@@ -48,24 +48,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let host_toughness = ctx.game.card(source).base_toughness;
         let host_types = ctx.game.card(source).type_line.clone();
 
-        ctx.game.card_mut(target).card_name = host_name;
-        ctx.game.card_mut(target).base_power = host_power;
-        ctx.game.card_mut(target).base_toughness = host_toughness;
-        ctx.game.card_mut(target).type_line = host_types;
+        ctx.game.card_mut(target).set_card_name(host_name);
+        ctx.game.card_mut(target).set_base_power(host_power);
+        ctx.game.card_mut(target).set_base_toughness(host_toughness);
+        ctx.game.card_mut(target).set_type_line(host_types);
     }
 
     // Copy all keywords from host to target (abilities merge)
     let host_keywords = ctx.game.card(source).keywords.as_string_list();
     for kw in host_keywords {
-        ctx.game.card_mut(target).keywords.add(&kw);
+        ctx.game.card_mut(target).add_intrinsic_keyword(&kw);
     }
 
     // Move host to "merged" zone (track via svar)
-    ctx.game
-        .card_mut(source)
-        .svars
-        .insert("MergedTo".to_string(), format!("{}", target.0));
-    ctx.game.card_mut(source).controller = controller;
+    ctx.game.card_mut(source).set_s_var("MergedTo", format!("{}", target.0));
+    ctx.game.card_mut(source).set_controller(controller);
 
     // Track mutation count
     let times_mutated = ctx
@@ -75,10 +72,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("TimesMutated")
         .and_then(|s| s.parse::<i32>().ok())
         .unwrap_or(0);
-    ctx.game.card_mut(target).svars.insert(
-        "TimesMutated".to_string(),
-        (times_mutated + 1).to_string(),
-    );
+    ctx.game
+        .card_mut(target)
+        .set_s_var("TimesMutated", (times_mutated + 1).to_string());
 
     // Move source card out of battlefield (merged zone representation)
     let old_zone = ctx.game.card(source).zone;

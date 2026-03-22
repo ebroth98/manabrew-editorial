@@ -147,7 +147,7 @@ pub(super) fn resolve_hidden_origin(
     // RememberSearched$
     if sa.param_is_true(keys::REMEMBER_SEARCHED) {
         if let Some(sid) = sa.source {
-            ctx.game.card_mut(sid).remembered_players.push(search_player);
+            ctx.game.card_mut(sid).add_remembered_player(search_player);
         }
     }
 

@@ -10,7 +10,7 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use crate::parsing::keys;
 
 use super::{emit_zone_trigger, parse_counter_type, EffectContext};
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
@@ -107,7 +107,7 @@ fn create_army_token(
     let token_name = format!("{} Army Token", amass_type);
     let type_str = format!("Creature - {} Army", amass_type);
 
-    let mut token = CardInstance::new(
+    let mut token = Card::new(
         CardId(0),
         token_name,
         controller,
@@ -119,8 +119,8 @@ fn create_army_token(
         vec![],
         vec![],
     );
-    token.controller = controller;
-    token.is_token = true;
+    token.set_controller(controller);
+    token.set_is_token(true);
 
     // RNG sync: match Java's token art selection
     ctx.rng.next_int(1);
@@ -159,7 +159,7 @@ fn add_type_effect(
     target: CardId,
     amass_type: &str,
 ) {
-    let mut effect = CardInstance::new(
+    let mut effect = Card::new(
         CardId(0),
         "Amass Effect".to_string(),
         controller,
@@ -171,17 +171,17 @@ fn add_type_effect(
         vec![],
         vec![],
     );
-    effect.controller = controller;
-    effect.effect_source = sa.source;
-    effect.remembered_cards.push(target);
-    effect.temp_effect_host = Some(target); // Removed when target leaves play
+    effect.set_controller(controller);
+    effect.set_effect_source(sa.source);
+    effect.add_remembered_card(target);
+    effect.set_temp_effect_host(Some(target)); // Removed when target leaves play
 
     let static_text = format!(
         "Mode$ Continuous | Affected$ Card.IsRemembered | EffectZone$ Command | AddType$ {}",
         amass_type
     );
     if let Some(parsed) = parse_static_ability(&format!("S$ {}", static_text)) {
-        effect.static_abilities.push(parsed);
+        effect.add_static_ability(parsed);
     }
 
     let effect_id = ctx.game.create_card(effect);

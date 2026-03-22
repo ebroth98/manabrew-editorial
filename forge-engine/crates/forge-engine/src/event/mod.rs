@@ -14,6 +14,8 @@ pub enum TriggerType {
     DamageDone,
     /// Two creatures fought each other (SP$ Fight).
     Fight,
+    /// One or more creatures fought (batched).
+    FightOnce,
     /// A card was discarded (SP$ Discard).
     Discarded,
     /// A spell was countered (SP$ Counter).

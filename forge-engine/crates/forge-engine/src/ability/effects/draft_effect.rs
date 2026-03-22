@@ -31,10 +31,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         // Remember the drafted card name on source
         if sa.param_is_true(keys::REMEMBER_DRAFTED) {
-            ctx.game.card_mut(source).svars.insert(
-                "DraftedCard".to_string(),
-                chosen_name.clone(),
-            );
+            ctx.game
+                .card_mut(source)
+                .set_s_var("DraftedCard", chosen_name.clone());
         }
     }
     let _ = controller; // used in full impl for zone changes

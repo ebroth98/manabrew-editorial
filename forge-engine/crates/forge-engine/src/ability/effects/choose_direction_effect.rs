@@ -17,12 +17,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         Some(&source_name),
         sa.api,
     );
-    ctx.game.card_mut(source_id).svars.insert(
-        "ChosenDirection".to_string(),
-        if choose_left {
-            "Left".to_string()
-        } else {
-            "Right".to_string()
-        },
+    ctx.game.card_mut(source_id).set_s_var(
+        "ChosenDirection",
+        if choose_left { "Left" } else { "Right" },
     );
 }

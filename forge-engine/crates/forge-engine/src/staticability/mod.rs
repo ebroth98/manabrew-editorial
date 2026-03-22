@@ -63,7 +63,7 @@ pub mod static_ability_wither_damage;
 
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::PlayerId;
 
@@ -80,7 +80,7 @@ pub fn create(params: &str) -> Option<StaticAbility> {
 /// The engine keeps a single source of truth in `layer::apply_continuous_effects`.
 pub fn apply_continuous_ability_before(
     st_ab: &StaticAbility,
-    source: &CardInstance,
+    source: &Card,
     game: &mut GameState,
     layer: Layer,
 ) {
@@ -90,7 +90,7 @@ pub fn apply_continuous_ability_before(
 /// Java-parity bridge for `StaticAbility.applyContinuousAbility(...)`.
 pub fn apply_continuous_ability(
     st_ab: &StaticAbility,
-    source: &CardInstance,
+    source: &Card,
     game: &mut GameState,
     layer: Layer,
 ) {
@@ -100,8 +100,8 @@ pub fn apply_continuous_ability(
 /// Java-parity helper for `StaticAbility.hasAttackCost(...)`.
 pub fn has_attack_cost(
     st_ab: &StaticAbility,
-    attacker: &CardInstance,
-    source: &CardInstance,
+    attacker: &Card,
+    source: &Card,
 ) -> bool {
     if !st_ab.check_mode(&StaticMode::OptionalAttackCost) {
         return false;
@@ -116,7 +116,7 @@ pub fn check_mode(st_ab: &StaticAbility, mode: &StaticMode) -> bool {
 }
 
 /// Java-parity bridge for `StaticAbility.checkConditions(...)`.
-pub fn check_conditions(st_ab: &StaticAbility, source: &CardInstance, game: &GameState) -> bool {
+pub fn check_conditions(st_ab: &StaticAbility, source: &Card, game: &GameState) -> bool {
     st_ab.check_conditions(source, game)
 }
 

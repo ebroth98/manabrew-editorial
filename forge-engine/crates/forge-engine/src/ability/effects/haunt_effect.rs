@@ -55,7 +55,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Link: set exiled_by to the haunted creature
     // When the haunted creature dies, triggers check for cards with exiled_by pointing to it
-    ctx.game.card_mut(source_id).exiled_by = Some(target_id);
+    ctx.game.card_mut(source_id).set_exiled_by(Some(target_id));
 
     // Remember the haunted creature on the source
     ctx.game.card_mut(source_id).add_remembered_card(target_id);

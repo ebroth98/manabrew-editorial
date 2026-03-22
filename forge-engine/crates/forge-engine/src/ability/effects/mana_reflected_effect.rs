@@ -323,7 +323,7 @@ fn collect_valid_cards(
 
 /// Simple valid card matching for ManaReflected.
 fn matches_valid_for_reflect(
-    card: &crate::card::CardInstance,
+    card: &crate::card::Card,
     valid: &str,
     source_id: crate::ids::CardId,
     controller: crate::ids::PlayerId,

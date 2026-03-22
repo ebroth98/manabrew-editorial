@@ -41,7 +41,7 @@ fn apply_phase(ctx: &mut EffectContext, card_id: crate::ids::CardId, mode: &str)
     match mode {
         "In" => {
             if ctx.game.card(card_id).phased_out {
-                ctx.game.card_mut(card_id).phased_out = false;
+                ctx.game.card_mut(card_id).set_phased_out(false);
                 ctx.trigger_handler.run_trigger(
                     TriggerType::PhasedIn,
                     RunParams {
@@ -54,7 +54,7 @@ fn apply_phase(ctx: &mut EffectContext, card_id: crate::ids::CardId, mode: &str)
         }
         "Out" | _ => {
             if !ctx.game.card(card_id).phased_out {
-                ctx.game.card_mut(card_id).phased_out = true;
+                ctx.game.card_mut(card_id).set_phased_out(true);
                 ctx.trigger_handler.run_trigger(
                     TriggerType::PhasedOut,
                     RunParams {
@@ -75,7 +75,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -83,7 +83,7 @@ mod tests {
     use crate::trigger::handler::TriggerHandler;
 
     fn make_creature(game: &mut GameState, owner: PlayerId) -> CardId {
-        let c = CardInstance::new(
+        let c = Card::new(
             CardId(0),
             "Bear".into(),
             owner,
@@ -135,7 +135,7 @@ mod tests {
         let p0 = PlayerId(0);
         let c1 = make_creature(&mut game, p0);
         game.move_card(c1, ZoneType::Battlefield, p0);
-        game.card_mut(c1).phased_out = true;
+        game.card_mut(c1).set_phased_out(true);
 
         let mut sa = SpellAbility::new_simple(None, p0, "SP$ Phases | PhaseInOrOut$ In");
         sa.target_chosen.target_card = Some(c1);

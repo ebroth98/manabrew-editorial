@@ -427,7 +427,7 @@ pub fn resolve_count_svar_for_sa(
 /// Check if a card matches a validity filter string like "Forest.YouCtrl".
 fn valid_card_matches_with_source(
     filter: &str,
-    card: &crate::card::CardInstance,
+    card: &crate::card::Card,
     controller: PlayerId,
     source_id: CardId,
     chosen_type: Option<&str>,
@@ -485,7 +485,7 @@ fn valid_card_matches_with_source(
 }
 
 /// Check a counter qualifier like "counters_GE1_P1P1".
-fn check_counter_qualifier(card: &crate::card::CardInstance, qual: &str) -> bool {
+fn check_counter_qualifier(card: &crate::card::Card, qual: &str) -> bool {
     let rest = match qual.strip_prefix("counters_") {
         Some(r) => r,
         None => return true,

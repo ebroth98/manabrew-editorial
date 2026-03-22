@@ -1,29 +1,35 @@
 import { useState, useMemo, useRef } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
+import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import { useHandScale } from "@/hooks/useHandScale";
 import type { HandDisplayProps } from "../game.types";
-import { HAND_CARD } from "../game.styles";
+import { HAND_CARD_BASES } from "../game.styles";
 
-
-
-const CARD_W = 80;
 const ARC_RADIUS = 900;
 const MAX_ARC_DEG = 30;
-const HOVER_LIFT = 28;
 const HOVER_SCALE = 1.22;
-const NEIGHBOR_PUSH = 30;
-const MAX_SPREAD = 56;
-const MIN_SPREAD = 24;
-const SPREAD_WIDTH = 560;
 
-function computeLayout(count: number) {
+/** Base layout params at 1920px reference, keyed by size preference. */
+const SIZE_PARAMS = {
+  small:  { hoverLift: 28, neighborPush: 30, maxSpread: 56, minSpread: 24, spreadWidth: 560 },
+  medium: { hoverLift: 46, neighborPush: 48, maxSpread: 90, minSpread: 38, spreadWidth: 900 },
+  large:  { hoverLift: 60, neighborPush: 62, maxSpread: 118, minSpread: 50, spreadWidth: 1180 },
+} as const;
+
+function computeLayout(
+  count: number,
+  cardW: number,
+  maxSpread: number,
+  minSpread: number,
+  spreadWidth: number,
+) {
   if (count === 0) return [];
-  if (count === 1)
-    return [{ x: 0, drop: 0, rot: 0 }];
+  if (count === 1) return [{ x: 0, drop: 0, rot: 0 }];
 
   const spread = Math.max(
-    MIN_SPREAD,
-    Math.min(MAX_SPREAD, Math.floor((SPREAD_WIDTH - CARD_W) / (count - 1))),
+    minSpread,
+    Math.min(maxSpread, Math.floor((spreadWidth - cardW) / (count - 1))),
   );
   const totalWidth = (count - 1) * spread;
   const arcDeg = Math.min(MAX_ARC_DEG, count * 2.5);
@@ -45,8 +51,26 @@ export function HandDisplayCool({
   showBackFace,
   draggingCardId,
 }: HandDisplayProps) {
+  const handSize = usePreferencesStore((s) => s.handSize);
+  const vScale = useHandScale();
+  const base = HAND_CARD_BASES[handSize];
+  const params = SIZE_PARAMS[handSize];
+
+  // Scaled values
+  const cardW = Math.round(base.cardW * vScale);
+  const cardH = Math.round(base.cardH * vScale);
+  const containerH = Math.round(base.containerH * vScale);
+  const hoverLift = Math.round(params.hoverLift * vScale);
+  const neighborPush = Math.round(params.neighborPush * vScale);
+  const maxSpread = Math.round(params.maxSpread * vScale);
+  const minSpread = Math.round(params.minSpread * vScale);
+  const spreadWidth = Math.round(params.spreadWidth * vScale);
+
   const [hoveredId, setHoveredId] = useState<string | null>(null);
-  const positions = useMemo(() => computeLayout(cards.length), [cards.length]);
+  const positions = useMemo(
+    () => computeLayout(cards.length, cardW, maxSpread, minSpread, spreadWidth),
+    [cards.length, cardW, maxSpread, minSpread, spreadWidth],
+  );
   const containerRef = useRef<HTMLDivElement>(null);
   const hoveredIdRef = useRef<string | null>(null);
 
@@ -70,7 +94,7 @@ export function HandDisplayCool({
       }
     }
 
-    if (closestDist > CARD_W) {
+    if (closestDist > cardW) {
       if (hoveredIdRef.current !== null) {
         hoveredIdRef.current = null;
         setHoveredId(null);
@@ -94,8 +118,8 @@ export function HandDisplayCool({
   };
 
   const containerWidth = Math.max(
-    CARD_W + 40,
-    (positions[positions.length - 1]?.x ?? 0) - (positions[0]?.x ?? 0) + CARD_W + 80,
+    cardW + 40,
+    (positions[positions.length - 1]?.x ?? 0) - (positions[0]?.x ?? 0) + cardW + 80,
   );
 
   return (
@@ -103,7 +127,7 @@ export function HandDisplayCool({
       <div
         ref={containerRef}
         className="relative"
-        style={{ height: 140, width: containerWidth }}
+        style={{ height: containerH, width: containerWidth }}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >
@@ -115,11 +139,11 @@ export function HandDisplayCool({
           if (hovIdx >= 0 && idx !== hovIdx) {
             const dist = Math.abs(idx - hovIdx);
             const sign = idx < hovIdx ? -1 : 1;
-            pushX = sign * Math.max(0, NEIGHBOR_PUSH - dist * 6);
+            pushX = sign * Math.max(0, neighborPush - dist * 6);
           }
 
           const tx = pos.x + pushX;
-          const translateY = isHov ? -HOVER_LIFT : pos.drop;
+          const translateY = isHov ? -hoverLift : pos.drop;
           const rot = isHov ? 0 : pos.rot;
           const scale = isHov ? HOVER_SCALE : 1;
           const z = isHov ? 100 : idx + 1;
@@ -135,7 +159,7 @@ export function HandDisplayCool({
               style={{
                 left: "50%",
                 bottom: 0,
-                transform: `translateX(${tx - CARD_W / 2}px) translateY(${translateY}px) rotate(${rot}deg) scale(${scale})`,
+                transform: `translateX(${tx - cardW / 2}px) translateY(${translateY}px) rotate(${rot}deg) scale(${scale})`,
                 transformOrigin: "center bottom",
                 transition: "transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",
                 zIndex: z,
@@ -155,11 +179,11 @@ export function HandDisplayCool({
                 <Card
                   card={card}
                   className={cn(
-                    HAND_CARD,
                     "shadow-md !bg-card",
                     isHov && "shadow-xl shadow-black/40",
                     card.isPlayable && cn("playable-card", isHov && "is-hovered"),
                   )}
+                  style={{ width: cardW, height: cardH }}
                   isHovered={isHov}
                   onFlip={onFlipCard}
                   showBackFace={showBackFace}

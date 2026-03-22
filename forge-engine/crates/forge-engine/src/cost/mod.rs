@@ -46,7 +46,7 @@ use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::ability::effects::{matches_change_type, matches_valid_cards};
-use crate::card::{CardInstance, CounterType};
+use crate::card::{Card, CounterType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
@@ -806,6 +806,9 @@ pub fn can_pay_ignoring_mana_for_spell(
         trigger_remembered_amount: 0,
         x_mana_cost_paid: 0,
         discarded_cost_cards: Vec::new(),
+        change_zone_table: None,
+        damage_map: None,
+        prevent_map: None,
     };
     can_pay_inner(cost, game, None, source, player, Some(&stub))
 }
@@ -1583,7 +1586,7 @@ fn can_pay_inner(
     true
 }
 
-pub fn static_ability_source_cards(game: &GameState) -> Vec<CardInstance> {
+pub fn static_ability_source_cards(game: &GameState) -> Vec<Card> {
     use std::collections::HashSet;
 
     let mut ids: HashSet<CardId> = HashSet::new();

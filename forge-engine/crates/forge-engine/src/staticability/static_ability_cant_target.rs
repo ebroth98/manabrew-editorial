@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -8,10 +8,10 @@ use crate::staticability::StaticMode;
 use crate::parsing::Params;
 
 pub fn cant_target(
-    cards: &[CardInstance],
-    target: &CardInstance,
+    cards: &[Card],
+    target: &Card,
     activator: PlayerId,
-    source_card: Option<&CardInstance>,
+    source_card: Option<&Card>,
     source_sa: Option<&SpellAbility>,
 ) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
@@ -67,10 +67,10 @@ pub fn cant_target(
 
 pub fn apply_cant_target_ability(
     st_ab: &crate::staticability::StaticAbility,
-    target: &CardInstance,
-    source: &CardInstance,
+    target: &Card,
+    source: &Card,
     activator: PlayerId,
-    source_card: Option<&CardInstance>,
+    source_card: Option<&Card>,
     source_sa: Option<&SpellAbility>,
 ) -> bool {
     if let Some(affected_zone) = st_ab.params.get(keys::AFFECTED_ZONE) {
@@ -157,7 +157,7 @@ fn matches_valid_activator(
     }
 }
 
-fn matches_valid_target(valid: Option<&str>, target: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_target(valid: Option<&str>, target: &Card, source: &Card) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,

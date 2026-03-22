@@ -250,7 +250,7 @@ pub fn make_choices_precast(
         return false;
     }
 
-    game.card_mut(source_id).chosen_modes = Some(chosen_indices.clone());
+    game.card_mut(source_id).set_chosen_modes(chosen_indices.clone());
     sa.sub_ability = None;
     let parent_trigger_remembered = sa.trigger_remembered_amount;
     for idx in chosen_indices {
@@ -535,7 +535,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -549,7 +549,7 @@ mod tests {
     ) -> SpellAbility {
         let mut sa = SpellAbility::new_simple(None, player, ability_text);
         // Inject SVars into a fake source card — we embed them in params here
-        // for the unit test (in real games, svars come from CardInstance.svars).
+        // for the unit test (in real games, svars come from Card.svars).
         let _ = svars; // svars are normally on the card; this test uses a custom setup
         sa
     }
@@ -602,7 +602,7 @@ mod tests {
                 .to_string(),
         );
 
-        let charm_card = CardInstance::new(
+        let charm_card = Card::new(
             CardId(0),
             "Test Charm".into(),
             p0,
@@ -614,12 +614,12 @@ mod tests {
             vec!["A:SP$ Charm | Choices$ ModeA,ModeB".to_string()],
             vec![],
         );
-        // We can't set svars in CardInstance::new directly, so we use create_card + mutate
+        // We can't set svars in Card::new directly, so we use create_card + mutate
         let cid = game.create_card(charm_card);
-        game.card_mut(cid).svars = svars;
+        game.card_mut(cid).set_svars_map(svars);
 
         // Put a card in each player's library so draw succeeds
-        let dummy_a = game.create_card(CardInstance::new(
+        let dummy_a = game.create_card(Card::new(
             CardId(0),
             "Dummy A".into(),
             p0,

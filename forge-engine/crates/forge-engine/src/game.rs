@@ -3,7 +3,9 @@ use std::collections::{HashMap, VecDeque};
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
-use crate::card::CardInstance;
+use crate::card::Card;
+use crate::card::card_damage_map::CardDamageMap;
+use crate::card::card_zone_table::CardZoneTable;
 use crate::ids::{CardId, PlayerId};
 use crate::phase::TurnState;
 use crate::phase::ExtraTurn;
@@ -77,7 +79,7 @@ impl TypeRegistry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GameState {
     // Arenas
-    pub cards: Vec<CardInstance>,
+    pub cards: Vec<Card>,
     pub players: Vec<PlayerState>,
 
     // Zones: keyed by (ZoneType, PlayerId)
@@ -137,6 +139,20 @@ pub struct GameState {
     /// Used to order same-player triggers by zone entry order,
     /// matching Java's `Zone.cardList` insertion order.
     next_zone_timestamp: u64,
+    /// Monotonically increasing effect timestamp used by continuous/perpetual
+    /// effect records (Java parity: `game.getNextTimestamp()`).
+    next_effect_timestamp: i64,
+    /// Shared damage aggregation map for Java-style `DamageMap` flows.
+    /// Used across sub-ability chains and consumed by `DamageResolve`.
+    #[serde(skip)]
+    pub pending_damage_map: Option<CardDamageMap>,
+    /// Shared prevention map paired with `pending_damage_map`.
+    #[serde(skip)]
+    pub pending_prevent_map: Option<CardDamageMap>,
+    /// Shared zone-change aggregation table for Java-style `ChangeZoneTable` flows.
+    /// Used across sub-ability chains and consumed by `ChangeZoneResolve`.
+    #[serde(skip)]
+    pub pending_change_zone_table: Option<CardZoneTable>,
 
     /// Periodic LKI snapshot of battlefield cards.
     /// Mirrors Java's `Game.lastStateBattlefield`.
@@ -207,6 +223,10 @@ impl GameState {
             extra_combat_phases: 0,
             next_card_id: 0,
             next_zone_timestamp: 0,
+            next_effect_timestamp: 1,
+            pending_damage_map: None,
+            pending_prevent_map: None,
+            pending_change_zone_table: None,
             last_state_battlefield: Vec::new(),
             pre_sba_battlefield: Vec::new(),
             last_sacrificed_card: None,
@@ -214,7 +234,7 @@ impl GameState {
     }
 
     /// Create a new card instance and return its ID. Does NOT place it in a zone.
-    pub fn create_card(&mut self, mut card: CardInstance) -> CardId {
+    pub fn create_card(&mut self, mut card: Card) -> CardId {
         let id = CardId(self.next_card_id);
         self.next_card_id += 1;
         card.id = id;
@@ -224,11 +244,11 @@ impl GameState {
 
     // --- Accessors ---
 
-    pub fn card(&self, id: CardId) -> &CardInstance {
+    pub fn card(&self, id: CardId) -> &Card {
         &self.cards[id.index()]
     }
 
-    pub fn card_mut(&mut self, id: CardId) -> &mut CardInstance {
+    pub fn card_mut(&mut self, id: CardId) -> &mut Card {
         &mut self.cards[id.index()]
     }
 
@@ -310,6 +330,41 @@ impl GameState {
         ts
     }
 
+    /// Return the next monotonic effect timestamp.
+    pub fn next_effect_timestamp(&mut self) -> i64 {
+        let ts = self.next_effect_timestamp;
+        self.next_effect_timestamp = self.next_effect_timestamp.saturating_add(1);
+        ts
+    }
+
+    /// Ensure shared damage/prevent maps exist for this resolution scope.
+    pub fn ensure_pending_damage_maps(&mut self) {
+        if self.pending_damage_map.is_none() {
+            self.pending_damage_map = Some(CardDamageMap::default());
+        }
+        if self.pending_prevent_map.is_none() {
+            self.pending_prevent_map = Some(CardDamageMap::default());
+        }
+    }
+
+    /// Clear shared damage/prevent maps.
+    pub fn clear_pending_damage_maps(&mut self) {
+        self.pending_damage_map = None;
+        self.pending_prevent_map = None;
+    }
+
+    /// Ensure a shared zone-change table exists for this resolution scope.
+    pub fn ensure_pending_change_zone_table(&mut self) {
+        if self.pending_change_zone_table.is_none() {
+            self.pending_change_zone_table = Some(CardZoneTable::default());
+        }
+    }
+
+    /// Clear the shared zone-change table.
+    pub fn clear_pending_change_zone_table(&mut self) {
+        self.pending_change_zone_table = None;
+    }
+
     /// Get all lands on the battlefield for a player.
     pub fn lands_on_battlefield(&self, player: PlayerId) -> Vec<CardId> {
         self.cards_in_zone(ZoneType::Battlefield, player)
@@ -337,7 +392,7 @@ mod tests {
     #[test]
     fn create_card_and_zone() {
         let mut game = GameState::new(&["Alice", "Bob"], 20);
-        let card = CardInstance::new(
+        let card = Card::new(
             CardId(0),
             "Grizzly Bears".to_string(),
             PlayerId(0),
@@ -366,7 +421,7 @@ mod tests {
         let mut game = GameState::new(&["Alice", "Bob"], 20);
 
         // Create a 3/3 creature on the battlefield
-        let mut card = CardInstance::new(
+        let mut card = Card::new(
             CardId(0),
             "Grizzly Bears".to_string(),
             PlayerId(0),

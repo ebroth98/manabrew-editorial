@@ -2,7 +2,7 @@ use forge_foundation::color::ColorSet;
 use forge_foundation::ZoneType;
 
 use super::{emit_zone_trigger, EffectContext};
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -27,7 +27,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let original = ctx.game.card(original_id).clone();
 
-    let mut copy = CardInstance::new(
+    let mut copy = Card::new(
         CardId(0),
         original.card_name.clone(),
         sa.activating_player,
@@ -39,24 +39,25 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         original.keywords.as_string_list(),
         original.abilities.clone(),
     );
-    copy.triggers = original.triggers.clone();
-    copy.svars = original.svars.clone();
-    copy.static_abilities = original.static_abilities.clone();
-    copy.replacement_effects = original.replacement_effects.clone();
+    copy.set_triggers(original.triggers.clone());
+    copy.set_svars_map(original.svars.clone());
+    copy.set_static_abilities(original.static_abilities.clone());
+    copy.set_replacement_effects(original.replacement_effects.clone());
+    copy.set_perpetual(&original, false);
     // Copies are tokens for zone-change purposes (cease to exist off battlefield).
-    copy.is_token = true;
+    copy.set_is_token(true);
 
     // Apply SetColor$ (e.g. Embalm sets color to White).
     if let Some(set_color) = sa.params.get(keys::SET_COLOR) {
-        copy.color = ColorSet::from_names(set_color);
+        copy.set_color(ColorSet::from_names(set_color));
     }
 
     // Apply AddTypes$ (e.g. Embalm adds "Zombie").
     if let Some(add_types) = sa.params.get(keys::ADD_TYPES) {
         for t in add_types.split(" & ") {
             let t = t.trim();
-            if !t.is_empty() && !copy.type_line.subtypes.contains(&t.to_string()) {
-                copy.type_line.subtypes.push(t.to_string());
+            if !t.is_empty() {
+                copy.add_type(t);
             }
         }
     }
@@ -67,14 +68,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get(keys::SET_POWER)
         .and_then(|v| v.parse::<i32>().ok())
     {
-        copy.base_power = Some(p);
+        copy.set_base_power(Some(p));
     }
     if let Some(t) = sa
         .params
         .get(keys::SET_TOUGHNESS)
         .and_then(|v| v.parse::<i32>().ok())
     {
-        copy.base_toughness = Some(t);
+        copy.set_base_toughness(Some(t));
     }
 
     // Apply PumpKeywords$ (e.g. "Haste" added temporarily to the copy).
@@ -82,7 +83,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for kw in pump_kws.split(',') {
             let kw = kw.trim();
             if !kw.is_empty() {
-                copy.keywords.add(kw);
+                copy.add_intrinsic_keyword(kw);
             }
         }
     }
@@ -92,7 +93,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for kw in add_kws.split(" & ") {
             let kw = kw.trim();
             if !kw.is_empty() {
-                copy.keywords.add(kw);
+                copy.add_intrinsic_keyword(kw);
             }
         }
     }
@@ -103,7 +104,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get(keys::SET_MANA_COST)
         .map_or(false, |v| v == "0" || v.is_empty())
     {
-        copy.mana_cost = forge_foundation::mana::ManaCost::no_cost();
+        copy.set_mana_cost(forge_foundation::mana::ManaCost::no_cost());
     }
 
     let copy_id = ctx.game.create_card(copy);

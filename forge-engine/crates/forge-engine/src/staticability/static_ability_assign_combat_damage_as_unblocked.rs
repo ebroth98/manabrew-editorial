@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn assign_as_unblocked(cards: &[CardInstance], card: &CardInstance, optional: bool) -> bool {
+pub fn assign_as_unblocked(cards: &[Card], card: &Card, optional: bool) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
             .static_abilities
@@ -29,7 +29,7 @@ pub fn assign_as_unblocked(cards: &[CardInstance], card: &CardInstance, optional
     false
 }
 
-pub fn has_optional_assign_as_unblocked(cards: &[CardInstance], card: &CardInstance) -> bool {
+pub fn has_optional_assign_as_unblocked(cards: &[Card], card: &Card) -> bool {
     cards
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield)
@@ -46,7 +46,7 @@ pub fn has_optional_assign_as_unblocked(cards: &[CardInstance], card: &CardInsta
         })
 }
 
-pub fn has_mandatory_assign_as_unblocked(cards: &[CardInstance], card: &CardInstance) -> bool {
+pub fn has_mandatory_assign_as_unblocked(cards: &[Card], card: &Card) -> bool {
     cards
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield)
@@ -64,10 +64,10 @@ pub fn has_mandatory_assign_as_unblocked(cards: &[CardInstance], card: &CardInst
 }
 
 /// Java parity alias for `assign_as_unblocked`.
-pub fn assign_combat_damage_as_unblocked(cards: &[CardInstance], card: &CardInstance) -> bool {
+pub fn assign_combat_damage_as_unblocked(cards: &[Card], card: &Card) -> bool {
     has_mandatory_assign_as_unblocked(cards, card)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     valid_filter::matches_valid_card_opt(valid, card, source)
 }

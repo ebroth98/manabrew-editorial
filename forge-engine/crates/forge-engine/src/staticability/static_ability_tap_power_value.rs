@@ -1,4 +1,4 @@
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
@@ -8,8 +8,8 @@ use crate::staticability::StaticMode;
 /// Mirrors Java's `StaticAbilityTapPowerValue.withToughness(Card, CardTraitBase)`.
 /// The `sa` parameter mirrors Java's `CardTraitBase ctb` for ValidSA matching.
 pub fn with_toughness(
-    cards: &[CardInstance],
-    card: &CardInstance,
+    cards: &[Card],
+    card: &Card,
     _sa: Option<&SpellAbility>,
 ) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
@@ -44,8 +44,8 @@ pub fn with_toughness(
 /// Mirrors Java's `StaticAbilityTapPowerValue.getMod()`.
 /// The `sa` parameter mirrors Java's `CardTraitBase ctb` for ValidSA matching.
 pub fn get_mod(
-    cards: &[CardInstance],
-    card: &CardInstance,
+    cards: &[Card],
+    card: &Card,
     _sa: Option<&SpellAbility>,
 ) -> i32 {
     let mut total = 0;

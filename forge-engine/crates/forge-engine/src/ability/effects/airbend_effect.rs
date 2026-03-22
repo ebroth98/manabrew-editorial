@@ -38,9 +38,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Exile);
 
         // Mark the card as castable for {2} from exile (via svar)
-        ctx.game.card_mut(card_id).svars.insert(
-            "AirbendCastable".to_string(),
-            "MayPlayAltManaCost$2".to_string(),
-        );
+        ctx.game
+            .card_mut(card_id)
+            .set_s_var("AirbendCastable", "MayPlayAltManaCost$2");
     }
 }

@@ -1,14 +1,14 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 use crate::parsing::Params;
 
 pub fn any_with_flash(
-    cards: &[CardInstance],
-    spell_card: &CardInstance,
+    cards: &[Card],
+    spell_card: &Card,
     caster: PlayerId,
     spell_abilities: &[String],
 ) -> bool {
@@ -57,8 +57,8 @@ pub fn any_with_flash(
 }
 
 pub fn any_with_flash_needs_info(
-    cards: &[CardInstance],
-    spell_card: &CardInstance,
+    cards: &[Card],
+    spell_card: &Card,
     caster: PlayerId,
     spell_abilities: &[String],
 ) -> bool {
@@ -67,8 +67,8 @@ pub fn any_with_flash_needs_info(
 
 pub fn apply_with_flash_needs_info(
     st_ab: &crate::staticability::StaticAbility,
-    spell_card: &CardInstance,
-    source: &CardInstance,
+    spell_card: &Card,
+    source: &Card,
     caster: PlayerId,
     spell_abilities: &[String],
 ) -> bool {
@@ -95,8 +95,8 @@ pub fn apply_with_flash_needs_info(
 
 pub fn apply_with_flash_ability(
     st_ab: &crate::staticability::StaticAbility,
-    spell_card: &CardInstance,
-    source: &CardInstance,
+    spell_card: &Card,
+    source: &Card,
     caster: PlayerId,
 ) -> bool {
     matches_valid_card(st_ab.params.get(keys::VALID_CARD), spell_card, source)
@@ -111,7 +111,7 @@ fn matches_valid_player(
     valid_filter::matches_valid_player_opt(valid, player, source_controller)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     valid_filter::matches_valid_card_opt(valid, card, source)
 }
 

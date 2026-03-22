@@ -1,11 +1,11 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn block_restrict_num(cards: &[CardInstance], defender: PlayerId) -> i32 {
+pub fn block_restrict_num(cards: &[Card], defender: PlayerId) -> i32 {
     let mut num = i32::MAX;
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
@@ -48,7 +48,7 @@ fn matches_valid_player(
     }
 }
 
-fn eval_amount(source: &CardInstance, expr: &str) -> i32 {
+fn eval_amount(source: &Card, expr: &str) -> i32 {
     if let Ok(n) = expr.parse::<i32>() {
         return n;
     }

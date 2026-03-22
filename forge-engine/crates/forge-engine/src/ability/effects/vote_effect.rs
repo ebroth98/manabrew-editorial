@@ -88,7 +88,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             for (choice, voters_list) in &vote_counts {
                 let svar_name = format!("VoteNum{}", choice);
                 let svar_val = format!("Number${}", voters_list.len());
-                ctx.game.card_mut(source_id).svars.insert(svar_name, svar_val);
+                ctx.game.card_mut(source_id).set_s_var(svar_name, svar_val);
             }
         }
     }
@@ -99,7 +99,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if let Some(source_id) = sa.source {
             for winner in &winners {
                 if let Some(idx) = choices.iter().position(|c| c == winner) {
-                    ctx.game.card_mut(source_id).remembered_cmc.push(idx as i32);
+                    ctx.game.card_mut(source_id).add_remembered_cmc(idx as i32);
                 }
             }
         }

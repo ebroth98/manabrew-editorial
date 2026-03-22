@@ -51,34 +51,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Step 3: Copy characteristics from source → target
     let src = ctx.game.card(clone_source_id).clone();
     let target = &mut ctx.game.cards[clone_target_id.index()];
-
-    target.card_name = src.card_name.clone();
-    target.type_line = src.type_line.clone();
-    target.mana_cost = src.mana_cost.clone();
-    target.color = src.color;
-    target.base_power = src.base_power;
-    target.base_toughness = src.base_toughness;
-    target.keywords = src.keywords.clone();
-    target.abilities = src.abilities.clone();
-    target.triggers = src.triggers.clone();
-    target.svars = src.svars.clone();
+    crate::card::card_copy_service::copy_copiable_characteristics(&src, target);
+    target.activated_abilities = src.activated_abilities.clone();
     target.static_abilities = src.static_abilities.clone();
     target.replacement_effects = src.replacement_effects.clone();
-
-    // Re-parse activated abilities from the new face's abilities
-    target.activated_abilities = target
-        .abilities
-        .iter()
-        .enumerate()
-        .filter_map(|(i, raw)| crate::ability::activated::parse_activated_ability(raw, i))
-        .collect();
+    target.set_perpetual(&src, false);
 
     // Step 4: Apply PumpKeywords$ (extra keywords on the copy)
     if let Some(pump_kws) = sa.params.get(keys::PUMP_KEYWORDS) {
         for kw in pump_kws.split(',') {
             let kw = kw.trim();
             if !kw.is_empty() {
-                ctx.game.cards[clone_target_id.index()].keywords.add(kw);
+                ctx.game.card_mut(clone_target_id).add_intrinsic_keyword(kw);
             }
         }
     }

@@ -30,7 +30,7 @@
 use forge_foundation::color::Color;
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::compare::compare_expr;
@@ -52,7 +52,7 @@ use crate::parsing::Params;
 /// // Matches creatures you control that are tokens:
 /// matches_valid_card("Creature.YouCtrl.token", card, source)
 /// ```
-pub fn matches_valid_card(valid: &str, card: &CardInstance, source: &CardInstance) -> bool {
+pub fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
     let valid = valid.trim();
     if valid.is_empty() {
         return true;
@@ -71,8 +71,8 @@ pub fn matches_valid_card(valid: &str, card: &CardInstance, source: &CardInstanc
 /// Convenience wrapper: None means "no filter" → always matches.
 pub fn matches_valid_card_opt(
     valid: Option<&str>,
-    card: &CardInstance,
-    source: &CardInstance,
+    card: &Card,
+    source: &Card,
 ) -> bool {
     match valid {
         None => true,
@@ -80,7 +80,7 @@ pub fn matches_valid_card_opt(
     }
 }
 
-fn matches_single_valid_card(filter: &str, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_single_valid_card(filter: &str, card: &Card, source: &Card) -> bool {
     // Handle comma-separated types with qualifiers (e.g. "Creature.YouCtrl,Artifact.YouCtrl")
     if filter.contains(',') {
         return filter
@@ -91,7 +91,7 @@ fn matches_single_valid_card(filter: &str, card: &CardInstance, source: &CardIns
     matches_type_and_qualifiers(filter, card, source)
 }
 
-fn matches_type_and_qualifiers(filter: &str, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool {
     // Split on dots for compound filters (e.g. "Creature.Other", "Card.Self")
     let parts: Vec<&str> = filter.split('.').collect();
     if parts.is_empty() {
@@ -349,7 +349,7 @@ fn matches_single_valid_player(
 
 /// Check a counter condition like "counters_GE3_P1P1".
 /// Format: counters_{op}{num}_{counter_type}
-fn check_counter_condition(condition: &str, card: &CardInstance) -> bool {
+fn check_counter_condition(condition: &str, card: &Card) -> bool {
     use crate::ability::effects::parse_counter_type;
     let rest = &condition["counters_".len()..];
     if rest.len() < 3 {
@@ -376,7 +376,7 @@ fn check_counter_condition(condition: &str, card: &CardInstance) -> bool {
 }
 
 /// Check a CMC condition like "cmcEQ1", "cmcLE3", "cmcGE5".
-fn check_cmc_condition(rest: &str, card: &CardInstance) -> bool {
+fn check_cmc_condition(rest: &str, card: &Card) -> bool {
     let cmc = card.mana_cost.cmc() as i32;
     if let Some(num_str) = rest.strip_prefix("eq") {
         if let Ok(n) = num_str.parse::<i32>() {
@@ -422,7 +422,7 @@ fn check_cmc_condition(rest: &str, card: &CardInstance) -> bool {
 pub fn check_is_present(
     game: &GameState,
     params: &Params,
-    source: &CardInstance,
+    source: &Card,
 ) -> bool {
     let Some(is_present) = params.get(keys::IS_PRESENT) else {
         return true; // no IsPresent param — passes
@@ -460,7 +460,7 @@ pub fn check_is_present(
 pub fn check_svar_condition(
     game: &GameState,
     params: &Params,
-    source: &CardInstance,
+    source: &Card,
 ) -> bool {
     let Some(check_name) = params.get(keys::CHECK_SVAR) else {
         return true;
@@ -488,7 +488,7 @@ pub fn check_svar_condition(
 pub fn check_named_svar_condition(
     game: &GameState,
     params: &Params,
-    source: &CardInstance,
+    source: &Card,
     check_key: &str,
     compare_key: &str,
 ) -> bool {
@@ -515,7 +515,7 @@ pub fn check_named_svar_condition(
 pub fn check_condition(
     game: &GameState,
     params: &Params,
-    source: &CardInstance,
+    source: &Card,
 ) -> bool {
     let Some(condition) = params.get(keys::CONDITION) else {
         return true;
@@ -578,7 +578,7 @@ pub fn check_condition(
 pub fn meets_common_requirements(
     game: &GameState,
     params: &Params,
-    source: &CardInstance,
+    source: &Card,
 ) -> bool {
     check_is_present(game, params, source)
         && check_svar_condition(game, params, source)

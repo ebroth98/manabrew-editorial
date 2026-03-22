@@ -2,7 +2,7 @@
 //!
 //! Mirrors Java `ReplaceRemoveCounter.java` in `forge/game/replacement/`.
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
@@ -17,7 +17,7 @@ pub fn can_replace(
     effect: &ReplacementEffect,
     event: &ReplacementEvent,
     game: &GameState,
-    source_card: &CardInstance,
+    source_card: &Card,
 ) -> bool {
     if effect.event != ReplacementType::RemoveCounter {
         return false;

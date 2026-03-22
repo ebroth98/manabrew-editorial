@@ -34,10 +34,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             for (i, &pid) in player_ids.iter().enumerate() {
                 let is_winner = i != loser_idx;
                 if (remember == "Win" && is_winner) || (remember == "NotWin" && !is_winner) {
-                    ctx.game.card_mut(source).svars.insert(
-                        format!("RememberedPlayer{}", pid.0),
-                        "True".to_string(),
-                    );
+                    ctx.game
+                        .card_mut(source)
+                        .set_s_var(format!("RememberedPlayer{}", pid.0), "True");
                 }
             }
         }

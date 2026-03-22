@@ -27,8 +27,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Store choice for sub-ability resolution
     if let Some(sid) = sa.source {
         let idx = if chose_first { 0 } else { 1.min(choices.len() - 1) };
-        ctx.game.card_mut(sid).svars.insert(
-            "ChosenGeneric".to_string(), choices[idx].clone(),
-        );
+        ctx.game.card_mut(sid).set_s_var("ChosenGeneric", choices[idx].clone());
     }
 }

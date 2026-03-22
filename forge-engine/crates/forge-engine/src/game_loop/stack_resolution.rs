@@ -240,7 +240,7 @@ impl GameLoop {
                 // Propagate kicked flag to the card so triggers with
                 // ValidCard$ Card.Self+kicked can check it after resolution.
                 if entry.spell_ability.kicked {
-                    game.card_mut(card_id).kicked = true;
+                    game.card_mut(card_id).set_kicked(true);
                 }
 
                 // Resolve any ETB effects defined on the card
@@ -353,10 +353,10 @@ impl GameLoop {
                         .iter()
                         .any(|&cid| game.card(cid).type_line.has_subtype(&type_name));
                     if !has_matching {
-                        game.card_mut(card_id).tapped = true;
+                        game.card_mut(card_id).set_tapped(true);
                     } else {
                         // DeterministicAgent always passes optional reveals (enter tapped)
-                        game.card_mut(card_id).tapped = true;
+                        game.card_mut(card_id).set_tapped(true);
                     }
                 }
 
@@ -372,7 +372,7 @@ impl GameLoop {
                         None,
                     );
                     if pay {
-                        game.card_mut(card_id).tapped = false;
+                        game.card_mut(card_id).set_tapped(false);
                         game.player_mut(player).lose_life(life_cost);
                         self.trigger_handler.run_trigger(
                             TriggerType::LifeLost,
@@ -384,7 +384,7 @@ impl GameLoop {
                             false,
                         );
                     } else {
-                        game.card_mut(card_id).tapped = true;
+                        game.card_mut(card_id).set_tapped(true);
                     }
                 }
 
@@ -488,7 +488,7 @@ impl GameLoop {
                         if let Some(target) =
                             agents[player.index()].choose_sacrifice(player, &creatures)
                         {
-                            game.card_mut(card_id).is_bestowed = true;
+                            game.card_mut(card_id).unanimate_bestow();
                             game.attach_to(card_id, target);
                         }
                     }
@@ -498,7 +498,7 @@ impl GameLoop {
                 if alt_cost.map_or(false, |ac| ac.is_morph()) {
                     let is_mega = alt_cost == Some(crate::spellability::AlternativeCost::Megamorph);
                     let c = game.card_mut(card_id);
-                    c.face_down = true;
+                    c.set_face_down(true);
                     c.static_set_power = Some(crate::spellability::MORPH_PT);
                     c.static_set_toughness = Some(crate::spellability::MORPH_PT);
 
@@ -541,10 +541,10 @@ impl GameLoop {
                         description: "When this creature dies, draw a card.".to_string(),
                         intrinsic: false,
                     };
-                    game.card_mut(card_id).triggers.push(dies_trigger);
-                    game.card_mut(card_id).svars.insert(
-                        "BlitzDiesDraw".to_string(),
-                        "DB$ Draw | NumCards$ 1 | Defined$ You".to_string(),
+                    game.card_mut(card_id).add_trigger(dies_trigger);
+                    game.card_mut(card_id).set_s_var(
+                        "BlitzDiesDraw",
+                        "DB$ Draw | NumCards$ 1 | Defined$ You",
                     );
                     self.trigger_handler.unregister_active_triggers(card_id);
                     self.trigger_handler.register_active_trigger(game, card_id);
@@ -635,11 +635,16 @@ impl GameLoop {
         agents: &mut [Box<dyn PlayerAgent>],
         entry: &StackEntry,
     ) {
+        // Reset shared parity tables for this stack resolution.
+        game.clear_pending_damage_maps();
+        game.clear_pending_change_zone_table();
+
         // Walk the SpellAbility chain: resolve each node's effect, propagating
         // the parent SA's chosen target card so sub-abilities can resolve
         // `Defined$ ParentTarget`. Mirrors Java's resolveApiAbility() + resolveSubAbilities().
         let mut parent_target_card: Option<CardId> = None;
         let mut parent_target_player = None;
+        let mut inherited_trigger_index = entry.spell_ability.trigger_index;
         let root_kicked = entry.spell_ability.kicked;
         let mut current = Some(&entry.spell_ability);
         let mut is_first = true;
@@ -657,7 +662,8 @@ impl GameLoop {
             // Propagate kicked flag from root SA to sub-abilities for condition checks
             let mut sa_with_ctx;
             let needs_ctx_clone = (root_kicked && !sa.kicked)
-                || (parent_target_player.is_some() && sa.target_chosen.target_player.is_none());
+                || (parent_target_player.is_some() && sa.target_chosen.target_player.is_none())
+                || (inherited_trigger_index.is_some() && sa.trigger_index.is_none());
             let sa_ref = if needs_ctx_clone {
                 sa_with_ctx = sa.clone();
                 if root_kicked && !sa_with_ctx.kicked {
@@ -665,6 +671,9 @@ impl GameLoop {
                 }
                 if sa_with_ctx.target_chosen.target_player.is_none() {
                     sa_with_ctx.target_chosen.target_player = parent_target_player;
+                }
+                if sa_with_ctx.trigger_index.is_none() {
+                    sa_with_ctx.trigger_index = inherited_trigger_index;
                 }
                 &sa_with_ctx
             } else {
@@ -674,8 +683,13 @@ impl GameLoop {
             // This SA's target card becomes the parent context for the next sub-ability.
             parent_target_card = sa_ref.target_chosen.target_card;
             parent_target_player = sa_ref.target_chosen.target_player;
+            inherited_trigger_index = sa_ref.trigger_index;
             current = sa.get_sub_ability();
         }
+
+        // Avoid leaking shared tables into subsequent stack entries.
+        game.clear_pending_damage_maps();
+        game.clear_pending_change_zone_table();
     }
 
     /// Check whether a spell/ability should fizzle (CR 608.2b).

@@ -20,6 +20,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     let controller = sa.activating_player;
+    let use_damage_map = sa.params.has("DamageMap");
+    let use_change_zone_table = sa.params.has("ChangeZoneTable");
+
+    if use_damage_map {
+        ctx.game.ensure_pending_damage_maps();
+    }
+    if use_change_zone_table {
+        ctx.game.ensure_pending_change_zone_table();
+    }
 
     // Get the sub-ability SVar name
     let sub_svar_name = match sa.params.get_cloned(keys::REPEAT_SUB_ABILITY) {
@@ -58,7 +67,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         // Iterate: remember card → resolve sub-SA → un-remember
         for card_id in matching {
-            ctx.game.card_mut(source_id).remembered_cards.clear();
+            ctx.game.card_mut(source_id).clear_remembered();
             ctx.game.card_mut(source_id).add_remembered_card(card_id);
 
             // Build and resolve sub-ability
@@ -71,7 +80,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
 
         // Clean up remembered cards
-        ctx.game.card_mut(source_id).remembered_cards.clear();
+        ctx.game.card_mut(source_id).clear_remembered();
     } else if let Some(repeat_players) = sa.params.get_cloned(keys::REPEAT_PLAYERS) {
         // Player iteration path
         let players = resolve_defined_players(&repeat_players, controller, ctx.game);
@@ -86,6 +95,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if ctx.game.game_over {
                 break;
             }
+        }
+    }
+
+    if use_damage_map {
+        // Mirror Java RepeatEach post-loop damage-map resolve.
+        let mut flush_sa = sa.clone();
+        flush_sa.damage_map = ctx.game.pending_damage_map.clone();
+        flush_sa.prevent_map = ctx.game.pending_prevent_map.clone();
+        super::damage_resolve_effect::resolve(ctx, &flush_sa);
+        ctx.game.clear_pending_damage_maps();
+    }
+    if use_change_zone_table {
+        if let Some(table) = ctx.game.pending_change_zone_table.clone() {
+            table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
+            ctx.game.clear_pending_change_zone_table();
         }
     }
 }

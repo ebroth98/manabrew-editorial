@@ -29,7 +29,7 @@
 //! 7a. CDA P/T (not yet implemented)
 //! 7b. Set P/T → [`Layer::SetPT`]
 //! 7c. Modify P/T → [`Layer::ModifyPT`]
-//! 7d. Counters (handled intrinsically by `CardInstance::power()`)
+//! 7d. Counters (handled intrinsically by `Card::power()`)
 
 use forge_foundation::ZoneType;
 
@@ -495,7 +495,7 @@ pub fn apply_etb_tapped(game: &mut GameState, entering_card: CardId) {
 ///
 /// Returns `Some(life_cost)` if found (e.g. `Some(2)` for shock lands), `None` otherwise.
 /// Called from `play_card` / `resolve_stack` where agents are available for prompting.
-pub fn get_etb_unless_life_cost(card: &crate::card::CardInstance) -> Option<i32> {
+pub fn get_etb_unless_life_cost(card: &crate::card::Card) -> Option<i32> {
     for re in &card.replacement_effects {
         if re.event != ReplacementType::Moved {
             continue;
@@ -531,7 +531,7 @@ pub fn get_etb_unless_life_cost(card: &crate::card::CardInstance) -> Option<i32>
 /// where the SVar is `DB$ Tap | ETB$ True | UnlessCost$ Reveal<N/Filter>`.
 ///
 /// Returns `Some((n, filter))` if found (e.g. `Some((1, "Merfolk"))` for Wanderwine Hub).
-pub fn get_etb_unless_reveal_cost(card: &crate::card::CardInstance) -> Option<(i32, String)> {
+pub fn get_etb_unless_reveal_cost(card: &crate::card::Card) -> Option<(i32, String)> {
     for re in &card.replacement_effects {
         if re.event != ReplacementType::Moved {
             continue;
@@ -610,7 +610,7 @@ mod tests {
     use super::*;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::ids::{CardId, PlayerId};
 
     // Build a minimal two-player game with empty zones.
@@ -626,7 +626,7 @@ mod tests {
         keywords: Vec<String>,
         abilities: Vec<String>,
     ) -> CardId {
-        let card = CardInstance::new(
+        let card = Card::new(
             CardId(0), // reassigned by create_card
             "Creature".to_string(),
             owner,
@@ -644,7 +644,7 @@ mod tests {
     }
 
     fn add_enchantment(game: &mut GameState, owner: PlayerId, abilities: Vec<String>) -> CardId {
-        let card = CardInstance::new(
+        let card = Card::new(
             CardId(0),
             "Enchantment".to_string(),
             owner,
@@ -906,7 +906,7 @@ mod tests {
         let alice = PlayerId(0);
 
         // A permanent with ETBTapped on itself.
-        let card = CardInstance::new(
+        let card = Card::new(
             CardId(0),
             "TappedLand".to_string(),
             alice,
@@ -947,7 +947,7 @@ mod tests {
         let alice = PlayerId(0);
 
         // A land with R:Event$ Moved replacement effect (like Path of Ancestry).
-        let card = CardInstance::new(
+        let card = Card::new(
             CardId(0),
             "PathOfAncestry".to_string(),
             alice,

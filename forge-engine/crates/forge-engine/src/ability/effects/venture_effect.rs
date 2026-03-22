@@ -16,7 +16,7 @@
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::EffectContext;
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
@@ -202,7 +202,7 @@ fn create_dungeon(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId) 
             DUNGEONS[idx].0.to_string()
         });
 
-    let mut card = CardInstance::new(
+    let mut card = Card::new(
         CardId(0),
         dungeon_name.clone(),
         player,
@@ -214,11 +214,9 @@ fn create_dungeon(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId) 
         vec![],
         vec![],
     );
-    card.controller = player;
-    card.svars
-        .insert("DungeonName".to_string(), dungeon_name);
-    card.svars
-        .insert("CurrentRoom".to_string(), String::new());
+    card.set_controller(player);
+    card.set_s_var("DungeonName", dungeon_name);
+    card.set_s_var("CurrentRoom", String::new());
 
     let id = ctx.game.create_card(card);
     ctx.game.move_card(id, ZoneType::Command, player);

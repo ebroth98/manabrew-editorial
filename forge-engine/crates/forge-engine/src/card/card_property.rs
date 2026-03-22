@@ -7,14 +7,14 @@
 use forge_foundation::ColorSet;
 
 use crate::card::filter_constants as fc;
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::PlayerId;
 
 /// Check if a card matches a compound filter string.
 /// Supports color filters ("nonBlack"), controller filters ("OppCtrl", "YouCtrl"),
 /// and combined dot-separated filters (e.g. "OppCtrl.nonBlack").
 /// Mirrors Java's `CardProperty.cardHasProperty()` with dot-separated qualifiers.
-pub fn card_has_property(card: &CardInstance, filter: &str, source_controller: PlayerId) -> bool {
+pub fn card_has_property(card: &Card, filter: &str, source_controller: PlayerId) -> bool {
     // Handle compound filters separated by '.' or '+' (e.g. "OppCtrl.nonBlack", "nonLand+OppCtrl")
     // Both separators mean AND — all parts must match.
     for part in filter.split(|c| c == '.' || c == '+') {
@@ -28,7 +28,7 @@ pub fn card_has_property(card: &CardInstance, filter: &str, source_controller: P
 /// Match a single property qualifier against a card.
 /// Mirrors individual property checks in Java's `CardProperty.cardHasProperty()`.
 fn matches_single_property(
-    card: &CardInstance,
+    card: &Card,
     property: &str,
     source_controller: PlayerId,
 ) -> bool {
@@ -112,7 +112,7 @@ mod tests {
     fn non_black_filter() {
         use crate::ids::CardId;
 
-        let black_creature = CardInstance::new(
+        let black_creature = Card::new(
             CardId(0),
             "Doom".to_string(),
             PlayerId(0),
@@ -124,7 +124,7 @@ mod tests {
             vec![],
             vec![],
         );
-        let green_creature = CardInstance::new(
+        let green_creature = Card::new(
             CardId(1),
             "Bear".to_string(),
             PlayerId(0),
@@ -145,7 +145,7 @@ mod tests {
     fn opp_ctrl_filter() {
         use crate::ids::CardId;
 
-        let mut card = CardInstance::new(
+        let mut card = Card::new(
             CardId(0),
             "Bear".to_string(),
             PlayerId(1),
@@ -167,7 +167,7 @@ mod tests {
     fn compound_filter() {
         use crate::ids::CardId;
 
-        let mut card = CardInstance::new(
+        let mut card = Card::new(
             CardId(0),
             "Bear".to_string(),
             PlayerId(1),
@@ -189,7 +189,7 @@ mod tests {
     fn creature_you_ctrl_requires_creature_type() {
         use crate::ids::CardId;
 
-        let sorcery = CardInstance::new(
+        let sorcery = Card::new(
             CardId(2),
             "Innocent Blood".to_string(),
             PlayerId(0),
@@ -213,7 +213,7 @@ mod tests {
     fn cmc_comparators() {
         use crate::ids::CardId;
 
-        let creature = CardInstance::new(
+        let creature = Card::new(
             CardId(3),
             "Hill Giant".to_string(),
             PlayerId(0),

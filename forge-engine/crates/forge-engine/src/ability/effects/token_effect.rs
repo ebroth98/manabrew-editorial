@@ -2,7 +2,7 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::trait_token_effect;
 use super::{emit_zone_trigger, EffectContext};
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::parsing::keys;
@@ -70,9 +70,9 @@ fn has_inline_token_params(sa: &SpellAbility) -> bool {
         || sa.params.has(keys::TOKEN_NAME)
 }
 
-/// Build a CardInstance template from inline token params.
+/// Build a Card template from inline token params.
 /// Mirrors Java's TokenEffectBase inline token construction.
-fn build_inline_token(sa: &SpellAbility, owner: crate::ids::PlayerId) -> CardInstance {
+fn build_inline_token(sa: &SpellAbility, owner: crate::ids::PlayerId) -> Card {
     let name = sa
         .params
         .get_cloned(keys::TOKEN_NAME)
@@ -101,7 +101,7 @@ fn build_inline_token(sa: &SpellAbility, owner: crate::ids::PlayerId) -> CardIns
         .map(|s| s.split('&').map(|k| k.trim().to_string()).collect())
         .unwrap_or_default();
 
-    CardInstance::new(
+    Card::new(
         CardId(0), // Will be reassigned by create_card
         name,
         owner,
@@ -136,7 +136,7 @@ fn parse_token_colors(s: &str) -> ColorSet {
 fn create_tokens(
     ctx: &mut EffectContext,
     sa: &SpellAbility,
-    template: &CardInstance,
+    template: &Card,
     amount: usize,
     token_controller: crate::ids::PlayerId,
 ) {
@@ -150,9 +150,9 @@ fn create_tokens(
 
     for _ in 0..amount {
         let mut token = template.clone();
-        token.owner = token_controller;
-        token.controller = token_controller;
-        token.is_token = true;
+        token.set_owner(token_controller);
+        token.set_controller(token_controller);
+        token.set_is_token(true);
         let token_id = ctx.game.create_card(token);
         ctx.game
             .move_card(token_id, ZoneType::Battlefield, token_controller);

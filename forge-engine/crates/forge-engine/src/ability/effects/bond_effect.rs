@@ -41,7 +41,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if let Some(partner) = ctx.agents[controller.index()].choose_single_card_for_zone_change(
         controller, &candidates, "Choose a creature to pair with", false,
     ) {
-        ctx.game.card_mut(source_id).paired_with = Some(partner);
-        ctx.game.card_mut(partner).paired_with = Some(source_id);
+        ctx.game.card_mut(source_id).set_paired_with(Some(partner));
+        ctx.game.card_mut(partner).set_paired_with(Some(source_id));
     }
 }

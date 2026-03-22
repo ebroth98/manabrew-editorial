@@ -387,7 +387,7 @@ fn each_color_among_valid(
 
 /// Simple valid filter matching for special mana (e.g. "Permanent.YouCtrl+MonoColor").
 fn matches_simple_valid(
-    card: &crate::card::CardInstance,
+    card: &crate::card::Card,
     filter: &str,
     source_id: crate::ids::CardId,
     controller: crate::ids::PlayerId,

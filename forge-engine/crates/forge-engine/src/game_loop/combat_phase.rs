@@ -171,9 +171,9 @@ impl GameLoop {
         let premarked_attackers: Vec<(CardId, combat::DefenderId)> = chosen_attackers.clone();
         for &(attacker_id, def) in &premarked_attackers {
             let defending_player = def.controlling_player(game);
-            game.card_mut(attacker_id).attacking_player = Some(defending_player);
+            game.card_mut(attacker_id).set_attacking_player(defending_player);
             if !game.card(attacker_id).has_vigilance() {
-                game.card_mut(attacker_id).tapped = true;
+                game.card_mut(attacker_id).set_tapped(true);
             }
         }
 
@@ -464,9 +464,9 @@ impl GameLoop {
         // Undo temporary attack markers for attackers removed by cost payment.
         for &(attacker_id, _) in &premarked_attackers {
             if !chosen_attackers.iter().any(|(id, _)| *id == attacker_id) {
-                game.card_mut(attacker_id).attacking_player = None;
+                game.card_mut(attacker_id).clear_attacking_player();
                 if !game.card(attacker_id).has_vigilance() {
-                    game.card_mut(attacker_id).tapped = false;
+                    game.card_mut(attacker_id).set_tapped(false);
                 }
             }
         }
@@ -518,10 +518,10 @@ impl GameLoop {
                     false,
                 );
             }
-            game.card_mut(attacker_id).attacked_this_turn = true;
+            game.card_mut(attacker_id).mark_attacked_this_turn();
             // Set attacking_player to the controlling player of the defender
             let def_player = defender.controlling_player(game);
-            game.card_mut(attacker_id).attacking_player = Some(def_player);
+            game.card_mut(attacker_id).set_attacking_player(def_player);
             self.combat.declare_attacker(attacker_id, defender);
 
             // Record attack in damage history

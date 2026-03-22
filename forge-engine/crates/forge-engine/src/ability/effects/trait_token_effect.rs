@@ -4,7 +4,7 @@
 //! Provides shared logic for creating token creatures, used by
 //! `TokenEffect`, `IncubateEffect`, and similar effects.
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
 
@@ -44,9 +44,9 @@ pub fn parse_token_params(ctx: &EffectContext, sa: &SpellAbility) -> Option<Toke
 
 /// Look up a token template by script name from the template map.
 pub fn get_token_template<'a>(
-    templates: &'a std::collections::HashMap<String, CardInstance>,
+    templates: &'a std::collections::HashMap<String, Card>,
     script: &str,
-) -> Option<&'a CardInstance> {
+) -> Option<&'a Card> {
     // Try exact match first, then case-insensitive
     templates
         .get(script)

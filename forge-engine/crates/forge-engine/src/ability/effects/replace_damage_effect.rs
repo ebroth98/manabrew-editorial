@@ -10,9 +10,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // This effect registers or configures the replacement.
     if let Some(source_id) = sa.source {
         if let Some(val) = sa.params.get(crate::parsing::keys::DAMAGE_AMOUNT) {
-            ctx.game.card_mut(source_id).svars.insert(
-                "ReplaceDamageAmount".to_string(), val.to_string(),
-            );
+            ctx.game
+                .card_mut(source_id)
+                .set_s_var("ReplaceDamageAmount", val);
         }
     }
 }

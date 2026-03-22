@@ -10,9 +10,69 @@ use crate::spellability::SpellAbility;
 /// Resolve accumulated zone change triggers.
 /// In practice this is handled by the zone-change bookkeeping in the engine;
 /// this effect serves as the explicit resolution point matching Java's pattern.
-pub fn resolve(_ctx: &mut EffectContext, _sa: &SpellAbility) {
-    // In the Rust engine, zone-change triggers are fired inline during
-    // change_zone operations. This stub maintains structural parity with
-    // Java's ChangeZoneResolveEffect which clears and fires the
-    // CardZoneTable accumulated during multi-card zone changes.
+pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    if let Some(table) = sa.change_zone_table.as_ref() {
+        table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
+        return;
+    }
+    if let Some(table) = ctx.game.pending_change_zone_table.clone() {
+        table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
+        ctx.game.clear_pending_change_zone_table();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
+
+    use crate::ability::effects::EffectContext;
+    use crate::agent::{PassAgent, PlayerAgent};
+    use crate::card::Card;
+    use crate::game::GameState;
+    use crate::ids::{CardId, PlayerId};
+    use crate::mana::ManaPool;
+    use crate::spellability::SpellAbility;
+    use crate::trigger::handler::TriggerHandler;
+
+    #[test]
+    fn change_zone_resolve_clears_pending_table() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let c = Card::new(
+            CardId(0),
+            "X".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        let cid = game.create_card(c);
+        game.ensure_pending_change_zone_table();
+        game.move_card(cid, ZoneType::Battlefield, p0);
+
+        let sa = SpellAbility::new_simple(Some(cid), p0, "DB$ ChangeZoneResolve");
+        let mut th = TriggerHandler::new();
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut pools = vec![ManaPool::default(), ManaPool::default()];
+        let templates = HashMap::new();
+        let mut rng = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = EffectContext {
+            game: &mut game,
+            agents: &mut agents,
+            trigger_handler: &mut th,
+            token_templates: &templates,
+            mana_pools: &mut pools,
+            parent_target_card: None,
+            rng: &mut rng,
+        };
+
+        super::resolve(&mut ctx, &sa);
+        assert!(ctx.game.pending_change_zone_table.is_none());
+    }
 }

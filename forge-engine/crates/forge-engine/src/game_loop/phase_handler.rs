@@ -304,7 +304,7 @@ impl GameLoop {
             game.cards_in_zone(ZoneType::Battlefield, active).to_vec();
         for cid in cards {
             if game.card(cid).exerted {
-                game.card_mut(cid).exerted = false;
+                game.card_mut(cid).clear_exerted();
             } else {
                 let optional_keyword =
                     "You may choose not to untap CARDNAME during your untap step.";
@@ -491,7 +491,7 @@ impl GameLoop {
                 let controller = game.card(effect_id).controller;
                 game.zone_mut(ZoneType::Command, controller)
                     .remove(effect_id);
-                game.cards[effect_id.index()].zone = ZoneType::None;
+                game.card_mut(effect_id).set_zone(ZoneType::None);
             }
         }
 
@@ -504,9 +504,9 @@ impl GameLoop {
             .collect();
         for (card_id, original) in stolen {
             let current = game.card(card_id).controller;
-            game.cards[card_id.index()].original_controller_eot = None;
+            game.card_mut(card_id).clear_original_controller_eot();
             // Remove granted keywords (e.g. Haste from Act of Aggression)
-            game.cards[card_id.index()].granted_keywords.clear();
+            game.card_mut(card_id).clear_granted_keywords();
             if current != original {
                 game.change_controller(card_id, original);
             }
@@ -525,15 +525,17 @@ impl GameLoop {
                 // Must happen first: if the card was animated into a creature but its base
                 // form is not a creature, we still need to reset its type/P/T.
                 if let Some(state) = game.cards[i].animate_state.take() {
-                    game.cards[i].type_line = state.original_type_line;
-                    game.cards[i].base_power = state.original_base_power;
-                    game.cards[i].base_toughness = state.original_base_toughness;
-                    game.cards[i].color = state.original_color;
+                    game.cards[i].restore_animate_snapshot(
+                        state.original_type_line,
+                        state.original_base_power,
+                        state.original_base_toughness,
+                        state.original_color,
+                    );
                     // Clear damage accumulated while animated as a creature.
                     // Without this, damage leaks into the next turn if the
                     // card is re-animated (the is_creature() check below would
                     // miss it since the card is no longer a creature).
-                    game.cards[i].damage = 0;
+                    game.cards[i].clear_damage();
                 }
 
                 if game.cards[i].is_creature() {
@@ -543,24 +545,18 @@ impl GameLoop {
                             &game.cards[i],
                         );
                     if !keep_damage {
-                        game.cards[i].damage = 0;
+                        game.cards[i].clear_damage();
                     }
-                    game.cards[i].power_modifier = 0;
-                    game.cards[i].toughness_modifier = 0;
-                    game.cards[i].pump_keywords.clear();
+                    game.cards[i].reset_turn_modifiers();
+                    game.cards[i].clear_pump_keywords();
                     // Remove triggers added by Animate effects (Supernatural Stamina etc.)
-                    let pump_trigs = game.cards[i].pump_trigger_count;
-                    if pump_trigs > 0 {
-                        let new_len = game.cards[i].triggers.len().saturating_sub(pump_trigs);
-                        game.cards[i].triggers.truncate(new_len);
-                        game.cards[i].pump_trigger_count = 0;
-                    }
-                    game.cards[i].has_deathtouch_damage = false;
+                    game.cards[i].clear_pump_triggers();
+                    game.cards[i].clear_deathtouch_damage();
                     // Reset regeneration shields at end of turn (issue #22).
-                    game.cards[i].regeneration_shields = 0;
+                    game.cards[i].reset_regeneration_shields();
                     // Reset damage prevention shields at end of turn.
                     // Mirrors Java's DamagePreventEffect which exiles Effect cards at EOT.
-                    game.cards[i].damage_prevention = 0;
+                    game.cards[i].reset_shield_count();
                     // Reset per-turn damage history.
                     game.cards[i].damage_history.new_turn();
                 }

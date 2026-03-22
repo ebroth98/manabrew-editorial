@@ -12,9 +12,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .get("IntensifyCount")
             .and_then(|s| s.strip_prefix("Number$").and_then(|n| n.parse::<i32>().ok()))
             .unwrap_or(0);
-        ctx.game.card_mut(sid).svars.insert(
-            "IntensifyCount".to_string(),
-            format!("Number${}", current + 1),
-        );
+        ctx.game
+            .card_mut(sid)
+            .set_s_var("IntensifyCount", format!("Number${}", current + 1));
     }
 }

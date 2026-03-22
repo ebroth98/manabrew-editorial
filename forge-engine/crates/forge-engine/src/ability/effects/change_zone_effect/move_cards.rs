@@ -44,7 +44,9 @@ pub(super) fn move_cards(
 
     // ForgetOtherRemembered$ — clear before processing (Java line 510)
     if sa.param_is_true(keys::FORGET_OTHER_REMEMBERED) {
-        if let Some(sid) = sa.source { ctx.game.card_mut(sid).remembered_cards.clear(); }
+        if let Some(sid) = sa.source {
+            ctx.game.card_mut(sid).clear_remembered();
+        }
     }
 
     let mut moved = Vec::new();
@@ -106,7 +108,9 @@ pub(super) fn move_cards(
             || duration.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT")
         {
             if let Some(sid) = sa.source {
-                for &cid in &moved { ctx.game.card_mut(cid).exiled_by = Some(sid); }
+                for &cid in &moved {
+                    ctx.game.card_mut(cid).set_exiled_by(Some(sid));
+                }
             }
         }
     }

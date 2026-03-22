@@ -28,7 +28,7 @@ pub fn resolve_permanent_common(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Check if it should enter tapped (sneak/dash)
     if sa.param_is_true(keys::SNEAK) || sa.param_is_true(keys::TAPPED) {
-        ctx.game.card_mut(source).tapped = true;
+        ctx.game.card_mut(source).set_tapped(true);
     }
 
     // Move host card to battlefield

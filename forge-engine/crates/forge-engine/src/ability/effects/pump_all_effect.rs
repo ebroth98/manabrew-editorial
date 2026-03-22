@@ -1,6 +1,8 @@
 use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards, parse_param, resolve_numeric_svar, EffectContext};
+use crate::card::perpetual::perpetual_interface::PerpetualInterface;
+use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
@@ -72,6 +74,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get("Duration")
         .map(|d| d.eq_ignore_ascii_case("Perpetual"))
         .unwrap_or(false);
+    let resolve_ts = if is_perpetual {
+        Some(ctx.game.next_effect_timestamp())
+    } else {
+        None
+    };
 
     // Pass 1 — collect matching cards in the target zone
     let player_ids = ctx.game.player_order.clone();
@@ -91,13 +98,27 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue; // already moved
         }
         if is_perpetual {
-            ctx.game.card_mut(card_id).perpetual_power_modifier += att_bonus;
-            ctx.game.card_mut(card_id).perpetual_toughness_modifier += def_bonus;
-        } else {
-            ctx.game.card_mut(card_id).power_modifier += att_bonus;
-            ctx.game.card_mut(card_id).toughness_modifier += def_bonus;
+            let ts = resolve_ts.expect("perpetual resolve timestamp must exist");
+            let card = ctx.game.card_mut(card_id);
+            perpetual_pt_boost::PerpetualPtBoost {
+                timestamp: ts,
+                power: att_bonus,
+                toughness: def_bonus,
+            }
+            .apply_effect(card);
             for kw in &keywords {
-                ctx.game.card_mut(card_id).pump_keywords.add(kw);
+                perpetual_keywords::PerpetualKeywords {
+                    timestamp: ts,
+                    add_keywords: vec![kw.clone()],
+                    remove_keywords: Vec::new(),
+                    remove_all: false,
+                }
+                .apply_effect(card);
+            }
+        } else {
+            ctx.game.card_mut(card_id).add_pt_boost(att_bonus, def_bonus);
+            for kw in &keywords {
+                ctx.game.card_mut(card_id).add_pump_keyword(kw);
             }
         }
     }
@@ -110,7 +131,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -118,7 +139,7 @@ mod tests {
     use crate::trigger::handler::TriggerHandler;
 
     fn make_creature(game: &mut GameState, owner: PlayerId) -> CardId {
-        let c = CardInstance::new(
+        let c = Card::new(
             CardId(0),
             "Bear".into(),
             owner,
@@ -138,7 +159,7 @@ mod tests {
         agents: &'a mut Vec<Box<dyn crate::agent::PlayerAgent>>,
         th: &'a mut TriggerHandler,
         mp: &'a mut Vec<ManaPool>,
-        templates: &'a HashMap<String, CardInstance>,
+        templates: &'a HashMap<String, Card>,
         rng: &'a mut dyn crate::game_rng::GameRng,
     ) -> EffectContext<'a> {
         EffectContext {

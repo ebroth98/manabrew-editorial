@@ -21,6 +21,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for card_id in targets {
         let count = *ctx.game.card(card_id).counters.get(&counter_type).unwrap_or(&0);
         // Store noted value in source's remembered_cmc (used by WithNotedCounters$)
-        ctx.game.card_mut(source_id).remembered_cmc.push(count);
+        ctx.game.card_mut(source_id).add_remembered_cmc(count);
     }
 }

@@ -52,6 +52,14 @@ pub enum TriggerMode {
         /// If true, only triggers when the creature attacks alone (Exalted).
         alone: bool,
     },
+    /// A creature fought another creature.
+    Fight {
+        valid_card: Option<String>,
+    },
+    /// One or more creatures fought (batch event).
+    FightOnce {
+        valid_card: Option<String>,
+    },
     DamageDone {
         valid_source: Option<String>,
         valid_target: Option<String>,
@@ -543,6 +551,28 @@ impl TriggerMode {
                 check_card_filter(
                     valid_card,
                     run_params.attacker,
+                    host_card,
+                    host_controller,
+                    game,
+                )
+            }
+            TriggerMode::Fight { valid_card } => check_card_filter(
+                valid_card,
+                run_params.card,
+                host_card,
+                host_controller,
+                game,
+            ),
+            TriggerMode::FightOnce { valid_card } => {
+                check_card_filter(
+                    valid_card,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) || check_card_filter(
+                    valid_card,
+                    run_params.card2,
                     host_card,
                     host_controller,
                     game,
@@ -1159,6 +1189,14 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
             let alone = params.is_true(keys::ALONE);
             TriggerMode::Attacks { valid_card, alone }
         }
+        "Fight" => {
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            TriggerMode::Fight { valid_card }
+        }
+        "FightOnce" => {
+            let valid_card = params.get_cloned(keys::VALID_CARD);
+            TriggerMode::FightOnce { valid_card }
+        }
         "DamageDone" => {
             let valid_source = params.get_cloned(keys::VALID_SOURCE);
             let valid_target = params.get_cloned(keys::VALID_TARGET);
@@ -1753,6 +1791,34 @@ mod tests {
         if let TriggerMode::Attacks { valid_card, alone } = &t.mode {
             assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
             assert!(!alone);
+        }
+    }
+
+    #[test]
+    fn parse_trigger_fight() {
+        let mut id = 0;
+        let t = parse_trigger(
+            "Mode$ Fight | ValidCard$ Creature.Self | Execute$ TrigFight",
+            &mut id,
+        )
+        .unwrap();
+        assert!(matches!(t.mode, TriggerMode::Fight { .. }));
+        if let TriggerMode::Fight { valid_card } = &t.mode {
+            assert_eq!(valid_card.as_deref(), Some("Creature.Self"));
+        }
+    }
+
+    #[test]
+    fn parse_trigger_fight_once() {
+        let mut id = 0;
+        let t = parse_trigger(
+            "Mode$ FightOnce | ValidCard$ Creature.YouCtrl | Execute$ TrigFight",
+            &mut id,
+        )
+        .unwrap();
+        assert!(matches!(t.mode, TriggerMode::FightOnce { .. }));
+        if let TriggerMode::FightOnce { valid_card } = &t.mode {
+            assert_eq!(valid_card.as_deref(), Some("Creature.YouCtrl"));
         }
     }
 

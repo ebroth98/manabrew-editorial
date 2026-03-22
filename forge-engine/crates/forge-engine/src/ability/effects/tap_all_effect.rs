@@ -56,7 +56,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -64,7 +64,7 @@ mod tests {
     use crate::trigger::handler::TriggerHandler;
 
     fn make_creature(game: &mut GameState, owner: PlayerId) -> CardId {
-        let c = CardInstance::new(
+        let c = Card::new(
             CardId(0),
             "Bear".into(),
             owner,

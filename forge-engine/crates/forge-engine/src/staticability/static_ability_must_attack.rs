@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn must_attack(cards: &[CardInstance], attacker: &CardInstance) -> bool {
+pub fn must_attack(cards: &[Card], attacker: &Card) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
             .static_abilities
@@ -23,11 +23,11 @@ pub fn must_attack(cards: &[CardInstance], attacker: &CardInstance) -> bool {
     false
 }
 
-pub fn entities_must_attack(cards: &[CardInstance], attacker: &CardInstance) -> bool {
+pub fn entities_must_attack(cards: &[Card], attacker: &Card) -> bool {
     must_attack(cards, attacker)
 }
 
-fn matches_valid_creature(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_creature(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     match valid {
         None => card.is_creature(),
         Some(v) if v.eq_ignore_ascii_case("Creature") => card.is_creature(),

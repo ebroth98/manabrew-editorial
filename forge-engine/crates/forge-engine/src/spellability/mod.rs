@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::ability::api_type::ApiType;
 use crate::ability::effects::resolve_defined_players;
 use crate::agent::{PlayerAgent, TargetChoice};
+use crate::card::card_damage_map::CardDamageMap;
+use crate::card::card_zone_table::CardZoneTable;
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -129,6 +131,15 @@ pub struct SpellAbility {
     /// Cards discarded as part of the cost payment.
     /// Mirrors Java's `CostPayment.getPaidList("Discarded")`.
     pub discarded_cost_cards: Vec<crate::ids::CardId>,
+    /// Java parity: batched zone-change table accumulated for `ChangeZoneResolve`.
+    #[serde(skip)]
+    pub change_zone_table: Option<CardZoneTable>,
+    /// Java parity: accumulated damage map for `DamageResolve`.
+    #[serde(skip)]
+    pub damage_map: Option<CardDamageMap>,
+    /// Java parity: accumulated prevented-damage map for `DamageResolve`.
+    #[serde(skip)]
+    pub prevent_map: Option<CardDamageMap>,
 }
 
 impl SpellAbility {
@@ -249,6 +260,9 @@ impl SpellAbility {
             trigger_remembered_amount: 0,
             x_mana_cost_paid: 0,
             discarded_cost_cards: Vec::new(),
+            change_zone_table: None,
+            damage_map: None,
+            prevent_map: None,
         }
     }
 }

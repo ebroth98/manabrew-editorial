@@ -166,6 +166,9 @@ pub fn build_spell_ability(
         trigger_remembered_amount: 0,
         x_mana_cost_paid: 0,
         discarded_cost_cards: Vec::new(),
+        change_zone_table: None,
+        damage_map: None,
+        prevent_map: None,
     }
 }
 

@@ -67,8 +67,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let player1 = ctx.game.card(card1).controller;
     let player2 = ctx.game.card(card2).controller;
 
-    ctx.game.card_mut(card1).controller = player2;
-    ctx.game.card_mut(card2).controller = player1;
+    ctx.game.card_mut(card1).set_controller(player2);
+    ctx.game.card_mut(card2).set_controller(player1);
 
     // RememberExchanged$
     if sa.param_is_true(keys::REMEMBER_EXCHANGED) {

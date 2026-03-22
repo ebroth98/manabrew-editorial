@@ -1,6 +1,6 @@
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 use crate::staticability::parse_static_ability;
@@ -61,7 +61,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let owners = resolve_defined_players(effect_owner_defined, sa.activating_player, ctx.game);
     for owner in owners {
-        let mut effect = CardInstance::new(
+        let mut effect = Card::new(
             CardId(0),
             effect_name.clone(),
             owner,
@@ -73,9 +73,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             vec![],
             vec![],
         );
-        effect.controller = owner;
-        effect.effect_source = Some(source_id);
-        effect.static_abilities = parsed_static_abilities.clone();
+        effect.set_controller(owner);
+        effect.set_effect_source(Some(source_id));
+        effect.set_static_abilities(parsed_static_abilities.clone());
         apply_duration_flags(&mut effect, duration, source_id);
         apply_forget_on_moved_flags(&mut effect, sa);
         apply_remembered(
@@ -91,32 +91,32 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
-fn apply_duration_flags(effect: &mut CardInstance, duration: Option<&str>, source_id: CardId) {
+fn apply_duration_flags(effect: &mut Card, duration: Option<&str>, source_id: CardId) {
     match duration {
         Some("Permanent") => {}
         Some("UntilHostLeavesPlay") => {
-            effect.temp_effect_host = Some(source_id);
+            effect.set_temp_effect_host(Some(source_id));
         }
         Some("UntilHostLeavesPlayOrEOT") => {
-            effect.temp_effect_host = Some(source_id);
-            effect.temp_effect_until_eot = true;
+            effect.set_temp_effect_host(Some(source_id));
+            effect.set_temp_effect_until_eot(true);
         }
         _ => {
             // Java default for EffectEffect: expire at end of turn.
-            effect.temp_effect_until_eot = true;
+            effect.set_temp_effect_until_eot(true);
         }
     }
 }
 
-fn apply_forget_on_moved_flags(effect: &mut CardInstance, sa: &SpellAbility) {
+fn apply_forget_on_moved_flags(effect: &mut Card, sa: &SpellAbility) {
     if let Some(zone) = sa
         .params
         .get(keys::FORGET_ON_MOVED)
         .and_then(|z| parse_zone_name(z))
     {
-        effect.forget_on_moved_origin = Some(zone);
+        effect.set_forget_on_moved_origin(Some(zone));
         // Java forget flow exiles effect when no remembered objects remain.
-        effect.exile_when_no_remembered = true;
+        effect.set_exile_when_no_remembered(true);
     }
 }
 
@@ -134,7 +134,7 @@ fn parse_zone_name(s: &str) -> Option<ZoneType> {
 }
 
 fn apply_remembered(
-    effect: &mut CardInstance,
+    effect: &mut Card,
     sa: &SpellAbility,
     ctx: &EffectContext,
     host_remembered_cards: &[CardId],
@@ -147,29 +147,25 @@ fn apply_remembered(
         match token {
             // Copy the host card's remembered state.
             "Remembered" => {
-                effect
-                    .remembered_cards
-                    .extend(host_remembered_cards.iter().copied());
-                effect
-                    .remembered_players
-                    .extend(host_remembered_players.iter().copied());
+                effect.add_remembered_cards(host_remembered_cards.iter().copied());
+                effect.add_remembered_players(host_remembered_players.iter().copied());
             }
             // Remember targeted card (or parent targeted card for sub-abilities).
             "Targeted" => {
                 if let Some(cid) = sa.target_chosen.target_card.or(ctx.parent_target_card) {
-                    effect.remembered_cards.push(cid);
+                    effect.add_remembered_card(cid);
                 }
             }
             // Remember targeted player.
             "TargetedPlayer" => {
                 if let Some(pid) = sa.target_chosen.target_player {
-                    effect.remembered_players.push(pid);
+                    effect.add_remembered_player(pid);
                 }
             }
             // Basic Defined$ fallback for common player references.
             other => {
                 if let Some(pid) = resolve_defined_player(other, sa.activating_player, ctx.game) {
-                    effect.remembered_players.push(pid);
+                    effect.add_remembered_player(pid);
                 }
             }
         }
@@ -181,7 +177,7 @@ mod tests {
     use super::*;
     use crate::ability::effects::EffectContext;
     use crate::agent::{PassAgent, PlayerAgent};
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -193,7 +189,7 @@ mod tests {
         let mut game = GameState::new(&["P0", "P1"], 20);
         let p0 = PlayerId(0);
 
-        let mut host = CardInstance::new(
+        let mut host = Card::new(
             CardId(0),
             "Winding Canyons".to_string(),
             p0,
@@ -205,9 +201,9 @@ mod tests {
             vec![],
             vec![],
         );
-        host.svars.insert(
-            "GiveFlash".to_string(),
-            "Mode$ CastWithFlash | ValidCard$ Creature | ValidSA$ Spell | Caster$ You".to_string(),
+        host.set_s_var(
+            "GiveFlash",
+            "Mode$ CastWithFlash | ValidCard$ Creature | ValidSA$ Spell | Caster$ You",
         );
         let host_id = game.create_card(host);
         game.move_card(host_id, ZoneType::Battlefield, p0);
@@ -243,7 +239,7 @@ mod tests {
 
         let mut spell_abilities = Vec::new();
         spell_abilities.push("SP$ Permanent | Cost$ 1 G".to_string());
-        let fake_creature = CardInstance::new(
+        let fake_creature = Card::new(
             CardId(999),
             "Bear".to_string(),
             p0,

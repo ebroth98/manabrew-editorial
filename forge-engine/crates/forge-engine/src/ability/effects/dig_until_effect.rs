@@ -107,7 +107,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .zone_mut(ZoneType::Library, owner)
                 .cards
                 .insert(0, id);
-            ctx.game.cards[id.index()].zone = ZoneType::Library;
+            ctx.game.card_mut(id).set_zone(ZoneType::Library);
         } else {
             ctx.game.move_card(id, revealed_dest, owner);
             emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, revealed_dest);

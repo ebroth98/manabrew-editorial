@@ -13,7 +13,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let current_level = ctx.game.card(host_id).class_level;
     let new_level = current_level + 1;
 
-    ctx.game.card_mut(host_id).class_level = new_level;
+    ctx.game.card_mut(host_id).set_class_level(new_level);
 
     // Re-register triggers for the card at its new level
     ctx.trigger_handler

@@ -1,11 +1,11 @@
-//! Alternative cost getters for CardInstance.
+//! Alternative cost getters for Card.
 //!
 //! These methods extract cost information from keywords following the "Keyword:cost" pattern.
 //! They're used by the casting/playability system to present alternative casting options.
 
-use super::CardInstance;
+use super::Card;
 
-impl CardInstance {
+impl Card {
     // ── Keyword cost helpers (pattern: "Keyword:cost_string") ────────
 
     /// Get buyback cost (e.g. "Buyback:2" → Some("2")).

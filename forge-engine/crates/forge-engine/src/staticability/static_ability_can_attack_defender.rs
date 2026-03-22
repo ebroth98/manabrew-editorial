@@ -1,14 +1,14 @@
 use forge_foundation::ZoneType;
 
 use crate::ability::effects::parse_counter_type;
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn can_attack_defender(
-    cards: &[CardInstance],
-    card: &CardInstance,
+    cards: &[Card],
+    card: &Card,
     defender: PlayerId,
 ) -> bool {
     for source in cards
@@ -40,7 +40,7 @@ pub fn can_attack_defender(
     false
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     let filter = match valid {
         None => return true,
         Some(v) => v,
@@ -86,7 +86,7 @@ fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardIns
 
 /// Check a counter condition like "counters_GE3_P1P1".
 /// Format: counters_{op}{num}_{counter_type}
-fn check_counter_condition(condition: &str, card: &CardInstance) -> bool {
+fn check_counter_condition(condition: &str, card: &Card) -> bool {
     // Strip "counters_" prefix
     let rest = &condition["counters_".len()..];
     // Extract operator (2 chars: GE, GT, LE, LT, EQ, NE)

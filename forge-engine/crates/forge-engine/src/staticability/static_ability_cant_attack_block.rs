@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
@@ -59,8 +59,8 @@ fn nearest_opponent_in_direction(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.cantAttack()`.
 pub fn cant_attack(
     game: &GameState,
-    cards: &[CardInstance],
-    attacker: &CardInstance,
+    cards: &[Card],
+    attacker: &Card,
     defender: PlayerId,
 ) -> bool {
     // Keywords — replace with static ability if able
@@ -93,10 +93,10 @@ pub fn cant_attack(
 pub fn apply_cant_attack_ability(
     game: &GameState,
     st_ab: &StaticAbility,
-    card: &CardInstance,
-    source: &CardInstance,
+    card: &Card,
+    source: &Card,
     defender: PlayerId,
-    cards: &[CardInstance],
+    cards: &[Card],
 ) -> bool {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
         return false;
@@ -156,8 +156,8 @@ pub fn apply_cant_attack_ability(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.canAttackDefender()`.
 pub fn can_attack_defender(
     game: &GameState,
-    cards: &[CardInstance],
-    card: &CardInstance,
+    cards: &[Card],
+    card: &Card,
     defender: PlayerId,
 ) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
@@ -177,8 +177,8 @@ pub fn can_attack_defender(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyCanAttackDefenderAbility()`.
 pub fn apply_can_attack_defender_ability(
     st_ab: &StaticAbility,
-    card: &CardInstance,
-    source: &CardInstance,
+    card: &Card,
+    source: &Card,
     defender: PlayerId,
 ) -> bool {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
@@ -201,7 +201,7 @@ pub fn apply_can_attack_defender_ability(
 
 /// Check if a creature can't block.
 /// Mirrors Java's `StaticAbilityCantAttackBlock.cantBlock()`.
-pub fn cant_block(game: &GameState, cards: &[CardInstance], blocker: &CardInstance) -> bool {
+pub fn cant_block(game: &GameState, cards: &[Card], blocker: &Card) -> bool {
     // Detained check
     if blocker.detained {
         return true;
@@ -225,8 +225,8 @@ pub fn cant_block(game: &GameState, cards: &[CardInstance], blocker: &CardInstan
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyCantBlockAbility()`.
 pub fn apply_cant_block_ability(
     st_ab: &StaticAbility,
-    blocker: &CardInstance,
-    source: &CardInstance,
+    blocker: &Card,
+    source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), blocker, source) {
         return false;
@@ -246,9 +246,9 @@ pub fn apply_cant_block_ability(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.cantBlockBy()`.
 pub fn cant_block_by(
     game: &GameState,
-    cards: &[CardInstance],
-    attacker: &CardInstance,
-    blocker: Option<&CardInstance>,
+    cards: &[Card],
+    attacker: &Card,
+    blocker: Option<&Card>,
 ) -> bool {
     // Java builds list from STATIC_ABILITIES_SOURCE_ZONES + attacker + blocker (for LKI)
     for source in cards.iter().filter(|c| {
@@ -274,10 +274,10 @@ pub fn cant_block_by(
 pub fn apply_cant_block_by_ability(
     game: &GameState,
     st_ab: &StaticAbility,
-    attacker: &CardInstance,
-    blocker: Option<&CardInstance>,
-    source: &CardInstance,
-    cards: &[CardInstance],
+    attacker: &Card,
+    blocker: Option<&Card>,
+    source: &Card,
+    cards: &[Card],
 ) -> bool {
     if !valid_filter::matches_valid_card_opt(
         st_ab.params.get(keys::VALID_ATTACKER),
@@ -376,9 +376,9 @@ pub fn apply_cant_block_by_ability(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.canBlockIfReach()`.
 pub fn can_block_if_reach(
     game: &GameState,
-    cards: &[CardInstance],
-    attacker: &CardInstance,
-    blocker: &CardInstance,
+    cards: &[Card],
+    attacker: &Card,
+    blocker: &Card,
 ) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
         for st_ab in source
@@ -397,9 +397,9 @@ pub fn can_block_if_reach(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyCanBlockIfReachAbility()`.
 pub fn apply_can_block_if_reach_ability(
     st_ab: &StaticAbility,
-    attacker: &CardInstance,
-    blocker: &CardInstance,
-    source: &CardInstance,
+    attacker: &Card,
+    blocker: &Card,
+    source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_opt(
         st_ab.params.get(keys::VALID_ATTACKER),
@@ -422,7 +422,7 @@ pub fn apply_can_block_if_reach_ability(
 
 /// Check if tapped creatures can block.
 /// Mirrors Java's `StaticAbilityCantAttackBlock.canBlockTapped()`.
-pub fn can_block_tapped(game: &GameState, cards: &[CardInstance], card: &CardInstance) -> bool {
+pub fn can_block_tapped(game: &GameState, cards: &[Card], card: &Card) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
         for st_ab in source
             .static_abilities
@@ -440,8 +440,8 @@ pub fn can_block_tapped(game: &GameState, cards: &[CardInstance], card: &CardIns
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyBlockTapped()`.
 fn apply_block_tapped(
     st_ab: &StaticAbility,
-    card: &CardInstance,
-    source: &CardInstance,
+    card: &Card,
+    source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
         return false;
@@ -455,8 +455,8 @@ fn apply_block_tapped(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.canAttackHaste()`.
 pub fn can_attack_haste(
     game: &GameState,
-    cards: &[CardInstance],
-    attacker: &CardInstance,
+    cards: &[Card],
+    attacker: &Card,
     _defender: PlayerId,
 ) -> bool {
     // If the creature is not summoning sick, it can always attack (no need to check statics)
@@ -481,9 +481,9 @@ pub fn can_attack_haste(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyCanAttackHasteAbility()`.
 pub fn apply_can_attack_haste_ability(
     st_ab: &StaticAbility,
-    card: &CardInstance,
+    card: &Card,
     defender: PlayerId,
-    source: &CardInstance,
+    source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
         return false;
@@ -507,8 +507,8 @@ pub fn apply_can_attack_haste_ability(
 /// Returns (min, max). Mirrors Java's `StaticAbilityCantAttackBlock.getMinMaxBlocker()`.
 pub fn get_min_max_blocker(
     game: &GameState,
-    cards: &[CardInstance],
-    attacker: &CardInstance,
+    cards: &[Card],
+    attacker: &Card,
     _defender: PlayerId,
 ) -> (i32, i32) {
     let mut min: i32 = 1;
@@ -535,10 +535,10 @@ pub fn get_min_max_blocker(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyMinMaxBlockerAbility()`.
 pub fn apply_min_max_blocker_ability(
     st_ab: &StaticAbility,
-    attacker: &CardInstance,
-    source: &CardInstance,
+    attacker: &Card,
+    source: &Card,
     defender: PlayerId,
-    cards: &[CardInstance],
+    cards: &[Card],
     min: &mut i32,
     max: &mut i32,
 ) {
@@ -577,7 +577,7 @@ pub fn apply_min_max_blocker_ability(
 
 /// Check if attacker has vigilance from a static ability (doesn't tap when attacking).
 /// Mirrors Java's `StaticAbilityCantAttackBlock.attackVigilance()`.
-pub fn attack_vigilance(game: &GameState, cards: &[CardInstance], card: &CardInstance) -> bool {
+pub fn attack_vigilance(game: &GameState, cards: &[Card], card: &Card) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
         for st_ab in source
             .static_abilities
@@ -595,8 +595,8 @@ pub fn attack_vigilance(game: &GameState, cards: &[CardInstance], card: &CardIns
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyAttackVigilanceAbility()`.
 pub fn apply_attack_vigilance_ability(
     st_ab: &StaticAbility,
-    card: &CardInstance,
-    source: &CardInstance,
+    card: &Card,
+    source: &Card,
 ) -> bool {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
         return false;
@@ -611,9 +611,9 @@ pub fn apply_attack_vigilance_ability(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.getAttackCost()`.
 pub fn get_attack_cost(
     st_ab: &StaticAbility,
-    attacker: &CardInstance,
+    attacker: &Card,
     target: PlayerId,
-    source: &CardInstance,
+    source: &Card,
 ) -> Option<String> {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), attacker, source) {
         return None;
@@ -659,9 +659,9 @@ pub fn get_attack_cost(
 /// Mirrors Java's `StaticAbilityCantAttackBlock.getBlockCost()`.
 pub fn get_block_cost(
     st_ab: &StaticAbility,
-    blocker: &CardInstance,
+    blocker: &Card,
     attacker_player: PlayerId,
-    source: &CardInstance,
+    source: &Card,
 ) -> Option<String> {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), blocker, source) {
         return None;
@@ -697,7 +697,7 @@ pub fn get_block_cost(
     Some(cost_string)
 }
 
-fn resolve_amount_expr(game: Option<&GameState>, source: &CardInstance, expr: &str) -> Option<i32> {
+fn resolve_amount_expr(game: Option<&GameState>, source: &Card, expr: &str) -> Option<i32> {
     if let Ok(v) = expr.parse::<i32>() {
         return Some(v);
     }

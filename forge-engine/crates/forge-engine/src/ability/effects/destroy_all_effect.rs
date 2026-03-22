@@ -90,7 +90,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -98,7 +98,7 @@ mod tests {
     use crate::trigger::handler::TriggerHandler;
 
     fn make_creature(game: &mut GameState, owner: PlayerId, keywords: Vec<String>) -> CardId {
-        let c = CardInstance::new(
+        let c = Card::new(
             CardId(0),
             "Bear".into(),
             owner,
@@ -118,7 +118,7 @@ mod tests {
         agents: &'a mut Vec<Box<dyn crate::agent::PlayerAgent>>,
         trigger_handler: &'a mut TriggerHandler,
         mana_pools: &'a mut Vec<ManaPool>,
-        token_templates: &'a HashMap<String, CardInstance>,
+        token_templates: &'a HashMap<String, Card>,
         rng: &'a mut dyn crate::game_rng::GameRng,
     ) -> EffectContext<'a> {
         EffectContext {

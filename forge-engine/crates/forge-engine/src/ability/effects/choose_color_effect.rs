@@ -49,12 +49,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Clear previous choices on source card
-    ctx.game.card_mut(source_id).chosen_colors.clear();
+    ctx.game.card_mut(source_id).clear_chosen_colors();
 
     for player in players {
         ctx.agents[player.index()].snapshot_state(ctx.game, ctx.mana_pools);
         if let Some(chosen) = ctx.agents[player.index()].choose_color(player, &valid_colors) {
-            ctx.game.card_mut(source_id).chosen_colors.push(chosen);
+            ctx.game.card_mut(source_id).add_chosen_color(chosen);
         }
     }
 }

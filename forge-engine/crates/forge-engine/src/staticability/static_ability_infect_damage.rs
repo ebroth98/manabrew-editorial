@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::compare::compare_expr;
@@ -9,7 +9,7 @@ use crate::staticability::StaticMode;
 
 pub fn is_infect_damage(
     game: &GameState,
-    cards: &[CardInstance],
+    cards: &[Card],
     target: PlayerId,
     source_controller: PlayerId,
 ) -> bool {
@@ -18,7 +18,7 @@ pub fn is_infect_damage(
 
 pub fn is_infect_damage_with_life_override(
     game: &GameState,
-    cards: &[CardInstance],
+    cards: &[Card],
     target: PlayerId,
     _source_controller: PlayerId,
     target_life_override: Option<i32>,
@@ -50,7 +50,7 @@ pub fn is_infect_damage_with_life_override(
 
 fn condition_matches(
     game: &GameState,
-    source: &CardInstance,
+    source: &Card,
     st_ab: &crate::staticability::StaticAbility,
     life_override: Option<i32>,
 ) -> bool {

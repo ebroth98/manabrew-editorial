@@ -653,7 +653,7 @@ mod tests {
     use super::*;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
 
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::ids::{CardId, PlayerId};
 
     // ── Test helpers ──────────────────────────────────────────────────────
@@ -668,7 +668,7 @@ mod tests {
         name: &str,
         abilities: Vec<String>,
     ) -> CardId {
-        let card = CardInstance::new(
+        let card = Card::new(
             CardId(0), // placeholder; create_card assigns real ID
             name.to_string(),
             owner,

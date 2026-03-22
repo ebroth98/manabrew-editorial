@@ -321,6 +321,36 @@ export default function Settings() {
             </p>
           </div>
 
+          <div className="space-y-2">
+            <Label>Hand Card Size</Label>
+            <div className="flex items-center gap-2">
+              <Button
+                variant={prefs.handSize === "small" ? "default" : "outline"}
+                size="sm"
+                onClick={() => prefs.setHandSize("small")}
+              >
+                Small
+              </Button>
+              <Button
+                variant={prefs.handSize === "medium" ? "default" : "outline"}
+                size="sm"
+                onClick={() => prefs.setHandSize("medium")}
+              >
+                Medium
+              </Button>
+              <Button
+                variant={prefs.handSize === "large" ? "default" : "outline"}
+                size="sm"
+                onClick={() => prefs.setHandSize("large")}
+              >
+                Large
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Controls the size of cards displayed in your hand.
+            </p>
+          </div>
+
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">Game Animations</h2>
 

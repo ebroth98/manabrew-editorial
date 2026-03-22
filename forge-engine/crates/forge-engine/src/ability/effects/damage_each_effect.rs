@@ -1,6 +1,7 @@
 use forge_foundation::ZoneType;
 
 use super::{matches_valid_cards, parse_param, resolve_numeric_svar, EffectContext};
+use crate::card::card_damage_map::DamageTarget;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
@@ -16,6 +17,11 @@ use crate::spellability::SpellAbility;
 /// A:SP$ EachDamage | ValidCards$ Creature.YouCtrl | NumDmg$ X
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
+    let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
+    if sa.params.has("DamageMap") {
+        ctx.game.ensure_pending_damage_maps();
+    }
+
     let valid_filter = sa
         .params
         .get("ValidCards")
@@ -57,19 +63,25 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue;
         }
 
-        // Deal damage to the target player
-        ctx.game.deal_damage_to_player(target_player, dmg);
+        if use_damage_map {
+            if let Some(map) = ctx.game.pending_damage_map.as_mut() {
+                map.put(card_id, DamageTarget::Player(target_player), dmg);
+            }
+        } else {
+            // Deal damage to the target player
+            ctx.game.deal_damage_to_player(target_player, dmg);
 
-        ctx.trigger_handler.run_trigger(
-            crate::event::TriggerType::DamageDone,
-            crate::event::RunParams {
-                damage_source: Some(card_id),
-                damage_target_player: Some(target_player),
-                damage_amount: Some(dmg),
-                is_combat_damage: Some(false),
-                ..Default::default()
-            },
-            false,
-        );
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::DamageDone,
+                crate::event::RunParams {
+                    damage_source: Some(card_id),
+                    damage_target_player: Some(target_player),
+                    damage_amount: Some(dmg),
+                    is_combat_damage: Some(false),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
     }
 }

@@ -143,7 +143,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .map(|s| s.eq_ignore_ascii_case("True"))
         .unwrap_or(false)
     {
-        ctx.game.card_mut(card_id).is_renowned = true;
+        ctx.game.card_mut(card_id).set_renowned(true);
     }
 
     // Fire CounterAdded trigger
@@ -160,7 +160,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     );
 
     if is_monstrosity {
-        ctx.game.card_mut(card_id).monstrous = true;
+        ctx.game.card_mut(card_id).set_monstrous(true);
         ctx.trigger_handler.run_trigger(
             TriggerType::BecomeMonstrous,
             RunParams {
@@ -181,7 +181,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::{CardInstance, CounterType};
+    use crate::card::{Card, CounterType};
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -189,7 +189,7 @@ mod tests {
     use crate::trigger::handler::TriggerHandler;
 
     fn make_creature(game: &mut GameState, owner: PlayerId, name: &str) -> CardId {
-        let card = CardInstance::new(
+        let card = Card::new(
             CardId(0),
             name.to_string(),
             owner,
@@ -209,7 +209,7 @@ mod tests {
         agents: &'a mut Vec<Box<dyn crate::agent::PlayerAgent>>,
         trigger_handler: &'a mut TriggerHandler,
         mana_pools: &'a mut Vec<ManaPool>,
-        token_templates: &'a HashMap<String, CardInstance>,
+        token_templates: &'a HashMap<String, Card>,
         rng: &'a mut dyn crate::game_rng::GameRng,
     ) -> EffectContext<'a> {
         EffectContext {
@@ -272,7 +272,7 @@ mod tests {
         let p0 = PlayerId(0);
         let clay_golem = make_creature(&mut game, p0, "Clay Golem");
         game.move_card(clay_golem, ZoneType::Battlefield, p0);
-        game.card_mut(clay_golem).monstrous = true;
+        game.card_mut(clay_golem).set_monstrous(true);
 
         game.move_card(clay_golem, ZoneType::Hand, p0);
 

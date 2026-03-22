@@ -85,15 +85,14 @@ fn manifest_single_card(
     let old_zone = ctx.game.card(card_id).zone;
 
     // Turn face down
-    ctx.game.card_mut(card_id).face_down = true;
-    ctx.game.card_mut(card_id).manifested = true;
+    ctx.game.card_mut(card_id).set_face_down(true);
+    ctx.game.card_mut(card_id).set_manifested(true);
 
     // Set as 2/2 creature while face-down
-    ctx.game.card_mut(card_id).base_power = Some(2);
-    ctx.game.card_mut(card_id).base_toughness = Some(2);
+    ctx.game.card_mut(card_id).set_base_pt(Some(2), Some(2));
 
     // Move to battlefield under the player's control
-    ctx.game.card_mut(card_id).controller = player;
+    ctx.game.card_mut(card_id).set_controller(player);
     ctx.game.move_card(card_id, ZoneType::Battlefield, player);
 
     ctx.trigger_handler

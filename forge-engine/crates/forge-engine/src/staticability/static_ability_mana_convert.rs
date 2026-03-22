@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
@@ -13,9 +13,9 @@ use crate::staticability::StaticMode;
 /// Returns true if any active ManaConvert static on the battlefield allows
 /// the player to spend mana freely for the given card.
 pub fn can_spend_mana_as_any_color(
-    cards: &[CardInstance],
+    cards: &[Card],
     player: PlayerId,
-    spell_card: &CardInstance,
+    spell_card: &Card,
 ) -> bool {
     for source in cards
         .iter()
@@ -52,18 +52,18 @@ pub fn can_spend_mana_as_any_color(
 }
 
 pub fn mana_convert(
-    cards: &[CardInstance],
+    cards: &[Card],
     player: PlayerId,
-    spell_card: &CardInstance,
+    spell_card: &Card,
 ) -> bool {
     can_spend_mana_as_any_color(cards, player, spell_card)
 }
 
 pub fn check_mana_convert(
     st_ab: &crate::staticability::StaticAbility,
-    source: &CardInstance,
+    source: &Card,
     player: PlayerId,
-    spell_card: &CardInstance,
+    spell_card: &Card,
 ) -> bool {
     if let Some(valid_player) = st_ab.params.get(keys::VALID_PLAYER) {
         if !matches_valid_player(valid_player, player, source) {
@@ -81,7 +81,7 @@ pub fn check_mana_convert(
         .is_some_and(|conversion| conversion.contains("AnyColor") || conversion.contains("AnyType"))
 }
 
-fn matches_valid_player(valid: &str, player: PlayerId, source: &CardInstance) -> bool {
+fn matches_valid_player(valid: &str, player: PlayerId, source: &Card) -> bool {
     for part in valid.split(',') {
         match part.trim() {
             "You" => {
@@ -96,7 +96,7 @@ fn matches_valid_player(valid: &str, player: PlayerId, source: &CardInstance) ->
     false
 }
 
-fn matches_valid_card(valid: &str, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
     for part in valid.split(',') {
         let part = part.trim();
         if part == "Card" || part == "Spell" {

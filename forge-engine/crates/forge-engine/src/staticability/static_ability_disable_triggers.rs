@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::event::RunParams;
 use crate::game::GameState;
 use crate::parsing::keys;
@@ -182,6 +182,8 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::Phase { .. } => "Phase",
         crate::trigger::TriggerMode::SpellCast { .. } => "SpellCast",
         crate::trigger::TriggerMode::Attacks { .. } => "Attacks",
+        crate::trigger::TriggerMode::Fight { .. } => "Fight",
+        crate::trigger::TriggerMode::FightOnce { .. } => "FightOnce",
         crate::trigger::TriggerMode::DamageDone { .. } => "DamageDone",
         crate::trigger::TriggerMode::Countered { .. } => "Countered",
         crate::trigger::TriggerMode::Blocks { .. } => "Blocks",
@@ -262,16 +264,16 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
     }
 }
 
-fn matches_valid_card(valid: &str, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
     valid_filter::matches_valid_card(valid, card, source)
 }
 
 fn matches_valid_card_for_controller(
     valid: &str,
-    card: &CardInstance,
+    card: &Card,
     source_controller: crate::ids::PlayerId,
 ) -> bool {
-    // Create a temporary CardInstance with the controller for matching
+    // Create a temporary Card with the controller for matching
     // For disable triggers, we just need the controller, so we use a dummy source
     let mut dummy_source = card.clone();
     dummy_source.controller = source_controller;

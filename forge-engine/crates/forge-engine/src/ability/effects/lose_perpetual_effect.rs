@@ -6,20 +6,37 @@ use super::EffectContext;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    // Digital-only: remove a perpetual effect from the host card.
-    // In our engine, perpetual effects are tracked as svars on the card.
-    if let Some(source) = sa.source {
-        // Remove perpetual markers — clear any perpetual-prefixed svars
-        let perpetual_keys: Vec<String> = ctx
+    let Some(host_id) = sa.source else {
+        return;
+    };
+
+    // Java parity: this effect currently removes perpetual changes that were
+    // associated with the trigger currently resolving.
+    if let Some(trigger_index) = sa.trigger_index {
+        let trigger_id = match ctx.game.card(host_id).triggers.get(trigger_index) {
+            Some(t) => t.id,
+            None => return,
+        };
+
+        let to_remove: Vec<(i64, i64)> = ctx
             .game
-            .card(source)
-            .svars
-            .keys()
-            .filter(|k| k.starts_with("Perpetual"))
-            .cloned()
+            .card(host_id)
+            .changed_card_traits
+            .iter()
+            .filter_map(|(key, layer)| {
+                if layer.triggers.iter().any(|t| t.id == trigger_id) {
+                    Some(*key)
+                } else {
+                    None
+                }
+            })
             .collect();
-        for key in perpetual_keys {
-            ctx.game.card_mut(source).svars.remove(&key);
+
+        for (timestamp, static_id) in to_remove {
+            ctx.game
+                .card_mut(host_id)
+                .remove_changed_card_traits(timestamp, static_id);
+            ctx.game.card_mut(host_id).remove_perpetual(timestamp);
         }
     }
 }

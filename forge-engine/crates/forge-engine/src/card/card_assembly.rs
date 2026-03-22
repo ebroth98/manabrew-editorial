@@ -1,11 +1,11 @@
 //! Card assembly pipeline — separates parsing from behavior rewrites.
 //!
-//! Splits the old monolithic `CardInstance::from_rules` into three phases:
+//! Splits the old monolithic `Card::from_rules` into three phases:
 //!
 //! 1. **`parse_card_components`** — pure parsing, no side effects
 //! 2. **`synthesize_derived`** — behavior rewrites (SpellCastOrCopy duplication,
 //!    AlternativeCost keyword extraction, Exert trigger synthesis)
-//! 3. **`assemble_card`** — combines components into a `CardInstance`
+//! 3. **`assemble_card`** — combines components into a `Card`
 //!
 //! This mirrors Java's separation between `AbilityFactory` (parsing),
 //! `TriggerHandler` (registration), and `Card` (construction).
@@ -18,9 +18,10 @@ use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::staticability::{parse_static_ability, StaticAbility};
 use crate::trigger::{parse_trigger, Trigger};
 
-use super::{
-    parse_gainlife_alt_cost_keyword, parse_sacrifice_alt_cost_keyword, CardInstance, CardOtherPart,
+use super::card_factory_util::{
+    parse_gainlife_alt_cost_keyword, parse_sacrifice_alt_cost_keyword,
 };
+use super::{Card, CardOtherPart};
 
 // ── Phase 1: Parse ──────────────────────────────────────────────────────────
 
@@ -137,15 +138,15 @@ pub(crate) fn synthesize_derived(
 
 // ── Phase 3: Assemble ───────────────────────────────────────────────────────
 
-/// Phase 3: Combine parsed + synthesized components into a `CardInstance`.
+/// Phase 3: Combine parsed + synthesized components into a `Card`.
 pub(crate) fn assemble_card(
     rules: &CardRules,
     owner: PlayerId,
     components: ParsedComponents,
-) -> CardInstance {
+) -> Card {
     let face = &rules.main_part;
 
-    let mut card = CardInstance::new(
+    let mut card = Card::new(
         CardId(0),
         face.name.clone(),
         owner,
@@ -158,20 +159,28 @@ pub(crate) fn assemble_card(
         face.abilities.clone(),
     );
 
-    // Append parsed triggers to keyword-generated ones
-    card.triggers.extend(components.triggers);
+    // Append parsed triggers to keyword-generated ones.
+    for trig in components.triggers {
+        card.add_trigger(trig);
+    }
 
     // Merge card-text SVars (keyword-generated SVars already set by constructor)
     for (k, v) in &face.svars {
         card.svars.entry(k.clone()).or_insert_with(|| v.clone());
     }
 
-    // Add parsed static abilities and replacement effects
-    card.static_abilities.extend(components.static_abilities);
-    card.replacement_effects.extend(components.replacement_effects);
+    // Add parsed static abilities and replacement effects.
+    for sa in components.static_abilities {
+        card.add_static_ability(sa);
+    }
+    for re in components.replacement_effects {
+        card.add_replacement_effect(re);
+    }
 
-    // Add synthetic alt-cost keywords
-    card.keywords.extend(components.alt_cost_keywords);
+    // Add synthetic alt-cost keywords.
+    for kw in components.alt_cost_keywords {
+        card.add_intrinsic_keyword(&kw);
+    }
 
     // Double-faced cards
     if rules.split_type.is_dual_faced() {

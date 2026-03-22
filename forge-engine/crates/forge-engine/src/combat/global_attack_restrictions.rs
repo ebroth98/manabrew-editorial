@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::DefenderId;
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::{CardId, PlayerId};
 use crate::staticability::static_ability_attack_restrict;
 
@@ -39,7 +39,7 @@ impl GlobalAttackRestrictions {
     /// battlefield. Mirrors Java's
     /// `GlobalAttackRestrictions.getGlobalRestrictions()`.
     pub fn get_global_restrictions(
-        cards: &[CardInstance],
+        cards: &[Card],
         attacking_player: PlayerId,
         possible_defenders: &[DefenderId],
     ) -> Self {

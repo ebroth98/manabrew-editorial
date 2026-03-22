@@ -44,6 +44,9 @@ impl GameState {
         // Tokens and copy-tokens cease to exist when leaving the battlefield (CR 110.5g).
         // Set zone to None (limbo) and remove from source zone without adding to destination.
         if card.is_token && dest_zone != ZoneType::Battlefield {
+            if let Some(table) = self.pending_change_zone_table.as_mut() {
+                table.put(Some(src_zone), Some(ZoneType::None), card_id);
+            }
             let mut exile_effects = Vec::new();
             for eff_id in forget_effects.iter().copied() {
                 let eff = &mut self.cards[eff_id.index()];
@@ -74,6 +77,10 @@ impl GameState {
 
         // Update card's zone
         self.cards[card_id.index()].zone = dest_zone;
+
+        if let Some(table) = self.pending_change_zone_table.as_mut() {
+            table.put(Some(src_zone), Some(dest_zone), card_id);
+        }
 
         // Assign a zone timestamp so same-player triggers are ordered by
         // zone entry order (matching Java's Zone.cardList insertion order).
@@ -209,12 +216,7 @@ impl GameState {
                 // Without this, a creature that dies-and-returns would still
                 // carry the trigger, making it "immortal" for the rest of the
                 // turn.
-                let pump_trigs = card.pump_trigger_count;
-                if pump_trigs > 0 {
-                    let new_len = card.triggers.len().saturating_sub(pump_trigs);
-                    card.triggers.truncate(new_len);
-                    card.pump_trigger_count = 0;
-                }
+                card.clear_pump_triggers();
             }
             ZoneType::Command => {
                 // Detach any attachments before resetting state.
@@ -784,11 +786,11 @@ impl GameState {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
 
     fn make_creature(game: &mut GameState, name: &str, owner: PlayerId, p: i32, t: i32) -> CardId {
-        let card = CardInstance::new(
+        let card = Card::new(
             CardId(0),
             name.to_string(),
             owner,

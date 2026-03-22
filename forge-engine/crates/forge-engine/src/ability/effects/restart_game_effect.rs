@@ -80,13 +80,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Move all collected cards to library
         for card_id in cards_to_move {
             // Reset card state
-            ctx.game.card_mut(card_id).tapped = false;
-            ctx.game.card_mut(card_id).face_down = false;
-            ctx.game.card_mut(card_id).counters.clear();
-            ctx.game.card_mut(card_id).power_modifier = 0;
-            ctx.game.card_mut(card_id).toughness_modifier = 0;
-            ctx.game.card_mut(card_id).controller = player_id;
-            ctx.game.card_mut(card_id).keywords.clear();
+            ctx.game.card_mut(card_id).set_tapped(false);
+            ctx.game.card_mut(card_id).set_face_down(false);
+            ctx.game.card_mut(card_id).clear_counters();
+            ctx.game.card_mut(card_id).set_power_modifier(0);
+            ctx.game.card_mut(card_id).set_toughness_modifier(0);
+            ctx.game.card_mut(card_id).set_controller(player_id);
+            ctx.game.card_mut(card_id).clear_intrinsic_keywords();
             ctx.game
                 .move_card(card_id, ZoneType::Library, player_id);
         }

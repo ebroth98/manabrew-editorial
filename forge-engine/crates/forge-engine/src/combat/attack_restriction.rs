@@ -2,7 +2,7 @@ use std::collections::HashSet;
 
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
@@ -11,7 +11,7 @@ pub use super::attack_restriction_type::AttackRestrictionType;
 
 /// Parse attack restrictions from a creature's keywords.
 /// Mirrors Java's `AttackRestriction.setRestrictions()` — matches exact keyword strings.
-pub fn get_restrictions(card: &CardInstance) -> HashSet<AttackRestrictionType> {
+pub fn get_restrictions(card: &Card) -> HashSet<AttackRestrictionType> {
     let mut restrictions = HashSet::new();
 
     for kw in card
@@ -88,7 +88,7 @@ pub fn get_restrictions(card: &CardInstance) -> HashSet<AttackRestrictionType> {
 
 /// Check if a creature can attack given its restrictions and the number of
 /// other attackers. Mirrors Java's `AttackRestriction.canAttack()`.
-pub fn can_attack(card: &CardInstance, num_attackers: usize) -> bool {
+pub fn can_attack(card: &Card, num_attackers: usize) -> bool {
     let restrictions = get_restrictions(card);
 
     if restrictions.contains(&AttackRestrictionType::Never) {
@@ -113,7 +113,7 @@ pub fn can_attack(card: &CardInstance, num_attackers: usize) -> bool {
 /// against the set of all chosen attackers (not just battlefield state).
 pub fn validate_attack_restrictions(
     attackers: &[CardId],
-    cards: &[CardInstance],
+    cards: &[Card],
 ) -> HashSet<CardId> {
     let mut illegal = HashSet::new();
     let num_attackers = attackers.len();

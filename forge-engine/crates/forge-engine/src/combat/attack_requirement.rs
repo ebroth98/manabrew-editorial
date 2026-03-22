@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use super::DefenderId;
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::{CardId, PlayerId};
 use crate::staticability::static_ability_must_attack;
 
@@ -71,7 +71,7 @@ impl AttackRequirement {
 /// 1. Static abilities with `MustAttack` mode (existing `must_attack()` check)
 /// 2. Goad: creature is goaded and must attack a player other than the goader
 pub fn compute_attack_requirements(
-    cards: &[CardInstance],
+    cards: &[Card],
     available: &[CardId],
     defending: PlayerId,
 ) -> Vec<AttackRequirement> {
@@ -84,7 +84,7 @@ pub fn compute_attack_requirements(
 
 /// Compute attack requirements with a full list of possible defenders.
 pub fn compute_attack_requirements_with_defenders(
-    cards: &[CardInstance],
+    cards: &[Card],
     available: &[CardId],
     possible_defenders: &[DefenderId],
 ) -> Vec<AttackRequirement> {

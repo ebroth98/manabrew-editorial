@@ -15,8 +15,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     if clear_remembered {
         if let Some(source_id) = sa.source {
-            ctx.game.card_mut(source_id).remembered_cards.clear();
-            ctx.game.card_mut(source_id).remembered_cmc.clear();
+            ctx.game.card_mut(source_id).clear_remembered();
         }
     }
 }

@@ -21,7 +21,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Targeted mode
     if let Some(target) = sa.target_chosen.target_card {
         if ctx.game.card(target).zone == ZoneType::Battlefield {
-            ctx.game.card_mut(target).goaded_by = Some(controller);
+            ctx.game.card_mut(target).set_goaded_by(Some(controller));
         }
         return;
     }
@@ -40,7 +40,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         for cid in targets {
             if ctx.game.card(cid).zone == ZoneType::Battlefield {
-                ctx.game.card_mut(cid).goaded_by = Some(controller);
+                ctx.game.card_mut(cid).set_goaded_by(Some(controller));
             }
         }
         return;
@@ -49,7 +49,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Defined$ Self fallback
     if let Some(source) = sa.source {
         if ctx.game.card(source).zone == ZoneType::Battlefield {
-            ctx.game.card_mut(source).goaded_by = Some(controller);
+            ctx.game.card_mut(source).set_goaded_by(Some(controller));
         }
     }
 }

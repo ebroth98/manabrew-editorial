@@ -400,12 +400,7 @@ impl GameLoop {
                         // Per CR 400.7 the dying card becomes a new object.
                         {
                             let card = game.card_mut(card_id);
-                            let pt = card.pump_trigger_count;
-                            if pt > 0 {
-                                let new_len = card.triggers.len().saturating_sub(pt);
-                                card.triggers.truncate(new_len);
-                                card.pump_trigger_count = 0;
-                            }
+                            card.clear_pump_triggers();
                         }
                         crate::ability::effects::emit_zone_trigger_with_lki_counters(
                             &mut self.trigger_handler,
@@ -449,7 +444,7 @@ impl GameLoop {
                                 player,
                             );
                             // Store discarded card for SVar evaluation
-                            game.card_mut(card_id).remembered_cards.push(cid);
+                            game.card_mut(card_id).add_remembered_card(cid);
                         }
                     } else {
                         self.pay_discard_cost(game, agents, player, card_id, type_filter, *amount);
@@ -689,12 +684,12 @@ impl GameLoop {
                         "Red".to_string(),
                         "Green".to_string(),
                     ];
-                    game.card_mut(card_id).chosen_colors.clear();
+                    game.card_mut(card_id).clear_chosen_colors();
                     for _ in 0..resolved_amount {
                         if let Some(color) =
                             agents[player.index()].choose_color(player, &valid_colors)
                         {
-                            game.card_mut(card_id).chosen_colors.push(color);
+                            game.card_mut(card_id).add_chosen_color(color);
                         }
                     }
                 }
@@ -841,7 +836,7 @@ impl GameLoop {
                         .filter(|&pid| pid != player)
                         .collect();
                     let chosen = agents[player.index()].choose_target_player(player, &opps);
-                    game.card_mut(card_id).promised_gift = chosen;
+                    game.card_mut(card_id).set_promised_gift(chosen);
                 }
                 CostPart::RevealChosen { reveal_type } => {
                     let source = game.card_mut(card_id);
@@ -946,7 +941,7 @@ impl GameLoop {
                         );
                         // Store discarded cards on the source card for SVar evaluation
                         // (e.g. Grab the Prize: X = Discarded$Valid Card.nonLand/Times.2)
-                        game.card_mut(card_id).remembered_cards.extend(discarded);
+                        game.card_mut(card_id).add_remembered_cards(discarded);
                     }
                 }
                 CostPart::ExileFromAnyGrave {
@@ -1185,12 +1180,12 @@ impl GameLoop {
                         "Red".to_string(),
                         "Green".to_string(),
                     ];
-                    game.card_mut(card_id).chosen_colors.clear();
+                    game.card_mut(card_id).clear_chosen_colors();
                     for _ in 0..resolved_amount {
                         if let Some(color) =
                             agents[player.index()].choose_color(player, &valid_colors)
                         {
-                            game.card_mut(card_id).chosen_colors.push(color);
+                            game.card_mut(card_id).add_chosen_color(color);
                         }
                     }
                 }
@@ -1337,7 +1332,7 @@ impl GameLoop {
                         .filter(|&pid| pid != player)
                         .collect();
                     let chosen = agents[player.index()].choose_target_player(player, &opps);
-                    game.card_mut(card_id).promised_gift = chosen;
+                    game.card_mut(card_id).set_promised_gift(chosen);
                 }
                 CostPart::RevealChosen { reveal_type } => {
                     let source = game.card_mut(card_id);
@@ -1735,12 +1730,7 @@ impl GameLoop {
                 .unwrap_or(&0);
             {
                 let card = game.card_mut(chosen);
-                let pt = card.pump_trigger_count;
-                if pt > 0 {
-                    let new_len = card.triggers.len().saturating_sub(pt);
-                    card.triggers.truncate(new_len);
-                    card.pump_trigger_count = 0;
-                }
+                card.clear_pump_triggers();
             }
             self.trigger_handler.run_trigger(
                 TriggerType::Sacrificed,
@@ -1783,12 +1773,7 @@ impl GameLoop {
                     );
                     {
                         let card = game.card_mut(chosen);
-                        let pt = card.pump_trigger_count;
-                        if pt > 0 {
-                            let new_len = card.triggers.len().saturating_sub(pt);
-                            card.triggers.truncate(new_len);
-                            card.pump_trigger_count = 0;
-                        }
+                        card.clear_pump_triggers();
                     }
                     crate::ability::effects::emit_zone_trigger_with_lki_counters(
                         &mut self.trigger_handler,
@@ -2079,7 +2064,7 @@ impl GameLoop {
         }
         if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
             if game.card(source).zone == ZoneType::Battlefield {
-                game.card_mut(source).exerted = true;
+                game.card_mut(source).exert();
                 self.trigger_handler.run_trigger(
                     TriggerType::Exerted,
                     RunParams {
@@ -2107,7 +2092,7 @@ impl GameLoop {
             let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) else {
                 break;
             };
-            game.card_mut(chosen).exerted = true;
+            game.card_mut(chosen).exert();
             self.trigger_handler.run_trigger(
                 TriggerType::Exerted,
                 RunParams {
@@ -2151,10 +2136,10 @@ impl GameLoop {
             };
             let enlisted_power = game.card(chosen).power();
             game.tap(chosen);
-            game.card_mut(source).enlisted_this_combat = true;
+            game.card_mut(source).mark_enlisted_this_combat();
             // Enlist rule text: add enlisted creature's power to attacker until end of turn.
             // Temporary power modifiers are cleared in cleanup.
-            game.card_mut(source).power_modifier += enlisted_power;
+            game.card_mut(source).add_enlisted_power(enlisted_power);
             self.trigger_handler.run_trigger(
                 TriggerType::TapAll,
                 RunParams {
@@ -2622,8 +2607,8 @@ impl GameLoop {
                 {
                     let sac_power = game.card(chosen).power();
                     let sac_toughness = game.card(chosen).toughness();
-                    game.card_mut(chosen).lki_power = Some(sac_power);
-                    game.card_mut(chosen).lki_toughness = Some(sac_toughness);
+                    game.card_mut(chosen)
+                        .set_lki_power_toughness(Some(sac_power), Some(sac_toughness));
                     // Store as last sacrificed card for SVar lookup.
                     // The SVar resolver reads this from the spell source's svars.
                     // Since we don't have the source card_id here, store it

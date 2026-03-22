@@ -20,12 +20,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(card_id).zone != ZoneType::Battlefield { continue; }
 
         if sa.param_is_true(keys::REMOVE_FROM_COMBAT) {
-            ctx.game.card_mut(card_id).attacking_player = None;
+            ctx.game.card_mut(card_id).clear_attacking_player();
         }
         if sa.param_is_true(keys::ADD_ATTACKING) {
             let controller = sa.activating_player;
             let defender = ctx.game.opponent_of(controller);
-            ctx.game.card_mut(card_id).attacking_player = Some(defender);
+            ctx.game.card_mut(card_id).set_attacking_player(defender);
         }
     }
 }

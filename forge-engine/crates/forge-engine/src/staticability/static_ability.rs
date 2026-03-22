@@ -14,7 +14,7 @@ use forge_foundation::ColorSet;
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::Params;
@@ -167,8 +167,8 @@ pub enum Layer {
     SetPT = 71,
     /// Layer 7c — P/T modifications: bonuses and penalties (`AddPower$`, `AddToughness$`).
     ModifyPT = 72,
-    // Layer 7d (counters) is handled intrinsically by `CardInstance::power()`
-    // and `CardInstance::toughness()` — no special layer entry needed.
+    // Layer 7d (counters) is handled intrinsically by `Card::power()`
+    // and `Card::toughness()` — no special layer entry needed.
 }
 
 // ── StaticAbility ────────────────────────────────────────────────────────────
@@ -237,7 +237,7 @@ impl StaticAbility {
         source_zone == ZoneType::Battlefield
     }
 
-    pub fn check_conditions(&self, source: &CardInstance, game: &GameState) -> bool {
+    pub fn check_conditions(&self, source: &Card, game: &GameState) -> bool {
         if !self.zones_check(source.zone) {
             return false;
         }
@@ -330,7 +330,7 @@ impl StaticAbility {
     pub fn check_conditions_full(
         &self,
         mode: &StaticMode,
-        source: &CardInstance,
+        source: &Card,
         game: &GameState,
     ) -> bool {
         self.check_mode(mode) && self.check_conditions(source, game)
@@ -470,7 +470,7 @@ impl CardFilter {
 
     /// Returns `true` if `card` passes this filter given `source` is the
     /// static ability's host card.
-    pub fn matches(&self, card: &CardInstance, source: &CardInstance) -> bool {
+    pub fn matches(&self, card: &Card, source: &Card) -> bool {
         if self.creatures_only && !card.is_creature() {
             return false;
         }
@@ -530,8 +530,8 @@ impl CardFilter {
     /// (e.g. `SharesColorWith Equipped`).
     pub fn matches_with_game(
         &self,
-        card: &CardInstance,
-        source: &CardInstance,
+        card: &Card,
+        source: &Card,
         game: &GameState,
     ) -> bool {
         if !self.matches(card, source) {
@@ -562,7 +562,7 @@ impl CardFilter {
     }
 }
 
-fn shares_creature_type_with(a: &CardInstance, b: &CardInstance) -> bool {
+fn shares_creature_type_with(a: &Card, b: &Card) -> bool {
     a.type_line.subtypes.iter().any(|a_sub| {
         b.type_line
             .subtypes
@@ -704,16 +704,16 @@ mod tests {
     use super::*;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
 
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::ids::{CardId, PlayerId};
 
-    fn make_creature(id: u32, owner: u32, subtypes: &[&str]) -> CardInstance {
+    fn make_creature(id: u32, owner: u32, subtypes: &[&str]) -> Card {
         let type_str = if subtypes.is_empty() {
             "Creature".to_string()
         } else {
             format!("Creature - {}", subtypes.join(" "))
         };
-        CardInstance::new(
+        Card::new(
             CardId(id),
             "Test".to_string(),
             PlayerId(owner),
@@ -727,8 +727,8 @@ mod tests {
         )
     }
 
-    fn make_land(id: u32, owner: u32) -> CardInstance {
-        CardInstance::new(
+    fn make_land(id: u32, owner: u32) -> Card {
+        Card::new(
             CardId(id),
             "Forest".to_string(),
             PlayerId(owner),
@@ -872,8 +872,8 @@ mod tests {
 
     // ── Color filter tests ───────────────────────────────────────────────
 
-    fn make_white_creature(id: u32, owner: u32) -> CardInstance {
-        CardInstance::new(
+    fn make_white_creature(id: u32, owner: u32) -> Card {
+        Card::new(
             CardId(id),
             "White Knight".to_string(),
             PlayerId(owner),
@@ -924,7 +924,7 @@ mod tests {
     #[test]
     fn filter_color_white_does_not_match_colorless() {
         let source = make_white_creature(0, 0);
-        let colorless = CardInstance::new(
+        let colorless = Card::new(
             CardId(1),
             "Darksteel Myr".to_string(),
             PlayerId(0),

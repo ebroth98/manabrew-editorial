@@ -8,7 +8,7 @@ use forge_foundation::ZoneType;
 
 use super::attack_constraints::AttackConstraints;
 use super::{CombatState, DefenderId, LureType};
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
@@ -285,7 +285,7 @@ pub fn must_block_an_attacker(game: &GameState, combat: &CombatState, blocker_id
 // ── Lure / Must-Block ────────────────────────────────────────────────────
 
 /// Determine the lure type of an attacker.
-pub fn get_lure_type(card: &CardInstance) -> LureType {
+pub fn get_lure_type(card: &Card) -> LureType {
     for kw in card
         .keywords
         .iter_strings()
@@ -398,7 +398,7 @@ pub fn check_declared_attacker(
     defender: DefenderId,
 ) {
     let controlling = defender.controlling_player(game);
-    game.card_mut(attacker_id).attacking_player = Some(controlling);
+    game.card_mut(attacker_id).set_attacking_player(controlling);
 }
 
 /// Get attack constraints for a combat.

@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use forge_foundation::ZoneType;
 
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
 use crate::parsing::{keys, Params};
 
@@ -84,7 +84,7 @@ impl ReplacementEffect {
 /// - `Creature`   — matches creature permanents
 /// - `Permanent`  — matches all permanents (no restriction)
 /// - `Card`       — matches all cards (no restriction)
-pub fn matches_valid_card(expr: &str, card: &CardInstance, source: &CardInstance) -> bool {
+pub fn matches_valid_card(expr: &str, card: &Card, source: &Card) -> bool {
     valid_filter::matches_valid_card(expr, card, source)
 }
 
@@ -94,7 +94,7 @@ pub fn matches_valid_card(expr: &str, card: &CardInstance, source: &CardInstance
 /// - `Opponent`         — not the source card's controller
 /// - `Player.inGame`    — any player
 /// - `Player` / empty   — any player (permissive default)
-pub fn matches_valid_player(expr: &str, player: PlayerId, source: &CardInstance) -> bool {
+pub fn matches_valid_player(expr: &str, player: PlayerId, source: &Card) -> bool {
     valid_filter::matches_valid_player(expr, player, source.controller)
 }
 

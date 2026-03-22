@@ -1,12 +1,12 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{CardInstance, CounterType};
+use crate::card::{Card, CounterType};
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn max_counter(
-    cards: &[CardInstance],
-    target: &CardInstance,
+    cards: &[Card],
+    target: &Card,
     counter_type: &CounterType,
 ) -> Option<i32> {
     let mut result: Option<i32> = None;
@@ -41,7 +41,7 @@ pub fn max_counter(
     result
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,

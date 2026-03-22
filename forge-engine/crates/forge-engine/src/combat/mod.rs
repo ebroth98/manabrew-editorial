@@ -96,7 +96,7 @@ impl CombatState {
     }
 
     /// Clear combat state, including the `attacking_player` flag on each attacker card.
-    pub fn clear_with_cards(&mut self, cards: &mut [crate::card::CardInstance]) {
+    pub fn clear_with_cards(&mut self, cards: &mut [crate::card::Card]) {
         for &(attacker_id, _) in &self.attackers {
             cards[attacker_id.index()].attacking_player = None;
         }
@@ -201,7 +201,7 @@ impl CombatState {
     /// if any combatant was removed.
     ///
     /// Mirrors Java Forge's `Combat.removeAbsentCombatants()`.
-    pub fn remove_absent_combatants(&mut self, cards: &[crate::card::CardInstance]) -> bool {
+    pub fn remove_absent_combatants(&mut self, cards: &[crate::card::Card]) -> bool {
         let before_attackers = self.attackers.len();
         let before_blockers = self.blockers.len();
 
@@ -914,7 +914,7 @@ impl CombatState {
 
         // Clear attacking_player flag on attacker cards
         for &(attacker_id, _) in &self.attackers {
-            game.cards[attacker_id.index()].attacking_player = None;
+            game.card_mut(attacker_id).clear_attacking_player();
         }
 
         self.clear();
@@ -1041,7 +1041,7 @@ impl CombatState {
         // Check if attacker
         if self.attackers.iter().any(|(a, _)| *a == card) {
             self.unregister_attacker(card);
-            game.cards[card.index()].attacking_player = None;
+            game.card_mut(card).clear_attacking_player();
             return;
         }
 
@@ -1488,7 +1488,7 @@ fn deal_combat_damage_to_card(
     if amount > 0 {
         // Track damage source for DamagedBy trigger filters (Sengir Vampire, etc.)
         if !game.card(target).damage_sources_this_turn.contains(&source) {
-            game.card_mut(target).damage_sources_this_turn.push(source);
+            game.card_mut(target).add_damage_source_this_turn(source);
         }
         if source_has_wither_or_infect {
             // Wither/Infect: damage to creatures as -1/-1 counters instead
@@ -1504,7 +1504,7 @@ fn deal_combat_damage_to_card(
             game.deal_damage_to_card(target, amount);
         }
         if deathtouch {
-            game.card_mut(target).has_deathtouch_damage = true;
+            game.card_mut(target).mark_deathtouch_damage();
         }
         if lifelink
             && !crate::staticability::static_ability_cant_gain_lose_pay_life::cant_gain_life(
@@ -1549,7 +1549,7 @@ pub enum LureType {
 }
 
 /// Determine the lure type of an attacker based on its keywords.
-pub fn get_lure_type(card: &crate::card::CardInstance) -> LureType {
+pub fn get_lure_type(card: &crate::card::Card) -> LureType {
     combat_util::get_lure_type(card)
 }
 

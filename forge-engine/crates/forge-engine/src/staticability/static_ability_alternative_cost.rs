@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::cost::{parse_cost, Cost};
 use crate::ids::PlayerId;
 use crate::parsing::keys;
@@ -51,9 +51,9 @@ pub struct AlternativeCostEntry {
 /// cards in static-ability source zones, checking each `AlternativeCost` static
 /// ability for applicability.
 pub fn alternative_costs(
-    cards: &[CardInstance],
+    cards: &[Card],
     sa: &SpellAbility,
-    source: &CardInstance,
+    source: &Card,
     player: PlayerId,
 ) -> Vec<AlternativeCostEntry> {
     let mut result = Vec::new();
@@ -79,9 +79,9 @@ pub fn alternative_costs(
 /// Convenience wrapper around `alternative_costs` — returns true if at least one
 /// alternative cost is available.
 pub fn has_alternative_cost(
-    cards: &[CardInstance],
+    cards: &[Card],
     sa: &SpellAbility,
-    source: &CardInstance,
+    source: &Card,
     player: PlayerId,
 ) -> bool {
     let source_id = source.id;
@@ -116,9 +116,9 @@ pub fn has_alternative_cost(
 /// Process all static abilities on a single card, collecting matching
 /// alternative cost entries.
 fn collect_from_card(
-    ca: &CardInstance,
+    ca: &Card,
     sa: &SpellAbility,
-    source: &CardInstance,
+    source: &Card,
     player: PlayerId,
     result: &mut Vec<AlternativeCostEntry>,
 ) {
@@ -155,8 +155,8 @@ fn collect_from_card(
         let mana_restriction = st_ab.params.get("ManaRestriction").map(|s| s.to_string());
 
         // Zone restriction from ActiveZones — only if host card is not immutable
-        // (Rust CardInstance has no is_immutable field yet, so we skip that guard)
-        // TODO: Add is_immutable check when CardInstance gains that field
+        // (Rust Card has no is_immutable field yet, so we skip that guard)
+        // TODO: Add is_immutable check when Card gains that field
         let zone_restriction = {
             if let Some(zones_str) = st_ab.params.get(keys::ACTIVE_ZONES) {
                 let zones: Vec<&str> = zones_str.split(',').map(str::trim).collect();
@@ -243,8 +243,8 @@ fn collect_from_card(
 fn apply(
     st_ab: &crate::staticability::StaticAbility,
     sa: &SpellAbility,
-    source: &CardInstance,
-    host: &CardInstance,
+    source: &Card,
+    host: &Card,
     player: PlayerId,
 ) -> bool {
     // Check ValidSA — mirrors Java's stAb.matchesValidParam("ValidSA", sa)

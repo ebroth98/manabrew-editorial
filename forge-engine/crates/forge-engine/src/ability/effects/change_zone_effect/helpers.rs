@@ -9,7 +9,7 @@ use super::super::{
     emit_zone_trigger, evaluate_svar, matches_change_type, parse_counter_type, parse_zone_type,
     resolve_defined_players, EffectContext,
 };
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
@@ -177,14 +177,20 @@ pub(super) fn apply_pre_move(
 
     if dest_zone == ZoneType::Battlefield {
         // FaceDown$ — before move
-        if sa.is_face_down() { ctx.game.card_mut(card_id).face_down = true; }
+        if sa.is_face_down() { ctx.game.card_mut(card_id).set_face_down(true); }
 
         // Transformed$ — before move
         if sa.is_transformed() {
             if ctx.game.card(card_id).other_part.is_some() {
-                ctx.game.card_mut(card_id).is_transformed = true;
-                if let Some(ref other) = ctx.game.card(card_id).other_part {
-                    ctx.game.card_mut(card_id).card_name = other.name.clone();
+                ctx.game.card_mut(card_id).set_transformed(true);
+                if let Some(other_name) = ctx
+                    .game
+                    .card(card_id)
+                    .other_part
+                    .as_ref()
+                    .map(|o| o.name.clone())
+                {
+                    ctx.game.card_mut(card_id).set_card_name(other_name);
                 }
             } else {
                 return false;
@@ -202,8 +208,8 @@ pub(super) fn apply_pre_move(
                 if let Some(target) = ctx.agents[ctrl.index()].choose_single_card_for_zone_change(
                     ctrl, &valid, "Select a card to attach to", false,
                 ) {
-                    ctx.game.card_mut(card_id).attached_to = Some(target);
-                    ctx.game.card_mut(target).attachments.push(card_id);
+                    ctx.game.card_mut(card_id).set_attached_to(Some(target));
+                    ctx.game.card_mut(target).add_attachment(card_id);
                 }
             } else if ctx.game.card(card_id).type_line.subtypes.iter().any(|s| s.eq_ignore_ascii_case("Aura")) {
                 return false;
@@ -232,13 +238,17 @@ pub(super) fn apply_post_move(
         if let Some(sid) = sa.source { ctx.game.card_mut(sid).add_remembered_card(card_id); }
     }
     if sa.is_forget_changed() {
-        if let Some(sid) = sa.source { ctx.game.card_mut(sid).remembered_cards.retain(|&c| c != card_id); }
+        if let Some(sid) = sa.source {
+            ctx.game.card_mut(sid).remove_remembered(card_id);
+        }
     }
     if sa.is_imprint() {
         if let Some(sid) = sa.source {
             let cm = ctx.game.card_mut(sid);
-            if sa.param_is_true(keys::IMPRINT_LAST) { cm.imprinted_cards.clear(); }
-            cm.imprinted_cards.push(card_id);
+            if sa.param_is_true(keys::IMPRINT_LAST) {
+                cm.clear_imprinted_cards();
+            }
+            cm.add_imprinted_card(card_id);
         }
     }
 
@@ -254,14 +264,17 @@ pub(super) fn apply_post_move(
     // Battlefield entry effects
     if dest_zone == ZoneType::Battlefield {
         if sa.is_tapped() { ctx.game.tap(card_id); }
-        if sa.is_gain_control() { ctx.game.card_mut(card_id).controller = controller; }
+        if sa.is_gain_control() { ctx.game.card_mut(card_id).set_controller(controller); }
         if sa.param_is_true(keys::NINJUTSU) {
-            ctx.game.card_mut(card_id).attacking_player = Some(ctx.game.opponent_of(controller));
+            let defender = ctx.game.opponent_of(controller);
+            ctx.game
+                .card_mut(card_id)
+                .set_attacking_player(defender);
         }
         if sa.param_is_true(keys::UNEARTH) {
-            ctx.game.card_mut(card_id).pump_keywords.add("Haste");
-            ctx.game.card_mut(card_id).summoning_sick = false;
-            ctx.game.card_mut(card_id).unearthed = true;
+            ctx.game.card_mut(card_id).add_pump_keyword("Haste");
+            ctx.game.card_mut(card_id).set_summoning_sick(false);
+            ctx.game.card_mut(card_id).set_unearthed(true);
             ctx.trigger_handler.register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
                 mode: TriggerType::Phase, trigger_mode: crate::trigger::TriggerMode::Always,
                 execute_svar: "UneartheExileDelayedTrigger".to_string(),
@@ -269,7 +282,10 @@ pub(super) fn apply_post_move(
             });
         }
         if sa.param_is_true(keys::ATTACKING) {
-            ctx.game.card_mut(card_id).attacking_player = Some(ctx.game.opponent_of(controller));
+            let defender = ctx.game.opponent_of(controller);
+            ctx.game
+                .card_mut(card_id)
+                .set_attacking_player(defender);
         }
         if let Some(ct_str) = sa.with_counters_type() {
             ctx.game.card_mut(card_id).add_counter(&parse_counter_type(ct_str), sa.with_counters_amount().unwrap_or(1));
@@ -286,8 +302,8 @@ pub(super) fn apply_post_move(
                 if let Some(t) = ctx.agents[controller.index()].choose_single_card_for_zone_change(
                     controller, &valid, "Select a card to attach to", false,
                 ) {
-                    ctx.game.card_mut(card_id).attached_to = Some(t);
-                    ctx.game.card_mut(t).attachments.push(card_id);
+                    ctx.game.card_mut(card_id).set_attached_to(Some(t));
+                    ctx.game.card_mut(t).add_attachment(card_id);
                 }
             }
         }
@@ -295,7 +311,7 @@ pub(super) fn apply_post_move(
 
     // Exile effects
     if dest_zone == ZoneType::Exile {
-        if sa.is_exile_face_down() { ctx.game.card_mut(card_id).face_down = true; }
+        if sa.is_exile_face_down() { ctx.game.card_mut(card_id).set_face_down(true); }
         if !ctx.game.card(card_id).is_token {
             if let Some(sid) = sa.source {
                 // Only set exiled_by when the exile has a Duration$ that returns the card
@@ -308,7 +324,7 @@ pub(super) fn apply_post_move(
                     || d.eq_ignore_ascii_case("UntilYourNextTurn")
                 );
                 if has_return_duration {
-                    ctx.game.card_mut(card_id).exiled_by = Some(sid);
+                    ctx.game.card_mut(card_id).set_exiled_by(Some(sid));
                 }
                 let src_zone = ctx.game.card(sid).zone;
                 if matches!(src_zone, ZoneType::Battlefield | ZoneType::Stack | ZoneType::Command) {
@@ -323,8 +339,10 @@ pub(super) fn apply_post_move(
         }, false);
 
         if sa.param_is_true(keys::FORETOLD) {
-            ctx.game.card_mut(card_id).foretold = true;
-            if sa.param_is_true(keys::FORETOLD_COST) { ctx.game.card_mut(card_id).foretold_cost_by_effect = true; }
+            ctx.game.card_mut(card_id).set_foretold(true);
+            if sa.param_is_true(keys::FORETOLD_COST) {
+                ctx.game.card_mut(card_id).set_foretold_cost_by_effect(true);
+            }
         }
 
         // Warp keyword
@@ -333,7 +351,7 @@ pub(super) fn apply_post_move(
         if is_warp { create_warp_effect(ctx, sa, card_id); }
     }
 
-    if sa.param_is_true(keys::TRACK_DISCARDED) { ctx.game.card_mut(card_id).discarded = true; }
+    if sa.param_is_true(keys::TRACK_DISCARDED) { ctx.game.card_mut(card_id).set_discarded(true); }
 
     // Champion$
     if sa.param_is_true(keys::CHAMPION) {
@@ -363,18 +381,18 @@ pub(super) fn apply_post_move(
 fn create_warp_effect(ctx: &mut EffectContext, sa: &SpellAbility, exiled_card_id: CardId) {
     let controller = sa.activating_player;
     let card_name = ctx.game.card(exiled_card_id).card_name.clone();
-    let mut effect = CardInstance::new(
+    let mut effect = Card::new(
         CardId(0), format!("Warped {}", card_name), controller,
         CardTypeLine::parse("Effect"), ManaCost::parse("0"), ColorSet::COLORLESS,
         None, None, vec![], vec![],
     );
-    effect.controller = controller;
-    effect.effect_source = sa.source;
-    effect.remembered_cards.push(exiled_card_id);
-    effect.forget_on_moved_origin = Some(ZoneType::Exile);
+    effect.set_controller(controller);
+    effect.set_effect_source(sa.source);
+    effect.add_remembered_card(exiled_card_id);
+    effect.set_forget_on_moved_origin(Some(ZoneType::Exile));
     let static_text = "Mode$ Continuous | MayPlay$ True | EffectZone$ Command | Affected$ Card.IsRemembered+nonLand | AffectedZone$ Exile";
     if let Some(parsed) = parse_static_ability(&format!("S$ {}", static_text)) {
-        effect.static_abilities.push(parsed);
+        effect.add_static_ability(parsed);
     }
     let eid = ctx.game.create_card(effect);
     ctx.game.move_card(eid, ZoneType::Command, controller);

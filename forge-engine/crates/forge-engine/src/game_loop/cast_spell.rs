@@ -55,10 +55,10 @@ impl GameLoop {
                 if has_matching {
                     // Player can choose to reveal — DeterministicAgent always passes (no reveal)
                     // to match Java DeterministicController which passes optional pays
-                    game.card_mut(card_id).tapped = true;
+                    game.card_mut(card_id).set_tapped(true);
                 } else {
                     // No matching card — must enter tapped
-                    game.card_mut(card_id).tapped = true;
+                    game.card_mut(card_id).set_tapped(true);
                 }
             }
 
@@ -90,7 +90,7 @@ impl GameLoop {
                     if !skip_life {
                         // Player pays life — untap the card (it wasn't tapped by apply_etb_tapped
                         // since we removed the third pass, but ensure untapped state)
-                        game.card_mut(card_id).tapped = false;
+                        game.card_mut(card_id).set_tapped(false);
                         game.player_mut(player).lose_life(life_cost);
                         self.trigger_handler.run_trigger(
                             TriggerType::LifeLost,
@@ -104,7 +104,7 @@ impl GameLoop {
                     }
                 } else {
                     // Player declines — enter tapped
-                    game.card_mut(card_id).tapped = true;
+                    game.card_mut(card_id).set_tapped(true);
                 }
             }
 
@@ -190,7 +190,7 @@ impl GameLoop {
                         );
                         self.emit_tap_for_mana_triggers(player, &tapped);
                         self.pool_mut(player).try_pay(&foretell_exile_cost);
-                        game.card_mut(card_id).face_down = true;
+                        game.card_mut(card_id).set_face_down(true);
                         game.move_card(card_id, ZoneType::Exile, player);
                         self.trigger_handler.run_trigger(
                             TriggerType::Foretell,
@@ -342,7 +342,7 @@ impl GameLoop {
             // is only true if the corresponding get_*_cost() returned Some earlier.
             let mana_cost = if is_foretell {
                 let foretell_cost_str = game.card(card_id).get_foretell_cost().unwrap_or_default();
-                game.card_mut(card_id).face_down = false; // reveal it
+                game.card_mut(card_id).set_face_down(false); // reveal it
                 forge_foundation::ManaCost::parse(&foretell_cost_str)
             } else if is_flashback {
                 flashback_mana_cost.unwrap_or_else(forge_foundation::ManaCost::zero)
@@ -432,12 +432,7 @@ impl GameLoop {
                         );
                         {
                             let card = game.card_mut(sac_id);
-                            let pt = card.pump_trigger_count;
-                            if pt > 0 {
-                                let new_len = card.triggers.len().saturating_sub(pt);
-                                card.triggers.truncate(new_len);
-                                card.pump_trigger_count = 0;
-                            }
+                            card.clear_pump_triggers();
                         }
                         crate::ability::effects::emit_zone_trigger(
                             &mut self.trigger_handler,
@@ -495,12 +490,7 @@ impl GameLoop {
                         );
                         {
                             let card = game.card_mut(sac_id);
-                            let pt = card.pump_trigger_count;
-                            if pt > 0 {
-                                let new_len = card.triggers.len().saturating_sub(pt);
-                                card.triggers.truncate(new_len);
-                                card.pump_trigger_count = 0;
-                            }
+                            card.clear_pump_triggers();
                         }
                         crate::ability::effects::emit_zone_trigger(
                             &mut self.trigger_handler,
@@ -781,7 +771,7 @@ impl GameLoop {
                         }
                     }
                     // Store chosen modes on card for charm_effect to reuse
-                    game.card_mut(card_id).chosen_modes = Some(chosen);
+                    game.card_mut(card_id).set_chosen_modes(chosen);
                     total
                 } else {
                     mana_cost
@@ -813,7 +803,7 @@ impl GameLoop {
                         total = total.add(&strive_mc);
                     }
                     // Store max targets (1 base + extras) for resolution targeting
-                    game.card_mut(card_id).strive_extra_targets = extra_targets;
+                    game.card_mut(card_id).set_strive_extra_targets(extra_targets);
                     total
                 } else {
                     mana_cost
@@ -1520,7 +1510,7 @@ impl GameLoop {
                                     game.untap(cid);
                                 }
                                 // Restore counters (undo counter costs from mana abilities)
-                                game.card_mut(cid).counters = saved_counters.clone();
+                                game.card_mut(cid).set_counters_map(saved_counters.clone());
                             }
                             return None;
                         }
@@ -1621,7 +1611,7 @@ impl GameLoop {
                         colors_spent |= color; // consumed
                     }
                 }
-                game.card_mut(card_id).colors_spent_to_cast = colors_spent;
+                game.card_mut(card_id).set_colors_spent_to_cast(colors_spent);
             }
 
             // Fire ManaExpend triggers (Expend mechanic — cumulative per-turn tracking)
@@ -1666,7 +1656,7 @@ impl GameLoop {
                         if valid_ok {
                             for keyword in kw.split('&').map(str::trim) {
                                 if !keyword.is_empty() {
-                                    game.card_mut(card_id).keywords.add(keyword);
+                                    game.card_mut(card_id).add_intrinsic_keyword(keyword);
                                 }
                             }
                         }
@@ -1703,7 +1693,7 @@ impl GameLoop {
                                 .next()
                                 .and_then(|s| s.parse::<i32>().ok())
                                 .unwrap_or(1);
-                            game.card_mut(card_id).etb_counters_p1p1 += count;
+                            game.card_mut(card_id).add_etb_counters_p1p1(count);
                         }
                         applied.insert(counter_spec.clone());
                     }
@@ -1838,7 +1828,7 @@ impl GameLoop {
 
             // Increment commander cast count (before moving card to stack)
             if is_commander_cast {
-                game.card_mut(card_id).commander_cast_count += 1;
+                game.card_mut(card_id).increment_commander_cast_count();
             }
 
             {
@@ -1940,8 +1930,17 @@ impl GameLoop {
                         .with_card(card_id),
                     );
                     for i in 0..storm_count {
+                        if crate::card::card_factory::spell_ability_cant_be_copied(
+                            &game.cards,
+                            &entry.spell_ability,
+                        ) {
+                            continue;
+                        }
                         let mut copy = entry.clone();
-                        copy.spell_ability.is_copy = true;
+                        copy.spell_ability = crate::card::card_factory::copy_spell_ability(
+                            &entry.spell_ability,
+                            player,
+                        );
                         if copy.spell_ability.uses_targeting() {
                             agents[player.index()].snapshot_state(game, &self.mana_pools);
                             agents[player.index()].notify_event(
@@ -1988,8 +1987,17 @@ impl GameLoop {
                     .with_card(card_id),
                 );
                 for i in 0..replicate_count {
+                    if crate::card::card_factory::spell_ability_cant_be_copied(
+                        &game.cards,
+                        &entry.spell_ability,
+                    ) {
+                        continue;
+                    }
                     let mut copy = entry.clone();
-                    copy.spell_ability.is_copy = true;
+                    copy.spell_ability = crate::card::card_factory::copy_spell_ability(
+                        &entry.spell_ability,
+                        player,
+                    );
                     if copy.spell_ability.uses_targeting() {
                         agents[player.index()].snapshot_state(game, &self.mana_pools);
                         agents[player.index()].notify_event(

@@ -75,6 +75,8 @@ fn trigger_mode_to_type(mode: &TriggerMode) -> Option<TriggerType> {
         TriggerMode::Phase { .. } => TriggerType::Phase,
         TriggerMode::SpellCast { .. } => TriggerType::SpellCast,
         TriggerMode::Attacks { .. } => TriggerType::Attacks,
+        TriggerMode::Fight { .. } => TriggerType::Fight,
+        TriggerMode::FightOnce { .. } => TriggerType::FightOnce,
         TriggerMode::DamageDone { .. } => TriggerType::DamageDone,
         TriggerMode::Countered { .. } => TriggerType::Countered,
         TriggerMode::Blocks { .. } => TriggerType::Blocks,

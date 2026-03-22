@@ -1,13 +1,13 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{CardInstance, CounterType};
+use crate::card::{Card, CounterType};
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn any_cant_put_counter_on_card(
-    cards: &[CardInstance],
-    target: &CardInstance,
+    cards: &[Card],
+    target: &Card,
     counter_type: &CounterType,
 ) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
@@ -39,7 +39,7 @@ pub fn any_cant_put_counter_on_card(
 }
 
 pub fn any_cant_put_counter_on_player(
-    cards: &[CardInstance],
+    cards: &[Card],
     player: PlayerId,
     counter_type: &CounterType,
 ) -> bool {
@@ -72,8 +72,8 @@ pub fn any_cant_put_counter_on_player(
 }
 
 pub fn any_cant_put_counter(
-    cards: &[CardInstance],
-    target_card: Option<&CardInstance>,
+    cards: &[Card],
+    target_card: Option<&Card>,
     target_player: Option<PlayerId>,
     counter_type: &CounterType,
 ) -> bool {
@@ -88,8 +88,8 @@ pub fn any_cant_put_counter(
 
 pub fn apply_cant_put_counter(
     st_ab: &crate::staticability::StaticAbility,
-    source: &CardInstance,
-    target_card: Option<&CardInstance>,
+    source: &Card,
+    target_card: Option<&Card>,
     target_player: Option<PlayerId>,
     counter_type: &CounterType,
 ) -> bool {
@@ -140,7 +140,7 @@ fn matches_valid_player(
     }
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     match valid {
         None => true,
         Some(v) if v.eq_ignore_ascii_case("Card") || v.eq_ignore_ascii_case("Permanent") => true,

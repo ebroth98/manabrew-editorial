@@ -29,7 +29,7 @@ pub(super) fn resolve_known_origin(
     // Unimprint$ — clear before processing (Java line 506)
     if sa.param_is_true(keys::UNIMPRINT) {
         if let Some(source_id) = sa.source {
-            ctx.game.card_mut(source_id).imprinted_cards.clear();
+            ctx.game.card_mut(source_id).clear_imprinted_cards();
         }
     }
 

@@ -74,7 +74,7 @@ fn tap_card(
 
     if etb {
         // ETB: directly set tapped without firing trigger
-        ctx.game.card_mut(card_id).tapped = true;
+        ctx.game.card_mut(card_id).set_tapped(true);
     } else {
         let tapped = ctx.game.tap(card_id);
         if tapped {
@@ -93,7 +93,7 @@ fn tap_card(
     // RememberTapped / AlwaysRemember
     if (remember_tapped && was_untapped) || always_remember {
         if let Some(src) = source {
-            ctx.game.card_mut(src).remembered_cards.push(card_id);
+            ctx.game.card_mut(src).add_remembered_card(card_id);
         }
     }
 }
@@ -105,7 +105,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -113,7 +113,7 @@ mod tests {
     use crate::trigger::handler::TriggerHandler;
 
     fn make_creature(game: &mut GameState, owner: PlayerId) -> CardId {
-        let c = CardInstance::new(
+        let c = Card::new(
             CardId(0),
             "Bear".into(),
             owner,

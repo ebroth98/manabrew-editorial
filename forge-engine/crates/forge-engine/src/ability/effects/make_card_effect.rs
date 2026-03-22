@@ -53,7 +53,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for name in &names {
         for _ in 0..amount {
             // Create a minimal card instance representing the conjured card
-            let mut card = crate::card::CardInstance::new(
+            let mut card = crate::card::Card::new(
                 CardId(0),
                 name.clone(),
                 controller,
@@ -65,13 +65,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 vec![],
                 vec![],
             );
-            card.controller = controller;
+            card.set_controller(controller);
 
             if sa.param_is_true(keys::TAPPED) {
-                card.tapped = true;
+                card.set_tapped(true);
             }
             if sa.param_is_true(keys::FACE_DOWN) {
-                card.face_down = true;
+                card.set_face_down(true);
             }
 
             let card_id = ctx.game.create_card(card);
@@ -83,7 +83,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 ctx.game.card_mut(source).add_remembered_card(card_id);
             }
             if sa.param_is_true(keys::IMPRINT_MADE) {
-                ctx.game.card_mut(source).imprinted_cards.push(card_id);
+                ctx.game.card_mut(source).add_imprinted_card(card_id);
             }
         }
     }

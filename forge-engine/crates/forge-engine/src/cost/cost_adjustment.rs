@@ -10,7 +10,7 @@ use forge_foundation::color::Color;
 use forge_foundation::mana::ManaCost;
 use forge_foundation::ZoneType;
 
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::parsing::keys;
@@ -130,7 +130,7 @@ fn color_to_shard(color: Color) -> forge_foundation::mana::ManaCostShard {
 /// Mirrors Java's `CostAdjustment.adjust(ManaCostBeingPaid, ...)` scanning loop.
 pub fn compute_cost_adjustment(
     game: &GameState,
-    spell_card: &CardInstance,
+    spell_card: &Card,
     caster: PlayerId,
     cast_zone: ZoneType,
 ) -> CostAdjustment {
@@ -140,7 +140,7 @@ pub fn compute_cost_adjustment(
 /// Like `compute_cost_adjustment`, but also checks ValidTarget$ against chosen targets.
 pub fn compute_cost_adjustment_with_targets(
     game: &GameState,
-    spell_card: &CardInstance,
+    spell_card: &Card,
     caster: PlayerId,
     cast_zone: ZoneType,
     targets: &[CardId],
@@ -408,7 +408,7 @@ pub fn compute_cost_adjustment_with_targets(
 /// - route non-mana parts through normal additional-cost payment plumbing.
 pub fn compute_raise_cost_parts(
     game: &GameState,
-    spell_card: &CardInstance,
+    spell_card: &Card,
     caster: PlayerId,
     cast_zone: ZoneType,
 ) -> Option<Cost> {
@@ -418,7 +418,7 @@ pub fn compute_raise_cost_parts(
 /// Like `compute_raise_cost_parts`, but checks `ValidTarget$` against chosen targets.
 pub fn compute_raise_cost_parts_with_targets(
     game: &GameState,
-    spell_card: &CardInstance,
+    spell_card: &Card,
     caster: PlayerId,
     cast_zone: ZoneType,
     targets: &[CardId],
@@ -595,7 +595,7 @@ pub fn compute_raise_cost_parts_with_targets(
 
 /// Check a ValidSpell$ parameter.
 /// Mirrors the `ValidSpell` check in Java's `CostAdjustment.checkRequirement`.
-fn check_valid_spell(valid_spell: &str, spell_card: &CardInstance) -> bool {
+fn check_valid_spell(valid_spell: &str, spell_card: &Card) -> bool {
     // Split comma-separated options — any match passes
     valid_spell.split(',').any(|option| {
         let parts: Vec<&str> = option.trim().split('.').collect();
@@ -629,7 +629,7 @@ fn check_valid_spell(valid_spell: &str, spell_card: &CardInstance) -> bool {
 /// - Numeric literals
 fn resolve_svar_for_cost(
     game: &GameState,
-    source: &CardInstance,
+    source: &Card,
     name: &str,
     caster: PlayerId,
 ) -> i32 {
@@ -650,7 +650,7 @@ fn resolve_svar_for_cost(
 /// Evaluate a `Count$...` expression.
 fn evaluate_count_expr(
     game: &GameState,
-    source: &CardInstance,
+    source: &Card,
     expr: &str,
     caster: PlayerId,
 ) -> i32 {
@@ -709,7 +709,7 @@ fn zone_name_matches(zone: ZoneType, name: &str) -> bool {
 
 // ── ValidCard$ matching (mirrors Java's checkRequirement ValidCard) ──
 
-pub(crate) fn matches_valid_card(valid: &str, spell: &CardInstance, source: &CardInstance) -> bool {
+pub(crate) fn matches_valid_card(valid: &str, spell: &Card, source: &Card) -> bool {
     valid_filter::matches_valid_card(valid, spell, source)
 }
 
@@ -720,7 +720,7 @@ pub(crate) fn matches_valid_card(valid: &str, spell: &CardInstance, source: &Car
 
 /// Extract the affinity type from a card's keywords (e.g. "Affinity:Artifact" → "Artifact").
 /// Mirrors Java's affinity keyword handling in `CostAdjustment`.
-pub fn get_affinity_type(card: &CardInstance) -> Option<String> {
+pub fn get_affinity_type(card: &Card) -> Option<String> {
     crate::keyword::extract_keyword_cost_from_all(
         [&card.keywords, &card.granted_keywords],
         "Affinity",
@@ -761,7 +761,7 @@ pub fn apply_cost_reductions(
     game: &GameState,
     player: PlayerId,
     card_id: CardId,
-    card: &CardInstance,
+    card: &Card,
     cost: &ManaCost,
 ) -> ManaCost {
     if card.has_keyword("Delve") {

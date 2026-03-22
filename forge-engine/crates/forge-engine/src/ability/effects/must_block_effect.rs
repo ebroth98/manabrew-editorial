@@ -19,7 +19,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Targeted mode
     if let Some(target) = sa.target_chosen.target_card {
         if ctx.game.card(target).zone == ZoneType::Battlefield {
-            ctx.game.card_mut(target).must_block = true;
+            ctx.game.card_mut(target).set_must_block(true);
         }
         return;
     }
@@ -38,7 +38,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         for cid in targets {
             if ctx.game.card(cid).zone == ZoneType::Battlefield {
-                ctx.game.card_mut(cid).must_block = true;
+                ctx.game.card_mut(cid).set_must_block(true);
             }
         }
         return;
@@ -47,7 +47,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Defined$ Self
     if let Some(source) = sa.source {
         if ctx.game.card(source).zone == ZoneType::Battlefield {
-            ctx.game.card_mut(source).must_block = true;
+            ctx.game.card_mut(source).set_must_block(true);
         }
     }
 }

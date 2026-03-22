@@ -1,13 +1,13 @@
 use forge_foundation::ZoneType;
 
-use crate::card::{valid_filter, CardInstance};
+use crate::card::{valid_filter, Card};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
 pub fn cant_sacrifice(
-    cards: &[CardInstance],
-    card: &CardInstance,
+    cards: &[Card],
+    card: &Card,
     cause: Option<&SpellAbility>,
     is_cost: bool,
 ) -> bool {
@@ -40,8 +40,8 @@ pub fn cant_sacrifice(
 
 pub fn apply_cant_sacrifice_ability(
     st_ab: &crate::staticability::StaticAbility,
-    card: &CardInstance,
-    source: &CardInstance,
+    card: &Card,
+    source: &Card,
     cause: Option<&SpellAbility>,
     is_cost: bool,
 ) -> bool {
@@ -54,7 +54,7 @@ pub fn apply_cant_sacrifice_ability(
         && matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause)
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     valid_filter::matches_valid_card_opt(valid, card, source)
 }
 

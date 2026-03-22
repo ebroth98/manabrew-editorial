@@ -47,24 +47,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             match attr.as_str() {
                 "Harnessed" => {
                     let val = if activate { "True" } else { "False" };
-                    ctx.game.card_mut(card_id).svars.insert(
-                        "Harnessed".to_string(),
-                        val.to_string(),
-                    );
+                    ctx.game.card_mut(card_id).set_s_var("Harnessed", val);
                 }
                 "Plotted" => {
                     let val = if activate { "True" } else { "False" };
-                    ctx.game.card_mut(card_id).svars.insert(
-                        "Plotted".to_string(),
-                        val.to_string(),
-                    );
+                    ctx.game.card_mut(card_id).set_s_var("Plotted", val);
                 }
                 "Solve" | "Solved" => {
                     let val = if activate { "True" } else { "False" };
-                    ctx.game.card_mut(card_id).svars.insert(
-                        "Solved".to_string(),
-                        val.to_string(),
-                    );
+                    ctx.game.card_mut(card_id).set_s_var("Solved", val);
                     if activate {
                         ctx.trigger_handler.run_trigger(
                             TriggerType::CaseSolved,
@@ -81,23 +72,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     if activate {
                         // Suspected creatures have menace and can't block
                         if !ctx.game.card(card_id).keywords.contains_string("Menace") {
-                            ctx.game.card_mut(card_id).keywords.add("Menace");
+                            ctx.game.card_mut(card_id).add_intrinsic_keyword("Menace");
                         }
-                        ctx.game.card_mut(card_id).svars.insert(
-                            "Suspected".to_string(),
-                            "True".to_string(),
-                        );
+                        ctx.game.card_mut(card_id).set_s_var("Suspected", "True");
                     } else {
-                        ctx.game.card_mut(card_id).keywords.remove("Menace");
-                        ctx.game.card_mut(card_id).svars.remove("Suspected");
+                        ctx.game.card_mut(card_id).remove_intrinsic_keyword("Menace");
+                        ctx.game.card_mut(card_id).remove_s_var("Suspected");
                     }
                 }
                 "Saddle" | "Saddled" => {
                     let val = if activate { "True" } else { "False" };
-                    ctx.game.card_mut(card_id).svars.insert(
-                        "Saddled".to_string(),
-                        val.to_string(),
-                    );
+                    ctx.game.card_mut(card_id).set_s_var("Saddled", val);
                     if activate {
                         ctx.trigger_handler.run_trigger(
                             TriggerType::BecomesSaddled,
@@ -112,10 +97,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
                 "Commander" => {
                     let val = if activate { "True" } else { "False" };
-                    ctx.game.card_mut(card_id).svars.insert(
-                        "IsCommander".to_string(),
-                        val.to_string(),
-                    );
+                    ctx.game.card_mut(card_id).set_s_var("IsCommander", val);
                 }
                 _ => {}
             }

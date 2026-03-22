@@ -35,7 +35,7 @@ pub(super) fn resolve_stack_removal(
     // ExiledWith for exile
     if dest_zone == ZoneType::Exile {
         if let Some(source_id) = sa.source {
-            ctx.game.card_mut(card_id).exiled_by = Some(source_id);
+            ctx.game.card_mut(card_id).set_exiled_by(Some(source_id));
         }
     }
 
@@ -66,7 +66,9 @@ pub(super) fn resolve_stack_removal(
         if let Some(sid) = sa.source { ctx.game.card_mut(sid).add_remembered_card(card_id); }
     }
     if sa.is_imprint() {
-        if let Some(sid) = sa.source { ctx.game.card_mut(sid).imprinted_cards.push(card_id); }
+        if let Some(sid) = sa.source {
+            ctx.game.card_mut(sid).add_imprinted_card(card_id);
+        }
     }
 
     emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, dest_zone);

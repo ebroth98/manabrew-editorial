@@ -39,12 +39,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Clear temporary Animate triggers before firing events (CR 400.7).
         {
             let card = ctx.game.card_mut(card_id);
-            let pt = card.pump_trigger_count;
-            if pt > 0 {
-                let new_len = card.triggers.len().saturating_sub(pt);
-                card.triggers.truncate(new_len);
-                card.pump_trigger_count = 0;
-            }
+            card.clear_pump_triggers();
         }
         // Fire Sacrificed trigger
         ctx.trigger_handler.run_trigger(

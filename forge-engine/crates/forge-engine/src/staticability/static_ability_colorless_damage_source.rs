@@ -1,10 +1,10 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn colorless_damage_source(cards: &[CardInstance], source_card: &CardInstance) -> bool {
+pub fn colorless_damage_source(cards: &[Card], source_card: &Card) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
             .static_abilities
@@ -25,15 +25,15 @@ pub fn colorless_damage_source(cards: &[CardInstance], source_card: &CardInstanc
 
 pub fn apply_colorless_damage_source(
     st_ab: &crate::staticability::StaticAbility,
-    source_card: &CardInstance,
-    source: &CardInstance,
+    source_card: &Card,
+    source: &Card,
 ) -> bool {
     matches_valid_card(st_ab.params.get(keys::VALID_CARD), source_card, source)
 }
 
 pub fn source_has_color(
-    cards: &[CardInstance],
-    source_card: &CardInstance,
+    cards: &[Card],
+    source_card: &Card,
     color_name: &str,
 ) -> bool {
     if colorless_damage_source(cards, source_card) {
@@ -51,9 +51,9 @@ pub fn source_has_color(
 }
 
 pub fn target_is_protected_from_source(
-    cards: &[CardInstance],
-    target: &CardInstance,
-    source: &CardInstance,
+    cards: &[Card],
+    target: &Card,
+    source: &Card,
 ) -> bool {
     for prot in target.get_protections() {
         match prot.as_str() {
@@ -83,7 +83,7 @@ pub fn target_is_protected_from_source(
     false
 }
 
-fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
+fn matches_valid_card(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     let Some(expr) = valid else {
         return true;
     };

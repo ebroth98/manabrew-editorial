@@ -1,11 +1,11 @@
 use forge_foundation::ZoneType;
 
-use crate::card::CardInstance;
+use crate::card::Card;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn global_attack_restrict(cards: &[CardInstance]) -> Option<i32> {
+pub fn global_attack_restrict(cards: &[Card]) -> Option<i32> {
     let mut max: Option<i32> = None;
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
@@ -27,7 +27,7 @@ pub fn global_attack_restrict(cards: &[CardInstance]) -> Option<i32> {
     max
 }
 
-pub fn attack_restrict_num_for_defender(cards: &[CardInstance], defender: PlayerId) -> Option<i32> {
+pub fn attack_restrict_num_for_defender(cards: &[Card], defender: PlayerId) -> Option<i32> {
     let mut max: Option<i32> = None;
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
@@ -52,7 +52,7 @@ pub fn attack_restrict_num_for_defender(cards: &[CardInstance], defender: Player
     max
 }
 
-fn eval_amount(source: &CardInstance, expr: &str) -> i32 {
+fn eval_amount(source: &Card, expr: &str) -> i32 {
     if let Ok(n) = expr.parse::<i32>() {
         return n;
     }

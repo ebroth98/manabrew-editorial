@@ -82,7 +82,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if sa.param_is_true(keys::IMPRINT_FOUND) {
                 if let Some(sid) = sa.source {
                     for &cid in &sought {
-                        ctx.game.card_mut(sid).imprinted_cards.push(cid);
+                        ctx.game.card_mut(sid).add_imprinted_card(cid);
                     }
                 }
             }

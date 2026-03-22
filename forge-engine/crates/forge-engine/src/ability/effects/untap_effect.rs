@@ -48,7 +48,7 @@ fn untap_card(
 ) {
     if etb {
         // ETB: directly set untapped without firing trigger
-        ctx.game.card_mut(card_id).tapped = false;
+        ctx.game.card_mut(card_id).set_tapped(false);
     } else {
         let untapped = ctx.game.untap(card_id);
         if untapped {
@@ -72,7 +72,7 @@ mod tests {
 
     use crate::ability::effects::EffectContext;
     use crate::agent::PassAgent;
-    use crate::card::CardInstance;
+    use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
     use crate::mana::ManaPool;
@@ -80,7 +80,7 @@ mod tests {
     use crate::trigger::handler::TriggerHandler;
 
     fn make_creature(game: &mut GameState, owner: PlayerId) -> CardId {
-        let c = CardInstance::new(
+        let c = Card::new(
             CardId(0),
             "Bear".into(),
             owner,

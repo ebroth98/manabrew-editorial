@@ -1,7 +1,7 @@
 import { Fragment } from "react";
 import type { Card, Player } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
-import type { ZonePanelItem } from "@/stores/usePreferencesStore";
+import { usePreferencesStore, type ZonePanelItem } from "@/stores/usePreferencesStore";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
 import { OpponentHalf, PlayerPanel } from "@/components/game/panels";
@@ -10,6 +10,8 @@ import { FreeBattlefield, HandDisplay } from "@/components/game/zones";
 import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
 import { ZoneActionColumn } from "@/components/game/ZoneActionColumn";
 import { ZONE_COLUMN_RESERVED_PX } from "@/components/game/game.constants";
+import { useHandScale } from "@/hooks/useHandScale";
+import { HAND_CARD_BASES } from "@/components/game/game.styles";
 import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
 import {
   ResizablePanelGroup,
@@ -119,6 +121,9 @@ export function GameBoard({
   onUntapLand,
 }: GameBoardProps) {
   const themeColors = useGameThemeColors();
+  const handSize = usePreferencesStore((s) => s.handSize);
+  const vScale = useHandScale();
+  const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale);
 
   return (
     <div className="game-board-surface flex flex-col gap-1 min-h-0 flex-1 overflow-visible">
@@ -301,7 +306,7 @@ export function GameBoard({
                       : undefined
                   }
                   onUntapLand={onUntapLand}
-                  bottomReserved={130}
+                  bottomReserved={handBottomReserved}
                   leftReserved={ZONE_COLUMN_RESERVED_PX}
                   rightReserved={0}
                   isDropActive={isOverBattlefield}
