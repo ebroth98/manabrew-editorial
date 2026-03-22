@@ -430,7 +430,7 @@ mod cast_spell;
 mod combat_phase;
 mod cost_payment;
 mod game_action;
-mod magic_stack;
+mod stack_resolution;
 mod phase_handler;
 mod playability;
 mod priority;

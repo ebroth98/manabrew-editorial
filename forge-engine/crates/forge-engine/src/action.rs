@@ -79,6 +79,9 @@ impl GameState {
         // zone entry order (matching Java's Zone.cardList insertion order).
         self.assign_zone_timestamp(card_id);
 
+        // Track LKI: record which zone this card came from on the destination zone.
+        self.zone_mut(dest_zone, dest_owner).save_lki(card_id, src_zone);
+
         // Reset state on zone change
         match dest_zone {
             ZoneType::Battlefield => {

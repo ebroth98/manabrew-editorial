@@ -9,7 +9,7 @@ use crate::phase::TurnState;
 use crate::phase::ExtraTurn;
 use crate::player::PlayerState;
 use crate::spellability::MagicStack;
-use crate::zone::{Zone, ZoneKey};
+use crate::zone::{Zone, ZoneKey, CostPaymentStack};
 
 /// Global registry of type lists loaded from `TypeLists.txt`.
 ///
@@ -86,6 +86,11 @@ pub struct GameState {
 
     // The stack
     pub stack: MagicStack,
+
+    /// Cost payment tracking stack — used by triggers to inspect cost payments.
+    /// Mirrors Java's `Game.costPaymentStack`.
+    #[serde(skip)]
+    pub cost_payment_stack: CostPaymentStack,
 
     // Day/Night cycle (Innistrad DFC mechanic)
     pub is_night: bool,
@@ -187,6 +192,7 @@ impl GameState {
             players,
             zones,
             stack: MagicStack::new(),
+            cost_payment_stack: CostPaymentStack::new(),
             is_night: false,
             turn: TurnState::new(player_order[0], player_order.len() as u32),
             player_order,

@@ -33,7 +33,8 @@ impl GameLoop {
         // Mirrors Java's Game.copyLastState() called before declare attackers.
         game.copy_last_state();
 
-        // Declare Attackers
+        // Declare Attackers — freeze the stack during declarations.
+        game.stack.freeze_stack();
         self.set_phase(game, agents, PhaseType::CombatDeclareAttackers);
         let available_attackers = combat::get_available_attackers(game, active);
         let possible_defenders = combat::get_possible_defenders(game, active);
@@ -558,6 +559,8 @@ impl GameLoop {
         // declared attackers.  This allows effects like Watchdog's
         // "Affected$ Creature.attackingYou | AddPower$ -1" to apply correctly.
         apply_continuous_effects(game);
+        // Unfreeze the stack now that attackers are declared.
+        game.stack.unfreeze_stack();
         // Java parity: PhaseHandler sets givePriorityToPlayer = inCombat() after
         // declare attackers. In Java, inCombat() returns `combat != null` (true
         // whenever the combat object exists, regardless of whether attackers were
@@ -586,7 +589,8 @@ impl GameLoop {
                 }
             }
 
-            // Declare Blockers
+            // Declare Blockers — freeze the stack during declarations.
+            game.stack.freeze_stack();
             self.set_phase(game, agents, PhaseType::CombatDeclareBlockers);
             let attacker_card_ids: Vec<CardId> =
                 self.combat.attackers.iter().map(|(a, _)| *a).collect();
@@ -770,6 +774,9 @@ impl GameLoop {
                     }
                 }
             }
+
+            // Unfreeze the stack now that blockers are declared.
+            game.stack.unfreeze_stack();
 
             // Fire BlockersDeclared batch trigger before the priority
             // window so these triggers are on the stack when players

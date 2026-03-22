@@ -221,6 +221,9 @@ impl GameLoop {
                 phase,
                 emit_phase_trigger,
             } => {
+                // Clear undo stack on phase change (can't undo across phases).
+                game.stack.clear_undo_stack();
+
                 // Run BeginPhase replacement effects before entering the phase.
                 {
                     use crate::replacement::replacement_handler::{
@@ -273,6 +276,12 @@ impl GameLoop {
             }
             TurnEvent::AdvanceTurn => {
                 self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                    // Rotate stack's turn-tracking (this_turn_cast → last_turn_cast).
+                    game.stack.on_next_turn();
+                    // Reset zone turn tracking for all zones.
+                    for zone in game.zones.values_mut() {
+                        zone.reset_cards_added_this_turn();
+                    }
                     let player_order = game.player_order.clone();
                     if let Some((player, _skip)) =
                         game.turn.advance_turn(&mut game.extra_turns, &player_order)
@@ -455,6 +464,7 @@ impl GameLoop {
         game.end_turn_requested = false;
         game.end_combat_requested = false;
         game.extra_combat_phases = 0;
+        game.stack.reset_max_distinct_sources();
 
         // Monarch draw (issue #22): at end of turn, the monarch draws a card.
         if let Some(monarch_id) = game.monarch {

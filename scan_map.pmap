@@ -11,3 +11,6 @@ combat/CombatView.java -> skip
 # Directory modules — Rust uses mod.rs inside a directory when an effect
 # is split across multiple sub-modules. Cannot have both file.rs and file/ in Rust.
 ability/effects/ChangeZoneEffect.java -> ability/effects/change_zone_effect/mod.rs
+
+# Java UI-only types not needed in Rust engine
+zone/ZoneView.java -> skip

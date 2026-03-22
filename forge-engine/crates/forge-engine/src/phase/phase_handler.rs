@@ -322,22 +322,6 @@ impl PhaseHandler {
         self.setup_first_turn(goes_first);
     }
 
-    /// The main game loop — runs until game over.
-    /// Mirrors Java's `PhaseHandler.mainGameLoop()`.
-    /// In Rust, this is driven by `GameLoop::run()`.
-    pub fn main_game_loop(&self) {
-        // Delegated to GameLoop::run() in the Rust architecture.
-        // This method exists for scan parity.
-    }
-
-    /// Execute one step of the main game loop.
-    /// Mirrors Java's `PhaseHandler.mainLoopStep()`.
-    /// In Rust, this is driven by `GameLoop::run_turn_state_machine()`.
-    pub fn main_loop_step(&self) {
-        // Delegated to GameLoop::run_turn_state_machine() in the Rust architecture.
-        // This method exists for scan parity.
-    }
-
     /// Dev mode: advance to a target phase, running phase transitions.
     /// Mirrors Java's `PhaseHandler.devAdvanceToPhase()`.
     pub fn dev_advance_to_phase(&mut self, target_phase: PhaseType) -> bool {

@@ -39,7 +39,7 @@ impl GameLoop {
         // Mirrors Java MagicStack line 623: game.copyLastState() before resolving.
         game.copy_last_state();
 
-        let entry = game.stack.pop().unwrap();
+        let entry = game.stack.resolve_stack().unwrap();
         let stack_item_name = entry
             .spell_ability
             .source
@@ -610,6 +610,9 @@ impl GameLoop {
                 }
             }
         }
+
+        // Mark resolution complete on the stack.
+        game.stack.finish_resolving();
 
         // Continuous effects might change after resolution
         apply_continuous_effects(game);

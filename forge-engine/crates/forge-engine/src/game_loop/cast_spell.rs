@@ -1846,6 +1846,8 @@ impl GameLoop {
                 p.spells_cast_this_turn += 1;
                 p.cards_cast_this_turn.push(card_id);
             }
+            // Track spell cast on the stack (storm count, etc.)
+            game.stack.record_spell_cast(card_id);
 
             // Emit SpellCast trigger only after successful target setup.
             self.trigger_handler.run_trigger(
@@ -2145,6 +2147,7 @@ impl GameLoop {
                     p.spells_cast_this_turn += 1;
                     p.cards_cast_this_turn.push(cascade_card_id);
                 }
+                game.stack.record_spell_cast(cascade_card_id);
                 self.trigger_handler.run_trigger(
                     TriggerType::SpellCast,
                     RunParams {
