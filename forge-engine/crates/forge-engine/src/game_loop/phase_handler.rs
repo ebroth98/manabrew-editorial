@@ -273,22 +273,11 @@ impl GameLoop {
             }
             TurnEvent::AdvanceTurn => {
                 self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
-                    // Extra turns (issue #22): if the queue is non-empty, the
-                    // front player gets the next turn instead of the normal
-                    // rotation.  Mirrors Java's PhaseHandler.handleNextTurn().
-                    if let Some(extra_turn) = game.extra_turns.pop_front() {
-                        game.turn.active_player = extra_turn.player;
-                        game.turn.priority_player = extra_turn.player;
-                        game.turn.turn_number += 1;
-                        game.turn.combat_attackers_declared = false;
-                        game.turn.combat_blockers_declared = false;
-                        game.turn.drawn_for_turn = false;
-                        // SkipUntap on extra turn (issue #22, AddTurn parity fix)
-                        if extra_turn.skip_untap {
-                            game.player_mut(extra_turn.player).skip_next_untap = true;
-                        }
-                    } else {
-                        game.turn.next_player_turn(&game.player_order.clone());
+                    let player_order = game.player_order.clone();
+                    if let Some((player, _skip)) =
+                        game.turn.advance_turn(&mut game.extra_turns, &player_order)
+                    {
+                        game.player_mut(player).skip_next_untap = true;
                     }
                 });
             }
@@ -298,22 +287,14 @@ impl GameLoop {
     pub fn step_untap(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
         let active = game.active_player();
 
-        // Phase-in (issue #22): phase in all phased-out permanents controlled by active player.
-        for i in 0..game.cards.len() {
-            if game.cards[i].phased_out
-                && game.cards[i].controller == active
-                && game.cards[i].zone == ZoneType::Battlefield
-            {
-                game.cards[i].phased_out = false;
-            }
-        }
+        // Delegate phasing to the phase module.
+        crate::phase::untap::do_phasing(game, active);
 
-        // Untap permanents, skipping exerted ones and resetting their flag.
+        // Untap permanents — uses agent interaction for "may choose not to untap".
         let cards: Vec<crate::ids::CardId> =
             game.cards_in_zone(ZoneType::Battlefield, active).to_vec();
         for cid in cards {
             if game.card(cid).exerted {
-                // Exerted creatures don't untap this turn; reset flag so they untap next turn.
                 game.card_mut(cid).exerted = false;
             } else {
                 let optional_keyword =

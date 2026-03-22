@@ -6,17 +6,10 @@ use serde::{Deserialize, Serialize};
 use crate::card::CardInstance;
 use crate::ids::{CardId, PlayerId};
 use crate::phase::TurnState;
+use crate::phase::ExtraTurn;
 use crate::player::PlayerState;
 use crate::spellability::MagicStack;
 use crate::zone::{Zone, ZoneKey};
-
-/// An extra turn entry — tracks who gets the turn and any modifications.
-#[derive(Debug, Clone)]
-pub struct ExtraTurn {
-    pub player: PlayerId,
-    /// If true, the untap step is skipped during this extra turn.
-    pub skip_untap: bool,
-}
 
 /// Global registry of type lists loaded from `TypeLists.txt`.
 ///

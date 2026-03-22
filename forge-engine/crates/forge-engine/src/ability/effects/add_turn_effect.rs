@@ -1,5 +1,5 @@
 use super::{parse_param, resolve_defined_player, EffectContext};
-use crate::game::ExtraTurn;
+use crate::phase::ExtraTurn;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
@@ -34,10 +34,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     for _ in 0..num_turns {
-        ctx.game.extra_turns.push_back(ExtraTurn {
-            player: target,
-            skip_untap,
-        });
+        let mut et = ExtraTurn::new(target);
+        et.set_skip_untap(skip_untap);
+        ctx.game.extra_turns.push_back(et);
     }
 }
 
