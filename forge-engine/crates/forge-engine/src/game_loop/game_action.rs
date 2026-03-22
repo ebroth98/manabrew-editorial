@@ -241,7 +241,7 @@ impl GameLoop {
         ab: &crate::ability::activated::ActivatedAbility,
     ) -> bool {
         // Pay costs
-        let api = ab.params.get(keys::AB);
+        let api = ab.params.get(keys::AB).and_then(crate::ability::api_type::ApiType::smart_value_of);
         if !self.pay_ability_cost(
             game,
             agents,
@@ -293,7 +293,7 @@ impl GameLoop {
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
     ) {
-        let api = ab.params.get(keys::AB);
+        let api = ab.params.get(keys::AB).and_then(crate::ability::api_type::ApiType::smart_value_of);
         if !self.pay_ability_cost(
             game,
             agents,
@@ -611,7 +611,7 @@ impl GameLoop {
         // where the root AB$ Pump resolves a DB$ Effect sub-ability.
         let mut sa = crate::spellability::build_spell_ability(game, card_id, &ability_text, player);
         sa.is_activated = true;
-        if sa.api.as_deref() == Some("Charm")
+        if sa.api == Some(crate::ability::api_type::ApiType::Charm)
             && !crate::ability::effects::charm_effect::make_choices_precast(game, agents, &mut sa)
         {
             return false;
@@ -653,7 +653,7 @@ impl GameLoop {
         };
 
         // Pay costs
-        let api = ab.params.get(keys::AB);
+        let api = ab.params.get(keys::AB).and_then(crate::ability::api_type::ApiType::smart_value_of);
         if !self.pay_ability_cost(
             game,
             agents,

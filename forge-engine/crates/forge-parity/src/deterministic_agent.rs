@@ -736,7 +736,7 @@ impl PlayerAgent for DeterministicAgent {
         _player: PlayerId,
         description: &str,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
         self.log_decision(&format!(
@@ -756,7 +756,7 @@ impl PlayerAgent for DeterministicAgent {
         message: &str,
         _options: &[String],
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
         self.log_decision(&format!(
@@ -776,7 +776,7 @@ impl PlayerAgent for DeterministicAgent {
         cost_kind: &str,
         message: &str,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
         self.log_decision(&format!(
@@ -797,7 +797,7 @@ impl PlayerAgent for DeterministicAgent {
         kind: BinaryChoiceKind,
         _default_choice: Option<bool>,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let chosen_left = choice_space::pick_bool(&mut self.rng.borrow_mut());
         self.log_decision(&format!(

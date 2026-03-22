@@ -34,7 +34,7 @@ impl GameLoop {
             // For Charm-type triggers (e.g. Modular uses SP$ Charm | Choices$ ModularMove),
             // select the charm mode BEFORE target setup, so that setupTargets can find
             // targets on the chosen sub-ability.  Mirrors Java's CharmEffect.makeChoices().
-            if pt.entry.spell_ability.api.as_deref() == Some("Charm") {
+            if pt.entry.spell_ability.api == Some(crate::ability::api_type::ApiType::Charm) {
                 if !crate::ability::effects::charm_effect::make_choices_precast(
                     game,
                     agents,
@@ -84,7 +84,7 @@ impl GameLoop {
                 .entry
                 .spell_ability
                 .api
-                .clone()
+                .map(|a| a.name().to_string())
                 .unwrap_or_else(|| "Unknown".to_string());
             let trigger_msg = if pt.description.is_empty() {
                 format!(

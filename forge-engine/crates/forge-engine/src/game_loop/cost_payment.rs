@@ -181,7 +181,7 @@ impl GameLoop {
         player: PlayerId,
         source: CardId,
         part: &CostPart,
-        api: Option<&str>,
+        api: Option<crate::ability::api_type::ApiType>,
         mandatory: bool,
     ) -> bool {
         let source_is_planeswalker = game.card(source).type_line.is_planeswalker();
@@ -203,7 +203,7 @@ impl GameLoop {
         player: PlayerId,
         card_id: CardId,
         cost: &crate::cost::Cost,
-        api: Option<&str>,
+        api: Option<crate::ability::api_type::ApiType>,
         mandatory: bool,
         context: CostPaymentContext,
     ) -> bool {
@@ -323,7 +323,7 @@ impl GameLoop {
                                     "Sacrifice",
                                     "Sacrifice for mana",
                                     None,
-                                    Some("Mana"),
+                                    Some(crate::ability::api_type::ApiType::Mana),
                                 );
                                 if confirmed {
                                     Some(sacrifice_id)
@@ -337,7 +337,7 @@ impl GameLoop {
                                     "SubCounter",
                                     "Remove counter for mana",
                                     None,
-                                    Some("Mana"),
+                                    Some(crate::ability::api_type::ApiType::Mana),
                                 );
                                 if confirmed {
                                     Some(source_id)

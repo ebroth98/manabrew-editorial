@@ -1247,7 +1247,7 @@ impl GameLoop {
 
             if !sa.overloaded {
                 let mut targeting_game = game.clone();
-                if sa.api.as_deref() == Some("Charm")
+                if sa.api == Some(crate::ability::api_type::ApiType::Charm)
                     && !crate::ability::effects::charm_effect::make_choices_precast(
                         &mut targeting_game,
                         agents,
@@ -1508,7 +1508,7 @@ impl GameLoop {
                                 "Sacrifice",
                                 "Sacrifice for mana",
                                 None,
-                                Some("Mana"),
+                                Some(crate::ability::api_type::ApiType::Mana),
                             );
                             if confirmed {
                                 Some(sacrifice_id)
@@ -1522,7 +1522,7 @@ impl GameLoop {
                                 "SubCounter",
                                 "Remove counter for mana",
                                 None,
-                                Some("Mana"),
+                                Some(crate::ability::api_type::ApiType::Mana),
                             );
                             if confirmed {
                                 Some(source_id)

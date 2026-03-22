@@ -1,5 +1,6 @@
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
+use super::trait_token_effect;
 use super::{emit_zone_trigger, EffectContext};
 use crate::card::CardInstance;
 use crate::event::{RunParams, TriggerType};
@@ -44,7 +45,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     if !token_script.is_empty() {
-        if let Some(template) = ctx.token_templates.get(&token_script).cloned() {
+        if let Some(template) = trait_token_effect::get_token_template(ctx.token_templates, &token_script).cloned() {
             create_tokens(ctx, sa, &template, amount, token_controller);
         } else {
             eprintln!(

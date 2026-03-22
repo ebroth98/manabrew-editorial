@@ -43,7 +43,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "Do you want to scry?",
             &[],
             source_name,
-            Some("Scry"),
+            Some(crate::ability::api_type::ApiType::Scry),
         );
         if !accepted {
             return;

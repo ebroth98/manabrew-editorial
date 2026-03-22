@@ -28,7 +28,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "Do you want to reveal your hand?",
             &[],
             source_name,
-            Some("RevealHand"),
+            Some(crate::ability::api_type::ApiType::RevealHand),
         );
         if !accepted {
             return;

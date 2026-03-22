@@ -1,8 +1,27 @@
-//! remove_from_match effect — ported from Java.
+//! RemoveFromMatch — remove cards from the entire match (Conspiracy).
+//! Ported from Java's RemoveFromMatchEffect: permanently removes cards
+//! from all game zones, ceasing to exist.
+
+use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    super::niche_effects::resolve_remove_from_match(ctx, sa);
+    let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
+        vec![target]
+    } else if let Some(source) = sa.source {
+        ctx.game.card(source).remembered_cards.clone()
+    } else {
+        return;
+    };
+
+    for card_id in targets {
+        // Move to None zone — card ceases to exist
+        let old_zone = ctx.game.card(card_id).zone;
+        let owner = ctx.game.card(card_id).owner;
+        ctx.game.move_card(card_id, ZoneType::None, owner);
+        super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::None);
+    }
 }

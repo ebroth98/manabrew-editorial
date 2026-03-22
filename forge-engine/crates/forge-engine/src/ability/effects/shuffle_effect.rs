@@ -30,7 +30,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 &format!("Have player {} shuffle their library?", pid.0),
                 &[],
                 source_name.as_deref(),
-                Some("Shuffle"),
+                Some(crate::ability::api_type::ApiType::Shuffle),
             );
             if !accepted {
                 continue;

@@ -38,7 +38,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "Combat" | "BeginCombat" => ctx.game.player_mut(target).skip_next_combat = true,
             "Untap" => ctx.game.player_mut(target).skip_next_untap = true,
             _ => {
-                eprintln!("[WARN] Unknown phase to skip: {:?}", phase);
+                let err = crate::ability::IllegalAbilityException::new(
+                    format!("Unknown phase to skip: {:?}", phase),
+                );
+                eprintln!("{}", err);
             }
         }
     }

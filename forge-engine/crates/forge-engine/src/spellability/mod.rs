@@ -4,6 +4,7 @@ pub mod target_restrictions;
 
 use serde::{Deserialize, Serialize};
 
+use crate::ability::api_type::ApiType;
 use crate::ability::effects::resolve_defined_players;
 use crate::agent::{PlayerAgent, TargetChoice};
 use crate::cost::{parse_cost, Cost};
@@ -66,9 +67,9 @@ pub const MORPH_PT: i32 = 2;
 /// `target_restrictions`, `target_chosen`, `sub_ability`, `api`, etc.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SpellAbility {
-    /// Effect API type (e.g. "DealDamage", "Destroy", "Draw").
+    /// Effect API type (e.g. DealDamage, Destroy, Draw).
     /// Mirrors Java's `ApiType api` field.
-    pub api: Option<String>,
+    pub api: Option<ApiType>,
     /// The card that hosts this ability. Mirrors Java's `hostCard`.
     pub source: Option<CardId>,
     /// The player who activated/cast this. Mirrors Java's `activatingPlayer`.
@@ -217,7 +218,7 @@ impl SpellAbility {
             .get(keys::SP)
             .or_else(|| params.get(keys::DB))
             .or_else(|| params.get(keys::AB))
-            .map(|s| s.to_string());
+            .and_then(|s| ApiType::smart_value_of(s));
         let target_restrictions = TargetRestrictions::new(&params);
         let cost = params.get(keys::COST).map(parse_cost);
 
@@ -252,66 +253,9 @@ impl SpellAbility {
     }
 }
 
-/// Build a SpellAbility chain from a card's ability text, walking SubAbility$
-/// SVars to construct the linked list.
-/// Mirrors Java's `AbilityFactory.getAbility()` + sub-ability chain construction.
-pub fn build_spell_ability(
-    game: &GameState,
-    card_id: CardId,
-    ability_text: &str,
-    player: PlayerId,
-) -> SpellAbility {
-    let params = Params::from_raw(ability_text);
-    let api = params
-        .get(keys::SP)
-        .or_else(|| params.get(keys::DB))
-        .or_else(|| params.get(keys::AB))
-        .map(|s| s.to_string());
-    let target_restrictions = TargetRestrictions::new(&params);
-    let cost = params.get(keys::COST).map(parse_cost);
-
-    // Recursively build sub-ability chain from SVars
-    let sub_ability = if let Some(sub_svar_name) = params.get(keys::SUB_ABILITY) {
-        if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name).cloned() {
-            Some(Box::new(build_spell_ability(
-                game, card_id, &sub_text, player,
-            )))
-        } else {
-            None
-        }
-    } else {
-        None
-    };
-
-    SpellAbility {
-        api,
-        source: Some(card_id),
-        activating_player: player,
-        targeting_player: None,
-        ability_text: ability_text.to_string(),
-        params,
-        target_restrictions,
-        target_chosen: TargetChoices::default(),
-        pay_costs: cost,
-        sub_ability,
-        is_spell: false,
-        is_trigger: false,
-        is_activated: false,
-        trigger_source: None,
-        trigger_index: None,
-        alt_cost: None,
-        kicked: false,
-        buyback_paid: false,
-        overloaded: false,
-        is_copy: false,
-        kick_count: 0,
-        replicate_count: 0,
-        optional_generic_cost_paid: false,
-        trigger_remembered_amount: 0,
-        x_mana_cost_paid: 0,
-        discarded_cost_cards: Vec::new(),
-    }
-}
+// build_spell_ability now lives in ability::ability_factory.
+// Re-export here for backward compatibility.
+pub use crate::ability::ability_factory::build_spell_ability;
 
 /// Choose targets for a single SpellAbility node, populating its `target_chosen`.
 /// Mirrors Java's `PlayerController.chooseTargetsFor(currentAbility)`.

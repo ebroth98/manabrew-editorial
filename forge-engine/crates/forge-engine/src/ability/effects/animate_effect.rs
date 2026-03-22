@@ -1,5 +1,6 @@
 use forge_foundation::{ColorSet, ZoneType};
 
+use super::trait_animate_effect::parse_animate_params;
 use super::EffectContext;
 use crate::card::AnimateState;
 use crate::parsing::keys;
@@ -26,17 +27,23 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Determine target card
     let target_ids = resolve_animate_targets(ctx, sa, controller);
 
-    let power_str = sa.params.get_cloned(keys::POWER);
-    let toughness_str = sa.params.get_cloned(keys::TOUGHNESS);
-    let types_str = sa.params.get_cloned(keys::TYPES);
-    let keywords_str = sa.params.get_cloned(keys::KEYWORDS);
-    let colors_str = sa.params.get_cloned(keys::COLORS);
+    // Use shared base-class parsing for common animate params
+    let anim_params = parse_animate_params(sa);
+    let power_str = anim_params.power.map(|p| p.to_string());
+    let toughness_str = anim_params.toughness.map(|t| t.to_string());
+    let types_str = if anim_params.add_types.is_empty() {
+        None
+    } else {
+        Some(anim_params.add_types.join(","))
+    };
+    let keywords_str = if anim_params.add_keywords.is_empty() {
+        None
+    } else {
+        Some(anim_params.add_keywords.join(","))
+    };
+    let colors_str = anim_params.colors.map(|c| c.join(","));
     let triggers_str = sa.params.get_cloned(keys::TRIGGERS);
-    let overwrite_types = sa
-        .params
-        .get(keys::OVERWRITE_TYPES)
-        .map(|s| s.eq_ignore_ascii_case("True"))
-        .unwrap_or(false);
+    let overwrite_types = anim_params.overwrite_types;
 
     // Resolve Triggers$ SVars from the source card into parsed Trigger objects.
     // These will be temporarily added to each target card.

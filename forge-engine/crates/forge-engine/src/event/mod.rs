@@ -260,3 +260,51 @@ pub struct RunParams {
     /// at fire time (not at deferred match time).
     pub drawn_this_turn_snapshot: Option<i32>,
 }
+
+impl RunParams {
+    /// Get a card ID from run-params by AbilityKey.
+    /// Provides a generic accessor so code can use `AbilityKey` enum values
+    /// to pull data from the typed struct.
+    pub fn get_card(&self, key: crate::ability::AbilityKey) -> Option<CardId> {
+        use crate::ability::AbilityKey;
+        match key {
+            AbilityKey::Card => self.card,
+            AbilityKey::CardLKI => self.card_lki,
+            AbilityKey::DamageSource => self.damage_source,
+            AbilityKey::DamageTarget => self.damage_target_card,
+            AbilityKey::Attacker => self.attacker,
+            AbilityKey::Blocker => self.blocker,
+            AbilityKey::Source => self.spell_card,
+            AbilityKey::NewCard => self.card2,
+            AbilityKey::Enlisted => self.enlisted,
+            AbilityKey::Exploited => self.exploited_card,
+            AbilityKey::Cause => self.cause_card,
+            _ => None,
+        }
+    }
+
+    /// Get a player ID from run-params by AbilityKey.
+    pub fn get_player(&self, key: crate::ability::AbilityKey) -> Option<PlayerId> {
+        use crate::ability::AbilityKey;
+        match key {
+            AbilityKey::Player => self.player,
+            AbilityKey::Activator => self.cause_player,
+            AbilityKey::DefendingPlayer => self.defending_player,
+            AbilityKey::AttackingPlayer => self.spell_controller,
+            AbilityKey::OriginalController => self.original_controller,
+            AbilityKey::DamageTarget => self.damage_target_player,
+            _ => None,
+        }
+    }
+
+    /// Get an integer amount from run-params by AbilityKey.
+    pub fn get_amount(&self, key: crate::ability::AbilityKey) -> Option<i32> {
+        use crate::ability::AbilityKey;
+        match key {
+            AbilityKey::DamageAmount => self.damage_amount,
+            AbilityKey::LifeAmount => self.life_amount,
+            AbilityKey::CounterAmount => self.counter_amount,
+            _ => None,
+        }
+    }
+}

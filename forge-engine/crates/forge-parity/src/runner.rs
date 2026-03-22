@@ -1048,7 +1048,7 @@ impl PlayerAgent for CapturingAgent {
         player: PlayerId,
         description: &str,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = self
             .inner
@@ -1079,7 +1079,7 @@ impl PlayerAgent for CapturingAgent {
         message: &str,
         options: &[String],
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = self
             .inner
@@ -1110,7 +1110,7 @@ impl PlayerAgent for CapturingAgent {
         cost_kind: &str,
         message: &str,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let accept = self
             .inner
@@ -1134,7 +1134,7 @@ impl PlayerAgent for CapturingAgent {
         kind: BinaryChoiceKind,
         default_choice: Option<bool>,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         let left = format!("{}:LEFT", kind.as_str());
         let right = format!("{}:RIGHT", kind.as_str());

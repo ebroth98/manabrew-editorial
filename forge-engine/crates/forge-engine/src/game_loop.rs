@@ -976,13 +976,13 @@ mod tests {
         assert!(
             game.stack
                 .iter()
-                .any(|entry| entry.spell_ability.api.as_deref() == Some("Draw")),
+                .any(|entry| entry.spell_ability.api == Some(crate::ability::api_type::ApiType::Draw)),
             "ETB draw trigger should be on stack for an evoked creature"
         );
         assert!(
             game.stack
                 .iter()
-                .any(|entry| entry.spell_ability.api.as_deref() == Some("Sacrifice")),
+                .any(|entry| entry.spell_ability.api == Some(crate::ability::api_type::ApiType::Sacrifice)),
             "Evoke sacrifice trigger should be on stack"
         );
     }

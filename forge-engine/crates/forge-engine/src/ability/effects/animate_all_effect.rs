@@ -1,5 +1,6 @@
 use forge_foundation::{ColorSet, ZoneType};
 
+use super::trait_animate_effect::parse_animate_params;
 use super::{matches_valid_cards, EffectContext};
 use crate::card::AnimateState;
 use crate::parsing::keys;
@@ -27,11 +28,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get_cloned(keys::VALID_CARDS)
         .unwrap_or_else(|| "Card".to_string());
 
-    let power_str = sa.params.get_cloned(keys::POWER);
-    let toughness_str = sa.params.get_cloned(keys::TOUGHNESS);
-    let types_str = sa.params.get_cloned(keys::TYPES);
+    // Use shared base-class parsing for common animate params
+    let anim_params = parse_animate_params(sa);
+    let power_str = anim_params.power.map(|p| p.to_string());
+    let toughness_str = anim_params.toughness.map(|t| t.to_string());
+    let types_str = if anim_params.add_types.is_empty() {
+        None
+    } else {
+        Some(anim_params.add_types.join(","))
+    };
+    // AnimateAll uses " & " as keyword separator (unlike Animate which uses ",")
+    // parse_animate_params splits on "," so we also split on "&" for AnimateAll-specific handling
     let keywords_str = sa.params.get_cloned(keys::KEYWORDS);
-    let colors_str = sa.params.get_cloned(keys::COLORS);
+    let colors_str = anim_params.colors.map(|c| c.join(","));
     let overwrite_colors = sa
         .params
         .get(keys::OVERWRITE_COLORS)

@@ -56,7 +56,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 BinaryChoiceKind::AddOrRemove,
                 None,
                 Some(&source_name),
-                sa.api.as_deref(),
+                sa.api,
             );
             if add {
                 ctx.game.card_mut(cid).add_counter(&CounterType::Time, 1);

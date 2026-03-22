@@ -4,8 +4,8 @@ use crate::spellability::TargetKind;
 
 impl GameLoop {
     fn effect_kind_for_sa(sa: &SpellAbility) -> String {
-        if let Some(api) = sa.api.as_ref() {
-            return api.clone();
+        if let Some(api) = sa.api {
+            return api.name().to_string();
         }
         if let Some(kind) = sa
             .params
@@ -107,7 +107,7 @@ impl GameLoop {
             if let Some(decider) = entry.optional_trigger_decider {
                 let description = entry.optional_trigger_description.as_deref().unwrap_or("");
                 let source_name = entry.optional_trigger_source_name.as_deref();
-                let api = entry.spell_ability.api.as_deref();
+                let api = entry.spell_ability.api;
                 let accepted = agents[decider.index()].choose_optional_trigger(
                     decider,
                     description,
@@ -150,7 +150,7 @@ impl GameLoop {
                 if let Some(cost) = &entry.spell_ability.pay_costs {
                     let player = entry.spell_ability.activating_player;
                     let source = entry.spell_ability.source.unwrap_or(CardId(0));
-                    let api = entry.spell_ability.api.as_deref();
+                    let api = entry.spell_ability.api;
                     let available = crate::mana::calculate_available_mana(
                         &self.mana_pools[player.index()],
                         game,

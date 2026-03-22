@@ -1,8 +1,6 @@
-//! blank_line effect — ported from Java.
+//! BlankLine — no-op formatting effect used in card scripts.
 
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
-pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    super::niche_effects::resolve_blank_line(ctx, sa);
-}
+pub fn resolve(_ctx: &mut EffectContext, _sa: &SpellAbility) {}

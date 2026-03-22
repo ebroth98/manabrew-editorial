@@ -52,7 +52,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             BinaryChoiceKind::HeadsOrTails,
             None,
             Some(&card_name),
-            sa.api.as_deref(),
+            sa.api,
         );
         let won = called_heads == is_heads;
 

@@ -69,7 +69,7 @@ fn prompt_optional_play(
         &format!("Do you want to play {}?", card_name),
         &[],
         Some(&card_name),
-        Some("Play"),
+        Some(crate::ability::api_type::ApiType::Play),
     )
 }
 

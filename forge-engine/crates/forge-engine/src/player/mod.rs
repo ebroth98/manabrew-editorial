@@ -106,20 +106,11 @@ impl PlayerState {
     }
 
     pub fn gain_life(&mut self, amount: i32) {
-        if std::env::var("FORGE_LIFE_TRACE").is_ok() {
-            eprintln!("[LIFE_TRACE] P{} gain_life({}) => life {} -> {}", self.id.index(), amount, self.life, self.life + amount);
-        }
         self.life += amount;
         self.life_gained_this_turn += amount;
     }
 
     pub fn lose_life(&mut self, amount: i32) {
-        if std::env::var("FORGE_LIFE_TRACE").is_ok() {
-            eprintln!("[LIFE_TRACE] P{} lose_life({}) => life {} -> {}", self.id.index(), amount, self.life, self.life - amount);
-            if self.id.index() == 1 && amount == 1 {
-                eprintln!("[LIFE_TRACE] P1 1-damage backtrace:\n{}", std::backtrace::Backtrace::force_capture());
-            }
-        }
         self.life -= amount;
         self.life_lost_this_turn += amount;
     }

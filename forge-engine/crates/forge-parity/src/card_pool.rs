@@ -7,6 +7,7 @@
 use std::collections::BTreeMap;
 
 use forge_carddb::{CardDatabase, CardFace};
+use forge_engine_core::ability::api_type::ApiType;
 use forge_engine_core::ability::effects::IMPLEMENTED_API_TYPES;
 use forge_engine_core::replacement::parse_replacement_effect;
 use forge_engine_core::staticability::parse_static_ability;
@@ -302,9 +303,16 @@ fn check_ability_chain_implemented(
         .or_else(|| params.get(keys::DB))
         .or_else(|| params.get(keys::AB));
 
-    if let Some(api) = api_type {
-        if !IMPLEMENTED_API_TYPES.contains(&api) {
-            return false;
+    if let Some(api_str) = api_type {
+        match ApiType::smart_value_of(api_str) {
+            Some(api) => {
+                if !IMPLEMENTED_API_TYPES.contains(&api) {
+                    return false;
+                }
+            }
+            None => {
+                return false;
+            }
         }
     }
 

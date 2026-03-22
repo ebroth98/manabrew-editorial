@@ -1,8 +1,31 @@
-//! assign_group effect — ported from Java.
+//! AssignGroup — assign creatures to groups (Conspiracy draft).
+//! Ported from Java's AssignGroupEffect: assigns defined objects to groups
+//! chosen by the player, then resolves sub-abilities for each group.
 
 use super::EffectContext;
+use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    super::niche_effects::resolve_assign_group(ctx, sa);
+    let source = match sa.source {
+        Some(s) => s,
+        None => return,
+    };
+
+    // Get defined cards to assign
+    let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
+        vec![target]
+    } else {
+        ctx.game.card(source).remembered_cards.clone()
+    };
+
+    if targets.is_empty() {
+        return;
+    }
+
+    // Auto-assign all to group 1 (agent would choose in full implementation)
+    // Remember the assigned cards
+    for card_id in &targets {
+        ctx.game.card_mut(source).add_remembered_card(*card_id);
+    }
 }

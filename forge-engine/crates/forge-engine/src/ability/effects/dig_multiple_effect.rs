@@ -108,7 +108,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             prompt,
             &[],
             source_name.as_deref(),
-            Some("Dig"),
+            Some(crate::ability::api_type::ApiType::Dig),
         );
         if !accepted {
             // Put cards back into library — reverse to restore original deepest→top order.

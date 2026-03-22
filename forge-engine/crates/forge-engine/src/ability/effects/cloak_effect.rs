@@ -5,13 +5,15 @@
 
 use forge_foundation::ZoneType;
 
+use super::manifest_base_effect::parse_manifest_params;
 use super::{emit_zone_trigger, EffectContext};
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0) as usize;
+    let manifest_params = parse_manifest_params(ctx, sa);
+    let amount = manifest_params.amount;
     let controller = sa.activating_player;
 
     let players = if let Some(def) = sa.defined_player() {

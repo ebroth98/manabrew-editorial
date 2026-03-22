@@ -40,7 +40,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 BinaryChoiceKind::TapOrUntap,
                 None,
                 Some(&source_name),
-                sa.api.as_deref(),
+                sa.api,
             )
         };
 

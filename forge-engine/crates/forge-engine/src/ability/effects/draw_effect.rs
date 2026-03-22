@@ -32,7 +32,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             &format!("Do you want to draw {} card(s)?", num),
             &[],
             source_name,
-            Some("Draw"),
+            Some(crate::ability::api_type::ApiType::Draw),
         );
         if !accepted {
             return;

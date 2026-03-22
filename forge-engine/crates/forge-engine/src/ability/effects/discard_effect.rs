@@ -39,7 +39,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "Do you want to discard?",
             &[],
             source_name,
-            Some("Discard"),
+            Some(crate::ability::api_type::ApiType::Discard),
         );
         if !accepted {
             return;

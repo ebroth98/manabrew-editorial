@@ -607,7 +607,7 @@ impl PlayerAgent for TauriAgent {
         player: PlayerId,
         description: &str,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         choices::choose_optional_trigger(self, player, description, card_name, api)
     }
@@ -619,7 +619,7 @@ impl PlayerAgent for TauriAgent {
         message: &str,
         options: &[String],
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         choices::confirm_action(self, player, mode, message, options, card_name, api)
     }
@@ -630,7 +630,7 @@ impl PlayerAgent for TauriAgent {
         cost_kind: &str,
         message: &str,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         choices::confirm_payment(self, player, cost_kind, message, card_name, api)
     }
@@ -642,7 +642,7 @@ impl PlayerAgent for TauriAgent {
         kind: BinaryChoiceKind,
         default_choice: Option<bool>,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<forge_engine_core::ability::api_type::ApiType>,
     ) -> bool {
         choices::choose_binary(self, player, question, kind, default_choice, card_name, api)
     }

@@ -80,7 +80,7 @@ pub(super) fn choose_optional_trigger(
     _player: PlayerId,
     description: &str,
     card_name: Option<&str>,
-    _api: Option<&str>,
+    _api: Option<forge_engine_core::ability::api_type::ApiType>,
 ) -> bool {
     agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
         game_view: agent.view(),
@@ -104,7 +104,7 @@ pub(super) fn confirm_action(
     message: &str,
     options: &[String],
     card_name: Option<&str>,
-    api: Option<&str>,
+    api: Option<forge_engine_core::ability::api_type::ApiType>,
 ) -> bool {
     // Reuse the existing optional-trigger modal plumbing for generic confirms.
     let option_labels = if options.is_empty() {
@@ -119,7 +119,7 @@ pub(super) fn confirm_action(
         prompt_kind: Some("confirm_action".to_string()),
         option_labels: Some(option_labels),
         mode: mode.map(String::from),
-        api: api.map(String::from),
+        api: api.map(|a| a.name().to_string()),
     });
     match agent.recv_action() {
         PlayerAction::OptionalTriggerDecision { accept } => accept,
@@ -133,7 +133,7 @@ pub(super) fn confirm_payment(
     cost_kind: &str,
     message: &str,
     card_name: Option<&str>,
-    api: Option<&str>,
+    api: Option<forge_engine_core::ability::api_type::ApiType>,
 ) -> bool {
     agent.send_prompt(AgentPromptInner::ChooseOptionalTrigger {
         game_view: agent.view(),
@@ -142,7 +142,7 @@ pub(super) fn confirm_payment(
         prompt_kind: Some("confirm_payment".to_string()),
         option_labels: Some(vec!["Decline".to_string(), "Accept".to_string()]),
         mode: Some(cost_kind.to_string()),
-        api: api.map(String::from),
+        api: api.map(|a| a.name().to_string()),
     });
     match agent.recv_action() {
         PlayerAction::OptionalTriggerDecision { accept } => accept,
@@ -157,7 +157,7 @@ pub(super) fn choose_binary(
     kind: BinaryChoiceKind,
     _default_choice: Option<bool>,
     card_name: Option<&str>,
-    api: Option<&str>,
+    api: Option<forge_engine_core::ability::api_type::ApiType>,
 ) -> bool {
     let (left, right) = kind.labels();
     // In this modal pipeline, `accept=true` means "second button";
@@ -169,7 +169,7 @@ pub(super) fn choose_binary(
         prompt_kind: Some("choose_binary".to_string()),
         option_labels: Some(vec![right.to_string(), left.to_string()]),
         mode: Some(kind.as_str().to_string()),
-        api: api.map(String::from),
+        api: api.map(|a| a.name().to_string()),
     });
     match agent.recv_action() {
         PlayerAction::OptionalTriggerDecision { accept } => accept,

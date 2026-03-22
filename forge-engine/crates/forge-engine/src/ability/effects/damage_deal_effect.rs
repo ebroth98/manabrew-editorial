@@ -87,11 +87,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    if std::env::var("FORGE_LIFE_TRACE").is_ok() {
-        let src_name = sa.source.map(|id| ctx.game.card(id).card_name.clone()).unwrap_or_default();
-        eprintln!("[DEAL_DAMAGE_TRACE] source={} damage={} target_player={:?} target_card={:?}", src_name, damage, target_player, sa.target_chosen.target_card);
-    }
-
     if let Some(target_player) = target_player {
         let source_has_infect = if let Some(src_id) = sa.source {
             let src = ctx.game.card(src_id);
@@ -282,14 +277,7 @@ fn evaluate_svar_expr(ctx: &EffectContext, sa: &SpellAbility, expr: &str) -> i32
             } else {
                 sac_card.lki_toughness.unwrap_or(sac_card.base_toughness.unwrap_or(0))
             };
-            if std::env::var("FORGE_LIFE_TRACE").is_ok() {
-                eprintln!("[SVAR_TRACE] {} = {} (card={} lki_power={:?} base_power={:?})",
-                    expr, val, sac_card.card_name, sac_card.lki_power, sac_card.base_power);
-            }
             return val;
-        }
-        if std::env::var("FORGE_LIFE_TRACE").is_ok() {
-            eprintln!("[SVAR_TRACE] {} => no last_sacrificed_card!", expr);
         }
         return 0;
     }

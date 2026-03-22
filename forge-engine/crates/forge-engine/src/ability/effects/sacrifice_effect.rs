@@ -205,7 +205,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 "Do you want to sacrifice?",
                 &[],
                 source_name,
-                Some("Sacrifice"),
+                Some(crate::ability::api_type::ApiType::Sacrifice),
             );
             if !accepted {
                 continue;

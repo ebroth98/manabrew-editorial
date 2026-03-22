@@ -1,8 +1,98 @@
-//! make_card effect — ported from Java.
+//! MakeCard — conjure a card with specific properties (digital-only, Arena).
+//! Ported from Java's MakeCardEffect: creates a real card (not a token) from
+//! a named card, spellbook, or choices, and places it in a zone.
+
+use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    super::niche_effects::resolve_make_card(ctx, sa);
+    let source = match sa.source {
+        Some(s) => s,
+        None => return,
+    };
+    let controller = sa.activating_player;
+
+    // Determine target zone
+    let zone = sa
+        .params
+        .get(keys::ZONE)
+        .map(|z| match z {
+            "Hand" => ZoneType::Hand,
+            "Battlefield" => ZoneType::Battlefield,
+            "Graveyard" => ZoneType::Graveyard,
+            "Exile" => ZoneType::Exile,
+            _ => ZoneType::Library,
+        })
+        .unwrap_or(ZoneType::Library);
+
+    // Get card name(s) to conjure
+    let names: Vec<String> = if let Some(name) = sa.params.get(keys::NAME) {
+        if name == "ChosenName" {
+            // Use named card from source
+            if let Some(chosen) = ctx.game.card(source).svars.get("ChosenName") {
+                vec![chosen.clone()]
+            } else {
+                vec![]
+            }
+        } else {
+            vec![name.to_string()]
+        }
+    } else if let Some(names_str) = sa.params.get(keys::NAMES) {
+        names_str.split(',').map(|s| s.trim().replace(';', ",")).collect()
+    } else {
+        // Spellbook/Choices — digital-only card generation
+        vec![]
+    };
+
+    let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(1);
+
+    for name in &names {
+        for _ in 0..amount {
+            // Create a minimal card instance representing the conjured card
+            let mut card = crate::card::CardInstance::new(
+                CardId(0),
+                name.clone(),
+                controller,
+                forge_foundation::CardTypeLine::parse(""),
+                forge_foundation::ManaCost::parse(""),
+                forge_foundation::ColorSet::COLORLESS,
+                None,
+                None,
+                vec![],
+                vec![],
+            );
+            card.controller = controller;
+
+            if sa.param_is_true(keys::TAPPED) {
+                card.tapped = true;
+            }
+            if sa.param_is_true(keys::FACE_DOWN) {
+                card.face_down = true;
+            }
+
+            let card_id = ctx.game.create_card(card);
+            let old_zone = ctx.game.card(card_id).zone;
+            ctx.game.move_card(card_id, zone, controller);
+            super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, zone);
+
+            if sa.param_is_true(keys::REMEMBER_MADE) {
+                ctx.game.card_mut(source).add_remembered_card(card_id);
+            }
+            if sa.param_is_true(keys::IMPRINT_MADE) {
+                ctx.game.card_mut(source).imprinted_cards.push(card_id);
+            }
+        }
+    }
+
+    // Shuffle library if cards went there without a specific position
+    if zone == ZoneType::Library && !sa.params.has(keys::LIBRARY_POSITION) {
+        {
+            let lib = ctx.game.zone_mut(ZoneType::Library, controller);
+            ctx.rng.shuffle_cards(&mut lib.cards);
+        }
+    }
 }

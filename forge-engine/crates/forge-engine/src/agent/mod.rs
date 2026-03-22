@@ -374,7 +374,7 @@ pub trait PlayerAgent {
     /// Choose whether an optional triggered ability fires.
     /// `description` is the trigger text shown to the player.
     /// `card_name` is the name of the source card (for UI display).
-    /// `api` is the spell ability API type (e.g. "Pump", "PumpAll", "DealDamage").
+    /// `api` is the spell ability API type.
     /// Returns true to allow the trigger, false to decline.
     /// Default: always allow (non-interactive agents accept all optional triggers).
     fn choose_optional_trigger(
@@ -382,7 +382,7 @@ pub trait PlayerAgent {
         _player: PlayerId,
         _description: &str,
         _card_name: Option<&str>,
-        _api: Option<&str>,
+        _api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         true
     }
@@ -398,7 +398,7 @@ pub trait PlayerAgent {
         _message: &str,
         _options: &[String],
         _card_name: Option<&str>,
-        _api: Option<&str>,
+        _api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         false
     }
@@ -413,7 +413,7 @@ pub trait PlayerAgent {
         cost_kind: &str,
         message: &str,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         let _ = (player, cost_kind, message, card_name, api);
         true
@@ -428,7 +428,7 @@ pub trait PlayerAgent {
         kind: BinaryChoiceKind,
         _default_choice: Option<bool>,
         card_name: Option<&str>,
-        api: Option<&str>,
+        api: Option<crate::ability::api_type::ApiType>,
     ) -> bool {
         let (left, right) = kind.labels();
         self.confirm_action(

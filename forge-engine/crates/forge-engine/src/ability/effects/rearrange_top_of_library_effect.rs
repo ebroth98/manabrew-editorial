@@ -81,7 +81,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "Do you want to shuffle the library?",
             &[],
             source_name,
-            Some("RearrangeTopOfLibrary"),
+            Some(crate::ability::api_type::ApiType::RearrangeTopOfLibrary),
         );
         if wants_shuffle {
             let lib = ctx.game.zone_mut(ZoneType::Library, target);

@@ -81,14 +81,7 @@ pub fn resolve_numeric_svar(
                         } else {
                             sac_card.lki_toughness.unwrap_or(sac_card.base_toughness.unwrap_or(0))
                         };
-                        if std::env::var("FORGE_LIFE_TRACE").is_ok() {
-                            eprintln!("[SVAR_TRACE] {} = {} (card={} lki_power={:?} base_power={:?})",
-                                svar_expr, val, sac_card.card_name, sac_card.lki_power, sac_card.base_power);
-                        }
                         return val;
-                    }
-                    if std::env::var("FORGE_LIFE_TRACE").is_ok() {
-                        eprintln!("[SVAR_TRACE] {} => no last_sacrificed_card!", svar_expr);
                     }
                     return 0;
                 }

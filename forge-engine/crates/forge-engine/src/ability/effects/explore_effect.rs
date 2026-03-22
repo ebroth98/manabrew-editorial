@@ -136,7 +136,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 &msg,
                 &[],
                 Some(&explorer_name),
-                Some("Explore"),
+                Some(crate::ability::api_type::ApiType::Explore),
             );
 
             if put_in_gy {

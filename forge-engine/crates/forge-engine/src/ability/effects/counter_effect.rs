@@ -39,7 +39,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 &message,
                 &[],
                 source_name.as_deref(),
-                Some("Ward"),
+                None, // Ward is not an ApiType
             );
             if paid {
                 return; // opponent chose to pay — spell is not countered

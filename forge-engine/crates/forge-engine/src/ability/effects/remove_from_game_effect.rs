@@ -1,8 +1,15 @@
-//! remove_from_game effect — ported from Java.
+//! RemoveFromGame — exile (old terminology).
+
+use forge_foundation::ZoneType;
 
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    super::niche_effects::resolve_remove_from_game(ctx, sa);
+    if let Some(target) = sa.target_chosen.target_card.or(sa.source) {
+        let old = ctx.game.card(target).zone;
+        let owner = ctx.game.card(target).owner;
+        ctx.game.move_card(target, ZoneType::Exile, owner);
+        super::emit_zone_trigger(ctx.trigger_handler, target, old, ZoneType::Exile);
+    }
 }
