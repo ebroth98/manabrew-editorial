@@ -38,6 +38,16 @@ pub fn cant_prevent_damage(cards: &[CardInstance], source_id: CardId, is_combat:
     false
 }
 
+/// Mirrors Java's `StaticAbilityCantPreventDamage.applyCantPreventDamage()`.
+pub fn apply_cant_prevent_damage(
+    st_ab: &crate::staticability::static_ability::StaticAbility,
+    damage_source: &CardInstance,
+    host: &CardInstance,
+    is_combat: bool,
+) -> bool {
+    applies(st_ab, damage_source, host, is_combat)
+}
+
 fn applies(
     st_ab: &crate::staticability::static_ability::StaticAbility,
     damage_source: &CardInstance,
@@ -57,4 +67,3 @@ fn applies(
         host,
     )
 }
-

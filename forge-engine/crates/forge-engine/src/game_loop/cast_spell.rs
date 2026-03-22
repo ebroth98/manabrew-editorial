@@ -161,9 +161,13 @@ impl GameLoop {
             let mut is_bestow = false;
             let mut is_warp = false;
             let mut is_morph_facedown = false;
+            let mut is_static_alternative = false;
 
             match play_mode {
                 crate::agent::PlayCardMode::Normal => {}
+                crate::agent::PlayCardMode::StaticAlternative => {
+                    is_static_alternative = true;
+                }
                 crate::agent::PlayCardMode::GainLifeAlt => {
                     is_gainlife_alt = true;
                 }
@@ -277,6 +281,26 @@ impl GameLoop {
                 .cloned()
                 .unwrap_or_default();
 
+            let static_alt_entry = if is_static_alternative {
+                let mut probe_sa =
+                    build_spell_ability(game, card_id, &spell_ability_text, player);
+                probe_sa.is_spell = true;
+                let entry = crate::staticability::static_ability_alternative_cost::alternative_costs(
+                    &game.cards,
+                    &probe_sa,
+                    game.card(card_id),
+                    player,
+                )
+                .into_iter()
+                .find(|e| e.cost.parts.iter().all(|p| matches!(p, CostPart::Mana(_))));
+                if entry.is_none() {
+                    return None;
+                }
+                entry
+            } else {
+                None
+            };
+
             // Mirror Java cast-time Charm gating (CharmEffect.makeChoices):
             // if not enough legal modes exist, casting fails before any payment.
             if spell_ability_text.contains("SP$ Charm")
@@ -363,6 +387,9 @@ impl GameLoop {
             } else if is_plot_cast {
                 // Plot: cast from exile for free (already paid plot cost).
                 forge_foundation::ManaCost::generic(0)
+            } else if is_static_alternative {
+                let entry = static_alt_entry.as_ref()?;
+                Self::mana_from_cost(&entry.cost)
             } else if is_bestow {
                 let bestow_cost_str = game.card(card_id).get_bestow_cost().unwrap_or_default();
                 forge_foundation::ManaCost::parse(&bestow_cost_str)
@@ -1237,6 +1264,12 @@ impl GameLoop {
                 sa.kicked = true;
             }
 
+            if let Some(entry) = static_alt_entry.as_ref() {
+                crate::staticability::static_ability_alternative_cost::apply_alternative_cost_to_sa(
+                    &mut sa, entry,
+                );
+            }
+
             sa.buyback_paid = buyback_paid;
             sa.kick_count = kick_count;
             sa.replicate_count = replicate_count;
@@ -1808,7 +1841,11 @@ impl GameLoop {
                 game.card_mut(card_id).commander_cast_count += 1;
             }
 
-            game.player_mut(player).spells_cast_this_turn += 1;
+            {
+                let p = game.player_mut(player);
+                p.spells_cast_this_turn += 1;
+                p.cards_cast_this_turn.push(card_id);
+            }
 
             // Emit SpellCast trigger only after successful target setup.
             self.trigger_handler.run_trigger(
@@ -2103,7 +2140,11 @@ impl GameLoop {
                 game.move_card(cascade_card_id, ZoneType::Stack, player);
 
                 // Cascade spell counts as being cast
-                game.player_mut(player).spells_cast_this_turn += 1;
+                {
+                    let p = game.player_mut(player);
+                    p.spells_cast_this_turn += 1;
+                    p.cards_cast_this_turn.push(cascade_card_id);
+                }
                 self.trigger_handler.run_trigger(
                     TriggerType::SpellCast,
                     RunParams {

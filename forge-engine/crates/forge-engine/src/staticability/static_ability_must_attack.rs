@@ -23,6 +23,10 @@ pub fn must_attack(cards: &[CardInstance], attacker: &CardInstance) -> bool {
     false
 }
 
+pub fn entities_must_attack(cards: &[CardInstance], attacker: &CardInstance) -> bool {
+    must_attack(cards, attacker)
+}
+
 fn matches_valid_creature(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
     match valid {
         None => card.is_creature(),

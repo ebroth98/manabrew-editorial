@@ -51,6 +51,36 @@ pub fn can_spend_mana_as_any_color(
     false
 }
 
+pub fn mana_convert(
+    cards: &[CardInstance],
+    player: PlayerId,
+    spell_card: &CardInstance,
+) -> bool {
+    can_spend_mana_as_any_color(cards, player, spell_card)
+}
+
+pub fn check_mana_convert(
+    st_ab: &crate::staticability::StaticAbility,
+    source: &CardInstance,
+    player: PlayerId,
+    spell_card: &CardInstance,
+) -> bool {
+    if let Some(valid_player) = st_ab.params.get(keys::VALID_PLAYER) {
+        if !matches_valid_player(valid_player, player, source) {
+            return false;
+        }
+    }
+    if let Some(valid_card) = st_ab.params.get(keys::VALID_CARD) {
+        if !matches_valid_card(valid_card, spell_card, source) {
+            return false;
+        }
+    }
+    st_ab
+        .params
+        .get(keys::MANA_CONVERSION)
+        .is_some_and(|conversion| conversion.contains("AnyColor") || conversion.contains("AnyType"))
+}
+
 fn matches_valid_player(valid: &str, player: PlayerId, source: &CardInstance) -> bool {
     for part in valid.split(',') {
         match part.trim() {

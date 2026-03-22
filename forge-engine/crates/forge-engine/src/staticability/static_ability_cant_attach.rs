@@ -1,6 +1,8 @@
 use forge_foundation::ZoneType;
 
+use crate::card::valid_filter;
 use crate::card::CardInstance;
+use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
@@ -49,6 +51,23 @@ pub fn cant_attach(
         }
     }
     false
+}
+
+/// Java parity alias for single-ability evaluation.
+pub fn apply_cant_attach_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    source: &CardInstance,
+    attachment: &CardInstance,
+    target: &CardInstance,
+    activator: PlayerId,
+) -> bool {
+    matches_valid_card(st_ab.params.get(keys::VALID_CARD), attachment, source)
+        && matches_valid_card(st_ab.params.get(keys::TARGET), target, source)
+        && valid_filter::matches_valid_player_opt(
+            st_ab.params.get(keys::ACTIVATOR),
+            activator,
+            source.controller,
+        )
 }
 
 fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {

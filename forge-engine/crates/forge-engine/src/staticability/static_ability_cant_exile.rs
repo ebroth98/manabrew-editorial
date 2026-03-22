@@ -38,6 +38,22 @@ pub fn cant_exile(
     false
 }
 
+pub fn apply_cant_exile_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    card: &CardInstance,
+    source: &CardInstance,
+    cause: Option<&SpellAbility>,
+    is_cost: bool,
+) -> bool {
+    if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
+        if for_cost.eq_ignore_ascii_case("True") != is_cost {
+            return false;
+        }
+    }
+    matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source)
+        && matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause)
+}
+
 fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
     valid_filter::matches_valid_card_opt(valid, card, source)
 }

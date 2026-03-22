@@ -1,0 +1,340 @@
+use forge_foundation::ZoneType;
+use crate::card::{valid_filter, CardInstance};
+use crate::game::GameState;
+use crate::ids::PlayerId;
+use crate::parsing::compare::compare_expr;
+use crate::parsing::keys;
+use crate::spellability::SpellAbility;
+use crate::staticability::StaticMode;
+
+/// Mirrors Java's `StaticAbilityCantBeCast.cantBeCastAbility`.
+///
+/// Sets the cast SA on the card, then iterates all cards in static-ability
+/// source zones plus the card itself, checking CantBeCast static abilities.
+pub fn cant_be_cast_ability(
+    cards: &[CardInstance],
+    spell: &SpellAbility,
+    card: &CardInstance,
+    activator: PlayerId,
+) -> bool {
+    cant_be_cast_ability_in_context(cards, spell, card, activator, None)
+}
+
+/// Context-aware variant used by playability/casting code where full game
+/// timing checks (e.g. OnlySorcerySpeed) are available.
+pub fn cant_be_cast_ability_in_context(
+    cards: &[CardInstance],
+    spell: &SpellAbility,
+    card: &CardInstance,
+    activator: PlayerId,
+    game: Option<&GameState>,
+) -> bool {
+    // Java: card.setCastSA(spell);
+    // TODO: setCastSA not yet wired — the card should store the current cast SA
+    // so that static abilities can inspect it. For now we pass `spell` through
+    // to the apply function directly.
+
+    // Java: allp = game.getCardsIn(STATIC_ABILITIES_SOURCE_ZONES); allp.add(card);
+    // We iterate cards whose zone is a static-ability source, plus always include
+    // the card being cast (it may be in Hand which is not a source zone).
+    for source in cards.iter().filter(|c| {
+        c.zone.is_static_ability_source() || c.id == card.id
+    }) {
+        for st_ab in source.static_abilities.iter().filter(|sa| {
+            sa.is_active_for(StaticMode::CantBeCast, source.zone)
+        }) {
+            if apply_cant_be_cast_ability(st_ab, spell, card, source, activator, game) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Mirrors Java's `StaticAbilityCantBeCast.applyCantBeCastAbility`.
+///
+/// Checks: ValidCard, Caster, IgnoreEffectPlayers, OnlySorcerySpeed,
+/// Origin, cmcGT, NumLimitEachTurn.
+pub fn apply_cant_be_cast_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    spell: &SpellAbility,
+    card: &CardInstance,
+    source: &CardInstance,
+    activator: PlayerId,
+    game: Option<&GameState>,
+) -> bool {
+    // ValidCard check
+    if !valid_filter::matches_valid_card_opt(
+        st_ab.params.get(keys::VALID_CARD),
+        card,
+        source,
+    ) {
+        return false;
+    }
+
+    // Caster check
+    if !valid_filter::matches_valid_player_opt(
+        st_ab.params.get(keys::CASTER),
+        activator,
+        source.controller,
+    ) {
+        return false;
+    }
+
+    // IgnoreEffectPlayers — Java: stAb.getIgnoreEffectPlayers().contains(activator)
+    if st_ab.ignore_effect_players.contains(&activator) {
+        return false;
+    }
+
+    // OnlySorcerySpeed — if the activator can cast at sorcery speed, this
+    // restriction does not apply.
+    if st_ab.params.has(keys::SORCERY_SPEED) || st_ab.params.has("OnlySorcerySpeed") {
+        if let Some(g) = game {
+            let can_cast_sorcery = activator == g.active_player()
+                && g.turn.is_main_phase()
+                && g.stack.is_empty();
+            if can_cast_sorcery {
+                return false;
+            }
+        }
+    }
+
+    // Origin — the zone the card is being cast from must be in the listed zones.
+    if let Some(origin) = st_ab.params.get(keys::ORIGIN) {
+        let src_zones: Vec<ZoneType> = origin
+            .split(',')
+            .filter_map(|s| ZoneType::from_str_compat(s.trim()))
+            .collect();
+        // Java uses card.getCastFrom().getZoneType().
+        // Rust currently uses the card's current pre-stack zone as cast-from.
+        let cast_from = card.zone;
+        if !src_zones.contains(&cast_from) {
+            return false;
+        }
+    }
+
+    // cmcGT — card's CMC must be greater than a threshold
+    if let Some(cmc_gt) = st_ab.params.get("cmcGT") {
+        if let Some(g) = game {
+            let threshold = if cmc_gt.eq_ignore_ascii_case("Turns") {
+                g.turn.turn_number as i32
+            } else {
+                g.cards_in_zone(ZoneType::Battlefield, activator)
+                    .iter()
+                    .filter(|&&cid| {
+                        let c = g.card(cid);
+                        match cmc_gt {
+                            "Creature" => c.is_creature(),
+                            "Artifact" => c.type_line.is_artifact(),
+                            "Enchantment" => c.type_line.is_enchantment(),
+                            "Land" => c.is_land(),
+                            "Instant" => c.type_line.is_instant(),
+                            "Sorcery" => c.type_line.is_sorcery(),
+                            "Planeswalker" => c.type_line.is_planeswalker(),
+                            _ => c.type_line.has_subtype(cmc_gt),
+                        }
+                    })
+                    .count() as i32
+            };
+            if card.mana_value() <= threshold {
+                return false;
+            }
+        }
+    }
+
+    // NumLimitEachTurn — limits how many matching spells can be cast per turn
+    if let Some(num_limit_str) = st_ab.params.get("NumLimitEachTurn") {
+        if let Some(g) = game {
+            let limit: i32 = num_limit_str.parse().unwrap_or(0);
+            let valid = st_ab.params.get(keys::VALID_CARD).unwrap_or("Card");
+            let count = g
+                .player(activator)
+                .cards_cast_this_turn
+                .iter()
+                .filter(|&&cid| valid_filter::matches_valid_card(valid, g.card(cid), source))
+                .count() as i32;
+            if count < limit {
+                return false;
+            }
+        }
+    }
+
+    true
+}
+
+/// Mirrors Java's `StaticAbilityCantBeCast.cantBeActivatedAbility`.
+///
+/// If the spell is a trigger, it cannot be blocked by CantBeActivated.
+/// Then iterates all cards in static-ability source zones.
+pub fn cant_be_activated_ability(
+    cards: &[CardInstance],
+    spell: &SpellAbility,
+    card: &CardInstance,
+    activator: PlayerId,
+) -> bool {
+    // Java: if (spell.isTrigger()) return false;
+    if spell.is_trigger {
+        return false;
+    }
+
+    for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
+        for st_ab in source.static_abilities.iter().filter(|sa| {
+            sa.is_active_for(StaticMode::CantBeActivated, source.zone)
+        }) {
+            if apply_cant_be_activated_ability(st_ab, spell, card, source, activator) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Mirrors Java's `StaticAbilityCantBeCast.applyCantBeActivatedAbility`.
+///
+/// Checks: ValidCard, IgnoreEffectCards, ValidSA, AffectedZone, Activator.
+pub fn apply_cant_be_activated_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    spell: &SpellAbility,
+    card: &CardInstance,
+    source: &CardInstance,
+    activator: PlayerId,
+) -> bool {
+    // ValidCard check
+    if !valid_filter::matches_valid_card_opt(
+        st_ab.params.get(keys::VALID_CARD),
+        card,
+        source,
+    ) {
+        return false;
+    }
+
+    // IgnoreEffectCards — Java: stAb.getIgnoreEffectCards().contains(card)
+    if st_ab.ignore_effect_cards.contains(&card.id) {
+        return false;
+    }
+
+    // ValidSA — check the spell ability itself against a filter
+    if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
+        if !matches_valid_sa(valid_sa, spell) {
+            return false;
+        }
+    }
+
+    // AffectedZone — the card must be in the specified zone
+    if let Some(zone_str) = st_ab.params.get(keys::AFFECTED_ZONE) {
+        if let Some(zone) = ZoneType::from_str_compat(zone_str) {
+            if card.zone != zone {
+                return false;
+            }
+        }
+    }
+
+    // Activator check
+    if !valid_filter::matches_valid_player_opt(
+        st_ab.params.get(keys::ACTIVATOR),
+        activator,
+        source.controller,
+    ) {
+        return false;
+    }
+
+    true
+}
+
+/// Mirrors Java's `StaticAbilityCantBeCast.cantPlayLandAbility`.
+///
+/// Iterates all cards in static-ability source zones checking CantPlayLand.
+pub fn cant_play_land_ability(
+    cards: &[CardInstance],
+    card: &CardInstance,
+    player: PlayerId,
+) -> bool {
+    for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
+        for st_ab in source.static_abilities.iter().filter(|sa| {
+            sa.is_active_for(StaticMode::CantPlayLand, source.zone)
+        }) {
+            if apply_cant_play_land_ability(st_ab, card, source, player) {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Mirrors Java's `StaticAbilityCantBeCast.applyCantPlayLandAbility`.
+///
+/// Checks: ValidCard, Origin, Player, IgnoreEffectPlayers.
+pub fn apply_cant_play_land_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    card: &CardInstance,
+    source: &CardInstance,
+    player: PlayerId,
+) -> bool {
+    // ValidCard check
+    if !valid_filter::matches_valid_card_opt(
+        st_ab.params.get(keys::VALID_CARD),
+        card,
+        source,
+    ) {
+        return false;
+    }
+
+    // Origin — the zone the land is being played from
+    if let Some(origin) = st_ab.params.get(keys::ORIGIN) {
+        let src_zones: Vec<ZoneType> = origin
+            .split(',')
+            .filter_map(|s| ZoneType::from_str_compat(s.trim()))
+            .collect();
+        // Java: card.getLastKnownZone().getZoneType()
+        // In Rust we use card.zone as the best proxy for last-known zone.
+        if !src_zones.contains(&card.zone) {
+            return false;
+        }
+    }
+
+    // Player check
+    if !valid_filter::matches_valid_player_opt(
+        st_ab.params.get(keys::PLAYER),
+        player,
+        source.controller,
+    ) {
+        return false;
+    }
+
+    // IgnoreEffectPlayers — Java: stAb.getIgnoreEffectPlayers().contains(player)
+    if st_ab.ignore_effect_players.contains(&player) {
+        return false;
+    }
+
+    true
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────
+
+/// Simple ValidSA matching for CantBeActivated.
+/// Mirrors the pattern used in trigger.rs `matches_valid_sa`.
+fn matches_valid_sa(filter: &str, sa: &SpellAbility) -> bool {
+    let f = filter.trim();
+    if f.is_empty() {
+        return true;
+    }
+    if f.eq_ignore_ascii_case("Spell") {
+        return sa.is_spell;
+    }
+    if f.eq_ignore_ascii_case("Ability") {
+        return !sa.is_spell;
+    }
+    if f.eq_ignore_ascii_case("ManaAbility") {
+        return sa.api == Some(crate::ability::api_type::ApiType::Mana);
+    }
+    if f.eq_ignore_ascii_case("NonManaAbility") {
+        return sa.api != Some(crate::ability::api_type::ApiType::Mana);
+    }
+    if let Some(cond) = f.strip_prefix("ActivationCount$") {
+        // Java uses richer activation history. For parity-safe support, map to
+        // trigger_remembered_amount when provided by the caller.
+        return compare_expr(sa.trigger_remembered_amount, cond.trim());
+    }
+    // TODO: extend with more SA filter types as needed
+    true
+}

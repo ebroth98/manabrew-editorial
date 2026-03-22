@@ -112,6 +112,9 @@ fn make_control_magic(owner: PlayerId) -> CardInstance {
     let sa = forge_engine_core::staticability::StaticAbility {
         mode: forge_engine_core::staticability::StaticMode::Continuous,
         params: Params::from_map(params),
+        ignore_effect_cards: Vec::new(),
+        ignore_effect_players: Vec::new(),
+        may_play_turn: 0,
     };
 
     card.static_abilities.push(sa);

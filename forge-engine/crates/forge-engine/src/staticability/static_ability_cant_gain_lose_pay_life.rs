@@ -11,12 +11,16 @@ pub fn cant_gain_life(game: &GameState, player: PlayerId) -> bool {
         game,
         player,
         &[
-            StaticMode::Other("CantGainLife".to_string()),
-            StaticMode::Other("CantChangeLife".to_string()),
+            StaticMode::CantGainLife,
+            StaticMode::CantChangeLife,
         ],
         None,
         false,
     )
+}
+
+pub fn any_cant_gain_life(game: &GameState, player: PlayerId) -> bool {
+    cant_gain_life(game, player)
 }
 
 pub fn cant_lose_life(game: &GameState, player: PlayerId) -> bool {
@@ -24,12 +28,16 @@ pub fn cant_lose_life(game: &GameState, player: PlayerId) -> bool {
         game,
         player,
         &[
-            StaticMode::Other("CantLoseLife".to_string()),
-            StaticMode::Other("CantChangeLife".to_string()),
+            StaticMode::CantLoseLife,
+            StaticMode::CantChangeLife,
         ],
         None,
         false,
     )
+}
+
+pub fn any_cant_lose_life(game: &GameState, player: PlayerId) -> bool {
+    cant_lose_life(game, player)
 }
 
 pub fn cant_pay_life(
@@ -42,13 +50,36 @@ pub fn cant_pay_life(
         game,
         player,
         &[
-            StaticMode::Other("CantPayLife".to_string()),
-            StaticMode::Other("CantLoseLife".to_string()),
-            StaticMode::Other("CantChangeLife".to_string()),
+            StaticMode::CantPayLife,
+            StaticMode::CantLoseLife,
+            StaticMode::CantChangeLife,
         ],
         cause,
         is_cost,
     )
+}
+
+pub fn any_cant_pay_life(
+    game: &GameState,
+    player: PlayerId,
+    is_cost: bool,
+    cause: Option<&SpellAbility>,
+) -> bool {
+    cant_pay_life(game, player, is_cost, cause)
+}
+
+pub fn apply_common_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    source_controller: PlayerId,
+    player: PlayerId,
+    is_cost: bool,
+) -> bool {
+    if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {
+        if for_cost.eq_ignore_ascii_case("True") != is_cost {
+            return false;
+        }
+    }
+    matches_valid_player(st_ab.params.get(keys::VALID_PLAYER), player, source_controller)
 }
 
 fn any_common(
@@ -64,10 +95,7 @@ fn any_common(
         .filter(|c| c.zone == ZoneType::Battlefield)
     {
         for st_ab in &card.static_abilities {
-            if !modes.iter().any(|m| match (m, &st_ab.mode) {
-                (StaticMode::Other(a), StaticMode::Other(b)) => a.eq_ignore_ascii_case(b),
-                _ => false,
-            }) {
+            if !modes.iter().any(|m| st_ab.mode == *m) {
                 continue;
             }
             if let Some(for_cost) = st_ab.params.get(keys::FOR_COST) {

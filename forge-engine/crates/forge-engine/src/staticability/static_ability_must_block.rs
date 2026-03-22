@@ -23,6 +23,14 @@ pub fn blocks_each_combat_if_able(cards: &[CardInstance], creature: &CardInstanc
     false
 }
 
+pub fn apply_blocks_each_combat_if_able(
+    st_ab: &crate::staticability::StaticAbility,
+    creature: &CardInstance,
+    source: &CardInstance,
+) -> bool {
+    matches_valid_creature(st_ab.params.get(keys::VALID_CREATURE), creature, source)
+}
+
 fn matches_valid_creature(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
     match valid {
         None => card.is_creature(),

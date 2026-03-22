@@ -71,6 +71,50 @@ pub fn any_cant_put_counter_on_player(
     false
 }
 
+pub fn any_cant_put_counter(
+    cards: &[CardInstance],
+    target_card: Option<&CardInstance>,
+    target_player: Option<PlayerId>,
+    counter_type: &CounterType,
+) -> bool {
+    if let Some(card) = target_card {
+        return any_cant_put_counter_on_card(cards, card, counter_type);
+    }
+    if let Some(player) = target_player {
+        return any_cant_put_counter_on_player(cards, player, counter_type);
+    }
+    false
+}
+
+pub fn apply_cant_put_counter(
+    st_ab: &crate::staticability::StaticAbility,
+    source: &CardInstance,
+    target_card: Option<&CardInstance>,
+    target_player: Option<PlayerId>,
+    counter_type: &CounterType,
+) -> bool {
+    if !counter_type_matches(st_ab.params.get(keys::COUNTER_TYPE), counter_type) {
+        return false;
+    }
+    if let Some(card) = target_card {
+        if st_ab.params.has(keys::VALID_PLAYER) {
+            return false;
+        }
+        return matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source);
+    }
+    if let Some(player) = target_player {
+        if st_ab.params.has(keys::VALID_CARD) {
+            return false;
+        }
+        return matches_valid_player(
+            st_ab.params.get(keys::VALID_PLAYER),
+            player,
+            source.controller,
+        );
+    }
+    false
+}
+
 fn counter_type_matches(param: Option<&str>, ct: &CounterType) -> bool {
     match param {
         None => true,

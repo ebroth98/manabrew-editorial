@@ -23,6 +23,14 @@ pub fn cant_regenerate(cards: &[CardInstance], target: &CardInstance) -> bool {
     false
 }
 
+pub fn apply_cant_regenerate_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    target: &CardInstance,
+    source: &CardInstance,
+) -> bool {
+    matches_valid_card(st_ab.params.get(keys::VALID_CARD), target, source)
+}
+
 fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
     match valid {
         None => true,

@@ -213,6 +213,10 @@ impl TauriAgent {
                 "gainLifeAlt".to_string(),
                 "Cast with alternate cost".to_string(),
             ),
+            PlayCardMode::StaticAlternative => (
+                "staticAlternative".to_string(),
+                "Cast with alternative cost".to_string(),
+            ),
             PlayCardMode::ForetellExile => (
                 "foretellExile".to_string(),
                 "Foretell (exile face-down)".to_string(),

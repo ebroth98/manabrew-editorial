@@ -51,6 +51,15 @@ pub fn is_disabled(
     false
 }
 
+pub fn disabled(
+    game: &GameState,
+    trigger_host: CardId,
+    regtrig: &Trigger,
+    run_params: &RunParams,
+) -> bool {
+    is_disabled(game, trigger_host, regtrig, run_params)
+}
+
 fn mode_specific_matches(
     st_ab: &crate::staticability::StaticAbility,
     game: &GameState,

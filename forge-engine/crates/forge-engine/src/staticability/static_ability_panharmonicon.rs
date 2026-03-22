@@ -55,6 +55,28 @@ pub fn extra_triggers(
     n
 }
 
+pub fn handle_panharmonicon(
+    game: &GameState,
+    trigger_host: CardId,
+    trigger: &Trigger,
+    run_params: &RunParams,
+) -> i32 {
+    extra_triggers(game, trigger_host, trigger, run_params)
+}
+
+pub fn apply_panharmonicon_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    source: &CardInstance,
+    trigger_host: &CardInstance,
+) -> bool {
+    if let Some(valid_card) = st_ab.params.get(keys::VALID_CARD) {
+        if !matches_valid_card(valid_card, trigger_host, source) {
+            return false;
+        }
+    }
+    true
+}
+
 fn trigger_mode_name(mode: &crate::trigger::TriggerMode) -> &'static str {
     match mode {
         crate::trigger::TriggerMode::ChangesZone { .. } => "ChangesZone",

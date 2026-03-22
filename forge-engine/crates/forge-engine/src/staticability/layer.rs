@@ -282,6 +282,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             // intentionally not applied in the continuous layer collector.
             | StaticMode::ETBTapped
             | StaticMode::CantBeCast
+            | StaticMode::CantBeActivated
+            | StaticMode::CantPlayLand
             | StaticMode::ReduceCost
             | StaticMode::IncreaseCost
             | StaticMode::SetCost
@@ -317,6 +319,42 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             | StaticMode::ManaConvert
             | StaticMode::UnspentMana
             | StaticMode::ManaBurn
+            | StaticMode::ActivateAbilityAsIfHaste
+            | StaticMode::CanAdapt
+            | StaticMode::AlternativeCost
+            | StaticMode::CantAttackBlock
+            | StaticMode::CantBeCopied
+            | StaticMode::CantBeSuspected
+            | StaticMode::CantBecomeMonarch
+            | StaticMode::CantChangeDayTime
+            | StaticMode::CantCrew
+            | StaticMode::CantDiscard
+            | StaticMode::CantPhaseIn
+            | StaticMode::CantPhaseOut
+            | StaticMode::CantTransform
+            | StaticMode::CantVenture
+            | StaticMode::Devotion
+            | StaticMode::CanExhaust
+            | StaticMode::FlipCoinMod
+            | StaticMode::GainLifeRadiation
+            | StaticMode::IgnoreLandwalk
+            | StaticMode::NumLoyaltyAct
+            | StaticMode::PlotZone
+            | StaticMode::SurveilNum
+            | StaticMode::TapPowerValue
+            | StaticMode::TurnReversed
+            | StaticMode::PhaseReversed
+            | StaticMode::UntapOtherPlayer
+            | StaticMode::CanBlockIfReach
+            | StaticMode::BlockTapped
+            | StaticMode::CanAttackIfHaste
+            | StaticMode::MinMaxBlocker
+            | StaticMode::AttackVigilance
+            | StaticMode::CantPreventDamage
+            | StaticMode::CantGainLife
+            | StaticMode::CantLoseLife
+            | StaticMode::CantPayLife
+            | StaticMode::CantChangeLife
             | StaticMode::Other(_) => {}
         }
     }

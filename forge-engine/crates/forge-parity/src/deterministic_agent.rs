@@ -186,6 +186,7 @@ impl DeterministicAgent {
             PlayCardMode::Alternative(AlternativeCost::Warp) => "0",
             PlayCardMode::Alternative(AlternativeCost::SacrificeAlt) => "0",
             PlayCardMode::Alternative(AlternativeCost::Plot) => "Plot",
+            PlayCardMode::StaticAlternative => "0",
             PlayCardMode::GainLifeAlt => "GainLifeAlt",
             PlayCardMode::ForetellExile => "ForetellExile",
         }
@@ -199,6 +200,7 @@ impl DeterministicAgent {
         match play.mode {
             PlayCardMode::Normal => "Normal",
             PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp",
+            PlayCardMode::StaticAlternative => "StaticAlternative",
             // Other modes already have unique variant strings, so fallback rarely matters.
             _ => "",
         }

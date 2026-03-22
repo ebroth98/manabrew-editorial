@@ -11,10 +11,12 @@
 //! ```
 
 use forge_foundation::ColorSet;
+use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
 use crate::card::CardInstance;
 use crate::game::GameState;
+use crate::ids::{CardId, PlayerId};
 use crate::parsing::Params;
 use crate::parsing::keys;
 
@@ -43,6 +45,10 @@ pub enum StaticMode {
 
     /// `Mode$ CantBeCast` — matching spells cannot be cast.
     CantBeCast,
+    /// `Mode$ CantBeActivated` — matching abilities cannot be activated.
+    CantBeActivated,
+    /// `Mode$ CantPlayLand` — matching lands cannot be played.
+    CantPlayLand,
 
     /// `Mode$ ReduceCost` — reduce the mana cost of matching spells.
     ReduceCost,
@@ -96,6 +102,42 @@ pub enum StaticMode {
     UnspentMana,
     /// `Mode$ ManaBurn` — losing unspent mana causes life loss (Yurlok of Scorch Thrash).
     ManaBurn,
+    ActivateAbilityAsIfHaste,
+    CanAdapt,
+    AlternativeCost,
+    CantAttackBlock,
+    CantBeCopied,
+    CantBeSuspected,
+    CantBecomeMonarch,
+    CantChangeDayTime,
+    CantCrew,
+    CantDiscard,
+    CantPhaseIn,
+    CantPhaseOut,
+    CantTransform,
+    CantVenture,
+    Devotion,
+    CanExhaust,
+    FlipCoinMod,
+    GainLifeRadiation,
+    IgnoreLandwalk,
+    NumLoyaltyAct,
+    PlotZone,
+    SurveilNum,
+    TapPowerValue,
+    TurnReversed,
+    PhaseReversed,
+    UntapOtherPlayer,
+    CanBlockIfReach,
+    BlockTapped,
+    CanAttackIfHaste,
+    MinMaxBlocker,
+    AttackVigilance,
+    CantPreventDamage,
+    CantGainLife,
+    CantLoseLife,
+    CantPayLife,
+    CantChangeLife,
 
     /// Any mode not yet recognised — stored but not applied.
     Other(String),
@@ -141,6 +183,9 @@ pub struct StaticAbility {
     /// Parsed key→value parameters from the pipe-separated script line.
     /// Keys do NOT include the trailing `$`.
     pub params: Params,
+    pub ignore_effect_cards: Vec<CardId>,
+    pub ignore_effect_players: Vec<PlayerId>,
+    pub may_play_turn: i32,
 }
 
 impl StaticAbility {
@@ -169,6 +214,153 @@ impl StaticAbility {
         } else {
             None
         }
+    }
+
+    pub fn check_mode(&self, mode: &StaticMode) -> bool {
+        match (&self.mode, mode) {
+            (StaticMode::Other(a), StaticMode::Other(b)) => a.eq_ignore_ascii_case(b),
+            _ => self.mode == *mode,
+        }
+    }
+
+    pub fn zones_check(&self, source_zone: ZoneType) -> bool {
+        if let Some(active) = self.params.get(keys::ACTIVE_ZONES) {
+            let zones: Vec<ZoneType> = active
+                .split(',')
+                .filter_map(|z| ZoneType::from_str_compat(z.trim()))
+                .collect();
+            if zones.is_empty() {
+                return false;
+            }
+            return zones.contains(&source_zone);
+        }
+        source_zone == ZoneType::Battlefield
+    }
+
+    pub fn check_conditions(&self, source: &CardInstance, game: &GameState) -> bool {
+        if !self.zones_check(source.zone) {
+            return false;
+        }
+        if source.phased_out {
+            return false;
+        }
+        if !crate::card::valid_filter::meets_common_requirements(game, &self.params, source) {
+            return false;
+        }
+
+        if let Some(phases) = self.params.get(keys::PHASES) {
+            let current = format!("{:?}", game.turn.phase);
+            if !phases
+                .split(',')
+                .map(str::trim)
+                .any(|p| p.eq_ignore_ascii_case(&current))
+            {
+                return false;
+            }
+        }
+
+        if let Some(player_turn) = self.params.get(keys::PLAYER_TURN) {
+            let active = game.turn.active_player;
+            let defined = crate::ability::effects::helpers::resolve_defined_players(
+                player_turn,
+                source.controller,
+                game,
+            );
+            let ok = defined.contains(&active);
+            if !ok {
+                return false;
+            }
+        }
+
+        if let Some(valid_top) = self.params.get("TopCardOfLibraryIs") {
+            let top = game
+                .zone(ZoneType::Library, source.controller)
+                .peek_top()
+                .map(|cid| game.card(cid));
+            let Some(top_card) = top else {
+                return false;
+            };
+            if !crate::card::valid_filter::matches_valid_card_opt(
+                Some(valid_top),
+                top_card,
+                source,
+            ) {
+                return false;
+            }
+        }
+
+        if let Some(class_level) = self.params.get("ClassLevel") {
+            let min = class_level.parse::<i32>().unwrap_or(0);
+            if source.class_level < min {
+                return false;
+            }
+        }
+
+        if !crate::card::valid_filter::check_named_svar_condition(
+            game,
+            &self.params,
+            source,
+            "CheckSecondSVar",
+            "SecondSVarCompare",
+        ) {
+            return false;
+        }
+        if !crate::card::valid_filter::check_named_svar_condition(
+            game,
+            &self.params,
+            source,
+            "CheckThirdSVar",
+            "ThirdSVarCompare",
+        ) {
+            return false;
+        }
+        if !crate::card::valid_filter::check_named_svar_condition(
+            game,
+            &self.params,
+            source,
+            "CheckFourthSVar",
+            "FourthSVarCompare",
+        ) {
+            return false;
+        }
+
+        true
+    }
+
+    pub fn check_conditions_full(
+        &self,
+        mode: &StaticMode,
+        source: &CardInstance,
+        game: &GameState,
+    ) -> bool {
+        self.check_mode(mode) && self.check_conditions(source, game)
+    }
+
+    pub fn is_active_for(&self, mode: StaticMode, source_zone: ZoneType) -> bool {
+        self.check_mode(&mode) && self.zones_check(source_zone)
+    }
+
+    pub fn add_ignore_effect_players(&mut self, player: PlayerId) {
+        if !self.ignore_effect_players.contains(&player) {
+            self.ignore_effect_players.push(player);
+        }
+    }
+
+    pub fn clear_ignore_effects(&mut self) {
+        self.ignore_effect_cards.clear();
+        self.ignore_effect_players.clear();
+    }
+
+    pub fn inc_may_play_turn(&mut self) {
+        self.may_play_turn += 1;
+    }
+
+    pub fn reset_may_play_turn(&mut self) {
+        self.may_play_turn = 0;
+    }
+
+    pub fn copy(&self) -> Self {
+        self.clone()
     }
 }
 
@@ -415,6 +607,8 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("CantBlock") => StaticMode::CantBlock,
         Some("ETBTapped") => StaticMode::ETBTapped,
         Some("CantBeCast") => StaticMode::CantBeCast,
+        Some("CantBeActivated") => StaticMode::CantBeActivated,
+        Some("CantPlayLand") => StaticMode::CantPlayLand,
         Some("ReduceCost") => StaticMode::ReduceCost,
         Some("IncreaseCost") | Some("RaiseCost") => StaticMode::IncreaseCost,
         Some("SetCost") => StaticMode::SetCost,
@@ -454,15 +648,53 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("ManaConvert") => StaticMode::ManaConvert,
         Some("UnspentMana") => StaticMode::UnspentMana,
         Some("ManaBurn") => StaticMode::ManaBurn,
-        Some("CantGainLife") => StaticMode::Other("CantGainLife".to_string()),
-        Some("CantLoseLife") => StaticMode::Other("CantLoseLife".to_string()),
-        Some("CantChangeLife") => StaticMode::Other("CantChangeLife".to_string()),
-        Some("CantPayLife") => StaticMode::Other("CantPayLife".to_string()),
+        Some("ActivateAbilityAsIfHaste") => StaticMode::ActivateAbilityAsIfHaste,
+        Some("CanAdapt") => StaticMode::CanAdapt,
+        Some("AlternativeCost") => StaticMode::AlternativeCost,
+        Some("CantAttackBlock") => StaticMode::CantAttackBlock,
+        Some("CantBeCopied") => StaticMode::CantBeCopied,
+        Some("CantBeSuspected") => StaticMode::CantBeSuspected,
+        Some("CantBecomeMonarch") => StaticMode::CantBecomeMonarch,
+        Some("CantChangeDayTime") => StaticMode::CantChangeDayTime,
+        Some("CantCrew") => StaticMode::CantCrew,
+        Some("CantDiscard") => StaticMode::CantDiscard,
+        Some("CantPhaseIn") => StaticMode::CantPhaseIn,
+        Some("CantPhaseOut") => StaticMode::CantPhaseOut,
+        Some("CantTransform") => StaticMode::CantTransform,
+        Some("CantVenture") => StaticMode::CantVenture,
+        Some("Devotion") => StaticMode::Devotion,
+        Some("CanExhaust") => StaticMode::CanExhaust,
+        Some("FlipCoinMod") => StaticMode::FlipCoinMod,
+        Some("GainLifeRadiation") => StaticMode::GainLifeRadiation,
+        Some("IgnoreLandwalk") => StaticMode::IgnoreLandwalk,
+        Some("NumLoyaltyAct") => StaticMode::NumLoyaltyAct,
+        Some("PlotZone") => StaticMode::PlotZone,
+        Some("SurveilNum") => StaticMode::SurveilNum,
+        Some("TapPowerValue") => StaticMode::TapPowerValue,
+        Some("TurnReversed") => StaticMode::TurnReversed,
+        Some("PhaseReversed") => StaticMode::PhaseReversed,
+        Some("UntapOtherPlayer") => StaticMode::UntapOtherPlayer,
+        Some("CanBlockIfReach") => StaticMode::CanBlockIfReach,
+        Some("BlockTapped") => StaticMode::BlockTapped,
+        Some("CanAttackIfHaste") => StaticMode::CanAttackIfHaste,
+        Some("MinMaxBlocker") => StaticMode::MinMaxBlocker,
+        Some("AttackVigilance") => StaticMode::AttackVigilance,
+        Some("CantPreventDamage") => StaticMode::CantPreventDamage,
+        Some("CantGainLife") => StaticMode::CantGainLife,
+        Some("CantLoseLife") => StaticMode::CantLoseLife,
+        Some("CantChangeLife") => StaticMode::CantChangeLife,
+        Some("CantPayLife") => StaticMode::CantPayLife,
         Some(other) => StaticMode::Other(other.to_string()),
         None => return None,
     };
 
-    Some(StaticAbility { mode, params })
+    Some(StaticAbility {
+        mode,
+        params,
+        ignore_effect_cards: Vec::new(),
+        ignore_effect_players: Vec::new(),
+        may_play_turn: 0,
+    })
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────────

@@ -26,6 +26,18 @@ pub fn combat_damage_uses_toughness(cards: &[CardInstance], card: &CardInstance)
     false
 }
 
+pub fn combat_damage_toughness(cards: &[CardInstance], card: &CardInstance) -> bool {
+    combat_damage_uses_toughness(cards, card)
+}
+
+pub fn apply_combat_damage_toughness_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    card: &CardInstance,
+    source: &CardInstance,
+) -> bool {
+    matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source)
+}
+
 fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
     match valid {
         None => true,

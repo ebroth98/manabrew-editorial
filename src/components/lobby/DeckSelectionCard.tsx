@@ -110,8 +110,8 @@ export function DeckSelectionCard({
           {deckList.length} cards
         </span>
         {labels?.map((label) => (
-          <Badge key={label} variant="outline" className="text-[8px] h-3.5 px-1 text-primary/80 border-primary/30">
-            {label}
+          <Badge key={typeof label === 'string' ? label : label.name} variant="outline" className="text-[8px] h-3.5 px-1 text-primary/80 border-primary/30">
+            {typeof label === 'string' ? label : label.name}
           </Badge>
         ))}
         {badge && (

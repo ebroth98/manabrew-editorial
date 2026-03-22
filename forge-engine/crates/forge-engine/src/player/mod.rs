@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ids::PlayerId;
+use crate::ids::{CardId, PlayerId};
 
 /// Mutable game-state for a single player.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -23,6 +23,9 @@ pub struct PlayerState {
     pub lands_played_this_turn: i32,
     pub max_land_plays_per_turn: i32,
     pub spells_cast_this_turn: i32,
+    /// Cards this player cast this turn (in cast order).
+    /// Used by static checks such as `NumLimitEachTurn` with `ValidCard` filters.
+    pub cards_cast_this_turn: Vec<CardId>,
 
     // Hand size
     pub max_hand_size: i32,
@@ -83,6 +86,7 @@ impl PlayerState {
             lands_played_this_turn: 0,
             max_land_plays_per_turn: 1,
             spells_cast_this_turn: 0,
+            cards_cast_this_turn: Vec::new(),
             max_hand_size: 7,
             drawn_this_turn: 0,
             has_lost: false,
@@ -146,6 +150,7 @@ impl PlayerState {
     pub fn new_turn(&mut self) {
         self.lands_played_this_turn = 0;
         self.spells_cast_this_turn = 0;
+        self.cards_cast_this_turn.clear();
         self.life_gained_this_turn = 0;
         self.life_lost_this_turn = 0;
         self.drawn_this_turn = 0;

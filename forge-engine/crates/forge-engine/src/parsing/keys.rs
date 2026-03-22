@@ -24,10 +24,12 @@ pub const VALID_ACTIVATING_PLAYER: &str = "ValidActivatingPlayer";
 pub const VALID_ACTIVATOR: &str = "ValidActivator";
 pub const VALID_ATTACKED: &str = "ValidAttacked";
 pub const VALID_ATTACKER: &str = "ValidAttacker";
+pub const VALID_ATTACKER_RELATIVE: &str = "ValidAttackerRelative";
 pub const VALID_ATTACKERS: &str = "ValidAttackers";
 pub const VALID_ATTACKERS_AMOUNT: &str = "ValidAttackersAmount";
 pub const VALID_BLOCKED: &str = "ValidBlocked";
 pub const VALID_BLOCKER: &str = "ValidBlocker";
+pub const VALID_BLOCKER_RELATIVE: &str = "ValidBlockerRelative";
 pub const VALID_CARD: &str = "ValidCard";
 pub const VALID_CARDS: &str = "ValidCards";
 pub const VALID_CARD_TO_TARGET: &str = "ValidCardToTarget";
@@ -48,6 +50,7 @@ pub const VALID_TARGET: &str = "ValidTarget";
 pub const VALID_TGTS: &str = "ValidTgts";
 pub const VALID_TRIGGER: &str = "ValidTrigger";
 pub const VALID_TYPES: &str = "ValidTypes";
+pub const VALID_KEYWORD: &str = "ValidKeyword";
 pub const VALID_ZONE: &str = "ValidZone";
 pub const TARGET: &str = "Target";
 pub const TARGET_MIN: &str = "TargetMin";
@@ -93,10 +96,13 @@ pub const TRIGGERS_WHEN_SPENT: &str = "TriggersWhenSpent";
 // ── Numeric params ─────────────────────────────────────────────────────
 
 pub const AMOUNT: &str = "Amount";
+pub const ADDITIONAL: &str = "Additional";
 pub const NUM_DMG: &str = "NumDmg";
 pub const DAMAGE_AMOUNT: &str = "DamageAmount";
 pub const CHANGE_NUM: &str = "ChangeNum";
 pub const VALUE: &str = "Value";
+pub const MIN: &str = "Min";
+pub const MAX: &str = "Max";
 
 // ── Power/Toughness ────────────────────────────────────────────────────
 
@@ -160,6 +166,7 @@ pub const IS_DAMAGE: &str = "IsDamage";
 pub const MANDATORY: &str = "Mandatory";
 pub const MODULAR: &str = "Modular";
 pub const OPTIONAL: &str = "Optional";
+pub const RESULT: &str = "Result";
 pub const PREVENT: &str = "Prevent";
 pub const REMEMBER_CHANGED: &str = "RememberChanged";
 pub const REVEAL: &str = "Reveal";
@@ -248,9 +255,11 @@ pub const ORIGINAL: &str = "Original";
 
 pub const ALONE: &str = "Alone";
 pub const ATTACKING_PLAYER: &str = "AttackingPlayer";
+pub const ATTACKER: &str = "Attacker";
 pub const NUMBER: &str = "Number";
 pub const OPTIONAL_DECIDER: &str = "OptionalDecider";
 pub const PHASE: &str = "Phase";
+pub const PHASES: &str = "Phases";
 pub const STEP: &str = "Step";
 pub const TRIGGER: &str = "Trigger";
 pub const TRIGGER_DESCRIPTION: &str = "TriggerDescription";
@@ -261,6 +270,7 @@ pub const ACTIVATOR_THIS_TURN_CAST: &str = "ActivatorThisTurnCast";
 pub const CASTER: &str = "Caster";
 pub const CONTROLLER: &str = "Controller";
 pub const PLAYER: &str = "Player";
+pub const PLAYER_TURN: &str = "PlayerTurn";
 pub const SOURCE: &str = "Source";
 pub const AT_EOT: &str = "AtEOT";
 
@@ -323,12 +333,21 @@ pub const WARP: &str = "Warp";
 pub const CHARACTERISTIC_DEFINING: &str = "CharacteristicDefining";
 pub const DRAW_LIMIT: &str = "DrawLimit";
 pub const EFFECT_ZONE: &str = "EffectZone";
+pub const EXCEPT_CAUSE: &str = "ExceptCause";
+pub const IGNORE_EFFECT_CARDS: &str = "IgnoreEffectCards";
+pub const IGNORE_EFFECT_PLAYERS: &str = "IgnoreEffectPlayers";
 pub const MAX_ATTACKERS: &str = "MaxAttackers";
 pub const MAX_BLOCKERS: &str = "MaxBlockers";
 pub const MAX_NUM: &str = "MaxNum";
 pub const PRESENT_COMPARE: &str = "PresentCompare";
 pub const PRESENT_PLAYER: &str = "PresentPlayer";
 pub const PRESENT_ZONE: &str = "PresentZone";
+pub const NEW_TIME: &str = "NewTime";
+pub const ONLY_SOURCE_ABS: &str = "OnlySourceAbs";
+pub const TWICE: &str = "Twice";
+pub const UNLESS_DEFENDER: &str = "UnlessDefender";
+pub const DEFENDER_NOT_NEAREST_TO_YOU_IN_CHOSEN_DIRECTION: &str =
+    "DefenderNotNearestToYouInChosenDirection";
 
 // ── Animate params ──────────────────────────────────────────────────
 pub const OVERWRITE_TYPES: &str = "OverwriteTypes";

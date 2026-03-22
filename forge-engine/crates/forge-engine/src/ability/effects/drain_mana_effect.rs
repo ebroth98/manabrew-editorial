@@ -37,7 +37,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         drained_total += amount;
 
         // Mana burn: if player has ManaBurn static, lose life equal to drained mana
-        if has_mana_burn(ctx.game, *pid) {
+        if crate::staticability::static_ability_unspent_mana::has_mana_burn(ctx.game, *pid) {
             ctx.game.player_mut(*pid).life -= amount as i32;
         }
 
@@ -62,39 +62,4 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .push(drained_total);
         }
     }
-}
-
-/// Check if a player has mana burn (ManaBurn static ability).
-fn has_mana_burn(game: &crate::game::GameState, player: crate::ids::PlayerId) -> bool {
-    use crate::staticability::StaticMode;
-    use forge_foundation::ZoneType;
-
-    for card in game
-        .cards
-        .iter()
-        .filter(|c| c.zone == ZoneType::Battlefield)
-    {
-        for st_ab in &card.static_abilities {
-            if st_ab.mode != StaticMode::ManaBurn {
-                continue;
-            }
-            if let Some(valid_player) = st_ab.params.get(keys::VALID_PLAYER) {
-                match valid_player.to_ascii_lowercase().as_str() {
-                    "you" => {
-                        if card.controller != player {
-                            continue;
-                        }
-                    }
-                    "opponent" => {
-                        if card.controller == player {
-                            continue;
-                        }
-                    }
-                    _ => return true,
-                }
-            }
-            return true;
-        }
-    }
-    false
 }

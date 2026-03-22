@@ -20,6 +20,8 @@ pub struct PlayOption {
 pub enum PlayCardMode {
     Normal,
     Alternative(AlternativeCost),
+    /// Alternative cost granted by `Mode$ AlternativeCost` static abilities.
+    StaticAlternative,
     GainLifeAlt,
     ForetellExile,
 }

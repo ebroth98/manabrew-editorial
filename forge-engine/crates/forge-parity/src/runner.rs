@@ -485,12 +485,14 @@ impl PlayerAgent for CapturingAgent {
                                 "0".to_string()
                             }
                             PlayCardMode::Alternative(AlternativeCost::Plot) => "Plot".to_string(),
+                            PlayCardMode::StaticAlternative => "0".to_string(),
                             PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
                             PlayCardMode::ForetellExile => "ForetellExile".to_string(),
                         };
                         let fallback = match cid.mode {
                             PlayCardMode::Normal => "Normal",
                             PlayCardMode::Alternative(AlternativeCost::Warp) => "Warp",
+                            PlayCardMode::StaticAlternative => "StaticAlternative",
                             _ => "",
                         };
                         format!(

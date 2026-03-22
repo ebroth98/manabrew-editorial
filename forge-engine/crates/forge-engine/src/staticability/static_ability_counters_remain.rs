@@ -38,6 +38,24 @@ pub fn counters_remain(cards: &[CardInstance], card: &CardInstance, destination:
     false
 }
 
+pub fn apply_counters_remain_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    source: &CardInstance,
+    card: &CardInstance,
+    destination: ZoneType,
+) -> bool {
+    if matches!(destination, ZoneType::Library | ZoneType::Hand | ZoneType::None) {
+        return false;
+    }
+    let active = source.zone == ZoneType::Battlefield
+        || (source.id == card.id
+            && st_ab
+                .params
+                .get(keys::EFFECT_ZONE)
+                .is_some_and(|z| z.eq_ignore_ascii_case("All")));
+    active && matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source)
+}
+
 fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
     match valid {
         None => true,

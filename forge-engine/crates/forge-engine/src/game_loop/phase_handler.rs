@@ -682,7 +682,11 @@ impl GameLoop {
                 let abilities = game.card(card_id).abilities.clone();
 
                 // Move from exile to stack
-                game.player_mut(active).spells_cast_this_turn += 1;
+                {
+                    let p = game.player_mut(active);
+                    p.spells_cast_this_turn += 1;
+                    p.cards_cast_this_turn.push(card_id);
+                }
 
                 // Emit SpellCast trigger
                 self.trigger_handler.run_trigger(

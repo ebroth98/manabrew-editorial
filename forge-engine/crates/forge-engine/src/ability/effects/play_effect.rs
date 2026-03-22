@@ -109,7 +109,11 @@ fn push_spell_to_stack(
 
     ctx.game.stack.push(entry);
     ctx.game.move_card(card_id, ZoneType::Stack, controller);
-    ctx.game.player_mut(controller).spells_cast_this_turn += 1;
+    {
+        let p = ctx.game.player_mut(controller);
+        p.spells_cast_this_turn += 1;
+        p.cards_cast_this_turn.push(card_id);
+    }
 
     ctx.trigger_handler.run_trigger(
         TriggerType::SpellCast,

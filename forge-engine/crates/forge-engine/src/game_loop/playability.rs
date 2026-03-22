@@ -58,6 +58,13 @@ impl GameLoop {
         for &card_id in hand {
             let card = game.card(card_id);
             if card.is_land() {
+                if crate::staticability::static_ability_cant_be_cast::cant_play_land_ability(
+                    &game.cards,
+                    card,
+                    player,
+                ) {
+                    continue;
+                }
                 if !must_be_instant && game.player(player).can_play_land() {
                     playable.push(crate::agent::PlayOption {
                         card_id,
@@ -65,6 +72,25 @@ impl GameLoop {
                     });
                 }
             } else {
+                let spell_ability_text = card
+                    .abilities
+                    .iter()
+                    .find(|a| Params::from_raw(a).has(keys::SP))
+                    .cloned()
+                    .unwrap_or_default();
+                let mut cast_sa =
+                    crate::spellability::build_spell_ability(game, card_id, &spell_ability_text, player);
+                cast_sa.is_spell = true;
+                if crate::staticability::static_ability_cant_be_cast::cant_be_cast_ability_in_context(
+                    &game.cards,
+                    &cast_sa,
+                    card,
+                    player,
+                    Some(game),
+                ) {
+                    continue;
+                }
+
                 if must_be_instant && !has_flash_permission(card_id) {
                     continue;
                 }
@@ -201,6 +227,27 @@ impl GameLoop {
                 } else {
                     false
                 };
+
+                // StaticAbilityAlternativeCost (Mode$ AlternativeCost)
+                let static_alt_ok = crate::staticability::static_ability_alternative_cost::alternative_costs(
+                    &game.cards,
+                    &cast_sa,
+                    card,
+                    player,
+                )
+                .iter()
+                .filter(|entry| {
+                    entry
+                        .cost
+                        .parts
+                        .iter()
+                        .all(|p| matches!(p, CostPart::Mana(_)))
+                })
+                .any(|entry| {
+                    let base = Self::mana_from_cost(&entry.cost);
+                    let adjusted = cost_adj.apply(&base).add(&raise_mana);
+                    available_mana.can_pay(&adjusted)
+                });
 
                 // Suspend: special action, pay suspend cost to exile with time counters
                 // (Suspend is not a spell cast — cost reduction doesn't apply)
@@ -437,6 +484,12 @@ impl GameLoop {
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Overload,
                                 ),
+                            });
+                        }
+                        if static_alt_ok {
+                            playable.push(crate::agent::PlayOption {
+                                card_id,
+                                mode: crate::agent::PlayCardMode::StaticAlternative,
                             });
                         }
                         if emerge_ok {

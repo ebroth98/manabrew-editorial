@@ -36,6 +36,27 @@ pub fn can_draw_amount(game: &GameState, player: PlayerId, start_amount: i32) ->
     amount
 }
 
+pub fn can_draw_this_amount(game: &GameState, player: PlayerId, amount: i32) -> bool {
+    can_draw_amount(game, player, amount) >= amount
+}
+
+pub fn apply_cant_draw_amount_ability(
+    draw_limit: Option<&str>,
+    valid_player: Option<&str>,
+    player: PlayerId,
+    source_controller: PlayerId,
+    drawn_this_turn: i32,
+    current_amount: i32,
+) -> i32 {
+    if !matches_valid_player(valid_player, player, source_controller) {
+        return current_amount;
+    }
+    let limit = draw_limit
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or(0);
+    current_amount.min((limit - drawn_this_turn).max(0))
+}
+
 fn matches_valid_player(
     valid: Option<&str>,
     player: PlayerId,

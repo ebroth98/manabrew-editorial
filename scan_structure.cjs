@@ -339,12 +339,10 @@ for (const jfile of javaFiles) {
   } else {
     rustPath = path.join(RUST_ROOT, dir, expectedRs);
     module = dir.split('/')[0];
-    // If class name matches folder name (case insensitive), also check mod.rs
-    if (baseName === path.basename(dir).toLowerCase() && !fs.existsSync(rustPath)) {
-      const modRsPath = path.join(RUST_ROOT, dir, 'mod.rs');
-      if (fs.existsSync(modRsPath)) {
-        rustPath = modRsPath;
-      }
+    // If class name matches folder name (case insensitive), it maps to mod.rs
+    if (baseName === path.basename(dir).toLowerCase()) {
+      rustPath = path.join(RUST_ROOT, dir, 'mod.rs');
+      expectedRs = 'mod.rs';
     }
   }
 
@@ -361,7 +359,7 @@ for (const jfile of javaFiles) {
   }
 
   const exists = isSkipped || fs.existsSync(rustPath);
-  const displayRs = isSkipped ? 'skip' : (fileRemapped ? fileRemaps[jfile] : (rustPath.endsWith('mod.rs') ? 'mod.rs' : expectedRs));
+  const displayRs = isSkipped ? 'skip' : (fileRemapped ? fileRemaps[jfile] : (path.basename(rustPath) === 'mod.rs' ? 'mod.rs' : expectedRs));
   const overrideTag = isSkipped ? ` ${DIM}(intentionally skipped)${RESET}` : (fileRemapped ? ` ${BLUE}⬡ mapped${RESET}` : '');
   const fileColor = isTrait ? MAGENTA : GREEN;
 

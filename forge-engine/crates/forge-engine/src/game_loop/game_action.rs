@@ -72,6 +72,14 @@ impl GameLoop {
             // when at least one legal target candidate exists.
             let sa_for_target_check =
                 crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
+            if crate::staticability::static_ability_cant_be_cast::cant_be_activated_ability(
+                &game.cards,
+                &sa_for_target_check,
+                game.card(card_id),
+                player,
+            ) {
+                return false;
+            }
             if let Some(tr) = sa_for_target_check.target_restrictions.as_ref() {
                 let min_targets = tr.get_min_targets(game, &sa_for_target_check);
                 if min_targets > 0

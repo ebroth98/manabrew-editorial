@@ -23,6 +23,14 @@ pub fn colorless_damage_source(cards: &[CardInstance], source_card: &CardInstanc
     false
 }
 
+pub fn apply_colorless_damage_source(
+    st_ab: &crate::staticability::StaticAbility,
+    source_card: &CardInstance,
+    source: &CardInstance,
+) -> bool {
+    matches_valid_card(st_ab.params.get(keys::VALID_CARD), source_card, source)
+}
+
 pub fn source_has_color(
     cards: &[CardInstance],
     source_card: &CardInstance,

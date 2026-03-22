@@ -481,6 +481,33 @@ pub fn check_svar_condition(
     compare_expr(value, compare)
 }
 
+/// Check a named `Check*SVar` / `*SVarCompare` pair.
+///
+/// This is the generalized form of `check_svar_condition`, used by
+/// `StaticAbility.checkConditions()` for second/third/fourth SVar checks.
+pub fn check_named_svar_condition(
+    game: &GameState,
+    params: &Params,
+    source: &CardInstance,
+    check_key: &str,
+    compare_key: &str,
+) -> bool {
+    let Some(check_name) = params.get(check_key) else {
+        return true;
+    };
+    let compare = params.get(compare_key).unwrap_or("GE1");
+
+    let raw_value = source.svars.get(check_name).map(|s| s.as_str()).unwrap_or("0");
+    let value = if raw_value.starts_with("Count$") {
+        let count_expr = &raw_value["Count$".len()..];
+        crate::svar::resolve_count_svar(count_expr, game, source.id, source.controller)
+    } else {
+        raw_value.parse::<i32>().unwrap_or(0)
+    };
+
+    compare_expr(value, compare)
+}
+
 /// Check the `Condition$` parameter for game-state conditions.
 ///
 /// Supports: PlayerTurn, NotPlayerTurn, Metalcraft, Delirium.
@@ -496,6 +523,11 @@ pub fn check_condition(
     match condition {
         "PlayerTurn" => game.active_player() == source.controller,
         "NotPlayerTurn" => game.active_player() != source.controller,
+        "Threshold" => game
+            .cards_in_zone(ZoneType::Graveyard, source.controller)
+            .len()
+            >= 7,
+        "Hellbent" => game.cards_in_zone(ZoneType::Hand, source.controller).is_empty(),
         "Metalcraft" => {
             game.cards_in_zone(ZoneType::Battlefield, source.controller)
                 .iter()
@@ -518,6 +550,21 @@ pub fn check_condition(
             }
             types.len() >= 4
         }
+        "Ferocious" => game
+            .cards_in_zone(ZoneType::Battlefield, source.controller)
+            .iter()
+            .any(|&cid| {
+                let c = game.card(cid);
+                c.is_creature() && c.power() >= 4
+            }),
+        "Desert" => game
+            .cards_in_zone(ZoneType::Battlefield, source.controller)
+            .iter()
+            .any(|&cid| game.card(cid).type_line.has_subtype("Desert")),
+        "Blessing" => game.player(source.controller).has_city_blessing,
+        "Monarch" => game.monarch == Some(source.controller),
+        "Night" => game.is_night,
+        "FatefulHour" => game.player(source.controller).life <= 5,
         _ => true, // unknown condition — permissive fallback
     }
 }

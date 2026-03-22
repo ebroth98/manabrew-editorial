@@ -56,6 +56,53 @@ pub fn any_with_flash(
     false
 }
 
+pub fn any_with_flash_needs_info(
+    cards: &[CardInstance],
+    spell_card: &CardInstance,
+    caster: PlayerId,
+    spell_abilities: &[String],
+) -> bool {
+    any_with_flash(cards, spell_card, caster, spell_abilities)
+}
+
+pub fn apply_with_flash_needs_info(
+    st_ab: &crate::staticability::StaticAbility,
+    spell_card: &CardInstance,
+    source: &CardInstance,
+    caster: PlayerId,
+    spell_abilities: &[String],
+) -> bool {
+    if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), spell_card, source) {
+        return false;
+    }
+    if !matches_valid_player(st_ab.params.get(keys::CASTER), caster, source.controller) {
+        return false;
+    }
+    if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
+        let sa_matches = valid_sa
+            .split(',')
+            .map(str::trim)
+            .any(|tok| tok.eq_ignore_ascii_case("Spell"))
+            || spell_abilities
+                .iter()
+                .any(|line| spell_ability_matches(valid_sa, line));
+        if !sa_matches {
+            return false;
+        }
+    }
+    true
+}
+
+pub fn apply_with_flash_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    spell_card: &CardInstance,
+    source: &CardInstance,
+    caster: PlayerId,
+) -> bool {
+    matches_valid_card(st_ab.params.get(keys::VALID_CARD), spell_card, source)
+        && matches_valid_player(st_ab.params.get(keys::CASTER), caster, source.controller)
+}
+
 fn matches_valid_player(
     valid: Option<&str>,
     player: PlayerId,

@@ -26,6 +26,11 @@ pub fn assign_no_combat_damage(cards: &[CardInstance], card: &CardInstance) -> b
     false
 }
 
+/// Java parity alias.
+pub fn apply_assign_no_combat_damage(cards: &[CardInstance], card: &CardInstance) -> bool {
+    assign_no_combat_damage(cards, card)
+}
+
 fn matches_valid_card(valid: Option<&str>, card: &CardInstance, source: &CardInstance) -> bool {
     match valid {
         None => true,

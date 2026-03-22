@@ -65,6 +65,45 @@ pub fn cant_target(
     false
 }
 
+pub fn apply_cant_target_ability(
+    st_ab: &crate::staticability::StaticAbility,
+    target: &CardInstance,
+    source: &CardInstance,
+    activator: PlayerId,
+    source_card: Option<&CardInstance>,
+    source_sa: Option<&SpellAbility>,
+) -> bool {
+    if let Some(affected_zone) = st_ab.params.get(keys::AFFECTED_ZONE) {
+        let zones: Vec<&str> = affected_zone.split(',').map(|s| s.trim()).collect();
+        if !zones.iter().any(|z| zone_matches(target.zone, z)) {
+            return false;
+        }
+    } else if target.zone != ZoneType::Battlefield {
+        return false;
+    }
+
+    if !matches_valid_target(st_ab.params.get(keys::VALID_TARGET), target, source) {
+        return false;
+    }
+    if !matches_valid_activator(st_ab.params.get(keys::ACTIVATOR), activator, source.controller) {
+        return false;
+    }
+    if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
+        let Some(sa) = source_sa else {
+            return false;
+        };
+        if !spell_ability_matches(valid_sa, &sa.ability_text) {
+            return false;
+        }
+    }
+    if let (Some(valid_source), Some(src)) = (st_ab.params.get(keys::VALID_SOURCE), source_card) {
+        if !matches_valid_target(Some(valid_source), src, source) {
+            return false;
+        }
+    }
+    true
+}
+
 fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
     let params = Params::from_raw(ability_line);
     let tokens: Vec<&str> = valid_sa
