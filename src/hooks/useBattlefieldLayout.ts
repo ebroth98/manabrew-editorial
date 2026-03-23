@@ -179,9 +179,10 @@ export function useBattlefieldLayout({
       const xMax = Math.max(xMin, el.clientWidth - CARD_W - Math.max(0, rightReserved));
 
       setPositions((prev) => {
+        if (!dragRef.current) return prev;
         const next = { ...prev };
-        for (const id of dragRef.current!.cardIds) {
-          const start = dragRef.current!.startPositions[id];
+        for (const id of dragRef.current.cardIds) {
+          const start = dragRef.current.startPositions[id];
           if (!start) continue;
           next[id] = {
             x: Math.max(xMin, Math.min(xMax, start.x + dx)),
