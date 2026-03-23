@@ -1,6 +1,25 @@
+pub mod ability;
+pub mod ability_activated;
+pub mod ability_mana_part;
+pub mod ability_static;
+pub mod ability_sub;
+pub mod alternative_cost;
+pub mod land_ability;
+pub mod optional_cost;
+pub mod optional_cost_value;
 pub mod params;
+pub mod spell;
+pub mod spell_ability_condition;
+pub mod spell_ability_predicates;
+pub mod spell_ability_restriction;
+pub mod spell_ability_stack_instance;
+pub mod spell_ability_variables;
+pub mod spell_permanent;
 pub mod target_choices;
 pub mod target_restrictions;
+pub mod trait_spell_ability;
+
+use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
@@ -14,53 +33,17 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::parsing::{keys, Params};
-use forge_foundation::ZoneType;
 
+pub use ability_mana_part::AbilityManaPart;
+pub use alternative_cost::{AlternativeCost, MORPH_GENERIC_COST, MORPH_PT};
+pub use optional_cost::OptionalCost;
+pub use optional_cost_value::OptionalCostValue;
+pub use spell_ability_condition::SpellAbilityCondition;
+pub use spell_ability_predicates::{has_sub_ability_api, is_api, is_valid};
+pub use spell_ability_restriction::SpellAbilityRestriction;
+pub use spell_ability_variables::SpellAbilityVariables;
 pub use target_choices::TargetChoices;
 pub use target_restrictions::{TargetKind, TargetRestrictions};
-
-/// Alternative casting costs — mirrors Java's `OptionalCost` / `AlternativeCost`.
-/// Tracks how a spell was cast so resolution can apply the correct behaviour
-/// (e.g. Evoke → sacrifice on ETB, Dash → haste + bounce, Flashback → exile on resolve).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum AlternativeCost {
-    Flashback,
-    Spectacle,
-    Evoke,
-    Dash,
-    Blitz,
-    Escape,
-    Overload,
-    Madness,
-    Foretell,
-    Emerge,
-    Suspend,
-    /// Cast face-down as a 2/2 creature for {3} (Morph).
-    Morph,
-    /// Cast face-down as a 2/2 creature for {3}, +1/+1 counter on turn face-up (Megamorph).
-    Megamorph,
-    /// Cast as an Aura with enchant creature for the bestow cost.
-    Bestow,
-    /// Cast for warp cost; exile at beginning of next end step.
-    Warp,
-    /// Sacrifice-based alternative cost (e.g. Fireblast: sacrifice two Mountains).
-    SacrificeAlt,
-    /// Cast a plotted card from exile for free.
-    Plot,
-}
-
-impl AlternativeCost {
-    /// True if this is a morph-style face-down cast (Morph or Megamorph).
-    pub fn is_morph(self) -> bool {
-        matches!(self, AlternativeCost::Morph | AlternativeCost::Megamorph)
-    }
-}
-
-/// Generic mana cost for casting a card face-down via Morph/Megamorph ({3}).
-pub const MORPH_GENERIC_COST: i32 = 3;
-
-/// Power and toughness of a face-down morph creature.
-pub const MORPH_PT: i32 = 2;
 
 // ── SpellAbility (mirrors Java's SpellAbility.java) ──────────────────
 
@@ -131,6 +114,72 @@ pub struct SpellAbility {
     /// Cards discarded as part of the cost payment.
     /// Mirrors Java's `CostPayment.getPaidList("Discarded")`.
     pub discarded_cost_cards: Vec<crate::ids::CardId>,
+    /// Optional costs that have been paid for this spell.
+    /// Mirrors Java's `SpellAbility.optionalCosts`.
+    #[serde(default)]
+    pub optional_costs: Vec<OptionalCost>,
+    /// Hash of costs paid, keyed by cost type with list of values.
+    /// Mirrors Java's `SpellAbility.paidHash`.
+    #[serde(default)]
+    pub paid_hash: HashMap<String, Vec<String>>,
+    /// Mana-producing part of this ability (for mana abilities).
+    /// Mirrors Java's `SpellAbility.manaPart`.
+    pub mana_part: Option<AbilityManaPart>,
+    /// Cards tapped for convoke cost reduction.
+    /// Mirrors Java's `SpellAbility.tappedForConvoke`.
+    #[serde(default)]
+    pub convoke_tapped: Vec<CardId>,
+    /// Cards spliced onto this spell.
+    /// Mirrors Java's `SpellAbility.splicedCards`.
+    #[serde(default)]
+    pub spliced_cards: Vec<CardId>,
+    /// Announced variable values (e.g. X, number of targets).
+    /// Mirrors Java's `SpellAbility.announceVars`.
+    #[serde(default)]
+    pub announce_vars: HashMap<String, i32>,
+    /// Card sacrificed as part of emerge cost.
+    /// Mirrors Java's `SpellAbility.sacrificedAsEmerge`.
+    pub sacrificed_as_emerge: Option<CardId>,
+    /// Card sacrificed as part of offering cost.
+    /// Mirrors Java's `SpellAbility.sacrificedAsOffering`.
+    pub sacrificed_as_offering: Option<CardId>,
+    /// Human-readable description of this ability.
+    /// Mirrors Java's `SpellAbility.description`.
+    #[serde(default)]
+    pub description: String,
+    /// Description used when this ability is on the stack.
+    /// Mirrors Java's `SpellAbility.stackDescription`.
+    #[serde(default)]
+    pub stack_description: String,
+    /// Whether this is a mana ability (doesn't use the stack).
+    /// Mirrors Java's `SpellAbility.isManaAbility`.
+    #[serde(default)]
+    pub is_mana_ability: bool,
+    /// Whether this is a land ability (play land action).
+    /// Mirrors Java's `LandAbility` subclass flag.
+    #[serde(default)]
+    pub is_land_ability: bool,
+    /// Trigger objects map for tracking trigger context.
+    #[serde(default)]
+    pub trigger_objects: HashMap<String, String>,
+    /// Activation restriction for this ability.
+    #[serde(default)]
+    pub restriction: SpellAbilityRestriction,
+    /// Condition that must be met for the effect to apply.
+    #[serde(default)]
+    pub condition: SpellAbilityCondition,
+    /// Rollback effects tracked for undo support.
+    #[serde(default)]
+    pub rollback_effects: Vec<String>,
+    /// Keyword amounts for optional keyword costs.
+    #[serde(default)]
+    pub optional_keyword_amounts: HashMap<String, i32>,
+    /// Pips to reduce from cost.
+    #[serde(default)]
+    pub pips_to_reduce: Vec<String>,
+    /// Last known state for LKI tracking.
+    #[serde(default)]
+    pub last_state: HashMap<String, String>,
     /// Java parity: batched zone-change table accumulated for `ChangeZoneResolve`.
     #[serde(skip)]
     pub change_zone_table: Option<CardZoneTable>,
@@ -260,16 +309,806 @@ impl SpellAbility {
             trigger_remembered_amount: 0,
             x_mana_cost_paid: 0,
             discarded_cost_cards: Vec::new(),
+            optional_costs: Vec::new(),
+            paid_hash: HashMap::new(),
+            mana_part: None,
+            convoke_tapped: Vec::new(),
+            spliced_cards: Vec::new(),
+            announce_vars: HashMap::new(),
+            sacrificed_as_emerge: None,
+            sacrificed_as_offering: None,
+            description: String::new(),
+            stack_description: String::new(),
+            is_mana_ability: false,
+            is_land_ability: false,
+            trigger_objects: HashMap::new(),
+            restriction: SpellAbilityRestriction::default(),
+            condition: SpellAbilityCondition::default(),
+            rollback_effects: Vec::new(),
+            optional_keyword_amounts: HashMap::new(),
+            pips_to_reduce: Vec::new(),
+            last_state: HashMap::new(),
             change_zone_table: None,
             damage_map: None,
             prevent_map: None,
         }
+    }
+
+    /// Create a minimal empty SpellAbility stub.
+    /// Mirrors Java's common `SpellAbility.EmptySa` usage.
+    pub fn new_empty(source: Option<CardId>, player: PlayerId) -> Self {
+        Self::new_simple(source, player, "")
+    }
+
+    /// Create a minimal land-play SpellAbility stub.
+    pub fn new_land(source: Option<CardId>, player: PlayerId) -> Self {
+        let mut sa = Self::new_empty(source, player);
+        sa.is_land_ability = true;
+        sa
+    }
+
+    // ── Sub-ability chain walking ─────────────────────────────────────────
+
+    /// Walk the sub-ability chain looking for a specific API type.
+    /// Mirrors Java's `SpellAbility.findSubAbilityByType(ApiType)`.
+    pub fn find_sub_ability_by_type(&self, api: ApiType) -> Option<&SpellAbility> {
+        let mut current = self.sub_ability.as_deref();
+        while let Some(sub) = current {
+            if sub.api == Some(api) {
+                return Some(sub);
+            }
+            current = sub.sub_ability.as_deref();
+        }
+        None
+    }
+
+    // ── Mana part delegation ──────────────────────────────────────────────
+
+    /// Whether this ability can produce mana.
+    /// Mirrors Java's `SpellAbility.canThisProduce()`.
+    pub fn can_this_produce(&self) -> bool {
+        match &self.mana_part {
+            Some(mp) => mp.can_this_produce(),
+            None => false,
+        }
+    }
+
+    /// Whether this ability can produce a specific color.
+    /// Mirrors Java's `SpellAbility.canProduce(String)`.
+    pub fn can_produce(&self, color: &str) -> bool {
+        match &self.mana_part {
+            Some(mp) => mp.can_produce(color),
+            None => false,
+        }
+    }
+
+    /// Amount of mana generated by this ability.
+    /// Mirrors Java's `SpellAbility.amountOfManaGenerated()`.
+    pub fn amount_of_mana_generated(&self) -> i32 {
+        match &self.mana_part {
+            Some(mp) => mp.amount_of_mana_generated(),
+            None => 0,
+        }
+    }
+
+    /// Total amount of mana generated, counting Any/All as 1.
+    /// Mirrors Java's `SpellAbility.totalAmountOfManaGenerated()`.
+    pub fn total_amount_of_mana_generated(&self) -> i32 {
+        match &self.mana_part {
+            Some(mp) => mp.total_amount_of_mana_generated(),
+            None => 0,
+        }
+    }
+
+    // ── Cost and payment ──────────────────────────────────────────────────
+
+    /// Whether paying with shard mana is allowed.
+    /// Mirrors Java's `SpellAbility.allowsPayingWithShard()`.
+    pub fn allows_paying_with_shard(&self) -> bool {
+        self.params.is_true("AllowsPayingWithShard")
+    }
+
+    /// Whether this ability cannot be copied.
+    /// Mirrors Java's `SpellAbility.cantBeCopied()`.
+    pub fn cant_be_copied(&self) -> bool {
+        self.params.is_true("CantBeCopied")
+    }
+
+    /// Whether this ability can be played (checks restrictions).
+    /// Mirrors Java's `SpellAbility.canPlay()`.
+    pub fn can_play(&self, game: &GameState) -> bool {
+        if let Some(card_id) = self.source {
+            self.restriction
+                .can_play(game, card_id, self.activating_player)
+        } else {
+            true
+        }
+    }
+
+    /// Whether this ability can be played with optional costs.
+    /// Mirrors Java's `SpellAbility.canPlayWithOptionalCost()`.
+    pub fn can_play_with_optional_cost(&self) -> bool {
+        !self.optional_costs.is_empty()
+    }
+
+    /// Whether to prompt even if this is the only possible ability.
+    /// Mirrors Java's `SpellAbility.promptIfOnlyPossibleAbility()`.
+    pub fn prompt_if_only_possible_ability(&self) -> bool {
+        self.params.is_true("PromptIfOnlyPossible")
+    }
+
+    /// Add an optional cost to this ability.
+    /// Mirrors Java's `SpellAbility.addOptionalCost(OptionalCost)`.
+    pub fn add_optional_cost(&mut self, cost: OptionalCost) {
+        if !self.optional_costs.contains(&cost) {
+            self.optional_costs.push(cost);
+        }
+    }
+
+    /// Whether the mana cost contains X.
+    /// Mirrors Java's `SpellAbility.costHasX()`.
+    pub fn cost_has_x(&self) -> bool {
+        self.ability_text.contains("X")
+            || self
+                .params
+                .get("Cost")
+                .map_or(false, |c| c.contains('X'))
+    }
+
+    /// Whether the mana cost contains X (mana-specific check).
+    /// Mirrors Java's `SpellAbility.costHasManaX()`.
+    pub fn cost_has_mana_x(&self) -> bool {
+        self.params
+            .get("Cost")
+            .map_or(false, |c| c.contains('X'))
+    }
+
+    /// Whether conditions are met for this ability.
+    /// Mirrors Java's `SpellAbility.metConditions()`.
+    pub fn met_conditions(&self, game: &GameState) -> bool {
+        self.condition.are_met(game, self)
+    }
+
+    /// Clear mana paid tracking.
+    /// Mirrors Java's `SpellAbility.clearManaPaid()`.
+    pub fn clear_mana_paid(&mut self) {
+        self.x_mana_cost_paid = 0;
+    }
+
+    /// Apply effects from paying mana (e.g. Sunburst).
+    /// Mirrors Java's `SpellAbility.applyPayingManaEffects()`.
+    pub fn apply_paying_mana_effects(&mut self) {
+        // Mana payment effects are applied during resolution based on
+        // the colors of mana spent, tracked in the card's colors_spent_to_cast.
+    }
+
+    /// Run this ability (no-op in Rust; Java resolves via resolveStack).
+    /// Mirrors Java's `SpellAbility.run()`.
+    pub fn run(&self) {
+        // Resolution is handled by the stack resolution system in Rust.
+        // This method exists for API parity with Java.
+    }
+
+    // ── Paid cost tracking ────────────────────────────────────────────────
+
+    /// Add a value to the paid cost hash.
+    /// Mirrors Java's `SpellAbility.addCostToHashList(String, String)`.
+    pub fn add_cost_to_hash_list(&mut self, key: &str, value: &str) {
+        self.paid_hash
+            .entry(key.to_string())
+            .or_default()
+            .push(value.to_string());
+    }
+
+    /// Reset the paid cost hash.
+    /// Mirrors Java's `SpellAbility.resetPaidHash()`.
+    pub fn reset_paid_hash(&mut self) {
+        self.paid_hash.clear();
+    }
+
+    // ── Trigger objects ───────────────────────────────────────────────────
+
+    /// Check if a triggering object is set.
+    /// Mirrors Java's `SpellAbility.hasTriggeringObject(String)`.
+    pub fn has_triggering_object(&self, key: &str) -> bool {
+        self.trigger_objects.contains_key(key)
+    }
+
+    /// Clear all triggering objects.
+    /// Mirrors Java's `SpellAbility.resetTriggeringObjects()`.
+    pub fn reset_triggering_objects(&mut self) {
+        self.trigger_objects.clear();
+    }
+
+    /// Cleanup after resolution — reset targets, trigger objects, paid hash.
+    /// Mirrors Java's `SpellAbility.resetOnceResolved()`.
+    pub fn reset_once_resolved(&mut self) {
+        self.clear_targets();
+        self.reset_triggering_objects();
+        self.reset_paid_hash();
+        self.x_mana_cost_paid = 0;
+        self.kick_count = 0;
+        self.replicate_count = 0;
+        self.optional_generic_cost_paid = false;
+        self.discarded_cost_cards.clear();
+        self.optional_costs.clear();
+        self.convoke_tapped.clear();
+        self.spliced_cards.clear();
+        self.announce_vars.clear();
+        self.sacrificed_as_emerge = None;
+        self.sacrificed_as_offering = None;
+    }
+
+    // ── Description and text ──────────────────────────────────────────────
+
+    /// Generate a unique key for this ability.
+    /// Mirrors Java's `SpellAbility.yieldKey()`.
+    pub fn yield_key(&self) -> String {
+        let api_str = self
+            .api
+            .map(|a| format!("{:?}", a))
+            .unwrap_or_default();
+        let source_str = self
+            .source
+            .map(|s| format!("{}", s.0))
+            .unwrap_or_default();
+        format!("{}_{}", api_str, source_str)
+    }
+
+    /// Build a description from params.
+    /// Mirrors Java's `SpellAbility.rebuiltDescription()`.
+    pub fn rebuilt_description(&self) -> String {
+        if !self.description.is_empty() {
+            return self.description.clone();
+        }
+        if let Some(desc) = self.params.get("SpDesc") {
+            return desc.to_string();
+        }
+        self.ability_text.clone()
+    }
+
+    /// Full text without suppression.
+    /// Mirrors Java's `SpellAbility.toUnsuppressedString()`.
+    pub fn to_unsuppressed_string(&self) -> String {
+        self.rebuilt_description()
+    }
+
+    // ── Sub-abilities ─────────────────────────────────────────────────────
+
+    /// Check if an additional ability with the given key exists.
+    /// Mirrors Java's `SpellAbility.hasAdditionalAbility(String)`.
+    pub fn has_additional_ability(&self, key: &str) -> bool {
+        self.params.get(key).is_some()
+    }
+
+    /// Append a sub-ability to the end of the chain.
+    /// Mirrors Java's `SpellAbility.appendSubAbility(SpellAbility)`.
+    pub fn append_sub_ability(&mut self, sub: SpellAbility) {
+        if self.sub_ability.is_none() {
+            self.sub_ability = Some(Box::new(sub));
+        } else {
+            // Walk to end of chain
+            let mut current = self.sub_ability.as_deref_mut();
+            while let Some(sa) = current {
+                if sa.sub_ability.is_none() {
+                    sa.sub_ability = Some(Box::new(sub));
+                    return;
+                }
+                current = sa.sub_ability.as_deref_mut();
+            }
+        }
+    }
+
+    // ── Copying ───────────────────────────────────────────────────────────
+
+    /// Clone this spell ability.
+    /// Mirrors Java's `SpellAbility.copy()`.
+    pub fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    /// Clone with no mana cost.
+    /// Mirrors Java's `SpellAbility.copyWithNoManaCost()`.
+    pub fn copy_with_no_mana_cost(&self) -> Self {
+        let mut copied = self.clone();
+        copied.pay_costs = None;
+        copied
+    }
+
+    /// Clone with a specific cost.
+    /// Mirrors Java's `SpellAbility.copyWithDefinedCost(String)`.
+    pub fn copy_with_defined_cost(&self, cost: &str) -> Self {
+        let mut copied = self.clone();
+        copied.pay_costs = Some(parse_cost(cost));
+        copied
+    }
+
+    /// Clone with mana cost replacement.
+    /// Mirrors Java's `SpellAbility.copyWithManaCostReplaced(String, String)`.
+    pub fn copy_with_mana_cost_replaced(&self, old: &str, new: &str) -> Self {
+        let mut copied = self.clone();
+        if let Some(ref cost) = self.pay_costs {
+            let cost_str = format!("{:?}", cost);
+            let replaced = cost_str.replace(old, new);
+            copied.pay_costs = Some(parse_cost(&replaced));
+        }
+        copied
+    }
+
+    // ── Targeting ─────────────────────────────────────────────────────────
+
+    /// Check if this ability can target a specific card.
+    /// Mirrors Java's `SpellAbility.canTarget(Card)`.
+    pub fn can_target(&self, card: CardId, game: &GameState) -> bool {
+        if let Some(ref tr) = self.target_restrictions {
+            tr.has_candidates(game, self.activating_player, self.source)
+                && target_restrictions::can_be_targeted_by_sa(
+                    game,
+                    card,
+                    self.activating_player,
+                    self,
+                )
+        } else {
+            false
+        }
+    }
+
+    /// Reset targets (alias for clear_targets).
+    /// Mirrors Java's `SpellAbility.resetTargets()`.
+    pub fn reset_targets(&mut self) {
+        self.clear_targets();
+    }
+
+    /// Add divided allocation for a target.
+    /// Mirrors Java's `SpellAbility.addDividedAllocation(Card, int)`.
+    pub fn add_divided_allocation(&mut self, card: CardId, amount: i32) {
+        self.target_chosen.add_divided_allocation(card, amount);
+    }
+
+    /// Reset only the first target in the chain.
+    /// Mirrors Java's `SpellAbility.resetFirstTarget()`.
+    pub fn reset_first_target(&mut self) {
+        self.target_chosen = TargetChoices::default();
+    }
+
+    /// Check if more targets can be added.
+    /// Mirrors Java's `SpellAbility.canAddMoreTarget()`.
+    pub fn can_add_more_target(&self, game: &GameState) -> bool {
+        if let Some(ref tr) = self.target_restrictions {
+            let max = tr.get_max_targets(game, self);
+            let current = if self.target_chosen.target_card.is_some() {
+                1
+            } else {
+                0
+            } + if self.target_chosen.target_player.is_some() {
+                1
+            } else {
+                0
+            };
+            current < max
+        } else {
+            false
+        }
+    }
+
+    /// Collect all targeted cards from the entire chain.
+    /// Mirrors Java's `SpellAbility.findTargetedCards()`.
+    pub fn find_targeted_cards(&self) -> Vec<CardId> {
+        let mut cards = Vec::new();
+        if let Some(cid) = self.target_chosen.target_card {
+            cards.push(cid);
+        }
+        let mut current = self.sub_ability.as_deref();
+        while let Some(sub) = current {
+            if let Some(cid) = sub.target_chosen.target_card {
+                cards.push(cid);
+            }
+            current = sub.sub_ability.as_deref();
+        }
+        cards
+    }
+
+    /// Whether this ability targets spells/abilities on the stack.
+    /// Mirrors Java's `SpellAbility.canTargetSpellAbility()`.
+    pub fn can_target_spell_ability(&self) -> bool {
+        matches!(
+            self.target_restrictions.as_ref().map(|tr| &tr.target_kind),
+            Some(TargetKind::Spell)
+        )
+    }
+
+    /// Setup new targets for a retargeting scenario.
+    /// Mirrors Java's `SpellAbility.setupNewTargets()`.
+    pub fn setup_new_targets(
+        &mut self,
+        game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        mana_pools: &[ManaPool],
+    ) -> bool {
+        self.clear_targets();
+        self.setup_targets(game, agents, mana_pools)
+    }
+
+    // ── Convoke / Emerge / Offering ───────────────────────────────────────
+
+    /// Clear pip reduction tracking.
+    /// Mirrors Java's `SpellAbility.clearPipsToReduce()`.
+    pub fn clear_pips_to_reduce(&mut self) {
+        self.pips_to_reduce.clear();
+    }
+
+    /// Add a card tapped for convoke.
+    /// Mirrors Java's `SpellAbility.addTappedForConvoke(Card)`.
+    pub fn add_tapped_for_convoke(&mut self, card: CardId) {
+        self.convoke_tapped.push(card);
+    }
+
+    /// Clear convoke tracking.
+    /// Mirrors Java's `SpellAbility.clearTappedForConvoke()`.
+    pub fn clear_tapped_for_convoke(&mut self) {
+        self.convoke_tapped.clear();
+    }
+
+    /// Reset the sacrificed-as-emerge card.
+    /// Mirrors Java's `SpellAbility.resetSacrificedAsEmerge()`.
+    pub fn reset_sacrificed_as_emerge(&mut self) {
+        self.sacrificed_as_emerge = None;
+    }
+
+    /// Reset the sacrificed-as-offering card.
+    /// Mirrors Java's `SpellAbility.resetSacrificedAsOffering()`.
+    pub fn reset_sacrificed_as_offering(&mut self) {
+        self.sacrificed_as_offering = None;
+    }
+
+    // ── Splice ────────────────────────────────────────────────────────────
+
+    /// Add spliced cards to this spell.
+    /// Mirrors Java's `SpellAbility.addSplicedCards(List<Card>)`.
+    pub fn add_spliced_cards(&mut self, cards: Vec<CardId>) {
+        self.spliced_cards.extend(cards);
+    }
+
+    // ── Deterministic checks ──────────────────────────────────────────────
+
+    /// Whether `Defined$` resolves to a deterministic set of objects.
+    /// Mirrors Java's `SpellAbility.knownDetermineDefined()`.
+    pub fn known_determine_defined(&self) -> bool {
+        match self.params.get("Defined") {
+            Some(defined) => matches!(
+                defined,
+                "Self" | "You" | "Targeted" | "TargetedPlayer"
+                    | "Remembered" | "ParentTarget"
+                    | "SourceController" | "Imprinted"
+            ),
+            None => true,
+        }
+    }
+
+    // ── Undo ──────────────────────────────────────────────────────────────
+
+    /// Undo this ability.
+    /// Mirrors Java's `SpellAbility.undo()`.
+    pub fn undo(&mut self) -> bool {
+        self.clear_tapped_for_convoke();
+        self.reset_sacrificed_as_emerge();
+        self.reset_sacrificed_as_offering();
+        self.reset_paid_hash();
+        self.clear_mana_paid();
+        true
+    }
+
+    // ── Announce vars ─────────────────────────────────────────────────────
+
+    /// Add an announced variable value.
+    /// Mirrors Java's `SpellAbility.addAnnounceVar(String, int)`.
+    pub fn add_announce_var(&mut self, key: &str, value: i32) {
+        self.announce_vars.insert(key.to_string(), value);
+    }
+
+    // ── Targeting by SA ───────────────────────────────────────────────────
+
+    /// Check if this spell ability can be targeted by another SA.
+    /// Mirrors Java's `SpellAbility.canBeTargetedBy(SpellAbility)`.
+    pub fn can_be_targeted_by(&self, _sa: &SpellAbility) -> bool {
+        // Spells on the stack can generally be targeted unless they have
+        // "can't be countered" or similar protection. The basic check is
+        // whether this is a spell (on the stack).
+        if self.is_spell {
+            return !self.cant_be_copied();
+        }
+        true
+    }
+
+    // ── Property checks ───────────────────────────────────────────────────
+
+    /// Check if this ability has a specific property.
+    /// Mirrors Java's `SpellAbility.hasProperty(String)`.
+    pub fn has_property(&self, property: &str) -> bool {
+        // Check if the property matches a param key or ability characteristic
+        if self.params.is_true(property) {
+            return true;
+        }
+        if property.eq_ignore_ascii_case("Spell") && self.is_spell {
+            return true;
+        }
+        if property.eq_ignore_ascii_case("Trigger") && self.is_trigger {
+            return true;
+        }
+        if property.eq_ignore_ascii_case("Activated") && self.is_activated {
+            return true;
+        }
+        if property.eq_ignore_ascii_case("ManaAbility") && self.is_mana_ability {
+            return true;
+        }
+        false
+    }
+
+    /// Whether this ability tracks mana spent.
+    /// Mirrors Java's `SpellAbility.tracksManaSpent()`.
+    pub fn tracks_mana_spent(&self) -> bool {
+        self.params.is_true("TrackManaSpent")
+    }
+
+    // ── Text changes ──────────────────────────────────────────────────────
+
+    /// Apply text replacement.
+    /// Mirrors Java's `SpellAbility.changeText(String, String)`.
+    pub fn change_text(&mut self, original: &str, replacement: &str) {
+        if original == replacement {
+            return;
+        }
+        self.description = self.description.replace(original, replacement);
+        self.stack_description = self.stack_description.replace(original, replacement);
+        if let Some(ref mut tr) = self.target_restrictions {
+            tr.apply_target_text_changes(&[(original, replacement)]);
+        }
+    }
+
+    /// Apply intrinsic text replacement.
+    /// Mirrors Java's `SpellAbility.changeTextIntrinsic(String, String)`.
+    pub fn change_text_intrinsic(&mut self, original: &str, replacement: &str) {
+        self.change_text(original, replacement);
+    }
+
+    // ── AI scoring ────────────────────────────────────────────────────────
+
+    /// Calculate an AI score for this mana ability.
+    /// Mirrors Java's `SpellAbility.calculateScoreForManaAbility()`.
+    pub fn calculate_score_for_mana_ability(&self) -> i32 {
+        if !self.is_mana_ability {
+            return 0;
+        }
+        let base = self.total_amount_of_mana_generated();
+        // Prefer abilities that produce more mana and have fewer restrictions
+        let restriction_penalty = if self.restriction.variables.sorcery_speed() {
+            -1
+        } else {
+            0
+        };
+        base + restriction_penalty
+    }
+
+    // ── Timing checks ─────────────────────────────────────────────────────
+
+    /// Check if this ability can be cast at the current timing.
+    /// Mirrors Java's `SpellAbility.canCastTiming(Game)`.
+    pub fn can_cast_timing(&self, game: &GameState) -> bool {
+        // Instant speed abilities can always be cast when the player has priority
+        if self.restriction.variables.instant_speed() {
+            return true;
+        }
+        // Sorcery speed requires main phase, empty stack, active player
+        if self.is_spell || self.restriction.variables.sorcery_speed() {
+            let is_main = game.turn.phase.is_main();
+            let stack_empty = game.stack.is_empty();
+            let is_active = game.turn.active_player == self.activating_player;
+            return is_main && stack_empty && is_active;
+        }
+        // Activated abilities can be used at instant speed by default
+        true
+    }
+
+    /// Check if this spell has flash.
+    /// Mirrors Java's `SpellAbility.withFlash(Game)`.
+    pub fn with_flash(&self, game: &GameState) -> bool {
+        if self.params.is_true("Flash") {
+            return true;
+        }
+        if let Some(card_id) = self.source {
+            let card = game.card(card_id);
+            if card.has_keyword("Flash") {
+                return true;
+            }
+        }
+        false
+    }
+
+    /// Check restrictions for this ability.
+    /// Mirrors Java's `SpellAbility.checkRestrictions(Game)`.
+    pub fn check_restrictions(&self, game: &GameState) -> bool {
+        self.can_play(game)
+    }
+
+    // ── Rollback ──────────────────────────────────────────────────────────
+
+    /// Add a rollback effect.
+    /// Mirrors Java's `SpellAbility.addRollbackEffect(String)`.
+    pub fn add_rollback_effect(&mut self, effect: String) {
+        self.rollback_effects.push(effect);
+    }
+
+    /// Rollback all tracked effects.
+    /// Mirrors Java's `SpellAbility.rollback()`.
+    pub fn rollback(&mut self) -> bool {
+        let had_effects = !self.rollback_effects.is_empty();
+        self.rollback_effects.clear();
+        had_effects
+    }
+
+    // ── Optional keyword amounts ──────────────────────────────────────────
+
+    /// Check if this ability has an optional keyword with a specific amount.
+    /// Mirrors Java's `SpellAbility.hasOptionalKeywordAmount(String)`.
+    pub fn has_optional_keyword_amount(&self, keyword: &str) -> bool {
+        self.optional_keyword_amounts.contains_key(keyword)
+    }
+
+    /// Clear all optional keyword amounts.
+    /// Mirrors Java's `SpellAbility.clearOptionalKeywordAmount()`.
+    pub fn clear_optional_keyword_amount(&mut self) {
+        self.optional_keyword_amounts.clear();
+    }
+
+    /// Clear last known state tracking.
+    /// Mirrors Java's `SpellAbility.clearLastState()`.
+    pub fn clear_last_state(&mut self) {
+        self.last_state.clear();
+    }
+
+    // ── Trigger object management ─────────────────────────────────────────
+
+    /// Add a triggering object to the map.
+    /// Mirrors Java's `SpellAbility.addTriggeringObject(String, Object)`.
+    pub fn add_triggering_object(&mut self, key: &str, value: &str) {
+        self.trigger_objects.insert(key.to_string(), value.to_string());
+    }
+
+    /// Update an existing triggering object.
+    /// Mirrors Java's `SpellAbility.updateTriggeringObject(String, Object)`.
+    pub fn update_triggering_object(&mut self, key: &str, value: &str) {
+        self.trigger_objects.insert(key.to_string(), value.to_string());
+    }
+
+    // ── Target management ─────────────────────────────────────────────────
+
+    /// Update a target in the chosen targets.
+    /// Mirrors Java's `SpellAbility.updateTarget(Card, Card)`.
+    pub fn update_target(&mut self, old: CardId, new: CardId) {
+        self.target_chosen.replace_target_card(old, new);
+    }
+
+    /// Whether this targets a single target only.
+    /// Mirrors Java's `SpellAbility.targetsSingleTarget()`.
+    pub fn targets_single_target(&self) -> bool {
+        if let Some(ref tr) = self.target_restrictions {
+            tr.max_targets == "1"
+        } else {
+            false
+        }
+    }
+
+    // ── Variable operand getters/setters ──────────────────────────────────
+    // These mirror Java's SpellAbilityVariables Operand/ToCheck/Operator accessors.
+    // In Rust, they are stored in the SpellAbilityVariables but accessed via SA.
+
+    /// Get variable operand 1.
+    /// Mirrors Java's `SpellAbility.getSVar("Operand")`.
+    pub fn gets_var_operand(&self) -> Option<&str> {
+        self.params.get("Operand")
+    }
+
+    /// Get variable operand 2.
+    /// Mirrors Java's `SpellAbility.getSVar("Operand2")`.
+    pub fn gets_var_operand2(&self) -> Option<&str> {
+        self.params.get("Operand2")
+    }
+
+    /// Set variable operand 1.
+    /// Mirrors Java's `SpellAbility.setSVar("Operand", val)`.
+    pub fn sets_var_operand(&mut self, value: &str) {
+        self.params.put("Operand".to_string(), value.to_string());
+    }
+
+    /// Set variable operand 2.
+    /// Mirrors Java's `SpellAbility.setSVar("Operand2", val)`.
+    pub fn sets_var_operand2(&mut self, value: &str) {
+        self.params.put("Operand2".to_string(), value.to_string());
+    }
+
+    /// Get variable to check 1.
+    /// Mirrors Java's `SpellAbility.getSVar("VarToCheck")`.
+    pub fn gets_var_to_check(&self) -> Option<&str> {
+        self.params.get("VarToCheck")
+    }
+
+    /// Get variable to check 2.
+    /// Mirrors Java's `SpellAbility.getSVar("VarToCheck2")`.
+    pub fn gets_var_to_check2(&self) -> Option<&str> {
+        self.params.get("VarToCheck2")
+    }
+
+    /// Set variable to check 1.
+    /// Mirrors Java's `SpellAbility.setSVar("VarToCheck", val)`.
+    pub fn sets_var_to_check(&mut self, value: &str) {
+        self.params.put("VarToCheck".to_string(), value.to_string());
+    }
+
+    /// Set variable to check 2.
+    /// Mirrors Java's `SpellAbility.setSVar("VarToCheck2", val)`.
+    pub fn sets_var_to_check2(&mut self, value: &str) {
+        self.params.put("VarToCheck2".to_string(), value.to_string());
+    }
+
+    /// Get variable operator 1.
+    /// Mirrors Java's `SpellAbility.getSVar("Operator")`.
+    pub fn gets_var_operator(&self) -> Option<&str> {
+        self.params.get("Operator")
+    }
+
+    /// Get variable operator 2.
+    /// Mirrors Java's `SpellAbility.getSVar("Operator2")`.
+    pub fn gets_var_operator2(&self) -> Option<&str> {
+        self.params.get("Operator2")
+    }
+
+    /// Set variable operator 1.
+    /// Mirrors Java's `SpellAbility.setSVar("Operator", val)`.
+    pub fn sets_var_operator(&mut self, value: &str) {
+        self.params.put("Operator".to_string(), value.to_string());
+    }
+
+    /// Set variable operator 2.
+    /// Mirrors Java's `SpellAbility.setSVar("Operator2", val)`.
+    pub fn sets_var_operator2(&mut self, value: &str) {
+        self.params.put("Operator2".to_string(), value.to_string());
+    }
+
+    // ── Static ID counter ─────────────────────────────────────────────────
+
+    /// Get the next unique ID for a spell ability.
+    /// Mirrors Java's `SpellAbility.nextId()`.
+    pub fn next_id() -> u64 {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+        COUNTER.fetch_add(1, Ordering::Relaxed)
     }
 }
 
 // build_spell_ability now lives in ability::ability_factory.
 // Re-export here for backward compatibility.
 pub use crate::ability::ability_factory::build_spell_ability;
+pub use crate::ability::ability_factory::build_spell_ability_from_host_card;
+pub use crate::ability::ability_factory::build_spell_ability_for_card_cast;
+
+/// Check whether any spell on the stack has split second.
+/// Split second prevents players from casting spells or activating abilities
+/// (except mana abilities) while it's on the stack.
+/// Single source of truth — used by spell, ability, and ability_activated modules.
+pub fn has_split_second_on_stack(game: &GameState) -> bool {
+    for entry in game.stack.iter() {
+        if entry.spell_ability.params.is_true("SplitSecond") {
+            return true;
+        }
+        if let Some(card_id) = entry.spell_ability.source {
+            let card = game.card(card_id);
+            if card.has_keyword("Split second") {
+                return true;
+            }
+        }
+    }
+    false
+}
 
 /// Choose targets for a single SpellAbility node, populating its `target_chosen`.
 /// Mirrors Java's `PlayerController.chooseTargetsFor(currentAbility)`.

@@ -80,6 +80,10 @@ impl GameLoop {
             ) {
                 return false;
             }
+            // Activated-ability legality checks (split second, suppression, detention, etc.).
+            if !crate::spellability::ability_activated::can_play(&sa_for_target_check, game) {
+                return false;
+            }
             if let Some(tr) = sa_for_target_check.target_restrictions.as_ref() {
                 let min_targets = tr.get_min_targets(game, &sa_for_target_check);
                 if min_targets > 0
@@ -317,7 +321,7 @@ impl GameLoop {
 
         // If this is a ManaReflected ability, delegate to the effect resolver
         if ab.params.get(keys::AB) == Some("ManaReflected") {
-            let sa = SpellAbility::new_simple(Some(card_id), player, &ab.ability_text);
+            let sa = crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
             self.resolve_single_effect(game, agents, &sa, None);
             // Fire triggers
             self.trigger_handler.run_trigger(
@@ -372,7 +376,8 @@ impl GameLoop {
             if produced.starts_with("Special") {
                 // Delegate to the special mana handler in mana_effect
                 let special = produced.strip_prefix("Special ").unwrap_or("");
-                let sa = SpellAbility::new_simple(Some(card_id), player, &ab.ability_text);
+                let sa =
+                    crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
                 let mut effect_ctx = crate::ability::effects::EffectContext {
                     game,
                     agents,
@@ -575,7 +580,7 @@ impl GameLoop {
         // Resolve SubAbility chain (e.g. DealDamage on pain lands)
         if let Some(sub_svar_name) = ab.params.get(keys::SUB_ABILITY) {
             if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name).cloned() {
-                let sub_sa = SpellAbility::new_simple(Some(card_id), player, &sub_text);
+                let sub_sa = crate::spellability::build_spell_ability(game, card_id, &sub_text, player);
                 self.resolve_single_effect(game, agents, &sub_sa, None);
             }
         }

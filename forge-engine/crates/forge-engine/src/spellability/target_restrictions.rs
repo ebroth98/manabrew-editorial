@@ -154,6 +154,78 @@ impl TargetRestrictions {
     pub fn get_max_targets(&self, game: &GameState, sa: &SpellAbility) -> i32 {
         resolve_target_count_expr(&self.max_targets, game, sa)
     }
+
+    /// Whether targeting is restricted to opponents only.
+    /// Mirrors Java's `TargetRestrictions.canOnlyTgtOpponent()`.
+    pub fn can_only_tgt_opponent(&self) -> bool {
+        self.valid_tgts
+            .iter()
+            .all(|v| v.eq_ignore_ascii_case("Opponent"))
+    }
+
+    /// Whether this can target a player.
+    /// Mirrors Java's `TargetRestrictions.canTgtPlayer()`.
+    pub fn can_tgt_player(&self) -> bool {
+        matches!(
+            self.target_kind,
+            TargetKind::Player | TargetKind::Any
+        )
+    }
+
+    /// Whether this can target a permanent.
+    /// Mirrors Java's `TargetRestrictions.canTgtPermanent()`.
+    pub fn can_tgt_permanent(&self) -> bool {
+        matches!(
+            self.target_kind,
+            TargetKind::Permanent(_) | TargetKind::Creature(_) | TargetKind::Any
+        )
+    }
+
+    /// Whether this can target a creature.
+    /// Mirrors Java's `TargetRestrictions.canTgtCreature()`.
+    pub fn can_tgt_creature(&self) -> bool {
+        matches!(
+            self.target_kind,
+            TargetKind::Creature(_) | TargetKind::Any
+        )
+    }
+
+    /// Whether this can target a planeswalker.
+    /// Mirrors Java's `TargetRestrictions.canTgtPlaneswalker()`.
+    pub fn can_tgt_planeswalker(&self) -> bool {
+        matches!(
+            self.target_kind,
+            TargetKind::Permanent(_) | TargetKind::Any
+        )
+    }
+
+    /// Whether this can target both a creature and a player.
+    /// Mirrors Java's `TargetRestrictions.canTgtCreatureAndPlayer()`.
+    pub fn can_tgt_creature_and_player(&self) -> bool {
+        matches!(self.target_kind, TargetKind::Any)
+    }
+
+    /// Clone this target restriction.
+    /// Mirrors Java's `TargetRestrictions.copy()`.
+    pub fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    /// Apply text changes to the target restriction strings.
+    /// Mirrors Java's `TargetRestrictions.applyTargetTextChanges(Map)`.
+    pub fn apply_target_text_changes(&mut self, changes: &[(&str, &str)]) {
+        for tgt in &mut self.valid_tgts {
+            for &(old, new) in changes {
+                if tgt.contains(old) {
+                    *tgt = tgt.replace(old, new);
+                }
+            }
+        }
+        // Re-parse target kind from updated valid_tgts
+        if let Some(first) = self.valid_tgts.first() {
+            self.target_kind = parse_target_kind_legacy(first);
+        }
+    }
 }
 
 fn has_other_qualifier(filter: &str) -> bool {

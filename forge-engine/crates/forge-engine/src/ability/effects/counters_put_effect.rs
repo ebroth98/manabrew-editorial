@@ -69,7 +69,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "Self" | _ => sa.source,
         }
     };
-
     let Some(card_id) = target_id else { return };
     if ctx.game.card(card_id).zone != ZoneType::Battlefield {
         return;

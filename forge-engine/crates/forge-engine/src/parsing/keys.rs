@@ -12,6 +12,7 @@
 pub const AB: &str = "AB";
 pub const DB: &str = "DB";
 pub const SP: &str = "SP";
+pub const ST: &str = "ST";
 pub const MODE: &str = "Mode";
 pub const EVENT: &str = "Event";
 

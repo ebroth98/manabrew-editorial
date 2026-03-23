@@ -17,7 +17,7 @@ use crate::card::PARAM_MADNESS_PLAY;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::parsing::keys;
-use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
+use crate::spellability::{SpellAbility, StackEntry};
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let card_id = match resolve_target_card(sa) {
@@ -180,10 +180,8 @@ fn resolve_madness_play(ctx: &mut EffectContext, sa: &SpellAbility, card_id: Car
     }
 
     // Build SA, set up targets, push to stack
-    let abilities = ctx.game.card(card_id).abilities.clone();
-    let ability_text = abilities.first().cloned().unwrap_or_default();
-    let mut spell_sa = build_spell_ability(ctx.game, card_id, &ability_text, controller);
-    spell_sa.is_spell = true;
+    let mut spell_sa =
+        crate::spellability::build_spell_ability_for_card_cast(ctx.game, card_id, controller);
     spell_sa.alt_cost = Some(crate::spellability::AlternativeCost::Madness);
     if let Some(cost) = spell_sa.pay_costs.as_mut() {
         cost.mandatory = true;
@@ -200,10 +198,8 @@ fn resolve_madness_play(ctx: &mut EffectContext, sa: &SpellAbility, card_id: Car
 fn resolve_rebound_play(ctx: &mut EffectContext, sa: &SpellAbility, card_id: CardId) {
     let controller = sa.activating_player;
 
-    let abilities = ctx.game.card(card_id).abilities.clone();
-    let ability_text = abilities.first().cloned().unwrap_or_default();
-    let mut spell_sa = build_spell_ability(ctx.game, card_id, &ability_text, controller);
-    spell_sa.is_spell = true;
+    let mut spell_sa =
+        crate::spellability::build_spell_ability_for_card_cast(ctx.game, card_id, controller);
     if let Some(cost) = spell_sa.pay_costs.as_mut() {
         cost.mandatory = true;
     }

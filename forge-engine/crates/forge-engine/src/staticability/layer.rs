@@ -596,7 +596,7 @@ fn resolve_set_pt_param(
         // Simple SVar evaluation (e.g. Number$2)
         return Some(crate::ability::effects::evaluate_svar(
             svar_expr,
-            &crate::spellability::SpellAbility::new_simple(Some(source_id), source.controller, ""),
+            &crate::spellability::SpellAbility::new_empty(Some(source_id), source.controller),
         ));
     }
 

@@ -56,11 +56,7 @@ fn eval_amount(source: &Card, expr: &str) -> i32 {
         if let Ok(n) = svar.parse::<i32>() {
             return n;
         }
-        let mut sa = crate::spellability::SpellAbility::new_simple(
-            Some(source.id),
-            source.controller,
-            "AB$ Internal",
-        );
+        let mut sa = crate::spellability::SpellAbility::new_empty(Some(source.id), source.controller);
         sa.kicked = false;
         return crate::ability::effects::evaluate_svar(svar, &sa);
     }

@@ -19,3 +19,7 @@ ability/effects/ChangeZoneEffect.java -> ability/effects/change_zone_effect/mod.
 
 # Java UI-only types not needed in Rust engine
 zone/ZoneView.java -> skip
+
+# SpellAbility module: Java UI-only types
+spellability/SpellAbilityView.java -> skip
+spellability/StackItemView.java -> skip

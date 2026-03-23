@@ -2698,10 +2698,10 @@ impl Card {
     fn activated_to_spell_abilities(&self, list: &[ActivatedAbility]) -> Vec<SpellAbility> {
         list.iter()
             .map(|ab| {
-                let mut sa = SpellAbility::new_simple(
-                    Some(self.id),
-                    self.controller,
+                let mut sa = crate::spellability::build_spell_ability_from_host_card(
+                    self,
                     &ab.ability_text,
+                    self.controller,
                 );
                 sa.is_activated = true;
                 sa

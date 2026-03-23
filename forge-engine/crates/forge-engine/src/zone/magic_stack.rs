@@ -36,6 +36,34 @@ pub struct StackEntry {
     pub optional_trigger_source_name: Option<String>,
 }
 
+impl StackEntry {
+    /// Get the next unique ID for a stack entry.
+    /// Mirrors Java's `SpellAbilityStackInstance.nextId()`.
+    pub fn next_id() -> u64 {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static COUNTER: AtomicU64 = AtomicU64::new(1);
+        COUNTER.fetch_add(1, Ordering::Relaxed)
+    }
+
+    /// Update a target card in this stack entry's spell ability.
+    /// Mirrors Java's `SpellAbilityStackInstance.updateTarget(Card, Card)`.
+    pub fn update_target(&mut self, old: CardId, new: CardId) {
+        self.spell_ability.update_target(old, new);
+    }
+
+    /// Add a triggering object to this stack entry's spell ability.
+    /// Mirrors Java's `SpellAbilityStackInstance.addTriggeringObject(String, Object)`.
+    pub fn add_triggering_object(&mut self, key: &str, value: &str) {
+        self.spell_ability.add_triggering_object(key, value);
+    }
+
+    /// Update a triggering object in this stack entry's spell ability.
+    /// Mirrors Java's `SpellAbilityStackInstance.updateTriggeringObject(String, Object)`.
+    pub fn update_triggering_object(&mut self, key: &str, value: &str) {
+        self.spell_ability.update_triggering_object(key, value);
+    }
+}
+
 /// The game stack. Spells and abilities are added to the top and resolve LIFO.
 /// Mirrors Java's `MagicStack` class.
 #[derive(Debug, Clone, Serialize, Deserialize)]

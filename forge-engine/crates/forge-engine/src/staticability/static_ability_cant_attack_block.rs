@@ -632,11 +632,7 @@ pub fn get_attack_cost(
         let add_x = cost_string.starts_with('X');
         let amount = crate::svar::evaluate_svar(
             svar_expr,
-            &crate::spellability::SpellAbility::new_simple(
-                Some(source.id),
-                source.controller,
-                "",
-            ),
+            &crate::spellability::SpellAbility::new_empty(Some(source.id), source.controller),
         );
         cost_string = amount.to_string();
         if add_x {
@@ -682,11 +678,7 @@ pub fn get_block_cost(
         let add_x = cost_string.starts_with('X');
         let amount = crate::svar::evaluate_svar(
             svar_expr,
-            &crate::spellability::SpellAbility::new_simple(
-                Some(source.id),
-                source.controller,
-                "",
-            ),
+            &crate::spellability::SpellAbility::new_empty(Some(source.id), source.controller),
         );
         cost_string = amount.to_string();
         if add_x {
@@ -714,10 +706,6 @@ fn resolve_amount_expr(game: Option<&GameState>, source: &Card, expr: &str) -> O
     }
     Some(crate::svar::evaluate_svar(
         svar_expr,
-        &crate::spellability::SpellAbility::new_simple(
-            Some(source.id),
-            source.controller,
-            "",
-        ),
+        &crate::spellability::SpellAbility::new_empty(Some(source.id), source.controller),
     ))
 }

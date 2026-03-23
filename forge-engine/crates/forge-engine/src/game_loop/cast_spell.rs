@@ -268,6 +268,23 @@ impl GameLoop {
                         }
                         return None;
                     }
+                    // New alternative cost variants — not yet fully wired into
+                    // the cast-spell pipeline. Return None to skip casting.
+                    crate::spellability::AlternativeCost::Awaken
+                    | crate::spellability::AlternativeCost::Disturb
+                    | crate::spellability::AlternativeCost::Harmonize
+                    | crate::spellability::AlternativeCost::Freerunning
+                    | crate::spellability::AlternativeCost::Impending
+                    | crate::spellability::AlternativeCost::Mayhem
+                    | crate::spellability::AlternativeCost::MTMtE
+                    | crate::spellability::AlternativeCost::Mutate
+                    | crate::spellability::AlternativeCost::Prowl
+                    | crate::spellability::AlternativeCost::Sneak
+                    | crate::spellability::AlternativeCost::Surge
+                    | crate::spellability::AlternativeCost::WebSlinging
+                    | crate::spellability::AlternativeCost::Plotted => {
+                        return None;
+                    }
                 },
             }
 
@@ -282,9 +299,8 @@ impl GameLoop {
                 .unwrap_or_default();
 
             let static_alt_entry = if is_static_alternative {
-                let mut probe_sa =
-                    build_spell_ability(game, card_id, &spell_ability_text, player);
-                probe_sa.is_spell = true;
+                let probe_sa =
+                    crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
                 let entry = crate::staticability::static_ability_alternative_cost::alternative_costs(
                     &game.cards,
                     &probe_sa,
@@ -1209,8 +1225,8 @@ impl GameLoop {
             // game state. This matches Java/MTG casting order: announce modes and
             // targets before paying costs, so mana payments can invalidate a chosen
             // target later (for example, sacrificing a Food token used as a target).
-            let mut sa = build_spell_ability(game, card_id, &spell_ability_text, player);
-            sa.is_spell = true;
+            let mut sa =
+                crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
 
             // Set alternative cost on the SpellAbility
             if is_foretell {
@@ -2119,11 +2135,11 @@ impl GameLoop {
                 let card = game.card(cascade_card_id);
                 let is_creature = card.is_creature();
                 let is_permanent = card.is_permanent();
-                let abilities = card.abilities.clone();
-
-                let ability_text = abilities.first().cloned().unwrap_or_default();
-                let mut sa = build_spell_ability(game, cascade_card_id, &ability_text, player);
-                sa.is_spell = true;
+                let mut sa = crate::spellability::build_spell_ability_for_card_cast(
+                    game,
+                    cascade_card_id,
+                    player,
+                );
 
                 // Snapshot before targeting so the UI shows current game state
                 agents[player.index()].snapshot_state(game, &self.mana_pools);

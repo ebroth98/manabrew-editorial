@@ -65,22 +65,17 @@ impl GameLoop {
                 ) {
                     continue;
                 }
-                if !must_be_instant && game.player(player).can_play_land() {
+                // Delegate to land_ability module for timing/land-play checks
+                let land_sa = SpellAbility::new_land(Some(card_id), player);
+                if !must_be_instant && crate::spellability::land_ability::can_play(&land_sa, game) {
                     playable.push(crate::agent::PlayOption {
                         card_id,
                         mode: crate::agent::PlayCardMode::Normal,
                     });
                 }
             } else {
-                let spell_ability_text = card
-                    .abilities
-                    .iter()
-                    .find(|a| Params::from_raw(a).has(keys::SP))
-                    .cloned()
-                    .unwrap_or_default();
-                let mut cast_sa =
-                    crate::spellability::build_spell_ability(game, card_id, &spell_ability_text, player);
-                cast_sa.is_spell = true;
+                let cast_sa =
+                    crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
                 if crate::staticability::static_ability_cant_be_cast::cant_be_cast_ability_in_context(
                     &game.cards,
                     &cast_sa,
@@ -92,6 +87,11 @@ impl GameLoop {
                 }
 
                 if must_be_instant && !has_flash_permission(card_id) {
+                    continue;
+                }
+
+                // Spell-level checks: not on battlefield, no split second
+                if !crate::spellability::spell::can_play(&cast_sa, game) {
                     continue;
                 }
 

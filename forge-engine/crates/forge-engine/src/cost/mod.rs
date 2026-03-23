@@ -779,37 +779,8 @@ pub fn can_pay_ignoring_mana_for_spell(
     source: CardId,
     player: PlayerId,
 ) -> bool {
-    let stub = SpellAbility {
-        is_spell: true,
-        source: Some(source),
-        activating_player: player,
-        api: None,
-        targeting_player: None,
-        ability_text: String::new(),
-        params: crate::parsing::Params::default(),
-        target_restrictions: None,
-        target_chosen: crate::spellability::TargetChoices::default(),
-        pay_costs: None,
-        sub_ability: None,
-        is_trigger: false,
-        is_activated: false,
-        trigger_source: None,
-        trigger_index: None,
-        alt_cost: None,
-        kicked: false,
-        buyback_paid: false,
-        overloaded: false,
-        is_copy: false,
-        kick_count: 0,
-        replicate_count: 0,
-        optional_generic_cost_paid: false,
-        trigger_remembered_amount: 0,
-        x_mana_cost_paid: 0,
-        discarded_cost_cards: Vec::new(),
-        change_zone_table: None,
-        damage_map: None,
-        prevent_map: None,
-    };
+    let mut stub = SpellAbility::new_empty(Some(source), player);
+    stub.is_spell = true;
     can_pay_inner(cost, game, None, source, player, Some(&stub))
 }
 

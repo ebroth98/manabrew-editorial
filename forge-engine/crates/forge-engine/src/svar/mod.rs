@@ -225,7 +225,7 @@ pub fn resolve_count_svar(
         game,
         source_id,
         controller,
-        &crate::spellability::SpellAbility::new_simple(Some(source_id), controller, ""),
+        &crate::spellability::SpellAbility::new_empty(Some(source_id), controller),
     )
 }
 

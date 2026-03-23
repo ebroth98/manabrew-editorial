@@ -666,8 +666,6 @@ impl GameLoop {
                 let card_name = game.card(card_id).card_name.clone();
                 let is_creature = game.card(card_id).is_creature();
                 let is_permanent = game.card(card_id).is_permanent();
-                let abilities = game.card(card_id).abilities.clone();
-
                 // Move from exile to stack
                 {
                     let p = game.player_mut(active);
@@ -687,9 +685,8 @@ impl GameLoop {
                 );
 
                 // Build SpellAbility
-                let ability_text = abilities.first().cloned().unwrap_or_default();
-                let mut sa = build_spell_ability(game, card_id, &ability_text, active);
-                sa.is_spell = true;
+                let mut sa =
+                    crate::spellability::build_spell_ability_for_card_cast(game, card_id, active);
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Suspend);
                 sa.setup_targets(game, agents, &self.mana_pools);
 

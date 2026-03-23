@@ -176,7 +176,7 @@ pub fn shared_keywords(
 
 pub fn add_ability_factory_abilities(card: &mut Card, abilities: &[String]) {
     for raw in abilities {
-        let sa = SpellAbility::new_simple(Some(card.id), card.controller, raw);
+        let sa = crate::spellability::build_spell_ability_from_host_card(card, raw, card.controller);
         card.add_spell_ability(&sa);
     }
 }
