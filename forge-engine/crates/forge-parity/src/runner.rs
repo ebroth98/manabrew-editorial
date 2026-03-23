@@ -797,12 +797,12 @@ impl PlayerAgent for CapturingAgent {
         chosen
     }
 
-    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
-        self.inner.choose_target_player(player, valid)
+    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
+        self.inner.choose_target_player(player, valid, sa)
     }
 
-    fn choose_target_card(&mut self, player: PlayerId, valid: &[CardId]) -> Option<CardId> {
-        self.inner.choose_target_card(player, valid)
+    fn choose_target_card(&mut self, player: PlayerId, valid: &[CardId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
+        self.inner.choose_target_card(player, valid, sa)
     }
 
     fn choose_target_card_from_zone(
@@ -810,8 +810,9 @@ impl PlayerAgent for CapturingAgent {
         player: PlayerId,
         zone: ZoneType,
         valid: &[CardId],
+        sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
-        self.inner.choose_target_card_from_zone(player, zone, valid)
+        self.inner.choose_target_card_from_zone(player, zone, valid, sa)
     }
 
     fn choose_target_any(
@@ -819,17 +820,18 @@ impl PlayerAgent for CapturingAgent {
         player: PlayerId,
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
+        sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> forge_engine_core::agent::TargetChoice {
         self.inner
-            .choose_target_any(player, valid_players, valid_cards)
+            .choose_target_any(player, valid_players, valid_cards, sa)
     }
 
     fn choose_legend_keep(&mut self, player: PlayerId, duplicates: &[CardId]) -> CardId {
         self.inner.choose_legend_keep(player, duplicates)
     }
 
-    fn choose_sacrifice(&mut self, player: PlayerId, valid: &[CardId]) -> Option<CardId> {
-        self.inner.choose_sacrifice(player, valid)
+    fn choose_sacrifice(&mut self, player: PlayerId, valid: &[CardId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
+        self.inner.choose_sacrifice(player, valid, sa)
     }
 
     fn choose_type(

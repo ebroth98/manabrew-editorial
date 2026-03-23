@@ -2,7 +2,7 @@ import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { useGameThemeColors, withAlpha } from "@/components/game/game.theme";
 
-type OverlayVariant = "tap" | "untap" | "choosable" | "pending" | "attacking";
+type OverlayVariant = "tap" | "untap" | "choosable" | "choosable-hostile" | "pending" | "attacking";
 
 interface CardOverlayButtonProps {
   variant: OverlayVariant;
@@ -20,6 +20,7 @@ export function CardOverlayButton({ variant, onClick, title, label, stopMouseDow
     tap: themeColors.activeAction.active,
     untap: themeColors.promptAction.cancel,
     choosable: themeColors.promptAction.defenseAction,
+    "choosable-hostile": themeColors.arrow.hostileTarget,
     pending: themeColors.promptAction.passAction,
     attacking: themeColors.promptAction.attackAction,
   };

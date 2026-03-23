@@ -262,6 +262,7 @@ impl GameLoop {
             api,
             ab.cost.mandatory,
             CostPaymentContext::ActivatedAbility,
+            None,
         ) {
             return false;
         }
@@ -314,6 +315,7 @@ impl GameLoop {
             api,
             ab.cost.mandatory,
             CostPaymentContext::ManaAbility,
+            None,
         ) {
             return;
         }
@@ -530,6 +532,7 @@ impl GameLoop {
             api,
             adjusted_cost.mandatory,
             CostPaymentContext::ActivatedAbility,
+            Some(&sa),
         ) {
             return false;
         }

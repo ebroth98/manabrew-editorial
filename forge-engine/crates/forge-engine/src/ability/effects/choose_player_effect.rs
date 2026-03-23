@@ -39,7 +39,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if !ctx.game.player(chooser).is_alive() {
             continue;
         }
-        let chosen = ctx.agents[chooser.index()].choose_target_player(chooser, &valid_players);
+        let chosen = ctx.agents[chooser.index()].choose_target_player(chooser, &valid_players, None);
 
         if let Some(chosen_pid) = chosen {
             if let Some(source_id) = sa.source {

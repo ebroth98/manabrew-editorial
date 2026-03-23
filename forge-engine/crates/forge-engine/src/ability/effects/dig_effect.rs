@@ -255,10 +255,10 @@ mod tests {
         ) -> Vec<(CardId, CardId)> {
             vec![]
         }
-        fn choose_target_player(&mut self, _: PlayerId, v: &[PlayerId]) -> Option<PlayerId> {
+        fn choose_target_player(&mut self, _: PlayerId, v: &[PlayerId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<PlayerId> {
             v.first().copied()
         }
-        fn choose_target_card(&mut self, _: PlayerId, v: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _: PlayerId, v: &[CardId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<CardId> {
             v.first().copied()
         }
         fn choose_target_any(
@@ -266,6 +266,7 @@ mod tests {
             _: PlayerId,
             vp: &[PlayerId],
             vc: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
         ) -> crate::agent::TargetChoice {
             vp.first()
                 .copied()

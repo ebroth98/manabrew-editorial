@@ -179,6 +179,7 @@ impl GameLoop {
                         api,
                         cost.mandatory,
                         CostPaymentContext::TriggerResolve,
+                        None,
                     ) {
                         apply_continuous_effects(game);
                         super::check_sba(game, &mut self.trigger_handler, agents);
@@ -486,7 +487,7 @@ impl GameLoop {
                     if !creatures.is_empty() {
                         agents[player.index()].snapshot_state(game, &self.mana_pools);
                         if let Some(target) =
-                            agents[player.index()].choose_sacrifice(player, &creatures)
+                            agents[player.index()].choose_sacrifice(player, &creatures, None)
                         {
                             game.card_mut(card_id).unanimate_bestow();
                             game.attach_to(card_id, target);

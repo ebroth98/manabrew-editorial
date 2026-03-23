@@ -34,7 +34,7 @@ export const GAME_THEME_COLORS: GameThemeColors = {
   },
   arrow: {
     attack: "rgba(255, 138, 0, 0.88)",
-    block: "rgba(210, 40, 40, 0.88)",
+    block: "rgba(90, 150, 255, 0.88)",
     hostileTarget: "rgba(210, 40, 40, 0.88)",
     friendlyTarget: "rgba(90, 150, 255, 0.88)",
   },

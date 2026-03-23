@@ -275,7 +275,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     None
                 } else {
                     ctx.agents[sacrificing_player.index()]
-                        .choose_sacrifice(sacrificing_player, &valid)
+                        .choose_sacrifice(sacrificing_player, &valid, None)
                 }
             };
 

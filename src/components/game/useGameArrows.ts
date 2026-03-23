@@ -113,9 +113,7 @@ function entityCenter(container: HTMLElement, target: StackTarget) {
 }
 
 function stackArrowType(target: StackTarget): ArrowDef["type"] {
-  if (target.kind === "card") return "hostile-target";
-  if (target.kind === "player") return "hostile-target";
-  return "friendly-target";
+  return target.hostile ? "hostile-target" : "friendly-target";
 }
 
 function isPermanentSpell(obj: StackObject): boolean {

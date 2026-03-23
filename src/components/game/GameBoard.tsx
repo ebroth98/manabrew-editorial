@@ -65,6 +65,7 @@ interface GameBoardProps {
   battlefieldContainerRef: React.RefObject<HTMLDivElement | null>;
   handContainerRef: React.RefObject<HTMLDivElement | null>;
   draggingCardId?: string;
+  castingCardId?: string | null;
 
   // Callbacks
   onHandCardDragStart: (card: Card, e: React.MouseEvent) => void;
@@ -109,6 +110,7 @@ export function GameBoard({
   battlefieldContainerRef,
   handContainerRef,
   draggingCardId,
+  castingCardId,
   onHandCardDragStart,
   onHoverCard,
   onFlipCard,
@@ -124,6 +126,7 @@ export function GameBoard({
   const handSize = usePreferencesStore((s) => s.handSize);
   const vScale = useHandScale();
   const handBottomReserved = Math.round(HAND_CARD_BASES[handSize].containerH * vScale);
+  const hostileTargeting = currentPrompt?.hostile ?? false;
 
   return (
     <div className="game-board-surface flex flex-col gap-1 min-h-0 flex-1 overflow-visible">
@@ -154,6 +157,7 @@ export function GameBoard({
               zonePanelSide={zonePanelSide}
               zonePanelOrder={zonePanelOrder}
               placementGhost={placementGhost?.controllerId === opponents[0]!.id ? placementGhost : null}
+              hostileTargeting={hostileTargeting}
             />
           ) : (
             <ResizablePanelGroup orientation="horizontal">
@@ -184,6 +188,7 @@ export function GameBoard({
                       zonePanelSide={zonePanelSide}
                       zonePanelOrder={zonePanelOrder}
                       placementGhost={placementGhost?.controllerId === op.id ? placementGhost : null}
+                      hostileTargeting={hostileTargeting}
                     />
                   </ResizablePanel>
                 </Fragment>
@@ -311,6 +316,7 @@ export function GameBoard({
                   rightReserved={0}
                   isDropActive={isOverBattlefield}
                   placementGhost={placementGhost?.controllerId === me.id ? placementGhost : null}
+                  hostileTargeting={hostileTargeting}
                 />
                 <div ref={handContainerRef} className="absolute bottom-0 left-1/2 -translate-x-1/2 z-20 w-max max-w-full">
                   <HandDisplay
@@ -320,6 +326,7 @@ export function GameBoard({
                     showBackFace={showBackFace}
                     onStartDrag={onHandCardDragStart}
                     draggingCardId={draggingCardId}
+                    castingCardId={castingCardId}
                   />
                 </div>
               </div>

@@ -259,13 +259,13 @@ impl PlayerAgent for VerboseAgent {
     ) -> Vec<(CardId, CardId)> {
         Vec::new()
     }
-    fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
         valid.first().copied()
     }
-    fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
         valid.first().copied()
     }
-    fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+    fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> TargetChoice {
         if let Some(&pid) = p.first() {
             TargetChoice::Player(pid)
         } else if let Some(&cid) = c.first() {

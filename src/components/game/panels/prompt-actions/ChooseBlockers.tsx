@@ -1,4 +1,4 @@
-import { Ban, Check } from "lucide-react";
+import { Ban, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PromptActionButton } from "@/components/game/panels/PromptActionButton";
 import { BUTTON_CONFIRM_BLOCKS, PROMPT_BUTTON_COLUMN } from "@/components/game/game.styles";
@@ -40,12 +40,13 @@ export function ChooseBlockers({
           <Button
             size="sm"
             variant="outline"
-            className="h-9 w-full rounded-lg text-sm font-black tracking-[0.12em] !border-0 !text-white transition-[filter,box-shadow] hover:brightness-105"
+            className="h-9 w-full rounded-lg text-sm font-black tracking-[0.12em] !border-0 !text-white transition-[filter,box-shadow] hover:brightness-105 gap-1.5"
             onClick={() => onDeclareBlockers(blockAssignments)}
             disabled={isWaitingForResponse}
             style={defenseStyle}
           >
-            {`CONFIRM BLOCKS (${blockAssignments.length})`}
+            <Shield className="h-3.5 w-3.5" />
+            {`BLOCK (${blockAssignments.length})`}
           </Button>
         )}
       </div>
@@ -69,8 +70,8 @@ export function ChooseBlockers({
       {blockAssignments.length > 0 && (
         <PromptActionButton
           layout={buttonLayout}
-          label={`Confirm Blocks (${blockAssignments.length})`}
-          icon={<Check className="h-3.5 w-3.5" />}
+          label={`Block (${blockAssignments.length})`}
+          icon={<Shield className="h-3.5 w-3.5" />}
           className={BUTTON_CONFIRM_BLOCKS}
           baseColor={promptActionColors.defenseAction}
           onClick={() => onDeclareBlockers(blockAssignments)}

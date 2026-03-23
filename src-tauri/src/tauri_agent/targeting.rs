@@ -3,6 +3,7 @@ use forge_engine_core::ids::{CardId, PlayerId};
 use forge_foundation::ZoneType;
 
 use crate::game_view_dto::CardDto;
+use crate::ids_codec::card_id_str;
 use crate::ids_codec::parse_card_id;
 use crate::ids_codec::parse_player_id;
 use crate::ids_codec::stack_id_str;
@@ -14,11 +15,16 @@ pub(super) fn choose_target_player(
     agent: &mut TauriAgent,
     _player: PlayerId,
     valid: &[PlayerId],
+    source: Option<CardId>,
+    hostile: bool,
 ) -> Option<PlayerId> {
     let valid_player_ids = TauriAgent::player_ids(valid);
+    let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetPlayer {
         game_view: agent.view(),
         valid_player_ids,
+        source_card_id,
+        hostile,
     });
     agent.recv_player_choice_or_first(valid)
 }
@@ -27,13 +33,18 @@ pub(super) fn choose_target_card(
     agent: &mut TauriAgent,
     _player: PlayerId,
     valid: &[CardId],
+    source: Option<CardId>,
+    hostile: bool,
 ) -> Option<CardId> {
     let valid_card_ids = TauriAgent::card_ids(valid);
     let mut view = agent.view();
     TauriAgent::mark_battlefield_choosable(&mut view, &valid_card_ids);
+    let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetCard {
         game_view: view,
         valid_card_ids,
+        source_card_id,
+        hostile,
     });
     agent.recv_card_choice_or_first(valid)
 }
@@ -43,6 +54,8 @@ pub(super) fn choose_target_card_from_zone(
     _player: PlayerId,
     zone: ZoneType,
     valid: &[CardId],
+    source: Option<CardId>,
+    _hostile: bool,
 ) -> Option<CardId> {
     let valid_card_ids = TauriAgent::card_ids(valid);
     let view = agent.view();
@@ -70,11 +83,13 @@ pub(super) fn choose_target_card_from_zone(
         _ => vec![],
     };
 
+    let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetCardFromZone {
         game_view: view,
         valid_card_ids,
         zone: format!("{:?}", zone),
         zone_cards,
+        source_card_id,
     });
     agent.recv_card_choice_or_first(valid)
 }
@@ -84,15 +99,20 @@ pub(super) fn choose_target_any(
     _player: PlayerId,
     valid_players: &[PlayerId],
     valid_cards: &[CardId],
+    source: Option<CardId>,
+    hostile: bool,
 ) -> TargetChoice {
     let valid_player_ids = TauriAgent::player_ids(valid_players);
     let valid_card_ids = TauriAgent::card_ids(valid_cards);
     let mut view = agent.view();
     TauriAgent::mark_battlefield_choosable(&mut view, &valid_card_ids);
+    let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetAny {
         game_view: view,
         valid_player_ids,
         valid_card_ids,
+        source_card_id,
+        hostile,
     });
     match agent.recv_action() {
         PlayerAction::TargetAny { target } => match target {
@@ -120,11 +140,14 @@ pub(super) fn choose_target_spell(
     agent: &mut TauriAgent,
     _player: PlayerId,
     valid: &[u32],
+    source: Option<CardId>,
 ) -> Option<u32> {
     let valid_spell_ids: Vec<String> = valid.iter().map(|&id| stack_id_str(id)).collect();
+    let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetSpell {
         game_view: agent.view(),
         valid_spell_ids,
+        source_card_id,
     });
     agent.recv_spell_choice_or_first(valid)
 }
@@ -133,13 +156,17 @@ pub(super) fn choose_sacrifice(
     agent: &mut TauriAgent,
     _player: PlayerId,
     valid: &[CardId],
+    source: Option<CardId>,
 ) -> Option<CardId> {
     let valid_card_ids = TauriAgent::card_ids(valid);
     let mut view = agent.view();
     TauriAgent::mark_battlefield_choosable(&mut view, &valid_card_ids);
+    let source_card_id = source.map(card_id_str);
     agent.send_prompt(AgentPromptInner::ChooseTargetCard {
         game_view: view,
         valid_card_ids,
+        source_card_id,
+        hostile: true,
     });
     agent.recv_card_choice_or_first(valid)
 }

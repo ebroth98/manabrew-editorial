@@ -38,6 +38,7 @@ export interface OpponentHalfProps {
   zonePanelSide: "left" | "right";
   zonePanelOrder: ("library" | "graveyard" | "exile")[];
   placementGhost?: PlacementGhost | null;
+  hostileTargeting?: boolean;
 }
 
 export interface BattlefieldZoneProps {
@@ -63,6 +64,7 @@ export interface BattlefieldZoneProps {
   rightReserved?: number;
   landsAtTop?: boolean;
   placementGhost?: PlacementGhost | null;
+  hostileTargeting?: boolean;
 }
 
 export interface HandDisplayProps {
@@ -72,6 +74,7 @@ export interface HandDisplayProps {
   onFlipCard?: () => void;
   showBackFace?: boolean;
   draggingCardId?: string;
+  castingCardId?: string | null;
 }
 
 export interface RightActionPanelProps {

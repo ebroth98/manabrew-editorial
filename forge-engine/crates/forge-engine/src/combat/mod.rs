@@ -470,6 +470,7 @@ impl CombatState {
                         agents[attacker_controller.index()].choose_target_card(
                             attacker_controller,
                             &defending_creatures,
+                            None,
                         )
                     {
                         deal_combat_damage_to_card(

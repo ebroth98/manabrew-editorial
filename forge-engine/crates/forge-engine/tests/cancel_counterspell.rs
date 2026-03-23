@@ -60,11 +60,11 @@ impl PlayerAgent for PassAgent {
         Vec::new()
     }
 
-    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
         valid.first().copied()
     }
 
-    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
         valid.first().copied()
     }
 
@@ -73,6 +73,7 @@ impl PlayerAgent for PassAgent {
         _player: PlayerId,
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> TargetChoice {
         if let Some(&pid) = valid_players.last() {
             TargetChoice::Player(pid)

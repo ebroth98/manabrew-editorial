@@ -562,7 +562,7 @@ impl PlayerAgent for InteractiveAgent {
         blocks
     }
 
-    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
         if valid.len() == 1 {
             let game = self.game();
             let target = game.player(valid[0]);
@@ -582,7 +582,7 @@ impl PlayerAgent for InteractiveAgent {
         read_number(&format!("{}Target> {}", CYAN, RESET), valid.len()).map(|i| valid[i])
     }
 
-    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
         if valid.is_empty() {
             return None;
         }
@@ -599,6 +599,7 @@ impl PlayerAgent for InteractiveAgent {
         _player: PlayerId,
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> TargetChoice {
         let game = self.game();
         let total = valid_players.len() + valid_cards.len();
@@ -702,11 +703,11 @@ impl PlayerAgent for SimpleAiAgent {
         }
     }
 
-    fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
         valid.first().copied()
     }
 
-    fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
         valid.first().copied()
     }
 
@@ -715,6 +716,7 @@ impl PlayerAgent for SimpleAiAgent {
         _player: PlayerId,
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> TargetChoice {
         // AI prefers targeting creatures if available, else players
         if let Some(&cid) = valid_cards.first() {

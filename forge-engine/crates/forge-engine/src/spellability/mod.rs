@@ -1155,7 +1155,7 @@ fn choose_targets_for(
                 .into_iter()
                 .filter(|&pid| !is_opponent_only || pid != player)
                 .collect();
-            sa.target_chosen.target_player = agent.choose_target_player(player, &valid_players);
+            sa.target_chosen.target_player = agent.choose_target_player(player, &valid_players, Some(sa));
         }
         TargetKind::Any => {
             let valid_players: Vec<PlayerId> =
@@ -1173,7 +1173,7 @@ fn choose_targets_for(
                     .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            match agent.choose_target_any(player, &valid_players, &valid_cards) {
+            match agent.choose_target_any(player, &valid_players, &valid_cards, Some(sa)) {
                 TargetChoice::Player(pid) => sa.target_chosen.target_player = Some(pid),
                 TargetChoice::Card(cid) => sa.target_chosen.target_card = Some(cid),
                 TargetChoice::None => {}
@@ -1194,7 +1194,7 @@ fn choose_targets_for(
                     .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
+            sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
         }
         TargetKind::Permanent(ref filter) => {
             let base = target_restrictions::get_all_battlefield_permanents_filtered(
@@ -1211,7 +1211,7 @@ fn choose_targets_for(
                     .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
-            sa.target_chosen.target_card = agent.choose_target_card(player, &valid);
+            sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
         }
         TargetKind::CardInZone { zone, filter } => {
             let valid = target_restrictions::get_valid_cards_in_zone(
@@ -1224,7 +1224,7 @@ fn choose_targets_for(
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card =
-                agent.choose_target_card_from_zone(player, *zone, &valid);
+                agent.choose_target_card_from_zone(player, *zone, &valid, Some(sa));
         }
         TargetKind::Spell => {
             let valid = target_restrictions::get_all_candidates_spells(game);
@@ -1258,7 +1258,7 @@ fn choose_targeting_player(
             return None;
         }
         return agents[sa.activating_player.index()]
-            .choose_target_player(sa.activating_player, &candidates);
+            .choose_target_player(sa.activating_player, &candidates, None);
     }
     Some(sa.activating_player)
 }

@@ -4,6 +4,7 @@ use crate::cost::CostPart;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
+use crate::spellability::SpellAbility;
 use forge_foundation::PhaseType;
 
 pub mod game_log;
@@ -214,10 +215,11 @@ pub trait PlayerAgent {
     }
 
     /// Choose a target player (e.g. for Lightning Bolt targeting a player).
-    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId>;
+    /// `sa` is the active spell ability context (source card, API type, etc.) for UI display.
+    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId], sa: Option<&SpellAbility>) -> Option<PlayerId>;
 
     /// Choose a target card (e.g. for Lightning Bolt targeting a creature).
-    fn choose_target_card(&mut self, player: PlayerId, valid: &[CardId]) -> Option<CardId>;
+    fn choose_target_card(&mut self, player: PlayerId, valid: &[CardId], sa: Option<&SpellAbility>) -> Option<CardId>;
 
     /// Choose a target card from a specific zone (e.g. Raise Dead from graveyard).
     fn choose_target_card_from_zone(
@@ -225,9 +227,9 @@ pub trait PlayerAgent {
         player: PlayerId,
         _zone: forge_foundation::ZoneType,
         valid: &[CardId],
+        sa: Option<&SpellAbility>,
     ) -> Option<CardId> {
-        // Default implementation falls back to regular choose_target_card
-        self.choose_target_card(player, valid)
+        self.choose_target_card(player, valid, sa)
     }
 
     /// Choose a target that can be a player or a card (e.g. "any target").
@@ -236,11 +238,13 @@ pub trait PlayerAgent {
         player: PlayerId,
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
+        sa: Option<&SpellAbility>,
     ) -> TargetChoice;
 
-    /// Choose one permanent to sacrifice from the valid options.
+    /// Choose one permanent to sacrifice/select from the valid options.
+    /// `sa` is the active spell ability context for UI display.
     /// Default picks the first (used by AI agents).
-    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&SpellAbility>) -> Option<CardId> {
         valid.first().copied()
     }
 
@@ -876,11 +880,11 @@ impl PlayerAgent for PassAgent {
         Vec::new() // no blockers
     }
 
-    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId], _sa: Option<&SpellAbility>) -> Option<PlayerId> {
         valid.first().copied()
     }
 
-    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&SpellAbility>) -> Option<CardId> {
         valid.first().copied()
     }
 
@@ -889,6 +893,7 @@ impl PlayerAgent for PassAgent {
         _player: PlayerId,
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
+        _sa: Option<&SpellAbility>,
     ) -> TargetChoice {
         if let Some(&pid) = valid_players.first() {
             TargetChoice::Player(pid)
@@ -899,7 +904,7 @@ impl PlayerAgent for PassAgent {
         }
     }
 
-    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&SpellAbility>) -> Option<CardId> {
         valid.first().copied()
     }
 

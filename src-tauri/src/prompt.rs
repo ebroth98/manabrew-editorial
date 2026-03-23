@@ -97,12 +97,21 @@ pub enum AgentPromptInner {
         game_view: GameViewDto,
         #[serde(rename = "validPlayerIds")]
         valid_player_ids: Vec<String>,
+        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
+        source_card_id: Option<String>,
+        /// Whether the targeting effect is hostile (damage/destroy) vs friendly (buff).
+        #[serde(default)]
+        hostile: bool,
     },
     ChooseTargetCard {
         #[serde(rename = "gameView")]
         game_view: GameViewDto,
         #[serde(rename = "validCardIds")]
         valid_card_ids: Vec<String>,
+        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
+        source_card_id: Option<String>,
+        #[serde(default)]
+        hostile: bool,
     },
     ChooseTargetAny {
         #[serde(rename = "gameView")]
@@ -111,6 +120,10 @@ pub enum AgentPromptInner {
         valid_player_ids: Vec<String>,
         #[serde(rename = "validCardIds")]
         valid_card_ids: Vec<String>,
+        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
+        source_card_id: Option<String>,
+        #[serde(default)]
+        hostile: bool,
     },
     ChooseTargetCardFromZone {
         #[serde(rename = "gameView")]
@@ -120,6 +133,8 @@ pub enum AgentPromptInner {
         zone: String,
         #[serde(rename = "zoneCards")]
         zone_cards: Vec<CardDto>,
+        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
+        source_card_id: Option<String>,
     },
     GameOver {
         #[serde(rename = "gameView")]
@@ -182,6 +197,8 @@ pub enum AgentPromptInner {
         /// Stack entry IDs (as strings) that can be countered.
         #[serde(rename = "validSpellIds")]
         valid_spell_ids: Vec<String>,
+        #[serde(rename = "sourceCardId", skip_serializing_if = "Option::is_none")]
+        source_card_id: Option<String>,
     },
     /// Choose whether an optional triggered ability fires.
     ChooseOptionalTrigger {

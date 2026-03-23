@@ -7,6 +7,7 @@ export const PROMPT_ACTION_VIEW_KEYS = [
   "chooseTargetSpell",
   "payManaCost",
   "promptRequired",
+  "promptLabel",
   "passingUntilEot",
   "autoPassing",
   "noAction",

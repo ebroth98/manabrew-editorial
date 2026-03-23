@@ -32,6 +32,7 @@ export function OpponentHalf({
   zonePanelSide,
   zonePanelOrder,
   placementGhost,
+  hostileTargeting,
 }: OpponentHalfProps) {
   const themeColors = useGameThemeColors();
 
@@ -117,6 +118,7 @@ export function OpponentHalf({
               promptType === PromptType.ChooseBlockers ? (attackerIds ?? []) : undefined
             }
             placementGhost={placementGhost}
+            hostileTargeting={hostileTargeting}
           />
         </div>
       </div>

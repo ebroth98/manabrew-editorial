@@ -71,7 +71,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     }
 
                     ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
-                    if let Some(card_id) = ctx.agents[pid.index()].choose_sacrifice(pid, &valid) {
+                    if let Some(card_id) = ctx.agents[pid.index()].choose_sacrifice(pid, &valid, None) {
                         if ctx.game.card(card_id).zone == ZoneType::Battlefield {
                             let owner = ctx.game.card(card_id).owner;
                             ctx.trigger_handler.run_trigger(

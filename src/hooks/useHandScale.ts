@@ -12,19 +12,14 @@ function getScale() {
   return Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
 }
 
-let cached = typeof window !== "undefined" ? getScale() : 1;
-
 function subscribe(cb: () => void) {
-  const handler = () => {
-    cached = getScale();
-    cb();
-  };
+  const handler = () => cb();
   window.addEventListener("resize", handler);
   return () => window.removeEventListener("resize", handler);
 }
 
 function getSnapshot() {
-  return cached;
+  return getScale();
 }
 
 /**

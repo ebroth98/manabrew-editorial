@@ -675,7 +675,7 @@ impl PlayerAgent for DeterministicAgent {
         Some(target)
     }
 
-    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
         if valid.is_empty() {
             return None;
         }
@@ -684,7 +684,7 @@ impl PlayerAgent for DeterministicAgent {
         Some(target)
     }
 
-    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
         if valid.is_empty() {
             return None;
         }
@@ -706,8 +706,9 @@ impl PlayerAgent for DeterministicAgent {
         player: PlayerId,
         _zone: forge_foundation::ZoneType,
         valid: &[CardId],
+        sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
-        self.choose_target_card(player, valid)
+        self.choose_target_card(player, valid, sa)
     }
 
     fn choose_target_any(
@@ -715,6 +716,7 @@ impl PlayerAgent for DeterministicAgent {
         _player: PlayerId,
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> TargetChoice {
         // Sort valid card targets by (card_name, parity_id) for deterministic cross-engine parity.
         let sorted_cards = choice_space::sort_native(valid_cards, |a, b| {
@@ -838,7 +840,7 @@ impl PlayerAgent for DeterministicAgent {
         choice_space::pick_one(&sorted, &mut self.rng.borrow_mut()).unwrap_or(duplicates[0])
     }
 
-    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
         if valid.is_empty() {
             return None;
         }

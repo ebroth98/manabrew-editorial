@@ -172,6 +172,8 @@ export interface StackTarget {
   nodeIndex: number;
   /** Zero-based target slot index within the node. */
   targetIndex: number;
+  /** Whether this target is hostile (damage/destroy) vs friendly (buff). */
+  hostile: boolean;
 }
 
 export interface ActivatableAbilityInfo {

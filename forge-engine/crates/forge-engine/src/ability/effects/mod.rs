@@ -963,7 +963,7 @@ fn try_pay_unless_cost(
                         return false;
                     }
                     if let Some(chosen) =
-                        ctx.agents[payer.index()].choose_sacrifice(payer, &valid)
+                        ctx.agents[payer.index()].choose_sacrifice(payer, &valid, None)
                     {
                         let owner = ctx.game.card(chosen).owner;
                         ctx.trigger_handler.run_trigger(

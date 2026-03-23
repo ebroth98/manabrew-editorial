@@ -11,6 +11,8 @@ import { GameOverScreen } from "@/components/game/GameOverScreen";
 import { GameLoadingScreen } from "@/components/game/GameLoadingScreen";
 import { MainActionOverlay, RightActionPanel } from "@/components/game/panels";
 import { StackDisplay } from "@/components/game/panels/StackDisplay";
+import { CastingArrow } from "@/components/game/CastingArrow";
+import { useCastingState } from "@/hooks/useCastingState";
 import { ArrowOverlay } from "@/components/game/ArrowOverlay";
 import { useGameArrows } from "@/components/game/useGameArrows";
 import { PlayModePicker } from "@/components/game/PlayModePicker";
@@ -112,6 +114,15 @@ export default function Game() {
 
   const promptType = currentPrompt?.type;
 
+  const casting = useCastingState({
+    currentPrompt,
+    hand: gameView?.myHand ?? [],
+    battlefield: gameView?.battlefield ?? [],
+    targetCard,
+    targetPlayer,
+    targetAny,
+  });
+
   // UI state from Zustand store (modals, panels)
   const {
     abilityPicker: abilityPickerState,
@@ -154,9 +165,9 @@ export default function Game() {
     handleAttackerClick,
   } = useCombatState({
     promptType,
-    targetCard,
-    targetAny,
-    targetPlayer,
+    targetCard: casting.wrappedTargetCard,
+    targetAny: casting.wrappedTargetAny,
+    targetPlayer: casting.wrappedTargetPlayer,
     currentPrompt,
   });
 
@@ -599,6 +610,7 @@ export default function Game() {
           battlefieldContainerRef={battlefieldContainerRef}
           handContainerRef={handContainerRef}
           draggingCardId={draggingHandCard?.id}
+          castingCardId={casting.castingCardId}
           onHandCardDragStart={startHandCardDrag}
           onHoverCard={handleHoverCardGuarded}
           onFlipCard={handleFlipCard}
@@ -672,7 +684,7 @@ export default function Game() {
             ? {
                 cardName: currentPrompt.cardName ?? "Spell",
                 manaCost: currentPrompt.manaCost,
-                manaPool: currentPrompt.gameView?.players?.[0]?.manaPool ?? {},
+                manaPool: currentPrompt.gameView?.players?.find(p => p.isHuman)?.manaPool ?? {},
               }
             : null
         }
@@ -693,7 +705,12 @@ export default function Game() {
             : null
         }
         showPreStackFlash={shouldShowPreStackFlash}
+        castingCard={casting.castingCard}
       />
+
+      {casting.showArrow && casting.castingCardId && (
+        <CastingArrow castingCardId={casting.castingCardId} targetId={casting.targetId} hostile={casting.arrowHostile} />
+      )}
 
       <GameModals
         promptType={promptType}
@@ -701,7 +718,7 @@ export default function Game() {
         viewingZone={viewingZone}
         onCloseZone={closeZone}
         zoneTargetSelector={zoneTargetSelector}
-        onSelectZoneTarget={(cardId) => { targetCard(cardId); setZoneTargetSelector(null); }}
+        onSelectZoneTarget={(cardId) => { casting.wrappedTargetCard(cardId); setZoneTargetSelector(null); }}
         onCancelZoneTarget={() => setZoneTargetSelector(null)}
         libraryPeekModal={libraryPeekModal}
         onLibraryPeekConfirm={(selectedIds) => {

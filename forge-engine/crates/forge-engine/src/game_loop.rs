@@ -503,11 +503,12 @@ mod tests {
             &mut self,
             _player: PlayerId,
             valid: &[PlayerId],
+            _sa: Option<&crate::spellability::SpellAbility>,
         ) -> Option<PlayerId> {
             valid.first().copied()
         }
 
-        fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<CardId> {
             valid.first().copied()
         }
 
@@ -516,6 +517,7 @@ mod tests {
             _player: PlayerId,
             valid_players: &[PlayerId],
             valid_cards: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
         ) -> TargetChoice {
             if let Some(&pid) = valid_players.first() {
                 TargetChoice::Player(pid)
@@ -602,11 +604,12 @@ mod tests {
             &mut self,
             _player: PlayerId,
             valid: &[PlayerId],
+            _sa: Option<&crate::spellability::SpellAbility>,
         ) -> Option<PlayerId> {
             valid.first().copied()
         }
 
-        fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<CardId> {
             valid.first().copied()
         }
 
@@ -615,6 +618,7 @@ mod tests {
             _player: PlayerId,
             valid_players: &[PlayerId],
             valid_cards: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
         ) -> TargetChoice {
             if let Some(&pid) = valid_players.first() {
                 TargetChoice::Player(pid)

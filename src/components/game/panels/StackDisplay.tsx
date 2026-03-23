@@ -11,6 +11,8 @@ interface StackDisplayProps {
   flashCard?: XMageCard | null;
   flashToken?: string | null;
   showPreStackFlash?: boolean;
+  /** Card currently being cast (waiting for targets / mana payment). */
+  castingCard?: XMageCard | null;
 }
 
 // Stack UI tuning (single source of truth for size/placement)
@@ -32,6 +34,7 @@ export function StackDisplay({
   flashCard,
   flashToken,
   showPreStackFlash = true,
+  castingCard,
 }: StackDisplayProps) {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const setHoveredStackObjectId = useStackUIStore((s) => s.setHoveredStackObjectId);
@@ -49,8 +52,9 @@ export function StackDisplay({
     : -1;
   const directionSign = STACK_UI.direction === "right" ? 1 : -1;
   const cardHeight = Math.round(STACK_UI.cardWidth * STACK_CARD_ASPECT);
-  const spanX = Math.max(0, stack.length - 1) * STACK_UI.offsetX;
-  const pileHeight = cardHeight + Math.max(0, stack.length - 1) * Math.abs(STACK_UI.offsetY);
+  const totalItems = stack.length + (castingCard ? 1 : 0);
+  const spanX = Math.max(0, totalItems - 1) * STACK_UI.offsetX;
+  const pileHeight = cardHeight + Math.max(0, totalItems - 1) * Math.abs(STACK_UI.offsetY);
 
   const baseLefts = stack.map((_, idx) => idx * STACK_UI.offsetX * directionSign);
   const lefts =
@@ -93,7 +97,7 @@ export function StackDisplay({
     return () => setHoveredStackObjectId(null);
   }, [setHoveredStackObjectId]);
 
-  if (stack.length === 0 && !flashCard) return null;
+  if (stack.length === 0 && !flashCard && !castingCard) return null;
 
   return (
     <div
@@ -160,6 +164,25 @@ export function StackDisplay({
             </div>
           );
         })}
+
+        {castingCard && (
+          <div
+            data-casting-card={castingCard.id}
+            className="absolute left-0"
+            style={{
+              zIndex: stack.length + 2,
+              left: `${(stack.length) * STACK_UI.offsetX * directionSign + xShift}px`,
+              top: `${stack.length * STACK_UI.offsetY}px`,
+              width: `${STACK_UI.cardWidth}px`,
+              height: `${cardHeight}px`,
+            }}
+          >
+            <Card
+              card={castingCard}
+              className="w-full h-full shadow-lg casting-card"
+            />
+          </div>
+        )}
 
         {flashCard && flashStackIndex < 0 && showPreStackFlash && (
           <div

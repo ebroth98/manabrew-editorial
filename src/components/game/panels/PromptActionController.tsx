@@ -7,6 +7,7 @@ import { ChooseTargetSpell } from "./prompt-actions/ChooseTargetSpell";
 import { PayManaCost } from "./prompt-actions/PayManaCost";
 import { PromptRequired } from "./prompt-actions/PromptRequired";
 import { NoAction } from "./prompt-actions/NoAction";
+import { PromptLabel } from "./prompt-actions/PromptLabel";
 import { PromptType } from "@/types/promptType";
 import type { PromptButtonLayout } from "./PromptActionButton";
 import {
@@ -24,10 +25,10 @@ const PROMPT_TO_VIEW_KEY: Record<string, PromptActionViewKey> = {
 
   [PromptType.Mulligan]: "promptRequired",
   [PromptType.MulliganPutBack]: "promptRequired",
-  [PromptType.ChooseTargetPlayer]: "noAction",
-  [PromptType.ChooseTargetCard]: "noAction",
-  [PromptType.ChooseTargetAny]: "noAction",
-  [PromptType.ChooseTargetCardFromZone]: "noAction",
+  [PromptType.ChooseTargetPlayer]: "promptLabel",
+  [PromptType.ChooseTargetCard]: "promptLabel",
+  [PromptType.ChooseTargetAny]: "promptLabel",
+  [PromptType.ChooseTargetCardFromZone]: "promptLabel",
   [PromptType.ChooseMode]: "promptRequired",
   [PromptType.ChooseOptionalTrigger]: "promptRequired",
   [PromptType.ChooseKicker]: "promptRequired",
@@ -35,10 +36,10 @@ const PROMPT_TO_VIEW_KEY: Record<string, PromptActionViewKey> = {
   [PromptType.ChooseMultikicker]: "promptRequired",
   [PromptType.ChooseReplicate]: "promptRequired",
   [PromptType.ChooseAlternativeCost]: "promptRequired",
-  [PromptType.Scry]: "noAction",
-  [PromptType.Surveil]: "noAction",
-  [PromptType.Dig]: "noAction",
-  [PromptType.ChooseDiscard]: "noAction",
+  [PromptType.Scry]: "promptLabel",
+  [PromptType.Surveil]: "promptLabel",
+  [PromptType.Dig]: "promptLabel",
+  [PromptType.ChooseDiscard]: "promptLabel",
   [PromptType.PayCombatCost]: "promptRequired",
   [PromptType.ChooseColor]: "promptRequired",
   [PromptType.ChooseType]: "promptRequired",
@@ -169,6 +170,19 @@ export function PromptActionController({
       />
     ),
     autoPassing: () => <NoAction buttonLayout={buttonLayout} label="Auto Pass" />,
+    promptLabel: () => {
+      const labels: Record<string, string> = {
+        [PromptType.ChooseTargetCard]: "Choose a target",
+        [PromptType.ChooseTargetPlayer]: "Choose a target player",
+        [PromptType.ChooseTargetAny]: "Choose a target",
+        [PromptType.ChooseTargetCardFromZone]: "Choose a target",
+        [PromptType.Scry]: "Scry",
+        [PromptType.Surveil]: "Surveil",
+        [PromptType.Dig]: "Choose cards",
+        [PromptType.ChooseDiscard]: "Discard",
+      };
+      return <PromptLabel buttonLayout={buttonLayout} label={(promptType && labels[promptType]) || "Waiting..."} />;
+    },
     noAction: () => <NoAction buttonLayout={buttonLayout} label="No Action" />,
   };
 

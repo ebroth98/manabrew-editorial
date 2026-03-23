@@ -25,9 +25,16 @@ export function useHandDrag({
     setDraggingHandCard(card);
     setGhostPos({ x: e.clientX, y: e.clientY });
 
+    const startX = e.clientX;
+    const startY = e.clientY;
     let moved = false;
     const handleMouseMove = (me: MouseEvent) => {
-      moved = true;
+      if (!moved) {
+        const dx = me.clientX - startX;
+        const dy = me.clientY - startY;
+        if (dx * dx + dy * dy < 25) return; // 5px dead zone for taps
+        moved = true;
+      }
       // Hard-disable hover preview during drag; hover timers can be re-armed by
       // underlying mouseenter events while the cursor crosses cards.
       dismissHover();

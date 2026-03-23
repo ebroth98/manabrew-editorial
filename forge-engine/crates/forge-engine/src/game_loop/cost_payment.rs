@@ -206,6 +206,7 @@ impl GameLoop {
         api: Option<crate::ability::api_type::ApiType>,
         mandatory: bool,
         context: CostPaymentContext,
+        sa: Option<&SpellAbility>,
     ) -> bool {
         let _ = context;
         // Java CostPayment is transactional: if any later cost part fails,
@@ -315,7 +316,7 @@ impl GameLoop {
                     let mut callback = |kind: mana::ManaPayCallback<'_>| -> Option<CardId> {
                         match kind {
                             mana::ManaPayCallback::ChooseSacrifice(valid) => {
-                                agents[player.index()].choose_sacrifice(player, valid)
+                                agents[player.index()].choose_sacrifice(player, valid, None)
                             }
                             mana::ManaPayCallback::ConfirmSelfSacrifice(sacrifice_id) => {
                                 let confirmed = agents[player.index()].confirm_payment(
@@ -412,7 +413,7 @@ impl GameLoop {
                         self.trigger_handler.flush_waiting_triggers(game);
                         game.move_card(card_id, ZoneType::Graveyard, owner);
                     } else {
-                        self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
+                        self.pay_sacrifice_cost(game, agents, player, type_filter, *amount, sa);
                     }
                 }
                 CostPart::Discard {
@@ -835,7 +836,7 @@ impl GameLoop {
                         .into_iter()
                         .filter(|&pid| pid != player)
                         .collect();
-                    let chosen = agents[player.index()].choose_target_player(player, &opps);
+                    let chosen = agents[player.index()].choose_target_player(player, &opps, None);
                     game.card_mut(card_id).set_promised_gift(chosen);
                 }
                 CostPart::RevealChosen { reveal_type } => {
@@ -903,6 +904,7 @@ impl GameLoop {
         spell_cost: &crate::cost::Cost,
         _api: Option<&str>,
         _mandatory: bool,
+        sa: Option<&SpellAbility>,
     ) -> bool {
         let payment_snapshot = self.make_snapshot(game, true);
         let mut payment_ok = true;
@@ -923,7 +925,7 @@ impl GameLoop {
                     amount,
                 } => {
                     if type_filter != "CARDNAME" {
-                        self.pay_sacrifice_cost(game, agents, player, type_filter, *amount);
+                        self.pay_sacrifice_cost(game, agents, player, type_filter, *amount, sa);
                     }
                 }
                 CostPart::Discard {
@@ -1331,7 +1333,7 @@ impl GameLoop {
                         .into_iter()
                         .filter(|&pid| pid != player)
                         .collect();
-                    let chosen = agents[player.index()].choose_target_player(player, &opps);
+                    let chosen = agents[player.index()].choose_target_player(player, &opps, None);
                     game.card_mut(card_id).set_promised_gift(chosen);
                 }
                 CostPart::RevealChosen { reveal_type } => {
@@ -1477,7 +1479,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Exile, owner);
                 crate::ability::effects::emit_zone_trigger(
@@ -1527,7 +1529,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 chosen_owner = Some(game.card(chosen).owner);
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Exile, owner);
@@ -1567,7 +1569,7 @@ impl GameLoop {
                 break;
             }
             // Use choose_sacrifice to pick target (reuse the choose interface)
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Exile, owner);
                 crate::ability::effects::emit_zone_trigger(
@@ -1720,7 +1722,7 @@ impl GameLoop {
 
         if !foods.is_empty() && gy.len() < 3 {
             let chosen = agents[player.index()]
-                .choose_sacrifice(player, &foods)
+                .choose_sacrifice(player, &foods, None)
                 .unwrap_or(foods[0]);
             let owner = game.card(chosen).owner;
             let lki_p1p1 = *game
@@ -1754,7 +1756,7 @@ impl GameLoop {
             // Let the chooser pick between food + graveyard cards. Food means sacrifice path.
             let mut combined = foods.clone();
             combined.extend(gy.iter().copied());
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &combined) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &combined, None) {
                 if foods.contains(&chosen) {
                     let owner = game.card(chosen).owner;
                     let lki_p1p1 = *game
@@ -1799,7 +1801,7 @@ impl GameLoop {
                             return;
                         }
                         let next = agents[player.index()]
-                            .choose_sacrifice(player, &remaining)
+                            .choose_sacrifice(player, &remaining, None)
                             .unwrap_or(remaining[0]);
                         chosen_gy.push(next);
                     }
@@ -1827,7 +1829,7 @@ impl GameLoop {
                     return;
                 }
                 let chosen = agents[player.index()]
-                    .choose_sacrifice(player, &remaining)
+                    .choose_sacrifice(player, &remaining, None)
                     .unwrap_or(remaining[0]);
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Exile, owner);
@@ -1914,7 +1916,7 @@ impl GameLoop {
         } else if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
             revealed.push(source);
         } else if type_filter == "SameColor" {
-            if let Some(first) = agents[player.index()].choose_sacrifice(player, &candidates) {
+            if let Some(first) = agents[player.index()].choose_sacrifice(player, &candidates, None) {
                 let color = game.card(first).color;
                 revealed.push(first);
                 while (revealed.len() as i32) < amount {
@@ -1928,7 +1930,7 @@ impl GameLoop {
                         break;
                     }
                     let next = agents[player.index()]
-                        .choose_sacrifice(player, &valid)
+                        .choose_sacrifice(player, &valid, None)
                         .unwrap_or(valid[0]);
                     revealed.push(next);
                 }
@@ -1945,7 +1947,7 @@ impl GameLoop {
             });
             while (revealed.len() as i32) < amount && !candidates.is_empty() {
                 let next = agents[player.index()]
-                    .choose_sacrifice(player, &candidates)
+                    .choose_sacrifice(player, &candidates, None)
                     .unwrap_or(candidates[0]);
                 revealed.push(next);
                 candidates.retain(|&cid| cid != next);
@@ -2026,7 +2028,7 @@ impl GameLoop {
             if valid.is_empty() {
                 return false;
             }
-            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) else {
+            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) else {
                 return false;
             };
             if same_zone {
@@ -2089,7 +2091,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) else {
+            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) else {
                 break;
             };
             game.card_mut(chosen).exert();
@@ -2131,7 +2133,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) else {
+            let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) else {
                 break;
             };
             let enlisted_power = game.card(chosen).power();
@@ -2280,7 +2282,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 game.card_mut(chosen)
                     .add_counter(&crate::card::CounterType::M1M1, 1);
             }
@@ -2310,7 +2312,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let origin = game.card(chosen).zone;
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Exile, owner);
@@ -2339,7 +2341,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let owner = game.card(chosen).owner;
                 let from_zone = game.card(chosen).zone;
                 game.move_card(chosen, ZoneType::Hand, owner);
@@ -2394,7 +2396,7 @@ impl GameLoop {
                 if valid.is_empty() {
                     break;
                 }
-                if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+                if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                     game.tap(chosen);
                     self.trigger_handler.run_trigger(
                         TriggerType::Taps,
@@ -2441,7 +2443,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 game.untap(chosen);
             }
         }
@@ -2476,7 +2478,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 game.change_controller(chosen, player);
             }
         }
@@ -2522,7 +2524,7 @@ impl GameLoop {
             }
             // Let the agent choose which permanent to remove a counter from.
             let chosen = agents[player.index()]
-                .choose_sacrifice(player, &candidates)
+                .choose_sacrifice(player, &candidates, None)
                 .unwrap_or(candidates[0]);
             let ct_to_remove = if let Some(ct) = counter_type {
                 ct.clone()
@@ -2560,7 +2562,7 @@ impl GameLoop {
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Graveyard, owner);
                 crate::ability::effects::emit_zone_trigger(
@@ -2583,13 +2585,14 @@ impl GameLoop {
         player: PlayerId,
         type_filter: &str,
         amount: i32,
+        sa: Option<&SpellAbility>,
     ) {
         for _ in 0..amount {
             let valid = cost::get_sacrifice_targets(game, player, type_filter);
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, sa) {
                 if crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
                     &game.cards,
                     game.card(chosen),

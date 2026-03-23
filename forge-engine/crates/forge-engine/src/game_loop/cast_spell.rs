@@ -430,7 +430,7 @@ impl GameLoop {
                 if !creatures.is_empty() {
                     agents[player.index()].snapshot_state(game, &self.mana_pools);
                     if let Some(sac_id) =
-                        agents[player.index()].choose_sacrifice(player, &creatures)
+                        agents[player.index()].choose_sacrifice(player, &creatures, None)
                     {
                         // Reduce emerge cost by the sacrificed creature's mana value
                         let sac_cmc = game.card(sac_id).mana_cost.cmc();
@@ -489,7 +489,7 @@ impl GameLoop {
                 if !candidates.is_empty() {
                     agents[player.index()].snapshot_state(game, &self.mana_pools);
                     if let Some(sac_id) =
-                        agents[player.index()].choose_sacrifice(player, &candidates)
+                        agents[player.index()].choose_sacrifice(player, &candidates, None)
                     {
                         // Reduce cost by sacrificed permanent's mana value
                         let sac_cmc = game.card(sac_id).mana_cost.cmc();
@@ -1539,7 +1539,7 @@ impl GameLoop {
                 let mut callback = |kind: mana::ManaPayCallback<'_>| -> Option<CardId> {
                     match kind {
                         mana::ManaPayCallback::ChooseSacrifice(valid) => {
-                            agents[player.index()].choose_sacrifice(player, valid)
+                            agents[player.index()].choose_sacrifice(player, valid, None)
                         }
                         mana::ManaPayCallback::ConfirmSelfSacrifice(sacrifice_id) => {
                             let confirmed = agents[player.index()].confirm_payment(
@@ -1783,13 +1783,13 @@ impl GameLoop {
             // Pay additional costs from SP$ line (e.g. sacrifice a creature).
             let spell_cost = Self::parse_spell_cost(&abilities_for_spell);
             if let Some(ref sc) = spell_cost {
-                if !self.pay_additional_costs(game, agents, player, card_id, sc, None, sc.mandatory)
+                if !self.pay_additional_costs(game, agents, player, card_id, sc, None, sc.mandatory, Some(&sa))
                 {
                     return None;
                 }
             }
             if let Some(ref rc) = raise_cost {
-                if !self.pay_additional_costs(game, agents, player, card_id, rc, None, rc.mandatory)
+                if !self.pay_additional_costs(game, agents, player, card_id, rc, None, rc.mandatory, Some(&sa))
                 {
                     return None;
                 }
@@ -1806,6 +1806,7 @@ impl GameLoop {
                     fb_cost,
                     None,
                     fb_cost.mandatory,
+                    Some(&sa),
                 ) {
                     return None;
                 }
@@ -1838,7 +1839,7 @@ impl GameLoop {
             // Apply sacrifice-based alternative cost (e.g. Fireblast: sacrifice two Mountains).
             if is_sacrifice_alt {
                 if let Some((amount, type_filter)) = game.card(card_id).get_sacrifice_alt_cost() {
-                    self.pay_sacrifice_cost(game, agents, player, &type_filter, amount);
+                    self.pay_sacrifice_cost(game, agents, player, &type_filter, amount, Some(&sa));
                 }
             }
 

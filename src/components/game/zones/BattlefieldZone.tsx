@@ -32,6 +32,7 @@ export function BattlefieldZone({
   rightReserved = 0,
   landsAtTop = false,
   placementGhost,
+  hostileTargeting = false,
 }: BattlefieldZoneProps) {
   const [hoveredCardId, setHoveredCardId] = useState<string | null>(null);
   const themeColors = useGameThemeColors();
@@ -75,7 +76,7 @@ export function BattlefieldZone({
           : isUntappable
             ? themeColors.promptAction.cancel
             : isChoosableClick
-              ? themeColors.promptAction.defenseAction
+              ? (hostileTargeting ? themeColors.arrow.hostileTarget : themeColors.promptAction.defenseAction)
               : null;
     return (
       <div
@@ -101,12 +102,19 @@ export function BattlefieldZone({
             BATTLEFIELD_CARD,
             "hover:z-10",
             card.isChoosable && onClickCard && CARD_RING.choosable,
+            card.isChoosable && onClickCard && "choosable-pulse",
             isPending && CARD_RING.pending,
             isAttacking && CARD_RING.attacking,
             isTappable && !isAttacking && CARD_RING.tappable,
             isUntappable && !isAttacking && !isTappable && CARD_RING.untappable,
           )}
-          style={ringColor ? ({ "--tw-ring-color": ringColor } as CSSProperties) : undefined}
+          style={ringColor ? ({
+            "--tw-ring-color": ringColor,
+            ...(card.isChoosable && onClickCard ? {
+              "--choosable-ring-color": ringColor,
+              "--choosable-glow-color": ringColor.replace(/[\d.]+\)$/, "0.3)"),
+            } : {}),
+          } as CSSProperties) : undefined}
         />
         {isTappable && onTapLand && (
           <CardOverlayButton
@@ -126,7 +134,7 @@ export function BattlefieldZone({
         )}
         {!isTappable && isChoosableClick && (
           <CardOverlayButton
-            variant={isPending ? "pending" : isAttacking ? "attacking" : "choosable"}
+            variant={isPending ? "pending" : isAttacking ? "attacking" : hostileTargeting ? "choosable-hostile" : "choosable"}
             onClick={() => {
               if (card.isChoosable && onClickCard) onClickCard(card);
               else if (isAttacking && onClickAnyCard) onClickAnyCard(card);

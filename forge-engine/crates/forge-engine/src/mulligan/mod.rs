@@ -221,15 +221,15 @@ mod tests {
             vec![]
         }
 
-        fn choose_target_player(&mut self, _: PlayerId, v: &[PlayerId]) -> Option<PlayerId> {
+        fn choose_target_player(&mut self, _: PlayerId, v: &[PlayerId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<PlayerId> {
             v.first().copied()
         }
 
-        fn choose_target_card(&mut self, _: PlayerId, v: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _: PlayerId, v: &[CardId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<CardId> {
             v.first().copied()
         }
 
-        fn choose_target_any(&mut self, _: PlayerId, _: &[PlayerId], _: &[CardId]) -> TargetChoice {
+        fn choose_target_any(&mut self, _: PlayerId, _: &[PlayerId], _: &[CardId], _sa: Option<&crate::spellability::SpellAbility>) -> TargetChoice {
             TargetChoice::None
         }
 

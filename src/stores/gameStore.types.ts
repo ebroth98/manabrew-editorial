@@ -65,6 +65,10 @@ export interface AgentPrompt {
   kickerCost?: string;
   /** Source card name for displaying card image in modals */
   sourceCardName?: string;
+  /** Source card ID for targeting prompts (identifies the card being cast) */
+  sourceCardId?: string;
+  /** Whether the targeting effect is hostile (damage/destroy) vs friendly (buff) */
+  hostile?: boolean;
   /** chooseBuyback: the buyback cost string */
   buybackCost?: string;
   /** chooseMultikicker / chooseReplicate: the cost per iteration */

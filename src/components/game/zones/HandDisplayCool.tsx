@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from "react";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/game/Card";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
@@ -50,6 +50,7 @@ export function HandDisplayCool({
   onFlipCard,
   showBackFace,
   draggingCardId,
+  castingCardId,
 }: HandDisplayProps) {
   const handSize = usePreferencesStore((s) => s.handSize);
   const vScale = useHandScale();
@@ -65,6 +66,51 @@ export function HandDisplayCool({
   const maxSpread = Math.round(params.maxSpread * vScale);
   const minSpread = Math.round(params.minSpread * vScale);
   const spreadWidth = Math.round(params.spreadWidth * vScale);
+
+  const [rejectedId, setRejectedId] = useState<string | null>(null);
+  const rejectedTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const rejectCard = useCallback((id: string) => {
+    clearTimeout(rejectedTimer.current);
+    setRejectedId(id);
+    rejectedTimer.current = setTimeout(() => setRejectedId(null), 400);
+  }, []);
+
+  // "Tug" state — non-playable cards can be dragged a few px before snapping back
+  const TUG_LIMIT = 100;
+  const [tugId, setTugId] = useState<string | null>(null);
+  const [tugOffset, setTugOffset] = useState({ x: 0, y: 0 });
+
+  const startTug = useCallback((cardId: string, startX: number, startY: number) => {
+    setTugId(cardId);
+    setTugOffset({ x: 0, y: 0 });
+
+    const onMove = (me: MouseEvent) => {
+      const dx = me.clientX - startX;
+      const dy = me.clientY - startY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist > TUG_LIMIT) {
+        // Hit the limit — snap back and flash
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        setTugId(null);
+        setTugOffset({ x: 0, y: 0 });
+        rejectCard(cardId);
+      } else {
+        setTugOffset({ x: dx, y: dy });
+      }
+    };
+
+    const onUp = () => {
+      document.removeEventListener("mousemove", onMove);
+      document.removeEventListener("mouseup", onUp);
+      setTugId(null);
+      setTugOffset({ x: 0, y: 0 });
+      rejectCard(cardId);
+    };
+
+    document.addEventListener("mousemove", onMove);
+    document.addEventListener("mouseup", onUp);
+  }, [rejectCard]);
 
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const positions = useMemo(
@@ -142,11 +188,13 @@ export function HandDisplayCool({
             pushX = sign * Math.max(0, neighborPush - dist * 6);
           }
 
-          const tx = pos.x + pushX;
-          const translateY = isHov ? -hoverLift : pos.drop;
+          const isCasting = castingCardId != null && card.id === castingCardId;
+          const isTugging = tugId === card.id;
+          const tx = pos.x + pushX + (isTugging ? tugOffset.x : 0);
+          const translateY = (isHov ? -hoverLift : pos.drop) + (isTugging ? tugOffset.y : 0);
           const rot = isHov ? 0 : pos.rot;
           const scale = isHov ? HOVER_SCALE : 1;
-          const z = isHov ? 100 : idx + 1;
+          const z = isTugging ? 100 : isHov ? 100 : idx + 1;
 
           return (
             <div
@@ -154,27 +202,27 @@ export function HandDisplayCool({
               className={cn(
                 "absolute will-change-transform isolate pointer-events-none",
                 card.isPlayable && "cursor-grab",
-                card.id === draggingCardId && "opacity-0",
+                (card.id === draggingCardId || isCasting) && "opacity-0",
               )}
               style={{
                 left: "50%",
                 bottom: 0,
                 transform: `translateX(${tx - cardW / 2}px) translateY(${translateY}px) rotate(${rot}deg) scale(${scale})`,
                 transformOrigin: "center bottom",
-                transition: "transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",
+                transition: isTugging ? "none" : "transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1)",
                 zIndex: z,
               }}
             >
               <div
                 className="pointer-events-auto"
-                onMouseDown={
-                  card.isPlayable
-                    ? (e) => {
-                        e.preventDefault();
-                        onStartDrag?.(card, e);
-                      }
-                    : undefined
-                }
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  if (card.isPlayable) {
+                    onStartDrag?.(card, e);
+                  } else {
+                    startTug(card.id, e.clientX, e.clientY);
+                  }
+                }}
               >
                 <Card
                   card={card}
@@ -182,6 +230,7 @@ export function HandDisplayCool({
                     "shadow-md !bg-card",
                     isHov && "shadow-xl shadow-black/40",
                     card.isPlayable && cn("playable-card", isHov && "is-hovered"),
+                    rejectedId === card.id && "animate-reject-flash",
                   )}
                   style={{ width: cardW, height: cardH }}
                   isHovered={isHov}

@@ -37,6 +37,8 @@ interface FreeBattlefieldProps {
   isDropActive?: boolean;
   /** When set, renders a dotted ghost outline where a permanent will land. */
   placementGhost?: PlacementGhost | null;
+  /** Whether the current targeting prompt is hostile (affects choosable highlight color). */
+  hostileTargeting?: boolean;
 }
 
 export function FreeBattlefield({
@@ -58,6 +60,7 @@ export function FreeBattlefield({
   rightReserved = 0,
   isDropActive = false,
   placementGhost,
+  hostileTargeting = false,
 }: FreeBattlefieldProps) {
   const themeColors = useGameThemeColors();
   const cardMap = useMemo(() => {
@@ -142,7 +145,7 @@ export function FreeBattlefield({
             : isUntappable
               ? themeColors.promptAction.cancel
               : isChoosableClick
-                ? themeColors.promptAction.defenseAction
+                ? (hostileTargeting ? themeColors.arrow.hostileTarget : themeColors.promptAction.defenseAction)
                 : null;
 
     return (
@@ -177,12 +180,19 @@ export function FreeBattlefield({
             isDragging ? "cursor-grabbing" : "cursor-grab",
             isSelected && CARD_RING.selected,
             !isSelected && card.isChoosable && onClickCard && CARD_RING.choosable,
+            !isSelected && card.isChoosable && onClickCard && "choosable-pulse",
             !isSelected && isPending && CARD_RING.pending,
             !isSelected && isAttacking && CARD_RING.attacking,
             !isSelected && isTappable && !isAttacking && CARD_RING.tappable,
             !isSelected && isUntappable && !isAttacking && !isTappable && CARD_RING.untappable,
           )}
-          style={ringColor ? ({ "--tw-ring-color": ringColor } as React.CSSProperties) : undefined}
+          style={ringColor ? ({
+            "--tw-ring-color": ringColor,
+            ...(card.isChoosable && onClickCard ? {
+              "--choosable-ring-color": ringColor,
+              "--choosable-glow-color": ringColor.replace(/[\d.]+\)$/, "0.3)"),
+            } : {}),
+          } as React.CSSProperties) : undefined}
         />
 
         {isTappable && onTapLand && (
@@ -211,7 +221,7 @@ export function FreeBattlefield({
 
         {!isTappable && isChoosableClick && (
           <CardOverlayButton
-            variant={isPending ? "pending" : isAttacking ? "attacking" : "choosable"}
+            variant={isPending ? "pending" : isAttacking ? "attacking" : hostileTargeting ? "choosable-hostile" : "choosable"}
             onClick={() => {
               if (justDraggedCardIds.has(card.id)) return;
               if (card.isChoosable && onClickCard) onClickCard(card);

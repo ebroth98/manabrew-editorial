@@ -115,11 +115,11 @@ impl PlayerAgent for ScriptedAgent {
             .collect()
     }
 
-    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
         valid.first().copied()
     }
 
-    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId]) -> Option<CardId> {
+    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
         valid.first().copied()
     }
 
@@ -128,6 +128,7 @@ impl PlayerAgent for ScriptedAgent {
         _player: PlayerId,
         valid_players: &[PlayerId],
         valid_cards: &[CardId],
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> TargetChoice {
         if let Some(&pid) = valid_players.last() {
             TargetChoice::Player(pid)
@@ -443,10 +444,10 @@ fn full_game_runs() {
         ) -> Vec<(CardId, CardId)> {
             Vec::new() // no blocks
         }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
             valid.first().copied()
         }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
             valid.first().copied()
         }
         fn choose_target_any(
@@ -454,6 +455,7 @@ fn full_game_runs() {
             _: PlayerId,
             valid_players: &[PlayerId],
             valid_cards: &[CardId],
+            _sa: Option<&forge_engine_core::spellability::SpellAbility>,
         ) -> TargetChoice {
             if let Some(&pid) = valid_players.last() {
                 TargetChoice::Player(pid)
@@ -944,13 +946,13 @@ fn upkeep_trigger_fires_each_turn() {
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
             valid.first().copied()
         }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
             valid.first().copied()
         }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> TargetChoice {
             if let Some(&pid) = p.last() {
                 TargetChoice::Player(pid)
             } else if let Some(&cid) = c.first() {
@@ -1054,13 +1056,13 @@ fn full_game_with_triggers_runs() {
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
             valid.first().copied()
         }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
             valid.first().copied()
         }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> TargetChoice {
             if let Some(&pid) = p.last() {
                 TargetChoice::Player(pid)
             } else if let Some(&cid) = c.first() {
@@ -1222,13 +1224,13 @@ fn llanowar_elves_taps_for_mana() {
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
             valid.first().copied()
         }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
             valid.first().copied()
         }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> TargetChoice {
             if let Some(&pid) = p.last() {
                 TargetChoice::Player(pid)
             } else if let Some(&cid) = c.first() {
@@ -1330,13 +1332,13 @@ fn summoning_sick_creature_cant_tap() {
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
             valid.first().copied()
         }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
             valid.first().copied()
         }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> TargetChoice {
             if let Some(&pid) = p.last() {
                 TargetChoice::Player(pid)
             } else if let Some(&cid) = c.first() {
@@ -1427,13 +1429,13 @@ fn prodigal_sorcerer_pings_opponent() {
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
             valid.first().copied()
         }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
             valid.first().copied()
         }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> TargetChoice {
             // Target opponent (player)
             if let Some(&pid) = p.last() {
                 TargetChoice::Player(pid)
@@ -1536,13 +1538,13 @@ fn sakura_tribe_elder_fetches_land() {
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
-        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId]) -> Option<PlayerId> {
+        fn choose_target_player(&mut self, _: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
             valid.first().copied()
         }
-        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId]) -> Option<CardId> {
+        fn choose_target_card(&mut self, _: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
             valid.first().copied()
         }
-        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId]) -> TargetChoice {
+        fn choose_target_any(&mut self, _: PlayerId, p: &[PlayerId], c: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> TargetChoice {
             if let Some(&pid) = p.last() {
                 TargetChoice::Player(pid)
             } else if let Some(&cid) = c.first() {

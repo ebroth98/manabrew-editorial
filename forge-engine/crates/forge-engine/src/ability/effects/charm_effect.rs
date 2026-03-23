@@ -438,7 +438,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
     match &tr.target_kind {
         TargetKind::Player => {
             let players = ctx.game.alive_players();
-            if let Some(p) = ctx.agents[player.index()].choose_target_player(player, &players) {
+            if let Some(p) = ctx.agents[player.index()].choose_target_player(player, &players, None) {
                 mode_sa.target_chosen.target_player = Some(p);
             }
         }
@@ -456,7 +456,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
                 filter.as_deref(),
                 mode_sa.source,
             );
-            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid) {
+            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None) {
                 mode_sa.target_chosen.target_card = Some(card);
             }
         }
@@ -467,7 +467,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
                 filter.as_deref(),
                 mode_sa.source,
             );
-            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid) {
+            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None) {
                 mode_sa.target_chosen.target_card = Some(card);
             }
         }
@@ -482,7 +482,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
                 valid.extend(zone_cards);
             }
             if let Some(card) =
-                ctx.agents[player.index()].choose_target_card_from_zone(player, zone, &valid)
+                ctx.agents[player.index()].choose_target_card_from_zone(player, zone, &valid, None)
             {
                 mode_sa.target_chosen.target_card = Some(card);
             }
@@ -512,7 +512,7 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
                 })
                 .collect::<Vec<_>>();
             let choice =
-                ctx.agents[player.index()].choose_target_any(player, &valid_players, &valid_cards);
+                ctx.agents[player.index()].choose_target_any(player, &valid_players, &valid_cards, None);
             match choice {
                 TargetChoice::Player(p) => {
                     mode_sa.target_chosen.target_player = Some(p);

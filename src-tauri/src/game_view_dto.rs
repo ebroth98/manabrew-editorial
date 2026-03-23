@@ -201,6 +201,8 @@ pub struct StackTargetDto {
     pub node_index: u32,
     /// Zero-based target slot index inside this node.
     pub target_index: u32,
+    /// Whether this target is hostile (damage, destroy, counter) vs friendly (buff, heal).
+    pub hostile: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -211,6 +213,24 @@ pub enum StackTargetKindDto {
     Stack,
 }
 
+/// Determine if a spell ability's effect is hostile based on its API type.
+pub fn is_hostile_api(sa: &SpellAbility) -> bool {
+    use forge_engine_core::ability::api_type::ApiType;
+    match sa.api {
+        Some(ApiType::DealDamage)
+        | Some(ApiType::Destroy)
+        | Some(ApiType::DestroyAll)
+        | Some(ApiType::Counter)
+        | Some(ApiType::Sacrifice)
+        | Some(ApiType::SacrificeAll)
+        | Some(ApiType::ChangeZone)
+        | Some(ApiType::ChangeZoneAll)
+        | Some(ApiType::LoseLife)
+        | Some(ApiType::Debuff) => true,
+        _ => false,
+    }
+}
+
 fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
     let mut out = Vec::new();
     let mut node_index = 0u32;
@@ -218,6 +238,7 @@ fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
 
     while let Some(sa) = current {
         let mut target_index = 0u32;
+        let hostile = is_hostile_api(sa);
 
         if let Some(cid) = sa.target_chosen.target_card {
             out.push(StackTargetDto {
@@ -225,6 +246,7 @@ fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
                 id: card_id_str(cid),
                 node_index,
                 target_index,
+                hostile,
             });
             target_index += 1;
         }
@@ -234,6 +256,7 @@ fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
                 id: player_id_str(pid),
                 node_index,
                 target_index,
+                hostile,
             });
             target_index += 1;
         }
@@ -243,6 +266,7 @@ fn collect_stack_targets(root: &SpellAbility) -> Vec<StackTargetDto> {
                 id: stack_id_str(stack_id),
                 node_index,
                 target_index,
+                hostile,
             });
         }
 
