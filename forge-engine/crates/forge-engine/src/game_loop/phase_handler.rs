@@ -327,7 +327,7 @@ impl GameLoop {
                 }
             }
         }
-        self.pool_mut(active).empty();
+        self.pool_mut(active).reset_pool();
     }
 
     pub fn step_draw(&mut self, game: &mut GameState) {
@@ -474,7 +474,7 @@ impl GameLoop {
         }
 
         // Empty mana pool at end of turn (cleanup step), per Magic rules.
-        self.pool_mut(active).empty();
+        self.pool_mut(active).reset_pool();
 
         // Remove temporary command-zone effect cards created by AB$ Effect
         // that expire at end of turn.

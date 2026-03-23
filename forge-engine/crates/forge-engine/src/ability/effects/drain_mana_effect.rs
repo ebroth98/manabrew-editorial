@@ -28,7 +28,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue;
         }
         let pool = &mut ctx.mana_pools[pid.index()];
-        let amount = pool.total();
+        let amount = pool.total_mana();
         if amount <= 0 {
             continue;
         }
@@ -41,7 +41,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.player_mut(*pid).life -= amount as i32;
         }
 
-        pool.empty();
+        pool.reset_pool();
     }
 
     if sa.params.is_true(keys::DRAIN_MANA)

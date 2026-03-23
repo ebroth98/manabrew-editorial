@@ -15,10 +15,7 @@ use crate::game_log_entry_type::GameLogEntryType;
 use crate::game_rng::{GameRng, ThreadRngAdapter};
 use crate::game_snapshot::GameSnapshot;
 use crate::ids::{CardId, PlayerId};
-use crate::mana::{
-    self, basic_land_mana_atom, capitalize_color, color_name_to_mana_atom, mana_atom_from_produced,
-    produced_to_color_names, ManaPool,
-};
+use crate::mana::{self, basic_land_mana_atom, ManaPool};
 use crate::spellability::target_restrictions;
 use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
 use crate::parsing::{keys, Params};
@@ -917,7 +914,7 @@ mod tests {
         // Manual tap: add one mana from the Any land.
         let ab = game.card(land_any).activated_abilities[0].clone();
         gl.resolve_mana_ability(&mut game, &mut agents, p0, land_any, &ab);
-        assert_eq!(gl.pool(p0).total(), 1);
+        assert_eq!(gl.pool(p0).total_mana(), 1);
         assert!(game.card(land_any).tapped);
         assert!(!game.card(land_combo).tapped);
 

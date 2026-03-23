@@ -1,6 +1,5 @@
 use super::cost_payment::CostPaymentContext;
 use super::*;
-use forge_foundation::mana::ManaAtom;
 
 impl GameLoop {
     pub(crate) fn emit_tap_for_mana_triggers(&mut self, player: PlayerId, tapped_lands: &[CardId]) {
@@ -345,32 +344,19 @@ impl GameLoop {
             return;
         }
 
-        // Check if source permanent is snow (snow mana tracking)
+        // Build metadata params for produced mana
         let source_is_snow = game.card(card_id).type_line.is_snow();
-        // Check for mana restrictions (RestrictValid$) and uncounterability (AddsNoCounter$)
-        let mana_restriction = ab.params.get_cloned(keys::RESTRICT_VALID);
-        let adds_no_counter = ab.params.is_true(keys::ADDS_NO_COUNTER);
-        let adds_keywords = ab.params.get_cloned(keys::ADDS_KEYWORDS);
-        let adds_keywords_valid = ab.params.get_cloned(keys::ADDS_KEYWORDS_VALID);
-        let adds_counters = ab.params.get_cloned(keys::ADDS_COUNTERS);
-        let adds_counters_valid = ab.params.get_cloned(keys::ADDS_COUNTERS_VALID);
-        let triggers_when_spent = ab.params.get_cloned(keys::TRIGGERS_WHEN_SPENT);
-
-        // Helper: convert a ManaAtom to its short letter for mana strings.
-        fn atom_to_letter(atom: u16) -> &'static str {
-            match atom {
-                ManaAtom::WHITE => "W",
-                ManaAtom::BLUE => "U",
-                ManaAtom::BLACK => "B",
-                ManaAtom::RED => "R",
-                ManaAtom::GREEN => "G",
-                ManaAtom::COLORLESS => "C",
-                _ => "C",
-            }
-        }
-
-        // Determine the final mana string to produce
-        let mut mana_string: Option<String> = None;
+        let mana_params = crate::mana::ManaProductionParams {
+            source_card: card_id,
+            is_snow: source_is_snow,
+            restriction: ab.params.get_cloned(keys::RESTRICT_VALID),
+            adds_no_counter: ab.params.is_true(keys::ADDS_NO_COUNTER),
+            adds_keywords: ab.params.get_cloned(keys::ADDS_KEYWORDS),
+            adds_keywords_valid: ab.params.get_cloned(keys::ADDS_KEYWORDS_VALID),
+            adds_counters: ab.params.get_cloned(keys::ADDS_COUNTERS),
+            adds_counters_valid: ab.params.get_cloned(keys::ADDS_COUNTERS_VALID),
+            triggers_when_spent: ab.params.get_cloned(keys::TRIGGERS_WHEN_SPENT),
+        };
 
         if let Some(produced) = ab.params.get(keys::PRODUCED) {
             if produced.starts_with("Special") {
@@ -395,21 +381,13 @@ impl GameLoop {
                     special,
                 );
                 // Add produced mana with metadata
-                for tok in &tokens {
-                    if let Some(atom) = mana_atom_from_produced(tok) {
-                        let mut m = crate::mana::Mana::simple(atom);
-                        m.is_snow = source_is_snow;
-                        m.restriction = mana_restriction.clone();
-                        m.adds_no_counter = adds_no_counter;
-                        m.adds_keywords = adds_keywords.clone();
-                        m.adds_keywords_valid = adds_keywords_valid.clone();
-                        m.adds_counters = adds_counters.clone();
-                        m.adds_counters_valid = adds_counters_valid.clone();
-                        m.triggers_when_spent = triggers_when_spent.clone();
-                        m.source_card = Some(card_id);
-                        self.pool_mut(player).add_mana(m);
-                    }
-                }
+                let mana_str = tokens.join(" ");
+                crate::mana::add_produced_mana_to_pool(
+                    &mut effect_ctx.mana_pools[player.index()],
+                    &mana_str,
+                    &mana_params,
+                );
+                drop(effect_ctx);
                 // Fire triggers and return
                 self.trigger_handler.run_trigger(
                     TriggerType::TapsForMana,
@@ -430,150 +408,26 @@ impl GameLoop {
                     false,
                 );
                 return;
-            } else if produced == "Combo ColorIdentity" {
-                let command_cards = game.cards_in_zone(ZoneType::Command, player).to_vec();
-                let colors: Vec<String> = command_cards
-                    .iter()
-                    .find_map(|&cid| {
-                        let c = game.card(cid);
-                        if c.is_commander {
-                            let cols: Vec<String> = c
-                                .color
-                                .iter()
-                                .map(|col| capitalize_color(col.long_name()))
-                                .collect();
-                            if cols.is_empty() {
-                                None
-                            } else {
-                                Some(cols)
-                            }
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or_default();
-
-                if !colors.is_empty() {
-                    if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
-                        if let Some(atom) = color_name_to_mana_atom(&chosen) {
-                            mana_string = Some(atom_to_letter(atom).to_string());
-                        }
-                    }
-                }
-            } else {
-                let chosen_colors = game.card(card_id).chosen_colors.clone();
-                let colors = produced_to_color_names(produced, &chosen_colors);
-                if colors.len() > 1 {
-                    if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
-                        if let Some(atom) = color_name_to_mana_atom(&chosen) {
-                            mana_string = Some(atom_to_letter(atom).to_string());
-                        }
-                    }
-                } else if let Some(single) = colors.first() {
-                    if let Some(atom) = color_name_to_mana_atom(single) {
-                        mana_string = Some(atom_to_letter(atom).to_string());
-                    }
-                } else {
-                    // Raw produced string (single or multi-token like "C C")
-                    mana_string = Some(produced.to_string());
-                }
             }
-        }
 
-        // Apply Amount$ multiplier (e.g. Rofellos produces mana equal to Forests)
-        if let Some(ref mut ms) = mana_string {
-            if let Some(amount_str) = ab.params.get(keys::AMOUNT) {
-                let amount = if let Ok(n) = amount_str.parse::<i32>() {
-                    n
-                } else {
-                    // Try to resolve as SVar on the source card
-                    if let Some(svar_expr) =
-                        game.card(card_id).svars.get(amount_str).cloned()
-                    {
-                        crate::ability::effects::resolve_count_svar(
-                            &svar_expr, game, card_id, player,
-                        )
-                    } else {
-                        1
-                    }
-                };
-                if amount > 1 {
-                    // Check if this is combo/any mana (multiple color choices)
-                    let produced = ab.params.get(keys::PRODUCED).unwrap_or("");
-                    let is_combo = produced.contains("Any")
-                        || produced.starts_with("Combo")
-                        || produced.contains(',');
-                    if is_combo {
-                        // Multi-amount combo: let agent choose color distribution
-                        let available: Vec<String> = if produced.contains("Any") {
-                            vec!["W", "U", "B", "R", "G"]
-                                .into_iter()
-                                .map(String::from)
-                                .collect()
-                        } else {
-                            let chosen_colors = game.card(card_id).chosen_colors.clone();
-                            let names = produced_to_color_names(produced, &chosen_colors);
-                            names
-                                .iter()
-                                .filter_map(|name| {
-                                    color_name_to_mana_atom(name)
-                                        .map(|a| atom_to_letter(a).to_string())
-                                })
-                                .collect()
-                        };
-                        let card_name = game.card(card_id).card_name.clone();
-                        let chosen = agents[player.index()].specify_mana_combo(
-                            player,
-                            &available,
-                            amount as usize,
-                            Some(&card_name),
-                        );
-                        *ms = chosen.join(" ");
-                    } else {
-                        let base = ms.clone();
-                        for _ in 1..amount {
-                            ms.push(' ');
-                            ms.push_str(&base);
-                        }
-                    }
-                } else if amount <= 0 {
-                    mana_string = None;
-                }
-            }
-        }
+            // Determine mana production (color choice, Amount$, replacement effects)
+            let amount_param = ab.params.get(keys::AMOUNT);
+            let mana_string = crate::mana::determine_mana_production(
+                game,
+                agents,
+                player,
+                card_id,
+                produced,
+                amount_param,
+            );
 
-        // Apply ProduceMana replacement effects (mana doublers like Mirari's Wake)
-        if let Some(ref mut ms) = mana_string {
-            use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
-            let mut event = ReplacementEvent::ProduceMana {
-                source: card_id,
-                activator: player,
-                mana: ms.clone(),
-            };
-            let result = apply_replacements(game, &mut event);
-            if result == crate::replacement::ReplacementResult::Updated {
-                if let ReplacementEvent::ProduceMana { mana: new_mana, .. } = event {
-                    *ms = new_mana;
-                }
-            }
-        }
-
-        // Add the (possibly multiplied) mana to the pool
-        if let Some(ref ms) = mana_string {
-            for tok in ms.split_whitespace() {
-                if let Some(atom) = mana_atom_from_produced(tok) {
-                    let mut m = crate::mana::Mana::simple(atom);
-                    m.is_snow = source_is_snow;
-                    m.restriction = mana_restriction.clone();
-                    m.adds_no_counter = adds_no_counter;
-                    m.adds_keywords = adds_keywords.clone();
-                    m.adds_keywords_valid = adds_keywords_valid.clone();
-                    m.adds_counters = adds_counters.clone();
-                    m.adds_counters_valid = adds_counters_valid.clone();
-                    m.triggers_when_spent = triggers_when_spent.clone();
-                    m.source_card = Some(card_id);
-                    self.pool_mut(player).add_mana(m);
-                }
+            // Add the produced mana to the pool
+            if let Some(ref ms) = mana_string {
+                crate::mana::add_produced_mana_to_pool(
+                    self.pool_mut(player),
+                    ms,
+                    &mana_params,
+                );
             }
         }
 

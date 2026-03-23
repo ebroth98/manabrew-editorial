@@ -136,7 +136,7 @@ pub(super) fn pay_mana_cost(
         mana_cost: mana_cost.to_string(),
         tappable_land_ids,
         untappable_land_ids,
-        mana_pool_total: mana_pool.total(),
+        mana_pool_total: mana_pool.total_mana(),
     });
     match agent.recv_action() {
         PlayerAction::TapLand { card_id } => parse_card_id(&card_id)

@@ -333,7 +333,7 @@ impl GameLoop {
                         let pool_snapshot = self.pool(controller).clone();
                         let untappable_lands =
                             self.get_untappable_lands(game, controller, &pool_snapshot);
-                        let pool_total = self.pool(controller).total();
+                        let pool_total = self.pool(controller).total_mana();
 
                         agents[controller.index()].snapshot_state(game, &self.mana_pools);
                         let action = agents[controller.index()].pay_combat_cost(
@@ -441,7 +441,7 @@ impl GameLoop {
                             }
                             CombatCostAction::Pay => {
                                 let pool = &mut self.mana_pools[controller.index()];
-                                if pool.total() >= cost {
+                                if pool.total_mana() >= cost {
                                     pool.spend_generic(cost);
                                     // Successfully paid
                                 } else {
@@ -678,7 +678,7 @@ impl GameLoop {
                         if cost > 0 {
                             let controller = game.card(blocker_id).controller;
                             let pool = &mut self.mana_pools[controller.index()];
-                            if pool.total() >= cost {
+                            if pool.total_mana() >= cost {
                                 pool.spend_generic(cost);
                             } else {
                                 block_cost_failures.push(blocker_id);

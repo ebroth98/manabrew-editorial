@@ -1304,7 +1304,7 @@ fn can_pay_inner(
             }
             CostPart::Waterbend { amount } => {
                 // Payable if available mana + tappable artifacts/creatures >= amount
-                let pool_total = available_mana.map_or(0, |p| p.total());
+                let pool_total = available_mana.map_or(0, |p| p.total_mana());
                 let tappable_count = game
                     .cards_in_zone(ZoneType::Battlefield, player)
                     .iter()

@@ -1117,7 +1117,7 @@ pub fn auto_tap_lands_generic(
     player: PlayerId,
     needed: i32,
 ) -> Vec<CardId> {
-    let deficit = (needed - pool.total()).max(0);
+    let deficit = (needed - pool.total_mana()).max(0);
     if deficit <= 0 {
         return Vec::new();
     }
@@ -1273,7 +1273,7 @@ mod tests {
             Some(reserved_food),
         );
 
-        assert_eq!(pool.total(), 1);
+        assert_eq!(pool.total_mana(), 1);
         assert_eq!(tapped, vec![forest]);
         assert!(!game.card(goose).tapped);
         assert_eq!(game.card(goose).zone, ZoneType::Battlefield);
@@ -1322,7 +1322,7 @@ mod tests {
             Some(reserved_food),
         );
 
-        assert_eq!(pool.total(), 2);
+        assert_eq!(pool.total_mana(), 2);
         // Auto-tapper prefers simpler sources: Forest (score 3) before Goose (score 35).
         assert_eq!(tapped, vec![forest, goose]);
         assert!(game.card(goose).tapped);
@@ -1367,7 +1367,7 @@ mod tests {
 
         let tapped = auto_tap_lands(&mut game, &mut pool, player, &ManaCost::parse("2"), None);
 
-        assert_eq!(pool.total(), 2);
+        assert_eq!(pool.total_mana(), 2);
         assert_eq!(tapped, vec![plains, mountain]);
         assert!(game.card(plains).tapped);
         assert!(game.card(mountain).tapped);
@@ -1403,6 +1403,7 @@ mod tests {
                             assert_eq!(cid, treasure); // should be asking about Treasure
                             Some(cid) // confirm
                         }
+                        ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
                     }
                 };
 
@@ -1419,7 +1420,7 @@ mod tests {
             // The confirm callback was called if the treasure was sacrificed
             assert_eq!(tapped, vec![treasure]);
             assert_eq!(game.card(treasure).zone, ZoneType::Graveyard);
-            assert_eq!(pool.total(), 1);
+            assert_eq!(pool.total_mana(), 1);
         }
 
         // Reset for test 2: create new treasure and add a Forest as fallback
@@ -1455,6 +1456,7 @@ mod tests {
                             assert_eq!(cid, treasure2);
                             None // decline
                         }
+                        ManaPayCallback::ConfirmSubCounter(cid) => Some(cid),
                     }
                 };
 
@@ -1472,7 +1474,7 @@ mod tests {
             assert_eq!(tapped, vec![forest]);
             assert_eq!(game.card(treasure2).zone, ZoneType::Battlefield); // not sacrificed
             assert_eq!(game.card(forest).zone, ZoneType::Battlefield);
-            assert_eq!(pool.total(), 1);
+            assert_eq!(pool.total_mana(), 1);
         }
     }
 }

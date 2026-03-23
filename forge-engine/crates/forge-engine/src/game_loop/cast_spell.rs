@@ -908,7 +908,7 @@ impl GameLoop {
                 // ComputerUtilMana.determineLeftoverMana(): try X=1,2,...
                 // until canPayManaCost fails, then return the last payable X.
                 // This correctly handles multi-color sources that inflate
-                // pool.total() but can only produce one mana per activation.
+                // pool.total_mana() but can only produce one mana per activation.
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
                 let non_x_cost = mana_cost.without_x();
@@ -1349,7 +1349,7 @@ impl GameLoop {
             // Track pool colors before payment for Sunburst/Converge
             let pool_snapshot_for_colors: Vec<u16> = self.pool(player).mana_colors();
             // Track pool size before payment for ManaExpend
-            let pool_size_before = self.pool(player).total();
+            let pool_size_before = self.pool(player).total_mana();
 
             // ── Mana payment: interactive (human) or auto-tap (AI) ──
             // TODO(cost_payment): Replace this is_human branch with a unified flow via
@@ -1632,7 +1632,7 @@ impl GameLoop {
 
             // Fire ManaExpend triggers (Expend mechanic — cumulative per-turn tracking)
             {
-                let pool_size_after = self.pool(player).total();
+                let pool_size_after = self.pool(player).total_mana();
                 let mana_spent = (pool_size_before - pool_size_after) as i32;
                 if mana_spent > 0 {
                     let starting = game.player(player).mana_expended_this_turn;
