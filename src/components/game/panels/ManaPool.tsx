@@ -6,25 +6,21 @@ export function ManaPool({ pool }: { pool: Record<string, number> }) {
   if (total === 0)
     return <span className="text-xs text-muted-foreground italic">Empty</span>;
   return (
-    <div className="flex gap-1.5 flex-wrap items-center">
-      {MANA_COLORS.flatMap(({ key }, i, arr) => {
+    <div className="flex flex-row items-center gap-1 flex-nowrap">
+      {MANA_COLORS.flatMap(({ key }) => {
         const count = pool[key] ?? 0;
         if (count === 0) return [];
-        const items = [
-          <span key={key} className="inline-flex items-center gap-0.5">
-            <ManaSymbols cost={key} size="md" />
-            {count > 1 && (
-              <span className="text-xs font-bold text-foreground">{count}</span>
-            )}
+        return [
+          <span
+            key={key}
+            className="inline-flex flex-row items-center gap-0.5 flex-nowrap"
+          >
+            <span className="text-[11px] font-extrabold text-white leading-none tabular-nums">
+              {count}
+            </span>
+            <ManaSymbols cost={key} size="lg" />
           </span>,
         ];
-        const hasMore = arr.slice(i + 1).some(({ key: k }) => (pool[k] ?? 0) > 0);
-        if (hasMore) {
-          items.push(
-            <span key={`sep-${key}`} className="text-muted-foreground/40 text-xs select-none">|</span>
-          );
-        }
-        return items;
       })}
     </div>
   );

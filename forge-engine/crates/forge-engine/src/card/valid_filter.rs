@@ -228,7 +228,7 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         return false;
                     }
                 }
-                "enchantedby" => {
+                "enchantedby" | "attachedby" => {
                     // Check if source is attached to this card
                     if source.attached_to != Some(card.id) {
                         return false;

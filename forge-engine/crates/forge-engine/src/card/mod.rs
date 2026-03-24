@@ -163,6 +163,11 @@ pub struct Card {
 
     // Combat/state
     pub tapped: bool,
+    /// Mana atoms produced the last time this land was tapped for mana.
+    /// Used for mana rollback — when untapping, remove exactly this mana from pool.
+    /// Covers base production + aura triggers + static doublers + any other source.
+    #[serde(skip)]
+    pub last_mana_produced: Option<Vec<u16>>,
     pub flipped: bool,
     pub face_down: bool,
     /// True if this card has Morph or Megamorph and can be cast face-down for {3}.
@@ -539,6 +544,7 @@ impl Card {
             static_power_modifier: 0,
             static_toughness_modifier: 0,
             tapped: false,
+            last_mana_produced: None,
             flipped: false,
             face_down: false,
             has_morph: false,

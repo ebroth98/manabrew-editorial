@@ -198,7 +198,7 @@ impl GameLoop {
                         });
                     } else {
                         // Legacy fallback for lands with no parsed mana abilities
-                        self.with_shared_state_mutation(game, agents, |this, game, _agents| {
+                        self.with_shared_state_mutation(game, agents, |this, game, agents| {
                             let atom_opt = {
                                 let c = game.card(land_id);
                                 if c.is_land() && !c.tapped {
@@ -208,6 +208,8 @@ impl GameLoop {
                                 }
                             };
                             if let Some(atom) = atom_opt {
+                                let pool_snapshot = this.pool(priority_player).begin_tap_tracking();
+
                                 game.tap(land_id);
                                 this.pool_mut(priority_player).add(atom, 1);
                                 this.trigger_handler.run_trigger(
@@ -228,6 +230,17 @@ impl GameLoop {
                                     },
                                     false,
                                 );
+                                // Resolve mana triggers inline (e.g. Utopia Sprawl).
+                                let pending = this.trigger_handler.run_waiting_triggers(game);
+                                for pt in pending {
+                                    this.resolve_single_effect(game, agents, &pt.entry.spell_ability, None);
+                                }
+
+                                // Record what mana this tap produced for rollback
+                                let produced = this.pool(priority_player).end_tap_tracking(&pool_snapshot);
+                                if !produced.is_empty() {
+                                    game.card_mut(land_id).last_mana_produced = Some(produced);
+                                }
                             }
                         });
                     }
@@ -271,12 +284,18 @@ impl GameLoop {
                         };
                         if !atoms.is_empty() {
                             game.untap(land_id);
-                            // Remove the first atom we find in the pool
-                            let pool = this.pool_mut(priority_player);
-                            for &atom in &atoms {
-                                if pool.has_atom(atom, 1) {
-                                    pool.remove(atom, 1);
-                                    break;
+                            // Remove all mana produced by the last tap — covers base,
+                            // aura triggers, static doublers, and any other source.
+                            if let Some(produced) = game.card_mut(land_id).last_mana_produced.take() {
+                                this.pool_mut(priority_player).rollback_tap(&produced);
+                            } else {
+                                // Fallback: remove the first matching base atom
+                                let pool = this.pool_mut(priority_player);
+                                for &atom in &atoms {
+                                    if pool.has_atom(atom, 1) {
+                                        pool.remove(atom, 1);
+                                        break;
+                                    }
                                 }
                             }
                             // Fire Untaps trigger

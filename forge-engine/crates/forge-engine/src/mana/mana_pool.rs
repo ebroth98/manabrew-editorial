@@ -884,6 +884,36 @@ impl ManaPool {
         self.mana.iter()
     }
 
+    // ── Tap tracking for mana rollback ─────────────────────────────
+
+    /// Snapshot the pool state before a land tap. Call this BEFORE producing mana.
+    /// Returns a snapshot (list of mana colors) that `end_tap_tracking` will diff against.
+    pub fn begin_tap_tracking(&self) -> Vec<u16> {
+        self.mana_colors()
+    }
+
+    /// Compute what mana was produced since `begin_tap_tracking` was called.
+    /// Returns the list of mana atoms that were added to the pool.
+    pub fn end_tap_tracking(&self, pool_before: &[u16]) -> Vec<u16> {
+        let pool_after = self.mana_colors();
+        let mut produced = pool_after;
+        for &atom in pool_before {
+            if let Some(pos) = produced.iter().position(|&a| a == atom) {
+                produced.remove(pos);
+            }
+        }
+        produced
+    }
+
+    /// Remove the exact mana that was produced by a previous tap.
+    /// Used for mana rollback (untap) — removes ALL mana from that tap,
+    /// including base production, aura triggers, static doublers, etc.
+    pub fn rollback_tap(&mut self, produced: &[u16]) {
+        for &atom in produced {
+            self.remove(atom, 1);
+        }
+    }
+
     // ── Mana production (extracted from game_loop/game_action.rs) ────
 
     /// Produce mana from a mana string (e.g. "W", "U U", "R G") and add to pool.

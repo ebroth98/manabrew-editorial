@@ -182,6 +182,29 @@ pub fn build_spell_ability_for_card_cast(
     let condition = crate::spellability::SpellAbilityCondition::default();
     let card = game.card(card_id);
 
+    // Aura enchantments: derive targeting from "Enchant <type>" keyword.
+    // Mirrors Java's Spell constructor which reads the Enchant keyword to
+    // set up ValidTgts$ automatically for aura spells.
+    let target_restrictions = if card.type_line.has_subtype("Aura") {
+        let enchant_type = card.get_keyword_cost("Enchant").unwrap_or_default();
+        let valid_tgts = match enchant_type.to_lowercase().as_str() {
+            "creature" => "Creature",
+            "land" => "Land",
+            "artifact" => "Artifact",
+            "enchantment" => "Enchantment",
+            "planeswalker" => "Planeswalker",
+            "permanent" => "Permanent",
+            "player" => "Player",
+            "creature or player" => "Creature,Player",
+            _ if enchant_type.is_empty() => "Permanent",
+            _ => "Permanent",
+        };
+        let params_str = format!("ValidTgts$ {}", valid_tgts);
+        TargetRestrictions::new(&Params::from_raw(&params_str))
+    } else {
+        None
+    };
+
     SpellAbility {
         api: None,
         source: Some(card_id),
@@ -189,7 +212,7 @@ pub fn build_spell_ability_for_card_cast(
         targeting_player: None,
         ability_text: String::new(),
         params: Params::from_raw(""),
-        target_restrictions: None,
+        target_restrictions,
         target_chosen: TargetChoices::default(),
         pay_costs: Some(Cost {
             parts: vec![CostPart::Mana(card.mana_cost.clone())],

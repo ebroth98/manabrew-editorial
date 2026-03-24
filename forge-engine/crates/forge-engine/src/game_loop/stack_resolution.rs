@@ -342,6 +342,17 @@ impl GameLoop {
 
                 game.move_card(card_id, ZoneType::Battlefield, player);
 
+                // Attach aura to its chosen target.
+                // Mirrors Java's PermanentEffect which calls card.enchantEntity()
+                // when an Aura spell resolves and enters the battlefield.
+                if game.card(card_id).type_line.has_subtype("Aura") {
+                    if let Some(target_id) = entry.spell_ability.target_chosen.target_card {
+                        if game.card(target_id).zone == ZoneType::Battlefield {
+                            game.attach_to(card_id, target_id);
+                        }
+                    }
+                }
+
                 // Handle reveal-or-enter-tapped
                 if let Some((_n, filter_str)) = etb_reveal_cost {
                     let type_name = filter_str

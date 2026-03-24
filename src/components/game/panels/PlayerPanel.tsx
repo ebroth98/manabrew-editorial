@@ -3,6 +3,7 @@ import type { Player } from "@/types/openmagic";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Heart, Layers, Sword } from "lucide-react";
+import { ManaPool as ManaPoolDisplay } from "./ManaPool";
 import { getAvatarColor, getInitials } from "../game.utils";
 import { useGameThemeColors, withAlpha } from "../game.theme";
 
@@ -45,65 +46,98 @@ export function PlayerPanel({
 
   const isTop = verticalAlign === "top";
 
+  const hasMana = Object.values(player.manaPool).some((v) => v > 0);
+
   const statsBar = (
-    <div
-      className="flex items-center gap-1 backdrop-blur-sm rounded-full pl-10 pr-2 py-0.5 shadow-sm"
-      style={{ backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58) }}
-    >
-      <span className="inline-flex items-center gap-1 text-white">
-        <Heart className="h-3 w-3" style={{ color: themeColors.promptAction.attackAction }} />
-        <span className="font-extrabold text-[11px] leading-none tabular-nums">{player.life}</span>
-      </span>
-      <span className="text-white/20">|</span>
-      <span className="inline-flex items-center gap-1 text-white/90">
-        <Layers className="h-3 w-3" style={{ color: themeColors.promptAction.defenseAction }} />
-        <span className="font-bold text-[11px] leading-none tabular-nums">{player.handCount}</span>
-      </span>
-      {(DEV_SHOW_ALL_STATS || player.poison > 0) && (
-        <>
-          <span className="text-white/20">|</span>
-          <span className="inline-flex items-center gap-1 font-bold text-[11px] text-emerald-500">
-            ☠<span className="tabular-nums">{player.poison || 0}</span>
+      <div
+        className={cn(
+          "flex flex-col backdrop-blur-sm shadow-sm pl-10 pr-2 py-0.5",
+          hasMana ? "rounded-2xl gap-0.5" : "rounded-full",
+        )}
+        style={{
+          backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58),
+        }}
+      >
+        {hasMana && (
+          <div className="flex items-center gap-1 pl-0.5">
+            <ManaPoolDisplay pool={player.manaPool} />
+          </div>
+        )}
+        <div className="flex items-center gap-1">
+        <span className="inline-flex items-center gap-1 text-white">
+          <Heart
+            className="h-3 w-3"
+            style={{ color: themeColors.promptAction.attackAction }}
+          />
+          <span className="font-extrabold text-[11px] leading-none tabular-nums">
+            {player.life}
           </span>
-        </>
-      )}
-      {(DEV_SHOW_ALL_STATS || (player.energyCounters ?? 0) > 0) && (
-        <>
-          <span className="text-white/20">|</span>
-          <span className="inline-flex items-center gap-1 font-bold text-[11px]" style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}>
-            ⚡<span className="tabular-nums">{player.energyCounters ?? 0}</span>
+        </span>
+        <span className="text-white/20">|</span>
+        <span className="inline-flex items-center gap-1 text-white/90">
+          <Layers
+            className="h-3 w-3"
+            style={{ color: themeColors.promptAction.defenseAction }}
+          />
+          <span className="font-bold text-[11px] leading-none tabular-nums">
+            {player.handCount}
           </span>
-        </>
-      )}
-      {(DEV_SHOW_ALL_STATS || totalCmdDmg > 0) && (
-        <>
-          <span className="text-white/20">|</span>
-          <span className="inline-flex items-center gap-1 font-bold text-[11px]" style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}>
-            ⚔<span className="tabular-nums">{totalCmdDmg || 0}</span>
-          </span>
-        </>
-      )}
-      {(DEV_SHOW_ALL_STATS || commandZoneCount > 0) && (
-        <>
-          <span className="text-white/20">|</span>
-          <button
-            className={cn(
-              "inline-flex items-center gap-1 font-bold text-[11px]",
-              onOpenCommandZone
-                ? ""
-                : "text-muted-foreground/80",
-            )}
-            style={onOpenCommandZone ? { color: themeColors.promptAction.defenseAction } : undefined}
-            onClick={onOpenCommandZone}
-            disabled={!onOpenCommandZone}
-            title="Command Zone"
-          >
-            <Sword className="h-3 w-3" />
-            <span className="tabular-nums">{commandZoneCount}</span>
-          </button>
-        </>
-      )}
-    </div>
+        </span>
+        {(DEV_SHOW_ALL_STATS || player.poison > 0) && (
+          <>
+            <span className="text-white/20">|</span>
+            <span className="inline-flex items-center gap-1 font-bold text-[11px] text-emerald-500">
+              ☠<span className="tabular-nums">{player.poison || 0}</span>
+            </span>
+          </>
+        )}
+        {(DEV_SHOW_ALL_STATS || (player.energyCounters ?? 0) > 0) && (
+          <>
+            <span className="text-white/20">|</span>
+            <span
+              className="inline-flex items-center gap-1 font-bold text-[11px]"
+              style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}
+            >
+              ⚡
+              <span className="tabular-nums">{player.energyCounters ?? 0}</span>
+            </span>
+          </>
+        )}
+        {(DEV_SHOW_ALL_STATS || totalCmdDmg > 0) && (
+          <>
+            <span className="text-white/20">|</span>
+            <span
+              className="inline-flex items-center gap-1 font-bold text-[11px]"
+              style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}
+            >
+              ⚔<span className="tabular-nums">{totalCmdDmg || 0}</span>
+            </span>
+          </>
+        )}
+        {(DEV_SHOW_ALL_STATS || commandZoneCount > 0) && (
+          <>
+            <span className="text-white/20">|</span>
+            <button
+              className={cn(
+                "inline-flex items-center gap-1 font-bold text-[11px]",
+                onOpenCommandZone ? "" : "text-muted-foreground/80",
+              )}
+              style={
+                onOpenCommandZone
+                  ? { color: themeColors.promptAction.defenseAction }
+                  : undefined
+              }
+              onClick={onOpenCommandZone}
+              disabled={!onOpenCommandZone}
+              title="Command Zone"
+            >
+              <Sword className="h-3 w-3" />
+              <span className="tabular-nums">{commandZoneCount}</span>
+            </button>
+          </>
+        )}
+        </div>
+      </div>
   );
 
   const targetableColor = withAlpha(themeColors.promptAction.attackAction, 0.9);
@@ -117,7 +151,11 @@ export function PlayerPanel({
         isFlashing && "animate-player-turn-flash",
         className,
       )}
-      style={isTargetable ? ({ "--targetable-color": targetableColor } as CSSProperties) : undefined}
+      style={
+        isTargetable
+          ? ({ "--targetable-color": targetableColor } as CSSProperties)
+          : undefined
+      }
       onClick={isTargetable ? onTarget : undefined}
       title={isTargetable ? `Target ${player.name}` : undefined}
     >
@@ -125,20 +163,17 @@ export function PlayerPanel({
       <div className="relative z-10 h-10 w-10 shrink-0 p-0.5">
         <div className="relative group/avatar h-full w-full">
           <Avatar
-            className={cn(
-              "h-full w-full",
-              isTargetable && "ring-2",
-            )}
-            style={
-              {
-                ...(isTargetable
-                  ? ({ "--tw-ring-color": targetableColor } as CSSProperties)
-                  : {}),
-                ...(isActiveTurn
-                  ? ({ boxShadow: `0 0 0 2px ${avatarRingColor}` } as CSSProperties)
-                  : {}),
-              }
-            }
+            className={cn("h-full w-full", isTargetable && "ring-2")}
+            style={{
+              ...(isTargetable
+                ? ({ "--tw-ring-color": targetableColor } as CSSProperties)
+                : {}),
+              ...(isActiveTurn
+                ? ({
+                    boxShadow: `0 0 0 2px ${avatarRingColor}`,
+                  } as CSSProperties)
+                : {}),
+            }}
           >
             <AvatarFallback
               className={cn("text-xs font-bold", getAvatarColor(player.name))}
@@ -153,12 +188,7 @@ export function PlayerPanel({
       </div>
 
       {/* Stats bar — anchored to bottom (player) or top (opponent), starts behind avatar */}
-      <div
-        className={cn(
-          "absolute left-2",
-          isTop ? "top-0" : "bottom-0",
-        )}
-      >
+      <div className={cn("absolute left-2", isTop ? "top-0" : "bottom-0")}>
         {statsBar}
       </div>
     </div>
