@@ -305,9 +305,6 @@ impl GameLoop {
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
     ) {
-        // Track what mana this tap produces for rollback.
-        let pool_snapshot = self.pool(player).begin_tap_tracking();
-
         let api = ab.params.get(keys::AB).and_then(crate::ability::api_type::ApiType::smart_value_of);
         if !self.pay_ability_cost(
             game,
@@ -472,12 +469,6 @@ impl GameLoop {
         let pending = self.trigger_handler.run_waiting_triggers(game);
         for pt in pending {
             self.resolve_single_effect(game, agents, &pt.entry.spell_ability, None);
-        }
-
-        // Record what mana this tap produced for rollback.
-        let produced = self.pool(player).end_tap_tracking(&pool_snapshot);
-        if !produced.is_empty() {
-            game.card_mut(card_id).last_mana_produced = Some(produced);
         }
     }
 

@@ -65,6 +65,8 @@ enum EffectKind {
         toughness: Option<i32>,
     },
     GrantKeyword(String),
+    /// Grant an activated ability (from AddAbility$). The string is the ability text.
+    GrantAbility(String),
 }
 
 // ── Public API ───────────────────────────────────────────────────────────────
@@ -83,6 +85,11 @@ enum EffectKind {
 pub fn apply_continuous_effects(game: &mut GameState) {
     // ── 1. Reset all derived fields ──────────────────────────────────────
     for card in game.cards.iter_mut() {
+        // Remove abilities granted by continuous effects (AddAbility$).
+        // The base_ability_count tracks how many abilities the card originally had.
+        if card.base_ability_count > 0 && card.activated_abilities.len() > card.base_ability_count {
+            card.activated_abilities.truncate(card.base_ability_count);
+        }
         card.static_power_modifier = 0;
         card.static_toughness_modifier = 0;
         // Preserve face-down morph P/T override (2/2); only reset for face-up cards.
@@ -248,6 +255,21 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                             });
                         }
                     }
+
+                    // AddAbility$ — grant an activated ability to the affected card.
+                    // The value is an SVar name on the source card containing the ability text.
+                    // E.g. Abundant Growth: AddAbility$ AbundantGrowthTap
+                    //   SVar:AbundantGrowthTap:AB$ Mana | Cost$ T | Produced$ Any
+                    if let Some(svar_name) = sa.params.get(keys::ADD_ABILITY) {
+                        let source = game.card(*source_id);
+                        if let Some(ab_text) = source.svars.get(svar_name).cloned() {
+                            pending.push(PendingEffect {
+                                layer: Layer::Ability,
+                                target,
+                                kind: EffectKind::GrantAbility(ab_text),
+                            });
+                        }
+                    }
                 }
             }
 
@@ -382,6 +404,14 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             EffectKind::GrantKeyword(kw) => {
                 let card = &mut game.cards[effect.target.index()];
                 card.granted_keywords.add(&kw);
+            }
+            EffectKind::GrantAbility(ab_text) => {
+                // Parse the ability text and add it to the target's activated abilities.
+                // This grants abilities like "{T}: Add one mana of any color."
+                let next_idx = game.cards[effect.target.index()].activated_abilities.len();
+                if let Some(ab) = crate::ability::activated::parse_activated_ability(&ab_text, next_idx) {
+                    game.cards[effect.target.index()].activated_abilities.push(ab);
+                }
             }
         }
     }

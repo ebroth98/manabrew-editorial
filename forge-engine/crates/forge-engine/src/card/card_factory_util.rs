@@ -184,6 +184,7 @@ pub fn add_ability_factory_abilities(card: &mut Card, abilities: &[String]) {
 pub fn setup_keyworded_abilities(card: &mut Card) {
     card.generate_keyword_abilities();
     card.generate_keyword_triggers();
+    card.base_ability_count = card.activated_abilities.len();
 }
 
 pub fn make_etb_counter(_kw: &str, _card: &Card, _intrinsic: bool) -> Option<ReplacementEffect> {

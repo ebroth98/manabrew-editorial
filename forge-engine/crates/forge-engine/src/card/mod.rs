@@ -218,6 +218,9 @@ pub struct Card {
 
     // Parsed activated abilities (from AB$ lines in abilities)
     pub activated_abilities: Vec<ActivatedAbility>,
+    /// Number of base activated abilities (before continuous effects add more via AddAbility$).
+    /// Used by `apply_continuous_effects` to truncate granted abilities on reset.
+    pub base_ability_count: usize,
     /// Applied card-trait mutation layers keyed by (timestamp, static_id).
     /// Mirrors Java `changedCardTraits` table.
     pub changed_card_traits:
@@ -667,6 +670,7 @@ impl Card {
             activations_this_game: std::collections::BTreeMap::new(),
             is_renowned: false,
             zone_timestamp: 0,
+            base_ability_count: 0,
             trait_base_activated_abilities: None,
             trait_base_triggers: None,
             trait_base_replacement_effects: None,
@@ -681,6 +685,8 @@ impl Card {
         crate::card::card_state::update_types(&mut card);
         crate::card::card_state::update_keywords_cache(&mut card);
         crate::card::card_state::calculate_perpetual_adjusted_mana_cost(&mut card);
+        // Record base ability count so continuous effects can truncate granted abilities.
+        card.base_ability_count = card.activated_abilities.len();
         card
     }
 

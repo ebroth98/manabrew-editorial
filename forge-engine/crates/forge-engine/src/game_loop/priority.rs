@@ -183,19 +183,55 @@ impl GameLoop {
                         });
                         continue;
                     }
-                    // Use the card's actual mana abilities when available;
-                    // fall back to basic_land_mana_atom only for lands with no abilities.
-                    let mana_ab = {
+                    // Snapshot pool BEFORE any mana production — single source of truth
+                    // for rollback. Covers base ability + granted abilities + aura triggers.
+                    let pool_snapshot = self.pool(priority_player).begin_tap_tracking();
+
+                    // Collect all mana abilities on this permanent (native + granted by auras).
+                    let mana_abs: Vec<_> = {
                         let c = game.card(land_id);
                         c.activated_abilities
                             .iter()
-                            .find(|ab| ab.is_mana_ability)
+                            .filter(|ab| ab.is_mana_ability)
                             .cloned()
+                            .collect()
                     };
-                    if let Some(ab) = mana_ab {
+                    if !mana_abs.is_empty() {
+                        // Resolve the primary (tap-cost) mana ability
+                        let primary = &mana_abs[0];
                         self.with_shared_state_mutation(game, agents, |this, game, agents| {
-                            this.resolve_mana_ability(game, agents, priority_player, land_id, &ab);
+                            this.resolve_mana_ability(game, agents, priority_player, land_id, primary);
                         });
+                        // Resolve additional mana abilities whose tap cost was already paid
+                        for ab in mana_abs.iter().skip(1) {
+                            let is_tap_only = ab.cost.parts.len() == 1
+                                && ab.cost.parts.iter().all(|p| matches!(p, crate::cost::CostPart::Tap));
+                            if is_tap_only {
+                                self.with_shared_state_mutation(game, agents, |this, game, agents| {
+                                    let produced = ab.params.get(crate::parsing::keys::PRODUCED).unwrap_or("");
+                                    let mana_string = crate::mana::determine_mana_production(
+                                        game, agents, priority_player, land_id, produced, ab.params.get(crate::parsing::keys::AMOUNT),
+                                    );
+                                    if let Some(ms) = mana_string {
+                                        let source_is_snow = game.card(land_id).type_line.is_snow();
+                                        let mana_params = crate::mana::ManaProductionParams {
+                                            source_card: land_id,
+                                            is_snow: source_is_snow,
+                                            restriction: ab.params.get_cloned(crate::parsing::keys::RESTRICT_VALID),
+                                            adds_no_counter: ab.params.is_true(crate::parsing::keys::ADDS_NO_COUNTER),
+                                            adds_keywords: ab.params.get_cloned(crate::parsing::keys::ADDS_KEYWORDS),
+                                            adds_keywords_valid: ab.params.get_cloned(crate::parsing::keys::ADDS_KEYWORDS_VALID),
+                                            adds_counters: ab.params.get_cloned(crate::parsing::keys::ADDS_COUNTERS),
+                                            adds_counters_valid: ab.params.get_cloned(crate::parsing::keys::ADDS_COUNTERS_VALID),
+                                            triggers_when_spent: ab.params.get_cloned(crate::parsing::keys::TRIGGERS_WHEN_SPENT),
+                                        };
+                                        crate::mana::add_produced_mana_to_pool(
+                                            this.pool_mut(priority_player), &ms, &mana_params,
+                                        );
+                                    }
+                                });
+                            }
+                        }
                     } else {
                         // Legacy fallback for lands with no parsed mana abilities
                         self.with_shared_state_mutation(game, agents, |this, game, agents| {
@@ -208,8 +244,6 @@ impl GameLoop {
                                 }
                             };
                             if let Some(atom) = atom_opt {
-                                let pool_snapshot = this.pool(priority_player).begin_tap_tracking();
-
                                 game.tap(land_id);
                                 this.pool_mut(priority_player).add(atom, 1);
                                 this.trigger_handler.run_trigger(
@@ -235,13 +269,16 @@ impl GameLoop {
                                 for pt in pending {
                                     this.resolve_single_effect(game, agents, &pt.entry.spell_ability, None);
                                 }
-
-                                // Record what mana this tap produced for rollback
-                                let produced = this.pool(priority_player).end_tap_tracking(&pool_snapshot);
-                                if !produced.is_empty() {
-                                    game.card_mut(land_id).last_mana_produced = Some(produced);
-                                }
                             }
+                        });
+                    }
+
+                    // Record ALL mana produced by this tap for rollback — single snapshot
+                    // covers base ability + granted abilities + aura triggers.
+                    let produced = self.pool(priority_player).end_tap_tracking(&pool_snapshot);
+                    if !produced.is_empty() {
+                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                            game.card_mut(land_id).last_mana_produced = Some(produced);
                         });
                     }
                     passed_count = 0;
