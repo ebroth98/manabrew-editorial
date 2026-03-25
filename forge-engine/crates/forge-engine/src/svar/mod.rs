@@ -281,6 +281,7 @@ pub fn resolve_count_svar_for_sa(
     }
 
     // Count$Valid TYPE.QUALIFIERS — count permanents matching filter
+    // Count$Valid TYPE.QUALIFIERS/Times.N — count × N multiplier
     // Count$Valid TYPE.QUALIFIERS$GreatestCardPower — greatest power among matching creatures
     if let Some(filter_str) = expr.strip_prefix("Count$Valid ") {
         // Check for $GreatestCardPower suffix
@@ -290,6 +291,9 @@ pub fn resolve_count_svar_for_sa(
             } else {
                 (filter_str, false)
             };
+
+        // Check for /Times.N multiplier suffix (e.g. "Enchantment.Other/Times.2")
+        let (filter_str, multiplier) = crate::parsing::strip_times_multiplier(filter_str);
 
         let battlefield = game.cards_in_zone(ZoneType::Battlefield, controller);
         // Also check opponent's battlefield for non-YouCtrl filters
@@ -340,7 +344,7 @@ pub fn resolve_count_svar_for_sa(
                     count += 1;
                 }
             }
-            return count;
+            return count * multiplier;
         }
     }
 

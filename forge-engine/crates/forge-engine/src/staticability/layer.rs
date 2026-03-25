@@ -211,16 +211,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
 
                     if sa.params.has(keys::ADD_POWER) || sa.params.has(keys::ADD_TOUGHNESS)
                     {
-                        let p = sa
-                            .params
-                            .get(keys::ADD_POWER)
-                            .and_then(|s| s.parse::<i32>().ok())
-                            .unwrap_or(0);
-                        let t = sa
-                            .params
-                            .get(keys::ADD_TOUGHNESS)
-                            .and_then(|s| s.parse::<i32>().ok())
-                            .unwrap_or(0);
+                        let p = resolve_add_pt_param(game, sa, *source_id, keys::ADD_POWER);
+                        let t = resolve_add_pt_param(game, sa, *source_id, keys::ADD_TOUGHNESS);
                         pending.push(PendingEffect {
                             layer: Layer::ModifyPT,
                             target,
@@ -567,6 +559,45 @@ pub fn get_etb_unless_reveal_cost(card: &crate::card::Card) -> Option<(i32, Stri
 }
 
 /// Resolve a SetPower/SetToughness parameter that may be an integer literal or
+/// Resolve an AddPower$/AddToughness$ parameter that may be a literal integer
+/// or an SVar reference (e.g. "X" → Count$Valid Enchantment.YouCtrl).
+fn resolve_add_pt_param(
+    game: &GameState,
+    sa: &StaticAbility,
+    source_id: CardId,
+    param_name: &str,
+) -> i32 {
+    let val_str = match sa.params.get(param_name) {
+        Some(s) => s,
+        None => return 0,
+    };
+
+    // Try direct integer parse first
+    if let Ok(n) = val_str.trim().parse::<i32>() {
+        return n;
+    }
+
+    // It's an SVar reference — look it up on the source card
+    let source = game.card(source_id);
+    if let Some(svar_expr) = source.svars.get(val_str.trim()) {
+        if svar_expr.starts_with("Count$") {
+            return crate::ability::effects::resolve_count_svar(
+                svar_expr,
+                game,
+                source_id,
+                source.controller,
+            );
+        }
+        return crate::ability::effects::evaluate_svar(
+            svar_expr,
+            &crate::spellability::SpellAbility::new_empty(Some(source_id), source.controller),
+        );
+    }
+
+    0
+}
+
+/// Resolve a SetPower$/SetToughness$ parameter that may be a literal integer or
 /// an SVar reference (e.g. "X" → SVar:X:Count$Valid Creature.ChosenType).
 /// Mirrors Java `AbilityUtils.calculateAmount(hostCard, param, stAb)`.
 fn resolve_set_pt_param(

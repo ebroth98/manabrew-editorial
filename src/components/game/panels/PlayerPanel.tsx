@@ -50,20 +50,11 @@ export function PlayerPanel({
 
   const statsBar = (
       <div
-        className={cn(
-          "flex flex-col backdrop-blur-sm shadow-sm pl-10 pr-2 py-0.5",
-          hasMana ? "rounded-2xl gap-0.5" : "rounded-full",
-        )}
+        className="flex items-center gap-1 backdrop-blur-sm shadow-sm pl-10 pr-2 py-0.5 rounded-full"
         style={{
           backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58),
         }}
       >
-        {hasMana && (
-          <div className="flex items-center gap-1 pl-0.5">
-            <ManaPoolDisplay pool={player.manaPool} />
-          </div>
-        )}
-        <div className="flex items-center gap-1">
         <span className="inline-flex items-center gap-1 text-white">
           <Heart
             className="h-3 w-3"
@@ -136,7 +127,6 @@ export function PlayerPanel({
             </button>
           </>
         )}
-        </div>
       </div>
   );
 
@@ -187,9 +177,19 @@ export function PlayerPanel({
         </div>
       </div>
 
-      {/* Stats bar — anchored to bottom (player) or top (opponent), starts behind avatar */}
-      <div className={cn("absolute left-2", isTop ? "top-0" : "bottom-0")}>
+      {/* Stats bar + mana pool — anchored to bottom (player) or top (opponent) */}
+      <div className={cn("absolute left-2 flex items-center gap-0.5", isTop ? "top-0" : "bottom-0")}>
         {statsBar}
+        {hasMana && (
+          <div
+            className="flex items-center rounded-full px-1.5 py-0.5 shrink-0 backdrop-blur-sm shadow-sm"
+            style={{
+              backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58),
+            }}
+          >
+            <ManaPoolDisplay pool={player.manaPool} />
+          </div>
+        )}
       </div>
     </div>
   );

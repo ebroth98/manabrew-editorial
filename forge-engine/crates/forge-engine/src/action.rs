@@ -669,16 +669,7 @@ impl GameState {
                                     crate::keyword::extract_keyword_cost_str(&kw, "Enchant")
                                 })
                                 .unwrap_or_default();
-                            let host_matches = match enchant_type.to_lowercase().as_str() {
-                                "creature" => host.is_creature(),
-                                "land" => host.is_land(),
-                                "artifact" => host.type_line.is_artifact(),
-                                "enchantment" => host.type_line.is_enchantment(),
-                                "planeswalker" => host.type_line.is_planeswalker(),
-                                "permanent" | "" => true, // Always matches
-                                _ => true, // Unknown enchant type — be permissive
-                            };
-                            !host_matches // Falls off if host doesn't match
+                            !crate::parsing::enchant_type_matches_card(&enchant_type, host)
                         }
                     }
                 })

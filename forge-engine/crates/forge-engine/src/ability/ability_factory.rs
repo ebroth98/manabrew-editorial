@@ -187,18 +187,7 @@ pub fn build_spell_ability_for_card_cast(
     // set up ValidTgts$ automatically for aura spells.
     let target_restrictions = if card.type_line.has_subtype("Aura") {
         let enchant_type = card.get_keyword_cost("Enchant").unwrap_or_default();
-        let valid_tgts = match enchant_type.to_lowercase().as_str() {
-            "creature" => "Creature",
-            "land" => "Land",
-            "artifact" => "Artifact",
-            "enchantment" => "Enchantment",
-            "planeswalker" => "Planeswalker",
-            "permanent" => "Permanent",
-            "player" => "Player",
-            "creature or player" => "Creature,Player",
-            _ if enchant_type.is_empty() => "Permanent",
-            _ => "Permanent",
-        };
+        let valid_tgts = crate::parsing::enchant_type_to_valid_tgts(&enchant_type);
         let params_str = format!("ValidTgts$ {}", valid_tgts);
         TargetRestrictions::new(&Params::from_raw(&params_str))
     } else {

@@ -198,6 +198,57 @@ impl From<Params> for BTreeMap<String, String> {
     }
 }
 
+// ── Shared DSL parsing utilities ─────────────────────────────────────────────
+
+/// Strip a `/Times.N` multiplier suffix from a filter string.
+/// Returns (filter_without_suffix, multiplier).
+///
+/// Used by SVar `Count$Valid` expressions and cost parsing.
+/// Example: `"Enchantment.Other/Times.2"` → `("Enchantment.Other", 2)`
+pub fn strip_times_multiplier(s: &str) -> (&str, i32) {
+    if let Some(idx) = s.find("/Times.") {
+        let mult_str = &s[idx + 7..];
+        let mult = mult_str.parse::<i32>().unwrap_or(1);
+        (&s[..idx], mult)
+    } else {
+        (s, 1)
+    }
+}
+
+/// Map an "Enchant <type>" keyword value to a ValidTgts$ filter string.
+/// Used by aura targeting (ability_factory) and aura SBA legality (action.rs).
+///
+/// Example: `"creature"` → `"Creature"`, `"land"` → `"Land"`
+pub fn enchant_type_to_valid_tgts(enchant_type: &str) -> &'static str {
+    match enchant_type.to_lowercase().as_str() {
+        "creature" => "Creature",
+        "land" => "Land",
+        "artifact" => "Artifact",
+        "enchantment" => "Enchantment",
+        "planeswalker" => "Planeswalker",
+        "permanent" => "Permanent",
+        "player" => "Player",
+        "creature or player" => "Creature,Player",
+        _ => "Permanent",
+    }
+}
+
+/// Check if a card type matches an "Enchant <type>" keyword value.
+/// Used by aura SBA to verify the enchant restriction is still met.
+///
+/// Example: `enchant_type_matches_card("creature", card)` → true if card is a creature
+pub fn enchant_type_matches_card(enchant_type: &str, card: &crate::card::CardInstance) -> bool {
+    match enchant_type.to_lowercase().as_str() {
+        "creature" => card.is_creature(),
+        "land" => card.is_land(),
+        "artifact" => card.type_line.is_artifact(),
+        "enchantment" => card.type_line.is_enchantment(),
+        "planeswalker" => card.type_line.is_planeswalker(),
+        "permanent" | "" => true,
+        _ => true,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
