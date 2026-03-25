@@ -476,6 +476,47 @@ impl GameState {
                     {
                         continue;
                     }
+                    // CR 702.89: Umbra armor (Totem Armor) — if enchanted creature
+                    // would be destroyed, instead remove all damage and destroy the aura.
+                    let has_umbra = self.cards[cid.index()]
+                        .attachments
+                        .iter()
+                        .any(|&aid| {
+                            aid.index() < self.cards.len()
+                                && self.cards[aid.index()].zone == ZoneType::Battlefield
+                                && (self.cards[aid.index()].has_keyword("Umbra armor")
+                                    || self.cards[aid.index()].has_keyword("Totem armor"))
+                        });
+                    if has_umbra && !zero_toughness {
+                        // Find the first umbra armor aura and destroy it instead
+                        let umbra_id = self.cards[cid.index()]
+                            .attachments
+                            .iter()
+                            .copied()
+                            .find(|&aid| {
+                                aid.index() < self.cards.len()
+                                    && self.cards[aid.index()].zone == ZoneType::Battlefield
+                                    && (self.cards[aid.index()].has_keyword("Umbra armor")
+                                        || self.cards[aid.index()].has_keyword("Totem armor"))
+                            });
+                        if let Some(umbra_id) = umbra_id {
+                            // Remove all damage from the creature
+                            self.cards[cid.index()].damage = 0;
+                            self.cards[cid.index()].has_deathtouch_damage = false;
+                            // Destroy the aura instead
+                            let umbra_owner = self.cards[umbra_id.index()].owner;
+                            let old_zone = self.cards[umbra_id.index()].zone;
+                            self.move_card(umbra_id, ZoneType::Graveyard, umbra_owner);
+                            if let Some(handler) = trigger_handler.as_deref_mut() {
+                                crate::ability::effects::emit_zone_trigger(
+                                    handler, umbra_id, old_zone, ZoneType::Graveyard,
+                                );
+                            }
+                            any_changes = true;
+                            continue; // Creature survives
+                        }
+                    }
+
                     // Run Destroy replacement effects (R$-based indestructible, etc.).
                     // Mirrors Java GameAction.destroy() → ReplacementHandler.run(Destroy, …).
                     let mut destroy_event = ReplacementEvent::Destroy { target: cid };
@@ -592,6 +633,71 @@ impl GameState {
                     }
                     any_changes = true;
                 }
+            }
+        }
+
+        // CR 704.5n: Aura SBA — an Aura on the battlefield that is not attached
+        // to a legal permanent (or whose host left the battlefield) is put into
+        // its owner's graveyard.
+        {
+            let aura_ids: Vec<CardId> = self
+                .cards
+                .iter()
+                .filter(|c| {
+                    c.zone == ZoneType::Battlefield
+                        && c.type_line.has_subtype("Aura")
+                        && !c.type_line.is_creature() // Bestowed auras that became creatures stay
+                })
+                .filter(|c| {
+                    match c.attached_to {
+                        None => true, // Not attached to anything — orphaned
+                        Some(host_id) => {
+                            if host_id.index() >= self.cards.len() {
+                                return true; // Invalid host ID
+                            }
+                            let host = &self.cards[host_id.index()];
+                            if host.zone != ZoneType::Battlefield {
+                                return true; // Host left the battlefield
+                            }
+                            // CR 704.5n: check if the enchant restriction is still met.
+                            // E.g. "Enchant creature" — if the host is no longer a creature,
+                            // the aura falls off.
+                            let enchant_type = c
+                                .keywords
+                                .iter_strings()
+                                .find_map(|kw| {
+                                    crate::keyword::extract_keyword_cost_str(&kw, "Enchant")
+                                })
+                                .unwrap_or_default();
+                            let host_matches = match enchant_type.to_lowercase().as_str() {
+                                "creature" => host.is_creature(),
+                                "land" => host.is_land(),
+                                "artifact" => host.type_line.is_artifact(),
+                                "enchantment" => host.type_line.is_enchantment(),
+                                "planeswalker" => host.type_line.is_planeswalker(),
+                                "permanent" | "" => true, // Always matches
+                                _ => true, // Unknown enchant type — be permissive
+                            };
+                            !host_matches // Falls off if host doesn't match
+                        }
+                    }
+                })
+                .map(|c| c.id)
+                .collect();
+
+            for aura_id in aura_ids {
+                let owner = self.card(aura_id).owner;
+                let old_zone = self.card(aura_id).zone;
+                self.move_card(aura_id, ZoneType::Graveyard, owner);
+                if let Some(handler) = trigger_handler.as_deref_mut() {
+                    crate::ability::effects::emit_zone_trigger(
+                        handler,
+                        aura_id,
+                        old_zone,
+                        ZoneType::Graveyard,
+                    );
+                }
+                any_changes = true;
             }
         }
 

@@ -219,6 +219,9 @@ impl StaticAbility {
     pub fn check_mode(&self, mode: &StaticMode) -> bool {
         match (&self.mode, mode) {
             (StaticMode::Other(a), StaticMode::Other(b)) => a.eq_ignore_ascii_case(b),
+            // CantAttackBlock matches both CantAttack and CantBlock queries
+            (StaticMode::CantAttackBlock, StaticMode::CantAttack) => true,
+            (StaticMode::CantAttackBlock, StaticMode::CantBlock) => true,
             _ => self.mode == *mode,
         }
     }
@@ -651,7 +654,7 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("ActivateAbilityAsIfHaste") => StaticMode::ActivateAbilityAsIfHaste,
         Some("CanAdapt") => StaticMode::CanAdapt,
         Some("AlternativeCost") => StaticMode::AlternativeCost,
-        Some("CantAttackBlock") => StaticMode::CantAttackBlock,
+        Some("CantAttackBlock") | Some("CantAttack,CantBlock") | Some("CantBlock,CantAttack") => StaticMode::CantAttackBlock,
         Some("CantBeCopied") => StaticMode::CantBeCopied,
         Some("CantBeSuspected") => StaticMode::CantBeSuspected,
         Some("CantBecomeMonarch") => StaticMode::CantBecomeMonarch,
