@@ -172,6 +172,15 @@ pub fn build_spell_ability_for_card_cast(
                 mandatory: false,
             });
         }
+        // Aura enchantments with SP$ but no ValidTgts$: inject Enchant-derived targeting.
+        // Some aura cards have SP$ lines for ETB effects but rely on the Enchant keyword
+        // for targeting. Without this, the aura can target anything.
+        if sa.target_restrictions.is_none() && host.type_line.has_subtype("Aura") {
+            let enchant_type = host.get_keyword_cost("Enchant").unwrap_or_default();
+            let valid_tgts = crate::parsing::enchant_type_to_valid_tgts(&enchant_type);
+            let params_str = format!("ValidTgts$ {}", valid_tgts);
+            sa.target_restrictions = TargetRestrictions::new(&Params::from_raw(&params_str));
+        }
         return sa;
     }
 

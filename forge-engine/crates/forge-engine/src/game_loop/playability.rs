@@ -95,6 +95,15 @@ impl GameLoop {
                     continue;
                 }
 
+                // Aura targeting check: don't show auras as playable if no valid target exists.
+                if card.type_line.has_subtype("Aura") {
+                    if let Some(ref tr) = cast_sa.target_restrictions {
+                        if !tr.has_candidates(game, player, Some(card_id)) {
+                            continue;
+                        }
+                    }
+                }
+
                 // Check if we can pay the mana cost (normal or alternative)
                 let available_mana =
                     mana::calculate_available_mana(self.pool(player), game, player);
