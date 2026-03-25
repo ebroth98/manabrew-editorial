@@ -186,7 +186,8 @@ pub fn apply_continuous_effects(game: &mut GameState) {
             game.cards
                 .iter()
                 .filter(|c| {
-                    c.zone == ZoneType::Battlefield && filter.matches_with_game(c, source_card, game)
+                    c.zone == ZoneType::Battlefield
+                        && filter.matches_with_game(c, source_card, game)
                 })
                 .map(|c| c.id)
                 .collect()

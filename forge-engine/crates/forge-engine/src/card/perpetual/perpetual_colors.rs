@@ -2,9 +2,9 @@
 
 use forge_foundation::ColorSet;
 
-use crate::card::Card;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::perpetual_record::PerpetualRecord;
+use crate::card::Card;
 
 #[derive(Debug, Clone)]
 pub struct PerpetualColors {

@@ -34,7 +34,8 @@ pub fn resolve_permanent_common(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Move host card to battlefield
     let old_zone = ctx.game.card(source).zone;
     if old_zone != ZoneType::Battlefield {
-        ctx.game.move_card(source, ZoneType::Battlefield, controller);
+        ctx.game
+            .move_card(source, ZoneType::Battlefield, controller);
         super::emit_zone_trigger(ctx.trigger_handler, source, old_zone, ZoneType::Battlefield);
     }
 }

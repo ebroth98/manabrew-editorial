@@ -14,11 +14,7 @@ pub fn assign_no_combat_damage(cards: &[Card], card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::AssignNoCombatDamage)
         {
-            if matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                card,
-                source,
-            ) {
+            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
                 return true;
             }
         }

@@ -32,7 +32,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Reveal top cards
-    let p_lib = ctx.game.cards_in_zone(ZoneType::Library, controller).to_vec();
+    let p_lib = ctx
+        .game
+        .cards_in_zone(ZoneType::Library, controller)
+        .to_vec();
     let o_lib = ctx.game.cards_in_zone(ZoneType::Library, opponent).to_vec();
 
     if p_lib.is_empty() && o_lib.is_empty() {
@@ -42,13 +45,21 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let p_card: Option<CardId> = p_lib.last().copied();
     let o_card: Option<CardId> = o_lib.last().copied();
 
-    let p_cmc = p_card.map(|cid| ctx.game.card(cid).mana_cost.cmc() as i32).unwrap_or(-1);
-    let o_cmc = o_card.map(|cid| ctx.game.card(cid).mana_cost.cmc() as i32).unwrap_or(-1);
+    let p_cmc = p_card
+        .map(|cid| ctx.game.card(cid).mana_cost.cmc() as i32)
+        .unwrap_or(-1);
+    let o_cmc = o_card
+        .map(|cid| ctx.game.card(cid).mana_cost.cmc() as i32)
+        .unwrap_or(-1);
 
     // Reveal to all agents
     let mut revealed = Vec::new();
-    if let Some(cid) = p_card { revealed.push(cid); }
-    if let Some(cid) = o_card { revealed.push(cid); }
+    if let Some(cid) = p_card {
+        revealed.push(cid);
+    }
+    if let Some(cid) = o_card {
+        revealed.push(cid);
+    }
     for agent in ctx.agents.iter_mut() {
         agent.on_library_peek(ctx.game, &revealed);
     }

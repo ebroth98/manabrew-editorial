@@ -10,10 +10,7 @@ pub fn cant_gain_life(game: &GameState, player: PlayerId) -> bool {
     any_common(
         game,
         player,
-        &[
-            StaticMode::CantGainLife,
-            StaticMode::CantChangeLife,
-        ],
+        &[StaticMode::CantGainLife, StaticMode::CantChangeLife],
         None,
         false,
     )
@@ -27,10 +24,7 @@ pub fn cant_lose_life(game: &GameState, player: PlayerId) -> bool {
     any_common(
         game,
         player,
-        &[
-            StaticMode::CantLoseLife,
-            StaticMode::CantChangeLife,
-        ],
+        &[StaticMode::CantLoseLife, StaticMode::CantChangeLife],
         None,
         false,
     )
@@ -79,7 +73,11 @@ pub fn apply_common_ability(
             return false;
         }
     }
-    matches_valid_player(st_ab.params.get(keys::VALID_PLAYER), player, source_controller)
+    matches_valid_player(
+        st_ab.params.get(keys::VALID_PLAYER),
+        player,
+        source_controller,
+    )
 }
 
 fn any_common(

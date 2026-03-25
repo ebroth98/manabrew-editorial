@@ -18,10 +18,7 @@ impl GameLoop {
         {
             use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
             use crate::replacement::ReplacementResult;
-            let mut event = ReplacementEvent::PayLife {
-                player,
-                amount,
-            };
+            let mut event = ReplacementEvent::PayLife { player, amount };
             let result = apply_replacements(game, &mut event);
             if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
                 return;
@@ -738,15 +735,21 @@ impl GameLoop {
                 } => {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    let mut results = Vec::new();
+                    let roll_start_number = game.player(player).num_rolls_this_turn;
                     let mut last_result = 0;
-                    for _ in 0..resolved_amount {
+                    for idx in 0..resolved_amount {
                         last_result = self.game_rng.next_int(*sides) + 1;
+                        results.push(last_result);
+                        game.player_mut(player).num_rolls_this_turn += 1;
                         self.trigger_handler.run_trigger(
                             TriggerType::RolledDie,
                             RunParams {
                                 player: Some(player),
                                 die_result: Some(last_result),
+                                natural_result: Some(last_result),
                                 die_sides: Some(*sides),
+                                number: Some(roll_start_number + idx + 1),
                                 ..Default::default()
                             },
                             false,
@@ -760,6 +763,7 @@ impl GameLoop {
                         RunParams {
                             player: Some(player),
                             die_result: Some(last_result),
+                            die_results: Some(results),
                             die_sides: Some(*sides),
                             ..Default::default()
                         },
@@ -1235,15 +1239,21 @@ impl GameLoop {
                 } => {
                     let resolved_amount =
                         crate::cost::resolve_dynamic_amount(game, card_id, player, *amount);
+                    let mut results = Vec::new();
+                    let roll_start_number = game.player(player).num_rolls_this_turn;
                     let mut last_result = 0;
-                    for _ in 0..resolved_amount {
+                    for idx in 0..resolved_amount {
                         last_result = self.game_rng.next_int(*sides) + 1;
+                        results.push(last_result);
+                        game.player_mut(player).num_rolls_this_turn += 1;
                         self.trigger_handler.run_trigger(
                             TriggerType::RolledDie,
                             RunParams {
                                 player: Some(player),
                                 die_result: Some(last_result),
+                                natural_result: Some(last_result),
                                 die_sides: Some(*sides),
+                                number: Some(roll_start_number + idx + 1),
                                 ..Default::default()
                             },
                             false,
@@ -1257,6 +1267,7 @@ impl GameLoop {
                         RunParams {
                             player: Some(player),
                             die_result: Some(last_result),
+                            die_results: Some(results),
                             die_sides: Some(*sides),
                             ..Default::default()
                         },
@@ -1916,7 +1927,8 @@ impl GameLoop {
         } else if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
             revealed.push(source);
         } else if type_filter == "SameColor" {
-            if let Some(first) = agents[player.index()].choose_sacrifice(player, &candidates, None) {
+            if let Some(first) = agents[player.index()].choose_sacrifice(player, &candidates, None)
+            {
                 let color = game.card(first).color;
                 revealed.push(first);
                 while (revealed.len() as i32) < amount {
@@ -2396,7 +2408,8 @@ impl GameLoop {
                 if valid.is_empty() {
                     break;
                 }
-                if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+                if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None)
+                {
                     game.tap(chosen);
                     self.trigger_handler.run_trigger(
                         TriggerType::Taps,

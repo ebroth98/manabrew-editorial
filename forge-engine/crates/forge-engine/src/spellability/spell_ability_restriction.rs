@@ -176,8 +176,7 @@ impl SpellAbilityRestriction {
         // Check cards in hand requirement
         let required = self.variables.cards_in_hand();
         if required >= 0 {
-            let hand_count =
-                game.cards_in_zone(ZoneType::Hand, player).len() as i32;
+            let hand_count = game.cards_in_zone(ZoneType::Hand, player).len() as i32;
             if hand_count < required {
                 return false;
             }
@@ -185,8 +184,7 @@ impl SpellAbilityRestriction {
 
         // Check hellbent (no cards in hand)
         if self.variables.hellbent() {
-            let hand_count =
-                game.cards_in_zone(ZoneType::Hand, player).len();
+            let hand_count = game.cards_in_zone(ZoneType::Hand, player).len();
             if hand_count > 0 {
                 return false;
             }
@@ -194,8 +192,7 @@ impl SpellAbilityRestriction {
 
         // Check threshold (7+ cards in graveyard)
         if self.variables.threshold() {
-            let gy_count =
-                game.cards_in_zone(ZoneType::Graveyard, player).len();
+            let gy_count = game.cards_in_zone(ZoneType::Graveyard, player).len();
             if gy_count < 7 {
                 return false;
             }

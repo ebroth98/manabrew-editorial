@@ -3,12 +3,15 @@
 //! Mirrors Java `ReplaceRollDice.java` in `forge/game/replacement/`.
 
 use crate::card::Card;
-use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::parsing::keys;
 
-use super::replacement_handler::ReplacementEvent;
 use super::replacement_effect::{matches_valid_player, ReplacementEffect};
+use super::replacement_handler::{
+    execute_replace_effect_chain, execute_replace_with_numeric_update, resolve_replace_value,
+    ReplacementEvent,
+};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
 
@@ -22,12 +25,20 @@ pub fn can_replace(
     if effect.event != ReplacementType::RollDice {
         return false;
     }
-    let player = match event {
-        ReplacementEvent::RollDice { player } => *player,
+    let (player, sides) = match event {
+        ReplacementEvent::RollDice { player, sides, .. } => (*player, *sides),
         _ => return false,
     };
     if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
         if !matches_valid_player(valid, player, source_card) {
+            return false;
+        }
+    }
+    if let Some(valid_sides) = effect.params.get(keys::VALID_SIDES) {
+        let rhs = resolve_replace_value(valid_sides, _game, source_card.id, event)
+            .or_else(|| valid_sides.parse::<i32>().ok())
+            .unwrap_or(0);
+        if sides != rhs {
             return false;
         }
     }
@@ -49,6 +60,36 @@ pub fn execute(
         || effect.params.has(keys::SKIP)
     {
         return ReplacementResult::Skipped;
+    }
+    if let Some(result) =
+        execute_replace_with_numeric_update(effect, _event, _game, _source_card_id, "Number")
+    {
+        return result;
+    }
+    if let Some(result) =
+        execute_replace_with_numeric_update(effect, _event, _game, _source_card_id, "Ignore")
+    {
+        return result;
+    }
+    if let Some(replace_with) = effect.params.get(keys::REPLACE_WITH) {
+        if let Some(result) = execute_replace_effect_chain(
+            replace_with,
+            _event,
+            _game,
+            _source_card_id,
+            Some("IgnoreChosen"),
+        ) {
+            return result;
+        }
+        if let Some(result) = execute_replace_effect_chain(
+            replace_with,
+            _event,
+            _game,
+            _source_card_id,
+            Some("DicePTExchanges"),
+        ) {
+            return result;
+        }
     }
     ReplacementResult::Replaced
 }

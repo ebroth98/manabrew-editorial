@@ -63,7 +63,11 @@ pub fn do_day_time(game: &mut GameState, previous_player: Option<PlayerId>) {
 ///
 /// In Rust, the game loop calls these individually, but this provides
 /// the combined entry point matching the Java interface.
-pub fn execute_at(game: &mut GameState, turn_player: PlayerId, previous_player: Option<PlayerId>) -> Vec<CardId> {
+pub fn execute_at(
+    game: &mut GameState,
+    turn_player: PlayerId,
+    previous_player: Option<PlayerId>,
+) -> Vec<CardId> {
     do_phasing(game, turn_player);
     do_day_time(game, previous_player);
     do_untap(game, turn_player)

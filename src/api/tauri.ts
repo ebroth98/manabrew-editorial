@@ -21,15 +21,15 @@ function tauriInvoke<T>(cmd: string, args?: object): Promise<T> {
 // ============================================================================
 
 export interface StartGameParams {
-  deckList: { name: string; setCode: string }[];
+  deckList: CardIdentity[];
   startingLife: number;
   commanderName: string | null;
-  opponentDeckList: { name: string; setCode: string }[] | null;
+  opponentDeckList: CardIdentity[] | null;
 }
 
 export interface StartMultiplayerGameParams {
   playerNames: string[];
-  deckLists: { name: string; setCode: string }[][];
+  deckLists: CardIdentity[][];
   enginePlayerIndex: number;
   localIsHost: boolean;
   startingLife: number;

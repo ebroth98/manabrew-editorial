@@ -1,4 +1,5 @@
 use super::EffectContext;
+use crate::event::{RunParams, TriggerType};
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
@@ -28,41 +29,65 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    // Find the spell to copy — default: top of stack (excluding self)
-    let stack_entry = {
+    let original = if let Some(defined) = sa.params.get("Defined") {
+        crate::ability::ability_utils::resolve_defined_spell_abilities_with_sa(
+            defined, sa, ctx.game,
+        )
+        .into_iter()
+        .next()
+    } else {
         let stack_entries: Vec<_> = ctx.game.stack.iter().collect();
-        // Find the topmost spell that isn't *this* effect's source
         stack_entries.iter().rev().find_map(|entry| {
             if Some(entry.id) != sa.params.get(keys::STACK_ID).and_then(|s| s.parse().ok()) {
-                Some((*entry).clone())
+                Some((*entry).spell_ability.clone())
             } else {
                 None
             }
         })
     };
 
-    let original = match stack_entry {
-        Some(entry) => entry,
-        None => return, // Nothing to copy
+    let original = match original {
+        Some(spell) => spell,
+        None => return,
     };
-    if crate::card::card_factory::spell_ability_cant_be_copied(&ctx.game.cards, &original.spell_ability) {
+    if crate::card::card_factory::spell_ability_cant_be_copied(&ctx.game.cards, &original) {
         return;
     }
 
     // Clone the spell ability with same targets using CardFactory parity helper.
-    let copy = crate::card::card_factory::copy_spell_ability(&original.spell_ability, controller);
+    let copy = crate::card::card_factory::copy_spell_ability(&original, controller);
 
     // Push the copy onto the stack (it will resolve like a normal spell)
     let copy_entry = crate::spellability::StackEntry {
         id: 0, // will be assigned by push()
         spell_ability: copy,
-        is_creature_spell: original.is_creature_spell,
-        is_permanent_spell: original.is_permanent_spell,
+        is_creature_spell: original.is_spell
+            && original
+                .source
+                .is_some_and(|cid| ctx.game.card(cid).is_creature()),
+        is_permanent_spell: original.is_spell
+            && original
+                .source
+                .is_some_and(|cid| ctx.game.card(cid).is_permanent()),
         cast_from_zone: None,
         optional_trigger_decider: None,
         optional_trigger_description: None,
         optional_trigger_source_name: None,
     };
 
+    let trigger_sa = copy_entry.spell_ability.clone();
     ctx.game.stack.push(copy_entry);
+    if let Some(source_id) = trigger_sa.source {
+        ctx.trigger_handler.run_trigger(
+            TriggerType::SpellCopied,
+            RunParams {
+                spell_card: Some(source_id),
+                spell_controller: Some(controller),
+                source_sa: Some(trigger_sa.clone()),
+                ..Default::default()
+            },
+            false,
+        );
+        super::emit_targeting_triggers(ctx, source_id, &trigger_sa);
+    }
 }

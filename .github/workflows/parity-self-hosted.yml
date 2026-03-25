@@ -43,11 +43,14 @@ jobs:
 
       - name: Start parity server
         run: |
-          ./target/release/forge-parity \
-            --ci --serve --port 8080 --verbose \
-            --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar \
-            --db-path parity-ci.db \
-            > parity-server.log 2>&1 &
+          (
+            ./target/release/forge-parity \
+              --ci --serve --port 8080 --verbose \
+              --java-jar forge/forge-harness/target/forge-harness-jar-with-dependencies.jar \
+              --db-path parity-ci.db \
+              > parity-server.log 2>&1
+            echo $? > parity-server.exitcode
+          ) &
           echo $! > server.pid
           echo "Server PID: $(cat server.pid)"
 
@@ -77,11 +80,21 @@ jobs:
         run: |
           if [ -f server.pid ]; then
             PID=$(cat server.pid)
-            echo "Stopping server (PID $PID)"
-            kill $PID 2>/dev/null || true
-            sleep 2
-            kill -9 $PID 2>/dev/null || true
+            if kill -0 $PID 2>/dev/null; then
+              echo "Stopping server (PID $PID)"
+              kill $PID 2>/dev/null || true
+              sleep 2
+              kill -9 $PID 2>/dev/null || true
+            else
+              echo "Server process was already stopped before teardown (PID $PID)"
+            fi
+            wait $PID 2>/dev/null || true
             rm -f server.pid
+          fi
+          if [ -f parity-server.exitcode ]; then
+            echo "Server wrapper exit code: $(cat parity-server.exitcode)"
+          else
+            echo "Server wrapper exit code file missing"
           fi
           echo "=== Server log (last 50 lines) ==="
           tail -50 parity-server.log 2>/dev/null || true
@@ -101,5 +114,14 @@ jobs:
         with:
           name: parity-server-log
           path: parity-server.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Upload server exit code
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-server-exitcode
+          path: parity-server.exitcode
           if-no-files-found: ignore
           retention-days: 7

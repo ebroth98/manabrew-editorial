@@ -51,7 +51,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .and_then(|s| s.parse().ok())
         .unwrap_or(-1);
 
-    let change_valid = sa.params.get(keys::CHANGE_VALID).map(|s| s.to_string()).unwrap_or_default();
+    let change_valid = sa
+        .params
+        .get(keys::CHANGE_VALID)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
 
     // Determine the player whose library we dig through.
     let dig_player = sa
@@ -249,10 +253,20 @@ mod tests {
         ) -> Vec<(CardId, CardId)> {
             vec![]
         }
-        fn choose_target_player(&mut self, _: PlayerId, v: &[PlayerId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<PlayerId> {
+        fn choose_target_player(
+            &mut self,
+            _: PlayerId,
+            v: &[PlayerId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> Option<PlayerId> {
             v.first().copied()
         }
-        fn choose_target_card(&mut self, _: PlayerId, v: &[CardId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<CardId> {
+        fn choose_target_card(
+            &mut self,
+            _: PlayerId,
+            v: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> Option<CardId> {
             v.first().copied()
         }
         fn choose_target_any(
@@ -308,6 +322,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,

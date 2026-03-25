@@ -44,17 +44,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         pool.reset_pool();
     }
 
-    if sa.params.is_true(keys::DRAIN_MANA)
-        && drained_total > 0
-    {
+    if sa.params.is_true(keys::DRAIN_MANA) && drained_total > 0 {
         // Preserve original colors (mirrors Java behavior)
         for &color in &drained_mana {
             ctx.mana_pools[controller.index()].add_mana(crate::mana::Mana::simple(color));
         }
     }
 
-    if sa.params.is_true(keys::REMEMBER_DRAINED_MANA)
-    {
+    if sa.params.is_true(keys::REMEMBER_DRAINED_MANA) {
         if let Some(source_id) = sa.source {
             ctx.game
                 .card_mut(source_id)

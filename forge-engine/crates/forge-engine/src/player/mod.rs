@@ -13,8 +13,11 @@ pub struct PlayerState {
     // Life
     pub life: i32,
     pub starting_life: i32,
+    pub life_started_this_turn_with: i32,
     pub life_gained_this_turn: i32,
+    pub life_gained_by_team_this_turn: i32,
     pub life_lost_this_turn: i32,
+    pub life_lost_last_turn: i32,
 
     // Poison
     pub poison_counters: i32,
@@ -67,6 +70,30 @@ pub struct PlayerState {
     pub has_city_blessing: bool,
     /// The Ring tempts you — current ring level (0-4).
     pub ring_level: i32,
+    /// Arena speed mechanic from Start Your Engines cards (0-4).
+    pub speed: i32,
+    /// Command-zone effect card carrying the inherent speed trigger.
+    pub speed_effect_card: Option<CardId>,
+    /// Cards discarded by this player this turn.
+    pub discarded_this_turn: i32,
+    /// Number of permanents this player controlled that explored this turn.
+    pub explored_this_turn: i32,
+    /// Total damage sources this player controls assigned this turn.
+    pub assigned_damage_this_turn: i32,
+    /// Combat damage sources this player controls assigned this turn.
+    pub assigned_combat_damage_this_turn: i32,
+    /// Damage this player's sources assigned to opponents this turn.
+    pub opponents_assigned_damage_this_turn: i32,
+    /// Opponents attacked by this player this turn.
+    pub attacked_players_this_turn: Vec<PlayerId>,
+    /// Opponents attacked by this player this combat.
+    pub attacked_players_this_combat: Vec<PlayerId>,
+    /// Whether this player has been dealt combat damage since their last turn.
+    pub been_dealt_combat_damage_since_last_turn: bool,
+    /// Attractions visited by this player this turn.
+    pub attractions_visited_this_turn: i32,
+    /// Dice results this player has kept this turn.
+    pub num_rolls_this_turn: i32,
     /// The Ring-bearer creature (if any).
     pub ring_bearer: Option<crate::ids::CardId>,
     /// Radiation counters (Fallout set mechanic).
@@ -80,8 +107,11 @@ impl PlayerState {
             name,
             life: starting_life,
             starting_life,
+            life_started_this_turn_with: starting_life,
             life_gained_this_turn: 0,
+            life_gained_by_team_this_turn: 0,
             life_lost_this_turn: 0,
+            life_lost_last_turn: 0,
             poison_counters: 0,
             lands_played_this_turn: 0,
             max_land_plays_per_turn: 1,
@@ -104,6 +134,18 @@ impl PlayerState {
             controlled_by: None,
             has_city_blessing: false,
             ring_level: 0,
+            speed: 0,
+            speed_effect_card: None,
+            discarded_this_turn: 0,
+            explored_this_turn: 0,
+            assigned_damage_this_turn: 0,
+            assigned_combat_damage_this_turn: 0,
+            opponents_assigned_damage_this_turn: 0,
+            attacked_players_this_turn: Vec::new(),
+            attacked_players_this_combat: Vec::new(),
+            been_dealt_combat_damage_since_last_turn: false,
+            attractions_visited_this_turn: 0,
+            num_rolls_this_turn: 0,
             ring_bearer: None,
             radiation_counters: 0,
         }
@@ -151,10 +193,23 @@ impl PlayerState {
         self.lands_played_this_turn = 0;
         self.spells_cast_this_turn = 0;
         self.cards_cast_this_turn.clear();
+        self.life_started_this_turn_with = self.life;
+        self.life_lost_last_turn = self.life_lost_this_turn;
         self.life_gained_this_turn = 0;
+        self.life_gained_by_team_this_turn = 0;
         self.life_lost_this_turn = 0;
         self.drawn_this_turn = 0;
         self.mana_expended_this_turn = 0;
+        self.discarded_this_turn = 0;
+        self.explored_this_turn = 0;
+        self.assigned_damage_this_turn = 0;
+        self.assigned_combat_damage_this_turn = 0;
+        self.opponents_assigned_damage_this_turn = 0;
+        self.attacked_players_this_turn.clear();
+        self.attacked_players_this_combat.clear();
+        self.been_dealt_combat_damage_since_last_turn = false;
+        self.attractions_visited_this_turn = 0;
+        self.num_rolls_this_turn = 0;
     }
 }
 

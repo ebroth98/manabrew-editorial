@@ -48,13 +48,11 @@ pub fn get_token_template<'a>(
     script: &str,
 ) -> Option<&'a Card> {
     // Try exact match first, then case-insensitive
-    templates
-        .get(script)
-        .or_else(|| {
-            let lower = script.to_ascii_lowercase();
-            templates
-                .iter()
-                .find(|(k, _)| k.to_ascii_lowercase() == lower)
-                .map(|(_, v)| v)
-        })
+    templates.get(script).or_else(|| {
+        let lower = script.to_ascii_lowercase();
+        templates
+            .iter()
+            .find(|(k, _)| k.to_ascii_lowercase() == lower)
+            .map(|(_, v)| v)
+    })
 }

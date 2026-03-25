@@ -58,11 +58,9 @@ impl KeywordWithType {
 
         // Special reminder type handling
         if self.desc_type.eq_ignore_ascii_case("Outlaw") {
-            self.reminder_type =
-                "Assassin, Mercenary, Pirate, Rogue, and/or Warlock".to_string();
+            self.reminder_type = "Assassin, Mercenary, Pirate, Rogue, and/or Warlock".to_string();
         } else if self.type_str.eq_ignore_ascii_case("historic permanent") {
-            self.reminder_type =
-                "artifact, legendary, and/or Saga permanent".to_string();
+            self.reminder_type = "artifact, legendary, and/or Saga permanent".to_string();
         } else {
             self.reminder_type = self.desc_type.clone();
         }

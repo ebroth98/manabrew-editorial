@@ -12,11 +12,481 @@
 //! The main entry point is `resolve_numeric_svar()` which takes a parameter name
 //! from a SpellAbility and returns an integer value.
 
+use crate::card::card_damage_history::TrackedEntity;
 use crate::card::filter_constants as fc;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
 use crate::spellability::SpellAbility;
+
+fn parse_trigger_card_object(sa: &SpellAbility, key: &str) -> Option<CardId> {
+    sa.trigger_objects
+        .get(key)
+        .and_then(|value| value.split(',').next())
+        .and_then(|part| part.trim().parse::<u32>().ok())
+        .map(CardId)
+}
+
+fn do_x_math(num: i32, operators: &str) -> i32 {
+    if operators.is_empty() {
+        return num;
+    }
+    let parts: Vec<&str> = operators.split('.').collect();
+    let op = parts.first().copied().unwrap_or("");
+    let secondary = parts
+        .get(1)
+        .and_then(|s| s.parse::<i32>().ok())
+        .unwrap_or(0);
+
+    if op.contains("Plus") {
+        num + secondary
+    } else if op.contains("NMinus") {
+        secondary - num
+    } else if op.contains("Minus") {
+        num - secondary
+    } else if op.contains("Twice") {
+        num * 2
+    } else if op.contains("Thrice") {
+        num * 3
+    } else if op.contains("HalfUp") {
+        ((num as f64) / 2.0).ceil() as i32
+    } else if op.contains("HalfDown") {
+        ((num as f64) / 2.0).floor() as i32
+    } else if op.contains("ThirdUp") {
+        ((num as f64) / 3.0).ceil() as i32
+    } else if op.contains("ThirdDown") {
+        ((num as f64) / 3.0).floor() as i32
+    } else if op.contains("Negative") {
+        -num
+    } else if op.contains("Times") {
+        num * secondary
+    } else if op.contains("DivideEvenlyUp") {
+        if secondary == 0 {
+            0
+        } else {
+            num / secondary + i32::from(num % secondary != 0)
+        }
+    } else if op.contains("DivideEvenlyDown") {
+        if secondary == 0 {
+            0
+        } else {
+            num / secondary
+        }
+    } else if op.contains("Abs") {
+        num.abs()
+    } else if op.contains("LimitMax") {
+        num.min(secondary)
+    } else if op.contains("LimitMin") {
+        num.max(secondary)
+    } else {
+        num
+    }
+}
+
+fn spell_ability_x_property(spell_ability: &SpellAbility, expr: &str, game: &GameState) -> i32 {
+    let Some(source_id) = spell_ability.source else {
+        return 0;
+    };
+    let source = game.card(source_id);
+    let parts: Vec<&str> = expr.split('/').collect();
+    let value = parts.first().copied().unwrap_or("");
+    let operators = parts.get(1).copied().unwrap_or("");
+
+    let base = match value {
+        "CardPower" => source.power(),
+        "CardToughness" => source.toughness(),
+        _ if value.starts_with("CardCounters.") => {
+            let counter_name = value.strip_prefix("CardCounters.").unwrap_or("");
+            if counter_name.eq_ignore_ascii_case("ALL") {
+                source.counters.values().copied().sum()
+            } else {
+                source.counter_count(&crate::ability::ability_utils::parse_counter_type(
+                    counter_name,
+                ))
+            }
+        }
+        _ if value.starts_with("CardManaCost") => {
+            let mut cmc = source.mana_value();
+            if value.contains("LKI") && source.zone != forge_foundation::ZoneType::Stack {
+                cmc += spell_ability.x_mana_cost_paid as i32 * source.mana_cost.count_x() as i32;
+            }
+            cmc
+        }
+        _ => 0,
+    };
+
+    do_x_math(base, operators)
+}
+
+fn resolve_spell_ability_expr(expr: &str, game: &GameState, sa: &SpellAbility) -> Option<i32> {
+    let (defined, property) = expr.split_once('$')?;
+    let spells =
+        crate::ability::ability_utils::resolve_defined_spell_abilities_with_sa(defined, sa, game);
+    if spells.is_empty() {
+        return None;
+    }
+    Some(
+        spells
+            .iter()
+            .map(|spell| spell_ability_x_property(spell, property, game))
+            .sum(),
+    )
+}
+
+fn resolve_svar_expression(
+    expr: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> i32 {
+    if let Ok(n) = expr.trim().parse::<i32>() {
+        return n;
+    }
+    if expr.trim().starts_with("TriggerCount$") || expr.trim().starts_with("TriggerCountMax$") {
+        return evaluate_svar(expr.trim(), sa);
+    }
+    if let Some(value) = resolve_spell_ability_expr(expr.trim(), game, sa) {
+        return value;
+    }
+    if let Some(value) = resolve_direct_player_expr(expr.trim(), game, source_id, controller, sa) {
+        return value;
+    }
+    if let Some(svar_expr) = game.card(source_id).svars.get(expr.trim()) {
+        if svar_expr.starts_with("Count$") {
+            return resolve_count_svar_for_sa(svar_expr, game, source_id, controller, sa);
+        }
+        if svar_expr.starts_with("PlayerCount") {
+            return resolve_player_count_svar(svar_expr, game, source_id, controller, sa);
+        }
+        return evaluate_svar(svar_expr, sa);
+    }
+    0
+}
+
+fn player_has_property(
+    player: PlayerId,
+    property: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> bool {
+    if property.eq_ignore_ascii_case("hasInitiative") {
+        return game.initiative_holder == Some(player);
+    }
+    if property.eq_ignore_ascii_case("maxSpeed") {
+        return game.player(player).speed == 4;
+    }
+    if property.eq_ignore_ascii_case("noSpeed") {
+        return game.player(player).speed == 0;
+    }
+    if property.eq_ignore_ascii_case("attackedYouTheirCurrentTurn") {
+        return game.cards.iter().any(|card| {
+            card.controller == player
+                && card
+                    .damage_history
+                    .has_attacked_this_turn(TrackedEntity::Player(controller))
+        });
+    }
+    let lower = property.to_ascii_lowercase();
+    if let Some(rest) = lower.strip_prefix("life") {
+        let actual = game.player(player).life;
+        for op in ["ge", "gt", "le", "lt", "eq"] {
+            if let Some(rhs) = rest.strip_prefix(op) {
+                let threshold = resolve_svar_expression(rhs, game, source_id, controller, sa);
+                return match op {
+                    "ge" => actual >= threshold,
+                    "gt" => actual > threshold,
+                    "le" => actual <= threshold,
+                    "lt" => actual < threshold,
+                    "eq" => actual == threshold,
+                    _ => false,
+                };
+            }
+        }
+    }
+    false
+}
+
+fn player_x_property(
+    player: PlayerId,
+    expr: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> i32 {
+    let parts: Vec<&str> = expr.split('/').collect();
+    let value = parts.first().copied().unwrap_or("");
+    let operators = parts.get(1).copied().unwrap_or("");
+
+    let base = match value {
+        _ if value.starts_with("Valid") => {
+            let (zones, restrictions) = if let Some(rest) = value.strip_prefix("Valid ") {
+                (vec![forge_foundation::ZoneType::Battlefield], rest)
+            } else {
+                let mut parts = value.splitn(2, ' ');
+                let zone_part = parts
+                    .next()
+                    .unwrap_or("")
+                    .strip_prefix("Valid")
+                    .unwrap_or("");
+                let restrictions = parts.next().unwrap_or("");
+                let zones: Vec<_> = if zone_part.is_empty() {
+                    vec![forge_foundation::ZoneType::Battlefield]
+                } else {
+                    zone_part
+                        .split(',')
+                        .filter_map(crate::ability::ability_utils::parse_zone_type)
+                        .collect()
+                };
+                (zones, restrictions)
+            };
+            game.cards
+                .iter()
+                .filter(|card| {
+                    zones.contains(&card.zone)
+                        && crate::ability::ability_utils::matches_valid_cards(
+                            card,
+                            restrictions,
+                            player,
+                        )
+                })
+                .count() as i32
+        }
+        "CardsInHand" => game
+            .cards_in_zone(forge_foundation::ZoneType::Hand, player)
+            .len() as i32,
+        "CardsInLibrary" => game
+            .cards_in_zone(forge_foundation::ZoneType::Library, player)
+            .len() as i32,
+        "CardsInGraveyard" => game
+            .cards_in_zone(forge_foundation::ZoneType::Graveyard, player)
+            .len() as i32,
+        "CardsInPlay" => game
+            .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
+            .len() as i32,
+        "CreaturesInPlay" => game
+            .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
+            .iter()
+            .filter(|&&cid| game.card(cid).is_creature())
+            .count() as i32,
+        "StartingLife" => game.player(player).starting_life,
+        "LifeTotal" => game.player(player).life,
+        "LifeLostThisTurn" => game.player(player).life_lost_this_turn,
+        "LifeLostLastTurn" => game.player(player).life_lost_last_turn,
+        "LifeGainedThisTurn" => game.player(player).life_gained_this_turn,
+        "LifeGainedByTeamThisTurn" => game.player(player).life_gained_by_team_this_turn,
+        "LifeStartedThisTurnWith" => game.player(player).life_started_this_turn_with,
+        "Speed" => game.player(player).speed,
+        "TopOfLibraryCMC" => game
+            .cards_in_zone(forge_foundation::ZoneType::Library, player)
+            .last()
+            .map(|&cid| game.card(cid).mana_value())
+            .unwrap_or(0),
+        "LandsPlayed" => game.player(player).lands_played_this_turn,
+        "SpellsCastThisTurn" => game.player(player).spells_cast_this_turn,
+        "CardsDrawn" => game.player(player).drawn_this_turn,
+        "CardsDiscardedThisTurn" => game.player(player).discarded_this_turn,
+        "ExploredThisTurn" => game.player(player).explored_this_turn,
+        "AttackersDeclared" => game
+            .cards
+            .iter()
+            .filter(|card| {
+                card.controller == player && card.attacked_this_turn && card.is_creature()
+            })
+            .count() as i32,
+        "DamageToOppsThisTurn" => game.player(player).opponents_assigned_damage_this_turn,
+        "NonCombatDamageDealtThisTurn" => {
+            game.player(player).assigned_damage_this_turn
+                - game.player(player).assigned_combat_damage_this_turn
+        }
+        "PoisonCounters" => game.player(player).poison_counters,
+        "EnergyCounters" => game.player(player).energy_counters,
+        "ManaExpendedThisTurn" => game.player(player).mana_expended_this_turn,
+        "RingTemptedYou" => game.player(player).ring_level,
+        "OpponentsAttackedThisTurn" => {
+            let mut attacked = Vec::new();
+            for card in &game.cards {
+                if card.controller != player {
+                    continue;
+                }
+                for entity in &card.damage_history.attacked_this_turn {
+                    if let TrackedEntity::Player(pid) = entity {
+                        if !attacked.contains(pid) {
+                            attacked.push(*pid);
+                        }
+                    }
+                }
+            }
+            attacked.len() as i32
+        }
+        "OpponentsAttackedThisCombat" => {
+            game.player(player).attacked_players_this_combat.len() as i32
+        }
+        "BeenDealtCombatDamageSinceLastTurn" => {
+            i32::from(game.player(player).been_dealt_combat_damage_since_last_turn)
+        }
+        "AttractionsVisitedThisTurn" => game.player(player).attractions_visited_this_turn,
+        _ if value.starts_with("Counters.") => {
+            let counter_name = value.strip_prefix("Counters.").unwrap_or("");
+            if counter_name.eq_ignore_ascii_case("ALL") {
+                game.player(player).poison_counters
+                    + game.player(player).energy_counters
+                    + game.player(player).radiation_counters
+            } else if counter_name.eq_ignore_ascii_case("POISON") {
+                game.player(player).poison_counters
+            } else if counter_name.eq_ignore_ascii_case("ENERGY") {
+                game.player(player).energy_counters
+            } else if counter_name.eq_ignore_ascii_case("RADIATION") {
+                game.player(player).radiation_counters
+            } else {
+                0
+            }
+        }
+        _ if value.starts_with("HasProperty") => i32::from(player_has_property(
+            player,
+            value.strip_prefix("HasProperty").unwrap_or(""),
+            game,
+            source_id,
+            controller,
+            sa,
+        )),
+        _ => 0,
+    };
+
+    do_x_math(base, operators)
+}
+
+fn resolve_direct_player_expr(
+    expr: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> Option<i32> {
+    let (defined, property) = expr.split_once('$')?;
+    let players = crate::ability::ability_utils::resolve_defined_players_with_sa(
+        defined, sa, controller, game,
+    );
+    if players.is_empty() {
+        return None;
+    }
+    Some(
+        players
+            .into_iter()
+            .map(|pid| player_x_property(pid, property, game, source_id, controller, sa))
+            .sum(),
+    )
+}
+
+fn resolve_player_count_svar(
+    expr: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> i32 {
+    let Some((group, property)) = expr.split_once('$') else {
+        return 0;
+    };
+    let kind = group.strip_prefix("PlayerCount").unwrap_or(group);
+    let players: Vec<PlayerId> = if kind.is_empty() || kind == "Players" {
+        game.alive_players()
+    } else if kind == "Opponents" {
+        vec![game.opponent_of(controller)]
+    } else if kind.starts_with("PropertyYou") {
+        vec![controller]
+    } else if let Some(property) = kind.strip_prefix("Property") {
+        game.alive_players()
+            .into_iter()
+            .filter(|&pid| player_has_property(pid, property, game, source_id, controller, sa))
+            .collect()
+    } else if let Some(defined) = kind.strip_prefix("Defined") {
+        crate::ability::ability_utils::resolve_defined_players_with_sa(
+            defined, sa, controller, game,
+        )
+    } else {
+        Vec::new()
+    };
+
+    if players.is_empty() {
+        return 0;
+    }
+
+    if property.eq_ignore_ascii_case("Amount") {
+        return players.len() as i32;
+    }
+    if let Some(rest) = property.strip_prefix("Highest") {
+        return players
+            .iter()
+            .map(|&pid| player_x_property(pid, rest, game, source_id, controller, sa))
+            .max()
+            .unwrap_or(0);
+    }
+    if let Some(rest) = property.strip_prefix("Lowest") {
+        return players
+            .iter()
+            .map(|&pid| player_x_property(pid, rest, game, source_id, controller, sa))
+            .min()
+            .unwrap_or(0);
+    }
+    if property.eq_ignore_ascii_case("TiedForHighestLife") {
+        let max_life = players
+            .iter()
+            .map(|&pid| game.player(pid).life)
+            .max()
+            .unwrap_or(i32::MIN);
+        return players
+            .iter()
+            .filter(|&&pid| game.player(pid).life == max_life)
+            .count() as i32;
+    }
+    if property.eq_ignore_ascii_case("TiedForLowestLife") {
+        let min_life = players
+            .iter()
+            .map(|&pid| game.player(pid).life)
+            .min()
+            .unwrap_or(i32::MAX);
+        return players
+            .iter()
+            .filter(|&&pid| game.player(pid).life == min_life)
+            .count() as i32;
+    }
+    if let Some(raw_property) = property.strip_prefix("HasProperty") {
+        return players
+            .into_iter()
+            .filter(|&pid| player_has_property(pid, raw_property, game, source_id, controller, sa))
+            .count() as i32;
+    }
+    if let Some(rest) = property.strip_prefix("Condition") {
+        if let Some((lhs, prop_expr)) = rest.split_once(' ') {
+            let (cmp, rhs_expr) = if lhs.is_empty() {
+                ("GE", "1")
+            } else if lhs.len() >= 2 {
+                (&lhs[..2], &lhs[2..])
+            } else {
+                ("GE", "1")
+            };
+            let rhs = resolve_svar_expression(rhs_expr, game, source_id, controller, sa);
+            return players
+                .into_iter()
+                .filter(|&pid| {
+                    compare_expr(
+                        player_x_property(pid, prop_expr, game, source_id, controller, sa),
+                        &format!("{cmp}{rhs}"),
+                    )
+                })
+                .count() as i32;
+        }
+    }
+
+    players
+        .into_iter()
+        .map(|pid| player_x_property(pid, property, game, source_id, controller, sa))
+        .sum()
+}
 
 /// Resolve a numeric parameter from a SpellAbility, expanding SVar references.
 ///
@@ -69,17 +539,38 @@ pub fn resolve_numeric_svar(
                         sa,
                     );
                 }
+                if svar_expr.starts_with("PlayerCount") {
+                    return resolve_player_count_svar(
+                        svar_expr,
+                        game,
+                        source_id,
+                        sa.activating_player,
+                        sa,
+                    );
+                }
+                if svar_expr.starts_with("TriggerCount$")
+                    || svar_expr.starts_with("TriggerCountMax$")
+                {
+                    return evaluate_svar(svar_expr, sa);
+                }
+                if let Some(value) = resolve_spell_ability_expr(svar_expr, game, sa) {
+                    return value;
+                }
                 // Sacrificed$CardPower / Sacrificed$CardToughness — LKI from cost payment
                 // Mirrors Java's AbilityUtils which reads from sa.getPaidList("SacrificedCards").
-                // The sacrificed card's ID is stored on the source card as SacrificedCardId,
-                // and its LKI power/toughness is on the sacrificed card itself.
+                // Must be checked before resolve_direct_player_expr which would
+                // incorrectly match the Foo$Bar pattern as a player expression.
                 if svar_expr == "Sacrificed$CardPower" || svar_expr == "Sacrificed$CardToughness" {
                     if let Some(sac_id) = game.last_sacrificed_card {
                         let sac_card = game.card(sac_id);
                         let val = if svar_expr.ends_with("Power") {
-                            sac_card.lki_power.unwrap_or(sac_card.base_power.unwrap_or(0))
+                            sac_card
+                                .lki_power
+                                .unwrap_or(sac_card.base_power.unwrap_or(0))
                         } else {
-                            sac_card.lki_toughness.unwrap_or(sac_card.base_toughness.unwrap_or(0))
+                            sac_card
+                                .lki_toughness
+                                .unwrap_or(sac_card.base_toughness.unwrap_or(0))
                         };
                         return val;
                     }
@@ -87,19 +578,26 @@ pub fn resolve_numeric_svar(
                 }
 
                 // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI resolution
+                // Must be checked before resolve_direct_player_expr which would
+                // incorrectly match "TriggeredCard" as a player definition.
                 if svar_expr == "TriggeredCard$CardPower" {
-                    if let Some(trigger_src) = sa.trigger_source {
+                    if let Some(trigger_src) =
+                        parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
+                    {
                         return crate::lki::resolve_lki_power(game, trigger_src);
                     }
                     return 0;
                 }
                 if svar_expr == "TriggeredCard$CardToughness" {
-                    if let Some(trigger_src) = sa.trigger_source {
+                    if let Some(trigger_src) =
+                        parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
+                    {
                         return crate::lki::resolve_lki_toughness(game, trigger_src);
                     }
                     return 0;
                 }
                 // Discarded$Valid Filter/Times.N — check discarded cost cards
+                // Must be checked before resolve_direct_player_expr.
                 if let Some(rest) = svar_expr.strip_prefix("Discarded$Valid ") {
                     let mut parts = rest.split("/Times.");
                     let filter = parts.next().unwrap_or("").trim();
@@ -128,6 +626,11 @@ pub fn resolve_numeric_svar(
                     }
                     return 0;
                 }
+                if let Some(value) =
+                    resolve_direct_player_expr(svar_expr, game, source_id, sa.activating_player, sa)
+                {
+                    return value;
+                }
                 return evaluate_svar(svar_expr, sa);
             }
         }
@@ -148,21 +651,50 @@ pub fn resolve_numeric_svar(
                     sa,
                 );
             }
+            if svar_expr.starts_with("PlayerCount") {
+                return resolve_player_count_svar(
+                    svar_expr,
+                    game,
+                    source_id,
+                    sa.activating_player,
+                    sa,
+                );
+            }
+            if let Some(value) = resolve_spell_ability_expr(svar_expr, game, sa) {
+                return value;
+            }
             // TriggeredCard$CardPower / TriggeredCard$CardToughness — LKI resolution
             // Mirrors Java AbilityUtils: TriggeredCard → Card, then Card$CardPower.
+            // Must be checked before resolve_direct_player_expr.
             if svar_expr == "TriggeredCard$CardPower" {
-                if let Some(trigger_src) = sa.trigger_source {
+                if let Some(trigger_src) =
+                    parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
+                {
                     return crate::lki::resolve_lki_power(game, trigger_src);
                 }
                 return 0;
             }
             if svar_expr == "TriggeredCard$CardToughness" {
-                if let Some(trigger_src) = sa.trigger_source {
+                if let Some(trigger_src) =
+                    parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
+                {
                     return crate::lki::resolve_lki_toughness(game, trigger_src);
                 }
                 return 0;
             }
-            return evaluate_svar(svar_expr, sa);
+            // evaluate_svar handles Number$N, Count$Kicked, TriggerCount, etc.
+            // Must run before resolve_direct_player_expr which greedily matches
+            // any foo$bar pattern via the resolve_defined_players fallback.
+            let eval = evaluate_svar(svar_expr, sa);
+            if eval != 0 || svar_expr.starts_with("Number$") || svar_expr.starts_with("Count$") {
+                return eval;
+            }
+            if let Some(value) =
+                resolve_direct_player_expr(svar_expr, game, source_id, sa.activating_player, sa)
+            {
+                return value;
+            }
+            return eval;
         }
     }
 
@@ -183,6 +715,12 @@ pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
     }
     if expr == "Count$TriggerRememberAmount" {
         return sa.trigger_remembered_amount;
+    }
+    if expr == "TriggerCount$Result" {
+        return trigger_result_values(sa).into_iter().sum();
+    }
+    if expr == "TriggerCountMax$Result" {
+        return trigger_result_values(sa).into_iter().max().unwrap_or(0);
     }
     // TriggerCount$Amount — number of objects that matched the trigger event.
     // For per-event triggers (ChangesZoneAll batched as individual fires), this is 1.
@@ -208,6 +746,17 @@ pub fn evaluate_svar(expr: &str, sa: &SpellAbility) -> i32 {
     }
     // Fallback: try parsing as integer
     expr.parse::<i32>().unwrap_or(0)
+}
+
+fn trigger_result_values(sa: &SpellAbility) -> Vec<i32> {
+    sa.trigger_objects
+        .get("Result")
+        .map(|raw| {
+            raw.split(',')
+                .filter_map(|part| part.trim().parse::<i32>().ok())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default()
 }
 
 /// Resolve a Count$ SVar expression that requires game state access.
@@ -241,9 +790,50 @@ pub fn resolve_count_svar_for_sa(
     if expr == "Count$TriggerRememberAmount" {
         return sa.trigger_remembered_amount;
     }
+    if expr == "TriggerCount$Result" {
+        return trigger_result_values(sa).into_iter().sum();
+    }
+    if expr == "TriggerCountMax$Result" {
+        return trigger_result_values(sa).into_iter().max().unwrap_or(0);
+    }
 
     if expr == "Count$Converge" || expr == "Count$Sunburst" {
         return game.card(source_id).sunburst_count();
+    }
+
+    if expr == "Count$YourSpeed" {
+        return game.player(controller).speed;
+    }
+
+    if let Some(rest) = expr.strip_prefix("Count$MaxSpeed.") {
+        let parts: Vec<&str> = rest.splitn(2, '.').collect();
+        if parts.len() == 2 {
+            let yes = parts[0].parse::<i32>().unwrap_or(1);
+            let no = parts[1].parse::<i32>().unwrap_or(0);
+            return if game.player(controller).speed == 4 {
+                yes
+            } else {
+                no
+            };
+        }
+    }
+
+    if expr == "Count$AttackersDeclared" {
+        return game
+            .cards
+            .iter()
+            .filter(|card| {
+                card.controller == controller && card.attacked_this_turn && card.is_creature()
+            })
+            .count() as i32;
+    }
+
+    if expr == "Count$TopOfLibraryCMC" {
+        return game
+            .cards_in_zone(ZoneType::Library, controller)
+            .last()
+            .map(|&cid| game.card(cid).mana_value())
+            .unwrap_or(0);
     }
 
     if let Some(rest) = expr.strip_prefix("Count$OptionalGenericCostPaid.") {
@@ -504,4 +1094,433 @@ fn check_counter_qualifier(card: &crate::card::Card, qual: &str) -> bool {
     let count = *card.counters.get(&counter_type).unwrap_or(&0);
 
     compare_expr(count, cond)
+}
+
+#[cfg(test)]
+mod tests {
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
+
+    use super::resolve_numeric_svar;
+    use crate::card::Card;
+    use crate::game::GameState;
+    use crate::ids::{CardId, PlayerId};
+    use crate::spellability::SpellAbility;
+
+    #[test]
+    fn resolves_player_count_defined_life_total_twice() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        game.player_mut(p1).life = 7;
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars.insert(
+            "X".to_string(),
+            "PlayerCountDefinedTriggeredAttackedTarget$LifeTotal/Twice".to_string(),
+        );
+        let host_id = game.create_card(host);
+
+        let mut sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ GainLife | LifeAmount$ X");
+        sa.add_triggering_object("AttackedTarget", &p1.0.to_string());
+
+        assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 14);
+    }
+
+    #[test]
+    fn resolves_player_count_highest_life_total() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        game.player_mut(p0).life = 11;
+        game.player_mut(p1).life = 17;
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars.insert(
+            "X".to_string(),
+            "PlayerCountPlayers$HighestLifeTotal".to_string(),
+        );
+        let host_id = game.create_card(host);
+
+        let sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ GainLife | LifeAmount$ X");
+        assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 17);
+    }
+
+    #[test]
+    fn resolves_triggered_target_life_total_half_up() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        game.player_mut(p1).life = 9;
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars.insert(
+            "X".to_string(),
+            "TriggeredTarget$LifeTotal/HalfUp".to_string(),
+        );
+        let host_id = game.create_card(host);
+
+        let mut sa = SpellAbility::new_simple(
+            Some(host_id),
+            p0,
+            "DB$ LoseLife | Defined$ TriggeredTarget | LifeAmount$ X",
+        );
+        sa.add_triggering_object("TargetPlayer", &p1.0.to_string());
+
+        assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 5);
+    }
+
+    #[test]
+    fn resolves_triggered_spell_ability_card_mana_cost_lki() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars.insert(
+            "X".to_string(),
+            "TriggeredSpellAbility$CardManaCostLKI".to_string(),
+        );
+        let host_id = game.create_card(host);
+
+        let mut spell_card = Card::new(
+            CardId(1),
+            "Big Spell".to_string(),
+            p1,
+            CardTypeLine::parse("Sorcery"),
+            ManaCost::parse("X U"),
+            ColorSet::BLUE,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        spell_card.set_zone(forge_foundation::ZoneType::Graveyard);
+        let spell_id = game.create_card(spell_card);
+
+        let mut triggered_sa =
+            SpellAbility::new_simple(Some(spell_id), p1, "SP$ DealDamage | NumDmg$ 1");
+        triggered_sa.x_mana_cost_paid = 4;
+
+        let mut sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ GainLife | LifeAmount$ X");
+        sa.add_triggering_spell_ability("SpellAbility", triggered_sa);
+
+        assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 5);
+    }
+
+    #[test]
+    fn resolves_count_your_speed_and_max_speed() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        game.player_mut(p0).speed = 4;
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars
+            .insert("X".to_string(), "Count$YourSpeed".to_string());
+        host.svars
+            .insert("Y".to_string(), "Count$MaxSpeed.2.1".to_string());
+        let host_id = game.create_card(host);
+
+        let sa = SpellAbility::new_simple(
+            Some(host_id),
+            p0,
+            "DB$ GainLife | LifeAmount$ X | NumCards$ Y",
+        );
+        assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 4);
+        assert_eq!(resolve_numeric_svar(&game, &sa, "NumCards", 0), 2);
+    }
+
+    #[test]
+    fn resolves_attackers_declared_and_life_lost_last_turn() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+
+        let mut attacker = Card::new(
+            CardId(0),
+            "Attacker".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse("1 R"),
+            ColorSet::RED,
+            Some(2),
+            Some(2),
+            vec![],
+            vec![],
+        );
+        attacker.attacked_this_turn = true;
+        game.create_card(attacker);
+
+        game.player_mut(p0).life_lost_this_turn = 3;
+        game.player_mut(p0).new_turn();
+
+        let mut host = Card::new(
+            CardId(1),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars
+            .insert("X".to_string(), "Count$AttackersDeclared".to_string());
+        host.svars.insert(
+            "Y".to_string(),
+            "PlayerCountPropertyYou$LifeLostLastTurn".to_string(),
+        );
+        let host_id = game.create_card(host);
+
+        let sa = SpellAbility::new_simple(
+            Some(host_id),
+            p0,
+            "DB$ GainLife | LifeAmount$ X | NumCards$ Y",
+        );
+        assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 1);
+        assert_eq!(resolve_numeric_svar(&game, &sa, "NumCards", 0), 3);
+    }
+
+    #[test]
+    fn resolves_top_of_library_cmc() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+
+        let top = Card::new(
+            CardId(0),
+            "Top".to_string(),
+            p0,
+            CardTypeLine::parse("Sorcery"),
+            ManaCost::parse("2 U"),
+            ColorSet::BLUE,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        let top_id = game.create_card(top);
+        game.move_card(top_id, forge_foundation::ZoneType::Library, p0);
+
+        let mut host = Card::new(
+            CardId(1),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars
+            .insert("X".to_string(), "Count$TopOfLibraryCMC".to_string());
+        let host_id = game.create_card(host);
+
+        let sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ GainLife | LifeAmount$ X");
+        assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 3);
+    }
+
+    #[test]
+    fn resolves_player_property_counters_for_discard_damage_and_combat() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+        game.player_mut(p0).discarded_this_turn = 2;
+        game.player_mut(p0).explored_this_turn = 1;
+        game.player_mut(p0).opponents_assigned_damage_this_turn = 4;
+        game.player_mut(p0).assigned_damage_this_turn = 7;
+        game.player_mut(p0).assigned_combat_damage_this_turn = 2;
+        game.player_mut(p0).attacked_players_this_combat.push(p1);
+        game.player_mut(p0).been_dealt_combat_damage_since_last_turn = true;
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars.insert(
+            "A".to_string(),
+            "PlayerCountPropertyYou$CardsDiscardedThisTurn".to_string(),
+        );
+        host.svars.insert(
+            "B".to_string(),
+            "PlayerCountPropertyYou$ExploredThisTurn".to_string(),
+        );
+        host.svars.insert(
+            "C".to_string(),
+            "PlayerCountPropertyYou$DamageToOppsThisTurn".to_string(),
+        );
+        host.svars.insert(
+            "D".to_string(),
+            "PlayerCountPropertyYou$NonCombatDamageDealtThisTurn".to_string(),
+        );
+        host.svars.insert(
+            "E".to_string(),
+            "PlayerCountPropertyYou$OpponentsAttackedThisCombat".to_string(),
+        );
+        host.svars.insert(
+            "F".to_string(),
+            "PlayerCountPropertyYou$BeenDealtCombatDamageSinceLastTurn".to_string(),
+        );
+        let host_id = game.create_card(host);
+
+        let sa = SpellAbility::new_simple(
+            Some(host_id),
+            p0,
+            "DB$ GainLife | LifeAmount$ A | NumCards$ B",
+        );
+        assert_eq!(resolve_numeric_svar(&game, &sa, "LifeAmount", 0), 2);
+        assert_eq!(resolve_numeric_svar(&game, &sa, "NumCards", 0), 1);
+        assert_eq!(
+            super::resolve_svar_expression(
+                game.card(host_id).svars.get("C").unwrap(),
+                &game,
+                host_id,
+                p0,
+                &sa,
+            ),
+            4
+        );
+        assert_eq!(
+            super::resolve_svar_expression(
+                game.card(host_id).svars.get("D").unwrap(),
+                &game,
+                host_id,
+                p0,
+                &sa,
+            ),
+            5
+        );
+        assert_eq!(
+            super::resolve_svar_expression(
+                game.card(host_id).svars.get("E").unwrap(),
+                &game,
+                host_id,
+                p0,
+                &sa,
+            ),
+            1
+        );
+        assert_eq!(
+            super::resolve_svar_expression(
+                game.card(host_id).svars.get("F").unwrap(),
+                &game,
+                host_id,
+                p0,
+                &sa,
+            ),
+            1
+        );
+    }
+
+    #[test]
+    fn resolves_trigger_result_sum_and_max_from_trigger_objects() {
+        let mut game = GameState::new(&["A", "B"], 20);
+        let p0 = PlayerId(0);
+
+        let mut host = Card::new(
+            CardId(0),
+            "Host".to_string(),
+            p0,
+            CardTypeLine::parse("Creature"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            Some(1),
+            Some(1),
+            vec![],
+            vec![],
+        );
+        host.svars
+            .insert("Sum".to_string(), "TriggerCount$Result".to_string());
+        host.svars
+            .insert("Max".to_string(), "TriggerCountMax$Result".to_string());
+        let host_id = game.create_card(host);
+
+        let mut sa = SpellAbility::new_simple(Some(host_id), p0, "DB$ Draw | NumCards$ Sum");
+        sa.add_triggering_object("Result", "4,11,7");
+
+        assert_eq!(
+            super::resolve_svar_expression(
+                game.card(host_id).svars.get("Sum").unwrap(),
+                &game,
+                host_id,
+                p0,
+                &sa,
+            ),
+            22
+        );
+        assert_eq!(
+            super::resolve_svar_expression(
+                game.card(host_id).svars.get("Max").unwrap(),
+                &game,
+                host_id,
+                p0,
+                &sa,
+            ),
+            11
+        );
+    }
 }

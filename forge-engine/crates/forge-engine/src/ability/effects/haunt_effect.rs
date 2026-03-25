@@ -19,10 +19,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         sa.target_chosen.target_card
     } else {
         // Default: choose a creature on the battlefield
-        let creatures: Vec<CardId> = ctx.game.cards.iter()
+        let creatures: Vec<CardId> = ctx
+            .game
+            .cards
+            .iter()
             .filter(|c| {
                 c.zone == ZoneType::Battlefield
-                    && c.type_line.core_types.iter().any(|ct| matches!(ct, forge_foundation::CoreType::Creature))
+                    && c.type_line
+                        .core_types
+                        .iter()
+                        .any(|ct| matches!(ct, forge_foundation::CoreType::Creature))
             })
             .map(|c| c.id)
             .collect();
@@ -39,7 +45,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     };
 
-    let Some(target_id) = haunt_target else { return };
+    let Some(target_id) = haunt_target else {
+        return;
+    };
 
     // Verify target is still on battlefield
     if ctx.game.card(target_id).zone != ZoneType::Battlefield {
@@ -49,7 +57,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Exile the haunting card
     let old_zone = ctx.game.card(source_id).zone;
     if old_zone != ZoneType::Exile {
-        ctx.game.move_card(source_id, ZoneType::Exile, ctx.game.card(source_id).owner);
+        ctx.game
+            .move_card(source_id, ZoneType::Exile, ctx.game.card(source_id).owner);
         emit_zone_trigger(ctx.trigger_handler, source_id, old_zone, ZoneType::Exile);
     }
 

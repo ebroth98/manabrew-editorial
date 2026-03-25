@@ -152,10 +152,11 @@ fn venture_into_dungeon(ctx: &mut EffectContext, sa: &SpellAbility, player: Play
 
         // Fire RoomEntered trigger
         ctx.trigger_handler.run_trigger(
-            TriggerType::ChangesZone, // Room entered is modeled as a zone change trigger
+            TriggerType::RoomEntered,
             RunParams {
                 card: Some(dungeon_id),
                 player: Some(player),
+                room_name: Some(next),
                 ..Default::default()
             },
             false,
@@ -163,29 +164,16 @@ fn venture_into_dungeon(ctx: &mut EffectContext, sa: &SpellAbility, player: Play
     }
 }
 
-fn find_current_dungeon(
-    ctx: &EffectContext,
-    player: PlayerId,
-) -> Option<(CardId, String, String)> {
+fn find_current_dungeon(ctx: &EffectContext, player: PlayerId) -> Option<(CardId, String, String)> {
     ctx.game
         .cards
         .iter()
         .find(|c| {
-            c.zone == ZoneType::Command
-                && c.owner == player
-                && c.svars.contains_key("DungeonName")
+            c.zone == ZoneType::Command && c.owner == player && c.svars.contains_key("DungeonName")
         })
         .map(|c| {
-            let room = c
-                .svars
-                .get("CurrentRoom")
-                .cloned()
-                .unwrap_or_default();
-            let name = c
-                .svars
-                .get("DungeonName")
-                .cloned()
-                .unwrap_or_default();
+            let room = c.svars.get("CurrentRoom").cloned().unwrap_or_default();
+            let name = c.svars.get("DungeonName").cloned().unwrap_or_default();
             (c.id, room, name)
         })
 }
@@ -220,8 +208,7 @@ fn create_dungeon(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId) 
 
     let id = ctx.game.create_card(card);
     ctx.game.move_card(id, ZoneType::Command, player);
-    ctx.trigger_handler
-        .register_active_trigger(ctx.game, id);
+    ctx.trigger_handler.register_active_trigger(ctx.game, id);
 
     id
 }
@@ -234,12 +221,10 @@ fn complete_dungeon(ctx: &mut EffectContext, player: PlayerId, dungeon_id: CardI
 
     // Fire dungeon completed trigger
     ctx.trigger_handler.run_trigger(
-        TriggerType::ChangesZone,
+        TriggerType::DungeonCompleted,
         RunParams {
             card: Some(dungeon_id),
             player: Some(player),
-            origin: Some(ZoneType::Command),
-            destination: Some(ZoneType::Exile),
             ..Default::default()
         },
         false,

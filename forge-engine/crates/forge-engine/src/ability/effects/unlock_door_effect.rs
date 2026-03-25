@@ -5,9 +5,19 @@
 use forge_foundation::ZoneType;
 
 use super::EffectContext;
+use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
+
+fn unlocked_room_count(ctx: &EffectContext, card_id: CardId) -> i32 {
+    ctx.game
+        .card(card_id)
+        .svars
+        .get("UnlockedRoomCount")
+        .and_then(|value| value.parse::<i32>().ok())
+        .unwrap_or(0)
+}
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let targets: Vec<CardId> = if let Some(target) = sa.target_chosen.target_card {
@@ -18,27 +28,32 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     };
 
-    let mode = sa
-        .params
-        .get(keys::MODE)
-        .unwrap_or("ThisDoor");
+    let mode = sa.params.get(keys::MODE).unwrap_or("ThisDoor");
 
     for card_id in targets {
         if ctx.game.card(card_id).zone != ZoneType::Battlefield {
             continue;
         }
 
+        let before = unlocked_room_count(ctx, card_id);
+        let mut after = before;
+        let mut unlocked = false;
         match mode {
             "ThisDoor" => {
-                // Unlock the door specified by the spell ability's card state
                 ctx.game.card_mut(card_id).set_s_var("DoorUnlocked", "True");
+                if before < 2 {
+                    after = before + 1;
+                    unlocked = true;
+                }
             }
             "Unlock" => {
-                // Unlock a chosen locked room
                 ctx.game.card_mut(card_id).set_s_var("DoorUnlocked", "True");
+                if before < 2 {
+                    after = before + 1;
+                    unlocked = true;
+                }
             }
             "LockOrUnlock" => {
-                // Toggle lock state
                 let is_locked = ctx
                     .game
                     .card(card_id)
@@ -47,11 +62,46 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     .map_or(true, |v| v != "True");
                 if is_locked {
                     ctx.game.card_mut(card_id).set_s_var("DoorUnlocked", "True");
+                    if before < 2 {
+                        after = before + 1;
+                        unlocked = true;
+                    }
                 } else {
                     ctx.game.card_mut(card_id).remove_s_var("DoorUnlocked");
+                    after = before.saturating_sub(1);
                 }
             }
             _ => {}
+        }
+
+        if after != before {
+            ctx.game
+                .card_mut(card_id)
+                .set_s_var("UnlockedRoomCount", &after.to_string());
+        }
+
+        if unlocked {
+            ctx.trigger_handler.run_trigger(
+                TriggerType::UnlockDoor,
+                RunParams {
+                    card: Some(card_id),
+                    player: Some(sa.activating_player),
+                    card_state_name: sa.params.get("CardState").map(str::to_string),
+                    ..Default::default()
+                },
+                true,
+            );
+            if before < 2 && after >= 2 {
+                ctx.trigger_handler.run_trigger(
+                    TriggerType::FullyUnlock,
+                    RunParams {
+                        card: Some(card_id),
+                        player: Some(sa.activating_player),
+                        ..Default::default()
+                    },
+                    true,
+                );
+            }
         }
     }
 }

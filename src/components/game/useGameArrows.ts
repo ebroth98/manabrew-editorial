@@ -14,7 +14,7 @@ import { type RefObject, useEffect, useState } from "react";
 import type { ArrowDef } from "./ArrowOverlay";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
-import type { StackObject, StackTarget } from "@/types/xmage";
+import type { StackObject, StackTarget } from "@/types/openmagic";
 import { useStackUIStore } from "@/stores/useStackUIStore";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -98,6 +98,7 @@ function getAllTargets(obj: StackObject): StackTarget[] {
         id: legacyTargetCardId,
         nodeIndex: 0,
         targetIndex: 0,
+        hostile: true,
       }];
     }
     return [];

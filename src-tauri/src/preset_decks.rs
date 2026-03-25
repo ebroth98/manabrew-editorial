@@ -2,6 +2,7 @@ use std::sync::OnceLock;
 
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::PlayerId;
+use forge_foundation::CoreType;
 use forge_foundation::ZoneType;
 use rand::seq::SliceRandom;
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,8 @@ use crate::card_db::{card_rules_to_instance, get_card_db};
 pub struct CardIdentity {
     pub name: String,
     pub set_code: String,
+    #[serde(default)]
+    pub section: Option<String>,
 }
 
 // ── Preset deck registry ───────────────────────────────────────────
@@ -378,8 +381,9 @@ fn build_deck_from_entries(game: &mut GameState, owner: PlayerId, deck: &[DeckCa
                     if !entry.set.is_empty() {
                         card.set_code = Some(entry.set.clone());
                     }
+                    let destination = fallback_deck_zone_for_card(&card);
                     let id = game.create_card(card);
-                    game.move_card(id, ZoneType::Library, owner);
+                    game.move_card(id, destination, owner);
                 }
             }
             None => eprintln!("[deck] Unknown card '{}' — skipped", entry.name),
@@ -400,10 +404,146 @@ pub fn build_custom_deck(game: &mut GameState, owner: PlayerId, identities: &[Ca
                 if !identity.set_code.is_empty() {
                     card.set_code = Some(identity.set_code.clone());
                 }
+                let destination = deck_zone_for_identity(identity, &card);
                 let id = game.create_card(card);
-                game.move_card(id, ZoneType::Library, owner);
+                if destination == ZoneType::Command {
+                    game.card_mut(id).is_commander = true;
+                }
+                game.move_card(id, destination, owner);
             }
             None => eprintln!("[custom_deck] Unknown card '{}' — skipped", name),
         }
+    }
+}
+
+fn fallback_deck_zone_for_card(card: &forge_engine_core::card::Card) -> ZoneType {
+    if card
+        .type_line
+        .subtypes
+        .iter()
+        .any(|subtype| subtype.eq_ignore_ascii_case("Attraction"))
+    {
+        ZoneType::AttractionDeck
+    } else if card
+        .type_line
+        .subtypes
+        .iter()
+        .any(|subtype| subtype.eq_ignore_ascii_case("Contraption"))
+    {
+        ZoneType::ContraptionDeck
+    } else if card.type_line.core_types.contains(&CoreType::Scheme) {
+        ZoneType::SchemeDeck
+    } else if card.type_line.core_types.contains(&CoreType::Plane) {
+        ZoneType::PlanarDeck
+    } else {
+        ZoneType::Library
+    }
+}
+
+fn deck_zone_for_identity(
+    identity: &CardIdentity,
+    card: &forge_engine_core::card::Card,
+) -> ZoneType {
+    match identity.section.as_deref() {
+        Some("main") => ZoneType::Library,
+        Some("sideboard") => ZoneType::Sideboard,
+        Some("commander") => ZoneType::Command,
+        Some("attractions") => ZoneType::AttractionDeck,
+        Some("contraptions") => ZoneType::ContraptionDeck,
+        Some("schemes") => ZoneType::SchemeDeck,
+        Some("planes") => ZoneType::PlanarDeck,
+        _ => fallback_deck_zone_for_card(card),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use forge_engine_core::card::Card;
+    use forge_engine_core::ids::CardId;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
+
+    #[test]
+    fn routes_variant_cards_to_variant_decks() {
+        let owner = PlayerId(0);
+        let attraction = Card::new(
+            CardId(0),
+            "Balloon Stand".to_string(),
+            owner,
+            CardTypeLine::parse("Artifact Attraction"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        let contraption = Card::new(
+            CardId(0),
+            "Auto-Key".to_string(),
+            owner,
+            CardTypeLine::parse("Artifact Contraption"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        let normal = Card::new(
+            CardId(0),
+            "Forest".to_string(),
+            owner,
+            CardTypeLine::parse("Basic Land Forest"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+
+        assert_eq!(fallback_deck_zone_for_card(&attraction), ZoneType::AttractionDeck);
+        assert_eq!(fallback_deck_zone_for_card(&contraption), ZoneType::ContraptionDeck);
+        assert_eq!(fallback_deck_zone_for_card(&normal), ZoneType::Library);
+    }
+
+    #[test]
+    fn explicit_section_overrides_fallback_routing() {
+        let owner = PlayerId(0);
+        let normal = Card::new(
+            CardId(0),
+            "Forest".to_string(),
+            owner,
+            CardTypeLine::parse("Basic Land Forest"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        assert_eq!(
+            deck_zone_for_identity(
+                &CardIdentity {
+                    name: "Forest".to_string(),
+                    set_code: "".to_string(),
+                    section: Some("sideboard".to_string()),
+                },
+                &normal,
+            ),
+            ZoneType::Sideboard
+        );
+        assert_eq!(
+            deck_zone_for_identity(
+                &CardIdentity {
+                    name: "Forest".to_string(),
+                    set_code: "".to_string(),
+                    section: Some("commander".to_string()),
+                },
+                &normal,
+            ),
+            ZoneType::Command
+        );
     }
 }

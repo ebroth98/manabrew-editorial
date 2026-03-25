@@ -104,4 +104,3 @@ pub fn set_cast_face_down(sa: &mut SpellAbility, face_down: bool) {
         sa.params.remove("CastFaceDown");
     }
 }
-

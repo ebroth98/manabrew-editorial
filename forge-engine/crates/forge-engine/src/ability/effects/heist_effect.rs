@@ -13,12 +13,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let num = super::resolve_numeric_svar(ctx.game, sa, "Num", 1).max(0) as usize;
 
-    let target_player = sa.target_chosen.target_player
+    let target_player = sa
+        .target_chosen
+        .target_player
         .unwrap_or_else(|| ctx.game.opponent_of(controller));
 
     // Exile top N cards from target's library face-down
     for _ in 0..num {
-        let lib = ctx.game.cards_in_zone(ZoneType::Library, target_player).to_vec();
+        let lib = ctx
+            .game
+            .cards_in_zone(ZoneType::Library, target_player)
+            .to_vec();
         let Some(&top) = lib.last() else { break };
 
         let old_zone = ctx.game.card(top).zone;

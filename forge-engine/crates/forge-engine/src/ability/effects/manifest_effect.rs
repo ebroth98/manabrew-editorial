@@ -6,8 +6,8 @@
 //! turn it face-down, and put it onto the battlefield as a 2/2 creature.
 //! The card can be turned face-up by paying its mana cost if it's a creature.
 
-use forge_foundation::ZoneType;
 use crate::parsing::keys;
+use forge_foundation::ZoneType;
 
 use super::manifest_base_effect::parse_manifest_params;
 use super::{emit_zone_trigger, EffectContext};
@@ -63,10 +63,7 @@ fn manifest_for_player(
         )
     } else {
         // Targeted or self
-        sa.target_chosen
-            .target_card
-            .into_iter()
-            .collect()
+        sa.target_chosen.target_card.into_iter().collect()
     };
 
     // Manifest each card one at a time (CR 701.34d)
@@ -105,5 +102,10 @@ fn manifest_single_card(
         }
     }
 
-    emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Battlefield);
+    emit_zone_trigger(
+        ctx.trigger_handler,
+        card_id,
+        old_zone,
+        ZoneType::Battlefield,
+    );
 }

@@ -73,6 +73,14 @@ export interface Deck {
   name: string;
   cards: Card[];
   sideboard: Card[];
+  /** Supplementary Attraction deck, separate from the sideboard like Forge RegisteredPlayer.getAttractions(). */
+  attractions?: Card[];
+  /** Supplementary Contraption deck, separate from the sideboard like Forge RegisteredPlayer.getContraptions(). */
+  contraptions?: Card[];
+  /** Supplementary Scheme deck, separate from the sideboard like Forge RegisteredPlayer.getSchemes(). */
+  schemes?: Card[];
+  /** Supplementary Planar deck, separate from the sideboard like Forge RegisteredPlayer.getPlanes(). */
+  planes?: Card[];
   /** Designated commander (Commander format). Not included in cards[]. */
   commander?: Card;
   /** User-assigned labels for the deck (e.g. "Aggro", "Budget", "Competitive"). */

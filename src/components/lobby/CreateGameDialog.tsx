@@ -8,6 +8,8 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
+import type { Card } from "@/types/openmagic";
+import type { CardIdentity, DeckSection } from "@/types/server";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { GAME_FORMATS, validateDeck, type GameFormat } from "@/lib/formats";
 import { FormatBadge } from "@/components/game/FormatBadge";
@@ -26,12 +28,36 @@ interface CreateGameDialogProps {
   preSelectedDeckId?: string;
   /** Called with the deck card names, format ID, optional commander name, and player count when Create is confirmed */
   onStart: (
-    deckList: { name: string, setCode: string }[],
+    deckList: CardIdentity[],
     formatId: string,
     commanderName?: string,
     playerCount?: number,
     deckName?: string
   ) => void;
+}
+
+function deckSectionForCard(card: Card, fallback: DeckSection): DeckSection {
+  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "attraction")) {
+    return "attractions";
+  }
+  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "contraption")) {
+    return "contraptions";
+  }
+  if (card.types.some((type) => type.toLowerCase() === "scheme")) {
+    return "schemes";
+  }
+  if (card.types.some((type) => type.toLowerCase() === "plane")) {
+    return "planes";
+  }
+  return fallback;
+}
+
+function toCardIdentity(card: Card, section: DeckSection): CardIdentity {
+  return {
+    name: card.name,
+    setCode: card.setCode || "",
+    section: deckSectionForCard(card, section),
+  };
 }
 
 export function CreateGameDialog({
@@ -76,8 +102,13 @@ export function CreateGameDialog({
       badge: "editing",
       labels: currentDeck.labels,
       deckList: [
-        ...currentDeck.cards.map((c) => ({ name: c.name, setCode: c.setCode || "" })),
-        ...(currentDeck.commander ? [{ name: currentDeck.commander.name, setCode: currentDeck.commander.setCode || "" }] : []),
+        ...currentDeck.cards.map((c) => toCardIdentity(c, "main")),
+        ...currentDeck.sideboard.map((c) => toCardIdentity(c, "sideboard")),
+        ...(currentDeck.attractions ?? []).map((c) => toCardIdentity(c, "attractions")),
+        ...(currentDeck.contraptions ?? []).map((c) => toCardIdentity(c, "contraptions")),
+        ...(currentDeck.schemes ?? []).map((c) => toCardIdentity(c, "schemes")),
+        ...(currentDeck.planes ?? []).map((c) => toCardIdentity(c, "planes")),
+        ...(currentDeck.commander ? [toCardIdentity(currentDeck.commander, "commander")] : []),
       ],
       isPreset: false as const,
       cards: currentDeck.cards,
@@ -89,8 +120,13 @@ export function CreateGameDialog({
       badge: null as string | null,
       labels: s.deck.labels,
       deckList: [
-        ...s.deck.cards.map((c) => ({ name: c.name, setCode: c.setCode || "" })),
-        ...(s.deck.commander ? [{ name: s.deck.commander.name, setCode: s.deck.commander.setCode || "" }] : []),
+        ...s.deck.cards.map((c) => toCardIdentity(c, "main")),
+        ...s.deck.sideboard.map((c) => toCardIdentity(c, "sideboard")),
+        ...(s.deck.attractions ?? []).map((c) => toCardIdentity(c, "attractions")),
+        ...(s.deck.contraptions ?? []).map((c) => toCardIdentity(c, "contraptions")),
+        ...(s.deck.schemes ?? []).map((c) => toCardIdentity(c, "schemes")),
+        ...(s.deck.planes ?? []).map((c) => toCardIdentity(c, "planes")),
+        ...(s.deck.commander ? [toCardIdentity(s.deck.commander, "commander")] : []),
       ],
       isPreset: false as const,
       cards: s.deck.cards,
@@ -104,7 +140,7 @@ export function CreateGameDialog({
     name: deck.label,
     desc: deck.desc,
     color: deck.color,
-    deckList: [{ name: deck.id, setCode: "" }],
+    deckList: [{ name: deck.id, setCode: "", section: "main" as DeckSection }],
     isPreset: true as const,
     cards: [],
     commanderName: undefined as string | undefined,
@@ -471,5 +507,3 @@ function RulePill({ label, value }: { label: string; value: string }) {
     </div>
   );
 }
-
-

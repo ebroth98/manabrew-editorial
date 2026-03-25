@@ -49,10 +49,7 @@ impl GlobalAttackRestrictions {
         for &defender in possible_defenders {
             if let DefenderId::Player(pid) = defender {
                 if let Some(def_max) =
-                    static_ability_attack_restrict::attack_restrict_num_for_defender(
-                        cards,
-                        pid,
-                    )
+                    static_ability_attack_restrict::attack_restrict_num_for_defender(cards, pid)
                 {
                     defender_max.insert(defender, def_max);
                 }

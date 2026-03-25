@@ -2470,6 +2470,7 @@ fn run_serve_mode(cli: &Cli) {
     use forge_parity::scheduler::Scheduler;
     use forge_parity::storage::Storage;
     use forge_parity::web::{self, DashboardConfig};
+    use std::backtrace::Backtrace;
     use std::sync::atomic::Ordering;
     use std::sync::Arc;
     use std::time::Instant;
@@ -2490,6 +2491,26 @@ fn run_serve_mode(cli: &Cli) {
                 .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(&cli.log_level)),
         )
         .init();
+
+    std::panic::set_hook(Box::new(|panic_info| {
+        let location = panic_info
+            .location()
+            .map(|loc| format!("{}:{}", loc.file(), loc.line()))
+            .unwrap_or_else(|| "unknown location".to_string());
+        let payload = panic_info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|s| (*s).to_string())
+            .or_else(|| panic_info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_else(|| "non-string panic payload".to_string());
+        let backtrace = Backtrace::force_capture();
+        tracing::error!(
+            location = %location,
+            payload = %payload,
+            backtrace = %backtrace,
+            "forge-parity panicked"
+        );
+    }));
 
     let jar_path = match &cli.java_jar {
         Some(p) => p.clone(),
@@ -2631,11 +2652,17 @@ fn run_serve_mode(cli: &Cli) {
     let app_state_web = Arc::clone(&app_state);
     rt.spawn(async move {
         let router = web::build_router(app_state_web);
-        let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port))
-            .await
-            .expect("failed to bind port");
+        let listener = match tokio::net::TcpListener::bind(format!("0.0.0.0:{}", port)).await {
+            Ok(listener) => listener,
+            Err(e) => {
+                tracing::error!(%e, port, "Failed to bind dashboard port");
+                return;
+            }
+        };
         tracing::info!(port, "Dashboard available at http://localhost:{}", port);
-        axum::serve(listener, router).await.expect("server error");
+        if let Err(e) = axum::serve(listener, router).await {
+            tracing::error!(%e, port, "Dashboard server exited");
+        }
     });
 
     // Always spawn analysis daemon (paused by default, toggle via dashboard)
@@ -2694,6 +2721,19 @@ fn run_serve_mode(cli: &Cli) {
         // 1. Check job queue first (priority over scheduler)
         let queued = job_queue.queue.lock().unwrap().pop_front();
         if let Some(queued_job) = queued {
+            {
+                let mut batches = job_queue.batches.lock().unwrap();
+                if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
+                    batch.active_job = Some(web::ActiveJob {
+                        regression_name: queued_job.regression_name.clone(),
+                        deck1: queued_job.deck1.clone(),
+                        deck2: queued_job.deck2.clone(),
+                        seed: queued_job.seed,
+                        max_turns: queued_job.max_turns,
+                    });
+                }
+            }
+
             let config = RunConfig {
                 deck1: queued_job.deck1.clone(),
                 deck2: queued_job.deck2.clone(),
@@ -2720,6 +2760,7 @@ fn run_serve_mode(cli: &Cli) {
                         if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
                             batch.completed += 1;
                             batch.errors += 1;
+                            batch.active_job = None;
                             batch.push_result(web::JobResult {
                                 deck1: queued_job.deck1.clone(),
                                 deck2: queued_job.deck2.clone(),
@@ -2768,6 +2809,7 @@ fn run_serve_mode(cli: &Cli) {
                 let mut batches = job_queue.batches.lock().unwrap();
                 if let Some(batch) = batches.get_mut(&queued_job.batch_id) {
                     batch.completed += 1;
+                    batch.active_job = None;
                     match result.status {
                         MatchupStatus::Pass => batch.passed += 1,
                         MatchupStatus::Fail => batch.failed += 1,

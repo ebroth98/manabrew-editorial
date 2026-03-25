@@ -11,6 +11,67 @@ function patchCardsByName(cards: Card[], updates: Map<string, Partial<Card>>): C
   });
 }
 
+function isAttractionCard(card: Card): boolean {
+  return card.subtypes?.some((subtype) => subtype.toLowerCase() === 'attraction') ?? false;
+}
+
+function isContraptionCard(card: Card): boolean {
+  return card.subtypes?.some((subtype) => subtype.toLowerCase() === 'contraption') ?? false;
+}
+
+function isSchemeCard(card: Card): boolean {
+  return card.types?.some((type) => type.toLowerCase() === 'scheme') ?? false;
+}
+
+function isPlaneCard(card: Card): boolean {
+  return card.types?.some((type) => type.toLowerCase() === 'plane') ?? false;
+}
+
+function normalizeDeck(deck: Deck): Deck {
+  const sideboard = [...(deck.sideboard ?? [])];
+  const attractions = [...(deck.attractions ?? [])];
+  const contraptions = [...(deck.contraptions ?? [])];
+  const schemes = [...(deck.schemes ?? [])];
+  const planes = [...(deck.planes ?? [])];
+
+  const remainingSideboard: Card[] = [];
+  for (const card of sideboard) {
+    if (isAttractionCard(card)) {
+      attractions.push(card);
+    } else if (isContraptionCard(card)) {
+      contraptions.push(card);
+    } else if (isSchemeCard(card)) {
+      schemes.push(card);
+    } else if (isPlaneCard(card)) {
+      planes.push(card);
+    } else {
+      remainingSideboard.push(card);
+    }
+  }
+
+  return {
+    ...deck,
+    sideboard: remainingSideboard,
+    attractions,
+    contraptions,
+    schemes,
+    planes,
+  };
+}
+
+function patchDeckCards(deck: Deck, updates: Map<string, Partial<Card>>): Deck {
+  const normalized = normalizeDeck(deck);
+  return {
+    ...normalized,
+    cards: patchCardsByName(normalized.cards, updates),
+    sideboard: patchCardsByName(normalized.sideboard, updates),
+    attractions: patchCardsByName(normalized.attractions ?? [], updates),
+    contraptions: patchCardsByName(normalized.contraptions ?? [], updates),
+    schemes: patchCardsByName(normalized.schemes ?? [], updates),
+    planes: patchCardsByName(normalized.planes ?? [], updates),
+  };
+}
+
 export interface SavedDeck {
   id: string;
   deck: Deck;
@@ -61,6 +122,10 @@ const initialDeck: Deck = {
   name: DEFAULT_DECK_NAME,
   cards: [],
   sideboard: [],
+  attractions: [],
+  contraptions: [],
+  schemes: [],
+  planes: [],
 };
 
 export const useDeckStore = create<DeckState>()(
@@ -74,9 +139,32 @@ export const useDeckStore = create<DeckState>()(
           currentDeck: { ...state.currentDeck, cards: [...state.currentDeck.cards, card] },
         })),
       addToSide: (card) =>
-        set((state) => ({
-          currentDeck: { ...state.currentDeck, sideboard: [...state.currentDeck.sideboard, card] },
-        })),
+        set((state) => {
+          const deck = normalizeDeck(state.currentDeck);
+          if (isAttractionCard(card)) {
+            return {
+              currentDeck: { ...deck, attractions: [...(deck.attractions ?? []), card] },
+            };
+          }
+          if (isContraptionCard(card)) {
+            return {
+              currentDeck: { ...deck, contraptions: [...(deck.contraptions ?? []), card] },
+            };
+          }
+          if (isSchemeCard(card)) {
+            return {
+              currentDeck: { ...deck, schemes: [...(deck.schemes ?? []), card] },
+            };
+          }
+          if (isPlaneCard(card)) {
+            return {
+              currentDeck: { ...deck, planes: [...(deck.planes ?? []), card] },
+            };
+          }
+          return {
+            currentDeck: { ...deck, sideboard: [...deck.sideboard, card] },
+          };
+        }),
       addToPool: (card) =>
         set((state) => ({
           pool: [...state.pool, card],
@@ -91,18 +179,45 @@ export const useDeckStore = create<DeckState>()(
         }),
       removeFromSide: (cardId) =>
         set((state) => {
-          const index = state.currentDeck.sideboard.findIndex((c) => c.id === cardId);
-          if (index === -1) return state;
-          const newSide = [...state.currentDeck.sideboard];
-          newSide.splice(index, 1);
-          return { currentDeck: { ...state.currentDeck, sideboard: newSide } };
+          const deck = normalizeDeck(state.currentDeck);
+          const sideIndex = deck.sideboard.findIndex((c) => c.id === cardId);
+          if (sideIndex !== -1) {
+            const sideboard = [...deck.sideboard];
+            sideboard.splice(sideIndex, 1);
+            return { currentDeck: { ...deck, sideboard } };
+          }
+          const attractionIndex = (deck.attractions ?? []).findIndex((c) => c.id === cardId);
+          if (attractionIndex !== -1) {
+            const attractions = [...(deck.attractions ?? [])];
+            attractions.splice(attractionIndex, 1);
+            return { currentDeck: { ...deck, attractions } };
+          }
+          const contraptionIndex = (deck.contraptions ?? []).findIndex((c) => c.id === cardId);
+          if (contraptionIndex !== -1) {
+            const contraptions = [...(deck.contraptions ?? [])];
+            contraptions.splice(contraptionIndex, 1);
+            return { currentDeck: { ...deck, contraptions } };
+          }
+          const schemeIndex = (deck.schemes ?? []).findIndex((c) => c.id === cardId);
+          if (schemeIndex !== -1) {
+            const schemes = [...(deck.schemes ?? [])];
+            schemes.splice(schemeIndex, 1);
+            return { currentDeck: { ...deck, schemes } };
+          }
+          const planeIndex = (deck.planes ?? []).findIndex((c) => c.id === cardId);
+          if (planeIndex !== -1) {
+            const planes = [...(deck.planes ?? [])];
+            planes.splice(planeIndex, 1);
+            return { currentDeck: { ...deck, planes } };
+          }
+          return state;
         }),
       setDeckName: (name) =>
         set((state) => ({
           currentDeck: { ...state.currentDeck, name },
         })),
       clearDeck: () => set({ currentDeck: { ...initialDeck } }),
-      loadDeck: (deck) => set({ currentDeck: deck }),
+      loadDeck: (deck) => set({ currentDeck: normalizeDeck(deck) }),
       setCommander: (card) =>
         set((state) => ({
           currentDeck: { ...state.currentDeck, commander: card },
@@ -116,18 +231,17 @@ export const useDeckStore = create<DeckState>()(
           const updates = new Map<string, Partial<Card>>();
           updates.set(cardName.toLowerCase(), {
             setCode: scryfallCard.set,
-            imageUrl: scryfallCard.image_uris?.normal ?? scryfallCard.image_uris?.large ?? null,
+            imageUrl: scryfallCard.image_uris?.normal ?? scryfallCard.image_uris?.large ?? undefined,
             cardNumber: scryfallCard.collector_number,
           });
-          const cmd = state.currentDeck.commander;
+          const deck = normalizeDeck(state.currentDeck);
+          const cmd = deck.commander;
           const cmdPatch = cmd ? updates.get(cmd.name.toLowerCase()) : undefined;
           return {
             currentDeck: {
-              ...state.currentDeck,
-              cards: patchCardsByName(state.currentDeck.cards, updates),
-              sideboard: patchCardsByName(state.currentDeck.sideboard, updates),
+              ...patchDeckCards(deck, updates),
               ...(cmdPatch ? { commander: { ...cmd!, ...cmdPatch } } : {}),
-            },
+            }
           };
         }),
       saveCurrentDeck: () =>
@@ -142,7 +256,7 @@ export const useDeckStore = create<DeckState>()(
           }
           const newSaved: SavedDeck = {
             id: crypto.randomUUID(),
-            deck: state.currentDeck,
+            deck: normalizeDeck(state.currentDeck),
             savedAt: Date.now(),
           };
           return { savedDecks: [...state.savedDecks, newSaved] };
@@ -151,7 +265,7 @@ export const useDeckStore = create<DeckState>()(
         set((state) => {
           const found = state.savedDecks.find((s) => s.id === id);
           if (!found) return state;
-          return { currentDeck: found.deck };
+          return { currentDeck: normalizeDeck(found.deck) };
         }),
       deleteSavedDeck: (id) =>
         set((state) => ({
@@ -159,13 +273,12 @@ export const useDeckStore = create<DeckState>()(
         })),
       enrichDeckCards: (updates) =>
         set((state) => {
-          const cmd = state.currentDeck.commander;
+          const deck = normalizeDeck(state.currentDeck);
+          const cmd = deck.commander;
           const cmdPatch = cmd ? updates.get(cmd.name.toLowerCase()) : undefined;
           return {
             currentDeck: {
-              ...state.currentDeck,
-              cards: patchCardsByName(state.currentDeck.cards, updates),
-              sideboard: patchCardsByName(state.currentDeck.sideboard, updates),
+              ...patchDeckCards(deck, updates),
               ...(cmdPatch ? { commander: { ...cmd!, ...cmdPatch } } : {}),
             },
           };
@@ -175,7 +288,7 @@ export const useDeckStore = create<DeckState>()(
           savedDecks: state.savedDecks.map((s) =>
             s.id !== id
               ? s
-              : { ...s, deck: { ...s.deck, cards: [...s.deck.cards, card] }, savedAt: Date.now() },
+              : { ...s, deck: { ...normalizeDeck(s.deck), cards: [...s.deck.cards, card] }, savedAt: Date.now() },
           ),
         })),
       enrichSavedDeck: (id, updates) =>
@@ -185,11 +298,7 @@ export const useDeckStore = create<DeckState>()(
               ? s
               : {
                   ...s,
-                  deck: {
-                    ...s.deck,
-                    cards: patchCardsByName(s.deck.cards, updates),
-                    sideboard: patchCardsByName(s.deck.sideboard, updates),
-                  },
+                  deck: patchDeckCards(s.deck, updates),
                 }
           ),
         })),
@@ -262,6 +371,22 @@ export const useDeckStore = create<DeckState>()(
     }),
     {
       name: STORAGE_KEYS.DECK,
+      version: 2,
+      migrate: (persistedState: unknown) => {
+        if (!persistedState || typeof persistedState !== 'object') return persistedState as DeckState;
+        const state = persistedState as {
+          currentDeck?: Deck;
+          savedDecks?: SavedDeck[];
+        };
+        return {
+          ...state,
+          currentDeck: normalizeDeck(state.currentDeck ?? initialDeck),
+          savedDecks: (state.savedDecks ?? []).map((saved) => ({
+            ...saved,
+            deck: normalizeDeck(saved.deck),
+          })),
+        };
+      },
     }
   )
 );

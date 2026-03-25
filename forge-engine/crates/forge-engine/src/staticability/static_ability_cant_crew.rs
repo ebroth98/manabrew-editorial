@@ -3,8 +3,15 @@ use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn cant_crew(cards: &[Card], card: &Card) -> bool {
-    for source in cards.iter().filter(|c| c.zone.is_static_ability_source() || c.id == card.id) {
-        for st_ab in source.static_abilities.iter().filter(|sa| sa.mode == StaticMode::CantCrew && sa.zones_check(source.zone)) {
+    for source in cards
+        .iter()
+        .filter(|c| c.zone.is_static_ability_source() || c.id == card.id)
+    {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::CantCrew && sa.zones_check(source.zone))
+        {
             if apply_cant_crew(st_ab, card, source) {
                 return true;
             }

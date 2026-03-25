@@ -13,10 +13,7 @@ use crate::spellability::SpellAbility;
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let defined = sa
-        .params
-        .get(keys::DEFINED)
-        .unwrap_or("You");
+    let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
     let choosers = resolve_defined_players(defined, controller, ctx.game);
 
     let valid_players: Vec<_> = if let Some(choices) = sa.params.get(keys::CHOICES) {
@@ -39,7 +36,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if !ctx.game.player(chooser).is_alive() {
             continue;
         }
-        let chosen = ctx.agents[chooser.index()].choose_target_player(chooser, &valid_players, None);
+        let chosen =
+            ctx.agents[chooser.index()].choose_target_player(chooser, &valid_players, None);
 
         if let Some(chosen_pid) = chosen {
             if let Some(source_id) = sa.source {

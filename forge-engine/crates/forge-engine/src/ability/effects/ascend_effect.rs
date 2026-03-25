@@ -23,10 +23,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
 
         // Count permanents on battlefield
-        let permanent_count = ctx
-            .game
-            .cards_in_zone(ZoneType::Battlefield, pid)
-            .len();
+        let permanent_count = ctx.game.cards_in_zone(ZoneType::Battlefield, pid).len();
 
         if permanent_count >= 10 {
             // Grant city's blessing (permanent for rest of game)

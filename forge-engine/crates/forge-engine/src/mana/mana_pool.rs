@@ -8,7 +8,7 @@ use forge_foundation::mana::ManaAtom;
 use forge_foundation::PhaseType;
 use serde::{Deserialize, Serialize};
 
-use super::{Mana, ManaPaymentContext, mana_meets_restriction};
+use super::{mana_meets_restriction, Mana, ManaPaymentContext};
 use crate::ids::CardId;
 
 /// Tracks available mana for a player during a turn.
@@ -814,9 +814,11 @@ impl ManaPool {
     /// Remove a specific Mana object from the pool.
     /// Mirrors Java's `ManaPool.removeMana(Mana)`.
     pub fn remove_mana(&mut self, mana: &Mana) -> bool {
-        if let Some(pos) = self.mana.iter().position(|m| {
-            m.color == mana.color && m.source_card == mana.source_card
-        }) {
+        if let Some(pos) = self
+            .mana
+            .iter()
+            .position(|m| m.color == mana.color && m.source_card == mana.source_card)
+        {
             self.mana.remove(pos);
             true
         } else {

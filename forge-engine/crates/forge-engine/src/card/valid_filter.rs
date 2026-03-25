@@ -69,11 +69,7 @@ pub fn matches_valid_card(valid: &str, card: &Card, source: &Card) -> bool {
 }
 
 /// Convenience wrapper: None means "no filter" → always matches.
-pub fn matches_valid_card_opt(
-    valid: Option<&str>,
-    card: &Card,
-    source: &Card,
-) -> bool {
+pub fn matches_valid_card_opt(valid: Option<&str>, card: &Card, source: &Card) -> bool {
     match valid {
         None => true,
         Some(v) => matches_valid_card(v, card, source),
@@ -419,11 +415,7 @@ fn check_cmc_condition(rest: &str, card: &Card) -> bool {
 /// the specified player(s), then compares the count against `PresentCompare$`.
 ///
 /// Mirrors Java's `meetsCommonRequirements()` IsPresent block.
-pub fn check_is_present(
-    game: &GameState,
-    params: &Params,
-    source: &Card,
-) -> bool {
+pub fn check_is_present(game: &GameState, params: &Params, source: &Card) -> bool {
     let Some(is_present) = params.get(keys::IS_PRESENT) else {
         return true; // no IsPresent param — passes
     };
@@ -457,11 +449,7 @@ pub fn check_is_present(
 ///
 /// Resolves the named SVar on the source card and compares its value.
 /// Mirrors Java's `meetsCommonRequirements()` CheckSVar block.
-pub fn check_svar_condition(
-    game: &GameState,
-    params: &Params,
-    source: &Card,
-) -> bool {
+pub fn check_svar_condition(game: &GameState, params: &Params, source: &Card) -> bool {
     let Some(check_name) = params.get(keys::CHECK_SVAR) else {
         return true;
     };
@@ -470,7 +458,11 @@ pub fn check_svar_condition(
     };
 
     // Resolve the SVar value — first check card SVars, then try direct parse.
-    let raw_value = source.svars.get(check_name).map(|s| s.as_str()).unwrap_or("0");
+    let raw_value = source
+        .svars
+        .get(check_name)
+        .map(|s| s.as_str())
+        .unwrap_or("0");
     let value = if raw_value.starts_with("Count$") {
         let count_expr = &raw_value["Count$".len()..];
         crate::svar::resolve_count_svar(count_expr, game, source.id, source.controller)
@@ -497,7 +489,11 @@ pub fn check_named_svar_condition(
     };
     let compare = params.get(compare_key).unwrap_or("GE1");
 
-    let raw_value = source.svars.get(check_name).map(|s| s.as_str()).unwrap_or("0");
+    let raw_value = source
+        .svars
+        .get(check_name)
+        .map(|s| s.as_str())
+        .unwrap_or("0");
     let value = if raw_value.starts_with("Count$") {
         let count_expr = &raw_value["Count$".len()..];
         crate::svar::resolve_count_svar(count_expr, game, source.id, source.controller)
@@ -512,22 +508,21 @@ pub fn check_named_svar_condition(
 ///
 /// Supports: PlayerTurn, NotPlayerTurn, Metalcraft, Delirium.
 /// Mirrors Java's `meetsCommonRequirements()` condition checks.
-pub fn check_condition(
-    game: &GameState,
-    params: &Params,
-    source: &Card,
-) -> bool {
+pub fn check_condition(game: &GameState, params: &Params, source: &Card) -> bool {
     let Some(condition) = params.get(keys::CONDITION) else {
         return true;
     };
     match condition {
         "PlayerTurn" => game.active_player() == source.controller,
         "NotPlayerTurn" => game.active_player() != source.controller,
-        "Threshold" => game
-            .cards_in_zone(ZoneType::Graveyard, source.controller)
-            .len()
-            >= 7,
-        "Hellbent" => game.cards_in_zone(ZoneType::Hand, source.controller).is_empty(),
+        "Threshold" => {
+            game.cards_in_zone(ZoneType::Graveyard, source.controller)
+                .len()
+                >= 7
+        }
+        "Hellbent" => game
+            .cards_in_zone(ZoneType::Hand, source.controller)
+            .is_empty(),
         "Metalcraft" => {
             game.cards_in_zone(ZoneType::Battlefield, source.controller)
                 .iter()
@@ -540,13 +535,27 @@ pub fn check_condition(
             let mut types = std::collections::HashSet::new();
             for &cid in graveyard {
                 let card = game.card(cid);
-                if card.is_creature() { types.insert("creature"); }
-                if card.type_line.is_instant() { types.insert("instant"); }
-                if card.type_line.is_sorcery() { types.insert("sorcery"); }
-                if card.type_line.is_artifact() { types.insert("artifact"); }
-                if card.type_line.is_enchantment() { types.insert("enchantment"); }
-                if card.is_land() { types.insert("land"); }
-                if card.type_line.is_planeswalker() { types.insert("planeswalker"); }
+                if card.is_creature() {
+                    types.insert("creature");
+                }
+                if card.type_line.is_instant() {
+                    types.insert("instant");
+                }
+                if card.type_line.is_sorcery() {
+                    types.insert("sorcery");
+                }
+                if card.type_line.is_artifact() {
+                    types.insert("artifact");
+                }
+                if card.type_line.is_enchantment() {
+                    types.insert("enchantment");
+                }
+                if card.is_land() {
+                    types.insert("land");
+                }
+                if card.type_line.is_planeswalker() {
+                    types.insert("planeswalker");
+                }
             }
             types.len() >= 4
         }
@@ -575,11 +584,7 @@ pub fn check_condition(
 /// Returns `false` if any check fails.
 ///
 /// Mirrors Java's `CardTraitBase.meetsCommonRequirements()`.
-pub fn meets_common_requirements(
-    game: &GameState,
-    params: &Params,
-    source: &Card,
-) -> bool {
+pub fn meets_common_requirements(game: &GameState, params: &Params, source: &Card) -> bool {
     check_is_present(game, params, source)
         && check_svar_condition(game, params, source)
         && check_condition(game, params, source)

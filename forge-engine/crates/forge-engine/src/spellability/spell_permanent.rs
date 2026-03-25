@@ -18,7 +18,11 @@ use crate::spellability::{SpellAbility, SpellAbilityCondition, SpellAbilityRestr
 /// - `is_creature`: If true, the API type is `PermanentCreature`; otherwise
 ///   `PermanentNoncreature`.
 /// - `player`: The casting player.
-pub fn create_permanent_spell(card_id: CardId, is_creature: bool, player: PlayerId) -> SpellAbility {
+pub fn create_permanent_spell(
+    card_id: CardId,
+    is_creature: bool,
+    player: PlayerId,
+) -> SpellAbility {
     let api = if is_creature {
         ApiType::PermanentCreature
     } else {
@@ -40,6 +44,7 @@ pub fn create_permanent_spell(card_id: CardId, is_creature: bool, player: Player
         is_trigger: false,
         is_activated: false,
         trigger_source: None,
+        source_trigger_id: None,
         trigger_index: None,
         alt_cost: None,
         kicked: false,
@@ -65,6 +70,7 @@ pub fn create_permanent_spell(card_id: CardId, is_creature: bool, player: Player
         is_mana_ability: false,
         is_land_ability: false,
         trigger_objects: HashMap::new(),
+        trigger_spell_abilities: HashMap::new(),
         restriction: SpellAbilityRestriction::default(),
         condition: SpellAbilityCondition::default(),
         rollback_effects: Vec::new(),

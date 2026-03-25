@@ -10,9 +10,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let source = sa.source;
     let target = sa.target_chosen.target_card;
 
-    let (Some(card1), Some(card2)) = (source, target) else { return };
-    if ctx.game.card(card1).zone != ZoneType::Battlefield { return; }
-    if ctx.game.card(card2).zone != ZoneType::Battlefield { return; }
+    let (Some(card1), Some(card2)) = (source, target) else {
+        return;
+    };
+    if ctx.game.card(card1).zone != ZoneType::Battlefield {
+        return;
+    }
+    if ctx.game.card(card2).zone != ZoneType::Battlefield {
+        return;
+    }
 
     // Swap abilities text
     let abilities1 = ctx.game.card(card1).abilities.clone();

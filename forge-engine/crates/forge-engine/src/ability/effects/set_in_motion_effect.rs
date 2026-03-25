@@ -14,9 +14,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
     // Run SetInMotion replacement effects before setting in motion.
-    let mut event = ReplacementEvent::SetInMotion {
-        player: controller,
-    };
+    let mut event = ReplacementEvent::SetInMotion { player: controller };
     let result = apply_replacements(ctx.game, &mut event);
     if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
         return;
@@ -33,7 +31,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .find(|c| {
                 c.owner == controller
                     && c.zone == ZoneType::Command
-                    && c.type_line.subtypes.iter().any(|s| s.eq_ignore_ascii_case("Scheme"))
+                    && c.type_line
+                        .subtypes
+                        .iter()
+                        .any(|s| s.eq_ignore_ascii_case("Scheme"))
             })
             .map(|c| c.id);
 

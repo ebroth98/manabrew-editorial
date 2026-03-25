@@ -23,7 +23,11 @@ impl Card {
     /// Stored as keyword `AltCostSacrifice:N:Type` where N is the count and Type is the filter.
     /// Returns `Some((amount, type_filter))` if present.
     pub fn get_sacrifice_alt_cost(&self) -> Option<(i32, String)> {
-        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+        for kw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+        {
             if let Some(rest) = kw.strip_prefix(super::KEYWORD_ALT_COST_SACRIFICE_PREFIX) {
                 let mut parts = rest.splitn(2, ':');
                 let amount = parts
@@ -43,7 +47,11 @@ impl Card {
     /// and IsPresent is the condition string (e.g. `Forest.YouCtrl`).
     /// Returns `Some((life_amount, condition))` if present.
     pub fn get_gainlife_alt_cost(&self) -> Option<(i32, String)> {
-        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+        for kw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+        {
             if let Some(rest) = kw.strip_prefix(super::KEYWORD_ALT_COST_GAINLIFE_PREFIX) {
                 let mut parts = rest.splitn(2, ':');
                 let amount = parts

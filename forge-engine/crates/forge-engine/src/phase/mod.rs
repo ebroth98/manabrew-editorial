@@ -121,10 +121,7 @@ impl Phase {
     /// Add a command to the end-of-phase map for a player.
     /// Mirrors Java's `Phase.addUntilEnd()`.
     pub fn add_until_end(&mut self, player: PlayerId, cmd: PhaseCommand) {
-        self.until_end_map
-            .entry(player)
-            .or_default()
-            .insert(0, cmd);
+        self.until_end_map.entry(player).or_default().insert(0, cmd);
     }
 
     /// Move registered commands to the until-end map.

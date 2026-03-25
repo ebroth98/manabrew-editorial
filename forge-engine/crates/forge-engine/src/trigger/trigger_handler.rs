@@ -9,7 +9,7 @@ use crate::ids::{CardId, PlayerId};
 use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 use crate::spellability::{build_spell_ability, StackEntry};
-use crate::trigger::TriggerMode;
+use crate::trigger::{parse_trigger, Trigger, TriggerMode};
 
 /// An active trigger reference — (card_id, trigger_index) pair.
 /// In Java this is a direct Trigger object reference. In Rust,
@@ -63,7 +63,10 @@ pub struct TriggerHandler {
     active_triggers: Vec<ActiveTrigger>,
     waiting_triggers: Vec<TriggerWaiting>,
     delayed_triggers: Vec<DelayedTrigger>,
+    this_turn_delayed_triggers: Vec<DelayedTrigger>,
+    player_defined_delayed_triggers: Vec<(PlayerId, DelayedTrigger)>,
     suppressed_modes: HashSet<TriggerType>,
+    all_suppressed: bool,
     next_trigger_id: u32,
     /// Triggers that were matched early (before SBA) and are waiting to be
     /// placed on the stack. This ensures triggers from creatures that die to
@@ -78,7 +81,10 @@ impl TriggerHandler {
             active_triggers: Vec::new(),
             waiting_triggers: Vec::new(),
             delayed_triggers: Vec::new(),
+            this_turn_delayed_triggers: Vec::new(),
+            player_defined_delayed_triggers: Vec::new(),
             suppressed_modes: HashSet::new(),
+            all_suppressed: false,
             next_trigger_id: 0,
             pre_matched_triggers: Vec::new(),
         }
@@ -88,7 +94,94 @@ impl TriggerHandler {
     /// Called from game actions when events occur.
     /// If `hold` is true, event is queued; otherwise it's also queued
     /// (all triggers go through the waiting queue for APNAP ordering).
-    pub fn run_trigger(&mut self, mode: TriggerType, params: RunParams, _hold: bool) {
+    pub fn run_trigger(&mut self, mode: TriggerType, params: RunParams, hold: bool) {
+        if self.is_trigger_suppressed(mode) {
+            return;
+        }
+
+        // Java parity: mana triggers are not held/frozen. We don't run them inline
+        // here because matching still flows through waiting processing, but we do
+        // force front-of-queue delivery when hold is false.
+        let urgent = !hold
+            && matches!(
+                mode,
+                TriggerType::Always | TriggerType::TapsForMana | TriggerType::ManaAdded
+            );
+        if urgent {
+            self.waiting_triggers.insert(
+                0,
+                TriggerWaiting {
+                    mode,
+                    params: params.clone(),
+                },
+            );
+        } else {
+            self.waiting_triggers.push(TriggerWaiting {
+                mode,
+                params: params.clone(),
+            });
+        }
+
+        if mode == TriggerType::SpellCast {
+            self.waiting_triggers.push(TriggerWaiting {
+                mode: TriggerType::SpellAbilityCast,
+                params: params.clone(),
+            });
+            self.waiting_triggers.push(TriggerWaiting {
+                mode: TriggerType::SpellCastOrCopy,
+                params: params.clone(),
+            });
+        }
+        if mode == TriggerType::AbilityCast {
+            self.waiting_triggers.push(TriggerWaiting {
+                mode: TriggerType::SpellAbilityCast,
+                params: params.clone(),
+            });
+        }
+        if mode == TriggerType::SpellCopied {
+            self.waiting_triggers.push(TriggerWaiting {
+                mode: TriggerType::SpellCopy,
+                params: params.clone(),
+            });
+            self.waiting_triggers.push(TriggerWaiting {
+                mode: TriggerType::SpellAbilityCopy,
+                params: params.clone(),
+            });
+            self.waiting_triggers.push(TriggerWaiting {
+                mode: TriggerType::SpellCastOrCopy,
+                params: params.clone(),
+            });
+        }
+    }
+
+    /// Java-parity entrypoint that can resolve triggers immediately when the
+    /// event should not be held/frozen.
+    pub fn run_trigger_with_game(
+        &mut self,
+        game: &GameState,
+        mode: TriggerType,
+        params: RunParams,
+        hold: bool,
+    ) -> Vec<PendingTrigger> {
+        self.run_trigger(mode, params, hold);
+        let resolve_now = mode == TriggerType::Always
+            || (!hold
+                && !game.stack.is_frozen()
+                && !matches!(mode, TriggerType::TapsForMana | TriggerType::ManaAdded));
+        if resolve_now {
+            self.run_waiting_triggers(game)
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Java parity wrapper for TriggerHandler.parseTrigger(String).
+    pub fn parse_trigger(&mut self, raw: &str) -> Option<Trigger> {
+        parse_trigger(raw, &mut self.next_trigger_id)
+    }
+
+    /// Java parity wrapper for TriggerHandler.collectTriggerForWaiting(...).
+    pub fn collect_trigger_for_waiting(&mut self, mode: TriggerType, params: RunParams) {
         self.waiting_triggers.push(TriggerWaiting { mode, params });
     }
 
@@ -174,17 +267,40 @@ impl TriggerHandler {
         let mut entries: Vec<(PendingTrigger, PlayerId, u64)> = Vec::new();
 
         for event in &waiting {
-            // Check each active trigger
-            for active in &self.active_triggers {
-                let card = game.card(active.card_id);
-                if active.trigger_index >= card.triggers.len() {
+            let mut trigger_refs: Vec<(CardId, usize, usize)> = self
+                .active_triggers
+                .iter()
+                .enumerate()
+                .map(|(idx, active)| (active.card_id, active.trigger_index, idx))
+                .collect();
+            for (card_id, trigger_index) in self.ltb_trigger_refs_for_event(game, event) {
+                if !trigger_refs.iter().any(|(existing_card, existing_idx, _)| {
+                    *existing_card == card_id && *existing_idx == trigger_index
+                }) {
+                    trigger_refs.push((card_id, trigger_index, usize::MAX));
+                }
+            }
+            trigger_refs.sort_by_key(|&(card_id, trigger_index, idx)| {
+                let card = game.card(card_id);
+                let is_static = card
+                    .triggers
+                    .get(trigger_index)
+                    .map(|trigger| !trigger.is_static())
+                    .unwrap_or(true);
+                (is_static, idx)
+            });
+
+            // Check each active trigger plus any Java-style LTB look-back triggers.
+            for (card_id, trigger_index, _) in trigger_refs {
+                let card = game.card(card_id);
+                if trigger_index >= card.triggers.len() {
                     continue;
                 }
-                let trigger = &card.triggers[active.trigger_index];
+                let trigger = &card.triggers[trigger_index];
                 let host_controller = card.controller;
                 if crate::staticability::static_ability_disable_triggers::is_disabled(
                     game,
-                    active.card_id,
+                    card_id,
                     trigger,
                     &event.params,
                 ) {
@@ -193,87 +309,20 @@ impl TriggerHandler {
 
                 let can_run = self.can_run_trigger(
                     game,
-                    active.card_id,
-                    active.trigger_index,
+                    card_id,
+                    trigger_index,
                     host_controller,
                     &event.mode,
                     &event.params,
                 );
                 if can_run {
-                    let svar_text = card
-                        .svars
-                        .get(&trigger.execute)
-                        .cloned()
-                        .unwrap_or_default();
-
-                    let mut sa =
-                        build_spell_ability(game, active.card_id, &svar_text, host_controller);
-                    sa.is_trigger = true;
-                    sa.trigger_source = Some(active.card_id);
-                    sa.trigger_index = Some(active.trigger_index);
-
-                    // Propagate trigger target from event params so that
-                    // Defined$ TriggeredTarget can resolve in downstream effects.
-                    // For DamageDone triggers, this is the player/card dealt damage.
-                    // For Attacks triggers, defending_player is propagated for Annihilator etc.
-                    if let Some(pid) = event.params.damage_target_player {
-                        sa.target_chosen.target_player = Some(pid);
-                    }
-                    // For trigger SVar chains that reference TriggeredPlayer,
-                    // propagate the event player (e.g. Maralen draw-step trigger).
-                    if sa.target_chosen.target_player.is_none()
-                        && svar_text.contains("TriggeredPlayer")
-                    {
-                        if let Some(pid) = event.params.player {
-                            sa.target_chosen.target_player = Some(pid);
-                        }
-                    }
-                    // Only propagate defending_player when the SVar actually
-                    // references it (Annihilator, DefendingPlayer, etc.).
-                    // Blindly setting it breaks effects like Smuggler's Copter's
-                    // loot that use Defined$ You (controller) rather than the
-                    // defending player.
-                    if let Some(pid) = event.params.defending_player {
-                        if sa.target_chosen.target_player.is_none()
-                            && svar_text.contains("DefendingPlayer")
-                        {
-                            sa.target_chosen.target_player = Some(pid);
-                        }
-                    }
-                    if let Some(cid) = event.params.damage_target_card {
-                        sa.target_chosen.target_card = Some(cid);
-                    }
-                    // For BecomesTarget triggers (Ward), find the targeting spell on
-                    // the stack and set it as the counter target.
-                    if let Some(cause_cid) = event.params.cause_card {
-                        if let Some(entry) = game.stack.find_by_source_card(cause_cid) {
-                            sa.target_chosen.target_stack_entry = Some(entry.id);
-                        }
-                    }
-                    // For Attacks triggers (Exalted): propagate attacker as target_card
-                    // so Defined$ TriggeredAttacker can resolve.
-                    if let Some(attacker_id) = event.params.attacker {
-                        if svar_text.contains("TriggeredAttacker") {
-                            sa.target_chosen.target_card = Some(attacker_id);
-                        }
-                    }
-                    // For Block triggers (Flanking): propagate blocker as target_card
-                    // so Defined$ TriggeredBlocker can resolve.
-                    if let Some(blocker_id) = event.params.blocker {
-                        if svar_text.contains("TriggeredBlocker") {
-                            sa.target_chosen.target_card = Some(blocker_id);
-                        }
-                    }
-
-                    // For death triggers (Modular), propagate the LKI +1/+1
-                    // counter count so CounterNum$ ModularX can resolve via
-                    // Count$TriggerRememberAmount.  Mirrors Java's
-                    // `TriggeredCard$CardCounters.P1P1` lookup.
-                    if let Some(lki_p1p1) = event.params.lki_p1p1_counters {
-                        if trigger.execute.contains("Modular") || svar_text.contains("Modular") {
-                            sa.trigger_remembered_amount = lki_p1p1;
-                        }
-                    }
+                    let sa = trigger.build_triggered_spell_ability(
+                        game,
+                        card_id,
+                        host_controller,
+                        trigger_index,
+                        &event.params,
+                    );
 
                     let entry = StackEntry {
                         id: 0,
@@ -305,27 +354,18 @@ impl TriggerHandler {
                     entries.push((pending, host_controller, source_ts));
                     let extra = crate::staticability::static_ability_panharmonicon::extra_triggers(
                         game,
-                        active.card_id,
+                        card_id,
                         trigger,
                         &event.params,
                     );
                     for _ in 0..extra {
-                        let mut sa2 =
-                            build_spell_ability(game, active.card_id, &svar_text, host_controller);
-                        sa2.is_trigger = true;
-                        sa2.trigger_source = Some(active.card_id);
-                        sa2.trigger_index = Some(active.trigger_index);
-                        if let Some(pid) = event.params.damage_target_player {
-                            sa2.target_chosen.target_player = Some(pid);
-                        }
-                        if let Some(pid) = event.params.defending_player {
-                            if sa2.target_chosen.target_player.is_none() {
-                                sa2.target_chosen.target_player = Some(pid);
-                            }
-                        }
-                        if let Some(cid) = event.params.damage_target_card {
-                            sa2.target_chosen.target_card = Some(cid);
-                        }
+                        let sa2 = trigger.build_triggered_spell_ability(
+                            game,
+                            card_id,
+                            host_controller,
+                            trigger_index,
+                            &event.params,
+                        );
                         let extra_entry = StackEntry {
                             id: 0,
                             spell_ability: sa2,
@@ -367,6 +407,7 @@ impl TriggerHandler {
                     game,
                     delayed.source_card,
                     delayed.controller,
+                    None,
                 ) {
                     continue;
                 }
@@ -416,19 +457,66 @@ impl TriggerHandler {
         self.delayed_triggers.push(delayed);
     }
 
+    pub fn clear_delayed_trigger(&mut self) {
+        self.delayed_triggers.clear();
+        self.this_turn_delayed_triggers.clear();
+    }
+
+    pub fn register_this_turn_delayed_trigger(&mut self, delayed: DelayedTrigger) {
+        self.this_turn_delayed_triggers.push(delayed.clone());
+        self.delayed_triggers.push(delayed);
+    }
+
+    pub fn clear_this_turn_delayed_trigger(&mut self) {
+        if self.this_turn_delayed_triggers.is_empty() {
+            return;
+        }
+        self.delayed_triggers.retain(|d| {
+            !self.this_turn_delayed_triggers.iter().any(|x| {
+                x.source_card == d.source_card
+                    && x.controller == d.controller
+                    && x.mode == d.mode
+                    && x.execute_svar == d.execute_svar
+            })
+        });
+        self.this_turn_delayed_triggers.clear();
+    }
+
+    pub fn register_player_defined_delayed_trigger(
+        &mut self,
+        player: PlayerId,
+        delayed: DelayedTrigger,
+    ) {
+        self.player_defined_delayed_triggers.push((player, delayed));
+    }
+
+    pub fn clear_player_defined_delayed_trigger(&mut self) {
+        self.player_defined_delayed_triggers.clear();
+    }
+
+    pub fn handle_player_defined_del_triggers(&mut self, player: PlayerId) {
+        let mut to_activate = Vec::new();
+        self.player_defined_delayed_triggers.retain(|(p, delayed)| {
+            if *p == player {
+                to_activate.push(delayed.clone());
+                false
+            } else {
+                true
+            }
+        });
+        for delayed in to_activate {
+            self.delayed_triggers.push(delayed);
+        }
+    }
+
     /// Mirrors Java's resetActiveTriggers().
     /// Scans all cards in game, collects active triggers.
     pub fn reset_active_triggers(&mut self, game: &GameState) {
         self.active_triggers.clear();
         for (i, card) in game.cards.iter().enumerate() {
             let card_id = CardId(i as u32);
-            for (trig_idx, trigger) in card.triggers.iter().enumerate() {
-                if trigger.active_zones.contains(&card.zone) {
-                    self.active_triggers.push(ActiveTrigger {
-                        card_id,
-                        trigger_index: trig_idx,
-                    });
-                }
+            for (trig_idx, _) in card.triggers.iter().enumerate() {
+                self.register_one_trigger(game, card_id, trig_idx);
             }
         }
     }
@@ -437,26 +525,156 @@ impl TriggerHandler {
     /// Registers a single card's triggers.
     pub fn register_active_trigger(&mut self, game: &GameState, card_id: CardId) {
         let card = game.card(card_id);
+        for (trig_idx, _) in card.triggers.iter().enumerate() {
+            self.register_one_trigger(game, card_id, trig_idx);
+        }
+    }
+
+    /// Java parity wrapper for TriggerHandler.clearActiveTriggers().
+    pub fn clear_active_triggers(&mut self) {
+        self.active_triggers.clear();
+    }
+
+    /// Java parity wrapper for TriggerHandler.registerActiveLTBTrigger(card).
+    /// Registers all of a card's triggers as active, using current trigger indices.
+    pub fn register_active_ltb_trigger(&mut self, game: &GameState, card_id: CardId) {
+        let card = game.card(card_id);
         for (trig_idx, trigger) in card.triggers.iter().enumerate() {
-            if trigger.active_zones.contains(&card.zone) {
-                // Avoid duplicates
-                let already_registered = self
-                    .active_triggers
-                    .iter()
-                    .any(|at| at.card_id == card_id && at.trigger_index == trig_idx);
-                if !already_registered {
-                    self.active_triggers.push(ActiveTrigger {
-                        card_id,
-                        trigger_index: trig_idx,
-                    });
-                }
+            if self.looks_back_in_time(trigger) {
+                self.register_one_trigger(game, card_id, trig_idx);
             }
+        }
+    }
+
+    /// Java parity wrapper for TriggerHandler.registerOneTrigger(...).
+    pub fn register_one_trigger(
+        &mut self,
+        game: &GameState,
+        card_id: CardId,
+        trigger_index: usize,
+    ) {
+        let card = game.card(card_id);
+        if trigger_index >= card.triggers.len() {
+            return;
+        }
+        let trigger = &card.triggers[trigger_index];
+        if !trigger.active_zones.contains(&card.zone) {
+            return;
+        }
+        // NOTE: Do NOT call phases_check here.  Phase-gated triggers (e.g.
+        // "At the beginning of your upkeep") must be registered as active
+        // regardless of the current phase; the phase filter is evaluated at
+        // match time inside can_run_trigger.
+        if matches!(trigger.mode, TriggerMode::Always)
+            && game.stack.has_state_trigger_id(trigger.id)
+        {
+            return;
+        }
+        let already_registered = self
+            .active_triggers
+            .iter()
+            .any(|at| at.card_id == card_id && at.trigger_index == trigger_index);
+        if !already_registered {
+            self.active_triggers.push(ActiveTrigger {
+                card_id,
+                trigger_index,
+            });
         }
     }
 
     /// Remove triggers for a card that left a trigger zone.
     pub fn unregister_active_triggers(&mut self, card_id: CardId) {
         self.active_triggers.retain(|at| at.card_id != card_id);
+    }
+
+    fn looks_back_in_time(&self, trigger: &Trigger) -> bool {
+        if matches!(
+            trigger.mode,
+            TriggerMode::Exploited { .. }
+                | TriggerMode::Destroyed { .. }
+                | TriggerMode::Sacrificed { .. }
+                | TriggerMode::SacrificedOnce { .. }
+        ) {
+            return true;
+        }
+        if matches!(
+            trigger.mode,
+            TriggerMode::ChangesZone { .. } | TriggerMode::ChangesZoneAll { .. }
+        ) {
+            let origin = trigger.params.get(keys::ORIGIN).unwrap_or("");
+            let destination = trigger.params.get(keys::DESTINATION).unwrap_or("");
+            return origin.contains("Battlefield")
+                || destination.contains("Library")
+                || destination.contains("Hand");
+        }
+        false
+    }
+
+    fn ltb_trigger_refs_for_event(
+        &self,
+        game: &GameState,
+        event: &TriggerWaiting,
+    ) -> Vec<(CardId, usize)> {
+        match event.mode {
+            TriggerType::ChangesZone => {
+                let destination = event.params.destination;
+                if event.params.origin != Some(forge_foundation::ZoneType::Battlefield)
+                    && !matches!(
+                        destination,
+                        Some(
+                            forge_foundation::ZoneType::Library | forge_foundation::ZoneType::Hand
+                        )
+                    )
+                {
+                    return Vec::new();
+                }
+                let Some(card_id) = event.params.card_lki.or(event.params.card) else {
+                    return Vec::new();
+                };
+                game.card(card_id)
+                    .triggers
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(trigger_index, trigger)| {
+                        self.looks_back_in_time(trigger)
+                            .then_some((card_id, trigger_index))
+                    })
+                    .collect()
+            }
+            TriggerType::ChangesZoneAll => event
+                .params
+                .change_zone_table
+                .as_ref()
+                .map(|table| {
+                    table
+                        .last_state_battlefield()
+                        .iter()
+                        .flat_map(|&card_id| {
+                            game.card(card_id).triggers.iter().enumerate().filter_map(
+                                move |(trigger_index, trigger)| {
+                                    self.looks_back_in_time(trigger)
+                                        .then_some((card_id, trigger_index))
+                                },
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            _ => Vec::new(),
+        }
+    }
+
+    pub fn clear_waiting_triggers(&mut self) {
+        self.waiting_triggers.clear();
+        self.pre_matched_triggers.clear();
+    }
+
+    pub fn on_player_lost(&mut self, player: PlayerId) {
+        self.delayed_triggers.retain(|d| d.controller != player);
+        self.this_turn_delayed_triggers
+            .retain(|d| d.controller != player);
+        self.player_defined_delayed_triggers
+            .retain(|(p, _)| *p != player);
     }
 
     /// Mirrors Java's StaticAbilityDisableTriggers.disabled().
@@ -574,106 +792,57 @@ impl TriggerHandler {
         let trigger = &card.triggers[trigger_index];
 
         // Check mode matches trigger type
-        let trigger_type = match &trigger.mode {
-            TriggerMode::ChangesZone { .. } => TriggerType::ChangesZone,
-            TriggerMode::Phase { .. } => TriggerType::Phase,
-            TriggerMode::SpellCast { .. } => TriggerType::SpellCast,
-            TriggerMode::Attacks { .. } => TriggerType::Attacks,
-            TriggerMode::Fight { .. } => TriggerType::Fight,
-            TriggerMode::FightOnce { .. } => TriggerType::FightOnce,
-            TriggerMode::DamageDone { .. } => TriggerType::DamageDone,
-            TriggerMode::Countered { .. } => TriggerType::Countered,
-            // New trigger modes (issue #19)
-            TriggerMode::Blocks { .. } => TriggerType::Blocks,
-            TriggerMode::AttackerBlocked { .. } => TriggerType::AttackerBlocked,
-            TriggerMode::AttackerUnblocked { .. } => TriggerType::AttackerUnblocked,
-            TriggerMode::LifeGained { .. } => TriggerType::LifeGained,
-            TriggerMode::LifeLost { .. } => TriggerType::LifeLost,
-            TriggerMode::CounterAdded { .. } => TriggerType::CounterAdded,
-            TriggerMode::CounterRemoved { .. } => TriggerType::CounterRemoved,
-            TriggerMode::Sacrificed { .. } => TriggerType::Sacrificed,
-            TriggerMode::Drawn { .. } => TriggerType::Drawn,
-            TriggerMode::Milled { .. } => TriggerType::Milled,
-            TriggerMode::Taps { .. } => TriggerType::Taps,
-            TriggerMode::Untaps { .. } => TriggerType::Untaps,
-            TriggerMode::Transformed { .. } => TriggerType::Transformed,
-            TriggerMode::TurnFaceUp { .. } => TriggerType::TurnFaceUp,
-            TriggerMode::Attached { .. } => TriggerType::Attached,
-            TriggerMode::Unattached { .. } => TriggerType::Unattached,
-            TriggerMode::LandPlayed { .. } => TriggerType::LandPlayed,
-            TriggerMode::BecomesTarget { .. } => TriggerType::BecomesTarget,
-            TriggerMode::TapsForMana { .. } => TriggerType::TapsForMana,
-            TriggerMode::AbilityActivated { .. } => TriggerType::AbilityActivated,
-            TriggerMode::Explored { .. } => TriggerType::Explored,
-            TriggerMode::BecomeMonstrous { .. } => TriggerType::BecomeMonstrous,
-            TriggerMode::BecomeMonarch { .. } => TriggerType::BecomeMonarch,
-            TriggerMode::DamageDealtOnce { .. } => TriggerType::DamageDealtOnce,
-            TriggerMode::Destroyed { .. } => TriggerType::Destroyed,
-            TriggerMode::Exiled { .. } => TriggerType::Exiled,
-            TriggerMode::TokenCreated { .. } => TriggerType::TokenCreated,
-            TriggerMode::SpellCopied { .. } => TriggerType::SpellCopied,
-            // ── New trigger modes (issue #54) ──
-            // Modes with their own unique event types:
-            TriggerMode::AttackersDeclared { .. } => TriggerType::AttackersDeclared,
-            TriggerMode::BlockersDeclared => TriggerType::BlockersDeclared,
-            TriggerMode::ChangesController { .. } => TriggerType::ChangesController,
-            TriggerMode::TurnBegin { .. } => TriggerType::TurnBegin,
-            TriggerMode::Cycled { .. } => TriggerType::Cycled,
-            TriggerMode::PhasedIn { .. } => TriggerType::PhasedIn,
-            TriggerMode::PhasedOut { .. } => TriggerType::PhasedOut,
-            TriggerMode::Always => TriggerType::Always,
-            TriggerMode::Immediate => TriggerType::Immediate,
-            TriggerMode::Surveil { .. } => TriggerType::Surveil,
-            TriggerMode::Scry { .. } => TriggerType::Scry,
-            TriggerMode::Foretell { .. } => TriggerType::Foretell,
-            TriggerMode::SearchedLibrary { .. } => TriggerType::SearchedLibrary,
-            TriggerMode::Shuffled { .. } => TriggerType::Shuffled,
-            TriggerMode::ManaAdded { .. } => TriggerType::ManaAdded,
-            // Companion modes — remap to base event types so existing fire points match:
-            TriggerMode::DamageDoneOnce { .. } => TriggerType::DamageDone,
-            TriggerMode::DamageAll { .. } => TriggerType::DamageDone,
-            TriggerMode::ExcessDamage { .. } => TriggerType::DamageDone,
-            TriggerMode::DamagePreventedOnce { .. } => TriggerType::DamageDone,
-            TriggerMode::SpellCastAll { .. } => TriggerType::SpellCast,
-            TriggerMode::SpellCastOnce { .. } => TriggerType::SpellCast,
-            TriggerMode::SpellCastOfType { .. } => TriggerType::SpellCast,
-            TriggerMode::LifeLostAll { .. } => TriggerType::LifeLost,
-            TriggerMode::LifeGainedAll { .. } => TriggerType::LifeGained,
-            TriggerMode::CounterAddedOnce { .. } => TriggerType::CounterAdded,
-            TriggerMode::CounterRemovedOnce { .. } => TriggerType::CounterRemoved,
-            TriggerMode::Exerted { .. } => TriggerType::Exerted,
-            TriggerMode::CollectEvidence { .. } => TriggerType::CollectEvidence,
-            TriggerMode::Forage { .. } => TriggerType::Forage,
-            TriggerMode::Enlisted { .. } => TriggerType::Enlisted,
-            TriggerMode::FlippedCoin { .. } => TriggerType::FlippedCoin,
-            TriggerMode::RolledDie { .. } => TriggerType::RolledDie,
-            TriggerMode::RolledDieOnce { .. } => TriggerType::RolledDieOnce,
-            TriggerMode::DiscardedAll { .. } => TriggerType::Discarded,
-            TriggerMode::SacrificedOnce { .. } => TriggerType::Sacrificed,
-            TriggerMode::ChangesZoneAll { .. } => TriggerType::ChangesZone,
-            TriggerMode::TapAll { .. } => TriggerType::Taps,
-            TriggerMode::UntapAll { .. } => TriggerType::Untaps,
-            TriggerMode::BecomesTargetOnce { .. } => TriggerType::BecomesTarget,
-            TriggerMode::TokenCreatedOnce { .. } => TriggerType::TokenCreated,
-            TriggerMode::AttackerBlockedOnce { .. } => TriggerType::AttackerBlocked,
-            TriggerMode::AttackerBlockedByCreature { .. } => TriggerType::AttackerBlocked,
-            TriggerMode::AttackerUnblockedOnce { .. } => TriggerType::AttackerUnblocked,
-            TriggerMode::ManaExpend { .. } => TriggerType::ManaExpend,
-            TriggerMode::Exploited { .. } => TriggerType::Exploited,
-        };
+        let trigger_type = trigger.mode.trigger_type();
 
-        if trigger_type != *mode {
+        let normalize = |t: TriggerType| -> TriggerType {
+            match t {
+                TriggerType::DungeonCompleted => TriggerType::CompletedDungeon,
+                TriggerType::RoomEntered => TriggerType::EnteredRoom,
+                TriggerType::Airbend
+                | TriggerType::Earthbend
+                | TriggerType::Firebend
+                | TriggerType::Waterbend
+                | TriggerType::ElementalBend => TriggerType::Elementalbend,
+                TriggerType::TakesInitiative => TriggerType::TakeInitiative,
+                TriggerType::PhaseIn => TriggerType::PhasedIn,
+                TriggerType::PhaseOut => TriggerType::PhasedOut,
+                TriggerType::PlaneswalkedFrom | TriggerType::PlaneswalkedTo => {
+                    TriggerType::Planeswalk
+                }
+                TriggerType::CrankContraption => TriggerType::CrankAdvanced,
+                TriggerType::Explores => TriggerType::Explored,
+                TriggerType::Unattach => TriggerType::Unattached,
+                TriggerType::Saddled | TriggerType::Stationed => TriggerType::Crewed,
+                other => other,
+            }
+        };
+        let mode_matches = normalize(trigger_type) == normalize(*mode);
+        if !mode_matches {
             return false;
         }
 
         // Check suppression
-        if self.suppressed_modes.contains(mode) {
+        if self.is_trigger_suppressed(*mode) {
+            return false;
+        }
+
+        // Common trigger phase/requirement/limit checks (Java Trigger base behavior).
+        if !trigger.phases_check(game, host_card) {
+            return false;
+        }
+        if !trigger.requirements_check(game, host_card) {
+            return false;
+        }
+        if !trigger.check_activation_limit(game, host_card) {
             return false;
         }
 
         // DisableTriggers static ability check (e.g. Hushbringer).
         // Mirrors Java's StaticAbilityDisableTriggers.disabled().
-        if *mode == TriggerType::ChangesZone {
+        if matches!(
+            *mode,
+            TriggerType::ChangesZone | TriggerType::ChangesZoneAll
+        ) {
             if Self::is_trigger_disabled_by_static(game, host_card, trigger_index, params) {
                 return false;
             }
@@ -689,15 +858,15 @@ impl TriggerHandler {
         {
             // LKI active-zone check for "leaves battlefield" self triggers (e.g. dies).
             ZoneType::Battlefield
-        } else if *mode == TriggerType::DamageDone
+        } else if (*mode == TriggerType::DamageDone || *mode == TriggerType::DamageDoneOnce)
             && params.damage_target_card == Some(host_card)
             && trigger.active_zones.contains(&ZoneType::Battlefield)
             && card.zone != ZoneType::Battlefield
         {
-            // LKI for DamageDone triggers targeting self (e.g. Raptor Hatchling
-            // enrage). When combat damage kills the creature, SBAs move it to
-            // graveyard before triggers are processed. The trigger was queued
-            // while the card was on the battlefield, so we use LKI.
+            // LKI for DamageDone/DamageDoneOnce triggers targeting self (e.g.
+            // Raptor Hatchling enrage). When damage kills the creature, SBAs
+            // move it to graveyard before triggers are processed. The trigger
+            // was queued while the card was on the battlefield, so we use LKI.
             ZoneType::Battlefield
         } else if *mode == TriggerType::Exploited
             && params.card == Some(host_card)
@@ -725,8 +894,11 @@ impl TriggerHandler {
         // performTest
         if !trigger
             .mode
-            .perform_test(params, game, host_card, host_controller)
+            .perform_test(params, game, host_card, host_controller, Some(trigger.id))
         {
+            return false;
+        }
+        if !trigger.meets_requirements_on_triggered_objects(game, params, host_card) {
             return false;
         }
 
@@ -753,6 +925,14 @@ impl TriggerHandler {
 
     pub fn suppress_mode(&mut self, mode: TriggerType) {
         self.suppressed_modes.insert(mode);
+    }
+
+    pub fn set_suppress_all_triggers(&mut self, suppress: bool) {
+        self.all_suppressed = suppress;
+    }
+
+    pub fn is_trigger_suppressed(&self, mode: TriggerType) -> bool {
+        self.all_suppressed || self.suppressed_modes.contains(&mode)
     }
 
     pub fn clear_suppression(&mut self, mode: TriggerType) {

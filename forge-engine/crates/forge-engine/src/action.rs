@@ -1,6 +1,8 @@
 use forge_foundation::ZoneType;
 
+use crate::card::Card;
 use crate::card::CounterType;
+use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
@@ -8,9 +10,119 @@ use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
 use crate::staticability::layer::apply_etb_tapped;
 use crate::trigger::handler::TriggerHandler;
+use crate::trigger::parse_trigger;
 
 /// Game state mutation methods — moving cards, dealing damage, state-based actions.
 impl GameState {
+    fn ensure_speed_effect(
+        &mut self,
+        player: PlayerId,
+        trigger_handler: Option<&mut TriggerHandler>,
+    ) {
+        if self.player(player).speed == 0 || self.player(player).speed_effect_card.is_some() {
+            return;
+        }
+
+        let mut effect = Card::new(
+            CardId(0),
+            "Start Your Engines!".to_string(),
+            player,
+            forge_foundation::CardTypeLine::parse("Effect"),
+            forge_foundation::ManaCost::parse("0"),
+            forge_foundation::ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        effect.set_controller(player);
+        effect.set_s_var("SpeedUp", "DB$ ChangeSpeed");
+
+        let mut next_trigger_id = 0;
+        if let Some(trigger) = parse_trigger(
+            "Mode$ LifeLostAll | ValidPlayer$ Opponent | TriggerZones$ Command | ActivationLimit$ 1 | PlayerTurn$ True | CheckSVar$ Count$YourSpeed | SVarCompare$ LT4 | Execute$ SpeedUp | TriggerDescription$ Whenever one or more opponents lose life during your turn, if your speed is less than 4, your speed increases by 1. This ability triggers only once each turn.",
+            &mut next_trigger_id,
+        ) {
+            effect.add_trigger(trigger);
+        }
+
+        let effect_id = self.create_card(effect);
+        self.move_card(effect_id, ZoneType::Command, player);
+        self.player_mut(player).speed_effect_card = Some(effect_id);
+
+        if let Some(handler) = trigger_handler {
+            handler.register_active_trigger(self, effect_id);
+        }
+    }
+
+    pub fn set_player_speed(
+        &mut self,
+        player: PlayerId,
+        speed: i32,
+        trigger_handler: Option<&mut TriggerHandler>,
+    ) {
+        let speed = speed.clamp(0, 4);
+        self.player_mut(player).speed = speed;
+        if speed > 0 {
+            self.ensure_speed_effect(player, trigger_handler);
+        }
+    }
+
+    pub fn increase_player_speed(
+        &mut self,
+        player: PlayerId,
+        trigger_handler: Option<&mut TriggerHandler>,
+    ) {
+        let current = self.player(player).speed;
+        if current < 4 {
+            self.set_player_speed(player, current + 1, trigger_handler);
+        }
+    }
+
+    pub fn decrease_player_speed(
+        &mut self,
+        player: PlayerId,
+        trigger_handler: Option<&mut TriggerHandler>,
+    ) {
+        let current = self.player(player).speed;
+        if current > 1 {
+            self.set_player_speed(player, current - 1, trigger_handler);
+        }
+    }
+
+    pub fn record_player_damage_assignment(
+        &mut self,
+        source: Option<CardId>,
+        target_player: Option<PlayerId>,
+        amount: i32,
+        is_combat: bool,
+    ) {
+        if amount <= 0 {
+            return;
+        }
+        let Some(source_id) = source else {
+            return;
+        };
+        let controller = self.card(source_id).controller;
+        {
+            let controller_state = self.player_mut(controller);
+            controller_state.assigned_damage_this_turn += amount;
+            if is_combat {
+                controller_state.assigned_combat_damage_this_turn += amount;
+            }
+        }
+        if let Some(target) = target_player {
+            if target != controller {
+                self.player_mut(controller)
+                    .opponents_assigned_damage_this_turn += amount;
+            }
+            if is_combat {
+                self.player_mut(target)
+                    .been_dealt_combat_damage_since_last_turn = true;
+            }
+        }
+    }
+
     /// Move a card from its current zone to a new zone.
     pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
         // Commander redirect: commanders going to GY or Exile return to Command zone instead.
@@ -87,7 +199,8 @@ impl GameState {
         self.assign_zone_timestamp(card_id);
 
         // Track LKI: record which zone this card came from on the destination zone.
-        self.zone_mut(dest_zone, dest_owner).save_lki(card_id, src_zone);
+        self.zone_mut(dest_zone, dest_owner)
+            .save_lki(card_id, src_zone);
 
         // Reset state on zone change
         match dest_zone {
@@ -343,14 +456,14 @@ impl GameState {
     ///
     /// Runs replacement effects (e.g. damage prevention) before applying.
     /// Mirrors Java `GameAction.addDamage()` calling `ReplacementHandler.run()`.
-    pub fn deal_damage_to_player(&mut self, target: PlayerId, amount: i32) {
+    pub fn deal_damage_to_player(&mut self, target: PlayerId, amount: i32) -> i32 {
         if amount <= 0 {
-            return;
+            return 0;
         }
         if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(
             self, target,
         ) {
-            return;
+            return 0;
         }
         let mut event = ReplacementEvent::DamageToPlayer {
             target,
@@ -366,8 +479,10 @@ impl GameState {
         {
             if final_amount > 0 {
                 self.players[target.index()].deal_damage(final_amount);
+                return final_amount;
             }
         }
+        0
     }
 
     /// Check and apply state-based actions. Returns true if any were applied.
@@ -396,6 +511,7 @@ impl GameState {
             .collect();
 
         let mut any_changes = false;
+        let mut newly_lost_players: Vec<PlayerId> = Vec::new();
 
         // Check players with 0 or less life
         for pid in self.player_order.clone() {
@@ -406,8 +522,11 @@ impl GameState {
                 };
                 let result = apply_replacements(self, &mut event);
                 if result != ReplacementResult::Replaced {
-                    self.player_mut(pid).has_lost = true;
-                    any_changes = true;
+                    if !self.player(pid).has_lost {
+                        self.player_mut(pid).has_lost = true;
+                        newly_lost_players.push(pid);
+                        any_changes = true;
+                    }
                 }
             }
             // Check poison counters (10+ = lose)
@@ -424,7 +543,10 @@ impl GameState {
                     };
                     let result = apply_replacements(self, &mut event);
                     if result != ReplacementResult::Replaced {
-                        self.player_mut(pid).has_lost = true;
+                        if !self.player(pid).has_lost {
+                            self.player_mut(pid).has_lost = true;
+                            newly_lost_players.push(pid);
+                        }
                     }
                     any_changes = true;
                 }
@@ -438,8 +560,42 @@ impl GameState {
                 .collect();
             for (_card_raw_id, dmg) in commander_dmg_entries {
                 if dmg >= 21 && self.player(pid).is_alive() {
-                    self.player_mut(pid).has_lost = true;
-                    any_changes = true;
+                    if !self.player(pid).has_lost {
+                        self.player_mut(pid).has_lost = true;
+                        newly_lost_players.push(pid);
+                        any_changes = true;
+                    }
+                }
+            }
+
+            // CR 704.5z: If a player controls a permanent with Start your
+            // engines! and that player has no speed, their speed becomes 1.
+            if self.player(pid).speed == 0
+                && self
+                    .cards_in_zone(ZoneType::Battlefield, pid)
+                    .iter()
+                    .any(|&cid| self.card(cid).has_keyword("Start your engines"))
+            {
+                self.increase_player_speed(pid, None);
+                any_changes = true;
+            }
+        }
+
+        if !newly_lost_players.is_empty() {
+            for pid in &newly_lost_players {
+                self.stack.remove_instances_controlled_by(*pid);
+            }
+            if let Some(handler) = trigger_handler.as_deref_mut() {
+                for pid in &newly_lost_players {
+                    handler.run_trigger(
+                        TriggerType::LosesGame,
+                        RunParams {
+                            player: Some(*pid),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                    handler.on_player_lost(*pid);
                 }
             }
         }

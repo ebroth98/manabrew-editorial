@@ -3,12 +3,12 @@
 //! Mirrors Java `ReplaceToken.java` in `forge/game/replacement/`.
 
 use crate::card::Card;
-use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::parsing::keys;
 
-use super::replacement_handler::ReplacementEvent;
 use super::replacement_effect::{matches_valid_player, ReplacementEffect};
+use super::replacement_handler::{execute_replace_with_numeric_update, ReplacementEvent};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
 
@@ -41,15 +41,14 @@ pub fn execute(
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    let count = match event {
-        ReplacementEvent::CreateToken { count, .. } => count,
+    match event {
+        ReplacementEvent::CreateToken { .. } => {}
         _ => return ReplacementResult::NotReplaced,
-    };
-    if let Some(replace) = effect.params.get(keys::REPLACE_WITH) {
-        if replace == "DoubleToken" {
-            *count *= 2;
-            return ReplacementResult::Updated;
-        }
+    }
+    if let Some(result) =
+        execute_replace_with_numeric_update(effect, event, _game, _source_card_id, "TokenNum")
+    {
+        return result;
     }
     ReplacementResult::Replaced
 }

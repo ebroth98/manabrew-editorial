@@ -45,10 +45,7 @@ impl KeywordWithCostAndAmount {
 
     /// Get the display title.
     pub fn get_title(&self) -> String {
-        format!("{}{}",
-            self.get_title_without_cost(),
-            self.cost_string
-        )
+        format!("{}{}", self.get_title_without_cost(), self.cost_string)
     }
 
     /// Parse the details string.
@@ -67,7 +64,10 @@ impl KeywordWithCostAndAmount {
     /// Format reminder text with cost and amount.
     pub fn format_reminder_text(&self, reminder_text: &str) -> String {
         let format_str = if self.with_x {
-            reminder_text.replace("%d", "%s").replace("%1$d", "%1$s").replace("%2$d", "%2$s")
+            reminder_text
+                .replace("%d", "%s")
+                .replace("%1$d", "%1$s")
+                .replace("%2$d", "%2$s")
         } else {
             reminder_text.to_string()
         };
@@ -76,7 +76,14 @@ impl KeywordWithCostAndAmount {
             .replace("%s", &self.cost_string)
             .replace("%d", &self.amount.to_string())
             .replace("%1$s", &self.cost_string)
-            .replace("%2$s", &if self.with_x { "X".to_string() } else { self.amount.to_string() })
+            .replace(
+                "%2$s",
+                &if self.with_x {
+                    "X".to_string()
+                } else {
+                    self.amount.to_string()
+                },
+            )
             .replace("%1$d", &self.cost_string)
             .replace("%2$d", &self.amount.to_string())
     }

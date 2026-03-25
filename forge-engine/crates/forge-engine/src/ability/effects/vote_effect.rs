@@ -8,6 +8,7 @@
 use std::collections::HashMap;
 
 use super::EffectContext;
+use crate::event::{RunParams, TriggerType};
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -29,12 +30,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Get vote choices (from Choices$ param or VoteMessage$)
     let choices: Vec<String> = if let Some(choices_str) = sa.params.get(keys::CHOICES) {
-        choices_str.split(',').map(|s| s.trim().to_string()).collect()
-    } else if let Some(msg) = sa.params.get(keys::VOTE_MESSAGE) {
-        // Parse choice names from message — usually "A or B"
-        msg.split(" or ")
+        choices_str
+            .split(',')
             .map(|s| s.trim().to_string())
             .collect()
+    } else if let Some(msg) = sa.params.get(keys::VOTE_MESSAGE) {
+        // Parse choice names from message — usually "A or B"
+        msg.split(" or ").map(|s| s.trim().to_string()).collect()
     } else {
         return;
     };
@@ -81,6 +83,19 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .filter(|(_, v)| v.len() == max_votes)
         .map(|(k, _)| k.clone())
         .collect();
+
+    let all_votes = vote_counts
+        .iter()
+        .map(|(choice, voters)| (choice.clone(), voters.clone()))
+        .collect();
+    ctx.trigger_handler.run_trigger(
+        TriggerType::Vote,
+        RunParams {
+            all_votes: Some(all_votes),
+            ..Default::default()
+        },
+        false,
+    );
 
     // Store vote results for sub-abilities
     if sa.param_is_true(keys::STORE_VOTE_NUM) {

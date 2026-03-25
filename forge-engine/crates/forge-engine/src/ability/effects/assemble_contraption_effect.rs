@@ -21,29 +21,33 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
     // Run AssembleContraption replacement effects before assembling.
-    let mut event = ReplacementEvent::AssembleContraption {
-        player: controller,
-    };
+    let mut event = ReplacementEvent::AssembleContraption { player: controller };
     let result = apply_replacements(ctx.game, &mut event);
     if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
         return;
     }
 
     for _ in 0..amount {
-        // Find top contraption in contraption deck (Sideboard zone with Contraption type)
         let contraption = ctx
             .game
-            .cards
-            .iter()
-            .find(|c| {
-                c.owner == controller
-                    && c.zone == ZoneType::Sideboard
-                    && c.type_line
-                        .subtypes
-                        .iter()
-                        .any(|s| s.eq_ignore_ascii_case("Contraption"))
-            })
-            .map(|c| c.id);
+            .cards_in_zone(ZoneType::ContraptionDeck, controller)
+            .first()
+            .copied()
+            .or_else(|| {
+                // Compatibility fallback until full deck-section setup is wired.
+                ctx.game
+                    .cards
+                    .iter()
+                    .find(|c| {
+                        c.owner == controller
+                            && c.zone == ZoneType::Sideboard
+                            && c.type_line
+                                .subtypes
+                                .iter()
+                                .any(|s| s.eq_ignore_ascii_case("Contraption"))
+                    })
+                    .map(|c| c.id)
+            });
 
         if let Some(card_id) = contraption {
             let old_zone = ctx.game.card(card_id).zone;

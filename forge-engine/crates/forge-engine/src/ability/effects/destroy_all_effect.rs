@@ -69,6 +69,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             TriggerType::Destroyed,
             RunParams {
                 card: Some(card_id),
+                causer: sa.source,
+                cause_card: sa.source,
+                cause_player: Some(sa.activating_player),
                 ..Default::default()
             },
             false,
@@ -123,6 +126,7 @@ mod tests {
     ) -> EffectContext<'a> {
         EffectContext {
             game,
+            combat: None,
             agents,
             trigger_handler,
             token_templates,

@@ -13,9 +13,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .or_else(|| {
             sa.params
                 .get("Defined")
-                .and_then(|d| {
-                    resolve_defined_player_with_sa(d, sa, sa.activating_player, ctx.game)
-                })
+                .and_then(|d| resolve_defined_player_with_sa(d, sa, sa.activating_player, ctx.game))
         })
         .unwrap_or(sa.activating_player);
     if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_lose_life(
@@ -64,6 +62,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         RunParams {
             player: Some(target),
             life_amount: Some(amount),
+            first_time: Some(ctx.game.player(target).life_lost_this_turn == amount),
+            source_card: sa.source,
+            source_sa: Some(sa.clone()),
             ..Default::default()
         },
         false,

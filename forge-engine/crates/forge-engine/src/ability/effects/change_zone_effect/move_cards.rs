@@ -4,8 +4,8 @@
 
 use forge_foundation::ZoneType;
 
-use super::helpers::{apply_post_move, apply_pre_move, resolve_dest_owner};
 use super::super::{emit_zone_trigger, EffectContext};
+use super::helpers::{apply_post_move, apply_pre_move, resolve_dest_owner};
 use crate::event::{RunParams, TriggerType};
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
@@ -21,13 +21,20 @@ pub(super) fn move_cards(
     lib_position: &str,
     controller: PlayerId,
 ) {
-    if cards.is_empty() { return; }
+    if cards.is_empty() {
+        return;
+    }
 
     // SearchedLibrary trigger
     if origin_zone == ZoneType::Library {
-        ctx.trigger_handler.run_trigger(TriggerType::SearchedLibrary, RunParams {
-            player: Some(controller), ..Default::default()
-        }, false);
+        ctx.trigger_handler.run_trigger(
+            TriggerType::SearchedLibrary,
+            RunParams {
+                player: Some(controller),
+                ..Default::default()
+            },
+            false,
+        );
     }
 
     // Card ordering for library destination (Java lines 529-539)
@@ -54,10 +61,14 @@ pub(super) fn move_cards(
     for &card_id in &ordered {
         if origin_zone == ZoneType::Library {
             let owner = ctx.game.card(card_id).owner;
-            if !searched_owners.contains(&owner) { searched_owners.push(owner); }
+            if !searched_owners.contains(&owner) {
+                searched_owners.push(owner);
+            }
         }
 
-        if !apply_pre_move(ctx, card_id, sa, dest_zone) { continue; }
+        if !apply_pre_move(ctx, card_id, sa, dest_zone) {
+            continue;
+        }
 
         // Collect melded parts before moving (CR 712.4)
         let melded_parts = ctx.game.card(card_id).melded_with.clone();
@@ -65,7 +76,15 @@ pub(super) fn move_cards(
         let dest_owner = resolve_dest_owner(ctx, sa, card_id, dest_zone);
         let old_zone = ctx.game.card(card_id).zone;
         ctx.game.move_card(card_id, dest_zone, dest_owner);
-        apply_post_move(ctx, card_id, sa, old_zone, dest_zone, dest_owner, lib_position);
+        apply_post_move(
+            ctx,
+            card_id,
+            sa,
+            old_zone,
+            dest_zone,
+            dest_owner,
+            lib_position,
+        );
         moved.push(card_id);
 
         // Move melded parts together
@@ -82,23 +101,29 @@ pub(super) fn move_cards(
 
     // Searched$ — force trigger even without Library origin
     if sa.param_is_true(keys::SEARCHED) && origin_zone != ZoneType::Library {
-        ctx.trigger_handler.run_trigger(TriggerType::SearchedLibrary, RunParams {
-            player: Some(controller), ..Default::default()
-        }, false);
+        ctx.trigger_handler.run_trigger(
+            TriggerType::SearchedLibrary,
+            RunParams {
+                player: Some(controller),
+                ..Default::default()
+            },
+            false,
+        );
     }
 
     // AtEOT$ delayed triggers
     if let Some(eot_svar) = sa.params.get(keys::AT_EOT) {
         for &cid in &moved {
-            ctx.trigger_handler.register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
-                mode: TriggerType::Phase,
-                trigger_mode: crate::trigger::TriggerMode::Always,
-                execute_svar: eot_svar.to_string(),
-                controller,
-                source_card: sa.source.unwrap_or(cid),
-                target_card: Some(cid),
-                remembered_amount: 0,
-            });
+            ctx.trigger_handler
+                .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
+                    mode: TriggerType::Phase,
+                    trigger_mode: crate::trigger::TriggerMode::Always,
+                    execute_svar: eot_svar.to_string(),
+                    controller,
+                    source_card: sa.source.unwrap_or(cid),
+                    target_card: Some(cid),
+                    remembered_amount: 0,
+                });
         }
     }
 
@@ -119,15 +144,29 @@ pub(super) fn move_cards(
     let shuffle_param = sa.params.get(keys::SHUFFLE);
     let no_shuffle = shuffle_param == Some("False") || sa.param_is_true(keys::NO_SHUFFLE);
     let force_shuffle = sa.is_shuffle();
-    if !no_shuffle && (origin_zone == ZoneType::Library || force_shuffle) && dest_zone != ZoneType::Library {
-        let players = if !searched_owners.is_empty() { searched_owners } else { vec![controller] };
+    if !no_shuffle
+        && (origin_zone == ZoneType::Library || force_shuffle)
+        && dest_zone != ZoneType::Library
+    {
+        let players = if !searched_owners.is_empty() {
+            searched_owners
+        } else {
+            vec![controller]
+        };
         for pid in players {
-            if ctx.game.cards_in_zone(ZoneType::Library, pid).is_empty() { continue; }
+            if ctx.game.cards_in_zone(ZoneType::Library, pid).is_empty() {
+                continue;
+            }
             let lib = ctx.game.zone_mut(ZoneType::Library, pid);
             ctx.rng.shuffle_cards(&mut lib.cards);
-            ctx.trigger_handler.run_trigger(TriggerType::Shuffled, RunParams {
-                player: Some(pid), ..Default::default()
-            }, false);
+            ctx.trigger_handler.run_trigger(
+                TriggerType::Shuffled,
+                RunParams {
+                    player: Some(pid),
+                    ..Default::default()
+                },
+                false,
+            );
         }
     }
 }

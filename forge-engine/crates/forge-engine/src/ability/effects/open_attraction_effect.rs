@@ -28,18 +28,37 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
 
         for _ in 0..amount {
-            // Find first card in AttractionDeck zone for this player
             let attraction = ctx
                 .game
-                .cards
-                .iter()
-                .find(|c| c.zone == ZoneType::Sideboard && c.owner == player_id && c.type_line.subtypes.iter().any(|s| s.eq_ignore_ascii_case("Attraction")))
-                .map(|c| c.id);
+                .cards_in_zone(ZoneType::AttractionDeck, player_id)
+                .first()
+                .copied()
+                .or_else(|| {
+                    // Compatibility fallback until full deck-section setup is wired.
+                    ctx.game
+                        .cards
+                        .iter()
+                        .find(|c| {
+                            c.zone == ZoneType::Sideboard
+                                && c.owner == player_id
+                                && c.type_line
+                                    .subtypes
+                                    .iter()
+                                    .any(|s| s.eq_ignore_ascii_case("Attraction"))
+                        })
+                        .map(|c| c.id)
+                });
 
             if let Some(card_id) = attraction {
                 let old_zone = ctx.game.card(card_id).zone;
-                ctx.game.move_card(card_id, ZoneType::Battlefield, player_id);
-                super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Battlefield);
+                ctx.game
+                    .move_card(card_id, ZoneType::Battlefield, player_id);
+                super::emit_zone_trigger(
+                    ctx.trigger_handler,
+                    card_id,
+                    old_zone,
+                    ZoneType::Battlefield,
+                );
 
                 if sa.param_is_true(keys::REMEMBER) {
                     ctx.game.card_mut(source).add_remembered_card(card_id);

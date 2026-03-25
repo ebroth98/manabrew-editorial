@@ -18,11 +18,7 @@ use crate::staticability::StaticMode;
 /// ```text
 /// S:Mode$ CantBlockUnless | ValidCard$ Creature | Cost$ 1
 /// ```
-pub fn get_block_cost(
-    cards: &[Card],
-    blocker: &Card,
-    _attacker: &Card,
-) -> i32 {
+pub fn get_block_cost(cards: &[Card], blocker: &Card, _attacker: &Card) -> i32 {
     let mut total_cost = 0;
 
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {

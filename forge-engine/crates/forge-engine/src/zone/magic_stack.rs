@@ -186,6 +186,10 @@ impl MagicStack {
         self.entries.iter()
     }
 
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut StackEntry> {
+        self.entries.iter_mut()
+    }
+
     /// Find a stack entry by ID without removing it.
     pub fn find_by_id(&self, id: u32) -> Option<&StackEntry> {
         self.entries.iter().find(|e| e.id == id)
@@ -381,8 +385,7 @@ impl MagicStack {
     /// Remove undo entries whose source matches the given card.
     /// Mirrors Java's `MagicStack.filterUndoStackByHost()`.
     pub fn filter_undo_stack_by_host(&mut self, card_id: CardId) {
-        self.undo_stack
-            .retain(|e| e.source_card != Some(card_id));
+        self.undo_stack.retain(|e| e.source_card != Some(card_id));
         if self.undo_stack.is_empty() {
             self.undo_stack_owner = None;
         }
@@ -437,6 +440,17 @@ impl MagicStack {
         self.simultaneous_entries
             .iter()
             .any(|e| e.spell_ability.is_trigger)
+    }
+
+    /// Check if a specific trigger id already exists in pending/active stack entries.
+    /// Mirrors Java's `MagicStack.hasStateTrigger(triggerId)` behavior.
+    pub fn has_state_trigger_id(&self, trigger_id: u32) -> bool {
+        let matches = |e: &StackEntry| {
+            e.spell_ability.is_trigger && e.spell_ability.source_trigger_id == Some(trigger_id)
+        };
+        self.entries.iter().any(matches)
+            || self.frozen_stack.iter().any(matches)
+            || self.simultaneous_entries.iter().any(matches)
     }
 
     // ── Cast commands ────────────────────────────────────────────────

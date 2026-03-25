@@ -257,6 +257,8 @@ fn cmd_poll(host: &str, port: u16, batch_id: &str, pr: Option<&str>, repo: Optio
 
     let mut poll_count = 0u32;
     let mut last_completed = 0u64;
+    let mut consecutive_failures = 0u32;
+    let mut last_seen_batch: Option<serde_json::Value> = None;
 
     loop {
         poll_count += 1;
@@ -272,6 +274,8 @@ fn cmd_poll(host: &str, port: u16, batch_id: &str, pr: Option<&str>, repo: Optio
                         continue;
                     }
                 };
+                last_seen_batch = Some(v.clone());
+                consecutive_failures = 0;
 
                 let completed = v["completed"].as_u64().unwrap_or(0);
                 let total = v["total"].as_u64().unwrap_or(0);
@@ -331,11 +335,72 @@ fn cmd_poll(host: &str, port: u16, batch_id: &str, pr: Option<&str>, repo: Optio
             }
             Err(e) => {
                 eprintln!("[poll {poll_count}] Request failed: {e}");
+                consecutive_failures += 1;
+                if consecutive_failures >= 3 {
+                    print_server_crash_diagnostics(&last_seen_batch);
+                    std::process::exit(1);
+                }
             }
         }
 
         std::thread::sleep(Duration::from_secs(5));
     }
+}
+
+fn print_server_crash_diagnostics(last_seen_batch: &Option<serde_json::Value>) {
+    eprintln!();
+    eprintln!("[ci] Parity server became unreachable during polling.");
+
+    if let Some(v) = last_seen_batch {
+        let completed = v["completed"].as_u64().unwrap_or(0);
+        let total = v["total"].as_u64().unwrap_or(0);
+        let passed = v["passed"].as_u64().unwrap_or(0);
+        let failed = v["failed"].as_u64().unwrap_or(0);
+        let errors = v["errors"].as_u64().unwrap_or(0);
+        eprintln!(
+            "[ci] Last seen progress: {completed}/{total} (pass={passed} fail={failed} error={errors})"
+        );
+
+        if let Some(active) = format_active_job(&v["active_job"]) {
+            eprintln!("[ci] Matchup in progress when the server disappeared: {active}");
+        }
+    }
+
+    if let Some(snippet) = read_server_log_snippet("parity-server.log") {
+        eprintln!("[ci] Recent panic/server log:");
+        eprintln!("{snippet}");
+    } else {
+        eprintln!("[ci] parity-server.log not available from the current working directory");
+    }
+}
+
+fn format_active_job(v: &serde_json::Value) -> Option<String> {
+    if v.is_null() {
+        return None;
+    }
+    let regression = v["regression_name"].as_str().unwrap_or("?");
+    let deck1 = v["deck1"].as_str().unwrap_or("?");
+    let deck2 = v["deck2"].as_str().unwrap_or("?");
+    let seed = v["seed"].as_u64().unwrap_or(0);
+    let max_turns = v["max_turns"].as_u64().unwrap_or(0);
+    Some(format!(
+        "{regression}: {deck1} vs {deck2} seed={seed} max_turns={max_turns}"
+    ))
+}
+
+fn read_server_log_snippet(path: &str) -> Option<String> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    let lines: Vec<&str> = raw.lines().collect();
+
+    let mut start = lines.len().saturating_sub(20);
+    for (idx, line) in lines.iter().enumerate().rev() {
+        if line.contains("panicked at") || line.contains("forge-parity panicked") {
+            start = idx.saturating_sub(3);
+            break;
+        }
+    }
+
+    Some(lines[start..].join("\n"))
 }
 
 /// Build a failure report with unified diffs for each failing matchup.

@@ -16,10 +16,7 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Phases | Defined$ Self | PhaseInOrOut$ Out
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let phase_mode = sa
-        .params
-        .get("PhaseInOrOut")
-        .unwrap_or("Out");
+    let phase_mode = sa.params.get("PhaseInOrOut").unwrap_or("Out");
 
     // Targeted: use the chosen target card.
     if let Some(target_card) = sa.target_chosen.target_card {
@@ -117,6 +114,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,
@@ -148,6 +146,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,

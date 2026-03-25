@@ -50,6 +50,20 @@ impl GameLoop {
         // Storm/copy spells: resolve effect only, no card movement (copies have no physical card)
         if entry.spell_ability.is_copy {
             self.resolve_spell_effect(game, agents, &entry);
+            self.trigger_handler.run_trigger(
+                TriggerType::AbilityResolves,
+                RunParams {
+                    card: entry.spell_ability.source,
+                    spell_card: entry.spell_ability.source,
+                    spell_controller: Some(entry.spell_ability.activating_player),
+                    spell_ability: Some(entry.spell_ability.clone()),
+                    source_sa: Some(entry.spell_ability.clone()),
+                    cause: Some(entry.spell_ability.clone()),
+                    cause_card: entry.spell_ability.source,
+                    ..Default::default()
+                },
+                false,
+            );
             apply_continuous_effects(game);
             super::check_sba(game, &mut self.trigger_handler, agents);
             self.process_triggers(game, agents);
@@ -60,8 +74,12 @@ impl GameLoop {
         // A spell or ability is countered by game rules if ALL of its targets
         // are illegal on resolution. Walk the SA chain; if every targeting node
         // has only invalid targets, the whole thing fizzles.
-        if std::env::var("FORGE_TRIGGER_TRACE").is_ok() && entry.optional_trigger_decider.is_some() {
-            eprintln!("[trigger-trace] RESOLVING optional trigger from stack: {} api={:?}", stack_item_name, entry.spell_ability.api);
+        if std::env::var("FORGE_TRIGGER_TRACE").is_ok() && entry.optional_trigger_decider.is_some()
+        {
+            eprintln!(
+                "[trigger-trace] RESOLVING optional trigger from stack: {} api={:?}",
+                stack_item_name, entry.spell_ability.api
+            );
         }
         if Self::has_fizzled(&entry.spell_ability, game) {
             crate::agent::notify_all_agents(
@@ -191,6 +209,20 @@ impl GameLoop {
 
             // Triggered/activated ability: resolve the effect
             self.resolve_spell_effect(game, agents, &entry);
+            self.trigger_handler.run_trigger(
+                TriggerType::AbilityResolves,
+                RunParams {
+                    card: entry.spell_ability.source,
+                    spell_card: entry.spell_ability.source,
+                    spell_controller: Some(entry.spell_ability.activating_player),
+                    spell_ability: Some(entry.spell_ability.clone()),
+                    source_sa: Some(entry.spell_ability.clone()),
+                    cause: Some(entry.spell_ability.clone()),
+                    cause_card: entry.spell_ability.source,
+                    ..Default::default()
+                },
+                false,
+            );
             // Fire Cycled trigger if this was a cycling ability
             // (mirrors Java MagicStack resolve → Player.addCycled)
             if entry.spell_ability.is_activated {
@@ -210,20 +242,6 @@ impl GameLoop {
                             },
                             false,
                         );
-                    }
-                }
-
-                // Ninjutsu: add the ninja to combat as an attacker.
-                // The change_zone_effect already set attacking_player; here we
-                // register it in the CombatState so it participates in damage.
-                if entry.spell_ability.param_is_true(keys::NINJUTSU) {
-                    if let Some(source_card) = entry.spell_ability.source {
-                        if game.card(source_card).zone == ZoneType::Battlefield {
-                            if let Some(def_pid) = game.card(source_card).attacking_player {
-                                let defender = crate::combat::DefenderId::Player(def_pid);
-                                self.combat.declare_attacker(source_card, defender);
-                            }
-                        }
                     }
                 }
             }
@@ -246,6 +264,20 @@ impl GameLoop {
 
                 // Resolve any ETB effects defined on the card
                 self.resolve_spell_effect(game, agents, &entry);
+                self.trigger_handler.run_trigger(
+                    TriggerType::AbilityResolves,
+                    RunParams {
+                        card: Some(card_id),
+                        spell_card: Some(card_id),
+                        spell_controller: Some(player),
+                        spell_ability: Some(entry.spell_ability.clone()),
+                        source_sa: Some(entry.spell_ability.clone()),
+                        cause: Some(entry.spell_ability.clone()),
+                        cause_card: Some(card_id),
+                        ..Default::default()
+                    },
+                    false,
+                );
 
                 // Process ETBReplacement keywords (e.g., Clone entering as copy).
                 // Mirrors Java's CardFactoryUtil.createETBReplacement — the keyword
@@ -315,16 +347,15 @@ impl GameLoop {
                         let mut current_sa = Some(&etb_sa);
                         while let Some(sa) = current_sa {
                             let mut sa_with_ctx;
-                            let sa_ref =
-                                if parent_target_player.is_some()
-                                    && sa.target_chosen.target_player.is_none()
-                                {
-                                    sa_with_ctx = sa.clone();
-                                    sa_with_ctx.target_chosen.target_player = parent_target_player;
-                                    &sa_with_ctx
-                                } else {
-                                    sa
-                                };
+                            let sa_ref = if parent_target_player.is_some()
+                                && sa.target_chosen.target_player.is_none()
+                            {
+                                sa_with_ctx = sa.clone();
+                                sa_with_ctx.target_chosen.target_player = parent_target_player;
+                                &sa_with_ctx
+                            } else {
+                                sa
+                            };
                             self.resolve_single_effect(game, agents, sa_ref, parent_target_card);
                             parent_target_card = sa_ref.target_chosen.target_card;
                             parent_target_player = sa_ref.target_chosen.target_player;
@@ -424,6 +455,13 @@ impl GameLoop {
                                 origin: None,
                                 destination: Some(ZoneType::Battlefield),
                                 valid_card: Some("Card.Self".to_string()),
+                                excluded_origins: None,
+                                excluded_destinations: None,
+                                valid_cause: None,
+                                check_on_triggered_card: None,
+                                fizzle: None,
+                                not_this_ability: false,
+                                condition_you_cast_this_turn: None,
                             },
                             execute_svar: "DB$ Sacrifice".to_string(),
                             controller: player,
@@ -436,9 +474,7 @@ impl GameLoop {
 
                 // Dash: grant haste, register delayed trigger to return to hand at EOT
                 if alt_cost == Some(crate::spellability::AlternativeCost::Dash) {
-                    game.card_mut(card_id)
-                        .pump_keywords
-                        .add("Haste");
+                    game.card_mut(card_id).pump_keywords.add("Haste");
                     self.trigger_handler.register_delayed_trigger(
                         crate::trigger::handler::DelayedTrigger {
                             mode: TriggerType::Phase,
@@ -535,9 +571,7 @@ impl GameLoop {
 
                 // Blitz: grant haste + "dies: draw a card" + sacrifice at EOT
                 if alt_cost == Some(crate::spellability::AlternativeCost::Blitz) {
-                    game.card_mut(card_id)
-                        .pump_keywords
-                        .add("Haste");
+                    game.card_mut(card_id).pump_keywords.add("Haste");
                     let trig_id = game.card(card_id).triggers.len() as u32;
                     let dies_trigger = crate::trigger::Trigger {
                         id: trig_id,
@@ -545,6 +579,13 @@ impl GameLoop {
                             origin: Some(ZoneType::Battlefield),
                             destination: Some(ZoneType::Graveyard),
                             valid_card: Some("Card.Self".to_string()),
+                            excluded_origins: None,
+                            excluded_destinations: None,
+                            valid_cause: None,
+                            check_on_triggered_card: None,
+                            fizzle: None,
+                            not_this_ability: false,
+                            condition_you_cast_this_turn: None,
                         },
                         params: crate::parsing::Params::default(),
                         active_zones: vec![ZoneType::Battlefield],
@@ -552,12 +593,12 @@ impl GameLoop {
                         optional: false,
                         description: "When this creature dies, draw a card.".to_string(),
                         intrinsic: false,
+                        static_trigger: false,
+                        trigger_remembered: Vec::new(),
                     };
                     game.card_mut(card_id).add_trigger(dies_trigger);
-                    game.card_mut(card_id).set_s_var(
-                        "BlitzDiesDraw",
-                        "DB$ Draw | NumCards$ 1 | Defined$ You",
-                    );
+                    game.card_mut(card_id)
+                        .set_s_var("BlitzDiesDraw", "DB$ Draw | NumCards$ 1 | Defined$ You");
                     self.trigger_handler.unregister_active_triggers(card_id);
                     self.trigger_handler.register_active_trigger(game, card_id);
 
@@ -579,6 +620,20 @@ impl GameLoop {
             } else {
                 // Non-permanent spell: resolve effect, then route to destination zone
                 self.resolve_spell_effect(game, agents, &entry);
+                self.trigger_handler.run_trigger(
+                    TriggerType::AbilityResolves,
+                    RunParams {
+                        card: Some(card_id),
+                        spell_card: Some(card_id),
+                        spell_controller: Some(player),
+                        spell_ability: Some(entry.spell_ability.clone()),
+                        source_sa: Some(entry.spell_ability.clone()),
+                        cause: Some(entry.spell_ability.clone()),
+                        cause_card: Some(card_id),
+                        ..Default::default()
+                    },
+                    false,
+                );
                 let owner = game.card(card_id).owner;
                 // Only move if still in stack zone (some effects move the card themselves)
                 if game.card(card_id).zone != ZoneType::Exile
@@ -858,6 +913,7 @@ impl GameLoop {
 
         let mut ctx = EffectContext {
             game,
+            combat: Some(&mut self.combat),
             agents,
             trigger_handler: &mut self.trigger_handler,
             token_templates: &self.token_templates,

@@ -9,10 +9,7 @@ use crate::replacement::replacement_handler::{apply_replacements, ReplacementEve
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let counter_type_str = sa
-        .params
-        .get(keys::COUNTER_TYPE)
-        .unwrap_or("P1P1");
+    let counter_type_str = sa.params.get(keys::COUNTER_TYPE).unwrap_or("P1P1");
     let counter_type = parse_counter_type(counter_type_str);
     // Support SVar references for CounterNum (e.g. Count$Kicked.4.0 for kicker cards)
     let mut count = parse_param(&sa.ability_text, "CounterNum$ ")
@@ -56,10 +53,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Targeting mode — use the actual chosen target (Necropede death trigger, etc.)
         sa.target_chosen.target_card
     } else {
-        let defined = sa
-            .params
-            .get(keys::DEFINED)
-            .unwrap_or("Self");
+        let defined = sa.params.get(keys::DEFINED).unwrap_or("Self");
         match defined {
             // Java AbilityUtils "TriggeredTarget*" / "Targeted" resolve from actual
             // target choices only; if no target was chosen (e.g. TargetMin$ 0), they
@@ -213,6 +207,7 @@ mod tests {
     ) -> EffectContext<'a> {
         EffectContext {
             game,
+            combat: None,
             agents,
             trigger_handler,
             token_templates,

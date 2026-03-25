@@ -146,9 +146,7 @@ impl SpellAbility {
 
     /// Get `ChangeNum$` as usize, defaulting to 1.
     pub fn change_num(&self) -> usize {
-        self.params
-            .as_usize(keys::CHANGE_NUM)
-            .unwrap_or(1)
+        self.params.as_usize(keys::CHANGE_NUM).unwrap_or(1)
     }
 
     /// Get `Chooser$` player reference.

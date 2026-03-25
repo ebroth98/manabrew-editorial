@@ -6,8 +6,8 @@
 //! If you don't control one, create a 0/0 black {Type} Army creature token first.
 //! If the Army isn't a {Type}, it becomes a {Type} in addition to its other types.
 
-use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use crate::parsing::keys;
+use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::{emit_zone_trigger, parse_counter_type, EffectContext};
 use crate::card::Card;
@@ -26,15 +26,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .unwrap_or_else(|| "Zombie".to_string());
 
     // Step 1: If no Army on battlefield, create one
-    let has_army = ctx
-        .game
-        .cards
-        .iter()
-        .any(|c| {
-            c.zone == ZoneType::Battlefield
-                && c.controller == controller
-                && c.type_line.subtypes.iter().any(|s| s.eq_ignore_ascii_case("Army"))
-        });
+    let has_army = ctx.game.cards.iter().any(|c| {
+        c.zone == ZoneType::Battlefield
+            && c.controller == controller
+            && c.type_line
+                .subtypes
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case("Army"))
+    });
 
     if !has_army {
         create_army_token(ctx, sa, controller, &amass_type);
@@ -48,7 +47,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .filter(|c| {
             c.zone == ZoneType::Battlefield
                 && c.controller == controller
-                && c.type_line.subtypes.iter().any(|s| s.eq_ignore_ascii_case("Army"))
+                && c.type_line
+                    .subtypes
+                    .iter()
+                    .any(|s| s.eq_ignore_ascii_case("Army"))
         })
         .map(|c| c.id)
         .collect();
@@ -63,12 +65,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else {
         ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
         ctx.agents[controller.index()]
-            .choose_single_card_for_zone_change(
-                controller,
-                &armies,
-                "Choose an Army",
-                false,
-            )
+            .choose_single_card_for_zone_change(controller, &armies, "Choose an Army", false)
             .unwrap_or(armies[0])
     };
 
@@ -127,7 +124,8 @@ fn create_army_token(
     ctx.rng.next_int(1);
 
     let token_id = ctx.game.create_card(token);
-    ctx.game.move_card(token_id, ZoneType::Battlefield, controller);
+    ctx.game
+        .move_card(token_id, ZoneType::Battlefield, controller);
 
     ctx.trigger_handler
         .register_active_trigger(ctx.game, token_id);
@@ -185,6 +183,5 @@ fn add_type_effect(
     }
 
     let effect_id = ctx.game.create_card(effect);
-    ctx.game
-        .move_card(effect_id, ZoneType::Command, controller);
+    ctx.game.move_card(effect_id, ZoneType::Command, controller);
 }

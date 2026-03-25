@@ -44,10 +44,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .params
         .get_cloned(keys::NAME)
         .unwrap_or_else(|| format!("{} Effect", host_name));
-    let effect_owner_defined = sa
-        .params
-        .get(keys::EFFECT_OWNER)
-        .unwrap_or("You");
+    let effect_owner_defined = sa.params.get(keys::EFFECT_OWNER).unwrap_or("You");
 
     let parsed_static_abilities = static_refs
         .iter()
@@ -222,6 +219,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,

@@ -32,7 +32,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         let is_land = ctx.game.card(top_card).type_line.is_land();
 
         // Mill: move from library to graveyard
-        ctx.game.move_card(top_card, ZoneType::Graveyard, controller);
+        ctx.game
+            .move_card(top_card, ZoneType::Graveyard, controller);
         super::emit_zone_trigger(
             ctx.trigger_handler,
             top_card,
@@ -63,6 +64,5 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Remove rad counters equal to non-land cards milled
     let current_rad = ctx.game.player(controller).radiation_counters;
-    ctx.game.player_mut(controller).radiation_counters =
-        (current_rad - non_land_count).max(0);
+    ctx.game.player_mut(controller).radiation_counters = (current_rad - non_land_count).max(0);
 }

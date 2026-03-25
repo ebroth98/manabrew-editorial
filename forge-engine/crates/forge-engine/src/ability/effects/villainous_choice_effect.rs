@@ -46,7 +46,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // The chosen sub-ability is resolved via the SA's sub-ability chain.
         // Store the choice index for the parent resolution system.
         if let Some(source_id) = sa.source {
-            let choice_idx = if chose_first { 0 } else { 1.min(choice_names.len() - 1) };
+            let choice_idx = if chose_first {
+                0
+            } else {
+                1.min(choice_names.len() - 1)
+            };
             ctx.game
                 .card_mut(source_id)
                 .add_remembered_cmc(choice_idx as i32);

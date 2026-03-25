@@ -484,9 +484,18 @@ mod tests {
 
     #[test]
     fn smart_value_of_basic() {
-        assert_eq!(ApiType::smart_value_of("DealDamage"), Some(ApiType::DealDamage));
-        assert_eq!(ApiType::smart_value_of("dealdamage"), Some(ApiType::DealDamage));
-        assert_eq!(ApiType::smart_value_of("DEALDAMAGE"), Some(ApiType::DealDamage));
+        assert_eq!(
+            ApiType::smart_value_of("DealDamage"),
+            Some(ApiType::DealDamage)
+        );
+        assert_eq!(
+            ApiType::smart_value_of("dealdamage"),
+            Some(ApiType::DealDamage)
+        );
+        assert_eq!(
+            ApiType::smart_value_of("DEALDAMAGE"),
+            Some(ApiType::DealDamage)
+        );
     }
 
     #[test]
@@ -502,11 +511,23 @@ mod tests {
 
     #[test]
     fn alias_resolution() {
-        assert_eq!(ApiType::smart_value_of("ControlGain"), Some(ApiType::GainControl));
+        assert_eq!(
+            ApiType::smart_value_of("ControlGain"),
+            Some(ApiType::GainControl)
+        );
         assert_eq!(ApiType::smart_value_of("LifeSet"), Some(ApiType::SetLife));
         assert_eq!(ApiType::smart_value_of("GameWin"), Some(ApiType::WinsGame));
-        assert_eq!(ApiType::smart_value_of("RingTempts"), Some(ApiType::RingTemptsYou));
-        assert_eq!(ApiType::smart_value_of("TaporUntapAll"), Some(ApiType::TapOrUntapAll));
-        assert_eq!(ApiType::smart_value_of("Replace"), Some(ApiType::ReplaceEffect));
+        assert_eq!(
+            ApiType::smart_value_of("RingTempts"),
+            Some(ApiType::RingTemptsYou)
+        );
+        assert_eq!(
+            ApiType::smart_value_of("TaporUntapAll"),
+            Some(ApiType::TapOrUntapAll)
+        );
+        assert_eq!(
+            ApiType::smart_value_of("Replace"),
+            Some(ApiType::ReplaceEffect)
+        );
     }
 }

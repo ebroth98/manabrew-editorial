@@ -413,3 +413,7 @@ const ALL_ABILITY_KEYS: &[AbilityKey] = &[
     AbilityKey::InternalTriggerTable,
     AbilityKey::SimultaneousETB,
 ];
+
+pub fn all_ability_keys() -> &'static [AbilityKey] {
+    ALL_ABILITY_KEYS
+}

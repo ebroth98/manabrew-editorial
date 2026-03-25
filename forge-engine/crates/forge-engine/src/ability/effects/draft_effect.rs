@@ -15,7 +15,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Get spellbook names
     let spellbook = match sa.params.get(keys::SPELLBOOK) {
-        Some(sb) => sb.split(',').map(|s| s.trim().replace(';', ",")).collect::<Vec<_>>(),
+        Some(sb) => sb
+            .split(',')
+            .map(|s| s.trim().replace(';', ","))
+            .collect::<Vec<_>>(),
         None => return,
     };
 
@@ -27,7 +30,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         // In full implementation: present 3 random options from spellbook to player
         // For now, auto-select first option (agent would choose)
-        let chosen_name = &spellbook[ctx.rng.next_int(spellbook.len() as i32) as usize % spellbook.len()];
+        let chosen_name =
+            &spellbook[ctx.rng.next_int(spellbook.len() as i32) as usize % spellbook.len()];
 
         // Remember the drafted card name on source
         if sa.param_is_true(keys::REMEMBER_DRAFTED) {

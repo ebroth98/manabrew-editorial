@@ -13,12 +13,7 @@ pub fn ignore_shroud(cards: &[Card], target: &Card, activator: PlayerId) -> bool
     any_ignore(cards, target, activator, StaticMode::IgnoreShroud)
 }
 
-fn any_ignore(
-    cards: &[Card],
-    target: &Card,
-    activator: PlayerId,
-    mode: StaticMode,
-) -> bool {
+fn any_ignore(cards: &[Card], target: &Card, activator: PlayerId, mode: StaticMode) -> bool {
     for source in cards
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command)
@@ -32,11 +27,7 @@ fn any_ignore(
             ) {
                 continue;
             }
-            if !matches_valid_entity(
-                st_ab.params.get(keys::VALID_ENTITY),
-                target,
-                source,
-            ) {
+            if !matches_valid_entity(st_ab.params.get(keys::VALID_ENTITY), target, source) {
                 continue;
             }
             return true;

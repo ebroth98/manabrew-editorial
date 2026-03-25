@@ -4,7 +4,7 @@ use super::trait_token_effect;
 use super::{emit_zone_trigger, EffectContext};
 use crate::card::Card;
 use crate::event::{RunParams, TriggerType};
-use crate::ids::CardId;
+use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::spellability::SpellAbility;
@@ -12,26 +12,63 @@ use crate::spellability::SpellAbility;
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Create token creature(s) on the battlefield.
     // Mirrors Java TokenEffect / TokenEffectBase.
-    let mut amount: usize =
-        super::resolve_numeric_svar(ctx.game, sa, "TokenAmount", 1).max(0) as usize;
+    let amount: usize = super::resolve_numeric_svar(ctx.game, sa, "TokenAmount", 1).max(0) as usize;
     let token_script = sa.token_script().unwrap_or("").to_string();
-    let token_owner_str = sa
-        .token_owner()
-        .map(|s| s.to_lowercase())
-        .unwrap_or_else(|| "you".to_string());
-
-    let token_controller = if token_owner_str.contains("opponent") {
-        ctx.game
-            .player_order
-            .iter()
-            .find(|&&p| p != sa.activating_player)
-            .copied()
-            .unwrap_or(sa.activating_player)
-    } else {
-        sa.activating_player
-    };
+    let token_owners = resolve_token_owners(ctx, sa);
+    if token_owners.is_empty() {
+        return;
+    }
 
     // Run CreateToken replacement effects (e.g. Anointed Procession doubles tokens).
+    if !token_script.is_empty() {
+        if let Some(template) =
+            trait_token_effect::get_token_template(ctx.token_templates, &token_script).cloned()
+        {
+            for token_controller in token_owners {
+                let final_amount = replaced_token_amount(ctx, amount, token_controller);
+                // Always call create_tokens even when amount is 0 — the function
+                // consumes 2 RNG values for Java token-art parity that must fire
+                // regardless of count.
+                create_tokens(ctx, sa, &template, final_amount, token_controller);
+            }
+        } else {
+            eprintln!(
+                "[effects::token] Unknown token script '{}' — register it via game_loop.register_token()",
+                token_script
+            );
+        }
+    } else if has_inline_token_params(sa) {
+        // Build token from inline parameters (TokenPower$, TokenToughness$, etc.)
+        for token_controller in token_owners {
+            let final_amount = replaced_token_amount(ctx, amount, token_controller);
+            let template = build_inline_token(sa, token_controller);
+            create_tokens(ctx, sa, &template, final_amount, token_controller);
+        }
+    } else {
+        eprintln!("[effects::token] Token effect missing TokenScript$ and inline params");
+    }
+}
+
+fn resolve_token_owners(ctx: &EffectContext, sa: &SpellAbility) -> Vec<PlayerId> {
+    if let Some(defined) = sa.token_owner() {
+        let players = crate::ability::ability_utils::resolve_defined_players_with_sa(
+            defined,
+            sa,
+            sa.activating_player,
+            ctx.game,
+        );
+        if !players.is_empty() {
+            return players;
+        }
+    }
+    vec![sa.activating_player]
+}
+
+fn replaced_token_amount(
+    ctx: &mut EffectContext,
+    amount: usize,
+    token_controller: PlayerId,
+) -> usize {
     let mut event = ReplacementEvent::CreateToken {
         player: token_controller,
         count: amount as i32,
@@ -41,24 +78,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         count: final_count, ..
     } = event
     {
-        amount = final_count.max(0) as usize;
-    }
-
-    if !token_script.is_empty() {
-        if let Some(template) = trait_token_effect::get_token_template(ctx.token_templates, &token_script).cloned() {
-            create_tokens(ctx, sa, &template, amount, token_controller);
-        } else {
-            eprintln!(
-                "[effects::token] Unknown token script '{}' — register it via game_loop.register_token()",
-                token_script
-            );
-        }
-    } else if has_inline_token_params(sa) {
-        // Build token from inline parameters (TokenPower$, TokenToughness$, etc.)
-        let template = build_inline_token(sa, token_controller);
-        create_tokens(ctx, sa, &template, amount, token_controller);
+        final_count.max(0) as usize
     } else {
-        eprintln!("[effects::token] Token effect missing TokenScript$ and inline params");
+        amount
     }
 }
 
@@ -162,6 +184,7 @@ fn create_tokens(
         if sa.is_param_true("TokenTapped") {
             ctx.game.tap(token_id);
         }
+        apply_token_attacking_marker(ctx, sa, token_id);
         ctx.trigger_handler
             .register_active_trigger(ctx.game, token_id);
         // Fire TokenCreated trigger
@@ -182,4 +205,8 @@ fn create_tokens(
             ZoneType::Battlefield,
         );
     }
+}
+
+fn apply_token_attacking_marker(ctx: &mut EffectContext, sa: &SpellAbility, token_id: CardId) {
+    let _ = super::add_to_combat(ctx, sa, token_id, "TokenAttacking");
 }

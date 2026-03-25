@@ -5,23 +5,49 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords, User, Bot } from "lucide-react";
 import { useDeckStore } from "@/stores/useDeckStore";
+import type { Card } from "@/types/openmagic";
+import type { CardIdentity, DeckSection } from "@/types/server";
 
 interface SelectedDeck {
   id: string;
   name: string;
   desc?: string;
   color?: string;
-  deckList: { name: string; setCode: string }[];
+  deckList: CardIdentity[];
 }
 
 interface DeckVsSelectorProps {
   onStart: (
-    playerDeck: { name: string; setCode: string }[],
-    opponentDeck: { name: string; setCode: string }[]
+    playerDeck: CardIdentity[],
+    opponentDeck: CardIdentity[]
   ) => void;
 }
 
 type PickingSide = "player" | "opponent";
+
+function deckSectionForCard(card: Card, fallback: DeckSection): DeckSection {
+  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "attraction")) {
+    return "attractions";
+  }
+  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "contraption")) {
+    return "contraptions";
+  }
+  if (card.types.some((type) => type.toLowerCase() === "scheme")) {
+    return "schemes";
+  }
+  if (card.types.some((type) => type.toLowerCase() === "plane")) {
+    return "planes";
+  }
+  return fallback;
+}
+
+function toCardIdentity(card: Card, section: DeckSection): CardIdentity {
+  return {
+    name: card.name,
+    setCode: card.setCode ?? "",
+    section: deckSectionForCard(card, section),
+  };
+}
 
 export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
   const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
@@ -52,12 +78,28 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
     {
       id: "current",
       name: currentDeck.name,
-      deckList: currentDeck.cards.map((c) => ({ name: c.name, setCode: c.setCode ?? "" })),
+      deckList: [
+        ...currentDeck.cards.map((c) => toCardIdentity(c, "main")),
+        ...currentDeck.sideboard.map((c) => toCardIdentity(c, "sideboard")),
+        ...(currentDeck.attractions ?? []).map((c) => toCardIdentity(c, "attractions")),
+        ...(currentDeck.contraptions ?? []).map((c) => toCardIdentity(c, "contraptions")),
+        ...(currentDeck.schemes ?? []).map((c) => toCardIdentity(c, "schemes")),
+        ...(currentDeck.planes ?? []).map((c) => toCardIdentity(c, "planes")),
+        ...(currentDeck.commander ? [toCardIdentity(currentDeck.commander, "commander")] : []),
+      ],
     },
     ...savedDecks.map((s) => ({
       id: s.id,
       name: s.deck.name,
-      deckList: s.deck.cards.map((c) => ({ name: c.name, setCode: c.setCode ?? "" })),
+      deckList: [
+        ...s.deck.cards.map((c) => toCardIdentity(c, "main")),
+        ...s.deck.sideboard.map((c) => toCardIdentity(c, "sideboard")),
+        ...(s.deck.attractions ?? []).map((c) => toCardIdentity(c, "attractions")),
+        ...(s.deck.contraptions ?? []).map((c) => toCardIdentity(c, "contraptions")),
+        ...(s.deck.schemes ?? []).map((c) => toCardIdentity(c, "schemes")),
+        ...(s.deck.planes ?? []).map((c) => toCardIdentity(c, "planes")),
+        ...(s.deck.commander ? [toCardIdentity(s.deck.commander, "commander")] : []),
+      ],
     })),
   ];
 
@@ -80,7 +122,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       name: deck.label,
       desc: deck.desc,
       color: deck.color,
-      deckList: [{ name: deck.id, setCode: "" }],
+      deckList: [{ name: deck.id, setCode: "", section: "main" }],
     });
   }
 
@@ -97,7 +139,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       name: random.label,
       desc: random.desc,
       color: random.color,
-      deckList: [{ name: random.id, setCode: "" }],
+      deckList: [{ name: random.id, setCode: "", section: "main" }],
     });
   }
 

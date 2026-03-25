@@ -4,6 +4,7 @@ use super::{
     emit_zone_trigger, matches_change_type, parse_param, parse_zone_type, resolve_defined_player,
     resolve_numeric_svar, EffectContext,
 };
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ DigUntil` — reveal cards from the top of library until finding N matching cards.
@@ -95,6 +96,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             owner
         };
         ctx.game.move_card(id, found_dest, dest_owner);
+        if found_dest == ZoneType::Battlefield {
+            let _ = super::add_to_combat(ctx, sa, id, keys::ATTACKING);
+        }
         emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, found_dest);
     }
 

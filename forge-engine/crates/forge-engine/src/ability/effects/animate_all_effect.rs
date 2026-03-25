@@ -2,13 +2,13 @@ use forge_foundation::{ColorSet, ZoneType};
 
 use super::trait_animate_effect::parse_animate_params;
 use super::{matches_valid_cards, EffectContext};
-use crate::card::AnimateState;
 use crate::card::card_trait_changes::CardTraitChanges;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::{
     perpetual_abilities, perpetual_colors, perpetual_incorporate, perpetual_keywords,
     perpetual_mana_cost, perpetual_new_pt, perpetual_types,
 };
+use crate::card::AnimateState;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::parse_trigger;
@@ -137,12 +137,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             let original_base_power = ctx.game.card(card_id).base_power;
             let original_base_toughness = ctx.game.card(card_id).base_toughness;
             let original_color = ctx.game.card(card_id).color;
-            ctx.game.card_mut(card_id).set_animate_state(Some(AnimateState {
-                original_type_line,
-                original_base_power,
-                original_base_toughness,
-                original_color,
-            }));
+            ctx.game
+                .card_mut(card_id)
+                .set_animate_state(Some(AnimateState {
+                    original_type_line,
+                    original_base_power,
+                    original_base_toughness,
+                    original_color,
+                }));
         }
 
         // RemoveAllAbilities — strip keywords/abilities
@@ -295,7 +297,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     }
                 }
             }
-            ctx.trigger_handler.register_active_trigger(ctx.game, card_id);
+            ctx.trigger_handler
+                .register_active_trigger(ctx.game, card_id);
         }
     }
 }

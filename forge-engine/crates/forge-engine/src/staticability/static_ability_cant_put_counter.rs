@@ -16,17 +16,10 @@ pub fn any_cant_put_counter_on_card(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(
-                st_ab.params.get(keys::COUNTER_TYPE),
-                &counter_type,
-            ) {
+            if !counter_type_matches(st_ab.params.get(keys::COUNTER_TYPE), &counter_type) {
                 continue;
             }
-            if !matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                target,
-                source,
-            ) {
+            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), target, source) {
                 continue;
             }
             if st_ab.params.has(keys::VALID_PLAYER) {
@@ -49,10 +42,7 @@ pub fn any_cant_put_counter_on_player(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantPutCounter)
         {
-            if !counter_type_matches(
-                st_ab.params.get(keys::COUNTER_TYPE),
-                &counter_type,
-            ) {
+            if !counter_type_matches(st_ab.params.get(keys::COUNTER_TYPE), &counter_type) {
                 continue;
             }
             if !matches_valid_player(

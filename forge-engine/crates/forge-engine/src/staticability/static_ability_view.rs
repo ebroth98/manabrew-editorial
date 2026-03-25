@@ -1,5 +1,5 @@
-use serde::{Deserialize, Serialize};
 use crate::ids::CardId;
+use serde::{Deserialize, Serialize};
 
 /// View representation of a static ability for UI display.
 /// Mirrors Java's `StaticAbilityView`.
@@ -11,7 +11,10 @@ pub struct StaticAbilityView {
 
 impl StaticAbilityView {
     pub fn new(host_card: Option<CardId>, description: String) -> Self {
-        Self { host_card, description }
+        Self {
+            host_card,
+            description,
+        }
     }
 
     pub fn get_host_card(&self) -> Option<CardId> {

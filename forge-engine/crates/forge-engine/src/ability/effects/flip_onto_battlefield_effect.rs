@@ -20,9 +20,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .game
         .cards
         .iter()
-        .filter(|c| {
-            c.zone == ZoneType::Battlefield && source.map_or(true, |sid| c.id != sid)
-        })
+        .filter(|c| c.zone == ZoneType::Battlefield && source.map_or(true, |sid| c.id != sid))
         .map(|c| c.id)
         .collect();
 

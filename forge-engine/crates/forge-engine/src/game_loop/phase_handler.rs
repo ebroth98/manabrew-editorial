@@ -20,6 +20,8 @@ impl GameLoop {
 
         // Fire TurnBegin trigger at the start of each turn.
         let active = game.active_player();
+        self.trigger_handler
+            .handle_player_defined_del_triggers(active);
         self.trigger_handler.run_trigger(
             TriggerType::TurnBegin,
             RunParams {
@@ -127,6 +129,26 @@ impl GameLoop {
                             emit_phase_trigger: true,
                         },
                     );
+                    if game
+                        .cards_in_zone(ZoneType::Battlefield, game.active_player())
+                        .iter()
+                        .any(|&card_id| {
+                            game.card(card_id)
+                                .type_line
+                                .subtypes
+                                .iter()
+                                .any(|s| s.eq_ignore_ascii_case("Attraction"))
+                        })
+                    {
+                        crate::ability::effects::roll_dice_effect::roll_to_visit_attractions(
+                            game,
+                            &mut self.trigger_handler,
+                            &mut *self.game_rng,
+                            agents,
+                            &mut self.mana_pools,
+                            game.active_player(),
+                        );
+                    }
                     self.apply_turn_event(
                         game,
                         agents,
@@ -233,8 +255,7 @@ impl GameLoop {
                     let active = game.active_player();
                     let mut event = ReplacementEvent::BeginPhase { player: active };
                     let result = apply_replacements(game, &mut event);
-                    if result == ReplacementResult::Skipped
-                        || result == ReplacementResult::Replaced
+                    if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced
                     {
                         return;
                     }
@@ -245,7 +266,7 @@ impl GameLoop {
                 game.copy_last_state();
                 self.set_phase(game, agents, phase);
                 if emit_phase_trigger {
-                    self.emit_phase_trigger(game, phase);
+                    self.emit_phase_trigger(game, agents, phase);
                 }
                 // Suspend: at the beginning of each upkeep, remove a time counter
                 // from each suspended card in exile. If last counter removed, cast for free.
@@ -475,6 +496,7 @@ impl GameLoop {
 
         // Empty mana pool at end of turn (cleanup step), per Magic rules.
         self.pool_mut(active).reset_pool();
+        self.trigger_handler.clear_this_turn_delayed_trigger();
 
         // Remove temporary command-zone effect cards created by AB$ Effect
         // that expire at end of turn.
@@ -563,9 +585,15 @@ impl GameLoop {
             }
         }
     }
-    pub(crate) fn emit_phase_trigger(&mut self, game: &GameState, phase: PhaseType) {
+    pub(crate) fn emit_phase_trigger(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        phase: PhaseType,
+    ) {
         let active = game.active_player();
-        self.trigger_handler.run_trigger(
+        let phase_pending = self.trigger_handler.run_trigger_with_game(
+            game,
             TriggerType::Phase,
             RunParams {
                 phase: Some(phase),
@@ -574,8 +602,16 @@ impl GameLoop {
             },
             false,
         );
+        let _ = crate::trigger::trigger_runtime::process_pending_triggers(
+            &mut self.trigger_handler,
+            &self.mana_pools,
+            game,
+            agents,
+            phase_pending,
+        );
         // Fire Always trigger alongside every phase trigger.
-        self.trigger_handler.run_trigger(
+        let always_pending = self.trigger_handler.run_trigger_with_game(
+            game,
             TriggerType::Always,
             RunParams {
                 phase: Some(phase),
@@ -583,6 +619,13 @@ impl GameLoop {
                 ..Default::default()
             },
             false,
+        );
+        let _ = crate::trigger::trigger_runtime::process_pending_triggers(
+            &mut self.trigger_handler,
+            &self.mana_pools,
+            game,
+            agents,
+            always_pending,
         );
     }
 
@@ -601,6 +644,20 @@ impl GameLoop {
                 },
                 false,
             );
+            // Fire DamageDoneOnce batch trigger for each damage event.
+            // Cards like Raptor Hatchling use Mode$ DamageDoneOnce for Enrage.
+            self.trigger_handler.run_trigger(
+                TriggerType::DamageDoneOnce,
+                RunParams {
+                    damage_source: Some(event.source),
+                    damage_target_player: event.target_player,
+                    damage_target_card: event.target_card,
+                    damage_amount: Some(event.amount),
+                    is_combat_damage: Some(event.is_combat),
+                    ..Default::default()
+                },
+                false,
+            );
             if let Some(player) = event.lifelink_player {
                 if event.lifelink_amount > 0 {
                     self.trigger_handler.run_trigger(
@@ -608,6 +665,7 @@ impl GameLoop {
                         RunParams {
                             player: Some(player),
                             life_amount: Some(event.lifelink_amount),
+                            source_card: Some(event.source),
                             ..Default::default()
                         },
                         false,
@@ -717,9 +775,7 @@ impl GameLoop {
                 // Grant haste if creature (suspend creatures get haste)
                 if is_creature {
                     if !game.card(card_id).has_haste() {
-                        game.card_mut(card_id)
-                            .granted_keywords
-                            .add("Haste");
+                        game.card_mut(card_id).granted_keywords.add("Haste");
                     }
                 }
             }

@@ -42,7 +42,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             vec![name.to_string()]
         }
     } else if let Some(names_str) = sa.params.get(keys::NAMES) {
-        names_str.split(',').map(|s| s.trim().replace(';', ",")).collect()
+        names_str
+            .split(',')
+            .map(|s| s.trim().replace(';', ","))
+            .collect()
     } else {
         // Spellbook/Choices — digital-only card generation
         vec![]

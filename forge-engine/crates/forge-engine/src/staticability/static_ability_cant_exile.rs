@@ -22,11 +22,7 @@ pub fn cant_exile(
                     continue;
                 }
             }
-            if !matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                card,
-                source,
-            ) {
+            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
                 continue;
             }
             if !matches_valid_cause(st_ab.params.get(keys::VALID_CAUSE), cause) {
@@ -89,12 +85,10 @@ fn matches_valid_cause(valid: Option<&str>, cause: Option<&SpellAbility>) -> boo
 
         for qualifier in segments {
             let q = qualifier.trim();
-            if q.eq_ignore_ascii_case("EffectSource") && !cause.params.has(keys::EFFECT_SOURCE)
-            {
+            if q.eq_ignore_ascii_case("EffectSource") && !cause.params.has(keys::EFFECT_SOURCE) {
                 return false;
             }
-            if q.eq_ignore_ascii_case("!EffectSource") && cause.params.has(keys::EFFECT_SOURCE)
-            {
+            if q.eq_ignore_ascii_case("!EffectSource") && cause.params.has(keys::EFFECT_SOURCE) {
                 return false;
             }
         }

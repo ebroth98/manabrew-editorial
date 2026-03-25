@@ -26,6 +26,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 TriggerType::Destroyed,
                 RunParams {
                     card: Some(target_card),
+                    causer: sa.source,
+                    cause_card: sa.source,
                     cause_player: Some(sa.activating_player),
                     ..Default::default()
                 },

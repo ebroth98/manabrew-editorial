@@ -44,7 +44,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if def == "Self" {
             sa.source
         } else {
-            sa.source.and_then(|sid| ctx.game.card(sid).remembered_cards.first().copied())
+            sa.source
+                .and_then(|sid| ctx.game.card(sid).remembered_cards.first().copied())
         }
     } else {
         sa.source

@@ -13,15 +13,32 @@ use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let Some(host_card_id) = sa.source else { return };
+    let Some(host_card_id) = sa.source else {
+        return;
+    };
     let controller = sa.activating_player;
 
-    let prim_name = sa.params.get(keys::PRIMARY).map(|s| s.to_string()).unwrap_or_default();
-    let sec_name = sa.params.get(keys::SECONDARY).map(|s| s.to_string()).unwrap_or_default();
-    let sec_type = sa.params.get(keys::SECONDARY_TYPE).map(|s| s.to_string()).unwrap_or_else(|| "Creature".to_string());
+    let prim_name = sa
+        .params
+        .get(keys::PRIMARY)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    let sec_name = sa
+        .params
+        .get(keys::SECONDARY)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    let sec_type = sa
+        .params
+        .get(keys::SECONDARY_TYPE)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "Creature".to_string());
 
     // Find a permanent you control and own named "Secondary" matching SecondaryType
-    let candidates: Vec<CardId> = ctx.game.cards.iter()
+    let candidates: Vec<CardId> = ctx
+        .game
+        .cards
+        .iter()
         .filter(|c| {
             c.zone == ZoneType::Battlefield
                 && c.controller == controller
@@ -57,7 +74,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     for &card_id in &cards_to_exile {
         // canExiledBy check
-        if ctx.game.card(card_id).keywords.contains_string_ignore_case("CantBeExiled") {
+        if ctx
+            .game
+            .card(card_id)
+            .keywords
+            .contains_string_ignore_case("CantBeExiled")
+        {
             continue;
         }
         let old_zone = ctx.game.card(card_id).zone;
@@ -90,7 +112,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Transform primary to meld state
     ctx.game.card_mut(primary).set_transformed(true);
-    if let Some(other_name) = ctx.game.card(primary).other_part.as_ref().map(|o| o.name.clone()) {
+    if let Some(other_name) = ctx
+        .game
+        .card(primary)
+        .other_part
+        .as_ref()
+        .map(|o| o.name.clone())
+    {
         ctx.game.card_mut(primary).set_card_name(other_name);
     }
 
@@ -104,13 +132,16 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Move primary to battlefield (melded form)
     let old_zone = ctx.game.card(primary).zone;
-    ctx.game.move_card(primary, ZoneType::Battlefield, controller);
-    ctx.trigger_handler.register_active_trigger(ctx.game, primary);
-    emit_zone_trigger(ctx.trigger_handler, primary, old_zone, ZoneType::Battlefield);
+    ctx.game
+        .move_card(primary, ZoneType::Battlefield, controller);
+    ctx.trigger_handler
+        .register_active_trigger(ctx.game, primary);
+    emit_zone_trigger(
+        ctx.trigger_handler,
+        primary,
+        old_zone,
+        ZoneType::Battlefield,
+    );
 
-    // Attacking$ combat entry
-    if sa.param_is_true(keys::ATTACKING) {
-        let defender = ctx.game.opponent_of(controller);
-        ctx.game.card_mut(primary).set_attacking_player(defender);
-    }
+    let _ = super::add_to_combat(ctx, sa, primary, keys::ATTACKING);
 }

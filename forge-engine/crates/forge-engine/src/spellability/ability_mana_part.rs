@@ -77,9 +77,7 @@ impl AbilityManaPart {
         if self.orig_produced.is_empty() {
             return 0;
         }
-        self.orig_produced
-            .split_whitespace()
-            .count() as i32
+        self.orig_produced.split_whitespace().count() as i32
     }
 
     /// Total amount of mana generated, counting "All" and "Any" as 1 each.

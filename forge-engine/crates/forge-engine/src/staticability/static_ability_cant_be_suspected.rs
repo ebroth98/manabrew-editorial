@@ -4,8 +4,16 @@ use crate::staticability::StaticMode;
 
 pub fn cant_be_suspected(cards: &[Card], card: &Card) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source.static_abilities.iter().filter(|sa| sa.mode == StaticMode::CantBeSuspected && sa.zones_check(source.zone)) {
-            if valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::CantBeSuspected && sa.zones_check(source.zone))
+        {
+            if valid_filter::matches_valid_card_opt(
+                st_ab.params.get(keys::VALID_CARD),
+                card,
+                source,
+            ) {
                 return true;
             }
         }

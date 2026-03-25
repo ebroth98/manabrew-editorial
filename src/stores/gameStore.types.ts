@@ -2,6 +2,7 @@ import type { GameView, Card, ActivatableAbilityInfo } from '@/types/openmagic';
 import type { GameLogEntry } from '@/types/gameLog';
 import type { GameSnapshotEntry } from '@/types/gameSnapshot';
 import type { PromptType } from '@/types/promptType';
+import type { CardIdentity } from '@/types/server';
 
 export interface DisplayEvent {
   kind: string;
@@ -181,10 +182,10 @@ export interface GameState {
   updateGameView: (view: GameView) => void;
   setGameConfig: (config: GameConfig) => void;
   // Actions
-  startGame: (deckList: { name: string, setCode: string }[], formatId?: string, commanderName?: string, opponentDeckList?: { name: string, setCode: string }[]) => Promise<void>;
+  startGame: (deckList: CardIdentity[], formatId?: string, commanderName?: string, opponentDeckList?: CardIdentity[]) => Promise<void>;
   startMultiplayerGame: (
     playerNames: string[],
-    deckLists: { name: string, setCode: string }[][],
+    deckLists: CardIdentity[][],
     enginePlayerIndex: number,
     localIsHost: boolean,
     startingLife: number

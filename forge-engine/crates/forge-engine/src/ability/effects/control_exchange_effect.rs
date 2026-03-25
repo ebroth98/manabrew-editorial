@@ -32,7 +32,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         object2 = sa.source;
     }
 
-    let (Some(card1), Some(card2)) = (object1, object2) else { return };
+    let (Some(card1), Some(card2)) = (object1, object2) else {
+        return;
+    };
 
     // Verify both on battlefield and not phased out
     let c1 = ctx.game.card(card1);

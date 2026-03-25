@@ -8,11 +8,14 @@
 //! (CantHappen → Control → Copy → Transform → Other), applying the first
 //! matching effect in each layer.
 
+use std::collections::{HashMap, HashSet};
+
 use forge_foundation::ZoneType;
 
 use crate::card::CounterType;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::{keys, Params};
 use crate::replacement::replacement_effect::{GameLossReason, ReplacementEffect};
 use crate::replacement::replacement_layer::ReplacementLayer;
 use crate::replacement::replacement_result::ReplacementResult;
@@ -174,8 +177,15 @@ pub enum ReplacementEvent {
     /// Mana is being lost.
     LoseMana { player: PlayerId },
 
-    /// A die is being rolled.
-    RollDice { player: PlayerId },
+    /// Dice are being rolled.
+    RollDice {
+        player: PlayerId,
+        sides: i32,
+        number: i32,
+        ignore: i32,
+        ignore_chosen: HashMap<PlayerId, i32>,
+        dice_pt_exchanges: HashSet<CardId>,
+    },
 
     /// The planar die is being rolled.
     RollPlanarDice { player: PlayerId },
@@ -195,7 +205,6 @@ pub enum ReplacementEvent {
 
 // ── ReplacementHandler struct ─────────────────────────────────────────────────
 
-use std::collections::HashSet;
 use crate::agent::PlayerAgent;
 
 /// Struct-based replacement handler with loop prevention and optional agent access.
@@ -246,8 +255,14 @@ impl ReplacementHandler {
             match result {
                 ReplacementResult::NotReplaced => continue,
                 ReplacementResult::Updated => {
-                    // Re-run from the beginning with the updated event (mirrors Java).
-                    return self.run(game, agents, event);
+                    // Java preserves Updated unless a later replacement fully
+                    // replaces the event during the re-run.
+                    return match self.run(game, agents, event) {
+                        ReplacementResult::NotReplaced | ReplacementResult::Updated => {
+                            ReplacementResult::Updated
+                        }
+                        other => other,
+                    };
                 }
                 other => return other,
             }
@@ -348,7 +363,7 @@ fn affected_player_for_event(event: &ReplacementEvent, game: &GameState) -> Play
         ReplacementEvent::Cascade { player } => *player,
         ReplacementEvent::Learn { player } => *player,
         ReplacementEvent::LoseMana { player } => *player,
-        ReplacementEvent::RollDice { player } => *player,
+        ReplacementEvent::RollDice { player, .. } => *player,
         ReplacementEvent::RollPlanarDice { player } => *player,
         ReplacementEvent::PlanarDiceResult { player } => *player,
         ReplacementEvent::Planeswalk { player } => *player,
@@ -370,6 +385,220 @@ pub fn apply_replacements(game: &GameState, event: &mut ReplacementEvent) -> Rep
     handler.run(game, None, event)
 }
 
+pub(crate) fn replacement_event_amount(event: &ReplacementEvent) -> Option<i32> {
+    match event {
+        ReplacementEvent::DamageToCard { amount, .. } => Some(*amount),
+        ReplacementEvent::DamageToPlayer { amount, .. } => Some(*amount),
+        ReplacementEvent::GainLife { amount, .. } => Some(*amount),
+        ReplacementEvent::LifeReduced { amount, .. } => Some(*amount),
+        ReplacementEvent::CreateToken { count, .. } => Some(*count),
+        ReplacementEvent::DrawCards { count, .. } => Some(*count),
+        ReplacementEvent::Mill { count, .. } => Some(*count),
+        ReplacementEvent::PayLife { amount, .. } => Some(*amount),
+        ReplacementEvent::Scry { count, .. } => Some(*count),
+        ReplacementEvent::CopySpell { count, .. } => Some(*count),
+        ReplacementEvent::Proliferate { count, .. } => Some(*count),
+        ReplacementEvent::RollDice { number, .. } => Some(*number),
+        _ => None,
+    }
+}
+
+pub(crate) fn set_replacement_event_amount(event: &mut ReplacementEvent, value: i32) -> bool {
+    match event {
+        ReplacementEvent::DamageToCard { amount, .. } => *amount = value.max(0),
+        ReplacementEvent::DamageToPlayer { amount, .. } => *amount = value.max(0),
+        ReplacementEvent::GainLife { amount, .. } => *amount = value.max(0),
+        ReplacementEvent::LifeReduced { amount, .. } => *amount = value.max(0),
+        ReplacementEvent::CreateToken { count, .. } => *count = value.max(0),
+        ReplacementEvent::DrawCards { count, .. } => *count = value.max(0),
+        ReplacementEvent::Mill { count, .. } => *count = value.max(0),
+        ReplacementEvent::PayLife { amount, .. } => *amount = value.max(0),
+        ReplacementEvent::Scry { count, .. } => *count = value.max(0),
+        ReplacementEvent::CopySpell { count, .. } => *count = value.max(0),
+        ReplacementEvent::Proliferate { count, .. } => *count = value.max(0),
+        ReplacementEvent::RollDice { number, .. } => *number = value.max(0),
+        _ => return false,
+    }
+    true
+}
+
+fn amount_after_math(mut amount: i32, ops: &str) -> i32 {
+    if ops.is_empty() {
+        return amount;
+    }
+    let parts: Vec<&str> = ops.split('.').collect();
+    let op = parts.first().copied().unwrap_or("");
+    let rhs = parts
+        .get(1)
+        .and_then(|value| value.parse::<i32>().ok())
+        .unwrap_or(0);
+    if op.contains("Plus") {
+        amount += rhs;
+    } else if op.contains("Minus") {
+        amount -= rhs;
+    } else if op.contains("Twice") {
+        amount *= 2;
+    } else if op.contains("Thrice") {
+        amount *= 3;
+    } else if op.contains("HalfUp") {
+        amount = ((amount as f64) / 2.0).ceil() as i32;
+    } else if op.contains("HalfDown") {
+        amount = ((amount as f64) / 2.0).floor() as i32;
+    }
+    amount
+}
+
+pub(crate) fn resolve_replace_value(
+    expr: &str,
+    game: &GameState,
+    source_card_id: CardId,
+    event: &ReplacementEvent,
+) -> Option<i32> {
+    let expr = expr.trim();
+    if let Ok(value) = expr.parse::<i32>() {
+        return Some(value);
+    }
+    if let Some(svar) = game.card(source_card_id).svars.get(expr) {
+        return resolve_replace_value(svar, game, source_card_id, event);
+    }
+    let rest = expr.strip_prefix("ReplaceCount$")?;
+    let (field, ops) = rest.split_once('/').unwrap_or((rest, ""));
+    let base = match field {
+        "DamageAmount" | "LifeGained" | "Amount" | "Number" | "TokenNum" => {
+            replacement_event_amount(event)?
+        }
+        "Ignore" => match event {
+            ReplacementEvent::RollDice { ignore, .. } => *ignore,
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Some(amount_after_math(base, ops))
+}
+
+pub(crate) fn execute_replace_with_numeric_update(
+    effect: &ReplacementEffect,
+    event: &mut ReplacementEvent,
+    game: &GameState,
+    source_card_id: CardId,
+    var_name: &str,
+) -> Option<ReplacementResult> {
+    let replace_with = effect.params.get(keys::REPLACE_WITH)?;
+    execute_replace_effect_chain(replace_with, event, game, source_card_id, Some(var_name))
+}
+
+pub(crate) fn execute_replace_effect_chain(
+    svar_name: &str,
+    event: &mut ReplacementEvent,
+    game: &GameState,
+    source_card_id: CardId,
+    required_var_name: Option<&str>,
+) -> Option<ReplacementResult> {
+    let raw = game.card(source_card_id).svars.get(svar_name)?;
+    let params = Params::from_raw(raw);
+    if params.get(keys::DB) != Some("ReplaceEffect") {
+        return None;
+    }
+
+    let mut updated = false;
+    if let Some(var_name) = params.get("VarName") {
+        if required_var_name.is_none_or(|required| required == var_name) {
+            match var_name {
+                "DicePTExchanges" => {
+                    if params.get("VarType") == Some("CardSet") {
+                        if let Some(var_value) = params.get("VarValue") {
+                            if let Some(card_id) =
+                                resolve_replace_card_key(var_value, source_card_id)
+                            {
+                                if let ReplacementEvent::RollDice {
+                                    dice_pt_exchanges, ..
+                                } = event
+                                {
+                                    dice_pt_exchanges.insert(card_id);
+                                    updated = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    if let Some(var_value) = params.get("VarValue") {
+                        if let Some(value) =
+                            resolve_replace_value(var_value, game, source_card_id, event)
+                        {
+                            match var_name {
+                                "Ignore" => {
+                                    if let ReplacementEvent::RollDice { ignore, .. } = event {
+                                        *ignore = value.max(0);
+                                        updated = true;
+                                    }
+                                }
+                                "IgnoreChosen" => {
+                                    if params.get("VarType") == Some("Map") {
+                                        if let Some(var_key) = params.get("VarKey") {
+                                            if let Some(player) = resolve_replace_player_key(
+                                                var_key,
+                                                game,
+                                                source_card_id,
+                                                event,
+                                            ) {
+                                                if let ReplacementEvent::RollDice {
+                                                    ignore_chosen,
+                                                    ..
+                                                } = event
+                                                {
+                                                    ignore_chosen.insert(player, value.max(0));
+                                                    updated = true;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => {
+                                    if set_replacement_event_amount(event, value) {
+                                        updated = true;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if let Some(sub_ability) = params.get(keys::SUB_ABILITY) {
+        updated |=
+            execute_replace_effect_chain(sub_ability, event, game, source_card_id, None).is_some();
+    }
+
+    updated.then_some(ReplacementResult::Updated)
+}
+
+fn resolve_replace_player_key(
+    expr: &str,
+    game: &GameState,
+    source_card_id: CardId,
+    event: &ReplacementEvent,
+) -> Option<PlayerId> {
+    match expr.trim() {
+        "You" => Some(game.card(source_card_id).controller),
+        "Affected" => match event {
+            ReplacementEvent::RollDice { player, .. } => Some(*player),
+            _ => None,
+        },
+        "Opponent" => Some(game.opponent_of(game.card(source_card_id).controller)),
+        _ => None,
+    }
+}
+
+fn resolve_replace_card_key(expr: &str, source_card_id: CardId) -> Option<CardId> {
+    match expr.trim() {
+        "Self" => Some(source_card_id),
+        _ => None,
+    }
+}
+
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
 /// Collect all `(source_card_id, effect, effect_index)` triples that apply to `event` in `layer`.
@@ -386,17 +615,45 @@ fn collect_effects(
     layer: ReplacementLayer,
 ) -> Vec<(CardId, ReplacementEffect, usize)> {
     use super::{
-        replace_add_counter, replace_counter, replace_damage, replace_destroy, replace_draw,
-        replace_gain_life, replace_game_loss, replace_game_win, replace_moved,
-        replace_produce_mana, replace_token,
+        replace_add_counter,
         // Format/mechanic-specific replacements
-        replace_assemble_contraption, replace_assign_deal_damage, replace_attached,
-        replace_begin_phase, replace_begin_turn, replace_cascade, replace_copy_spell,
-        replace_dealt_damage, replace_declare_blocker, replace_draw_cards, replace_explore,
-        replace_learn, replace_life_reduced, replace_lose_mana, replace_mill, replace_pay_life,
-        replace_planar_dice_result, replace_planeswalk, replace_proliferate,
-        replace_remove_counter, replace_roll_dice, replace_roll_planar_dice, replace_scry,
-        replace_set_in_motion, replace_tap, replace_transform, replace_turn_face_up,
+        replace_assemble_contraption,
+        replace_assign_deal_damage,
+        replace_attached,
+        replace_begin_phase,
+        replace_begin_turn,
+        replace_cascade,
+        replace_copy_spell,
+        replace_counter,
+        replace_damage,
+        replace_dealt_damage,
+        replace_declare_blocker,
+        replace_destroy,
+        replace_draw,
+        replace_draw_cards,
+        replace_explore,
+        replace_gain_life,
+        replace_game_loss,
+        replace_game_win,
+        replace_learn,
+        replace_life_reduced,
+        replace_lose_mana,
+        replace_mill,
+        replace_moved,
+        replace_pay_life,
+        replace_planar_dice_result,
+        replace_planeswalk,
+        replace_produce_mana,
+        replace_proliferate,
+        replace_remove_counter,
+        replace_roll_dice,
+        replace_roll_planar_dice,
+        replace_scry,
+        replace_set_in_motion,
+        replace_tap,
+        replace_token,
+        replace_transform,
+        replace_turn_face_up,
         replace_untap,
     };
 
@@ -419,36 +676,18 @@ fn collect_effects(
             }
             // Dispatch to per-type module for applicability check.
             let applies = match re.event {
-                ReplacementType::DamageDone => {
-                    replace_damage::can_replace(re, event, game, card)
-                }
-                ReplacementType::Draw => {
-                    replace_draw::can_replace(re, event, game, card)
-                }
-                ReplacementType::Destroy => {
-                    replace_destroy::can_replace(re, event, game, card)
-                }
-                ReplacementType::Moved => {
-                    replace_moved::can_replace(re, event, game, card)
-                }
-                ReplacementType::GainLife => {
-                    replace_gain_life::can_replace(re, event, game, card)
-                }
-                ReplacementType::CreateToken => {
-                    replace_token::can_replace(re, event, game, card)
-                }
+                ReplacementType::DamageDone => replace_damage::can_replace(re, event, game, card),
+                ReplacementType::Draw => replace_draw::can_replace(re, event, game, card),
+                ReplacementType::Destroy => replace_destroy::can_replace(re, event, game, card),
+                ReplacementType::Moved => replace_moved::can_replace(re, event, game, card),
+                ReplacementType::GainLife => replace_gain_life::can_replace(re, event, game, card),
+                ReplacementType::CreateToken => replace_token::can_replace(re, event, game, card),
                 ReplacementType::AddCounter => {
                     replace_add_counter::can_replace(re, event, game, card)
                 }
-                ReplacementType::GameLoss => {
-                    replace_game_loss::can_replace(re, event, game, card)
-                }
-                ReplacementType::GameWin => {
-                    replace_game_win::can_replace(re, event, game, card)
-                }
-                ReplacementType::Counter => {
-                    replace_counter::can_replace(re, event, game, card)
-                }
+                ReplacementType::GameLoss => replace_game_loss::can_replace(re, event, game, card),
+                ReplacementType::GameWin => replace_game_win::can_replace(re, event, game, card),
+                ReplacementType::Counter => replace_counter::can_replace(re, event, game, card),
                 ReplacementType::ProduceMana => {
                     replace_produce_mana::can_replace(re, event, game, card)
                 }
@@ -462,18 +701,14 @@ fn collect_effects(
                 ReplacementType::AssignDealDamage => {
                     replace_assign_deal_damage::can_replace(re, event, game, card)
                 }
-                ReplacementType::Attached => {
-                    replace_attached::can_replace(re, event, game, card)
-                }
+                ReplacementType::Attached => replace_attached::can_replace(re, event, game, card),
                 ReplacementType::BeginPhase => {
                     replace_begin_phase::can_replace(re, event, game, card)
                 }
                 ReplacementType::BeginTurn => {
                     replace_begin_turn::can_replace(re, event, game, card)
                 }
-                ReplacementType::Cascade => {
-                    replace_cascade::can_replace(re, event, game, card)
-                }
+                ReplacementType::Cascade => replace_cascade::can_replace(re, event, game, card),
                 ReplacementType::CopySpell => {
                     replace_copy_spell::can_replace(re, event, game, card)
                 }
@@ -483,24 +718,14 @@ fn collect_effects(
                 ReplacementType::DeclareBlocker => {
                     replace_declare_blocker::can_replace(re, event, game, card)
                 }
-                ReplacementType::Explore => {
-                    replace_explore::can_replace(re, event, game, card)
-                }
-                ReplacementType::Learn => {
-                    replace_learn::can_replace(re, event, game, card)
-                }
+                ReplacementType::Explore => replace_explore::can_replace(re, event, game, card),
+                ReplacementType::Learn => replace_learn::can_replace(re, event, game, card),
                 ReplacementType::LifeReduced => {
                     replace_life_reduced::can_replace(re, event, game, card)
                 }
-                ReplacementType::LoseMana => {
-                    replace_lose_mana::can_replace(re, event, game, card)
-                }
-                ReplacementType::Mill => {
-                    replace_mill::can_replace(re, event, game, card)
-                }
-                ReplacementType::PayLife => {
-                    replace_pay_life::can_replace(re, event, game, card)
-                }
+                ReplacementType::LoseMana => replace_lose_mana::can_replace(re, event, game, card),
+                ReplacementType::Mill => replace_mill::can_replace(re, event, game, card),
+                ReplacementType::PayLife => replace_pay_life::can_replace(re, event, game, card),
                 ReplacementType::PlanarDiceResult => {
                     replace_planar_dice_result::can_replace(re, event, game, card)
                 }
@@ -513,30 +738,20 @@ fn collect_effects(
                 ReplacementType::RemoveCounter => {
                     replace_remove_counter::can_replace(re, event, game, card)
                 }
-                ReplacementType::RollDice => {
-                    replace_roll_dice::can_replace(re, event, game, card)
-                }
+                ReplacementType::RollDice => replace_roll_dice::can_replace(re, event, game, card),
                 ReplacementType::RollPlanarDice => {
                     replace_roll_planar_dice::can_replace(re, event, game, card)
                 }
-                ReplacementType::Scry => {
-                    replace_scry::can_replace(re, event, game, card)
-                }
+                ReplacementType::Scry => replace_scry::can_replace(re, event, game, card),
                 ReplacementType::SetInMotion => {
                     replace_set_in_motion::can_replace(re, event, game, card)
                 }
-                ReplacementType::Tap => {
-                    replace_tap::can_replace(re, event, game, card)
-                }
-                ReplacementType::Transform => {
-                    replace_transform::can_replace(re, event, game, card)
-                }
+                ReplacementType::Tap => replace_tap::can_replace(re, event, game, card),
+                ReplacementType::Transform => replace_transform::can_replace(re, event, game, card),
                 ReplacementType::TurnFaceUp => {
                     replace_turn_face_up::can_replace(re, event, game, card)
                 }
-                ReplacementType::Untap => {
-                    replace_untap::can_replace(re, event, game, card)
-                }
+                ReplacementType::Untap => replace_untap::can_replace(re, event, game, card),
                 ReplacementType::Other(_) => false,
             };
 
@@ -561,17 +776,45 @@ fn execute_effect(
     event: &mut ReplacementEvent,
 ) -> ReplacementResult {
     use super::{
-        replace_add_counter, replace_counter, replace_damage, replace_destroy, replace_draw,
-        replace_gain_life, replace_game_loss, replace_game_win, replace_moved,
-        replace_produce_mana, replace_token,
+        replace_add_counter,
         // Format/mechanic-specific replacements
-        replace_assemble_contraption, replace_assign_deal_damage, replace_attached,
-        replace_begin_phase, replace_begin_turn, replace_cascade, replace_copy_spell,
-        replace_dealt_damage, replace_declare_blocker, replace_draw_cards, replace_explore,
-        replace_learn, replace_life_reduced, replace_lose_mana, replace_mill, replace_pay_life,
-        replace_planar_dice_result, replace_planeswalk, replace_proliferate,
-        replace_remove_counter, replace_roll_dice, replace_roll_planar_dice, replace_scry,
-        replace_set_in_motion, replace_tap, replace_transform, replace_turn_face_up,
+        replace_assemble_contraption,
+        replace_assign_deal_damage,
+        replace_attached,
+        replace_begin_phase,
+        replace_begin_turn,
+        replace_cascade,
+        replace_copy_spell,
+        replace_counter,
+        replace_damage,
+        replace_dealt_damage,
+        replace_declare_blocker,
+        replace_destroy,
+        replace_draw,
+        replace_draw_cards,
+        replace_explore,
+        replace_gain_life,
+        replace_game_loss,
+        replace_game_win,
+        replace_learn,
+        replace_life_reduced,
+        replace_lose_mana,
+        replace_mill,
+        replace_moved,
+        replace_pay_life,
+        replace_planar_dice_result,
+        replace_planeswalk,
+        replace_produce_mana,
+        replace_proliferate,
+        replace_remove_counter,
+        replace_roll_dice,
+        replace_roll_planar_dice,
+        replace_scry,
+        replace_set_in_motion,
+        replace_tap,
+        replace_token,
+        replace_transform,
+        replace_turn_face_up,
         replace_untap,
     };
 
@@ -586,9 +829,7 @@ fn execute_effect(
         ReplacementType::GameLoss => replace_game_loss::execute(effect, event, game, card_id),
         ReplacementType::GameWin => replace_game_win::execute(effect, event, game, card_id),
         ReplacementType::Counter => replace_counter::execute(effect, event, game, card_id),
-        ReplacementType::ProduceMana => {
-            replace_produce_mana::execute(effect, event, game, card_id)
-        }
+        ReplacementType::ProduceMana => replace_produce_mana::execute(effect, event, game, card_id),
         // Format/mechanic-specific replacements
         ReplacementType::DrawCards => replace_draw_cards::execute(effect, event, game, card_id),
         ReplacementType::AssembleContraption => {
@@ -598,23 +839,17 @@ fn execute_effect(
             replace_assign_deal_damage::execute(effect, event, game, card_id)
         }
         ReplacementType::Attached => replace_attached::execute(effect, event, game, card_id),
-        ReplacementType::BeginPhase => {
-            replace_begin_phase::execute(effect, event, game, card_id)
-        }
+        ReplacementType::BeginPhase => replace_begin_phase::execute(effect, event, game, card_id),
         ReplacementType::BeginTurn => replace_begin_turn::execute(effect, event, game, card_id),
         ReplacementType::Cascade => replace_cascade::execute(effect, event, game, card_id),
         ReplacementType::CopySpell => replace_copy_spell::execute(effect, event, game, card_id),
-        ReplacementType::DealtDamage => {
-            replace_dealt_damage::execute(effect, event, game, card_id)
-        }
+        ReplacementType::DealtDamage => replace_dealt_damage::execute(effect, event, game, card_id),
         ReplacementType::DeclareBlocker => {
             replace_declare_blocker::execute(effect, event, game, card_id)
         }
         ReplacementType::Explore => replace_explore::execute(effect, event, game, card_id),
         ReplacementType::Learn => replace_learn::execute(effect, event, game, card_id),
-        ReplacementType::LifeReduced => {
-            replace_life_reduced::execute(effect, event, game, card_id)
-        }
+        ReplacementType::LifeReduced => replace_life_reduced::execute(effect, event, game, card_id),
         ReplacementType::LoseMana => replace_lose_mana::execute(effect, event, game, card_id),
         ReplacementType::Mill => replace_mill::execute(effect, event, game, card_id),
         ReplacementType::PayLife => replace_pay_life::execute(effect, event, game, card_id),
@@ -622,9 +857,7 @@ fn execute_effect(
             replace_planar_dice_result::execute(effect, event, game, card_id)
         }
         ReplacementType::Planeswalk => replace_planeswalk::execute(effect, event, game, card_id),
-        ReplacementType::Proliferate => {
-            replace_proliferate::execute(effect, event, game, card_id)
-        }
+        ReplacementType::Proliferate => replace_proliferate::execute(effect, event, game, card_id),
         ReplacementType::RemoveCounter => {
             replace_remove_counter::execute(effect, event, game, card_id)
         }
@@ -638,9 +871,7 @@ fn execute_effect(
         }
         ReplacementType::Tap => replace_tap::execute(effect, event, game, card_id),
         ReplacementType::Transform => replace_transform::execute(effect, event, game, card_id),
-        ReplacementType::TurnFaceUp => {
-            replace_turn_face_up::execute(effect, event, game, card_id)
-        }
+        ReplacementType::TurnFaceUp => replace_turn_face_up::execute(effect, event, game, card_id),
         ReplacementType::Untap => replace_untap::execute(effect, event, game, card_id),
         ReplacementType::Other(_) => ReplacementResult::NotReplaced,
     }
@@ -826,6 +1057,197 @@ mod tests {
         assert_eq!(result, ReplacementResult::Prevented);
         if let ReplacementEvent::DamageToCard { amount, .. } = event {
             assert_eq!(amount, 0);
+        } else {
+            panic!("unexpected event type");
+        }
+    }
+
+    #[test]
+    fn damage_replace_with_can_increase_amount() {
+        let mut game = make_game();
+        let alice = PlayerId(0);
+        let bob = PlayerId(1);
+
+        let replacer = add_creature_with_abilities(
+            &mut game,
+            alice,
+            "Boss",
+            vec![
+                "R$ Event$ DamageDone | ActiveZones$ Battlefield | ValidSource$ Card.YouCtrl | ValidTarget$ Player.Opponent | ReplaceWith$ DmgPlus".to_string(),
+            ],
+        );
+        game.card_mut(replacer).set_s_var(
+            "DmgPlus",
+            "DB$ ReplaceEffect | VarName$ DamageAmount | VarValue$ ReplaceCount$DamageAmount/Plus.1",
+        );
+        put_on_battlefield(&mut game, replacer, alice);
+
+        let source = add_creature_with_abilities(&mut game, alice, "Source", vec![]);
+        put_on_battlefield(&mut game, source, alice);
+
+        let mut event = ReplacementEvent::DamageToPlayer {
+            target: bob,
+            amount: 2,
+            source: Some(source),
+            is_combat: false,
+        };
+        let _ = apply_replacements(&game, &mut event);
+        if let ReplacementEvent::DamageToPlayer { amount, .. } = event {
+            assert_eq!(amount, 3);
+        } else {
+            panic!("unexpected event type");
+        }
+    }
+
+    #[test]
+    fn damage_replace_with_respects_max_speed() {
+        let mut game = make_game();
+        let alice = PlayerId(0);
+        let bob = PlayerId(1);
+        game.player_mut(alice).speed = 4;
+
+        let replacer = add_creature_with_abilities(
+            &mut game,
+            alice,
+            "Far Fortune",
+            vec![
+                "R$ Event$ DamageDone | MaxSpeed$ True | ActiveZones$ Battlefield | ValidSource$ Card.YouCtrl | ValidTarget$ Player.Opponent | ReplaceWith$ DmgPlus".to_string(),
+            ],
+        );
+        game.card_mut(replacer).set_s_var(
+            "DmgPlus",
+            "DB$ ReplaceEffect | VarName$ DamageAmount | VarValue$ ReplaceCount$DamageAmount/Plus.1",
+        );
+        put_on_battlefield(&mut game, replacer, alice);
+
+        let source = add_creature_with_abilities(&mut game, alice, "Source", vec![]);
+        put_on_battlefield(&mut game, source, alice);
+
+        let mut event = ReplacementEvent::DamageToPlayer {
+            target: bob,
+            amount: 1,
+            source: Some(source),
+            is_combat: false,
+        };
+        let _ = apply_replacements(&game, &mut event);
+        if let ReplacementEvent::DamageToPlayer { amount, .. } = event {
+            assert_eq!(amount, 2);
+        } else {
+            panic!("unexpected event type");
+        }
+    }
+
+    #[test]
+    fn roll_dice_replace_with_updates_number_and_ignore() {
+        let mut game = make_game();
+        let alice = PlayerId(0);
+
+        let replacer = add_creature_with_abilities(
+            &mut game,
+            alice,
+            "Barbarian Class",
+            vec![
+                "R$ Event$ RollDice | ActiveZones$ Battlefield | ValidPlayer$ You | ReplaceWith$ PlusRoll".to_string(),
+            ],
+        );
+        game.card_mut(replacer).set_s_var(
+            "PlusRoll",
+            "DB$ ReplaceEffect | VarName$ Number | VarValue$ ReplaceCount$Number/Plus.1 | SubAbility$ IgnoreLowest",
+        );
+        game.card_mut(replacer).set_s_var(
+            "IgnoreLowest",
+            "DB$ ReplaceEffect | VarName$ Ignore | VarValue$ ReplaceCount$Ignore/Plus.1",
+        );
+        put_on_battlefield(&mut game, replacer, alice);
+
+        let mut event = ReplacementEvent::RollDice {
+            player: alice,
+            sides: 20,
+            number: 1,
+            ignore: 0,
+            ignore_chosen: HashMap::new(),
+            dice_pt_exchanges: HashSet::new(),
+        };
+        let result = apply_replacements(&game, &mut event);
+        assert_eq!(result, ReplacementResult::Updated);
+        if let ReplacementEvent::RollDice { number, ignore, .. } = event {
+            assert_eq!(number, 2);
+            assert_eq!(ignore, 1);
+        } else {
+            panic!("unexpected event type");
+        }
+    }
+
+    #[test]
+    fn roll_dice_replace_with_updates_ignore_chosen_map() {
+        let mut game = make_game();
+        let alice = PlayerId(0);
+
+        let replacer = add_creature_with_abilities(
+            &mut game,
+            alice,
+            "Bamboozling Beeble",
+            vec![
+                "R$ Event$ RollDice | ActiveZones$ Battlefield | ValidPlayer$ You | ReplaceWith$ RigRoll".to_string(),
+            ],
+        );
+        game.card_mut(replacer).set_s_var(
+            "RigRoll",
+            "DB$ ReplaceEffect | VarName$ IgnoreChosen | VarType$ Map | VarKey$ You | VarValue$ 1",
+        );
+        put_on_battlefield(&mut game, replacer, alice);
+
+        let mut event = ReplacementEvent::RollDice {
+            player: alice,
+            sides: 6,
+            number: 2,
+            ignore: 0,
+            ignore_chosen: HashMap::new(),
+            dice_pt_exchanges: HashSet::new(),
+        };
+        let result = apply_replacements(&game, &mut event);
+        assert_eq!(result, ReplacementResult::Updated);
+        if let ReplacementEvent::RollDice { ignore_chosen, .. } = event {
+            assert_eq!(ignore_chosen.get(&alice), Some(&1));
+        } else {
+            panic!("unexpected event type");
+        }
+    }
+
+    #[test]
+    fn roll_dice_replace_with_updates_dice_pt_exchange_set() {
+        let mut game = make_game();
+        let alice = PlayerId(0);
+
+        let replacer = add_creature_with_abilities(
+            &mut game,
+            alice,
+            "Vedalken Squirrel-Whacker",
+            vec![
+                "R$ Event$ RollDice | ActiveZones$ Battlefield | ValidPlayer$ You | ValidSides$ 6 | ReplaceWith$ SwapRoll".to_string(),
+            ],
+        );
+        game.card_mut(replacer).set_s_var(
+            "SwapRoll",
+            "DB$ ReplaceEffect | VarName$ DicePTExchanges | VarType$ CardSet | VarValue$ Self",
+        );
+        put_on_battlefield(&mut game, replacer, alice);
+
+        let mut event = ReplacementEvent::RollDice {
+            player: alice,
+            sides: 6,
+            number: 2,
+            ignore: 0,
+            ignore_chosen: HashMap::new(),
+            dice_pt_exchanges: HashSet::new(),
+        };
+        let result = apply_replacements(&game, &mut event);
+        assert_eq!(result, ReplacementResult::Updated);
+        if let ReplacementEvent::RollDice {
+            dice_pt_exchanges, ..
+        } = event
+        {
+            assert!(dice_pt_exchanges.contains(&replacer));
         } else {
             panic!("unexpected event type");
         }

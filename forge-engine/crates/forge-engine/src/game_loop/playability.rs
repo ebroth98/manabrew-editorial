@@ -238,25 +238,26 @@ impl GameLoop {
                 };
 
                 // StaticAbilityAlternativeCost (Mode$ AlternativeCost)
-                let static_alt_ok = crate::staticability::static_ability_alternative_cost::alternative_costs(
-                    &game.cards,
-                    &cast_sa,
-                    card,
-                    player,
-                )
-                .iter()
-                .filter(|entry| {
-                    entry
-                        .cost
-                        .parts
-                        .iter()
-                        .all(|p| matches!(p, CostPart::Mana(_)))
-                })
-                .any(|entry| {
-                    let base = Self::mana_from_cost(&entry.cost);
-                    let adjusted = cost_adj.apply(&base).add(&raise_mana);
-                    available_mana.can_pay(&adjusted)
-                });
+                let static_alt_ok =
+                    crate::staticability::static_ability_alternative_cost::alternative_costs(
+                        &game.cards,
+                        &cast_sa,
+                        card,
+                        player,
+                    )
+                    .iter()
+                    .filter(|entry| {
+                        entry
+                            .cost
+                            .parts
+                            .iter()
+                            .all(|p| matches!(p, CostPart::Mana(_)))
+                    })
+                    .any(|entry| {
+                        let base = Self::mana_from_cost(&entry.cost);
+                        let adjusted = cost_adj.apply(&base).add(&raise_mana);
+                        available_mana.can_pay(&adjusted)
+                    });
 
                 // Suspend: special action, pay suspend cost to exile with time counters
                 // (Suspend is not a spell cast — cost reduction doesn't apply)
@@ -279,8 +280,7 @@ impl GameLoop {
                 // Sacrifice-based alternative cost (e.g. Fireblast: sacrifice two Mountains)
                 let sacrifice_alt_ok =
                     if let Some((amount, ref type_filter)) = card.get_sacrifice_alt_cost() {
-                        let targets =
-                            crate::cost::get_sacrifice_targets(game, player, type_filter);
+                        let targets = crate::cost::get_sacrifice_targets(game, player, type_filter);
                         targets.len() as i32 >= amount
                     } else {
                         false
@@ -658,9 +658,12 @@ impl GameLoop {
                         });
                     }
                 }
-            } else if let Some(plotted_turn) = card.keywords.iter_strings().chain(card.granted_keywords.iter_strings()).find_map(|kw| {
-                crate::card::parse_plotted_turn(kw)
-            }) {
+            } else if let Some(plotted_turn) = card
+                .keywords
+                .iter_strings()
+                .chain(card.granted_keywords.iter_strings())
+                .find_map(|kw| crate::card::parse_plotted_turn(kw))
+            {
                 // Plot: plotted card in exile can be cast for free on a LATER turn
                 if game.turn.turn_number <= plotted_turn {
                     continue;

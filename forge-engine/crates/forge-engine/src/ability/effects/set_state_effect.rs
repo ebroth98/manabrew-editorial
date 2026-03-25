@@ -125,9 +125,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         }
         _ => {
-            let err = crate::ability::IllegalAbilityException::new(
-                format!("Unknown SetState mode: {:?}", mode),
-            );
+            let err = crate::ability::IllegalAbilityException::new(format!(
+                "Unknown SetState mode: {:?}",
+                mode
+            ));
             eprintln!("{}", err);
         }
     }

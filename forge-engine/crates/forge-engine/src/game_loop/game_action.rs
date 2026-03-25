@@ -148,8 +148,7 @@ impl GameLoop {
             }
             for ab in &card.activated_abilities {
                 // Skip abilities with ActivationZone$ Hand — they're for hand, not battlefield
-                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Hand")
-                {
+                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Hand") {
                     continue;
                 }
                 if can_activate(card_id, ab) {
@@ -163,8 +162,7 @@ impl GameLoop {
         for card_id in hand {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Hand")
-                {
+                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Hand") {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }
@@ -177,8 +175,7 @@ impl GameLoop {
         for card_id in graveyard {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Graveyard")
-                {
+                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Graveyard") {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }
@@ -191,8 +188,7 @@ impl GameLoop {
         for card_id in exile {
             let card = game.card(card_id);
             for ab in &card.activated_abilities {
-                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Exile")
-                {
+                if ab.params.get(keys::ACTIVATION_ZONE) == Some("Exile") {
                     if can_activate(card_id, ab) {
                         result.push((card_id, ab.ability_index));
                     }
@@ -252,7 +248,10 @@ impl GameLoop {
         ab: &crate::ability::activated::ActivatedAbility,
     ) -> bool {
         // Pay costs
-        let api = ab.params.get(keys::AB).and_then(crate::ability::api_type::ApiType::smart_value_of);
+        let api = ab
+            .params
+            .get(keys::AB)
+            .and_then(crate::ability::api_type::ApiType::smart_value_of);
         if !self.pay_ability_cost(
             game,
             agents,
@@ -305,7 +304,10 @@ impl GameLoop {
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
     ) {
-        let api = ab.params.get(keys::AB).and_then(crate::ability::api_type::ApiType::smart_value_of);
+        let api = ab
+            .params
+            .get(keys::AB)
+            .and_then(crate::ability::api_type::ApiType::smart_value_of);
         if !self.pay_ability_cost(
             game,
             agents,
@@ -322,7 +324,8 @@ impl GameLoop {
 
         // If this is a ManaReflected ability, delegate to the effect resolver
         if ab.params.get(keys::AB) == Some("ManaReflected") {
-            let sa = crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
+            let sa =
+                crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
             self.resolve_single_effect(game, agents, &sa, None);
             // Fire triggers
             self.trigger_handler.run_trigger(
@@ -330,6 +333,7 @@ impl GameLoop {
                 RunParams {
                     card: Some(card_id),
                     player: Some(player),
+                    activator: Some(player),
                     ..Default::default()
                 },
                 false,
@@ -339,6 +343,7 @@ impl GameLoop {
                 RunParams {
                     card: Some(card_id),
                     player: Some(player),
+                    activator: Some(player),
                     ..Default::default()
                 },
                 false,
@@ -364,10 +369,15 @@ impl GameLoop {
             if produced.starts_with("Special") {
                 // Delegate to the special mana handler in mana_effect
                 let special = produced.strip_prefix("Special ").unwrap_or("");
-                let sa =
-                    crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
+                let sa = crate::spellability::build_spell_ability(
+                    game,
+                    card_id,
+                    &ab.ability_text,
+                    player,
+                );
                 let mut effect_ctx = crate::ability::effects::EffectContext {
                     game,
+                    combat: Some(&mut self.combat),
                     agents,
                     trigger_handler: &mut self.trigger_handler,
                     token_templates: &self.token_templates,
@@ -396,6 +406,7 @@ impl GameLoop {
                     RunParams {
                         card: Some(card_id),
                         player: Some(player),
+                        activator: Some(player),
                         ..Default::default()
                     },
                     false,
@@ -405,6 +416,7 @@ impl GameLoop {
                     RunParams {
                         card: Some(card_id),
                         player: Some(player),
+                        activator: Some(player),
                         ..Default::default()
                     },
                     false,
@@ -425,18 +437,15 @@ impl GameLoop {
 
             // Add the produced mana to the pool
             if let Some(ref ms) = mana_string {
-                crate::mana::add_produced_mana_to_pool(
-                    self.pool_mut(player),
-                    ms,
-                    &mana_params,
-                );
+                crate::mana::add_produced_mana_to_pool(self.pool_mut(player), ms, &mana_params);
             }
         }
 
         // Resolve SubAbility chain (e.g. DealDamage on pain lands)
         if let Some(sub_svar_name) = ab.params.get(keys::SUB_ABILITY) {
             if let Some(sub_text) = game.card(card_id).svars.get(sub_svar_name).cloned() {
-                let sub_sa = crate::spellability::build_spell_ability(game, card_id, &sub_text, player);
+                let sub_sa =
+                    crate::spellability::build_spell_ability(game, card_id, &sub_text, player);
                 self.resolve_single_effect(game, agents, &sub_sa, None);
             }
         }
@@ -447,6 +456,7 @@ impl GameLoop {
             RunParams {
                 card: Some(card_id),
                 player: Some(player),
+                activator: Some(player),
                 ..Default::default()
             },
             false,
@@ -458,6 +468,7 @@ impl GameLoop {
             RunParams {
                 card: Some(card_id),
                 player: Some(player),
+                activator: Some(player),
                 ..Default::default()
             },
             false,
@@ -497,20 +508,6 @@ impl GameLoop {
             return false;
         }
 
-        // Fire BecomesTarget trigger if a card was targeted
-        if let Some(target_card) = sa.target_chosen.target_card {
-            self.trigger_handler.run_trigger(
-                TriggerType::BecomesTarget,
-                RunParams {
-                    card: Some(target_card),
-                    cause_player: Some(player),
-                    cause_card: Some(card_id),
-                    ..Default::default()
-                },
-                false,
-            );
-        }
-
         // PowerUp: reduce cost by card's mana cost if it entered the battlefield this turn
         let adjusted_cost = if ab.params.is_true(keys::POWER_UP)
             && game.card(card_id).entered_battlefield_this_turn
@@ -528,9 +525,41 @@ impl GameLoop {
         } else {
             ab.cost.clone()
         };
+        let host_before_payment = game.card(card_id).clone();
+        let spell_desc = ab
+            .params
+            .get(keys::SPELL_DESCRIPTION)
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        let is_vehicle_crew = host_before_payment.type_line.has_subtype("Vehicle")
+            && (host_before_payment
+                .has_keyword_enum(crate::keyword::keyword_instance::Keyword::Crew)
+                || spell_desc.starts_with("crew"));
+        let is_mount_saddle = host_before_payment.type_line.has_subtype("Mount")
+            && (host_before_payment
+                .has_keyword_enum(crate::keyword::keyword_instance::Keyword::Saddle)
+                || spell_desc.starts_with("saddle"));
+        let is_station = (host_before_payment.type_line.has_subtype("Spacecraft")
+            || host_before_payment.type_line.has_subtype("Planet"))
+            && (host_before_payment
+                .has_keyword_enum(crate::keyword::keyword_instance::Keyword::Station)
+                || spell_desc.starts_with("station"));
+        let uses_waterbend = adjusted_cost
+            .parts
+            .iter()
+            .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
+        let untapped_before_payment: Vec<CardId> = game
+            .cards_in_zone(ZoneType::Battlefield, player)
+            .iter()
+            .copied()
+            .filter(|&cid| !game.card(cid).tapped)
+            .collect();
 
         // Pay costs
-        let api = ab.params.get(keys::AB).and_then(crate::ability::api_type::ApiType::smart_value_of);
+        let api = ab
+            .params
+            .get(keys::AB)
+            .and_then(crate::ability::api_type::ApiType::smart_value_of);
         if !self.pay_ability_cost(
             game,
             agents,
@@ -544,6 +573,15 @@ impl GameLoop {
         ) {
             return false;
         }
+        let tapped_by_activation: Vec<CardId> = untapped_before_payment
+            .into_iter()
+            .filter(|&cid| game.card(cid).tapped)
+            .collect();
+        let tapped_crews: Vec<CardId> = tapped_by_activation
+            .iter()
+            .copied()
+            .filter(|&cid| cid != card_id && game.card(cid).is_creature())
+            .collect();
 
         // Track activation count (for PowerUp once-per-game)
         game.card_mut(card_id)
@@ -554,7 +592,9 @@ impl GameLoop {
 
         // Push to stack
         let card_name = game.card(card_id).card_name.clone();
+        let mut sa_for_trigger = sa.clone();
         let target_card = sa.target_chosen.target_card;
+        let target_player = sa.target_chosen.target_player;
         let entry = StackEntry {
             id: 0,
             spell_ability: sa,
@@ -567,11 +607,7 @@ impl GameLoop {
         };
         game.stack.push(entry);
         self.log_stack_push(&format!("{} ability", card_name), &game.player(player).name);
-        let ability_kind = ab
-            .params
-            .get(keys::AB)
-            .unwrap_or("Unknown")
-            .to_string();
+        let ability_kind = ab.params.get(keys::AB).unwrap_or("Unknown").to_string();
         let mut event = crate::agent::GameLogEvent::action(format!(
             "Activated ability: {} | source={}",
             ability_kind, card_name
@@ -593,6 +629,133 @@ impl GameLoop {
             },
             false,
         );
+        // Java parity: apply paying-mana effects before cast-family triggers.
+        sa_for_trigger.apply_paying_mana_effects();
+        self.trigger_handler.run_trigger(
+            TriggerType::AbilityCast,
+            RunParams {
+                card: Some(card_id),
+                spell_card: Some(card_id),
+                player: Some(player),
+                activator: Some(player),
+                spell_controller: Some(player),
+                spell_ability: Some(sa_for_trigger.clone()),
+                source_sa: Some(sa_for_trigger.clone()),
+                cause: Some(sa_for_trigger.clone()),
+                cause_card: Some(card_id),
+                ..Default::default()
+            },
+            true,
+        );
+        if uses_waterbend {
+            let bend_params = RunParams {
+                player: Some(player),
+                card: Some(card_id),
+                spell_ability: Some(sa_for_trigger.clone()),
+                source_sa: Some(sa_for_trigger.clone()),
+                cause: Some(sa_for_trigger.clone()),
+                cause_card: Some(card_id),
+                ..Default::default()
+            };
+            self.trigger_handler.run_trigger(
+                TriggerType::Elementalbend,
+                bend_params.clone(),
+                false,
+            );
+        }
+        if is_vehicle_crew || is_mount_saddle || is_station {
+            for crew_card in &tapped_crews {
+                let run_params = RunParams {
+                    card: Some(card_id),
+                    crew_cards: Some(vec![*crew_card]),
+                    source_sa: Some(sa_for_trigger.clone()),
+                    spell_ability: Some(sa_for_trigger.clone()),
+                    cause: Some(sa_for_trigger.clone()),
+                    cause_card: Some(card_id),
+                    player: Some(player),
+                    ..Default::default()
+                };
+                if is_vehicle_crew {
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Crewed,
+                        run_params.clone(),
+                        false,
+                    );
+                }
+                if is_mount_saddle {
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Saddled,
+                        run_params.clone(),
+                        false,
+                    );
+                }
+                if is_station {
+                    self.trigger_handler.run_trigger(
+                        TriggerType::Stationed,
+                        run_params.clone(),
+                        false,
+                    );
+                }
+            }
+        }
+        if let Some(target_id) = target_card {
+            let first_time = !game.card(target_id).has_become_target_this_turn();
+            game.card_mut(target_id).add_target_from_this_turn();
+            self.trigger_handler.run_trigger(
+                TriggerType::BecomesTarget,
+                RunParams {
+                    card: Some(target_id),
+                    target_card: Some(target_id),
+                    cards: Some(vec![target_id]),
+                    cause_player: Some(player),
+                    cause_card: Some(card_id),
+                    source_sa: Some(sa_for_trigger.clone()),
+                    first_time: Some(first_time),
+                    ..Default::default()
+                },
+                false,
+            );
+            self.trigger_handler.run_trigger(
+                TriggerType::BecomesTargetOnce,
+                RunParams {
+                    card: Some(target_id),
+                    target_card: Some(target_id),
+                    cards: Some(vec![target_id]),
+                    cause_player: Some(player),
+                    cause_card: Some(card_id),
+                    source_sa: Some(sa_for_trigger.clone()),
+                    first_time: Some(first_time),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+        if let Some(target_id) = target_player {
+            self.trigger_handler.run_trigger(
+                TriggerType::BecomesTarget,
+                RunParams {
+                    player: Some(target_id),
+                    target_player: Some(target_id),
+                    cause_player: Some(player),
+                    cause_card: Some(card_id),
+                    source_sa: Some(sa_for_trigger.clone()),
+                    ..Default::default()
+                },
+                false,
+            );
+            self.trigger_handler.run_trigger(
+                TriggerType::BecomesTargetOnce,
+                RunParams {
+                    player: Some(target_id),
+                    target_player: Some(target_id),
+                    cause_player: Some(player),
+                    cause_card: Some(card_id),
+                    source_sa: Some(sa_for_trigger.clone()),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
         true
     }
 }

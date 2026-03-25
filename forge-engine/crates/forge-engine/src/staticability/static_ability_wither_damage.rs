@@ -11,11 +11,7 @@ pub fn is_wither_damage(cards: &[Card], source_card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::WitherDamage)
         {
-            if matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                source_card,
-                source,
-            ) {
+            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), source_card, source) {
                 return true;
             }
         }

@@ -3,12 +3,13 @@
 //! Mirrors Java `ReplaceLifeReduced.java` in `forge/game/replacement/`.
 
 use crate::card::Card;
-use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::parsing::compare::compare_expr;
+use crate::parsing::keys;
 
-use super::replacement_handler::ReplacementEvent;
 use super::replacement_effect::{matches_valid_player, ReplacementEffect};
+use super::replacement_handler::{execute_replace_with_numeric_update, ReplacementEvent};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
 
@@ -22,7 +23,7 @@ pub fn can_replace(
     if effect.event != ReplacementType::LifeReduced {
         return false;
     }
-    let (player, _amount, is_damage) = match event {
+    let (player, amount, is_damage) = match event {
         ReplacementEvent::LifeReduced {
             player,
             amount,
@@ -30,6 +31,9 @@ pub fn can_replace(
         } => (*player, *amount, *is_damage),
         _ => return false,
     };
+    if amount <= 0 {
+        return false;
+    }
     if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
         if !matches_valid_player(valid, player, source_card) {
             return false;
@@ -39,6 +43,17 @@ pub fn can_replace(
     if let Some(is_dmg) = effect.params.get(keys::IS_DAMAGE) {
         let expected = is_dmg.eq_ignore_ascii_case("True");
         if is_damage != expected {
+            return false;
+        }
+    }
+    if let Some(result_cmp) = effect.params.get(keys::RESULT) {
+        let final_life = _game.player(player).life - amount;
+        let rhs = result_cmp
+            .get(2..)
+            .and_then(|n| n.parse::<i32>().ok())
+            .unwrap_or(0);
+        let cmp = format!("{}{}", result_cmp.get(..2).unwrap_or("GE"), rhs);
+        if !compare_expr(final_life, &cmp) {
             return false;
         }
     }
@@ -52,18 +67,25 @@ pub fn execute(
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    let amount = match event {
-        ReplacementEvent::LifeReduced { amount, .. } => amount,
+    match event {
+        ReplacementEvent::LifeReduced { .. } => {}
         _ => return ReplacementResult::NotReplaced,
-    };
+    }
     if effect
         .params
         .get(keys::PREVENT)
         .map(|s| s == "True")
         .unwrap_or(false)
     {
-        *amount = 0;
+        if let ReplacementEvent::LifeReduced { amount, .. } = event {
+            *amount = 0;
+        }
         return ReplacementResult::Prevented;
+    }
+    if let Some(result) =
+        execute_replace_with_numeric_update(effect, event, _game, _source_card_id, "Amount")
+    {
+        return result;
     }
     ReplacementResult::Replaced
 }

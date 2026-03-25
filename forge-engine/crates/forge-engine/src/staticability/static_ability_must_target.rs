@@ -3,11 +3,11 @@ use forge_foundation::ZoneType;
 use crate::game::GameState;
 use crate::ids::CardId;
 use crate::parsing::keys;
+use crate::parsing::Params;
 use crate::spellability::target_restrictions;
 use crate::spellability::target_restrictions::TargetKind;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
-use crate::parsing::Params;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct MustTargetRestriction {
@@ -124,7 +124,8 @@ fn get_restrictions(game: &GameState, sa: &SpellAbility) -> Vec<MustTargetRestri
                     continue;
                 }
             }
-            let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET).map(|s| s.to_string()) else {
+            let Some(valid_target) = st_ab.params.get(keys::VALID_TARGET).map(|s| s.to_string())
+            else {
                 continue;
             };
             let zone = st_ab
@@ -178,14 +179,12 @@ fn get_targetable_card_choices(game: &GameState, sa: &SpellAbility) -> Vec<CardI
     let player = sa.targeting_player.unwrap_or(sa.activating_player);
 
     match &tr.target_kind {
-        TargetKind::Any => target_restrictions::get_all_candidates_any_filtered(
-            game,
-            &tr.valid_tgts,
-            player,
-        )
-        .into_iter()
-        .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
-        .collect(),
+        TargetKind::Any => {
+            target_restrictions::get_all_candidates_any_filtered(game, &tr.valid_tgts, player)
+                .into_iter()
+                .filter(|&cid| target_restrictions::can_be_targeted_by_sa(game, cid, player, sa))
+                .collect()
+        }
         TargetKind::Creature(filter) => {
             let base = target_restrictions::get_all_candidates_creature_filtered(
                 game,
@@ -301,7 +300,10 @@ fn spell_ability_matches(
             "activated" => params.has(keys::AB),
             "istargeting" => params.has(keys::VALID_TGTS),
             "xcost" => {
-                params.get(keys::COST).map(|c| c.contains('X')).unwrap_or(false)
+                params
+                    .get(keys::COST)
+                    .map(|c| c.contains('X'))
+                    .unwrap_or(false)
                     || ability_line.contains("X")
             }
             _ => false,

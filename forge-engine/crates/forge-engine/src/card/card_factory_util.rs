@@ -20,10 +20,7 @@ pub(crate) fn parse_sacrifice_alt_cost_keyword(raw: &str) -> Option<String> {
         let p = part.trim();
         if let Some(rest) = p.strip_prefix("Cost$") {
             let cost = rest.trim();
-            if let Some(inner) = cost
-                .strip_prefix("Sac<")
-                .and_then(|s| s.strip_suffix('>'))
-            {
+            if let Some(inner) = cost.strip_prefix("Sac<").and_then(|s| s.strip_suffix('>')) {
                 let mut split = inner.splitn(2, '/');
                 let amount = split.next().and_then(|s| s.trim().parse::<i32>().ok())?;
                 let type_filter = split.next().unwrap_or("").trim().to_string();
@@ -159,8 +156,10 @@ pub fn shared_keywords(
     keywords: impl IntoIterator<Item = String>,
     restrictions: &[String],
 ) -> Vec<String> {
-    let restrictions_lc: HashSet<String> =
-        restrictions.iter().map(|s| s.to_ascii_lowercase()).collect();
+    let restrictions_lc: HashSet<String> = restrictions
+        .iter()
+        .map(|s| s.to_ascii_lowercase())
+        .collect();
     keywords
         .into_iter()
         .filter(|kw| {
@@ -176,7 +175,8 @@ pub fn shared_keywords(
 
 pub fn add_ability_factory_abilities(card: &mut Card, abilities: &[String]) {
     for raw in abilities {
-        let sa = crate::spellability::build_spell_ability_from_host_card(card, raw, card.controller);
+        let sa =
+            crate::spellability::build_spell_ability_from_host_card(card, raw, card.controller);
         card.add_spell_ability(&sa);
     }
 }

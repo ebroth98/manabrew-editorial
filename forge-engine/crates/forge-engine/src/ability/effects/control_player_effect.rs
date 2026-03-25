@@ -9,11 +9,16 @@ use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let controller_def = sa.params.get(keys::CONTROLLER).map(|s| s.to_string()).unwrap_or_else(|| "You".to_string());
-    let controller = super::resolve_defined_players(&controller_def, sa.activating_player, ctx.game)
-        .into_iter()
-        .next()
-        .unwrap_or(sa.activating_player);
+    let controller_def = sa
+        .params
+        .get(keys::CONTROLLER)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "You".to_string());
+    let controller =
+        super::resolve_defined_players(&controller_def, sa.activating_player, ctx.game)
+            .into_iter()
+            .next()
+            .unwrap_or(sa.activating_player);
 
     let targets = if let Some(pid) = sa.target_chosen.target_player {
         vec![pid]
@@ -31,8 +36,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         // Register a cleanup to remove control at end of next turn
         // Java uses addUntil on the cleanup step — we use a delayed trigger
-        ctx.trigger_handler.register_delayed_trigger(
-            crate::trigger::handler::DelayedTrigger {
+        ctx.trigger_handler
+            .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
                 mode: crate::event::TriggerType::Phase,
                 trigger_mode: crate::trigger::TriggerMode::Always,
                 execute_svar: "ControlPlayerCleanup".to_string(),
@@ -40,7 +45,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 source_card: sa.source.unwrap_or(crate::ids::CardId(0)),
                 target_card: None,
                 remembered_amount: target_player.0 as i32,
-            },
-        );
+            });
     }
 }

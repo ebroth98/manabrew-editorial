@@ -11,11 +11,7 @@ pub fn blocks_each_combat_if_able(cards: &[Card], creature: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::MustBlock)
         {
-            if matches_valid_creature(
-                st_ab.params.get(keys::VALID_CREATURE),
-                creature,
-                source,
-            ) {
+            if matches_valid_creature(st_ab.params.get(keys::VALID_CREATURE), creature, source) {
                 return true;
             }
         }

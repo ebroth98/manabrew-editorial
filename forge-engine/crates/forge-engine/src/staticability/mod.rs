@@ -98,11 +98,7 @@ pub fn apply_continuous_ability(
 }
 
 /// Java-parity helper for `StaticAbility.hasAttackCost(...)`.
-pub fn has_attack_cost(
-    st_ab: &StaticAbility,
-    attacker: &Card,
-    source: &Card,
-) -> bool {
+pub fn has_attack_cost(st_ab: &StaticAbility, attacker: &Card, source: &Card) -> bool {
     if !st_ab.check_mode(&StaticMode::OptionalAttackCost) {
         return false;
     }

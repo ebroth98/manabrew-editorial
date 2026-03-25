@@ -75,11 +75,7 @@ pub fn compute_attack_requirements(
     available: &[CardId],
     defending: PlayerId,
 ) -> Vec<AttackRequirement> {
-    compute_attack_requirements_with_defenders(
-        cards,
-        available,
-        &[DefenderId::Player(defending)],
-    )
+    compute_attack_requirements_with_defenders(cards, available, &[DefenderId::Player(defending)])
 }
 
 /// Compute attack requirements with a full list of possible defenders.

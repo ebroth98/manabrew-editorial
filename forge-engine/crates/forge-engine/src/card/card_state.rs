@@ -26,9 +26,15 @@ pub fn add_type(card: &mut Card, ty: &str) {
 }
 
 pub fn remove_type(card: &mut Card, ty: &str) {
-    card.type_line.supertypes.retain(|st| !st.name().eq_ignore_ascii_case(ty));
-    card.type_line.core_types.retain(|ct| !ct.name().eq_ignore_ascii_case(ty));
-    card.type_line.subtypes.retain(|s| !s.eq_ignore_ascii_case(ty));
+    card.type_line
+        .supertypes
+        .retain(|st| !st.name().eq_ignore_ascii_case(ty));
+    card.type_line
+        .core_types
+        .retain(|ct| !ct.name().eq_ignore_ascii_case(ty));
+    card.type_line
+        .subtypes
+        .retain(|s| !s.eq_ignore_ascii_case(ty));
 }
 
 pub fn remove_card_types(card: &mut Card) {
@@ -138,7 +144,8 @@ pub fn has_spell_ability(card: &Card, sa: &SpellAbility) -> bool {
 
 pub fn add_spell_ability(card: &mut Card, sa: &SpellAbility) -> bool {
     card.abilities.push(sa.ability_text.clone());
-    if let Some(parsed) = parse_activated_ability(&sa.ability_text, card.activated_abilities.len()) {
+    if let Some(parsed) = parse_activated_ability(&sa.ability_text, card.activated_abilities.len())
+    {
         card.activated_abilities.push(parsed);
         return true;
     }

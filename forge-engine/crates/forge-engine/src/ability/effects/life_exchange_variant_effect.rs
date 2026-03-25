@@ -9,7 +9,9 @@ use crate::spellability::SpellAbility;
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
-    let target = sa.target_chosen.target_player
+    let target = sa
+        .target_chosen
+        .target_player
         .unwrap_or_else(|| ctx.game.opponent_of(controller));
 
     let life1 = ctx.game.player(controller).life;

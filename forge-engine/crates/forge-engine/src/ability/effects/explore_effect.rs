@@ -3,9 +3,9 @@ use forge_foundation::ZoneType;
 use super::{emit_zone_trigger, EffectContext};
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
+use crate::parsing::keys;
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
-use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// `SP$ Explore` — target creature explores.
@@ -46,16 +46,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Parse Num parameter for multiple explores (e.g. Jadelight Ranger explores twice).
     // Mirrors Java's `AbilityUtils.calculateAmount(host, sa.getParamOrDefault("Num", "1"), sa)`.
-    let amount: i32 = sa
-        .params
-        .as_i32(keys::NUM)
-        .unwrap_or(1);
+    let amount: i32 = sa.params.as_i32(keys::NUM).unwrap_or(1);
 
     for _ in 0..amount {
         // Re-check explorer is still on battlefield (may have been removed by a trigger)
         if ctx.game.card(explorer_id).zone != ZoneType::Battlefield {
             return;
         }
+        ctx.game.player_mut(controller).explored_this_turn += 1;
 
         // Check if library has cards
         let lib = ctx.game.cards_in_zone(ZoneType::Library, controller);
@@ -150,5 +148,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 );
             }
         }
+        ctx.trigger_handler.run_trigger(
+            TriggerType::Explored,
+            RunParams {
+                card: Some(explorer_id),
+                explored: Some(top_card),
+                ..Default::default()
+            },
+            false,
+        );
     }
 }

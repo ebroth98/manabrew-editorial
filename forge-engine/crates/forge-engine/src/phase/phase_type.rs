@@ -119,14 +119,8 @@ mod tests {
 
     #[test]
     fn smart_value_of_test() {
-        assert_eq!(
-            smart_value_of("BeginCombat"),
-            Some(PhaseType::CombatBegin)
-        );
-        assert_eq!(
-            smart_value_of("End of Turn"),
-            Some(PhaseType::EndOfTurn)
-        );
+        assert_eq!(smart_value_of("BeginCombat"), Some(PhaseType::CombatBegin));
+        assert_eq!(smart_value_of("End of Turn"), Some(PhaseType::EndOfTurn));
     }
 
     #[test]

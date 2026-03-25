@@ -54,8 +54,7 @@ fn create_incubator_token(
         token.set_is_token(true);
 
         let token_id = ctx.game.create_card(token);
-        ctx.game
-            .move_card(token_id, ZoneType::Battlefield, player);
+        ctx.game.move_card(token_id, ZoneType::Battlefield, player);
 
         // Add +1/+1 counters
         if counter_amount > 0 {
@@ -103,8 +102,7 @@ fn create_incubator_token(
         token.set_is_token(true);
 
         let token_id = ctx.game.create_card(token);
-        ctx.game
-            .move_card(token_id, ZoneType::Battlefield, player);
+        ctx.game.move_card(token_id, ZoneType::Battlefield, player);
 
         // Add +1/+1 counters
         if counter_amount > 0 {

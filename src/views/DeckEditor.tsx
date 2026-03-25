@@ -27,6 +27,14 @@ export default function DeckEditor() {
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } })
   );
 
+  const supplementaryCards = [
+    ...currentDeck.sideboard,
+    ...(currentDeck.attractions ?? []),
+    ...(currentDeck.contraptions ?? []),
+    ...(currentDeck.schemes ?? []),
+    ...(currentDeck.planes ?? []),
+  ];
+
   function handleDragStart(event: DragStartEvent) {
     const data = event.active.data.current;
     if (data?.card) setDraggedCard(data.card as XMageCard);
@@ -64,7 +72,7 @@ export default function DeckEditor() {
       }
     } else if (overId === DROP_ZONE.MAIN) {
       if (sourceTag) untagCard(cardName, sourceTag);
-      const copies = currentDeck.sideboard.filter((c) => c.name === cardName);
+      const copies = supplementaryCards.filter((c) => c.name === cardName);
       for (const c of copies) {
         removeFromSide(c.id);
         addToMain({ ...c, id: crypto.randomUUID() });

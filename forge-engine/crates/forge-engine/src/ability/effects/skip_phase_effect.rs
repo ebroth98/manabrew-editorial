@@ -23,10 +23,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .or_else(|| sa.params.get(keys::STEP))
         .unwrap_or("");
 
-    let defined = sa
-        .params
-        .get(keys::DEFINED)
-        .unwrap_or("You");
+    let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
 
     let targets = resolve_defined_players(defined, controller, ctx.game);
     for target in targets {
@@ -38,9 +35,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             "Combat" | "BeginCombat" => ctx.game.player_mut(target).skip_next_combat = true,
             "Untap" => ctx.game.player_mut(target).skip_next_untap = true,
             _ => {
-                let err = crate::ability::IllegalAbilityException::new(
-                    format!("Unknown phase to skip: {:?}", phase),
-                );
+                let err = crate::ability::IllegalAbilityException::new(format!(
+                    "Unknown phase to skip: {:?}",
+                    phase
+                ));
                 eprintln!("{}", err);
             }
         }
@@ -76,6 +74,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,
@@ -104,6 +103,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,

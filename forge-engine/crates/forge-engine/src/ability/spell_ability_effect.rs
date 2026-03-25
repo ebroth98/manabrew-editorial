@@ -76,10 +76,7 @@ fn get_cards(
         sa.target_chosen.target_card.into_iter().collect()
     } else {
         // Resolve Defined$ (or default to "Self")
-        let defined = sa
-            .params
-            .get(defined_param)
-            .unwrap_or("Self");
+        let defined = sa.params.get(defined_param).unwrap_or("Self");
 
         // Handle " & "-separated definitions (e.g. "Self & Targeted")
         let mut result = Vec::new();
@@ -121,16 +118,13 @@ fn get_players(
     if use_targets {
         sa.target_chosen.target_player.into_iter().collect()
     } else {
-        let defined = sa
-            .params
-            .get(defined_param)
-            .unwrap_or("You");
+        let defined = sa.params.get(defined_param).unwrap_or("You");
 
         let mut result = Vec::new();
         for d in defined.split(" & ") {
             let d = d.trim();
             let players =
-                ability_utils::resolve_defined_players(d, sa.activating_player, game);
+                ability_utils::resolve_defined_players_with_sa(d, sa, sa.activating_player, game);
             result.extend(players);
         }
         result
@@ -140,20 +134,39 @@ fn get_players(
 /// Resolve a `Defined$` string to card IDs in the context of a spell ability.
 /// Handles SA-specific defined values like "Targeted", "ParentTarget",
 /// "TriggeredCard", etc., in addition to the base AbilityUtils definitions.
-fn resolve_defined_cards_for_sa(
-    game: &GameState,
-    sa: &SpellAbility,
-    defined: &str,
-) -> Vec<CardId> {
+fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &str) -> Vec<CardId> {
+    fn parse_card_ids(csv: Option<&String>) -> Vec<CardId> {
+        csv.into_iter()
+            .flat_map(|value| value.split(','))
+            .filter_map(|part| part.trim().parse::<u32>().ok())
+            .map(CardId)
+            .collect()
+    }
+
     match defined {
         "Targeted" => sa.target_chosen.target_card.into_iter().collect(),
-        "TriggeredCard" => sa.trigger_source.into_iter().collect(),
-        _ => ability_utils::get_defined_cards(
-            game,
-            sa.source,
-            defined,
-            Some(sa.activating_player),
-        ),
+        "TriggeredCard" | "TriggeredCardLKICopy" => {
+            let cards = parse_card_ids(sa.trigger_objects.get("Card"));
+            if cards.is_empty() {
+                sa.trigger_source.into_iter().collect()
+            } else {
+                cards
+            }
+        }
+        "TriggeredNewCard" | "TriggeredNewCardLKICopy" => {
+            let cards = parse_card_ids(sa.trigger_objects.get("NewCard"));
+            if cards.is_empty() {
+                sa.trigger_source.into_iter().collect()
+            } else {
+                cards
+            }
+        }
+        "TriggeredAttackers" => parse_card_ids(sa.trigger_objects.get("Attackers")),
+        "TriggeredAttacker" => parse_card_ids(sa.trigger_objects.get("Attacker")),
+        "TriggeredBlocker" => parse_card_ids(sa.trigger_objects.get("Blocker")),
+        "Explorer" => parse_card_ids(sa.trigger_objects.get("Explorer")),
+        "Explored" => parse_card_ids(sa.trigger_objects.get("Explored")),
+        _ => ability_utils::get_defined_cards(game, sa.source, defined, Some(sa.activating_player)),
     }
 }
 

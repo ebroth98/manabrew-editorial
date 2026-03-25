@@ -17,8 +17,8 @@ use serde::{Deserialize, Serialize};
 use crate::card::Card;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::parsing::Params;
 use crate::parsing::keys;
+use crate::parsing::Params;
 
 // ── Mode ────────────────────────────────────────────────────────────────────
 
@@ -262,6 +262,14 @@ impl StaticAbility {
             }
         }
 
+        if let Some(condition) = self.params.get(keys::CONDITION) {
+            if condition.eq_ignore_ascii_case("MaxSpeed")
+                && game.player(source.controller).speed != 4
+            {
+                return false;
+            }
+        }
+
         if let Some(player_turn) = self.params.get(keys::PLAYER_TURN) {
             let active = game.turn.active_player;
             let defined = crate::ability::effects::helpers::resolve_defined_players(
@@ -283,11 +291,8 @@ impl StaticAbility {
             let Some(top_card) = top else {
                 return false;
             };
-            if !crate::card::valid_filter::matches_valid_card_opt(
-                Some(valid_top),
-                top_card,
-                source,
-            ) {
+            if !crate::card::valid_filter::matches_valid_card_opt(Some(valid_top), top_card, source)
+            {
                 return false;
             }
         }
@@ -521,9 +526,7 @@ impl CardFilter {
                 return false;
             }
         }
-        if self.shares_creature_type_with_source
-            && !shares_creature_type_with(card, source)
-        {
+        if self.shares_creature_type_with_source && !shares_creature_type_with(card, source) {
             return false;
         }
         true
@@ -531,12 +534,7 @@ impl CardFilter {
 
     /// Context-aware matching for predicates that require game lookups
     /// (e.g. `SharesColorWith Equipped`).
-    pub fn matches_with_game(
-        &self,
-        card: &Card,
-        source: &Card,
-        game: &GameState,
-    ) -> bool {
+    pub fn matches_with_game(&self, card: &Card, source: &Card, game: &GameState) -> bool {
         if !self.matches(card, source) {
             return false;
         }

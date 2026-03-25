@@ -31,7 +31,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         _ => return,
     };
 
-    let gains = sa.params.get(crate::parsing::keys::GAINS).unwrap_or("").to_string();
+    let gains = sa
+        .params
+        .get(crate::parsing::keys::GAINS)
+        .unwrap_or("")
+        .to_string();
 
     // Mirrors Java ProtectEffect: `isChoice = sa.getParam("Gains").contains("Choice")`
     // Handles both `Gains$ Choice` (Gods Willing) and `Gains$ Protection from chosen color`.

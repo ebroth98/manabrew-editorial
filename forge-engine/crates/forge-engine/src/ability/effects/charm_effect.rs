@@ -4,12 +4,12 @@ use crate::agent::TargetChoice;
 use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
+use crate::parsing::Params;
 use crate::spellability::target_restrictions::{
     get_all_battlefield_permanents_filtered, get_all_candidates_creature_filtered,
     get_all_candidates_spells, get_valid_cards_in_zone, TargetKind,
 };
 use crate::spellability::{build_spell_ability, SpellAbility};
-use crate::parsing::Params;
 
 /// `SP$ Charm` — modal spell: player chooses N effects from a list.
 ///
@@ -250,7 +250,8 @@ pub fn make_choices_precast(
         return false;
     }
 
-    game.card_mut(source_id).set_chosen_modes(chosen_indices.clone());
+    game.card_mut(source_id)
+        .set_chosen_modes(chosen_indices.clone());
     sa.sub_ability = None;
     let parent_trigger_remembered = sa.trigger_remembered_amount;
     for idx in chosen_indices {
@@ -438,7 +439,8 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
     match &tr.target_kind {
         TargetKind::Player => {
             let players = ctx.game.alive_players();
-            if let Some(p) = ctx.agents[player.index()].choose_target_player(player, &players, None) {
+            if let Some(p) = ctx.agents[player.index()].choose_target_player(player, &players, None)
+            {
                 mode_sa.target_chosen.target_player = Some(p);
             }
         }
@@ -456,7 +458,8 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
                 filter.as_deref(),
                 mode_sa.source,
             );
-            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None) {
+            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None)
+            {
                 mode_sa.target_chosen.target_card = Some(card);
             }
         }
@@ -467,7 +470,8 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
                 filter.as_deref(),
                 mode_sa.source,
             );
-            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None) {
+            if let Some(card) = ctx.agents[player.index()].choose_target_card(player, &valid, None)
+            {
                 mode_sa.target_chosen.target_card = Some(card);
             }
         }
@@ -511,8 +515,12 @@ fn setup_mode_targets(ctx: &mut EffectContext, mode_sa: &mut SpellAbility, playe
                     )
                 })
                 .collect::<Vec<_>>();
-            let choice =
-                ctx.agents[player.index()].choose_target_any(player, &valid_players, &valid_cards, None);
+            let choice = ctx.agents[player.index()].choose_target_any(
+                player,
+                &valid_players,
+                &valid_cards,
+                None,
+            );
             match choice {
                 TargetChoice::Player(p) => {
                     mode_sa.target_chosen.target_player = Some(p);
@@ -569,6 +577,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,
@@ -643,6 +652,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,

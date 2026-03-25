@@ -8,8 +8,8 @@ use std::collections::HashMap;
 
 use crate::ability::api_type::ApiType;
 use crate::card::Card;
-use crate::cost::{Cost, CostPart};
 use crate::cost::parse_cost;
+use crate::cost::{Cost, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys::ST;
@@ -162,8 +162,12 @@ pub fn build_spell_ability_for_card_cast(
         .cloned()
     {
         let host = game.card(card_id);
-        let mut sa =
-            build_spell_ability_of_type(host, &spell_ability_text, player, AbilityRecordType::Spell);
+        let mut sa = build_spell_ability_of_type(
+            host,
+            &spell_ability_text,
+            player,
+            AbilityRecordType::Spell,
+        );
         // Card-cast context: if SP$ omitted Cost$, default to card mana cost.
         if sa.pay_costs.is_none() {
             sa.pay_costs = Some(Cost {
@@ -222,6 +226,7 @@ pub fn build_spell_ability_for_card_cast(
         is_trigger: false,
         is_activated: false,
         trigger_source: None,
+        source_trigger_id: None,
         trigger_index: None,
         alt_cost: None,
         kicked: false,
@@ -247,6 +252,7 @@ pub fn build_spell_ability_for_card_cast(
         is_mana_ability: false,
         is_land_ability: false,
         trigger_objects: std::collections::HashMap::new(),
+        trigger_spell_abilities: std::collections::HashMap::new(),
         restriction,
         condition,
         rollback_effects: Vec::new(),
@@ -311,6 +317,7 @@ fn build_spell_ability_of_type(
         is_trigger: false,
         is_activated: record_type == AbilityRecordType::Ability,
         trigger_source: None,
+        source_trigger_id: None,
         trigger_index: None,
         alt_cost: None,
         kicked: false,
@@ -336,6 +343,7 @@ fn build_spell_ability_of_type(
         is_mana_ability: false,
         is_land_ability: false,
         trigger_objects: std::collections::HashMap::new(),
+        trigger_spell_abilities: std::collections::HashMap::new(),
         restriction,
         condition,
         rollback_effects: Vec::new(),

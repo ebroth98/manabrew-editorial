@@ -1,4 +1,3 @@
-use forge_foundation::ZoneType;
 use crate::card::{valid_filter, Card};
 use crate::game::GameState;
 use crate::ids::PlayerId;
@@ -6,6 +5,7 @@ use crate::parsing::compare::compare_expr;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
+use forge_foundation::ZoneType;
 
 /// Mirrors Java's `StaticAbilityCantBeCast.cantBeCastAbility`.
 ///
@@ -37,12 +37,15 @@ pub fn cant_be_cast_ability_in_context(
     // Java: allp = game.getCardsIn(STATIC_ABILITIES_SOURCE_ZONES); allp.add(card);
     // We iterate cards whose zone is a static-ability source, plus always include
     // the card being cast (it may be in Hand which is not a source zone).
-    for source in cards.iter().filter(|c| {
-        c.zone.is_static_ability_source() || c.id == card.id
-    }) {
-        for st_ab in source.static_abilities.iter().filter(|sa| {
-            sa.is_active_for(StaticMode::CantBeCast, source.zone)
-        }) {
+    for source in cards
+        .iter()
+        .filter(|c| c.zone.is_static_ability_source() || c.id == card.id)
+    {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.is_active_for(StaticMode::CantBeCast, source.zone))
+        {
             if apply_cant_be_cast_ability(st_ab, spell, card, source, activator, game) {
                 return true;
             }
@@ -64,11 +67,7 @@ pub fn apply_cant_be_cast_ability(
     game: Option<&GameState>,
 ) -> bool {
     // ValidCard check
-    if !valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::VALID_CARD),
-        card,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
         return false;
     }
 
@@ -90,9 +89,8 @@ pub fn apply_cant_be_cast_ability(
     // restriction does not apply.
     if st_ab.params.has(keys::SORCERY_SPEED) || st_ab.params.has("OnlySorcerySpeed") {
         if let Some(g) = game {
-            let can_cast_sorcery = activator == g.active_player()
-                && g.turn.is_main_phase()
-                && g.stack.is_empty();
+            let can_cast_sorcery =
+                activator == g.active_player() && g.turn.is_main_phase() && g.stack.is_empty();
             if can_cast_sorcery {
                 return false;
             }
@@ -178,9 +176,11 @@ pub fn cant_be_activated_ability(
     }
 
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source.static_abilities.iter().filter(|sa| {
-            sa.is_active_for(StaticMode::CantBeActivated, source.zone)
-        }) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.is_active_for(StaticMode::CantBeActivated, source.zone))
+        {
             if apply_cant_be_activated_ability(st_ab, spell, card, source, activator) {
                 return true;
             }
@@ -200,11 +200,7 @@ pub fn apply_cant_be_activated_ability(
     activator: PlayerId,
 ) -> bool {
     // ValidCard check
-    if !valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::VALID_CARD),
-        card,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
         return false;
     }
 
@@ -244,15 +240,13 @@ pub fn apply_cant_be_activated_ability(
 /// Mirrors Java's `StaticAbilityCantBeCast.cantPlayLandAbility`.
 ///
 /// Iterates all cards in static-ability source zones checking CantPlayLand.
-pub fn cant_play_land_ability(
-    cards: &[Card],
-    card: &Card,
-    player: PlayerId,
-) -> bool {
+pub fn cant_play_land_ability(cards: &[Card], card: &Card, player: PlayerId) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source.static_abilities.iter().filter(|sa| {
-            sa.is_active_for(StaticMode::CantPlayLand, source.zone)
-        }) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.is_active_for(StaticMode::CantPlayLand, source.zone))
+        {
             if apply_cant_play_land_ability(st_ab, card, source, player) {
                 return true;
             }
@@ -271,11 +265,7 @@ pub fn apply_cant_play_land_ability(
     player: PlayerId,
 ) -> bool {
     // ValidCard check
-    if !valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::VALID_CARD),
-        card,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
         return false;
     }
 

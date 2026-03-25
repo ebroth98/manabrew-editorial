@@ -13,8 +13,8 @@ use forge_foundation::ZoneType;
 use crate::card::{valid_filter, Card};
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
-use crate::parsing::keys;
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 // ── CostAdjustment result struct ─────────────────────────────────────
@@ -327,10 +327,7 @@ pub fn compute_cost_adjustment_with_targets(
                 .unwrap_or(false)
             {
                 // Relative: Amount$ is an SVar name on the source card
-                let amount_str = st_ab
-                    .params
-                    .get(keys::AMOUNT)
-                    .unwrap_or("1");
+                let amount_str = st_ab.params.get(keys::AMOUNT).unwrap_or("1");
                 resolve_svar_for_cost(game, source, amount_str, caster)
             } else {
                 st_ab
@@ -554,10 +551,7 @@ pub fn compute_raise_cost_parts_with_targets(
                 .map(|v| v.eq_ignore_ascii_case("True"))
                 .unwrap_or(false)
             {
-                let amount_str = st_ab
-                    .params
-                    .get(keys::AMOUNT)
-                    .unwrap_or("1");
+                let amount_str = st_ab.params.get(keys::AMOUNT).unwrap_or("1");
                 resolve_svar_for_cost(game, source, amount_str, caster)
             } else {
                 st_ab
@@ -627,12 +621,7 @@ fn check_valid_spell(valid_spell: &str, spell_card: &Card) -> bool {
 /// Supports:
 /// - Direct SVar names on `source.svars` that contain `Count$...` expressions
 /// - Numeric literals
-fn resolve_svar_for_cost(
-    game: &GameState,
-    source: &Card,
-    name: &str,
-    caster: PlayerId,
-) -> i32 {
+fn resolve_svar_for_cost(game: &GameState, source: &Card, name: &str, caster: PlayerId) -> i32 {
     // If it's a direct number, return it
     if let Ok(n) = name.parse::<i32>() {
         return n;
@@ -648,12 +637,7 @@ fn resolve_svar_for_cost(
 }
 
 /// Evaluate a `Count$...` expression.
-fn evaluate_count_expr(
-    game: &GameState,
-    source: &Card,
-    expr: &str,
-    caster: PlayerId,
-) -> i32 {
+fn evaluate_count_expr(game: &GameState, source: &Card, expr: &str, caster: PlayerId) -> i32 {
     // Count$ThisTurnCast_Card.YouCtrl — spells cast this turn by controller
     if let Some(rest) = expr.strip_prefix("Count$ThisTurnCast_") {
         if rest.contains("YouCtrl") || rest.contains("YouOwn") {
@@ -689,7 +673,6 @@ fn evaluate_count_expr(
         .and_then(|s| s.parse::<i32>().ok())
         .unwrap_or(0)
 }
-
 
 // ── Helper: zone name matching ────────────────────────────────────────
 

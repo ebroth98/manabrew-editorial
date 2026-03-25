@@ -274,8 +274,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 if valid.is_empty() {
                     None
                 } else {
-                    ctx.agents[sacrificing_player.index()]
-                        .choose_sacrifice(sacrificing_player, &valid, None)
+                    ctx.agents[sacrificing_player.index()].choose_sacrifice(
+                        sacrificing_player,
+                        &valid,
+                        None,
+                    )
                 }
             };
 

@@ -111,10 +111,7 @@ pub fn can_attack(card: &Card, num_attackers: usize) -> bool {
 ///
 /// Mirrors Java's `AttackRestriction.getViolation()` — checks restrictions
 /// against the set of all chosen attackers (not just battlefield state).
-pub fn validate_attack_restrictions(
-    attackers: &[CardId],
-    cards: &[Card],
-) -> HashSet<CardId> {
+pub fn validate_attack_restrictions(attackers: &[CardId], cards: &[Card]) -> HashSet<CardId> {
     let mut illegal = HashSet::new();
     let num_attackers = attackers.len();
 

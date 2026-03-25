@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useServerStore } from "@/stores/useServerStore";
 import { usePreferencesStore } from "@/stores/usePreferencesStore";
+import type { CardIdentity } from "@/types/server";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { Wifi, WifiOff, Loader2, Settings, RefreshCw, MessageSquare, Users } from "lucide-react";
@@ -75,7 +76,7 @@ export default function Lobby() {
     }
   }
 
-  async function handleDeckSelection(deckName: string, deckList: { name: string, setCode: string }[], commanderName?: string) {
+  async function handleDeckSelection(deckName: string, deckList: CardIdentity[], commanderName?: string) {
     try {
       await setDeckSelection(deckName, deckList, commanderName);
       toast.success(`Selected deck: ${deckName}`);

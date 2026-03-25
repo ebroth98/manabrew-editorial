@@ -19,14 +19,19 @@ pub(super) fn resolve_stack_removal(
     let target_card = if sa.uses_targeting() {
         sa.target_chosen.target_card
     } else {
-        sa.trigger_source.filter(|&cid| ctx.game.card(cid).zone == ZoneType::Stack)
+        sa.trigger_source
+            .filter(|&cid| ctx.game.card(cid).zone == ZoneType::Stack)
     };
 
     let Some(card_id) = target_card else { return };
-    if ctx.game.card(card_id).zone != ZoneType::Stack { return; }
+    if ctx.game.card(card_id).zone != ZoneType::Stack {
+        return;
+    }
 
     // Tokens on stack cease to exist when exiled
-    if dest_zone == ZoneType::Exile && ctx.game.card(card_id).is_token { return; }
+    if dest_zone == ZoneType::Exile && ctx.game.card(card_id).is_token {
+        return;
+    }
 
     let old_zone = ctx.game.card(card_id).zone;
     let dest_owner = ctx.game.card(card_id).owner;
@@ -58,12 +63,16 @@ pub(super) fn resolve_stack_removal(
     // Counters
     if let Some(ct_str) = sa.with_counters_type() {
         let ct = parse_counter_type(ct_str);
-        ctx.game.card_mut(card_id).add_counter(&ct, sa.with_counters_amount().unwrap_or(1));
+        ctx.game
+            .card_mut(card_id)
+            .add_counter(&ct, sa.with_counters_amount().unwrap_or(1));
     }
 
     // Remember/Imprint
     if sa.is_remember_changed() {
-        if let Some(sid) = sa.source { ctx.game.card_mut(sid).add_remembered_card(card_id); }
+        if let Some(sid) = sa.source {
+            ctx.game.card_mut(sid).add_remembered_card(card_id);
+        }
     }
     if sa.is_imprint() {
         if let Some(sid) = sa.source {

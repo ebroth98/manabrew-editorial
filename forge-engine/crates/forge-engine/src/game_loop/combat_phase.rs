@@ -1,4 +1,5 @@
 use super::*;
+use crate::card::card_damage_history::TrackedEntity;
 
 impl GameLoop {
     pub fn step_combat(&mut self, game: &mut GameState, agents: &mut [Box<dyn PlayerAgent>]) {
@@ -11,7 +12,7 @@ impl GameLoop {
 
         // Begin Combat
         self.set_phase(game, agents, PhaseType::CombatBegin);
-        self.emit_phase_trigger(game, PhaseType::CombatBegin);
+        self.emit_phase_trigger(game, agents, PhaseType::CombatBegin);
         self.step_with_priority(game, agents, false);
         if game.game_over {
             self.combat.clear_with_cards(&mut game.cards);
@@ -171,7 +172,8 @@ impl GameLoop {
         let premarked_attackers: Vec<(CardId, combat::DefenderId)> = chosen_attackers.clone();
         for &(attacker_id, def) in &premarked_attackers {
             let defending_player = def.controlling_player(game);
-            game.card_mut(attacker_id).set_attacking_player(defending_player);
+            game.card_mut(attacker_id)
+                .set_attacking_player(defending_player);
             if !game.card(attacker_id).has_vigilance() {
                 game.card_mut(attacker_id).set_tapped(true);
             }
@@ -497,6 +499,7 @@ impl GameLoop {
 
         // Tap attackers (Vigilance skips tapping)
         let num_attackers = chosen_attackers.len() as i32;
+        game.player_mut(active).attacked_players_this_combat.clear();
         for &(attacker_id, defender) in &chosen_attackers {
             if !game.card(attacker_id).has_vigilance() {
                 // We pre-tapped attackers before OptionalAttackCost resolution to
@@ -528,6 +531,34 @@ impl GameLoop {
             game.card_mut(attacker_id)
                 .damage_history
                 .record_attack(num_attackers - 1);
+            game.card_mut(attacker_id)
+                .damage_history
+                .set_creature_attacked_this_combat(
+                    Some(match defender {
+                        combat::DefenderId::Player(pid) => TrackedEntity::Player(pid),
+                        combat::DefenderId::Permanent(cid) => TrackedEntity::Card(cid),
+                    }),
+                    num_attackers - 1,
+                    matches!(defender, combat::DefenderId::Permanent(_)),
+                );
+            if let combat::DefenderId::Player(pid) = defender {
+                if !game
+                    .player(active)
+                    .attacked_players_this_turn
+                    .contains(&pid)
+                {
+                    game.player_mut(active).attacked_players_this_turn.push(pid);
+                }
+                if !game
+                    .player(active)
+                    .attacked_players_this_combat
+                    .contains(&pid)
+                {
+                    game.player_mut(active)
+                        .attacked_players_this_combat
+                        .push(pid);
+                }
+            }
 
             // Fire Attacks trigger for each attacker
             self.trigger_handler.run_trigger(
@@ -542,14 +573,61 @@ impl GameLoop {
                 false,
             );
         }
-        // Fire AttackersDeclared batch trigger
+        // Fire AttackersDeclaredOneTarget-style batches first, then the aggregate event.
         if !chosen_attackers.is_empty() {
+            let mut grouped_attackers: std::collections::HashMap<combat::DefenderId, Vec<CardId>> =
+                std::collections::HashMap::new();
+            for &(attacker_id, defender) in &chosen_attackers {
+                grouped_attackers
+                    .entry(defender)
+                    .or_default()
+                    .push(attacker_id);
+            }
+            let mut attacked_player_ids = Vec::new();
+            let mut attacked_card_ids = Vec::new();
+            for (defender, attackers) in &grouped_attackers {
+                let mut params = RunParams {
+                    attacker_ids: Some(attackers.clone()),
+                    player: Some(game.active_player()),
+                    attacking_player: Some(game.active_player()),
+                    ..Default::default()
+                };
+                match defender {
+                    combat::DefenderId::Player(pid) => {
+                        params.attacked_player = Some(*pid);
+                        params.defenders_player_ids = Some(vec![*pid]);
+                        attacked_player_ids.push(*pid);
+                    }
+                    combat::DefenderId::Permanent(cid) => {
+                        params.attacked_card = Some(*cid);
+                        params.defenders_card_ids = Some(vec![*cid]);
+                        attacked_card_ids.push(*cid);
+                    }
+                }
+                self.trigger_handler.run_trigger(
+                    TriggerType::AttackersDeclaredOneTarget,
+                    params,
+                    false,
+                );
+            }
+
             let attacker_ids: Vec<CardId> = chosen_attackers.iter().map(|(a, _)| *a).collect();
             self.trigger_handler.run_trigger(
                 TriggerType::AttackersDeclared,
                 RunParams {
                     player: Some(game.active_player()),
+                    attacking_player: Some(game.active_player()),
                     attacker_ids: Some(attacker_ids),
+                    defenders_player_ids: if attacked_player_ids.is_empty() {
+                        None
+                    } else {
+                        Some(attacked_player_ids)
+                    },
+                    defenders_card_ids: if attacked_card_ids.is_empty() {
+                        None
+                    } else {
+                        Some(attacked_card_ids)
+                    },
                     ..Default::default()
                 },
                 false,
@@ -580,9 +658,7 @@ impl GameLoop {
                     apply_replacements, ReplacementEvent,
                 };
                 use crate::replacement::ReplacementResult;
-                let mut event = ReplacementEvent::DeclareBlocker {
-                    player: defending,
-                };
+                let mut event = ReplacementEvent::DeclareBlocker { player: defending };
                 let result = apply_replacements(game, &mut event);
                 if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
                     // Blockers phase was prevented — skip to damage
@@ -785,13 +861,17 @@ impl GameLoop {
             // triggers before mainLoopStep() gives priority.
             self.trigger_handler.run_trigger(
                 TriggerType::BlockersDeclared,
-                RunParams::default(),
+                RunParams {
+                    blocker_ids: Some(self.combat.blockers.iter().map(|(b, _)| *b).collect()),
+                    ..Default::default()
+                },
                 false,
             );
 
             // Fire AttackerBlocked / AttackerUnblocked triggers
             for &(attacker_id, defender_id) in &self.combat.attackers.clone() {
                 if self.combat.is_blocked(attacker_id) {
+                    let blockers_for = self.combat.get_blockers_for(attacker_id);
                     self.trigger_handler.run_trigger(
                         TriggerType::AttackerBlocked,
                         RunParams {
@@ -802,9 +882,43 @@ impl GameLoop {
                         },
                         false,
                     );
+                    self.trigger_handler.run_trigger(
+                        TriggerType::AttackerBlockedOnce,
+                        RunParams {
+                            attacker: Some(attacker_id),
+                            card: Some(attacker_id),
+                            blocker_ids: Some(blockers_for.clone()),
+                            defending_player: Some(defender_id.controlling_player(game)),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                    for blocker_id in blockers_for {
+                        self.trigger_handler.run_trigger(
+                            TriggerType::AttackerBlockedByCreature,
+                            RunParams {
+                                attacker: Some(attacker_id),
+                                card: Some(attacker_id),
+                                blocker: Some(blocker_id),
+                                blocked_attacker: Some(attacker_id),
+                                defending_player: Some(defender_id.controlling_player(game)),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
                 } else {
                     self.trigger_handler.run_trigger(
                         TriggerType::AttackerUnblocked,
+                        RunParams {
+                            attacker: Some(attacker_id),
+                            card: Some(attacker_id),
+                            ..Default::default()
+                        },
+                        false,
+                    );
+                    self.trigger_handler.run_trigger(
+                        TriggerType::AttackerUnblockedOnce,
                         RunParams {
                             attacker: Some(attacker_id),
                             card: Some(attacker_id),
@@ -848,9 +962,9 @@ impl GameLoop {
             self.consume_replacement_effect_rng_for_combat(game, agents, true);
 
             let fs_unblocked_choices = self.choose_assign_as_unblocked(game, agents, true);
-            let fs_events = self
-                .combat
-                .resolve_damage_step(game, agents, true, &fs_unblocked_choices);
+            let fs_events =
+                self.combat
+                    .resolve_damage_step(game, agents, true, &fs_unblocked_choices);
             // Record damage in source damage history for player-targeted combat damage
             for event in &fs_events {
                 if event.target_player.is_some() && event.amount > 0 {
@@ -915,9 +1029,9 @@ impl GameLoop {
             self.consume_replacement_effect_rng_for_combat(game, agents, false);
 
             let unblocked_choices = self.choose_assign_as_unblocked(game, agents, false);
-            let dmg_events = self
-                .combat
-                .resolve_damage_step(game, agents, false, &unblocked_choices);
+            let dmg_events =
+                self.combat
+                    .resolve_damage_step(game, agents, false, &unblocked_choices);
             // Record damage in source damage history for player-targeted combat damage
             for event in &dmg_events {
                 if event.target_player.is_some() && event.amount > 0 {
@@ -954,7 +1068,7 @@ impl GameLoop {
 
         // End combat
         self.set_phase(game, agents, PhaseType::CombatEnd);
-        self.emit_phase_trigger(game, PhaseType::CombatEnd);
+        self.emit_phase_trigger(game, agents, PhaseType::CombatEnd);
         self.step_with_priority(game, agents, false);
 
         // End-of-combat damage history reset and must_block cleanup
@@ -1074,8 +1188,9 @@ impl GameLoop {
             if let Some(&total) = effects_by_player.get(pid) {
                 let mut remaining = total;
                 while remaining > 0 {
-                    let descs: Vec<String> =
-                        (0..remaining).map(|i| format!("Prevention shield {}", i)).collect();
+                    let descs: Vec<String> = (0..remaining)
+                        .map(|i| format!("Prevention shield {}", i))
+                        .collect();
                     agents[pid.index()].choose_single_replacement_effect(*pid, &descs);
                     remaining -= 1;
                 }

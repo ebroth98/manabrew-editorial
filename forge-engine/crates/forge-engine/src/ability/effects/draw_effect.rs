@@ -1,4 +1,4 @@
-use super::{parse_param, resolve_defined_player, EffectContext};
+use super::{parse_param, resolve_defined_player_with_sa, EffectContext};
 use crate::event::{RunParams, TriggerType};
 use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use crate::replacement::ReplacementResult;
@@ -9,7 +9,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let target = sa
         .params
         .get("Defined")
-        .and_then(|d| resolve_defined_player(d, sa.activating_player, ctx.game))
+        .and_then(|d| resolve_defined_player_with_sa(d, sa, sa.activating_player, ctx.game))
         .unwrap_or(sa.activating_player);
 
     // Run DrawCards replacement effects before drawing multiple cards.

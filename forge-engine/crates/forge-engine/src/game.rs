@@ -3,15 +3,15 @@ use std::collections::{HashMap, VecDeque};
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
-use crate::card::Card;
 use crate::card::card_damage_map::CardDamageMap;
 use crate::card::card_zone_table::CardZoneTable;
+use crate::card::Card;
 use crate::ids::{CardId, PlayerId};
-use crate::phase::TurnState;
 use crate::phase::ExtraTurn;
+use crate::phase::TurnState;
 use crate::player::PlayerState;
 use crate::spellability::MagicStack;
-use crate::zone::{Zone, ZoneKey, CostPaymentStack};
+use crate::zone::{CostPaymentStack, Zone, ZoneKey};
 
 /// Global registry of type lists loaded from `TypeLists.txt`.
 ///
@@ -193,6 +193,13 @@ impl GameState {
             ZoneType::Battlefield,
             ZoneType::Exile,
             ZoneType::Command,
+            ZoneType::Sideboard,
+            ZoneType::SchemeDeck,
+            ZoneType::PlanarDeck,
+            ZoneType::AttractionDeck,
+            ZoneType::ContraptionDeck,
+            ZoneType::Junkyard,
+            ZoneType::Ante,
             ZoneType::Stack,
         ];
 
@@ -387,6 +394,9 @@ mod tests {
         assert_eq!(game.player(PlayerId(0)).name, "Alice");
         assert_eq!(game.player(PlayerId(1)).name, "Bob");
         assert_eq!(game.player(PlayerId(0)).life, 20);
+        assert!(game.zone(ZoneType::Sideboard, PlayerId(0)).is_empty());
+        assert!(game.zone(ZoneType::AttractionDeck, PlayerId(0)).is_empty());
+        assert!(game.zone(ZoneType::ContraptionDeck, PlayerId(0)).is_empty());
     }
 
     #[test]

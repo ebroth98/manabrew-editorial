@@ -428,7 +428,10 @@ fn parse_exert(token: &str) -> Option<CostPart> {
     if !token.starts_with("Exert<") {
         return None;
     }
-    if let Some(inner) = token.strip_prefix("Exert<").and_then(|s| s.strip_suffix('>')) {
+    if let Some(inner) = token
+        .strip_prefix("Exert<")
+        .and_then(|s| s.strip_suffix('>'))
+    {
         let (amount, filter) = super::parse_amount_filter_dynamic(inner);
         Some(CostPart::Exert {
             amount,
@@ -514,10 +517,7 @@ fn parse_put_card_to_lib_from_battlefield(inner: &str) -> Option<CostPart> {
 
 fn parse_put_card_to_lib(inner: &str, from: ZoneType, same_zone: bool) -> Option<CostPart> {
     let mut it = inner.splitn(4, '/');
-    let amount = it
-        .next()
-        .map(|s| super::parse_i32_or_x(s, 1))
-        .unwrap_or(1);
+    let amount = it.next().map(|s| super::parse_i32_or_x(s, 1)).unwrap_or(1);
     let lib_pos = it.next().and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
     let type_filter = it.next().unwrap_or("Card").to_string();
     Some(CostPart::PutCardToLib {

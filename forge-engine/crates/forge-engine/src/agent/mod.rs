@@ -182,8 +182,7 @@ pub trait PlayerAgent {
             let lethal = if has_deathtouch {
                 1
             } else if game.card(blocker_id).type_line.is_planeswalker() {
-                game
-                    .card(blocker_id)
+                game.card(blocker_id)
                     .counter_count(&crate::card::CounterType::Loyalty)
                     .max(0)
             } else {
@@ -216,10 +215,20 @@ pub trait PlayerAgent {
 
     /// Choose a target player (e.g. for Lightning Bolt targeting a player).
     /// `sa` is the active spell ability context (source card, API type, etc.) for UI display.
-    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId], sa: Option<&SpellAbility>) -> Option<PlayerId>;
+    fn choose_target_player(
+        &mut self,
+        player: PlayerId,
+        valid: &[PlayerId],
+        sa: Option<&SpellAbility>,
+    ) -> Option<PlayerId>;
 
     /// Choose a target card (e.g. for Lightning Bolt targeting a creature).
-    fn choose_target_card(&mut self, player: PlayerId, valid: &[CardId], sa: Option<&SpellAbility>) -> Option<CardId>;
+    fn choose_target_card(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        sa: Option<&SpellAbility>,
+    ) -> Option<CardId>;
 
     /// Choose a target card from a specific zone (e.g. Raise Dead from graveyard).
     fn choose_target_card_from_zone(
@@ -244,7 +253,12 @@ pub trait PlayerAgent {
     /// Choose one permanent to sacrifice/select from the valid options.
     /// `sa` is the active spell ability context for UI display.
     /// Default picks the first (used by AI agents).
-    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&SpellAbility>) -> Option<CardId> {
+    fn choose_sacrifice(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        _sa: Option<&SpellAbility>,
+    ) -> Option<CardId> {
         valid.first().copied()
     }
 
@@ -608,6 +622,76 @@ pub trait PlayerAgent {
         Some(min)
     }
 
+    /// Choose one number from an explicit list of legal rolled values.
+    /// Mirrors Java's `chooseNumber(..., List<Integer>, ...)` path used by
+    /// RollDice effects such as Endeavor cards.
+    fn choose_number_from_list(
+        &mut self,
+        _player: PlayerId,
+        choices: &[i32],
+        _message: &str,
+        _card_name: Option<&str>,
+    ) -> Option<i32> {
+        choices.first().copied()
+    }
+
+    /// Choose one die result from a rolled list to ignore.
+    /// Mirrors Java `PlayerController.chooseRollToIgnore`.
+    fn choose_roll_to_ignore(
+        &mut self,
+        _player: PlayerId,
+        rolls: &[i32],
+        _card_name: Option<&str>,
+    ) -> Option<i32> {
+        rolls.first().copied()
+    }
+
+    /// Choose one rolled result to exchange with a card's power or toughness.
+    /// Mirrors Java `PlayerController.chooseRollToSwap`.
+    fn choose_roll_to_swap(
+        &mut self,
+        _player: PlayerId,
+        rolls: &[i32],
+        _card_name: Option<&str>,
+    ) -> Option<i32> {
+        rolls.first().copied()
+    }
+
+    /// Choose one or more dice to reroll from the current natural roll list.
+    /// Mirrors Java `PlayerController.chooseDiceToReroll`.
+    fn choose_dice_to_reroll(
+        &mut self,
+        _player: PlayerId,
+        _rolls: &[i32],
+        _card_name: Option<&str>,
+    ) -> Vec<i32> {
+        vec![]
+    }
+
+    /// Choose one rolled result to increment or decrement by 1.
+    /// Mirrors Java `PlayerController.chooseRollToModify`.
+    fn choose_roll_to_modify(
+        &mut self,
+        _player: PlayerId,
+        rolls: &[i32],
+        _card_name: Option<&str>,
+    ) -> Option<i32> {
+        rolls.first().copied()
+    }
+
+    /// Choose whether a swap should use power or toughness.
+    /// Mirrors Java `PlayerController.chooseRollSwapValue`.
+    fn choose_roll_swap_value(
+        &mut self,
+        _player: PlayerId,
+        _current_result: i32,
+        _power: i32,
+        _toughness: i32,
+        _card_name: Option<&str>,
+    ) -> Option<RollSwapChoice> {
+        Some(RollSwapChoice::Power)
+    }
+
     /// Choose heads or tails for a coin flip.
     /// Returns true for heads, false for tails.
     /// Default: always call heads.
@@ -880,11 +964,21 @@ impl PlayerAgent for PassAgent {
         Vec::new() // no blockers
     }
 
-    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId], _sa: Option<&SpellAbility>) -> Option<PlayerId> {
+    fn choose_target_player(
+        &mut self,
+        _player: PlayerId,
+        valid: &[PlayerId],
+        _sa: Option<&SpellAbility>,
+    ) -> Option<PlayerId> {
         valid.first().copied()
     }
 
-    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&SpellAbility>) -> Option<CardId> {
+    fn choose_target_card(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        _sa: Option<&SpellAbility>,
+    ) -> Option<CardId> {
         valid.first().copied()
     }
 
@@ -904,7 +998,12 @@ impl PlayerAgent for PassAgent {
         }
     }
 
-    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&SpellAbility>) -> Option<CardId> {
+    fn choose_sacrifice(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        _sa: Option<&SpellAbility>,
+    ) -> Option<CardId> {
         valid.first().copied()
     }
 

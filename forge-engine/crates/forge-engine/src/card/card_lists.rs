@@ -9,7 +9,11 @@ use crate::spellability::SpellAbility;
 pub struct CardLists;
 
 impl CardLists {
-    pub fn filter_toughness(game: &GameState, cards: &[CardId], at_least_toughness: i32) -> Vec<CardId> {
+    pub fn filter_toughness(
+        game: &GameState,
+        cards: &[CardId],
+        at_least_toughness: i32,
+    ) -> Vec<CardId> {
         cards
             .iter()
             .copied()
@@ -25,7 +29,11 @@ impl CardLists {
             .collect()
     }
 
-    pub fn filter_le_power(game: &GameState, cards: &[CardId], less_than_power: i32) -> Vec<CardId> {
+    pub fn filter_le_power(
+        game: &GameState,
+        cards: &[CardId],
+        less_than_power: i32,
+    ) -> Vec<CardId> {
         cards
             .iter()
             .copied()
@@ -33,17 +41,16 @@ impl CardLists {
             .collect()
     }
 
-    pub fn filter_any_counters(game: &GameState, cards: &[CardId], at_least_counters: i32) -> Vec<CardId> {
+    pub fn filter_any_counters(
+        game: &GameState,
+        cards: &[CardId],
+        at_least_counters: i32,
+    ) -> Vec<CardId> {
         cards
             .iter()
             .copied()
             .filter(|&cid| {
-                game.card(cid)
-                    .counters
-                    .values()
-                    .copied()
-                    .sum::<i32>()
-                    >= at_least_counters
+                game.card(cid).counters.values().copied().sum::<i32>() >= at_least_counters
             })
             .collect()
     }
@@ -73,7 +80,11 @@ impl CardLists {
         list.shuffle(&mut rng);
     }
 
-    pub fn filter_controlled_by(game: &GameState, cards: &[CardId], player: PlayerId) -> Vec<CardId> {
+    pub fn filter_controlled_by(
+        game: &GameState,
+        cards: &[CardId],
+        player: PlayerId,
+    ) -> Vec<CardId> {
         cards
             .iter()
             .copied()
@@ -122,7 +133,11 @@ impl CardLists {
         crate::spellability::target_restrictions::can_be_targeted_by_sa(game, card, player, source)
     }
 
-    pub fn filter(_game: &GameState, cards: &[CardId], filt: impl Fn(CardId) -> bool) -> Vec<CardId> {
+    pub fn filter(
+        _game: &GameState,
+        cards: &[CardId],
+        filt: impl Fn(CardId) -> bool,
+    ) -> Vec<CardId> {
         cards.iter().copied().filter(|&cid| filt(cid)).collect()
     }
 
@@ -135,7 +150,9 @@ impl CardLists {
         cards
             .iter()
             .copied()
-            .filter(|&cid| ability_utils::matches_valid_cards(game.card(cid), restriction, source_controller))
+            .filter(|&cid| {
+                ability_utils::matches_valid_cards(game.card(cid), restriction, source_controller)
+            })
             .collect()
     }
 

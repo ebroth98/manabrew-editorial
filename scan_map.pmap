@@ -23,3 +23,7 @@ zone/ZoneView.java -> skip
 # SpellAbility module: Java UI-only types
 spellability/SpellAbilityView.java -> skip
 spellability/StackItemView.java -> skip
+
+# Trigger module remaps
+trigger/Trigger.java -> trigger/trigger.rs
+trigger/TriggerHandler.java -> trigger/trigger_handler.rs

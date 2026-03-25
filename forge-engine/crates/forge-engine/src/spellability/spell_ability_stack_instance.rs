@@ -77,7 +77,6 @@ impl StackEntry {
     pub fn get_target_choices(&self) -> &TargetChoices {
         &self.spell_ability.target_chosen
     }
-
 }
 
 // ── Free functions delegating to StackEntry methods in zone/magic_stack.rs ──

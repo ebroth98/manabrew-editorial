@@ -59,10 +59,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let activating_player = sa.activating_player;
 
     // Determine the zone to look for cards in (default: Battlefield).
-    let pump_zone_str = sa
-        .params
-        .get("PumpZone")
-        .unwrap_or("Battlefield");
+    let pump_zone_str = sa.params.get("PumpZone").unwrap_or("Battlefield");
     let pump_zone = match pump_zone_str {
         s if s.eq_ignore_ascii_case("Hand") => ZoneType::Hand,
         _ => ZoneType::Battlefield,
@@ -116,7 +113,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .apply_effect(card);
             }
         } else {
-            ctx.game.card_mut(card_id).add_pt_boost(att_bonus, def_bonus);
+            ctx.game
+                .card_mut(card_id)
+                .add_pt_boost(att_bonus, def_bonus);
             for kw in &keywords {
                 ctx.game.card_mut(card_id).add_pump_keyword(kw);
             }
@@ -164,6 +163,7 @@ mod tests {
     ) -> EffectContext<'a> {
         EffectContext {
             game,
+            combat: None,
             agents,
             trigger_handler: th,
             token_templates: templates,

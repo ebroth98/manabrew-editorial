@@ -123,9 +123,7 @@ pub struct SuspendInfo {
 
 /// Parse suspend info from a KeywordCollection.
 /// Format: "Suspend:MANA_COST:TIME_COUNTERS" e.g. "Suspend:1 U:3"
-pub fn extract_suspend(
-    collection: &keyword_collection::KeywordCollection,
-) -> Option<SuspendInfo> {
+pub fn extract_suspend(collection: &keyword_collection::KeywordCollection) -> Option<SuspendInfo> {
     for kw in collection.iter_strings() {
         if let Some(rest) = kw.strip_prefix("Suspend:") {
             if let Some(colon_pos) = rest.rfind(':') {
@@ -140,9 +138,7 @@ pub fn extract_suspend(
 }
 
 /// Parse escape info from a KeywordCollection.
-pub fn extract_escape(
-    collection: &keyword_collection::KeywordCollection,
-) -> Option<EscapeInfo> {
+pub fn extract_escape(collection: &keyword_collection::KeywordCollection) -> Option<EscapeInfo> {
     for kw in collection.iter_strings() {
         if let Some(rest) = kw.strip_prefix("Escape:") {
             if let Some(last_colon) = rest.rfind(':') {
@@ -157,9 +153,7 @@ pub fn extract_escape(
 }
 
 /// Parse kicker info from a KeywordCollection.
-pub fn extract_kicker(
-    collection: &keyword_collection::KeywordCollection,
-) -> Option<KickerInfo> {
+pub fn extract_kicker(collection: &keyword_collection::KeywordCollection) -> Option<KickerInfo> {
     for kw in collection.iter_strings() {
         if let Some(rest) = kw.strip_prefix("Kicker:") {
             let parts: Vec<&str> = rest.splitn(2, ':').collect();

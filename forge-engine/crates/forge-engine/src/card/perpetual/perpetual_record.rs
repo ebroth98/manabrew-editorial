@@ -3,8 +3,8 @@
 use forge_foundation::{ColorSet, ManaCost};
 use serde::{Deserialize, Serialize};
 
-use crate::card::Card;
 use crate::card::card_trait_changes::CardTraitChanges;
+use crate::card::Card;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum PerpetualRecord {

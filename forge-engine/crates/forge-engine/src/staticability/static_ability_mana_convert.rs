@@ -12,11 +12,7 @@ use crate::staticability::StaticMode;
 ///
 /// Returns true if any active ManaConvert static on the battlefield allows
 /// the player to spend mana freely for the given card.
-pub fn can_spend_mana_as_any_color(
-    cards: &[Card],
-    player: PlayerId,
-    spell_card: &Card,
-) -> bool {
+pub fn can_spend_mana_as_any_color(cards: &[Card], player: PlayerId, spell_card: &Card) -> bool {
     for source in cards
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command)
@@ -51,11 +47,7 @@ pub fn can_spend_mana_as_any_color(
     false
 }
 
-pub fn mana_convert(
-    cards: &[Card],
-    player: PlayerId,
-    spell_card: &Card,
-) -> bool {
+pub fn mana_convert(cards: &[Card], player: PlayerId, spell_card: &Card) -> bool {
     can_spend_mana_as_any_color(cards, player, spell_card)
 }
 

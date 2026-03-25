@@ -3,42 +3,96 @@
 //! Mirrors Java `ReplaceDamage.java` in `forge/game/replacement/`.
 
 use crate::card::Card;
-use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::parsing::compare::compare_expr;
+use crate::parsing::keys;
 
-use super::replacement_handler::ReplacementEvent;
 use super::replacement_effect::ReplacementEffect;
+use super::replacement_handler::ReplacementEvent;
+use super::replacement_handler::{execute_replace_with_numeric_update, resolve_replace_value};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
+
+fn matches_valid_card_list(expr: &str, card: &Card, source_card: &Card) -> bool {
+    expr.split(',')
+        .map(str::trim)
+        .any(|part| crate::card::valid_filter::matches_valid_card(part, card, source_card))
+}
+
+fn matches_valid_player_list(expr: &str, player: crate::ids::PlayerId, source_card: &Card) -> bool {
+    expr.split(',').map(str::trim).any(|part| {
+        crate::card::valid_filter::matches_valid_player(part, player, source_card.controller)
+    })
+}
 
 /// Mirrors Java `ReplaceDamage.canReplace()`.
 pub fn can_replace(
     effect: &ReplacementEffect,
     event: &ReplacementEvent,
-    _game: &GameState,
-    _source_card: &Card,
+    game: &GameState,
+    source_card: &Card,
 ) -> bool {
     if effect.event != ReplacementType::DamageDone {
         return false;
     }
-    let target_is_player = matches!(event, ReplacementEvent::DamageToPlayer { .. });
-    let amount = match event {
-        ReplacementEvent::DamageToCard { amount, .. } => *amount,
-        ReplacementEvent::DamageToPlayer { amount, .. } => *amount,
+    let (damage_source, target_player, target_card, amount, is_combat) = match event {
+        ReplacementEvent::DamageToCard {
+            target,
+            amount,
+            source,
+            is_combat,
+        } => (*source, None, Some(*target), *amount, *is_combat),
+        ReplacementEvent::DamageToPlayer {
+            target,
+            amount,
+            source,
+            is_combat,
+        } => (*source, Some(*target), None, *amount, *is_combat),
         _ => return false,
     };
     if amount <= 0 {
         return false;
     }
+    if let Some(valid_source) = effect.params.get(keys::VALID_SOURCE) {
+        let Some(source_id) = damage_source else {
+            return false;
+        };
+        if !matches_valid_card_list(valid_source, game.card(source_id), source_card) {
+            return false;
+        }
+    }
     if let Some(valid_target) = effect.params.get(keys::VALID_TARGET) {
-        let target_matches = match valid_target.trim() {
-            "Player" => target_is_player,
-            "Card" | "Creature" | "Permanent" => !target_is_player,
-            "Any" | "CardOrPlayer" => true,
-            _ => false,
+        let target_matches = if let Some(target) = target_player {
+            matches_valid_player_list(valid_target, target, source_card)
+        } else if let Some(target) = target_card {
+            matches_valid_card_list(valid_target, game.card(target), source_card)
+        } else {
+            false
         };
         if !target_matches {
+            return false;
+        }
+    }
+    if let Some(max_speed) = effect.params.get("MaxSpeed") {
+        let wants_max_speed = max_speed.eq_ignore_ascii_case("true");
+        if wants_max_speed != (game.player(source_card.controller).speed == 4) {
+            return false;
+        }
+    }
+    if let Some(is_combat_param) = effect.params.get(keys::IS_COMBAT) {
+        let wants_combat = is_combat_param.eq_ignore_ascii_case("true");
+        if wants_combat != is_combat {
+            return false;
+        }
+    }
+    if let Some(damage_amount) = effect.params.get(keys::DAMAGE_AMOUNT) {
+        let threshold = damage_amount.get(2..).unwrap_or("");
+        let rhs = resolve_replace_value(threshold, game, source_card.id, event)
+            .or_else(|| threshold.parse::<i32>().ok())
+            .unwrap_or(0);
+        let cmp = format!("{}{}", damage_amount.get(..2).unwrap_or("GE"), rhs);
+        if !compare_expr(amount, &cmp) {
             return false;
         }
     }
@@ -49,22 +103,30 @@ pub fn can_replace(
 pub fn execute(
     effect: &ReplacementEffect,
     event: &mut ReplacementEvent,
-    _game: &GameState,
-    _source_card_id: CardId,
+    game: &GameState,
+    source_card_id: CardId,
 ) -> ReplacementResult {
-    let amount = match event {
-        ReplacementEvent::DamageToCard { amount, .. } => amount,
-        ReplacementEvent::DamageToPlayer { amount, .. } => amount,
+    match event {
+        ReplacementEvent::DamageToCard { .. } | ReplacementEvent::DamageToPlayer { .. } => {}
         _ => return ReplacementResult::NotReplaced,
-    };
+    }
     if effect
         .params
         .get(keys::PREVENT)
         .map(|s| s == "True")
         .unwrap_or(false)
     {
-        *amount = 0;
+        match event {
+            ReplacementEvent::DamageToCard { amount, .. } => *amount = 0,
+            ReplacementEvent::DamageToPlayer { amount, .. } => *amount = 0,
+            _ => {}
+        }
         return ReplacementResult::Prevented;
+    }
+    if let Some(result) =
+        execute_replace_with_numeric_update(effect, event, game, source_card_id, "DamageAmount")
+    {
+        return result;
     }
     ReplacementResult::Replaced
 }

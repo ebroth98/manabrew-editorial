@@ -43,7 +43,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
 /// Resolve the target card from `Defined$` parameter.
 fn resolve_target_card(sa: &SpellAbility) -> Option<CardId> {
-    let defined = sa.params.get(keys::DEFINED).map(|s| s.to_string()).unwrap_or_default();
+    let defined = sa
+        .params
+        .get(keys::DEFINED)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
     if let Some(uid_str) = defined.strip_prefix("CardUID_") {
         uid_str.parse::<u32>().ok().map(CardId)
     } else {
@@ -106,6 +110,7 @@ fn push_spell_to_stack(
         optional_trigger_description: None,
         optional_trigger_source_name: None,
     };
+    let trigger_sa = entry.spell_ability.clone();
 
     ctx.game.stack.push(entry);
     ctx.game.move_card(card_id, ZoneType::Stack, controller);
@@ -120,10 +125,12 @@ fn push_spell_to_stack(
         RunParams {
             spell_card: Some(card_id),
             spell_controller: Some(controller),
+            source_sa: Some(trigger_sa.clone()),
             ..Default::default()
         },
         false,
     );
+    super::emit_targeting_triggers(ctx, card_id, &trigger_sa);
 
     let mut event = GameLogEvent::stack(format!("{}: cast {}", label, card_name))
         .with_player(controller)

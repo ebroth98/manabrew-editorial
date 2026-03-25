@@ -40,7 +40,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         continue;
                     }
 
-                    if !ctx.game.card(cid).damage_sources_this_turn.contains(&source) {
+                    if !ctx
+                        .game
+                        .card(cid)
+                        .damage_sources_this_turn
+                        .contains(&source)
+                    {
                         ctx.game.card_mut(cid).add_damage_source_this_turn(source);
                     }
 
@@ -81,7 +86,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         ctx.game.player_mut(pid).poison_counters += amount;
                     }
                 } else {
-                    ctx.game.deal_damage_to_player(pid, amount);
+                    let dealt = ctx.game.deal_damage_to_player(pid, amount);
+                    ctx.game
+                        .record_player_damage_assignment(Some(source), Some(pid), dealt, false);
                 }
             }
         }
@@ -95,6 +102,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     damage_map.trigger_damage_done_once(ctx.game, ctx.trigger_handler, false);
+
+    // Pre-match DamageDoneOnce triggers while damaged creatures are still on
+    // the battlefield.  SBAs run after effect resolution and would move
+    // lethally damaged creatures to the graveyard, causing their "when dealt
+    // damage" triggers (e.g. Raptor Hatchling Enrage) to fail the active-zone
+    // check.  Flushing now stores them as pre-matched so they survive SBA.
+    ctx.trigger_handler.flush_waiting_triggers(ctx.game);
 
     // Java parity hook (currently a no-op helper until full replacement wiring lands).
     let _ = crate::ability::spell_ability_effect::replace_dying(ctx.game, sa);
@@ -160,6 +174,7 @@ mod tests {
         let mut rng = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,

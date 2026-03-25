@@ -20,11 +20,7 @@ use crate::staticability::StaticMode;
 /// ```text
 /// S:Mode$ CantAttackUnless | ValidCard$ Creature | Target$ You | Cost$ 2
 /// ```
-pub fn get_attack_cost(
-    cards: &[Card],
-    attacker: &Card,
-    defender: DefenderId,
-) -> i32 {
+pub fn get_attack_cost(cards: &[Card], attacker: &Card, defender: DefenderId) -> i32 {
     let mut total_cost = 0;
 
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {

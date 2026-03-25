@@ -11,11 +11,7 @@ pub fn damage_not_removed(cards: &[Card], card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::NoCleanupDamage)
         {
-            if matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                card,
-                source,
-            ) {
+            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
                 return true;
             }
         }

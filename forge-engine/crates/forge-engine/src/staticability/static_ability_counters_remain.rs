@@ -26,11 +26,7 @@ pub fn counters_remain(cards: &[Card], card: &Card, destination: ZoneType) -> bo
             if !active {
                 continue;
             }
-            if matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                card,
-                source,
-            ) {
+            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
                 return true;
             }
         }
@@ -44,7 +40,10 @@ pub fn apply_counters_remain_ability(
     card: &Card,
     destination: ZoneType,
 ) -> bool {
-    if matches!(destination, ZoneType::Library | ZoneType::Hand | ZoneType::None) {
+    if matches!(
+        destination,
+        ZoneType::Library | ZoneType::Hand | ZoneType::None
+    ) {
         return false;
     }
     let active = source.zone == ZoneType::Battlefield

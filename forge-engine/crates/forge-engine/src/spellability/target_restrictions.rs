@@ -166,10 +166,7 @@ impl TargetRestrictions {
     /// Whether this can target a player.
     /// Mirrors Java's `TargetRestrictions.canTgtPlayer()`.
     pub fn can_tgt_player(&self) -> bool {
-        matches!(
-            self.target_kind,
-            TargetKind::Player | TargetKind::Any
-        )
+        matches!(self.target_kind, TargetKind::Player | TargetKind::Any)
     }
 
     /// Whether this can target a permanent.
@@ -184,19 +181,13 @@ impl TargetRestrictions {
     /// Whether this can target a creature.
     /// Mirrors Java's `TargetRestrictions.canTgtCreature()`.
     pub fn can_tgt_creature(&self) -> bool {
-        matches!(
-            self.target_kind,
-            TargetKind::Creature(_) | TargetKind::Any
-        )
+        matches!(self.target_kind, TargetKind::Creature(_) | TargetKind::Any)
     }
 
     /// Whether this can target a planeswalker.
     /// Mirrors Java's `TargetRestrictions.canTgtPlaneswalker()`.
     pub fn can_tgt_planeswalker(&self) -> bool {
-        matches!(
-            self.target_kind,
-            TargetKind::Permanent(_) | TargetKind::Any
-        )
+        matches!(self.target_kind, TargetKind::Permanent(_) | TargetKind::Any)
     }
 
     /// Whether this can target both a creature and a player.

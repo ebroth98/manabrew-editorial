@@ -3,12 +3,12 @@
 //! Mirrors Java `ReplaceMill.java` in `forge/game/replacement/`.
 
 use crate::card::Card;
-use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::parsing::keys;
 
-use super::replacement_handler::ReplacementEvent;
 use super::replacement_effect::{matches_valid_player, ReplacementEffect};
+use super::replacement_handler::{execute_replace_with_numeric_update, ReplacementEvent};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
 
@@ -41,18 +41,25 @@ pub fn execute(
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    let count = match event {
-        ReplacementEvent::Mill { count, .. } => count,
+    match event {
+        ReplacementEvent::Mill { .. } => {}
         _ => return ReplacementResult::NotReplaced,
-    };
+    }
     if effect
         .params
         .get(keys::PREVENT)
         .map(|s| s == "True")
         .unwrap_or(false)
     {
-        *count = 0;
+        if let ReplacementEvent::Mill { count, .. } = event {
+            *count = 0;
+        }
         return ReplacementResult::Prevented;
+    }
+    if let Some(result) =
+        execute_replace_with_numeric_update(effect, event, _game, _source_card_id, "Number")
+    {
+        return result;
     }
     ReplacementResult::Replaced
 }

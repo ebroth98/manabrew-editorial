@@ -51,9 +51,7 @@ pub fn apply_cant_draw_amount_ability(
     if !matches_valid_player(valid_player, player, source_controller) {
         return current_amount;
     }
-    let limit = draw_limit
-        .and_then(|s| s.parse::<i32>().ok())
-        .unwrap_or(0);
+    let limit = draw_limit.and_then(|s| s.parse::<i32>().ok()).unwrap_or(0);
     current_amount.min((limit - drawn_this_turn).max(0))
 }
 

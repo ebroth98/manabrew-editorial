@@ -68,7 +68,10 @@ pub fn alternative_costs(
     collect_from_card(source, sa, source, player, &mut result);
 
     // Process all cards in static ability source zones
-    for ca in cards.iter().filter(|c| c.zone.is_static_ability_source() && c.id != source_id) {
+    for ca in cards
+        .iter()
+        .filter(|c| c.zone.is_static_ability_source() && c.id != source_id)
+    {
         collect_from_card(ca, sa, source, player, &mut result);
     }
 
@@ -98,7 +101,10 @@ pub fn has_alternative_cost(
     }
 
     // Check all cards in static ability source zones
-    for ca in cards.iter().filter(|c| c.zone.is_static_ability_source() && c.id != source_id) {
+    for ca in cards
+        .iter()
+        .filter(|c| c.zone.is_static_ability_source() && c.id != source_id)
+    {
         for st_ab in ca
             .static_abilities
             .iter()
@@ -255,11 +261,7 @@ fn apply(
     }
 
     // Check ValidCard — mirrors Java's stAb.matchesValidParam("ValidCard", source)
-    if !valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::VALID_CARD),
-        source,
-        host,
-    ) {
+    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), source, host) {
         return false;
     }
 
@@ -349,10 +351,12 @@ pub fn apply_alternative_cost_to_sa(sa: &mut SpellAbility, entry: &AlternativeCo
         sa.params.put("Announce".to_string(), announce.clone());
     }
     if let Some(ref mana_restriction) = entry.mana_restriction {
-        sa.params.put("ManaRestriction".to_string(), mana_restriction.clone());
+        sa.params
+            .put("ManaRestriction".to_string(), mana_restriction.clone());
     }
     if let Some(ref stack_desc) = entry.stack_description {
-        sa.params.put("StackDescription".to_string(), stack_desc.clone());
+        sa.params
+            .put("StackDescription".to_string(), stack_desc.clone());
     }
     if let Some(ref cost_desc) = entry.cost_desc {
         sa.params.put("CostDesc".to_string(), cost_desc.clone());

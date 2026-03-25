@@ -18,10 +18,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let other = if let Some(target_player) = sa.target_chosen.target_player {
         target_player
     } else {
-        let defined = sa
-            .params
-            .get("Defined")
-            .unwrap_or("Opponent");
+        let defined = sa.params.get("Defined").unwrap_or("Opponent");
         resolve_defined_player(defined, controller, ctx.game)
             .unwrap_or_else(|| ctx.game.opponent_of(controller))
     };
@@ -44,6 +41,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             RunParams {
                 player: Some(controller),
                 life_amount: Some(diff_a),
+                first_time: Some(ctx.game.player(controller).life_gained_this_turn == diff_a),
+                source_card: sa.source,
+                source_sa: Some(sa.clone()),
                 ..Default::default()
             },
             false,
@@ -54,6 +54,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             RunParams {
                 player: Some(controller),
                 life_amount: Some(diff_a.abs()),
+                first_time: Some(ctx.game.player(controller).life_lost_this_turn == diff_a.abs()),
+                source_card: sa.source,
+                source_sa: Some(sa.clone()),
                 ..Default::default()
             },
             false,
@@ -67,6 +70,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             RunParams {
                 player: Some(other),
                 life_amount: Some(diff_b),
+                first_time: Some(ctx.game.player(other).life_gained_this_turn == diff_b),
+                source_card: sa.source,
+                source_sa: Some(sa.clone()),
                 ..Default::default()
             },
             false,
@@ -77,6 +83,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             RunParams {
                 player: Some(other),
                 life_amount: Some(diff_b.abs()),
+                first_time: Some(ctx.game.player(other).life_lost_this_turn == diff_b.abs()),
+                source_card: sa.source,
+                source_sa: Some(sa.clone()),
                 ..Default::default()
             },
             false,
@@ -116,6 +125,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,

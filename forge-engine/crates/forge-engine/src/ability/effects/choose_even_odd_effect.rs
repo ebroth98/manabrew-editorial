@@ -31,9 +31,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             Some(&source_name),
             sa.api,
         );
-        ctx.game.card_mut(source_id).set_s_var(
-            "ChosenEvenOdd",
-            if odd { "Odd" } else { "Even" },
-        );
+        ctx.game
+            .card_mut(source_id)
+            .set_s_var("ChosenEvenOdd", if odd { "Odd" } else { "Even" });
     }
 }

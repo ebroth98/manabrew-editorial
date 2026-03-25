@@ -24,9 +24,10 @@ impl Card {
         ];
         for &(subtype, letter, desc) in SUBTYPE_MANA {
             if self.type_line.has_subtype(subtype) {
-                let already_produces = self.activated_abilities.iter().any(|ab| {
-                    ab.is_mana_ability && ab.params.get(keys::PRODUCED) == Some(letter)
-                });
+                let already_produces = self
+                    .activated_abilities
+                    .iter()
+                    .any(|ab| ab.is_mana_ability && ab.params.get(keys::PRODUCED) == Some(letter));
                 if !already_produces {
                     let raw = format!(
                         "AB$ Mana | Cost$ T | Produced$ {} | SpellDescription$ {}",
@@ -59,7 +60,11 @@ impl Card {
 
         // TypeCycling: K:TypeCycling:{type}:{cost} → AB$ ChangeZone | Cost$ {cost} Discard<1/CARDNAME> | ActivationZone$ Hand
         // Mirrors Java CardFactoryUtil lines 3852-3864.
-        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+        for kw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+        {
             if let Some(rest) = kw.strip_prefix("TypeCycling:") {
                 let parts: Vec<&str> = rest.splitn(2, ':').collect();
                 if parts.len() == 2 {
@@ -117,7 +122,11 @@ impl Card {
 
         // Adapt: K:Adapt:N:cost → AB$ PutCounter with Adapt$ True gate.
         // Mirrors Java CardFactoryUtil lines 2665-2684.
-        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+        for kw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+        {
             if let Some(rest) = crate::keyword::extract_keyword_cost_str(&kw, "Adapt") {
                 let parts: Vec<&str> = rest.splitn(2, ':').collect();
                 if parts.len() == 2 {
@@ -138,7 +147,11 @@ impl Card {
         // Crew: K:Crew:N → AB$ Animate (tap creatures with total power ≥N).
         // Mirrors Java CardFactoryUtil lines 3820-3835.
         // Uses tapXType<Any/Creature.Other+withTotalPowerGE{N}> matching Java's format.
-        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+        for kw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+        {
             if let Some(n_str) = crate::keyword::extract_keyword_cost_str(&kw, "Crew") {
                 let n = n_str.trim();
                 let ab_text = format!(
@@ -154,7 +167,11 @@ impl Card {
 
         // Embalm: K:Embalm:cost → AB$ CopyPermanent from graveyard.
         // Mirrors Java CardFactoryUtil lines 2879-2891.
-        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+        for kw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+        {
             if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Embalm") {
                 let cost = cost_str.trim();
                 let ab_text = format!(
@@ -170,7 +187,11 @@ impl Card {
 
         // Eternalize: K:Eternalize:cost → AB$ CopyPermanent from graveyard as 4/4.
         // Mirrors Java CardFactoryUtil lines 3023-3052.
-        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+        for kw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+        {
             if let Some(cost_str) = crate::keyword::extract_keyword_cost_str(&kw, "Eternalize") {
                 let cost = cost_str.trim();
                 let ab_text = format!(

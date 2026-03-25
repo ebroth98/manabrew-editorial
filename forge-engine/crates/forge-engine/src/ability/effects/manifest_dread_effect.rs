@@ -44,12 +44,7 @@ fn manifest_dread_once(ctx: &mut EffectContext, _sa: &SpellAbility, player: Play
         top2[0]
     } else {
         ctx.agents[player.index()]
-            .choose_single_card_for_zone_change(
-                player,
-                &top2,
-                "Choose a card to manifest",
-                false,
-            )
+            .choose_single_card_for_zone_change(player, &top2, "Choose a card to manifest", false)
             .unwrap_or(top2[0])
     };
 
@@ -60,7 +55,8 @@ fn manifest_dread_once(ctx: &mut EffectContext, _sa: &SpellAbility, player: Play
     ctx.game.card_mut(chosen).set_base_pt(Some(2), Some(2));
     ctx.game.card_mut(chosen).set_controller(player);
     ctx.game.move_card(chosen, ZoneType::Battlefield, player);
-    ctx.trigger_handler.register_active_trigger(ctx.game, chosen);
+    ctx.trigger_handler
+        .register_active_trigger(ctx.game, chosen);
     emit_zone_trigger(ctx.trigger_handler, chosen, old_zone, ZoneType::Battlefield);
 
     // Put the rest into graveyard

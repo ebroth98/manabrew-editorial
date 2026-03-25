@@ -6,11 +6,7 @@ use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn can_attack_defender(
-    cards: &[Card],
-    card: &Card,
-    defender: PlayerId,
-) -> bool {
+pub fn can_attack_defender(cards: &[Card], card: &Card, defender: PlayerId) -> bool {
     for source in cards
         .iter()
         .filter(|c| c.zone == ZoneType::Battlefield || c.zone == ZoneType::Command)
@@ -20,11 +16,7 @@ pub fn can_attack_defender(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CanAttackDefender)
         {
-            if !matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                card,
-                source,
-            ) {
+            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
                 continue;
             }
             if !matches_valid_attacked(

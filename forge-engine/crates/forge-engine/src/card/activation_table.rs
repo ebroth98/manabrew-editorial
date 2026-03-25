@@ -34,10 +34,7 @@ impl ActivationTable {
     /// Add a single activation instance for this spell ability.
     pub fn add(&mut self, sa: &SpellAbility) {
         let key = Self::key_for(sa);
-        self.data
-            .entry(key)
-            .or_default()
-            .push(sa.activating_player);
+        self.data.entry(key).or_default().push(sa.activating_player);
     }
 
     /// Return activation count for this spell ability.

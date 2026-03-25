@@ -962,9 +962,7 @@ fn score_mana_ability(
     let mut score = 0;
     let card = game.card(card_id);
 
-    if let Some(produced) =
-        produced_override.or_else(|| ab.params.get(keys::PRODUCED))
-    {
+    if let Some(produced) = produced_override.or_else(|| ab.params.get(keys::PRODUCED)) {
         let mana_text = ability_mana_text_for_score(produced, &card.chosen_colors);
         if mana_text == "Any" {
             score += 7;

@@ -3,12 +3,13 @@
 //! Mirrors Java `ReplaceDrawCards.java` in `forge/game/replacement/`.
 
 use crate::card::Card;
-use crate::parsing::keys;
 use crate::game::GameState;
 use crate::ids::CardId;
+use crate::parsing::compare::compare_expr;
+use crate::parsing::keys;
 
-use super::replacement_handler::ReplacementEvent;
 use super::replacement_effect::{matches_valid_player, ReplacementEffect};
+use super::replacement_handler::{execute_replace_with_numeric_update, ReplacementEvent};
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
 
@@ -34,6 +35,16 @@ pub fn can_replace(
             return false;
         }
     }
+    if let Some(number_cmp) = effect.params.get(keys::NUMBER) {
+        let rhs = number_cmp
+            .get(2..)
+            .and_then(|n| n.parse::<i32>().ok())
+            .unwrap_or(0);
+        let cmp = format!("{}{}", number_cmp.get(..2).unwrap_or("GE"), rhs);
+        if !compare_expr(count, &cmp) {
+            return false;
+        }
+    }
     true
 }
 
@@ -44,18 +55,25 @@ pub fn execute(
     _game: &GameState,
     _source_card_id: CardId,
 ) -> ReplacementResult {
-    let count = match event {
-        ReplacementEvent::DrawCards { count, .. } => count,
+    match event {
+        ReplacementEvent::DrawCards { .. } => {}
         _ => return ReplacementResult::NotReplaced,
-    };
+    }
     if effect
         .params
         .get(keys::PREVENT)
         .map(|s| s == "True")
         .unwrap_or(false)
     {
-        *count = 0;
+        if let ReplacementEvent::DrawCards { count, .. } = event {
+            *count = 0;
+        }
         return ReplacementResult::Prevented;
+    }
+    if let Some(result) =
+        execute_replace_with_numeric_update(effect, event, _game, _source_card_id, "Number")
+    {
+        return result;
     }
     ReplacementResult::Replaced
 }

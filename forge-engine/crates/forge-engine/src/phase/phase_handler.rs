@@ -198,8 +198,7 @@ impl PhaseHandler {
         if let Some(last) = self.extra_turns.last() {
             Some(last.get_player())
         } else {
-            self.player_turn
-                .map(|p| next_player_after(p, player_order))
+            self.player_turn.map(|p| next_player_after(p, player_order))
         }
     }
 
@@ -294,8 +293,7 @@ impl PhaseHandler {
     /// Returns true if a combat is currently in progress.
     /// Mirrors Java's `PhaseHandler.inCombat()`.
     pub fn in_combat(&self) -> bool {
-        self.phase
-            .map_or(false, |p| p.is_combat())
+        self.phase.map_or(false, |p| p.is_combat())
     }
 
     /// End the current combat.
@@ -336,7 +334,13 @@ impl PhaseHandler {
 
     /// Dev mode: set the phase and player directly.
     /// Mirrors Java's `PhaseHandler.devModeSet()`.
-    pub fn dev_mode_set(&mut self, phase: Option<PhaseType>, player: Option<PlayerId>, end_combat: bool, cturn: i32) {
+    pub fn dev_mode_set(
+        &mut self,
+        phase: Option<PhaseType>,
+        player: Option<PlayerId>,
+        end_combat: bool,
+        cturn: i32,
+    ) {
         if let Some(p) = phase {
             self.set_phase(p);
         }

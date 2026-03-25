@@ -426,13 +426,23 @@ fn run_game(
 
     // Designate commander for the human player (must happen before game_loop.run which shuffles).
     if let Some(ref name) = commander_name {
-        let library_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Library, p0).to_vec();
-        for cid in library_cards {
-            if game.card(cid).card_name == *name {
-                game.card_mut(cid).is_commander = true;
-                game.move_card(cid, ZoneType::Command, p0);
-                eprintln!("[game] Designated '{}' as commander for player 0", name);
-                break;
+        let command_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Command, p0).to_vec();
+        if command_cards.iter().any(|&cid| game.card(cid).card_name == *name) {
+            for cid in command_cards {
+                if game.card(cid).card_name == *name {
+                    game.card_mut(cid).is_commander = true;
+                    break;
+                }
+            }
+        } else {
+            let library_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Library, p0).to_vec();
+            for cid in library_cards {
+                if game.card(cid).card_name == *name {
+                    game.card_mut(cid).is_commander = true;
+                    game.move_card(cid, ZoneType::Command, p0);
+                    eprintln!("[game] Designated '{}' as commander for player 0", name);
+                    break;
+                }
             }
         }
     }

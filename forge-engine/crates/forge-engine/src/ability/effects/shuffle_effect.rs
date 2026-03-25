@@ -14,10 +14,7 @@ use crate::spellability::SpellAbility;
 /// A:SP$ Shuffle | Defined$ Each
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let defined = sa
-        .params
-        .get(keys::DEFINED)
-        .unwrap_or("You");
+    let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
     let players = resolve_defined_players(defined, sa.activating_player, ctx.game);
     let optional = sa.params.has(keys::OPTIONAL);
     let source_name = sa.source.map(|cid| ctx.game.card(cid).card_name.clone());

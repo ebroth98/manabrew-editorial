@@ -39,7 +39,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Overload: apply pump to ALL valid creatures instead of the chosen target.
     if sa.overloaded {
-        let valid_tgts = sa.params.get(keys::VALID_TGTS).map(|s| s.to_string()).unwrap_or_default();
+        let valid_tgts = sa
+            .params
+            .get(keys::VALID_TGTS)
+            .map(|s| s.to_string())
+            .unwrap_or_default();
         let all_bf: Vec<crate::ids::CardId> = ctx
             .game
             .player_order
@@ -118,10 +122,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 ctx.game.card_mut(target_card).power_modifier += att_bonus;
                 ctx.game.card_mut(target_card).toughness_modifier += def_bonus;
                 for kw in &keywords {
-                    ctx.game
-                        .card_mut(target_card)
-                        .pump_keywords
-                        .add(kw);
+                    ctx.game.card_mut(target_card).pump_keywords.add(kw);
                 }
             }
         }
@@ -168,6 +169,7 @@ mod tests {
     ) -> EffectContext<'a> {
         EffectContext {
             game,
+            combat: None,
             agents,
             trigger_handler: th,
             token_templates: templates,

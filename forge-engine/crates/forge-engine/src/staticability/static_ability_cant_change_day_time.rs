@@ -14,8 +14,16 @@ pub fn cant_change_day(game: &GameState, value: Option<bool>) -> bool {
         return false;
     };
 
-    for card in game.cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in card.static_abilities.iter().filter(|sa| sa.mode == StaticMode::CantChangeDayTime && sa.zones_check(card.zone)) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone.is_static_ability_source())
+    {
+        for st_ab in card
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::CantChangeDayTime && sa.zones_check(card.zone))
+        {
             if cant_change_day_check(st_ab, value) {
                 return true;
             }
@@ -31,10 +39,7 @@ pub fn cant_change_day(game: &GameState, value: Option<bool>) -> bool {
 /// - `NewTime = "Day"` → always returns false (both checks fire due to fall-through)
 /// - `NewTime = "Night"` → returns false unless `value == true`
 /// - No `NewTime` param → returns true (no restriction)
-fn cant_change_day_check(
-    st_ab: &crate::staticability::StaticAbility,
-    value: bool,
-) -> bool {
+fn cant_change_day_check(st_ab: &crate::staticability::StaticAbility, value: bool) -> bool {
     if let Some(new_time) = st_ab.params.get(keys::NEW_TIME) {
         match new_time {
             "Day" => {

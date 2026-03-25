@@ -340,7 +340,11 @@ pub fn compute_must_block_targets(
 
 /// Check if blocker can block more creatures than it currently is.
 /// Mirrors Java `CombatUtil.canBlockMoreCreatures()`.
-pub fn can_block_more_creatures(game: &GameState, combat: &CombatState, blocker_id: CardId) -> bool {
+pub fn can_block_more_creatures(
+    game: &GameState,
+    combat: &CombatState,
+    blocker_id: CardId,
+) -> bool {
     let currently_blocking = combat
         .blockers
         .iter()
@@ -392,11 +396,7 @@ pub fn can_attacker_be_blocked_with_amount(
 
 /// Declared-attacker trigger helper.
 /// Mirrors Java `CombatUtil.checkDeclaredAttacker()`.
-pub fn check_declared_attacker(
-    game: &mut GameState,
-    attacker_id: CardId,
-    defender: DefenderId,
-) {
+pub fn check_declared_attacker(game: &mut GameState, attacker_id: CardId, defender: DefenderId) {
     let controlling = defender.controlling_player(game);
     game.card_mut(attacker_id).set_attacking_player(controlling);
 }
@@ -477,11 +477,7 @@ pub fn check_propaganda_effects(
 /// Mirrors Java `CombatUtil.payRequiredBlockCosts()`.
 ///
 /// Returns true if all costs are paid (or zero).
-pub fn pay_required_block_costs(
-    game: &GameState,
-    blocker_id: CardId,
-    attacker_id: CardId,
-) -> bool {
+pub fn pay_required_block_costs(game: &GameState, blocker_id: CardId, attacker_id: CardId) -> bool {
     let blocker = game.card(blocker_id);
     let attacker = game.card(attacker_id);
     let cost = super::block_cost::get_block_cost(&game.cards, blocker, attacker);
@@ -508,11 +504,7 @@ pub fn can_be_blocked(
 
 /// Check if a blocker can block at least one attacker from a list.
 /// Mirrors Java `CombatUtil.canBlockAtLeastOne()`.
-pub fn can_block_at_least_one(
-    game: &GameState,
-    blocker_id: CardId,
-    attackers: &[CardId],
-) -> bool {
+pub fn can_block_at_least_one(game: &GameState, blocker_id: CardId, attackers: &[CardId]) -> bool {
     attackers
         .iter()
         .any(|&attacker_id| can_creature_block(game, blocker_id, attacker_id))

@@ -41,7 +41,11 @@ impl Emerge {
 
     /// Get the display title.
     pub fn get_title(&self) -> String {
-        format!("{} {}", self.get_title_without_cost(), self.inner.cost_string)
+        format!(
+            "{} {}",
+            self.get_title_without_cost(),
+            self.inner.cost_string
+        )
     }
 
     /// Format reminder text.

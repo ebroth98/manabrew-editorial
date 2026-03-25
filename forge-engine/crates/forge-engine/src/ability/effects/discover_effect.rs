@@ -8,9 +8,9 @@
 use forge_foundation::ZoneType;
 
 use super::cast_from_effect;
-use crate::parsing::keys;
 use super::{emit_zone_trigger, EffectContext};
 use crate::ids::{CardId, PlayerId};
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -28,12 +28,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
-fn discover_for_player(
-    ctx: &mut EffectContext,
-    sa: &SpellAbility,
-    player: PlayerId,
-    max_cmc: i32,
-) {
+fn discover_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId, max_cmc: i32) {
     let mut exiled_rest: Vec<CardId> = Vec::new();
     let mut found: Option<CardId> = None;
 
@@ -75,15 +70,16 @@ fn discover_for_player(
 
         if has_spells {
             let cast = cast_from_effect::offer_cast_or_alternative(
-                ctx, card_id, player,
+                ctx,
+                card_id,
+                player,
                 "Cast without paying its mana cost",
                 "Put into your hand",
             );
 
             if cast {
-                let ok = cast_from_effect::cast_card_from_effect(
-                    ctx, card_id, player, true, "Discover",
-                );
+                let ok =
+                    cast_from_effect::cast_card_from_effect(ctx, card_id, player, true, "Discover");
                 if !ok {
                     // Failed to cast — put in hand instead
                     let old = ctx.game.card(card_id).zone;

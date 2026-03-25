@@ -8,9 +8,9 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::{emit_zone_trigger, EffectContext};
 use crate::card::Card;
-use crate::parsing::keys;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -45,13 +45,25 @@ fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::
 
         let token_id = ctx.game.create_card(token);
         ctx.game.move_card(token_id, ZoneType::Battlefield, player);
-        ctx.trigger_handler.register_active_trigger(ctx.game, token_id);
+        ctx.trigger_handler
+            .register_active_trigger(ctx.game, token_id);
 
-        ctx.trigger_handler.run_trigger(TriggerType::TokenCreated, RunParams {
-            card: Some(token_id), player: Some(player), ..Default::default()
-        }, false);
+        ctx.trigger_handler.run_trigger(
+            TriggerType::TokenCreated,
+            RunParams {
+                card: Some(token_id),
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
 
-        emit_zone_trigger(ctx.trigger_handler, token_id, ZoneType::None, ZoneType::Battlefield);
+        emit_zone_trigger(
+            ctx.trigger_handler,
+            token_id,
+            ZoneType::None,
+            ZoneType::Battlefield,
+        );
     } else {
         // Fallback: create inline Clue token
         ctx.rng.next_int(1);
@@ -74,13 +86,25 @@ fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::
 
         let token_id = ctx.game.create_card(token);
         ctx.game.move_card(token_id, ZoneType::Battlefield, player);
-        ctx.trigger_handler.register_active_trigger(ctx.game, token_id);
+        ctx.trigger_handler
+            .register_active_trigger(ctx.game, token_id);
 
-        ctx.trigger_handler.run_trigger(TriggerType::TokenCreated, RunParams {
-            card: Some(token_id), player: Some(player), ..Default::default()
-        }, false);
+        ctx.trigger_handler.run_trigger(
+            TriggerType::TokenCreated,
+            RunParams {
+                card: Some(token_id),
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
 
-        emit_zone_trigger(ctx.trigger_handler, token_id, ZoneType::None, ZoneType::Battlefield);
+        emit_zone_trigger(
+            ctx.trigger_handler,
+            token_id,
+            ZoneType::None,
+            ZoneType::Battlefield,
+        );
     }
 
     // RememberInvestigatingPlayers$

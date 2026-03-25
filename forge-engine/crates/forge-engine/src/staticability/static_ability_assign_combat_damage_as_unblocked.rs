@@ -17,11 +17,7 @@ pub fn assign_as_unblocked(cards: &[Card], card: &Card, optional: bool) -> bool 
             } else if !has_optional && optional {
                 continue;
             }
-            if matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                card,
-                source,
-            ) {
+            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
                 return true;
             }
         }

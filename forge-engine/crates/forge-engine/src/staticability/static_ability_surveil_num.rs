@@ -9,8 +9,16 @@ use crate::staticability::StaticMode;
 /// Mirrors Java's `StaticAbilitySurveilNum.surveilNumMod()`.
 pub fn surveil_num_mod(game: &GameState, player: PlayerId) -> i32 {
     let mut total = 0;
-    for card in game.cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in card.static_abilities.iter().filter(|sa| sa.mode == StaticMode::SurveilNum && sa.zones_check(card.zone)) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone.is_static_ability_source())
+    {
+        for st_ab in card
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::SurveilNum && sa.zones_check(card.zone))
+        {
             total += get_surveil_mod(st_ab, card.controller, player);
         }
     }

@@ -31,24 +31,13 @@ pub fn parse_animate_params(sa: &SpellAbility) -> AnimateParams {
         params.toughness = t.parse::<i32>().ok();
     }
     if let Some(types) = sa.params.get("Types") {
-        params.add_types = types
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect();
+        params.add_types = types.split(',').map(|s| s.trim().to_string()).collect();
     }
     if let Some(kws) = sa.params.get(keys::KEYWORDS) {
-        params.add_keywords = kws
-            .split(',')
-            .map(|s| s.trim().to_string())
-            .collect();
+        params.add_keywords = kws.split(',').map(|s| s.trim().to_string()).collect();
     }
     if let Some(colors) = sa.params.get("Colors") {
-        params.colors = Some(
-            colors
-                .split(',')
-                .map(|s| s.trim().to_string())
-                .collect(),
-        );
+        params.colors = Some(colors.split(',').map(|s| s.trim().to_string()).collect());
     }
     params.overwrite_types = sa
         .params

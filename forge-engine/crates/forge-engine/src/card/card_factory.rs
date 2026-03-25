@@ -42,6 +42,11 @@ pub fn copy_spell_ability(target_sa: &SpellAbility, controller: PlayerId) -> Spe
 /// Java parity helper for `SpellAbility.cantBeCopied()` checks.
 pub fn spell_ability_cant_be_copied(cards: &[Card], sa: &SpellAbility) -> bool {
     sa.source
-        .map(|source| crate::staticability::static_ability_cant_be_copied::cant_be_copied(cards, &cards[source.index()]))
+        .map(|source| {
+            crate::staticability::static_ability_cant_be_copied::cant_be_copied(
+                cards,
+                &cards[source.index()],
+            )
+        })
         .unwrap_or(false)
 }

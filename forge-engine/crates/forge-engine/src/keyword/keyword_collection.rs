@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 
-use serde::{Deserialize, Serialize, Serializer, Deserializer};
+use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::keyword_instance::{Keyword, KeywordInstanceData};
 
@@ -120,7 +120,10 @@ impl KeywordCollection {
 
     /// Remove all instances of a keyword enum variant.
     pub fn remove_all(&mut self, keyword: Keyword) -> bool {
-        self.map.remove(&keyword).map(|v| !v.is_empty()).unwrap_or(false)
+        self.map
+            .remove(&keyword)
+            .map(|v| !v.is_empty())
+            .unwrap_or(false)
     }
 
     /// Remove keywords matching any of the given strings.
@@ -141,28 +144,32 @@ impl KeywordCollection {
 
     /// Check if collection contains a keyword by exact original string match.
     pub fn contains_string(&self, keyword: &str) -> bool {
-        self.map.values().any(|list| list.iter().any(|inst| inst.original == keyword))
+        self.map
+            .values()
+            .any(|list| list.iter().any(|inst| inst.original == keyword))
     }
 
     /// Check if collection contains a keyword by case-insensitive original string match.
     pub fn contains_string_ignore_case(&self, keyword: &str) -> bool {
         self.map.values().any(|list| {
-            list.iter().any(|inst| inst.original.eq_ignore_ascii_case(keyword))
+            list.iter()
+                .any(|inst| inst.original.eq_ignore_ascii_case(keyword))
         })
     }
 
     /// Check if any keyword's original string starts with the given prefix.
     pub fn any_starts_with(&self, prefix: &str) -> bool {
-        self.map.values().any(|list| {
-            list.iter().any(|inst| inst.original.starts_with(prefix))
-        })
+        self.map
+            .values()
+            .any(|list| list.iter().any(|inst| inst.original.starts_with(prefix)))
     }
 
     /// Check if any keyword's original string starts with the given prefix (case-insensitive).
     pub fn any_starts_with_ignore_case(&self, prefix: &str) -> bool {
         let lower = prefix.to_lowercase();
         self.map.values().any(|list| {
-            list.iter().any(|inst| inst.original.to_lowercase().starts_with(&lower))
+            list.iter()
+                .any(|inst| inst.original.to_lowercase().starts_with(&lower))
         })
     }
 
@@ -180,7 +187,9 @@ impl KeywordCollection {
 
     /// Iterate over original keyword strings.
     pub fn iter_strings(&self) -> impl Iterator<Item = &str> {
-        self.map.values().flat_map(|v| v.iter().map(|inst| inst.original.as_str()))
+        self.map
+            .values()
+            .flat_map(|v| v.iter().map(|inst| inst.original.as_str()))
     }
 
     /// Retain only keywords matching a predicate on the original string.
@@ -206,7 +215,10 @@ impl KeywordCollection {
 
     /// Get all keyword instances for a specific keyword.
     pub fn get_values_for(&self, keyword: Keyword) -> Vec<&KeywordInstanceData> {
-        self.map.get(&keyword).map(|v| v.iter().collect()).unwrap_or_default()
+        self.map
+            .get(&keyword)
+            .map(|v| v.iter().collect())
+            .unwrap_or_default()
     }
 
     /// Get all keywords as a list of original strings.

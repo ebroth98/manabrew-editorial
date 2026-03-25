@@ -199,11 +199,7 @@ impl ManaCostBeingPaid {
         choice
     }
 
-    pub fn try_pay_mana(
-        &mut self,
-        color_mask: u16,
-        possible_uses: u8,
-    ) -> Option<ManaCostShard> {
+    pub fn try_pay_mana(&mut self, color_mask: u16, possible_uses: u8) -> Option<ManaCostShard> {
         let payable: Vec<ManaCostShard> = self
             .get_distinct_shards()
             .into_iter()
@@ -323,14 +319,17 @@ impl ManaCostBeingPaid {
     /// Whether ALL unpaid shards are phyrexian.
     /// Mirrors Java's `ManaCostBeingPaid.containsOnlyPhyrexianMana()`.
     pub fn contains_only_phyrexian_mana(&self) -> bool {
-        !self.unpaid_shards.is_empty()
-            && self.unpaid_shards.keys().all(|s| s.is_phyrexian())
+        !self.unpaid_shards.is_empty() && self.unpaid_shards.keys().all(|s| s.is_phyrexian())
     }
 
     /// Pay one phyrexian shard by removing it (the 2-life payment is handled externally).
     /// Mirrors Java's `ManaCostBeingPaid.payPhyrexian()`.
     pub fn pay_phyrexian(&mut self) -> bool {
-        let phy = self.unpaid_shards.keys().find(|s| s.is_phyrexian()).copied();
+        let phy = self
+            .unpaid_shards
+            .keys()
+            .find(|s| s.is_phyrexian())
+            .copied();
         match phy {
             Some(shard) => {
                 self.decrease_shard(shard, 1);
@@ -377,9 +376,7 @@ impl ManaCostBeingPaid {
             .get_distinct_shards()
             .into_iter()
             .filter(|&s| {
-                !s.is_snow()
-                    && !s.is_colorless()
-                    && can_pay_for_shard_with_color(s, color)
+                !s.is_snow() && !s.is_colorless() && can_pay_for_shard_with_color(s, color)
             })
             .collect();
         let chosen = self.get_shard_to_pay_by_priority(&payable, 0xFF)?;

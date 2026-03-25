@@ -18,10 +18,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     let amount = parse_param(&sa.ability_text, "LifeAmount$ ").unwrap_or(0);
 
-    let defined = sa
-        .params
-        .get("Defined")
-        .unwrap_or("You");
+    let defined = sa.params.get("Defined").unwrap_or("You");
 
     let targets = resolve_defined_players(defined, controller, ctx.game);
 
@@ -39,6 +36,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 RunParams {
                     player: Some(target),
                     life_amount: Some(diff),
+                    first_time: Some(ctx.game.player(target).life_gained_this_turn == diff),
+                    source_card: sa.source,
+                    source_sa: Some(sa.clone()),
                     ..Default::default()
                 },
                 false,
@@ -49,6 +49,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 RunParams {
                     player: Some(target),
                     life_amount: Some(diff.abs()),
+                    first_time: Some(ctx.game.player(target).life_lost_this_turn == diff.abs()),
+                    source_card: sa.source,
+                    source_sa: Some(sa.clone()),
                     ..Default::default()
                 },
                 false,
@@ -84,6 +87,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,
@@ -112,6 +116,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,

@@ -6,13 +6,8 @@ use crate::spellability::SpellAbility;
 /// case used by cards like Pygmy Hippo.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let defined = sa
-        .params
-        .get(keys::DEFINED)
-        .unwrap_or("You");
-    let only_mana = sa
-        .params
-        .is_true(keys::MANA_ABILITY);
+    let defined = sa.params.get(keys::DEFINED).unwrap_or("You");
+    let only_mana = sa.params.is_true(keys::MANA_ABILITY);
     let type_filter = sa.params.get(keys::TYPE).unwrap_or("Card");
 
     let players = resolve_defined_players(defined, controller, ctx.game);
@@ -42,8 +37,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 // Java lets controller choose one ability per card. For parity with
                 // current engine scope, resolve the first legal mana ability.
                 let maybe_mana_ab = card.activated_abilities.iter().find(|ab| {
-                    (!only_mana || ab.is_mana_ability)
-                        && ab.params.get(keys::AB) == Some("Mana")
+                    (!only_mana || ab.is_mana_ability) && ab.params.get(keys::AB) == Some("Mana")
                 });
                 let Some(mana_ab) = maybe_mana_ab else {
                     continue;

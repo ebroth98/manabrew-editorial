@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{parse_param, resolve_defined_player, EffectContext};
+use super::{parse_param, resolve_defined_player_with_sa, EffectContext};
 use crate::card::card_damage_map::DamageTarget;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -15,7 +15,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // For triggered abilities, resolve Defined$ for target
     let target_player = sa.target_chosen.target_player.or_else(|| {
         if let Some(defined) = sa.defined() {
-            resolve_defined_player(defined, sa.activating_player, ctx.game)
+            resolve_defined_player_with_sa(defined, sa, sa.activating_player, ctx.game)
         } else {
             None
         }
@@ -38,7 +38,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Overload: deal damage to ALL valid creatures instead of the chosen target.
     if sa.overloaded {
-        let valid_tgts = sa.params.get(keys::VALID_TGTS).map(|s| s.to_string()).unwrap_or_default();
+        let valid_tgts = sa
+            .params
+            .get(keys::VALID_TGTS)
+            .map(|s| s.to_string())
+            .unwrap_or_default();
         let all_bf: Vec<crate::ids::CardId> = ctx
             .game
             .player_order
@@ -141,17 +145,22 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
         } else {
-            ctx.game.deal_damage_to_player(target_player, damage);
+            let dealt = ctx.game.deal_damage_to_player(target_player, damage);
+            ctx.game
+                .record_player_damage_assignment(sa.source, Some(target_player), dealt, false);
         }
 
         // Record damage dealt by source for TotalDamageDoneByThisTurn SVar
         if !use_damage_map {
             if let Some(src_id) = sa.source {
-            if damage > 0 {
-                ctx.game.card_mut(src_id).total_damage_done_this_turn += damage;
-                ctx.game.card_mut(src_id).damage_history.record_damage(damage, false);
+                if damage > 0 {
+                    ctx.game.card_mut(src_id).total_damage_done_this_turn += damage;
+                    ctx.game
+                        .card_mut(src_id)
+                        .damage_history
+                        .record_damage(damage, false);
+                }
             }
-        }
         }
 
         // Fire DamageDone trigger
@@ -228,7 +237,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 if let Some(src_id) = sa.source {
                     if damage > 0 {
                         ctx.game.card_mut(src_id).total_damage_done_this_turn += damage;
-                        ctx.game.card_mut(src_id).damage_history.record_damage(damage, false);
+                        ctx.game
+                            .card_mut(src_id)
+                            .damage_history
+                            .record_damage(damage, false);
                     }
                 }
             }
@@ -246,12 +258,29 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     },
                     false,
                 );
+                // Fire DamageDoneOnce batch trigger for non-map (non-combat)
+                // damage.  Java fires this from CardDamageMap.triggerDamageOnce
+                // which is called for ALL damage paths.  Without this, "when
+                // dealt damage" triggers using DamageDoneOnce (e.g. Raptor
+                // Hatchling Enrage) would never fire for spell damage.
+                ctx.trigger_handler.run_trigger(
+                    crate::event::TriggerType::DamageDoneOnce,
+                    crate::event::RunParams {
+                        damage_target_card: Some(target_card),
+                        damage_amount: Some(damage),
+                        is_combat_damage: Some(false),
+                        ..Default::default()
+                    },
+                    false,
+                );
+                // Pre-match damage triggers while the creature is still on the
+                // battlefield.  SBAs run after resolution and would move
+                // lethally damaged creatures to the graveyard, causing their
+                // Enrage triggers to fail the active-zone check.
+                ctx.trigger_handler.flush_waiting_triggers(ctx.game);
             }
 
-            if sa
-                .params
-                .is_true(keys::REMEMBER_DAMAGED_CREATURE)
-            {
+            if sa.params.is_true(keys::REMEMBER_DAMAGED_CREATURE) {
                 if let Some(src_id) = sa.source {
                     let src = ctx.game.card_mut(src_id);
                     src.add_remembered_card(target_card);
@@ -322,9 +351,13 @@ fn evaluate_svar_expr(ctx: &EffectContext, sa: &SpellAbility, expr: &str) -> i32
         if let Some(sac_id) = ctx.game.last_sacrificed_card {
             let sac_card = ctx.game.card(sac_id);
             let val = if expr.ends_with("Power") {
-                sac_card.lki_power.unwrap_or(sac_card.base_power.unwrap_or(0))
+                sac_card
+                    .lki_power
+                    .unwrap_or(sac_card.base_power.unwrap_or(0))
             } else {
-                sac_card.lki_toughness.unwrap_or(sac_card.base_toughness.unwrap_or(0))
+                sac_card
+                    .lki_toughness
+                    .unwrap_or(sac_card.base_toughness.unwrap_or(0))
             };
             return val;
         }

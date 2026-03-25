@@ -3,8 +3,8 @@ use forge_foundation::ZoneType;
 use crate::card::{valid_filter, Card};
 use crate::event::RunParams;
 use crate::game::GameState;
-use crate::parsing::keys;
 use crate::ids::CardId;
+use crate::parsing::keys;
 use crate::trigger::Trigger;
 use crate::trigger::TriggerMode;
 
@@ -98,7 +98,41 @@ fn mode_specific_matches(
             }
             true
         }
-        TriggerMode::SpellCast { .. } => {
+        TriggerMode::ChangesZoneAll {
+            origin,
+            destination,
+            ..
+        } => {
+            if let Some(valid_cause) = st_ab.params.get(keys::VALID_CAUSE) {
+                let Some(cause_sa) = run_params.cause.as_ref() else {
+                    return false;
+                };
+                let Some(cause_card) = cause_sa.source else {
+                    return false;
+                };
+                if !matches_valid_card_for_controller(
+                    valid_cause,
+                    game.card(cause_card),
+                    source_controller,
+                ) {
+                    return false;
+                }
+            }
+            let Some(zone_changes) = run_params.zone_changes.as_ref() else {
+                return false;
+            };
+            zone_changes.iter().any(|zc| {
+                origin.is_none_or(|expected| zc.origin == expected)
+                    && destination.is_none_or(|expected| zc.destination == expected)
+            })
+        }
+        TriggerMode::SpellCast { .. }
+        | TriggerMode::AbilityCast { .. }
+        | TriggerMode::SpellAbilityCast { .. }
+        | TriggerMode::SpellCastOrCopy { .. }
+        | TriggerMode::SpellCopied { .. }
+        | TriggerMode::SpellCopy { .. }
+        | TriggerMode::SpellAbilityCopy { .. } => {
             if let Some(valid_cause) = st_ab.params.get(keys::VALID_CAUSE) {
                 let Some(cid) = run_params.spell_card else {
                     return false;
@@ -181,6 +215,8 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::ChangesZone { .. } => "ChangesZone",
         crate::trigger::TriggerMode::Phase { .. } => "Phase",
         crate::trigger::TriggerMode::SpellCast { .. } => "SpellCast",
+        crate::trigger::TriggerMode::AbilityCast { .. } => "AbilityCast",
+        crate::trigger::TriggerMode::SpellAbilityCast { .. } => "SpellAbilityCast",
         crate::trigger::TriggerMode::Attacks { .. } => "Attacks",
         crate::trigger::TriggerMode::Fight { .. } => "Fight",
         crate::trigger::TriggerMode::FightOnce { .. } => "FightOnce",
@@ -191,11 +227,19 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::AttackerUnblocked { .. } => "AttackerUnblocked",
         crate::trigger::TriggerMode::LifeGained { .. } => "LifeGained",
         crate::trigger::TriggerMode::LifeLost { .. } => "LifeLost",
+        crate::trigger::TriggerMode::PayLife { .. } => "PayLife",
+        crate::trigger::TriggerMode::LosesGame { .. } => "LosesGame",
+        crate::trigger::TriggerMode::Discover { .. } => "Discover",
+        crate::trigger::TriggerMode::Elementalbend { .. } => "Elementalbend",
         crate::trigger::TriggerMode::CounterAdded { .. } => "CounterAdded",
         crate::trigger::TriggerMode::CounterRemoved { .. } => "CounterRemoved",
         crate::trigger::TriggerMode::Sacrificed { .. } => "Sacrificed",
         crate::trigger::TriggerMode::Drawn { .. } => "Drawn",
         crate::trigger::TriggerMode::Milled { .. } => "Milled",
+        crate::trigger::TriggerMode::MilledAll { .. } => "MilledAll",
+        crate::trigger::TriggerMode::MilledOnce { .. } => "MilledOnce",
+        crate::trigger::TriggerMode::PayEcho { .. } => "PayEcho",
+        crate::trigger::TriggerMode::ClassLevelGained { .. } => "ClassLevelGained",
         crate::trigger::TriggerMode::Taps { .. } => "Taps",
         crate::trigger::TriggerMode::Untaps { .. } => "Untaps",
         crate::trigger::TriggerMode::Transformed { .. } => "Transformed",
@@ -215,6 +259,9 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::Exiled { .. } => "Exiled",
         crate::trigger::TriggerMode::TokenCreated { .. } => "TokenCreated",
         crate::trigger::TriggerMode::SpellCopied { .. } => "SpellCopied",
+        crate::trigger::TriggerMode::SpellCopy { .. } => "SpellCopy",
+        crate::trigger::TriggerMode::SpellAbilityCopy { .. } => "SpellAbilityCopy",
+        crate::trigger::TriggerMode::SpellCastOrCopy { .. } => "SpellCastOrCopy",
         crate::trigger::TriggerMode::AttackersDeclared { .. } => "AttackersDeclared",
         crate::trigger::TriggerMode::BlockersDeclared => "BlockersDeclared",
         crate::trigger::TriggerMode::ChangesZoneAll { .. } => "ChangesZoneAll",
@@ -251,7 +298,6 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::DamageAll { .. } => "DamageAll",
         crate::trigger::TriggerMode::DamagePreventedOnce { .. } => "DamagePreventedOnce",
         crate::trigger::TriggerMode::ExcessDamage { .. } => "ExcessDamage",
-        crate::trigger::TriggerMode::LifeGainedAll { .. } => "LifeGainedAll",
         crate::trigger::TriggerMode::CounterRemovedOnce { .. } => "CounterRemovedOnce",
         crate::trigger::TriggerMode::Exerted { .. } => "Exerted",
         crate::trigger::TriggerMode::CollectEvidence { .. } => "CollectEvidence",
@@ -261,6 +307,58 @@ fn trigger_type_name(mode: &crate::trigger::TriggerMode) -> &'static str {
         crate::trigger::TriggerMode::RolledDie { .. } => "RolledDie",
         crate::trigger::TriggerMode::RolledDieOnce { .. } => "RolledDieOnce",
         crate::trigger::TriggerMode::ManaExpend { .. } => "ManaExpend",
+        crate::trigger::TriggerMode::Mutates { .. } => "Mutates",
+        crate::trigger::TriggerMode::SetInMotion { .. } => "SetInMotion",
+        crate::trigger::TriggerMode::CaseSolved { .. } => "CaseSolved",
+        crate::trigger::TriggerMode::ClaimPrize { .. } => "ClaimPrize",
+        crate::trigger::TriggerMode::TakesInitiative { .. } => "TakesInitiative",
+        crate::trigger::TriggerMode::Discarded { .. } => "Discarded",
+        crate::trigger::TriggerMode::Abandoned { .. } => "Abandoned",
+        crate::trigger::TriggerMode::Adapt { .. } => "Adapt",
+        crate::trigger::TriggerMode::BecomeRenowned { .. } => "BecomeRenowned",
+        crate::trigger::TriggerMode::Evolved { .. } => "Evolved",
+        crate::trigger::TriggerMode::PayCumulativeUpkeep { .. } => "PayCumulativeUpkeep",
+        crate::trigger::TriggerMode::Investigated { .. } => "Investigated",
+        crate::trigger::TriggerMode::Proliferate { .. } => "Proliferate",
+        crate::trigger::TriggerMode::CompletedDungeon { .. } => "CompletedDungeon",
+        crate::trigger::TriggerMode::CommitCrime { .. } => "CommitCrime",
+        crate::trigger::TriggerMode::RingTemptsYou { .. } => "RingTemptsYou",
+        crate::trigger::TriggerMode::ManifestDread { .. } => "ManifestDread",
+        crate::trigger::TriggerMode::ConjureAll { .. } => "ConjureAll",
+        crate::trigger::TriggerMode::SeekAll { .. } => "SeekAll",
+        crate::trigger::TriggerMode::PlanarDice { .. } => "PlanarDice",
+        crate::trigger::TriggerMode::NewGame => "NewGame",
+        crate::trigger::TriggerMode::DayTimeChanges => "DayTimeChanges",
+        crate::trigger::TriggerMode::BecomesPlotted { .. } => "BecomesPlotted",
+        crate::trigger::TriggerMode::Specializes { .. } => "Specializes",
+        crate::trigger::TriggerMode::Trains { .. } => "Trains",
+        crate::trigger::TriggerMode::Devoured { .. } => "Devoured",
+        crate::trigger::TriggerMode::BecomesCrewed { .. } => "BecomesCrewed",
+        crate::trigger::TriggerMode::Championed { .. } => "Championed",
+        crate::trigger::TriggerMode::Clashed { .. } => "Clashed",
+        crate::trigger::TriggerMode::Mentored { .. } => "Mentored",
+        crate::trigger::TriggerMode::FullyUnlock { .. } => "FullyUnlock",
+        crate::trigger::TriggerMode::AbilityResolves { .. } => "AbilityResolves",
+        crate::trigger::TriggerMode::AbilityTriggered { .. } => "AbilityTriggered",
+        crate::trigger::TriggerMode::UnlockDoor { .. } => "UnlockDoor",
+        crate::trigger::TriggerMode::CounterAddedAll { .. } => "CounterAddedAll",
+        crate::trigger::TriggerMode::CounterPlayerAddedAll { .. } => "CounterPlayerAddedAll",
+        crate::trigger::TriggerMode::CounterTypeAddedAll { .. } => "CounterTypeAddedAll",
+        crate::trigger::TriggerMode::CrewedSaddled { .. } => "Crewed",
+        crate::trigger::TriggerMode::DamageDoneOnceByController { .. } => {
+            "DamageDoneOnceByController"
+        }
+        crate::trigger::TriggerMode::ExcessDamageAll { .. } => "ExcessDamageAll",
+        crate::trigger::TriggerMode::PhaseOutAll { .. } => "PhaseOutAll",
+        crate::trigger::TriggerMode::Vote => "Vote",
+        crate::trigger::TriggerMode::GiveGift { .. } => "GiveGift",
+        crate::trigger::TriggerMode::VisitAttraction { .. } => "VisitAttraction",
+        crate::trigger::TriggerMode::EnteredRoom { .. } => "EnteredRoom",
+        crate::trigger::TriggerMode::ChaosEnsues { .. } => "ChaosEnsues",
+        crate::trigger::TriggerMode::BecomesSaddled { .. } => "BecomesSaddled",
+        crate::trigger::TriggerMode::PlaneswalkedFrom { .. } => "PlaneswalkedFrom",
+        crate::trigger::TriggerMode::PlaneswalkedTo { .. } => "PlaneswalkedTo",
+        crate::trigger::TriggerMode::CrankContraption { .. } => "CrankContraption",
     }
 }
 

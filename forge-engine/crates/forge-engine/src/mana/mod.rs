@@ -184,7 +184,6 @@ fn check_single_restriction(restriction: &str, ctx: &ManaPaymentContext) -> bool
 // ManaPool moved to mana_pool.rs — single source of truth.
 pub use mana_pool::ManaPool;
 
-
 // ── Mana helpers ────────────────────────────────────────────────────
 
 /// Determine what mana atom a basic land produces based on its subtypes.
@@ -343,10 +342,7 @@ pub(crate) fn compute_reflected_atoms(
     card_id: CardId,
     ab: &crate::ability::activated::ActivatedAbility,
 ) -> Vec<u16> {
-    let reflect_prop = ab
-        .params
-        .get(keys::REFLECT_PROPERTY)
-        .unwrap_or("Is");
+    let reflect_prop = ab.params.get(keys::REFLECT_PROPERTY).unwrap_or("Is");
     let valid = ab.params.get(keys::VALID).unwrap_or("Card");
     let include_colorless = ab.params.get(keys::COLOR_OR_TYPE) == Some("Type");
     let battlefield = game.cards_in_zone(ZoneType::Battlefield, player).to_vec();
@@ -477,7 +473,10 @@ fn land_pain_damage(card: &Card, chosen_atom: u16) -> i32 {
                 // Look up the SVar to find damage amount
                 if let Some(sub_text) = card.svars.get(sub_svar_name) {
                     let sub_params = crate::parsing::Params::from_raw(sub_text);
-                    if sub_params.get(crate::parsing::keys::DB).map_or(false, |v| v == "DealDamage") {
+                    if sub_params
+                        .get(crate::parsing::keys::DB)
+                        .map_or(false, |v| v == "DealDamage")
+                    {
                         if let Some(num_str) = sub_params.get(crate::parsing::keys::NUM_DMG) {
                             return num_str.parse::<i32>().unwrap_or(0);
                         }
@@ -737,7 +736,11 @@ pub fn determine_mana_production(
 }
 
 /// Add produced mana to the pool with full metadata (snow, restriction, keywords, counters, triggers).
-pub fn add_produced_mana_to_pool(pool: &mut ManaPool, mana_string: &str, params: &ManaProductionParams) {
+pub fn add_produced_mana_to_pool(
+    pool: &mut ManaPool,
+    mana_string: &str,
+    params: &ManaProductionParams,
+) {
     pool.produce_mana_from_string(
         mana_string,
         Some(params.source_card),

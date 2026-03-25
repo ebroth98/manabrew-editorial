@@ -1,8 +1,17 @@
 export type GameFormat = 'Standard' | 'Commander';
+export type DeckSection =
+  | 'main'
+  | 'sideboard'
+  | 'commander'
+  | 'attractions'
+  | 'contraptions'
+  | 'schemes'
+  | 'planes';
 
 export interface CardIdentity {
   name: string;
   setCode: string;
+  section?: DeckSection;
 }
 
 export interface RoomInfo {

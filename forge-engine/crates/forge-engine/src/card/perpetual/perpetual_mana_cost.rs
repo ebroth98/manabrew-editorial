@@ -1,8 +1,8 @@
 //! Java-parity perpetual mana-cost applicator.
 
-use crate::card::Card;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::perpetual_record::PerpetualRecord;
+use crate::card::Card;
 use forge_foundation::ManaCost;
 
 #[derive(Debug, Clone)]

@@ -3,8 +3,8 @@ use forge_foundation::ZoneType;
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
 use crate::parsing::keys;
-use crate::staticability::StaticMode;
 use crate::parsing::Params;
+use crate::staticability::StaticMode;
 
 pub fn any_with_flash(
     cards: &[Card],
@@ -21,18 +21,10 @@ pub fn any_with_flash(
             .iter()
             .filter(|sa| sa.mode == StaticMode::CastWithFlash)
         {
-            if !matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                spell_card,
-                source,
-            ) {
+            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), spell_card, source) {
                 continue;
             }
-            if !matches_valid_player(
-                st_ab.params.get(keys::CASTER),
-                caster,
-                source.controller,
-            ) {
+            if !matches_valid_player(st_ab.params.get(keys::CASTER), caster, source.controller) {
                 continue;
             }
             if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
@@ -135,7 +127,10 @@ fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
             "spell" => true,
             "istargeting" => params.has(keys::VALID_TGTS),
             "xcost" => {
-                params.get(keys::COST).map(|c| c.contains('X')).unwrap_or(false)
+                params
+                    .get(keys::COST)
+                    .map(|c| c.contains('X'))
+                    .unwrap_or(false)
                     || ability_line.contains("X")
             }
             _ => false,

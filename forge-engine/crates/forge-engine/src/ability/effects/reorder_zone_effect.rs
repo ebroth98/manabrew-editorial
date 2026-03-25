@@ -10,7 +10,11 @@ use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
-    let zone_str = sa.params.get(crate::parsing::keys::ZONE).unwrap_or("Library").to_string();
+    let zone_str = sa
+        .params
+        .get(crate::parsing::keys::ZONE)
+        .unwrap_or("Library")
+        .to_string();
     let zone = super::parse_zone_type(&zone_str).unwrap_or(ZoneType::Library);
 
     let players = if let Some(def) = sa.defined_player() {

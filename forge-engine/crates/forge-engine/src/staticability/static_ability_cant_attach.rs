@@ -6,30 +6,17 @@ use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
-pub fn cant_attach(
-    cards: &[Card],
-    attachment: &Card,
-    target: &Card,
-    check_sba: bool,
-) -> bool {
+pub fn cant_attach(cards: &[Card], attachment: &Card, target: &Card, check_sba: bool) -> bool {
     for source in cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
         for st_ab in source
             .static_abilities
             .iter()
             .filter(|sa| sa.mode == StaticMode::CantAttach)
         {
-            if !matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                attachment,
-                source,
-            ) {
+            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), attachment, source) {
                 continue;
             }
-            if !matches_valid_card(
-                st_ab.params.get(keys::TARGET),
-                target,
-                source,
-            ) {
+            if !matches_valid_card(st_ab.params.get(keys::TARGET), target, source) {
                 continue;
             }
             if let Some(valid_card_to_target) = st_ab.params.get(keys::VALID_CARD_TO_TARGET) {
@@ -39,11 +26,7 @@ pub fn cant_attach(
             }
             if (check_sba || !st_ab.params.has(keys::EXCEPTION_SBA))
                 && st_ab.params.has(keys::EXCEPTIONS)
-                && matches_valid_card(
-                    st_ab.params.get(keys::EXCEPTIONS),
-                    attachment,
-                    source,
-                )
+                && matches_valid_card(st_ab.params.get(keys::EXCEPTIONS), attachment, source)
             {
                 continue;
             }

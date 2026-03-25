@@ -24,12 +24,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    let valid_cards_filter = sa.params.get(keys::VALID_CARDS).map(|s| s.to_string()).unwrap_or_default();
-    let valid_players = sa
+    let valid_cards_filter = sa
         .params
-        .get(keys::VALID_PLAYERS)
-        .unwrap_or("")
-        .to_string();
+        .get(keys::VALID_CARDS)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    let valid_players = sa.params.get(keys::VALID_PLAYERS).unwrap_or("").to_string();
     let activating_player = sa.activating_player;
     let use_damage_map = ctx.game.pending_damage_map.is_some() || sa.params.has("DamageMap");
     if sa.params.has("DamageMap") {
@@ -180,7 +180,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     }
                 }
             } else {
-                ctx.game.deal_damage_to_player(pid, num_dmg);
+                let dealt = ctx.game.deal_damage_to_player(pid, num_dmg);
+                ctx.game
+                    .record_player_damage_assignment(source, Some(pid), dealt, false);
             }
 
             // Fire DamageDone trigger per player
@@ -254,6 +256,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,
@@ -289,6 +292,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,

@@ -8,7 +8,6 @@ pub mod player_zone;
 pub mod player_zone_battlefield;
 pub mod zone_type;
 
-
 use forge_foundation::ZoneType;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +17,6 @@ use crate::ids::{CardId, PlayerId};
 pub use cost_payment_stack::CostPaymentStack;
 pub use player_zone::PlayerZone;
 pub use player_zone_battlefield::PlayerZoneBattlefield;
-
 
 /// A game zone owned by a specific player.
 /// Each player has their own Hand, Library, Graveyard, etc.
@@ -38,7 +36,6 @@ pub struct Zone {
     pub cards_added_last_turn: Vec<(ZoneType, CardId)>,
 
     // ── Battlefield-specific fields (mirrors Java's PlayerZoneBattlefield) ──
-
     /// Cards that have been melded (combined into a single permanent).
     /// Only meaningful when `zone_type == Battlefield`.
     #[serde(default)]

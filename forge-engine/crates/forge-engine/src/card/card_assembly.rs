@@ -18,9 +18,7 @@ use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::staticability::{parse_static_ability, StaticAbility};
 use crate::trigger::{parse_trigger, Trigger};
 
-use super::card_factory_util::{
-    parse_gainlife_alt_cost_keyword, parse_sacrifice_alt_cost_keyword,
-};
+use super::card_factory_util::{parse_gainlife_alt_cost_keyword, parse_sacrifice_alt_cost_keyword};
 use super::{Card, CardOtherPart};
 
 // ── Phase 1: Parse ──────────────────────────────────────────────────────────
@@ -39,9 +37,7 @@ pub(crate) struct ParsedComponents {
 
 /// Phase 1: Parse triggers, static abilities, and replacement effects from
 /// a card face's raw text lines.
-pub(crate) fn parse_card_components(
-    face: &forge_carddb::CardFace,
-) -> ParsedComponents {
+pub(crate) fn parse_card_components(face: &forge_carddb::CardFace) -> ParsedComponents {
     let mut next_trigger_id = 0u32;
     let mut triggers = Vec::new();
     let mut spell_cast_or_copy_raw = Vec::new();
@@ -77,7 +73,11 @@ pub(crate) fn parse_card_components(
         .iter()
         .filter_map(|raw| {
             let prefixed = format!("R$ {}", raw);
-            parse_or_warn(parse_replacement_effect(&prefixed), "ReplacementEffect", raw)
+            parse_or_warn(
+                parse_replacement_effect(&prefixed),
+                "ReplacementEffect",
+                raw,
+            )
         })
         .collect();
 
@@ -97,10 +97,7 @@ pub(crate) fn parse_card_components(
 ///
 /// - Duplicate `SpellCastOrCopy` triggers as `SpellCopied` (Magecraft)
 /// - Synthesize `Exerted` triggers from `OptionalAttackCost` with Exert cost
-pub(crate) fn synthesize_derived(
-    components: &mut ParsedComponents,
-    existing_trigger_count: usize,
-) {
+pub(crate) fn synthesize_derived(components: &mut ParsedComponents, existing_trigger_count: usize) {
     let mut next_trig_id = (existing_trigger_count + components.triggers.len()) as u32;
 
     // Duplicate SpellCastOrCopy triggers as SpellCopied (for Magecraft)
@@ -158,6 +155,7 @@ pub(crate) fn assemble_card(
         face.keywords.clone(),
         face.abilities.clone(),
     );
+    card.attraction_lights = face.attraction_lights.clone();
 
     // Append parsed triggers to keyword-generated ones.
     for trig in components.triggers {
@@ -201,7 +199,9 @@ pub(crate) fn assemble_card(
                 color: back_face.resolved_color(),
                 base_power: back_face.int_power,
                 base_toughness: back_face.int_toughness,
-                keywords: crate::keyword::keyword_collection::KeywordCollection::from_strings(&back_face.keywords),
+                keywords: crate::keyword::keyword_collection::KeywordCollection::from_strings(
+                    &back_face.keywords,
+                ),
                 abilities: back_face.abilities.clone(),
                 triggers: back_triggers,
                 svars: back_face.svars.clone(),

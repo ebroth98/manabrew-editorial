@@ -16,9 +16,9 @@ use crate::game_rng::{GameRng, ThreadRngAdapter};
 use crate::game_snapshot::GameSnapshot;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::{self, basic_land_mana_atom, ManaPool};
+use crate::parsing::{keys, Params};
 use crate::spellability::target_restrictions;
 use crate::spellability::{build_spell_ability, SpellAbility, StackEntry};
-use crate::parsing::{keys, Params};
 use crate::staticability::layer::apply_continuous_effects;
 use crate::trigger::handler::TriggerHandler;
 
@@ -271,6 +271,9 @@ impl GameLoop {
         max_turns: u32,
     ) -> Option<PlayerId> {
         self.setup(game, agents, rng);
+        self.trigger_handler.reset_active_triggers(game);
+        self.trigger_handler
+            .run_trigger(TriggerType::NewGame, RunParams::default(), true);
 
         while !game.game_over && game.turn.turn_number <= max_turns {
             self.run_turn(game, agents, rng);
@@ -427,10 +430,10 @@ mod cast_spell;
 mod combat_phase;
 mod cost_payment;
 mod game_action;
-mod stack_resolution;
 mod phase_handler;
 mod playability;
 mod priority;
+mod stack_resolution;
 mod state_observer;
 mod trigger_handler;
 
@@ -508,7 +511,12 @@ mod tests {
             valid.first().copied()
         }
 
-        fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<CardId> {
+        fn choose_target_card(
+            &mut self,
+            _player: PlayerId,
+            valid: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> Option<CardId> {
             valid.first().copied()
         }
 
@@ -609,7 +617,12 @@ mod tests {
             valid.first().copied()
         }
 
-        fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&crate::spellability::SpellAbility>) -> Option<CardId> {
+        fn choose_target_card(
+            &mut self,
+            _player: PlayerId,
+            valid: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> Option<CardId> {
             valid.first().copied()
         }
 
@@ -977,13 +990,13 @@ mod tests {
         assert!(
             game.stack
                 .iter()
-                .any(|entry| entry.spell_ability.api == Some(crate::ability::api_type::ApiType::Draw)),
+                .any(|entry| entry.spell_ability.api
+                    == Some(crate::ability::api_type::ApiType::Draw)),
             "ETB draw trigger should be on stack for an evoked creature"
         );
         assert!(
-            game.stack
-                .iter()
-                .any(|entry| entry.spell_ability.api == Some(crate::ability::api_type::ApiType::Sacrifice)),
+            game.stack.iter().any(|entry| entry.spell_ability.api
+                == Some(crate::ability::api_type::ApiType::Sacrifice)),
             "Evoke sacrifice trigger should be on stack"
         );
     }

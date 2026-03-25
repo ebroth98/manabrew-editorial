@@ -50,15 +50,20 @@ pub fn cast_card_from_effect(
     // Java: newSA.getRestrictions().setZone(null)
     // In Rust, the zone check happens at a higher level; we bypass by
     // marking the spell as cast-from-effect.
-    spell_sa.params.put("CastFromPlayEffect".to_string(), "True".to_string());
+    spell_sa
+        .params
+        .put("CastFromPlayEffect".to_string(), "True".to_string());
 
     // Strip mana cost if requested (Discover, Cascade, etc.)
     // Java: copyWithNoManaCost() — removes Mana cost parts, keeps non-mana costs
     if without_mana_cost {
         if let Some(ref mut cost) = spell_sa.pay_costs {
-            cost.parts.retain(|part| !matches!(part, crate::cost::CostPart::Mana(_)));
+            cost.parts
+                .retain(|part| !matches!(part, crate::cost::CostPart::Mana(_)));
         }
-        spell_sa.params.put("WithoutManaCost".to_string(), "True".to_string());
+        spell_sa
+            .params
+            .put("WithoutManaCost".to_string(), "True".to_string());
     }
 
     // Make costs mandatory (Java: setMandatory(true) for 118.8c)
@@ -153,6 +158,7 @@ fn push_spell_to_stack(
         optional_trigger_description: None,
         optional_trigger_source_name: None,
     };
+    let trigger_sa = entry.spell_ability.clone();
 
     ctx.game.stack.push(entry);
     ctx.game.move_card(card_id, ZoneType::Stack, controller);
@@ -167,10 +173,12 @@ fn push_spell_to_stack(
         RunParams {
             spell_card: Some(card_id),
             spell_controller: Some(controller),
+            source_sa: Some(trigger_sa.clone()),
             ..Default::default()
         },
         false,
     );
+    super::emit_targeting_triggers(ctx, card_id, &trigger_sa);
 
     let mut event = GameLogEvent::stack(format!("{}: cast {}", label, card_name))
         .with_player(controller)

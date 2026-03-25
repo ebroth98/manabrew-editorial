@@ -30,6 +30,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Option 1: Put +1/+1 counters on the creature
         // (In Java, the player confirms; here we auto-accept for creatures in play)
         let counter_type = super::parse_counter_type("P1P1");
-        ctx.game.card_mut(card_id).add_counter(&counter_type, amount);
+        ctx.game
+            .card_mut(card_id)
+            .add_counter(&counter_type, amount);
     }
 }

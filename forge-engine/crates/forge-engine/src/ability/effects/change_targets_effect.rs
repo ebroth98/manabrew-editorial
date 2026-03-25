@@ -61,9 +61,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         } else if magnet_def == "ParentTarget" {
             sa.target_chosen.target_card
         } else {
-            sa.source.and_then(|sid| {
-                ctx.game.card(sid).remembered_cards.first().copied()
-            })
+            sa.source
+                .and_then(|sid| ctx.game.card(sid).remembered_cards.first().copied())
         };
 
         if let Some(new_tgt) = new_target {
@@ -91,14 +90,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Agent chooses new target
     ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
-    if let Some(chosen) = ctx.agents[controller.index()]
-        .choose_single_card_for_zone_change(
-            controller,
-            &candidates,
-            "Choose new target",
-            false,
-        )
-    {
+    if let Some(chosen) = ctx.agents[controller.index()].choose_single_card_for_zone_change(
+        controller,
+        &candidates,
+        "Choose new target",
+        false,
+    ) {
         ctx.game
             .card_mut(target_spell_card)
             .set_s_var("RedirectedTarget", format!("{}", chosen.0));

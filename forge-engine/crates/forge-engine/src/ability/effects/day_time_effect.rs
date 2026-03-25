@@ -7,7 +7,11 @@ use super::EffectContext;
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let value = sa.params.get(crate::parsing::keys::VALUE).unwrap_or("").to_string();
+    let value = sa
+        .params
+        .get(crate::parsing::keys::VALUE)
+        .unwrap_or("")
+        .to_string();
 
     match value.as_str() {
         "Day" => ctx.game.is_night = false,

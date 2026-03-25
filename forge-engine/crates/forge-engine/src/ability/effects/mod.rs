@@ -4,216 +4,216 @@
 //! `ability/effects/` package (204 files). Effects are dispatched by
 //! API type string extracted from the ability text.
 
+pub mod abandon_effect;
 pub mod activate_ability_effect;
 pub mod add_phase_effect;
 pub mod add_turn_effect;
-pub mod amass_effect;
-pub mod trait_animate_effect;
-pub mod change_zone_resolve_effect;
-pub mod clean_up_effect;
-pub mod control_exchange_variant_effect;
-pub mod damage_base_effect;
-pub mod detached_card_effect;
-pub mod manifest_base_effect;
-pub mod permanent_effect;
-pub mod play_land_variant_effect;
-pub mod trait_token_effect;
-pub mod ascend_effect;
-pub mod bid_life_effect;
-pub mod block_effect;
-pub mod bond_effect;
-pub mod cast_from_effect;
-pub mod change_combatants_effect;
-pub mod change_targets_effect;
-pub mod choose_card_name_effect;
-pub mod choose_generic_effect;
-pub mod control_spell_effect;
-pub mod damage_prevent_effect;
-pub mod life_exchange_variant_effect;
-pub mod replace_counter_effect;
-pub mod replace_damage_effect;
-pub mod replace_mana_effect;
-pub mod replace_split_damage_effect;
-pub mod replace_token_effect;
-pub mod switch_block_effect;
-pub mod text_box_exchange_effect;
-pub mod change_text_effect;
-pub mod change_x_effect;
-pub mod clash_effect;
-pub mod class_level_up_effect;
-pub mod cloak_effect;
-pub mod control_exchange_effect;
-pub mod control_player_effect;
-pub mod counters_move_effect;
-pub mod counters_multiply_effect;
-pub mod counters_note_effect;
-pub mod counters_remove_all_effect;
-pub mod day_time_effect;
-pub mod discover_effect;
-pub mod flip_onto_battlefield_effect;
-pub mod haunt_effect;
-pub mod heist_effect;
-pub mod immediate_trigger_effect;
-pub mod incubate_effect;
-pub mod investigate_effect;
-pub mod learn_effect;
-pub mod manifest_dread_effect;
-pub mod manifest_effect;
-pub mod meld_effect;
-pub mod abandon_effect;
 pub mod advance_crank_effect;
 pub mod airbend_effect;
 pub mod alter_attribute_effect;
-pub mod assemble_contraption_effect;
-pub mod assign_group_effect;
-pub mod becomes_blocked_effect;
-pub mod blank_line_effect;
-pub mod blight_effect;
-pub mod camouflage_effect;
-pub mod change_speed_effect;
-pub mod chaos_ensues_effect;
-pub mod choose_sector_effect;
-pub mod claim_the_prize_effect;
-pub mod damage_resolve_effect;
-pub mod debuff_effect;
-pub mod draft_effect;
-pub mod earthbend_effect;
-pub mod endure_effect;
-pub mod ownership_gain_effect;
-pub mod intensify_effect;
-pub mod lose_perpetual_effect;
-pub mod make_card_effect;
-pub mod multiple_piles_effect;
-pub mod mutate_effect;
-pub mod open_attraction_effect;
-pub mod permanent_creature_effect;
-pub mod permanent_noncreature_effect;
-pub mod planeswalk_effect;
-pub mod radiation_effect;
-pub mod regeneration_effect;
-pub mod remove_from_game_effect;
-pub mod remove_from_match_effect;
-pub mod restart_game_effect;
-pub mod roll_planar_dice_effect;
-pub mod run_chaos_effect;
-pub mod set_in_motion_effect;
-pub mod subgame_effect;
-pub mod unlock_door_effect;
-pub mod reorder_zone_effect;
-pub mod repeat_effect;
-pub mod replace_effect;
-pub mod ring_tempts_you_effect;
-pub mod seek_effect;
-pub mod store_s_var_effect;
-pub mod unattach_effect;
-pub mod venture_effect;
-pub mod villainous_choice_effect;
-pub mod vote_effect;
-pub mod zone_exchange_effect;
-pub mod internal_radiation_effect;
+pub mod amass_effect;
 pub mod animate_all_effect;
 pub mod animate_effect;
+pub mod ascend_effect;
+pub mod assemble_contraption_effect;
+pub mod assign_group_effect;
 pub mod attach_effect;
 pub mod balance_effect;
 pub mod become_monarch_effect;
+pub mod becomes_blocked_effect;
+pub mod bid_life_effect;
+pub mod blank_line_effect;
+pub mod blight_effect;
+pub mod block_effect;
+pub mod bond_effect;
 pub mod branch_effect;
+pub mod camouflage_effect;
+pub mod cast_from_effect;
+pub mod change_combatants_effect;
+pub mod change_speed_effect;
+pub mod change_targets_effect;
+pub mod change_text_effect;
+pub mod change_x_effect;
 pub mod change_zone_all_effect;
 pub mod change_zone_effect;
+pub mod change_zone_resolve_effect;
+pub mod chaos_ensues_effect;
 pub mod charm_effect;
 pub mod choose_card_effect;
+pub mod choose_card_name_effect;
 pub mod choose_color_effect;
 pub mod choose_direction_effect;
 pub mod choose_even_odd_effect;
+pub mod choose_generic_effect;
 pub mod choose_number_effect;
 pub mod choose_player_effect;
+pub mod choose_sector_effect;
 pub mod choose_source_effect;
 pub mod choose_type_effect;
+pub mod claim_the_prize_effect;
+pub mod clash_effect;
+pub mod class_level_up_effect;
+pub mod clean_up_effect;
 pub mod cleanup_effect;
+pub mod cloak_effect;
 pub mod clone_effect;
 pub mod connive_effect;
+pub mod control_exchange_effect;
+pub mod control_exchange_variant_effect;
 pub mod control_gain_effect;
 pub mod control_gain_variant_effect;
+pub mod control_player_effect;
+pub mod control_spell_effect;
 pub mod copy_permanent_effect;
 pub mod copy_spell_ability_effect;
 pub mod counter_effect;
+pub mod counters_move_effect;
+pub mod counters_multiply_effect;
+pub mod counters_note_effect;
+pub mod counters_proliferate_effect;
 pub mod counters_put_all_effect;
 pub mod counters_put_effect;
 pub mod counters_put_or_remove_effect;
+pub mod counters_remove_all_effect;
 pub mod counters_remove_effect;
 pub mod damage_all_effect;
+pub mod damage_base_effect;
 pub mod damage_deal_effect;
+pub mod damage_each_effect;
+pub mod damage_prevent_effect;
+pub mod damage_resolve_effect;
+pub mod day_time_effect;
+pub mod debuff_effect;
 pub mod delayed_trigger_effect;
 pub mod destroy_all_effect;
 pub mod destroy_effect;
+pub mod detached_card_effect;
 pub mod detain_effect;
 pub mod dig_effect;
 pub mod dig_multiple_effect;
 pub mod dig_until_effect;
 pub mod discard_effect;
+pub mod discover_effect;
+pub mod draft_effect;
 pub mod drain_mana_effect;
 pub mod draw_effect;
-pub mod damage_each_effect;
+pub mod earthbend_effect;
 pub mod effect_effect;
 pub mod encode_effect;
 pub mod end_combat_phase_effect;
 pub mod end_turn_effect;
+pub mod endure_effect;
 pub mod explore_effect;
 pub mod fight_effect;
 pub mod flip_coin_effect;
+pub mod flip_onto_battlefield_effect;
 pub mod fog_effect;
 pub mod game_draw_effect;
 pub mod game_loss_effect;
 pub mod game_win_effect;
 pub mod goad_effect;
+pub mod haunt_effect;
+pub mod heist_effect;
+pub mod immediate_trigger_effect;
+pub mod incubate_effect;
+pub mod intensify_effect;
+pub mod internal_radiation_effect;
+pub mod investigate_effect;
+pub mod learn_effect;
 pub mod life_exchange_effect;
+pub mod life_exchange_variant_effect;
 pub mod life_gain_effect;
 pub mod life_lose_effect;
 pub mod life_set_effect;
 pub mod look_at_effect;
+pub mod lose_perpetual_effect;
+pub mod make_card_effect;
 pub mod mana_effect;
 pub mod mana_reflected_effect;
+pub mod manifest_base_effect;
+pub mod manifest_dread_effect;
+pub mod manifest_effect;
+pub mod meld_effect;
 pub mod mill_effect;
 pub mod move_counter_effect;
+pub mod multiple_piles_effect;
 pub mod must_block_effect;
+pub mod mutate_effect;
 pub mod name_card_effect;
+pub mod open_attraction_effect;
+pub mod ownership_gain_effect;
 pub mod peek_and_reveal_effect;
+pub mod permanent_creature_effect;
+pub mod permanent_effect;
+pub mod permanent_noncreature_effect;
 pub mod phases_effect;
+pub mod planeswalk_effect;
 pub mod play_effect;
+pub mod play_land_variant_effect;
 pub mod plot_effect;
 pub mod poison_effect;
 pub mod power_exchange_effect;
 pub mod prevent_damage_effect;
-pub mod counters_proliferate_effect;
 pub mod protect_all_effect;
 pub mod protect_effect;
 pub mod pump_all_effect;
 pub mod pump_effect;
+pub mod radiation_effect;
 pub mod rearrange_top_of_library_effect;
 pub mod regenerate_effect;
+pub mod regeneration_effect;
 pub mod remove_from_combat_effect;
+pub mod remove_from_game_effect;
+pub mod remove_from_match_effect;
+pub mod reorder_zone_effect;
 pub mod repeat_each_effect;
+pub mod repeat_effect;
+pub mod replace_counter_effect;
+pub mod replace_damage_effect;
+pub mod replace_effect;
+pub mod replace_mana_effect;
+pub mod replace_split_damage_effect;
+pub mod replace_token_effect;
+pub mod restart_game_effect;
 pub mod reveal_effect;
 pub mod reveal_hand_effect;
 pub mod reverse_turn_order_effect;
+pub mod ring_tempts_you_effect;
 pub mod roll_dice_effect;
+pub mod roll_planar_dice_effect;
+pub mod run_chaos_effect;
 pub mod sacrifice_all_effect;
 pub mod sacrifice_effect;
 pub mod scry_effect;
+pub mod seek_effect;
+pub mod set_in_motion_effect;
 pub mod set_state_effect;
 pub mod shuffle_effect;
 pub mod skip_phase_effect;
 pub mod skip_turn_effect;
+pub mod store_s_var_effect;
+pub mod subgame_effect;
 pub mod surveil_effect;
+pub mod switch_block_effect;
 pub mod take_initiative_effect;
 pub mod tap_all_effect;
 pub mod tap_effect;
 pub mod tap_or_untap_all_effect;
 pub mod tap_or_untap_effect;
+pub mod text_box_exchange_effect;
 pub mod time_travel_effect;
 pub mod token_effect;
+pub mod trait_animate_effect;
+pub mod trait_token_effect;
 pub mod two_piles_effect;
+pub mod unattach_effect;
+pub mod unlock_door_effect;
 pub mod untap_all_effect;
 pub mod untap_effect;
+pub mod venture_effect;
+pub mod villainous_choice_effect;
+pub mod vote_effect;
+pub mod zone_exchange_effect;
 
 // Helper modules for utility functions and zone triggers
 pub mod helpers;
@@ -221,18 +221,19 @@ pub mod zone_triggers;
 
 use std::collections::HashMap;
 
-use forge_foundation::ZoneType;
+use forge_foundation::{CoreType, ZoneType};
 
 use crate::ability::api_type::ApiType;
 use crate::agent::PlayerAgent;
 use crate::card::Card;
+use crate::combat::DefenderId;
 use crate::cost::{parse_cost, Cost, CostPart};
-use crate::parsing::compare::compare_expr;
-use crate::parsing::keys;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
+use crate::parsing::compare::compare_expr;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::trigger::handler::TriggerHandler;
 
@@ -495,6 +496,7 @@ effect_dispatch! {
 /// Everything an effect needs to resolve.
 pub struct EffectContext<'a> {
     pub game: &'a mut GameState,
+    pub combat: Option<&'a mut crate::combat::CombatState>,
     pub agents: &'a mut [Box<dyn PlayerAgent>],
     pub trigger_handler: &'a mut TriggerHandler,
     pub token_templates: &'a HashMap<String, Card>,
@@ -507,6 +509,183 @@ pub struct EffectContext<'a> {
     /// Parity tests inject a JavaRandom-backed implementation; normal gameplay
     /// uses the default ThreadRngAdapter.
     pub rng: &'a mut dyn crate::game_rng::GameRng,
+}
+
+fn choose_defender(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    controller: PlayerId,
+    defenders: &[DefenderId],
+) -> Option<DefenderId> {
+    if defenders.is_empty() {
+        return None;
+    }
+    if defenders.len() == 1 {
+        return Some(defenders[0]);
+    }
+
+    let valid_players: Vec<PlayerId> = defenders.iter().filter_map(|d| d.as_player()).collect();
+    let valid_cards: Vec<CardId> = defenders
+        .iter()
+        .filter_map(|d| match d {
+            DefenderId::Permanent(cid) => Some(*cid),
+            DefenderId::Player(_) => None,
+        })
+        .collect();
+    ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
+    Some(
+        match ctx.agents[controller.index()].choose_target_any(
+            controller,
+            &valid_players,
+            &valid_cards,
+            Some(sa),
+        ) {
+            crate::agent::TargetChoice::Player(pid) => DefenderId::Player(pid),
+            crate::agent::TargetChoice::Card(cid) => DefenderId::Permanent(cid),
+            _ => defenders[0],
+        },
+    )
+}
+
+fn resolve_attack_defenders(
+    ctx: &EffectContext,
+    sa: &SpellAbility,
+    card_id: CardId,
+    attacking_param: &str,
+) -> Vec<DefenderId> {
+    let controller = ctx.game.card(card_id).controller;
+    let possible = crate::combat::get_possible_defenders(ctx.game, controller);
+    if attacking_param.eq_ignore_ascii_case("True") {
+        return possible;
+    }
+
+    let mut defenders: Vec<DefenderId> =
+        crate::ability::ability_utils::resolve_defined_players_with_sa(
+            attacking_param,
+            sa,
+            sa.activating_player,
+            ctx.game,
+        )
+        .into_iter()
+        .map(DefenderId::Player)
+        .collect();
+
+    if defenders.is_empty() {
+        defenders.extend(
+            sa.trigger_objects
+                .get("Attacked")
+                .into_iter()
+                .flat_map(|value| value.split(','))
+                .filter_map(|part| part.trim().parse::<u32>().ok())
+                .map(CardId)
+                .map(DefenderId::Permanent),
+        );
+    }
+
+    defenders.retain(|defender| possible.contains(defender));
+    defenders
+}
+
+pub(crate) fn emit_targeting_triggers(
+    ctx: &mut EffectContext,
+    card_id: CardId,
+    trigger_sa: &SpellAbility,
+) {
+    let controller = trigger_sa.activating_player;
+    if let Some(target_id) = trigger_sa.target_chosen.target_card {
+        let first_time = !ctx.game.card(target_id).has_become_target_this_turn();
+        ctx.game.card_mut(target_id).add_target_from_this_turn();
+        let params = RunParams {
+            card: Some(target_id),
+            target_card: Some(target_id),
+            cards: Some(vec![target_id]),
+            cause_player: Some(controller),
+            cause_card: Some(card_id),
+            source_sa: Some(trigger_sa.clone()),
+            first_time: Some(first_time),
+            ..Default::default()
+        };
+        ctx.trigger_handler
+            .run_trigger(TriggerType::BecomesTarget, params.clone(), false);
+        ctx.trigger_handler
+            .run_trigger(TriggerType::BecomesTargetOnce, params, false);
+    } else if let Some(target_player) = trigger_sa.target_chosen.target_player {
+        let params = RunParams {
+            player: Some(target_player),
+            target_player: Some(target_player),
+            cause_player: Some(controller),
+            cause_card: Some(card_id),
+            source_sa: Some(trigger_sa.clone()),
+            ..Default::default()
+        };
+        ctx.trigger_handler
+            .run_trigger(TriggerType::BecomesTarget, params.clone(), false);
+        ctx.trigger_handler
+            .run_trigger(TriggerType::BecomesTargetOnce, params, false);
+    }
+}
+
+pub(crate) fn add_to_combat(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    card_id: CardId,
+    attacking_param: &str,
+) -> bool {
+    if !ctx.game.turn.is_combat() || !ctx.game.card(card_id).is_creature() {
+        return false;
+    }
+
+    let controller = ctx.game.card(card_id).controller;
+
+    let Some(attacking) = sa.params.get(attacking_param) else {
+        return false;
+    };
+    let defenders = resolve_attack_defenders(ctx, sa, card_id, attacking);
+    let Some(defender) = choose_defender(ctx, sa, controller, &defenders) else {
+        return false;
+    };
+
+    let Some(combat) = ctx.combat.as_deref_mut() else {
+        return false;
+    };
+    let Some(attacking_player) = combat.attacking_player else {
+        return false;
+    };
+    if attacking_player != controller {
+        return false;
+    }
+
+    if combat
+        .attackers
+        .iter()
+        .any(|&(attacker, current)| attacker == card_id && current == defender)
+    {
+        return false;
+    }
+
+    combat.remove_from_combat(card_id, ctx.game);
+    combat.add_attacker(card_id, defender);
+
+    let defending_player = defender.controlling_player(ctx.game);
+    let tracked_defender = match defender {
+        DefenderId::Player(pid) => crate::card::card_damage_history::TrackedEntity::Player(pid),
+        DefenderId::Permanent(cid) => crate::card::card_damage_history::TrackedEntity::Card(cid),
+    };
+    let num_other_attackers = combat.attackers.len().saturating_sub(1) as i32;
+    let defender_is_battle = matches!(
+        defender,
+        DefenderId::Permanent(cid) if ctx.game.card(cid).type_line.core_types.contains(&CoreType::Battle)
+    );
+
+    let card = ctx.game.card_mut(card_id);
+    card.set_attacking_player(defending_player);
+    card.mark_attacked_this_turn();
+    card.damage_history.set_creature_attacked_this_combat(
+        Some(tracked_defender),
+        num_other_attackers,
+        defender_is_battle,
+    );
+    true
 }
 
 /// Check if a conditional gate on this SA is satisfied.
@@ -571,10 +750,7 @@ fn check_condition_present(
         };
     }
 
-    let zone_str = sa
-        .params
-        .get(keys::CONDITION_ZONE)
-        .unwrap_or("Battlefield");
+    let zone_str = sa.params.get(keys::CONDITION_ZONE).unwrap_or("Battlefield");
 
     let zone = match zone_str.to_ascii_lowercase().as_str() {
         "graveyard" => ZoneType::Graveyard,
@@ -940,8 +1116,7 @@ fn try_pay_unless_cost(
                     if valid.is_empty() {
                         return false;
                     }
-                    let chosen =
-                        ctx.agents[payer.index()].choose_discard(payer, &valid, 1);
+                    let chosen = ctx.agents[payer.index()].choose_discard(payer, &valid, 1);
                     if let Some(&cid) = chosen.first() {
                         helpers::discard_with_madness_replacement(
                             ctx.game,
@@ -957,8 +1132,7 @@ fn try_pay_unless_cost(
                 type_filter,
             } => {
                 for _ in 0..*amount {
-                    let valid =
-                        crate::cost::get_sacrifice_targets(ctx.game, payer, type_filter);
+                    let valid = crate::cost::get_sacrifice_targets(ctx.game, payer, type_filter);
                     if valid.is_empty() {
                         return false;
                     }

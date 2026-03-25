@@ -8,7 +8,11 @@ use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let counter_type_str = sa.params.get(keys::COUNTER_TYPE).map(|s| s.to_string()).unwrap_or_else(|| "P1P1".to_string());
+    let counter_type_str = sa
+        .params
+        .get(keys::COUNTER_TYPE)
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "P1P1".to_string());
     let counter_type = parse_counter_type(&counter_type_str);
 
     let targets: Vec<crate::ids::CardId> = if sa.uses_targeting() {
@@ -16,16 +20,27 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     } else {
         // Remove from all permanents matching ValidCard$
         let valid = sa.valid_card().unwrap_or("Permanent");
-        ctx.game.cards.iter()
-            .filter(|c| c.zone == ZoneType::Battlefield && super::matches_change_type(c, valid, &[]))
+        ctx.game
+            .cards
+            .iter()
+            .filter(|c| {
+                c.zone == ZoneType::Battlefield && super::matches_change_type(c, valid, &[])
+            })
             .map(|c| c.id)
             .collect()
     };
 
     for card_id in targets {
-        let current = *ctx.game.card(card_id).counters.get(&counter_type).unwrap_or(&0);
+        let current = *ctx
+            .game
+            .card(card_id)
+            .counters
+            .get(&counter_type)
+            .unwrap_or(&0);
         if current > 0 {
-            ctx.game.card_mut(card_id).remove_counter(&counter_type, current);
+            ctx.game
+                .card_mut(card_id)
+                .remove_counter(&counter_type, current);
         }
     }
 }

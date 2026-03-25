@@ -47,7 +47,8 @@ fn cloak_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId
         }
 
         ctx.game.move_card(card_id, ZoneType::Battlefield, player);
-        ctx.trigger_handler.register_active_trigger(ctx.game, card_id);
+        ctx.trigger_handler
+            .register_active_trigger(ctx.game, card_id);
 
         if sa.param_is_true(keys::REMEMBER_CLOAKED) {
             if let Some(sid) = sa.source {
@@ -55,6 +56,11 @@ fn cloak_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId
             }
         }
 
-        emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Battlefield);
+        emit_zone_trigger(
+            ctx.trigger_handler,
+            card_id,
+            old_zone,
+            ZoneType::Battlefield,
+        );
     }
 }

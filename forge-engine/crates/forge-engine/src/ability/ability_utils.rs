@@ -13,6 +13,42 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 
+fn parse_card_objects(sa: &SpellAbility, key: &str) -> Vec<CardId> {
+    sa.trigger_objects
+        .get(key)
+        .into_iter()
+        .flat_map(|value| value.split(','))
+        .filter_map(|part| part.trim().parse::<u32>().ok())
+        .map(CardId)
+        .collect()
+}
+
+fn parse_player_objects(sa: &SpellAbility, key: &str) -> Vec<PlayerId> {
+    sa.trigger_objects
+        .get(key)
+        .into_iter()
+        .flat_map(|value| value.split(','))
+        .filter_map(|part| part.trim().parse::<u32>().ok())
+        .map(PlayerId)
+        .collect()
+}
+
+fn unique_push_spell(spells: &mut Vec<SpellAbility>, spell: SpellAbility) {
+    let spell_source = spell.source;
+    let spell_api = spell.api;
+    let spell_text = spell.ability_text.clone();
+    let spell_target = spell.target_chosen.target_stack_entry;
+    if spells.iter().any(|existing| {
+        existing.source == spell_source
+            && existing.api == spell_api
+            && existing.ability_text == spell_text
+            && existing.target_chosen.target_stack_entry == spell_target
+    }) {
+        return;
+    }
+    spells.push(spell);
+}
+
 // ── Defined$ Card Resolution ─────────────────────────────────────────
 
 /// Resolve `Defined$` strings to a list of card IDs.
@@ -120,9 +156,74 @@ pub fn resolve_defined_player_with_sa(
     controller: PlayerId,
     game: &GameState,
 ) -> Option<PlayerId> {
+    fn parse_player_object(sa: &SpellAbility, key: &str) -> Option<PlayerId> {
+        parse_player_objects(sa, key).into_iter().next()
+    }
+
+    fn triggered_controller(sa: &SpellAbility, game: &GameState, key: &str) -> Option<PlayerId> {
+        parse_player_object(sa, key).or_else(|| {
+            parse_card_objects(sa, key)
+                .into_iter()
+                .next()
+                .map(|cid| game.card(cid).controller)
+        })
+    }
+
+    fn triggered_owner(sa: &SpellAbility, game: &GameState, key: &str) -> Option<PlayerId> {
+        parse_card_objects(sa, key)
+            .into_iter()
+            .next()
+            .map(|cid| game.card(cid).owner)
+    }
+
     let key = defined.strip_prefix("Player.").unwrap_or(defined);
+    if let Some(rest) = key.strip_prefix("Non") {
+        return game.alive_players().into_iter().find(|pid| {
+            !resolve_defined_players_with_sa(rest, sa, controller, game).contains(pid)
+        });
+    }
     match key {
-        "TriggeredPlayer" | "TargetedPlayer" => sa.target_chosen.target_player,
+        "TriggeredPlayer" | "TargetedPlayer" => sa
+            .target_chosen
+            .target_player
+            .or_else(|| parse_player_object(sa, "Player")),
+        "TriggeredTarget" | "TriggeredTargets" => parse_player_object(sa, "TargetPlayer")
+            .or_else(|| parse_player_object(sa, "Target"))
+            .or_else(|| {
+                parse_card_objects(sa, "TargetCard")
+                    .into_iter()
+                    .next()
+                    .map(|cid| game.card(cid).controller)
+            })
+            .or_else(|| {
+                parse_card_objects(sa, "Target")
+                    .into_iter()
+                    .next()
+                    .map(|cid| game.card(cid).controller)
+            }),
+        "TriggeredTargetController" | "TriggeredTargetsController" => {
+            parse_card_objects(sa, "TargetCard")
+                .into_iter()
+                .next()
+                .map(|cid| game.card(cid).controller)
+                .or_else(|| {
+                    parse_card_objects(sa, "Target")
+                        .into_iter()
+                        .next()
+                        .map(|cid| game.card(cid).controller)
+                })
+                .or_else(|| parse_player_object(sa, "TargetPlayer"))
+                .or_else(|| parse_player_object(sa, "Target"))
+        }
+        "TriggeredAttackedTarget" => parse_player_object(sa, "AttackedTarget"),
+        "TriggeredAttackingPlayer" => parse_player_object(sa, "AttackingPlayer"),
+        "TriggeredActivator" => parse_player_object(sa, "Activator"),
+        "TriggeredOpponentVotedDiff" => parse_player_object(sa, "OpponentVotedDiff"),
+        "TriggeredOpponentVotedSame" => parse_player_object(sa, "OpponentVotedSame"),
+        "TriggeredCardController" => triggered_controller(sa, game, "Card"),
+        "TriggeredCardOwner" => triggered_owner(sa, game, "Card"),
+        "TriggeredSourceController" => triggered_controller(sa, game, "Source"),
+        "TriggeredPlayerController" => triggered_controller(sa, game, "Player"),
         "DefendingPlayer" | "TriggeredDefendingPlayer" => sa
             .target_chosen
             .target_player
@@ -140,6 +241,151 @@ pub fn resolve_defined_player_with_sa(
     }
 }
 
+/// Resolve a Defined$ parameter to a list of player IDs with spell/trigger context.
+pub fn resolve_defined_players_with_sa(
+    defined: &str,
+    sa: &SpellAbility,
+    controller: PlayerId,
+    game: &GameState,
+) -> Vec<PlayerId> {
+    fn unique_push(players: &mut Vec<PlayerId>, player: PlayerId) {
+        if !players.contains(&player) {
+            players.push(player);
+        }
+    }
+
+    let key = defined.strip_prefix("Player.").unwrap_or(defined);
+    if key.contains(" & ") {
+        let mut players = Vec::new();
+        for part in key
+            .split(" & ")
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+        {
+            for pid in resolve_defined_players_with_sa(part, sa, controller, game) {
+                unique_push(&mut players, pid);
+            }
+        }
+        return players;
+    }
+    if let Some(rest) = key.strip_prefix("Non") {
+        let excluded = resolve_defined_players_with_sa(rest, sa, controller, game);
+        return game
+            .alive_players()
+            .into_iter()
+            .filter(|pid| !excluded.contains(pid))
+            .collect();
+    }
+    match key {
+        "TriggeredPlayer" | "TargetedPlayer" => sa
+            .target_chosen
+            .target_player
+            .into_iter()
+            .chain(parse_player_objects(sa, "Player"))
+            .collect(),
+        "TriggeredTarget" | "TriggeredTargets" => {
+            let mut players = parse_player_objects(sa, "TargetPlayer");
+            players.extend(parse_player_objects(sa, "Target"));
+            for cid in parse_card_objects(sa, "TargetCard") {
+                unique_push(&mut players, game.card(cid).controller);
+            }
+            for cid in parse_card_objects(sa, "Target") {
+                unique_push(&mut players, game.card(cid).controller);
+            }
+            players
+        }
+        "TriggeredTargetController" | "TriggeredTargetsController" => {
+            let mut players = parse_player_objects(sa, "TargetPlayer");
+            players.extend(parse_player_objects(sa, "Target"));
+            for cid in parse_card_objects(sa, "TargetCard") {
+                unique_push(&mut players, game.card(cid).controller);
+            }
+            for cid in parse_card_objects(sa, "Target") {
+                unique_push(&mut players, game.card(cid).controller);
+            }
+            players
+        }
+        "TriggeredAttackedTarget" => parse_player_objects(sa, "AttackedTarget"),
+        "TriggeredAttackedTargetAndYou" => {
+            let mut players = parse_player_objects(sa, "AttackedTarget");
+            unique_push(&mut players, controller);
+            players
+        }
+        "TriggeredAttackingPlayer" => parse_player_objects(sa, "AttackingPlayer"),
+        "TriggeredActivator" => parse_player_objects(sa, "Activator"),
+        "TriggeredOpponentVotedDiff" => parse_player_objects(sa, "OpponentVotedDiff"),
+        "TriggeredOpponentVotedSame" => parse_player_objects(sa, "OpponentVotedSame"),
+        "TriggeredCardController" => parse_card_objects(sa, "Card")
+            .into_iter()
+            .map(|cid| game.card(cid).controller)
+            .collect(),
+        "TriggeredCardOwner" => parse_card_objects(sa, "Card")
+            .into_iter()
+            .map(|cid| game.card(cid).owner)
+            .collect(),
+        "TriggeredSourceController" => parse_card_objects(sa, "Source")
+            .into_iter()
+            .map(|cid| game.card(cid).controller)
+            .collect(),
+        "TriggeredPlayerController" => {
+            let mut players = parse_player_objects(sa, "Player");
+            for cid in parse_card_objects(sa, "Player") {
+                unique_push(&mut players, game.card(cid).controller);
+            }
+            players
+        }
+        "DefendingPlayer" | "TriggeredDefendingPlayer" => {
+            let mut players: Vec<_> = sa.target_chosen.target_player.into_iter().collect();
+            let defending = game.opponent_of(controller);
+            unique_push(&mut players, defending);
+            players
+        }
+        _ => resolve_defined_players(key, controller, game),
+    }
+}
+
+/// Resolve a Defined$ parameter to spell abilities with spell/trigger context.
+/// Mirrors the Java `AbilityUtils.getDefinedSpellAbilities()` cases needed by
+/// trigger and copy/counter effects.
+pub fn resolve_defined_spell_abilities_with_sa(
+    defined: &str,
+    sa: &SpellAbility,
+    game: &GameState,
+) -> Vec<SpellAbility> {
+    let key = defined.trim();
+    let mut spells = Vec::new();
+
+    match key {
+        "TriggeredSpellAbility" => {
+            for trigger_key in ["SpellAbility", "SourceSA", "Cause", "AbilityMana"] {
+                if let Some(spell) = sa.get_triggering_spell_ability(trigger_key) {
+                    unique_push_spell(&mut spells, spell.clone());
+                }
+            }
+        }
+        "SpellTargeted" => {
+            if let Some(stack_id) = sa.target_chosen.target_stack_entry {
+                if let Some(entry) = game.stack.find_by_id(stack_id) {
+                    unique_push_spell(&mut spells, entry.spell_ability.clone());
+                }
+            }
+        }
+        "SourceSA" | "SpellAbility" | "AbilityMana" | "Cause" | "StackSa" => {
+            if let Some(spell) = sa.get_triggering_spell_ability(key) {
+                unique_push_spell(&mut spells, spell.clone());
+            }
+        }
+        "TopStack" => {
+            if let Some(spell) = game.stack.peek_ability() {
+                unique_push_spell(&mut spells, spell.clone());
+            }
+        }
+        _ => {}
+    }
+
+    spells
+}
+
 /// Resolve a Defined$ parameter to a list of player IDs.
 /// Supports "You", "Opponent", "Each"/"All"/"Player" (all alive players).
 /// Mirrors Java's AbilityUtils.getDefinedPlayers() for multi-player resolution.
@@ -148,6 +394,29 @@ pub fn resolve_defined_players(
     controller: PlayerId,
     game: &GameState,
 ) -> Vec<PlayerId> {
+    if defined.contains(" & ") {
+        let mut players = Vec::new();
+        for part in defined
+            .split(" & ")
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+        {
+            for pid in resolve_defined_players(part, controller, game) {
+                if !players.contains(&pid) {
+                    players.push(pid);
+                }
+            }
+        }
+        return players;
+    }
+    if let Some(rest) = defined.strip_prefix("Non") {
+        let excluded = resolve_defined_players(rest, controller, game);
+        return game
+            .alive_players()
+            .into_iter()
+            .filter(|pid| !excluded.contains(pid))
+            .collect();
+    }
     match defined {
         "You" => vec![controller],
         "Opponent" | "OpponentCtrl" => vec![game.opponent_of(controller)],
@@ -216,11 +485,7 @@ pub fn matches_valid_cards(card: &Card, filter: &str, activating_player: PlayerI
     matches_valid_cards_single(card, filter, activating_player)
 }
 
-fn matches_valid_cards_single(
-    card: &Card,
-    filter: &str,
-    activating_player: PlayerId,
-) -> bool {
+fn matches_valid_cards_single(card: &Card, filter: &str, activating_player: PlayerId) -> bool {
     let parts: Vec<&str> = filter.split('.').collect();
     let type_part = parts[0];
 
@@ -429,6 +694,8 @@ pub fn discard_with_madness_replacement(
 ) {
     let owner = game.card(card_id).owner;
     let has_madness = game.card(card_id).get_madness_cost().is_some();
+    game.player_mut(discard_player).discarded_this_turn += 1;
+    game.card_mut(card_id).set_discarded(true);
 
     if has_madness {
         game.move_card(card_id, ZoneType::Exile, owner);
@@ -457,6 +724,16 @@ pub fn discard_with_madness_replacement(
         crate::event::TriggerType::Discarded,
         crate::event::RunParams {
             card: Some(card_id),
+            player: Some(discard_player),
+            ..Default::default()
+        },
+        false,
+    );
+    trigger_handler.run_trigger(
+        crate::event::TriggerType::DiscardedAll,
+        crate::event::RunParams {
+            card: Some(card_id),
+            cards: Some(vec![card_id]),
             player: Some(discard_player),
             ..Default::default()
         },

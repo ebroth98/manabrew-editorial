@@ -23,8 +23,7 @@ fn shares_all_core_types(a: &Card, b: &Card) -> bool {
         .core_types
         .iter()
         .all(|ty| b.type_line.core_types.contains(ty))
-        && b
-            .type_line
+        && b.type_line
             .core_types
             .iter()
             .all(|ty| a.type_line.core_types.contains(ty))
@@ -217,7 +216,9 @@ pub fn has_s_var(card: &Card, name: &str) -> bool {
 }
 
 pub fn compare_by_game_timestamp(game: &GameState, a: CardId, b: CardId) -> Ordering {
-    game.card(a).zone_timestamp.cmp(&game.card(b).zone_timestamp)
+    game.card(a)
+        .zone_timestamp
+        .cmp(&game.card(b).zone_timestamp)
 }
 
 pub fn in_zone(game: &GameState, card: CardId, zones: &[ZoneType]) -> bool {

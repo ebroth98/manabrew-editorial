@@ -17,9 +17,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
 
     // Run Learn replacement effects before learning.
-    let mut event = ReplacementEvent::Learn {
-        player: controller,
-    };
+    let mut event = ReplacementEvent::Learn { player: controller };
     let result = apply_replacements(ctx.game, &mut event);
     if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
         return;
@@ -86,6 +84,7 @@ fn learn_lesson(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
     } else if card_zone == ZoneType::Hand {
         // Discard from hand, then draw 1
         let old_zone = ctx.game.card(card_id).zone;
+        ctx.game.player_mut(player).discarded_this_turn += 1;
         ctx.game.card_mut(card_id).set_discarded(true);
         ctx.game
             .move_card(card_id, ZoneType::Graveyard, ctx.game.card(card_id).owner);

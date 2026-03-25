@@ -103,7 +103,10 @@ impl AttackRestriction {
         if self.types.contains(&AttackRestrictionType::NeedTwoOthers) && n <= 2 {
             violations.insert(AttackRestrictionType::NeedTwoOthers);
         }
-        if self.types.contains(&AttackRestrictionType::NeedGreaterPower) {
+        if self
+            .types
+            .contains(&AttackRestrictionType::NeedGreaterPower)
+        {
             let my_power = cards[self.attacker.index()].power();
             let has_greater = attackers
                 .iter()
@@ -112,7 +115,10 @@ impl AttackRestriction {
                 violations.insert(AttackRestrictionType::NeedGreaterPower);
             }
         }
-        if self.types.contains(&AttackRestrictionType::NeedBlackOrGreen) {
+        if self
+            .types
+            .contains(&AttackRestrictionType::NeedBlackOrGreen)
+        {
             let has_bg = attackers.iter().any(|&(cid, _)| {
                 cid != self.attacker && {
                     let c = &cards[cid.index()];
@@ -205,10 +211,7 @@ impl AttackConstraints {
     /// handles the most common cases (single-creature requirements, global
     /// limits). The full recursive constraint solver from Java is replaced
     /// with a greedy approach that works correctly for 2-player games.
-    pub fn get_legal_attackers(
-        &self,
-        cards: &[Card],
-    ) -> (Vec<(CardId, DefenderId)>, i32) {
+    pub fn get_legal_attackers(&self, cards: &[Card]) -> (Vec<(CardId, DefenderId)>, i32) {
         let max = self
             .global_restrictions
             .get_max()
@@ -265,9 +268,9 @@ impl AttackConstraints {
 
         // Remove only-alone attackers from normal pool
         reqs.retain(|a| {
-            self.restrictions
-                .get(&a.attacker)
-                .map_or(true, |r| !r.types.contains(&AttackRestrictionType::OnlyAlone))
+            self.restrictions.get(&a.attacker).map_or(true, |r| {
+                !r.types.contains(&AttackRestrictionType::OnlyAlone)
+            })
         });
 
         // Greedy: add creatures with requirements in priority order
@@ -287,7 +290,11 @@ impl AttackConstraints {
             }
 
             // Check per-defender limit
-            if let Some(&def_max) = self.global_restrictions.get_defender_max().get(&req.defender) {
+            if let Some(&def_max) = self
+                .global_restrictions
+                .get_defender_max()
+                .get(&req.defender)
+            {
                 let count = attack_map
                     .iter()
                     .filter(|(_, d)| *d == req.defender)
@@ -332,11 +339,7 @@ impl AttackConstraints {
     /// Returns -1 if a restriction is violated (illegal attack).
     ///
     /// Mirrors Java's `countViolations()`.
-    pub fn count_violations(
-        &self,
-        attackers: &[(CardId, DefenderId)],
-        cards: &[Card],
-    ) -> i32 {
+    pub fn count_violations(&self, attackers: &[(CardId, DefenderId)], cards: &[Card]) -> i32 {
         if !self.global_restrictions.is_legal(attackers) {
             return -1;
         }

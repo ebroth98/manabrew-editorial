@@ -1,12 +1,16 @@
-use forge_foundation::ZoneType;
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::staticability::StaticMode;
+use forge_foundation::ZoneType;
 
 pub fn untap(cards: &[Card], card: &Card, player: PlayerId) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source.static_abilities.iter().filter(|sa| sa.mode == StaticMode::UntapOtherPlayer && sa.zones_check(source.zone)) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::UntapOtherPlayer && sa.zones_check(source.zone))
+        {
             if apply_untap_ability(st_ab, card, source, player) {
                 return true;
             }

@@ -22,7 +22,11 @@ pub fn apply_limit_increase(
 /// Mirrors Java's `StaticAbilityNumLoyaltyAct.limitIncrease()`.
 pub fn limit_increase(cards: &[Card], card: &Card) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source.static_abilities.iter().filter(|sa| sa.mode == StaticMode::NumLoyaltyAct && sa.zones_check(source.zone)) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::NumLoyaltyAct && sa.zones_check(source.zone))
+        {
             if apply_limit_increase(st_ab, card, source) {
                 return true;
             }
@@ -35,15 +39,19 @@ pub fn limit_increase(cards: &[Card], card: &Card) -> bool {
 ///
 /// Mirrors Java's `StaticAbilityNumLoyaltyAct.additionalActivations()`.
 /// The `sa` parameter is the SpellAbility being activated (used for OnlySourceAbs check).
-pub fn additional_activations(
-    cards: &[Card],
-    card: &Card,
-    sa: Option<&SpellAbility>,
-) -> i32 {
+pub fn additional_activations(cards: &[Card], card: &Card, sa: Option<&SpellAbility>) -> i32 {
     let mut addl = 0;
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source.static_abilities.iter().filter(|s| s.mode == StaticMode::NumLoyaltyAct && s.zones_check(source.zone)) {
-            if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|s| s.mode == StaticMode::NumLoyaltyAct && s.zones_check(source.zone))
+        {
+            if !valid_filter::matches_valid_card_opt(
+                st_ab.params.get(keys::VALID_CARD),
+                card,
+                source,
+            ) {
                 continue;
             }
             if let Some(additional) = st_ab.params.get(keys::ADDITIONAL) {

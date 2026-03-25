@@ -1,4 +1,3 @@
-mod cost_parser;
 pub mod cost_add_mana;
 pub mod cost_adjustment;
 pub mod cost_behold;
@@ -20,6 +19,7 @@ pub mod cost_forage;
 pub mod cost_gain_control;
 pub mod cost_gain_life;
 pub mod cost_mill;
+mod cost_parser;
 pub mod cost_pay_energy;
 pub mod cost_pay_life;
 pub mod cost_pay_shards;

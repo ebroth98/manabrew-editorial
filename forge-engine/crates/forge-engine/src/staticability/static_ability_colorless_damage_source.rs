@@ -11,11 +11,7 @@ pub fn colorless_damage_source(cards: &[Card], source_card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::ColorlessDamageSource)
         {
-            if matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                source_card,
-                source,
-            ) {
+            if matches_valid_card(st_ab.params.get(keys::VALID_CARD), source_card, source) {
                 return true;
             }
         }
@@ -31,11 +27,7 @@ pub fn apply_colorless_damage_source(
     matches_valid_card(st_ab.params.get(keys::VALID_CARD), source_card, source)
 }
 
-pub fn source_has_color(
-    cards: &[Card],
-    source_card: &Card,
-    color_name: &str,
-) -> bool {
+pub fn source_has_color(cards: &[Card], source_card: &Card, color_name: &str) -> bool {
     if colorless_damage_source(cards, source_card) {
         return color_name.eq_ignore_ascii_case("colorless");
     }
@@ -50,11 +42,7 @@ pub fn source_has_color(
     }
 }
 
-pub fn target_is_protected_from_source(
-    cards: &[Card],
-    target: &Card,
-    source: &Card,
-) -> bool {
+pub fn target_is_protected_from_source(cards: &[Card], target: &Card, source: &Card) -> bool {
     for prot in target.get_protections() {
         match prot.as_str() {
             "white" | "blue" | "black" | "red" | "green" | "colorless" => {

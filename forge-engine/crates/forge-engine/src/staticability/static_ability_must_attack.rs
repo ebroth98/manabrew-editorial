@@ -11,11 +11,7 @@ pub fn must_attack(cards: &[Card], attacker: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::MustAttack)
         {
-            if matches_valid_creature(
-                st_ab.params.get(keys::VALID_CREATURE),
-                attacker,
-                source,
-            ) {
+            if matches_valid_creature(st_ab.params.get(keys::VALID_CREATURE), attacker, source) {
                 return true;
             }
         }

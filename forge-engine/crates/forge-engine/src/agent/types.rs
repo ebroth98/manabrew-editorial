@@ -116,3 +116,9 @@ impl BinaryChoiceKind {
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RollSwapChoice {
+    Power,
+    Toughness,
+}

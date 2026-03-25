@@ -190,6 +190,16 @@ pub struct JobResult {
     pub java_trace: Option<String>,
 }
 
+/// The matchup currently being executed for a batch.
+#[derive(serde::Serialize, Clone)]
+pub struct ActiveJob {
+    pub regression_name: String,
+    pub deck1: String,
+    pub deck2: String,
+    pub seed: u64,
+    pub max_turns: u32,
+}
+
 /// Tracks progress of a submitted batch.
 #[derive(serde::Serialize, Clone)]
 pub struct BatchStatus {
@@ -200,6 +210,8 @@ pub struct BatchStatus {
     pub failed: usize,
     pub errors: usize,
     pub done: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_job: Option<ActiveJob>,
     pub results: Vec<JobResult>,
 }
 
@@ -263,6 +275,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
 
     let mut matrix = false;
     let mut seeds: Vec<u64> = Vec::new();
+    let mut explicit_seeds = false;
     let mut decks: Vec<String> = Vec::new();
     let mut deck1: Option<String> = None;
     let mut deck2: Option<String> = None;
@@ -277,6 +290,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
             "--seeds" => {
                 if i + 1 < tokens.len() {
                     i += 1;
+                    explicit_seeds = true;
                     seeds = tokens[i]
                         .split(',')
                         .filter_map(|s| s.parse().ok())
@@ -306,9 +320,6 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
                     i += 1;
                     if let Ok(s) = tokens[i].parse() {
                         seed_start = s;
-                        if seeds.is_empty() {
-                            seeds.push(s);
-                        }
                     }
                 }
             }
@@ -351,7 +362,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
         }
     } else if let (Some(d1), Some(d2)) = (deck1.clone(), deck2.clone()) {
         // Specific deck pair mode
-        if seeds.is_empty() {
+        if !explicit_seeds {
             // Use --games to generate seed range from seed_start
             for g in 0..games {
                 matchups.push((d1.clone(), d2.clone(), seed_start + g as u64, max_turns));
@@ -372,6 +383,40 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
     }
 
     matchups
+}
+
+#[cfg(test)]
+mod tests {
+    use super::expand_regression_entry;
+
+    #[test]
+    fn expand_regression_entry_uses_seed_as_range_start_for_games() {
+        let matchups = expand_regression_entry(
+            "--deck1 keyword_advanced2 --deck2 keyword_advanced2 --max-turns 40 --games 10 --seed 42",
+            10,
+        );
+
+        assert_eq!(matchups.len(), 10);
+        assert_eq!(matchups.first(), Some(&("keyword_advanced2".into(), "keyword_advanced2".into(), 42, 40)));
+        assert_eq!(matchups.last(), Some(&("keyword_advanced2".into(), "keyword_advanced2".into(), 51, 40)));
+    }
+
+    #[test]
+    fn expand_regression_entry_preserves_explicit_seed_list() {
+        let matchups = expand_regression_entry(
+            "--deck1 red_burn --deck2 green_stompy --seeds 42,100,999 --games 10 --max-turns 30",
+            10,
+        );
+
+        assert_eq!(
+            matchups,
+            vec![
+                ("red_burn".into(), "green_stompy".into(), 42, 30),
+                ("red_burn".into(), "green_stompy".into(), 100, 30),
+                ("red_burn".into(), "green_stompy".into(), 999, 30),
+            ]
+        );
+    }
 }
 
 /// Build the Axum router with all API routes and the dashboard.
@@ -717,6 +762,7 @@ async fn submit_jobs_handler(
         failed: 0,
         errors: 0,
         done: total_jobs == 0,
+        active_job: None,
         results: Vec::new(),
     };
 
@@ -787,6 +833,7 @@ async fn run_matchup_handler(
         failed: 0,
         errors: 0,
         done: false,
+        active_job: None,
         results: Vec::new(),
     };
     jq.batches.lock().unwrap().insert(batch_id, batch);

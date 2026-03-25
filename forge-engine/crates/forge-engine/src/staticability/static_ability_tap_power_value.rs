@@ -7,13 +7,13 @@ use crate::staticability::StaticMode;
 ///
 /// Mirrors Java's `StaticAbilityTapPowerValue.withToughness(Card, CardTraitBase)`.
 /// The `sa` parameter mirrors Java's `CardTraitBase ctb` for ValidSA matching.
-pub fn with_toughness(
-    cards: &[Card],
-    card: &Card,
-    _sa: Option<&SpellAbility>,
-) -> bool {
+pub fn with_toughness(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source.static_abilities.iter().filter(|s| s.mode == StaticMode::TapPowerValue && s.zones_check(source.zone)) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|s| s.mode == StaticMode::TapPowerValue && s.zones_check(source.zone))
+        {
             // Value$ must equal "Toughness" (case-insensitive to match Java .equals behavior)
             match st_ab.params.get(keys::VALUE) {
                 Some(val) if val.eq_ignore_ascii_case("Toughness") => {}
@@ -43,14 +43,14 @@ pub fn with_toughness(
 ///
 /// Mirrors Java's `StaticAbilityTapPowerValue.getMod()`.
 /// The `sa` parameter mirrors Java's `CardTraitBase ctb` for ValidSA matching.
-pub fn get_mod(
-    cards: &[Card],
-    card: &Card,
-    _sa: Option<&SpellAbility>,
-) -> i32 {
+pub fn get_mod(cards: &[Card], card: &Card, _sa: Option<&SpellAbility>) -> i32 {
     let mut total = 0;
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source.static_abilities.iter().filter(|s| s.mode == StaticMode::TapPowerValue && s.zones_check(source.zone)) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|s| s.mode == StaticMode::TapPowerValue && s.zones_check(source.zone))
+        {
             // ValidCard$
             if !valid_filter::matches_valid_card_opt(
                 st_ab.params.get(keys::VALID_CARD),

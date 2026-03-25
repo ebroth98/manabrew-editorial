@@ -24,7 +24,6 @@ use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
 
 use crate::ability::api_type::ApiType;
-use crate::ability::effects::resolve_defined_players;
 use crate::agent::{PlayerAgent, TargetChoice};
 use crate::card::card_damage_map::CardDamageMap;
 use crate::card::card_zone_table::CardZoneTable;
@@ -87,6 +86,8 @@ pub struct SpellAbility {
     pub is_activated: bool,
     /// Card that owns the trigger (for intervening-if recheck).
     pub trigger_source: Option<CardId>,
+    /// Source trigger id (Java `sourceTrigger`), used for state-trigger dedupe.
+    pub source_trigger_id: Option<u32>,
     /// Index into card.triggers for intervening-if recheck.
     pub trigger_index: Option<usize>,
     /// Alternative cost used to cast this spell (Flashback, Spectacle, Evoke, Dash, etc.).
@@ -162,6 +163,9 @@ pub struct SpellAbility {
     /// Trigger objects map for tracking trigger context.
     #[serde(default)]
     pub trigger_objects: HashMap<String, String>,
+    /// Java parity: non-scalar trigger objects that carry spell/ability context.
+    #[serde(default)]
+    pub trigger_spell_abilities: HashMap<String, SpellAbility>,
     /// Activation restriction for this ability.
     #[serde(default)]
     pub restriction: SpellAbilityRestriction,
@@ -297,6 +301,7 @@ impl SpellAbility {
             is_trigger: false,
             is_activated: false,
             trigger_source: None,
+            source_trigger_id: None,
             trigger_index: None,
             alt_cost: None,
             kicked: false,
@@ -322,6 +327,7 @@ impl SpellAbility {
             is_mana_ability: false,
             is_land_ability: false,
             trigger_objects: HashMap::new(),
+            trigger_spell_abilities: HashMap::new(),
             restriction: SpellAbilityRestriction::default(),
             condition: SpellAbilityCondition::default(),
             rollback_effects: Vec::new(),
@@ -449,18 +455,13 @@ impl SpellAbility {
     /// Mirrors Java's `SpellAbility.costHasX()`.
     pub fn cost_has_x(&self) -> bool {
         self.ability_text.contains("X")
-            || self
-                .params
-                .get("Cost")
-                .map_or(false, |c| c.contains('X'))
+            || self.params.get("Cost").map_or(false, |c| c.contains('X'))
     }
 
     /// Whether the mana cost contains X (mana-specific check).
     /// Mirrors Java's `SpellAbility.costHasManaX()`.
     pub fn cost_has_mana_x(&self) -> bool {
-        self.params
-            .get("Cost")
-            .map_or(false, |c| c.contains('X'))
+        self.params.get("Cost").map_or(false, |c| c.contains('X'))
     }
 
     /// Whether conditions are met for this ability.
@@ -544,14 +545,8 @@ impl SpellAbility {
     /// Generate a unique key for this ability.
     /// Mirrors Java's `SpellAbility.yieldKey()`.
     pub fn yield_key(&self) -> String {
-        let api_str = self
-            .api
-            .map(|a| format!("{:?}", a))
-            .unwrap_or_default();
-        let source_str = self
-            .source
-            .map(|s| format!("{}", s.0))
-            .unwrap_or_default();
+        let api_str = self.api.map(|a| format!("{:?}", a)).unwrap_or_default();
+        let source_str = self.source.map(|s| format!("{}", s.0)).unwrap_or_default();
         format!("{}_{}", api_str, source_str)
     }
 
@@ -642,6 +637,21 @@ impl SpellAbility {
     pub fn can_target(&self, card: CardId, game: &GameState) -> bool {
         if let Some(ref tr) = self.target_restrictions {
             tr.has_candidates(game, self.activating_player, self.source)
+                && self
+                    .params
+                    .get("TargetsWithDefinedController")
+                    .map(|defined| {
+                        crate::ability::ability_utils::resolve_defined_players_with_sa(
+                            defined,
+                            self,
+                            self.activating_player,
+                            game,
+                        )
+                    })
+                    .map(|players| {
+                        players.is_empty() || players.contains(&game.card(card).controller)
+                    })
+                    .unwrap_or(true)
                 && target_restrictions::can_be_targeted_by_sa(
                     game,
                     card,
@@ -777,9 +787,14 @@ impl SpellAbility {
         match self.params.get("Defined") {
             Some(defined) => matches!(
                 defined,
-                "Self" | "You" | "Targeted" | "TargetedPlayer"
-                    | "Remembered" | "ParentTarget"
-                    | "SourceController" | "Imprinted"
+                "Self"
+                    | "You"
+                    | "Targeted"
+                    | "TargetedPlayer"
+                    | "Remembered"
+                    | "ParentTarget"
+                    | "SourceController"
+                    | "Imprinted"
             ),
             None => true,
         }
@@ -971,13 +986,25 @@ impl SpellAbility {
     /// Add a triggering object to the map.
     /// Mirrors Java's `SpellAbility.addTriggeringObject(String, Object)`.
     pub fn add_triggering_object(&mut self, key: &str, value: &str) {
-        self.trigger_objects.insert(key.to_string(), value.to_string());
+        self.trigger_objects
+            .insert(key.to_string(), value.to_string());
+    }
+
+    /// Add a triggering spell ability to the map.
+    pub fn add_triggering_spell_ability(&mut self, key: &str, value: SpellAbility) {
+        self.trigger_spell_abilities.insert(key.to_string(), value);
+    }
+
+    /// Get a triggering spell ability from the map.
+    pub fn get_triggering_spell_ability(&self, key: &str) -> Option<&SpellAbility> {
+        self.trigger_spell_abilities.get(key)
     }
 
     /// Update an existing triggering object.
     /// Mirrors Java's `SpellAbility.updateTriggeringObject(String, Object)`.
     pub fn update_triggering_object(&mut self, key: &str, value: &str) {
-        self.trigger_objects.insert(key.to_string(), value.to_string());
+        self.trigger_objects
+            .insert(key.to_string(), value.to_string());
     }
 
     // ── Target management ─────────────────────────────────────────────────
@@ -1047,7 +1074,8 @@ impl SpellAbility {
     /// Set variable to check 2.
     /// Mirrors Java's `SpellAbility.setSVar("VarToCheck2", val)`.
     pub fn sets_var_to_check2(&mut self, value: &str) {
-        self.params.put("VarToCheck2".to_string(), value.to_string());
+        self.params
+            .put("VarToCheck2".to_string(), value.to_string());
     }
 
     /// Get variable operator 1.
@@ -1088,8 +1116,8 @@ impl SpellAbility {
 // build_spell_ability now lives in ability::ability_factory.
 // Re-export here for backward compatibility.
 pub use crate::ability::ability_factory::build_spell_ability;
-pub use crate::ability::ability_factory::build_spell_ability_from_host_card;
 pub use crate::ability::ability_factory::build_spell_ability_for_card_cast;
+pub use crate::ability::ability_factory::build_spell_ability_from_host_card;
 
 /// Check whether any spell on the stack has split second.
 /// Split second prevents players from casting spells or activating abilities
@@ -1155,7 +1183,8 @@ fn choose_targets_for(
                 .into_iter()
                 .filter(|&pid| !is_opponent_only || pid != player)
                 .collect();
-            sa.target_chosen.target_player = agent.choose_target_player(player, &valid_players, Some(sa));
+            sa.target_chosen.target_player =
+                agent.choose_target_player(player, &valid_players, Some(sa));
         }
         TargetKind::Any => {
             let valid_players: Vec<PlayerId> =
@@ -1188,6 +1217,7 @@ fn choose_targets_for(
             let valid: Vec<CardId> =
                 target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
                     .into_iter()
+                    .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
                     .filter(|&cid| {
                         target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
                     })
@@ -1205,6 +1235,7 @@ fn choose_targets_for(
             let valid: Vec<CardId> =
                 target_restrictions::apply_other_source_filter(base, filter.as_deref(), sa.source)
                     .into_iter()
+                    .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
                     .filter(|&cid| {
                         target_restrictions::can_be_targeted_by_sa(game, cid, player, sa)
                     })
@@ -1214,13 +1245,16 @@ fn choose_targets_for(
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
         }
         TargetKind::CardInZone { zone, filter } => {
-            let valid = target_restrictions::get_valid_cards_in_zone(
+            let valid: Vec<CardId> = target_restrictions::get_valid_cards_in_zone(
                 game,
                 *zone,
                 player,
                 filter.as_deref(),
                 sa.source,
-            );
+            )
+            .into_iter()
+            .filter(|&cid| target_allowed_by_defined_controller(game, sa, cid))
+            .collect();
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card =
@@ -1247,18 +1281,43 @@ fn choose_targets_for(
     true
 }
 
+fn target_allowed_by_defined_controller(
+    game: &GameState,
+    sa: &SpellAbility,
+    card_id: CardId,
+) -> bool {
+    let Some(defined) = sa.params.get("TargetsWithDefinedController") else {
+        return true;
+    };
+    let players = crate::ability::ability_utils::resolve_defined_players_with_sa(
+        defined,
+        sa,
+        sa.activating_player,
+        game,
+    );
+    players.is_empty() || players.contains(&game.card(card_id).controller)
+}
+
 fn choose_targeting_player(
     sa: &SpellAbility,
     game: &GameState,
     agents: &mut [Box<dyn PlayerAgent>],
 ) -> Option<PlayerId> {
     if let Some(defined) = sa.params.get(keys::TARGETING_PLAYER) {
-        let candidates = resolve_defined_players(defined, sa.activating_player, game);
+        let candidates = crate::ability::ability_utils::resolve_defined_players_with_sa(
+            defined,
+            sa,
+            sa.activating_player,
+            game,
+        );
         if candidates.is_empty() {
             return None;
         }
-        return agents[sa.activating_player.index()]
-            .choose_target_player(sa.activating_player, &candidates, None);
+        return agents[sa.activating_player.index()].choose_target_player(
+            sa.activating_player,
+            &candidates,
+            None,
+        );
     }
     Some(sa.activating_player)
 }

@@ -42,10 +42,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Resolve Defined$ parameter.
-    let defined = sa
-        .params
-        .get("Defined")
-        .unwrap_or("Opponent");
+    let defined = sa.params.get("Defined").unwrap_or("Opponent");
 
     // Special case: "Player" means ALL alive players (distinct from
     // resolve_defined_player which returns a single player).

@@ -42,10 +42,12 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let lib_len = ctx.game.cards_in_zone(ZoneType::Library, target).len();
     let count = num.min(lib_len);
 
+    let mut milled_cards: Vec<crate::ids::CardId> = Vec::new();
     for _ in 0..count {
         let top = ctx.game.zone_mut(ZoneType::Library, target).take_top();
         if let Some(card_id) = top {
             ctx.game.move_card(card_id, ZoneType::Graveyard, target);
+            milled_cards.push(card_id);
             emit_zone_trigger(
                 ctx.trigger_handler,
                 card_id,
@@ -63,6 +65,26 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
         }
+    }
+
+    if !milled_cards.is_empty() {
+        ctx.trigger_handler.run_trigger(
+            TriggerType::MilledOnce,
+            RunParams {
+                player: Some(target),
+                cards: Some(milled_cards.clone()),
+                ..Default::default()
+            },
+            false,
+        );
+        ctx.trigger_handler.run_trigger(
+            TriggerType::MilledAll,
+            RunParams {
+                cards: Some(milled_cards),
+                ..Default::default()
+            },
+            false,
+        );
     }
 }
 
@@ -115,6 +137,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,
@@ -145,6 +168,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut trigger_handler,
             token_templates: &token_templates,

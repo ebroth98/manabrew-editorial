@@ -57,12 +57,7 @@ fn nearest_opponent_in_direction(
 
 /// Check if a creature can't attack.
 /// Mirrors Java's `StaticAbilityCantAttackBlock.cantAttack()`.
-pub fn cant_attack(
-    game: &GameState,
-    cards: &[Card],
-    attacker: &Card,
-    defender: PlayerId,
-) -> bool {
+pub fn cant_attack(game: &GameState, cards: &[Card], attacker: &Card, defender: PlayerId) -> bool {
     // Keywords — replace with static ability if able
     if attacker.has_keyword("CARDNAME can't attack.")
         || attacker.has_keyword("CARDNAME can't attack or block.")
@@ -130,7 +125,10 @@ pub fn apply_cant_attack_ability(
         }
     }
 
-    if st_ab.params.has(keys::DEFENDER_NOT_NEAREST_TO_YOU_IN_CHOSEN_DIRECTION) {
+    if st_ab
+        .params
+        .has(keys::DEFENDER_NOT_NEAREST_TO_YOU_IN_CHOSEN_DIRECTION)
+    {
         // Mirrors Java: if no chosen direction exists, this restriction does not apply.
         let Some(direction) = source.svars.get("ChosenDirection") else {
             return false;
@@ -208,7 +206,10 @@ pub fn cant_block(game: &GameState, cards: &[Card], blocker: &Card) -> bool {
     }
 
     // Java builds a list from STATIC_ABILITIES_SOURCE_ZONES + the blocker itself (for LKI)
-    for source in cards.iter().filter(|c| c.zone.is_static_ability_source() || c.id == blocker.id) {
+    for source in cards
+        .iter()
+        .filter(|c| c.zone.is_static_ability_source() || c.id == blocker.id)
+    {
         for st_ab in source
             .static_abilities
             .iter()
@@ -223,11 +224,7 @@ pub fn cant_block(game: &GameState, cards: &[Card], blocker: &Card) -> bool {
 }
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyCantBlockAbility()`.
-pub fn apply_cant_block_ability(
-    st_ab: &StaticAbility,
-    blocker: &Card,
-    source: &Card,
-) -> bool {
+pub fn apply_cant_block_ability(st_ab: &StaticAbility, blocker: &Card, source: &Card) -> bool {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), blocker, source) {
         return false;
     }
@@ -408,11 +405,8 @@ pub fn apply_can_block_if_reach_ability(
     ) {
         return false;
     }
-    if !valid_filter::matches_valid_card_opt(
-        st_ab.params.get(keys::VALID_BLOCKER),
-        blocker,
-        source,
-    ) {
+    if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_BLOCKER), blocker, source)
+    {
         return false;
     }
     true
@@ -438,11 +432,7 @@ pub fn can_block_tapped(game: &GameState, cards: &[Card], card: &Card) -> bool {
 }
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyBlockTapped()`.
-fn apply_block_tapped(
-    st_ab: &StaticAbility,
-    card: &Card,
-    source: &Card,
-) -> bool {
+fn apply_block_tapped(st_ab: &StaticAbility, card: &Card, source: &Card) -> bool {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
         return false;
     }
@@ -525,7 +515,9 @@ pub fn get_min_max_blocker(
             .iter()
             .filter(|sa| sa.check_conditions_full(&StaticMode::MinMaxBlocker, source, game))
         {
-            apply_min_max_blocker_ability(st_ab, attacker, source, _defender, cards, &mut min, &mut max);
+            apply_min_max_blocker_ability(
+                st_ab, attacker, source, _defender, cards, &mut min, &mut max,
+            );
         }
     }
 
@@ -553,9 +545,7 @@ pub fn apply_min_max_blocker_ability(
             let creature_count = cards
                 .iter()
                 .filter(|c| {
-                    c.controller == defender
-                        && c.zone == ZoneType::Battlefield
-                        && c.is_creature()
+                    c.controller == defender && c.zone == ZoneType::Battlefield && c.is_creature()
                 })
                 .count() as i32;
             *min = creature_count;
@@ -593,11 +583,7 @@ pub fn attack_vigilance(game: &GameState, cards: &[Card], card: &Card) -> bool {
 }
 
 /// Mirrors Java's `StaticAbilityCantAttackBlock.applyAttackVigilanceAbility()`.
-pub fn apply_attack_vigilance_ability(
-    st_ab: &StaticAbility,
-    card: &Card,
-    source: &Card,
-) -> bool {
+pub fn apply_attack_vigilance_ability(st_ab: &StaticAbility, card: &Card, source: &Card) -> bool {
     if !valid_filter::matches_valid_card_opt(st_ab.params.get(keys::VALID_CARD), card, source) {
         return false;
     }

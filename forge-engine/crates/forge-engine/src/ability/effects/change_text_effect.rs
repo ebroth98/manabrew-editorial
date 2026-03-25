@@ -10,8 +10,16 @@ use crate::spellability::SpellAbility;
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let Some(source_id) = sa.source else { return };
 
-    let original = sa.params.get(keys::ORIGINAL).map(|s| s.to_string()).unwrap_or_default();
-    let replacement = sa.params.get(keys::REPLACEMENT).map(|s| s.to_string()).unwrap_or_default();
+    let original = sa
+        .params
+        .get(keys::ORIGINAL)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
+    let replacement = sa
+        .params
+        .get(keys::REPLACEMENT)
+        .map(|s| s.to_string())
+        .unwrap_or_default();
 
     if original.is_empty() || replacement.is_empty() {
         return;

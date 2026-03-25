@@ -301,14 +301,15 @@ impl GameLoop {
             let static_alt_entry = if is_static_alternative {
                 let probe_sa =
                     crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
-                let entry = crate::staticability::static_ability_alternative_cost::alternative_costs(
-                    &game.cards,
-                    &probe_sa,
-                    game.card(card_id),
-                    player,
-                )
-                .into_iter()
-                .find(|e| e.cost.parts.iter().all(|p| matches!(p, CostPart::Mana(_))));
+                let entry =
+                    crate::staticability::static_ability_alternative_cost::alternative_costs(
+                        &game.cards,
+                        &probe_sa,
+                        game.card(card_id),
+                        player,
+                    )
+                    .into_iter()
+                    .find(|e| e.cost.parts.iter().all(|p| matches!(p, CostPart::Mana(_))));
                 if entry.is_none() {
                     return None;
                 }
@@ -819,7 +820,8 @@ impl GameLoop {
                         total = total.add(&strive_mc);
                     }
                     // Store max targets (1 base + extras) for resolution targeting
-                    game.card_mut(card_id).set_strive_extra_targets(extra_targets);
+                    game.card_mut(card_id)
+                        .set_strive_extra_targets(extra_targets);
                     total
                 } else {
                     mana_cost
@@ -1255,10 +1257,7 @@ impl GameLoop {
             } else if is_warp {
                 sa.alt_cost = Some(crate::spellability::AlternativeCost::Warp);
             } else if is_morph_facedown {
-                let is_mega = game
-                    .card(card_id)
-                    .keywords
-                    .any_starts_with("Megamorph:");
+                let is_mega = game.card(card_id).keywords.any_starts_with("Megamorph:");
                 sa.alt_cost = Some(if is_mega {
                     crate::spellability::AlternativeCost::Megamorph
                 } else {
@@ -1627,7 +1626,8 @@ impl GameLoop {
                         colors_spent |= color; // consumed
                     }
                 }
-                game.card_mut(card_id).set_colors_spent_to_cast(colors_spent);
+                game.card_mut(card_id)
+                    .set_colors_spent_to_cast(colors_spent);
             }
 
             // Fire ManaExpend triggers (Expend mechanic — cumulative per-turn tracking)
@@ -1740,9 +1740,7 @@ impl GameLoop {
                         {
                             let params = Params::from_raw(&trigger_svar);
                             // Check ValidCard$ filter against the spell being cast
-                            let valid = params
-                                .get(keys::VALID_CARD)
-                                .unwrap_or("Card");
+                            let valid = params.get(keys::VALID_CARD).unwrap_or("Card");
                             let card = game.card(card_id);
                             let valid_ok = valid == "Card"
                                 || (valid.contains("Creature") && card.is_creature())
@@ -1762,6 +1760,7 @@ impl GameLoop {
                                         crate::ability::effects::resolve_effect(
                                             &mut crate::ability::effects::EffectContext {
                                                 game,
+                                                combat: Some(&mut self.combat),
                                                 agents,
                                                 trigger_handler: &mut self.trigger_handler,
                                                 token_templates: &self.token_templates,
@@ -1782,22 +1781,113 @@ impl GameLoop {
 
             // Pay additional costs from SP$ line (e.g. sacrifice a creature).
             let spell_cost = Self::parse_spell_cost(&abilities_for_spell);
+            let mut waterbend_tapped: Vec<CardId> = Vec::new();
             if let Some(ref sc) = spell_cost {
-                if !self.pay_additional_costs(game, agents, player, card_id, sc, None, sc.mandatory, Some(&sa))
-                {
+                let has_waterbend = sc
+                    .parts
+                    .iter()
+                    .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
+                let untapped_before = if has_waterbend {
+                    game.cards_in_zone(ZoneType::Battlefield, player)
+                        .iter()
+                        .copied()
+                        .filter(|&cid| {
+                            let c = game.card(cid);
+                            cid != card_id
+                                && !c.tapped
+                                && (c.is_creature() || c.type_line.is_artifact())
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+                if !self.pay_additional_costs(
+                    game,
+                    agents,
+                    player,
+                    card_id,
+                    sc,
+                    None,
+                    sc.mandatory,
+                    Some(&sa),
+                ) {
                     return None;
+                }
+                if has_waterbend {
+                    for cid in untapped_before
+                        .into_iter()
+                        .filter(|&cid| game.card(cid).tapped)
+                    {
+                        if !waterbend_tapped.contains(&cid) {
+                            waterbend_tapped.push(cid);
+                        }
+                    }
                 }
             }
             if let Some(ref rc) = raise_cost {
-                if !self.pay_additional_costs(game, agents, player, card_id, rc, None, rc.mandatory, Some(&sa))
-                {
+                let has_waterbend = rc
+                    .parts
+                    .iter()
+                    .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
+                let untapped_before = if has_waterbend {
+                    game.cards_in_zone(ZoneType::Battlefield, player)
+                        .iter()
+                        .copied()
+                        .filter(|&cid| {
+                            let c = game.card(cid);
+                            cid != card_id
+                                && !c.tapped
+                                && (c.is_creature() || c.type_line.is_artifact())
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+                if !self.pay_additional_costs(
+                    game,
+                    agents,
+                    player,
+                    card_id,
+                    rc,
+                    None,
+                    rc.mandatory,
+                    Some(&sa),
+                ) {
                     return None;
+                }
+                if has_waterbend {
+                    for cid in untapped_before
+                        .into_iter()
+                        .filter(|&cid| game.card(cid).tapped)
+                    {
+                        if !waterbend_tapped.contains(&cid) {
+                            waterbend_tapped.push(cid);
+                        }
+                    }
                 }
             }
 
             // Pay additional non-mana costs from Flashback keyword cost
             // (e.g. Lava Dart: Flashback—Sacrifice a Mountain).
             if let Some(ref fb_cost) = flashback_total_cost {
+                let has_waterbend = fb_cost
+                    .parts
+                    .iter()
+                    .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
+                let untapped_before = if has_waterbend {
+                    game.cards_in_zone(ZoneType::Battlefield, player)
+                        .iter()
+                        .copied()
+                        .filter(|&cid| {
+                            let c = game.card(cid);
+                            cid != card_id
+                                && !c.tapped
+                                && (c.is_creature() || c.type_line.is_artifact())
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
                 if !self.pay_additional_costs(
                     game,
                     agents,
@@ -1809,6 +1899,16 @@ impl GameLoop {
                     Some(&sa),
                 ) {
                     return None;
+                }
+                if has_waterbend {
+                    for cid in untapped_before
+                        .into_iter()
+                        .filter(|&cid| game.card(cid).tapped)
+                    {
+                        if !waterbend_tapped.contains(&cid) {
+                            waterbend_tapped.push(cid);
+                        }
+                    }
                 }
             }
 
@@ -1857,6 +1957,8 @@ impl GameLoop {
             game.stack.record_spell_cast(card_id);
 
             // Emit SpellCast trigger only after successful target setup.
+            // Java parity: apply paying-mana effects before cast-family triggers.
+            sa.apply_paying_mana_effects();
             self.trigger_handler.run_trigger(
                 TriggerType::SpellCast,
                 RunParams {
@@ -1866,15 +1968,79 @@ impl GameLoop {
                 },
                 false,
             );
+            if !waterbend_tapped.is_empty() {
+                let bend_params = RunParams {
+                    player: Some(player),
+                    card: Some(card_id),
+                    spell_card: Some(card_id),
+                    spell_controller: Some(player),
+                    spell_ability: Some(sa.clone()),
+                    source_sa: Some(sa.clone()),
+                    cause: Some(sa.clone()),
+                    cause_card: Some(card_id),
+                    cards: Some(waterbend_tapped.clone()),
+                    ..Default::default()
+                };
+                self.trigger_handler.run_trigger(
+                    TriggerType::Elementalbend,
+                    bend_params.clone(),
+                    false,
+                );
+            }
 
-            // Fire BecomesTarget trigger if a card was targeted
+            // Fire BecomesTarget trigger if a card/player was targeted
             if let Some(target_card) = sa.target_chosen.target_card {
+                let first_time = !game.card(target_card).has_become_target_this_turn();
+                game.card_mut(target_card).add_target_from_this_turn();
                 self.trigger_handler.run_trigger(
                     TriggerType::BecomesTarget,
                     RunParams {
                         card: Some(target_card),
+                        target_card: Some(target_card),
+                        cards: Some(vec![target_card]),
                         cause_player: Some(player),
                         cause_card: Some(card_id),
+                        source_sa: Some(sa.clone()),
+                        first_time: Some(first_time),
+                        ..Default::default()
+                    },
+                    false,
+                );
+                self.trigger_handler.run_trigger(
+                    TriggerType::BecomesTargetOnce,
+                    RunParams {
+                        card: Some(target_card),
+                        target_card: Some(target_card),
+                        cards: Some(vec![target_card]),
+                        cause_player: Some(player),
+                        cause_card: Some(card_id),
+                        source_sa: Some(sa.clone()),
+                        first_time: Some(first_time),
+                        ..Default::default()
+                    },
+                    false,
+                );
+            } else if let Some(target_player) = sa.target_chosen.target_player {
+                self.trigger_handler.run_trigger(
+                    TriggerType::BecomesTarget,
+                    RunParams {
+                        player: Some(target_player),
+                        target_player: Some(target_player),
+                        cause_player: Some(player),
+                        cause_card: Some(card_id),
+                        source_sa: Some(sa.clone()),
+                        ..Default::default()
+                    },
+                    false,
+                );
+                self.trigger_handler.run_trigger(
+                    TriggerType::BecomesTargetOnce,
+                    RunParams {
+                        player: Some(target_player),
+                        target_player: Some(target_player),
+                        cause_player: Some(player),
+                        cause_card: Some(card_id),
+                        source_sa: Some(sa.clone()),
                         ..Default::default()
                     },
                     false,
@@ -2011,10 +2177,8 @@ impl GameLoop {
                         continue;
                     }
                     let mut copy = entry.clone();
-                    copy.spell_ability = crate::card::card_factory::copy_spell_ability(
-                        &entry.spell_ability,
-                        player,
-                    );
+                    copy.spell_ability =
+                        crate::card::card_factory::copy_spell_ability(&entry.spell_ability, player);
                     if copy.spell_ability.uses_targeting() {
                         agents[player.index()].snapshot_state(game, &self.mana_pools);
                         agents[player.index()].notify_event(
@@ -2182,6 +2346,63 @@ impl GameLoop {
                     },
                     false,
                 );
+                if let Some(top) = game.stack.peek() {
+                    if let Some(target_card) = top.spell_ability.target_chosen.target_card {
+                        let first_time = !game.card(target_card).has_become_target_this_turn();
+                        game.card_mut(target_card).add_target_from_this_turn();
+                        self.trigger_handler.run_trigger(
+                            TriggerType::BecomesTarget,
+                            RunParams {
+                                card: Some(target_card),
+                                target_card: Some(target_card),
+                                cards: Some(vec![target_card]),
+                                cause_player: Some(player),
+                                cause_card: Some(cascade_card_id),
+                                first_time: Some(first_time),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                        self.trigger_handler.run_trigger(
+                            TriggerType::BecomesTargetOnce,
+                            RunParams {
+                                card: Some(target_card),
+                                target_card: Some(target_card),
+                                cards: Some(vec![target_card]),
+                                cause_player: Some(player),
+                                cause_card: Some(cascade_card_id),
+                                first_time: Some(first_time),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    } else if let Some(target_player) =
+                        top.spell_ability.target_chosen.target_player
+                    {
+                        self.trigger_handler.run_trigger(
+                            TriggerType::BecomesTarget,
+                            RunParams {
+                                player: Some(target_player),
+                                target_player: Some(target_player),
+                                cause_player: Some(player),
+                                cause_card: Some(cascade_card_id),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                        self.trigger_handler.run_trigger(
+                            TriggerType::BecomesTargetOnce,
+                            RunParams {
+                                player: Some(target_player),
+                                target_player: Some(target_player),
+                                cause_player: Some(player),
+                                cause_card: Some(cascade_card_id),
+                                ..Default::default()
+                            },
+                            false,
+                        );
+                    }
+                }
             } else {
                 // Player declined — found card goes to bottom with the rest
                 exiled_ids.push(cascade_card_id);

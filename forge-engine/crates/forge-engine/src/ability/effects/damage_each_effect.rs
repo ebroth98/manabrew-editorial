@@ -69,7 +69,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         } else {
             // Deal damage to the target player
-            ctx.game.deal_damage_to_player(target_player, dmg);
+            let dealt = ctx.game.deal_damage_to_player(target_player, dmg);
+            ctx.game.record_player_damage_assignment(
+                Some(card_id),
+                Some(target_player),
+                dealt,
+                false,
+            );
 
             ctx.trigger_handler.run_trigger(
                 crate::event::TriggerType::DamageDone,

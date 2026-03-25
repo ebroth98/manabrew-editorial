@@ -11,8 +11,16 @@ pub fn cant_discard(
     cause: Option<&SpellAbility>,
     is_effect: bool,
 ) -> bool {
-    for card in game.cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in card.static_abilities.iter().filter(|sa| sa.mode == StaticMode::CantDiscard && sa.zones_check(card.zone)) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone.is_static_ability_source())
+    {
+        for st_ab in card
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::CantDiscard && sa.zones_check(card.zone))
+        {
             if apply_cant_discard_ability(st_ab, player, card.controller, cause, is_effect) {
                 return true;
             }

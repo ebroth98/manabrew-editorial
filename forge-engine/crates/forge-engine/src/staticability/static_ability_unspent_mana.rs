@@ -25,7 +25,11 @@ const MANATYPES: [u16; 6] = [
 /// Returns a deduplicated `HashSet<u16>` of `ManaAtom` constants.
 pub fn get_mana_to_keep(game: &GameState, player: PlayerId) -> HashSet<u16> {
     let mut result = HashSet::new();
-    for card in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for st_ab in card
             .static_abilities
             .iter()
@@ -45,7 +49,11 @@ pub fn get_mana_to_keep(game: &GameState, player: PlayerId) -> HashSet<u16> {
 /// and returns based on the match result. If the player doesn't match,
 /// returns false. If no ManaBurn static exists, returns false.
 pub fn has_mana_burn(game: &GameState, player: PlayerId) -> bool {
-    for card in game.cards.iter().filter(|c| c.zone == ZoneType::Battlefield) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone == ZoneType::Battlefield)
+    {
         for st_ab in card
             .static_abilities
             .iter()

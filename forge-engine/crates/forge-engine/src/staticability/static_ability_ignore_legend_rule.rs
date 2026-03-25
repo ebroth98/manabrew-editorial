@@ -11,11 +11,7 @@ pub fn ignore_legend_rule(cards: &[Card], card: &Card) -> bool {
             .iter()
             .filter(|sa| sa.mode == StaticMode::IgnoreLegendRule)
         {
-            if !matches_valid_card(
-                st_ab.params.get(keys::VALID_CARD),
-                card,
-                source,
-            ) {
+            if !matches_valid_card(st_ab.params.get(keys::VALID_CARD), card, source) {
                 continue;
             }
             if !is_present_condition_met(cards, st_ab, source) {
@@ -62,10 +58,7 @@ fn is_present_condition_met(
         .filter(|c| c.zone == ZoneType::Battlefield)
         .filter(|c| matches_valid_card(Some(is_present), c, source))
         .count() as i32;
-    let cmp = st_ab
-        .params
-        .get(keys::PRESENT_COMPARE)
-        .unwrap_or("GE1");
+    let cmp = st_ab.params.get(keys::PRESENT_COMPARE).unwrap_or("GE1");
     match cmp {
         "EQ2" => count == 2,
         "EQ1" => count == 1,

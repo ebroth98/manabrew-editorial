@@ -85,8 +85,8 @@ export function DeckCard({
             <FormatBadge key={f.id} formatId={f.id} />
           ))}
           {deck.deck.labels?.map((label) => (
-            <Badge key={label} variant="outline" className="text-[9px] h-4 px-1 text-primary/80 border-primary/30">
-              {label}
+            <Badge key={label.name} variant="outline" className="text-[9px] h-4 px-1 text-primary/80 border-primary/30">
+              {label.name}
             </Badge>
           ))}
         </div>

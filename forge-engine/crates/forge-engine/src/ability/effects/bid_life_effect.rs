@@ -17,7 +17,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Each player bids (starting with active player)
     for &pid in &players {
-        if ctx.game.player(pid).has_lost { continue; }
+        if ctx.game.player(pid).has_lost {
+            continue;
+        }
 
         ctx.agents[pid.index()].snapshot_state(ctx.game, ctx.mana_pools);
         // Agent chooses a bid amount — confirm_action returns bool,

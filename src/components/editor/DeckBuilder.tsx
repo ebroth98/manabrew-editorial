@@ -91,7 +91,7 @@ function QuickCardSearch({ onSelect, onHover, onLeave }: {
   const [isLoading, setIsLoading] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const doSearch = useCallback((q: string) => {
     if (q.trim().length < 2) {
@@ -111,7 +111,9 @@ function QuickCardSearch({ onSelect, onHover, onLeave }: {
 
   function handleChange(value: string) {
     setQuery(value);
-    clearTimeout(debounceRef.current);
+    if (debounceRef.current !== null) {
+      clearTimeout(debounceRef.current);
+    }
     debounceRef.current = setTimeout(() => doSearch(value), 400);
   }
 
@@ -224,12 +226,35 @@ export function DeckBuilder() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [cardSize, setCardSize] = useState(3);
   const [groupBy, setGroupBy] = useState<GroupByMode>("type");
-  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => JSON.stringify({ cards: currentDeck.cards, sideboard: currentDeck.sideboard, name: currentDeck.name }));
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => JSON.stringify({
+    cards: currentDeck.cards,
+    sideboard: currentDeck.sideboard,
+    attractions: currentDeck.attractions ?? [],
+    contraptions: currentDeck.contraptions ?? [],
+    schemes: currentDeck.schemes ?? [],
+    planes: currentDeck.planes ?? [],
+    name: currentDeck.name,
+  }));
   const [pendingSwitchAction, setPendingSwitchAction] = useState<(() => void) | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const enrichedNamesRef = useRef(new Set<string>());
 
-  const currentSnapshot = JSON.stringify({ cards: currentDeck.cards, sideboard: currentDeck.sideboard, name: currentDeck.name });
+  const supplementaryCards = [
+    ...currentDeck.sideboard,
+    ...(currentDeck.attractions ?? []),
+    ...(currentDeck.contraptions ?? []),
+    ...(currentDeck.schemes ?? []),
+    ...(currentDeck.planes ?? []),
+  ];
+  const currentSnapshot = JSON.stringify({
+    cards: currentDeck.cards,
+    sideboard: currentDeck.sideboard,
+    attractions: currentDeck.attractions ?? [],
+    contraptions: currentDeck.contraptions ?? [],
+    schemes: currentDeck.schemes ?? [],
+    planes: currentDeck.planes ?? [],
+    name: currentDeck.name,
+  });
   const hasUnsavedChanges = currentSnapshot !== lastSavedSnapshot;
 
   // Sync shared unsaved state for DeckEditor blocker
@@ -240,7 +265,15 @@ export function DeckBuilder() {
   // Reset snapshot when a deck is loaded
   const deckIdentity = `${currentDeck.name}:${savedDecks.length}`;
   useEffect(() => {
-    setLastSavedSnapshot(JSON.stringify({ cards: currentDeck.cards, sideboard: currentDeck.sideboard, name: currentDeck.name }));
+    setLastSavedSnapshot(JSON.stringify({
+      cards: currentDeck.cards,
+      sideboard: currentDeck.sideboard,
+      attractions: currentDeck.attractions ?? [],
+      contraptions: currentDeck.contraptions ?? [],
+      schemes: currentDeck.schemes ?? [],
+      planes: currentDeck.planes ?? [],
+      name: currentDeck.name,
+    }));
   }, [deckIdentity]);
 
   // Warn on navigation/tab close with unsaved changes
@@ -251,14 +284,14 @@ export function DeckBuilder() {
     return () => window.removeEventListener("beforeunload", handler);
   }, [hasUnsavedChanges]);
 
-  const { selectedCards, isSelected, toggleCard, clearSelection, selectCards } = useDeckSelection();
+  const { selectedCards, toggleCard, clearSelection, selectCards } = useDeckSelection();
 
   const { setNodeRef: setMainDropRef, isOver: isOverMain } = useDroppable({ id: DROP_ZONE.MAIN });
   const { setNodeRef: setSideDropRef, isOver: isOverSide } = useDroppable({ id: DROP_ZONE.SIDE });
 
   // Auto-enrich cards missing CMC/mana data
   useEffect(() => {
-    const allCards = [...currentDeck.cards, ...currentDeck.sideboard];
+    const allCards = [...currentDeck.cards, ...supplementaryCards];
     const toFetch = allCards
       .filter((c) => (c.cmc === undefined || c.cmc === null) && !c.manaCost && !enrichedNamesRef.current.has(c.name.toLowerCase()))
       .map((c) => c.name);
@@ -272,7 +305,15 @@ export function DeckBuilder() {
     }).catch((err) => {
       console.warn('[DeckBuilder] Failed to enrich card images:', err);
     });
-  }, [currentDeck.cards, currentDeck.sideboard, enrichDeckCards]);
+  }, [
+    currentDeck.cards,
+    currentDeck.sideboard,
+    currentDeck.attractions,
+    currentDeck.contraptions,
+    currentDeck.schemes,
+    currentDeck.planes,
+    enrichDeckCards,
+  ]);
 
   // ESC to clear selection
   useEffect(() => {
@@ -299,7 +340,7 @@ export function DeckBuilder() {
     `Moved ${selectedCards.size} cards to sideboard`,
   );
   const handleMoveSelectedToMain = () => bulkAction(
-    (name) => currentDeck.sideboard.filter((c) => c.name.toLowerCase() === name).forEach((c) => { removeFromSide(c.id); addToMain({ ...c, id: crypto.randomUUID() }); }),
+    (name) => supplementaryCards.filter((c) => c.name.toLowerCase() === name).forEach((c) => { removeFromSide(c.id); addToMain({ ...c, id: crypto.randomUUID() }); }),
     `Moved ${selectedCards.size} cards to main`,
   );
   const handleTagSelected = (tag: string) => bulkAction((name) => tagCard(name, tag), `Tagged ${selectedCards.size} cards with "${tag}"`);
@@ -319,17 +360,26 @@ export function DeckBuilder() {
   // Filter
   const filterLc = deckFilter.toLowerCase();
   const filteredMain = filterLc ? currentDeck.cards.filter((c) => c.name.toLowerCase().includes(filterLc)) : currentDeck.cards;
-  const filteredSide = filterLc ? currentDeck.sideboard.filter((c) => c.name.toLowerCase().includes(filterLc)) : currentDeck.sideboard;
-
   // Compute groups
   const { sections: sectionGroups, otherGroups } = computeGroupedSections(filteredMain, groupBy, currentDeck.customTags, currentDeck.cardTags);
-  const sideGroups = groupCards(filteredSide);
+  const sideGroups = groupCards(filterLc ? currentDeck.sideboard.filter((c) => c.name.toLowerCase().includes(filterLc)) : currentDeck.sideboard);
+  const attractionGroups = groupCards(filterLc ? (currentDeck.attractions ?? []).filter((c) => c.name.toLowerCase().includes(filterLc)) : (currentDeck.attractions ?? []));
+  const contraptionGroups = groupCards(filterLc ? (currentDeck.contraptions ?? []).filter((c) => c.name.toLowerCase().includes(filterLc)) : (currentDeck.contraptions ?? []));
+  const schemeGroups = groupCards(filterLc ? (currentDeck.schemes ?? []).filter((c) => c.name.toLowerCase().includes(filterLc)) : (currentDeck.schemes ?? []));
+  const planeGroups = groupCards(filterLc ? (currentDeck.planes ?? []).filter((c) => c.name.toLowerCase().includes(filterLc)) : (currentDeck.planes ?? []));
+  const supplementarySections = [
+    { id: "sideboard", label: "Sideboard", groups: sideGroups },
+    { id: "attractions", label: "Attractions", groups: attractionGroups },
+    { id: "contraptions", label: "Contraptions", groups: contraptionGroups },
+    { id: "schemes", label: "Schemes", groups: schemeGroups },
+    { id: "planes", label: "Planes", groups: planeGroups },
+  ].filter((section) => section.groups.length > 0);
   const stackColsData = computeGroupedStackColumns(filteredMain, groupBy, currentDeck.customTags, currentDeck.cardTags);
 
   // ── Handlers ──
 
   function handleRemoveOneFromMain(cardName: string) {
-    const card = currentDeck.cards.findLast((c) => c.name === cardName);
+    const card = [...currentDeck.cards].reverse().find((c) => c.name === cardName);
     if (card) removeFromMain(card.id);
   }
 
@@ -350,12 +400,12 @@ export function DeckBuilder() {
   }
 
   function handleRemoveOneFromSide(cardName: string) {
-    const card = currentDeck.sideboard.findLast((c) => c.name === cardName);
+    const card = [...supplementaryCards].reverse().find((c) => c.name === cardName);
     if (card) removeFromSide(card.id);
   }
 
   function handleMoveToMain(cardName: string) {
-    const copies = currentDeck.sideboard.filter((c) => c.name === cardName);
+    const copies = supplementaryCards.filter((c) => c.name === cardName);
     for (const c of copies) { removeFromSide(c.id); addToMain({ ...c, id: crypto.randomUUID() }); }
     toast.success(`Moved ${cardName} to main`);
   }
@@ -412,7 +462,15 @@ export function DeckBuilder() {
 
   function handleSave() {
     saveCurrentDeck();
-    setLastSavedSnapshot(JSON.stringify({ cards: currentDeck.cards, sideboard: currentDeck.sideboard, name: currentDeck.name }));
+    setLastSavedSnapshot(JSON.stringify({
+      cards: currentDeck.cards,
+      sideboard: currentDeck.sideboard,
+      attractions: currentDeck.attractions ?? [],
+      contraptions: currentDeck.contraptions ?? [],
+      schemes: currentDeck.schemes ?? [],
+      planes: currentDeck.planes ?? [],
+      name: currentDeck.name,
+    }));
     toast.success(`Deck "${currentDeck.name}" saved`);
   }
 
@@ -468,6 +526,10 @@ export function DeckBuilder() {
             <span className="text-xs text-muted-foreground ml-auto shrink-0">
               {currentDeck.cards.length}
               {currentDeck.sideboard.length > 0 && <span className="text-muted-foreground/50"> · SB:{currentDeck.sideboard.length}</span>}
+              {(currentDeck.attractions?.length ?? 0) > 0 && <span className="text-muted-foreground/50"> · AT:{currentDeck.attractions!.length}</span>}
+              {(currentDeck.contraptions?.length ?? 0) > 0 && <span className="text-muted-foreground/50"> · CT:{currentDeck.contraptions!.length}</span>}
+              {(currentDeck.schemes?.length ?? 0) > 0 && <span className="text-muted-foreground/50"> · SC:{currentDeck.schemes!.length}</span>}
+              {(currentDeck.planes?.length ?? 0) > 0 && <span className="text-muted-foreground/50"> · PL:{currentDeck.planes!.length}</span>}
             </span>
           </div>
         )}
@@ -482,7 +544,21 @@ export function DeckBuilder() {
           <DropdownMenuContent align="end" className="min-w-56 max-h-80 overflow-y-auto">
             <div className="px-2 py-1.5 text-xs font-semibold text-muted-foreground">My Decks</div>
             <DropdownMenuItem
-              onSelect={() => guardUnsaved(() => { clearDeck(); setNameInput("New Deck"); setDeckName("New Deck"); setLastSavedSnapshot(JSON.stringify({ cards: [], sideboard: [], name: "New Deck" })); toast.success("New deck created"); })}
+              onSelect={() => guardUnsaved(() => {
+                clearDeck();
+                setNameInput("New Deck");
+                setDeckName("New Deck");
+                setLastSavedSnapshot(JSON.stringify({
+                  cards: [],
+                  sideboard: [],
+                  attractions: [],
+                  contraptions: [],
+                  schemes: [],
+                  planes: [],
+                  name: "New Deck",
+                }));
+                toast.success("New deck created");
+              })}
               className="gap-2 text-primary"
             >
               <Plus className="h-3.5 w-3.5 shrink-0" />
@@ -712,7 +788,7 @@ export function DeckBuilder() {
           commander={currentDeck.commander ?? null}
           mainSections={sectionGroups}
           otherGroups={otherGroups}
-          sideGroups={sideGroups}
+          supplementarySections={supplementarySections}
           stackColumns={stackColsData}
           isOverSide={isOverSide}
           setSideDropRef={setSideDropRef}

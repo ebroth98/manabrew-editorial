@@ -1,6 +1,6 @@
 use forge_foundation::ZoneType;
 
-use super::{resolve_defined_player, EffectContext};
+use super::{resolve_defined_player_with_sa, EffectContext};
 use crate::ids::PlayerId;
 use crate::spellability::SpellAbility;
 
@@ -18,7 +18,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let target_player: PlayerId = if let Some(pid) = sa.target_chosen.target_player {
         pid
     } else if let Some(defined) = sa.params.get(crate::parsing::keys::DEFINED) {
-        match resolve_defined_player(defined, controller, ctx.game) {
+        match resolve_defined_player_with_sa(defined, sa, controller, ctx.game) {
             Some(pid) => pid,
             None => return,
         }

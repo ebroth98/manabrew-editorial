@@ -42,7 +42,13 @@ impl CardChangedWords {
         timestamp
     }
 
-    pub fn add(&mut self, timestamp: u64, static_id: u64, original_word: &str, new_word: &str) -> u64 {
+    pub fn add(
+        &mut self,
+        timestamp: u64,
+        static_id: u64,
+        original_word: &str,
+        new_word: &str,
+    ) -> u64 {
         self.map.insert(
             (timestamp, static_id),
             WordHolder::replacement(original_word, new_word),

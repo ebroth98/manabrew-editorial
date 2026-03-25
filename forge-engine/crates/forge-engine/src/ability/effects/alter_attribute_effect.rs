@@ -76,19 +76,26 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         }
                         ctx.game.card_mut(card_id).set_s_var("Suspected", "True");
                     } else {
-                        ctx.game.card_mut(card_id).remove_intrinsic_keyword("Menace");
+                        ctx.game
+                            .card_mut(card_id)
+                            .remove_intrinsic_keyword("Menace");
                         ctx.game.card_mut(card_id).remove_s_var("Suspected");
                     }
                 }
                 "Saddle" | "Saddled" => {
+                    let first_time = !ctx.game.card(card_id).has_s_var("SaddledBy");
                     let val = if activate { "True" } else { "False" };
                     ctx.game.card_mut(card_id).set_s_var("Saddled", val);
                     if activate {
+                        if let Some(source) = sa.source {
+                            ctx.game.card_mut(card_id).add_saddled_by_this_turn(source);
+                        }
                         ctx.trigger_handler.run_trigger(
                             TriggerType::BecomesSaddled,
                             RunParams {
                                 card: Some(card_id),
                                 player: Some(sa.activating_player),
+                                first_time: Some(first_time),
                                 ..Default::default()
                             },
                             false,

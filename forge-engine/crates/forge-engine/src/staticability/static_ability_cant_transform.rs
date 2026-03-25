@@ -3,13 +3,13 @@ use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
 
-pub fn cant_transform(
-    cards: &[Card],
-    card: &Card,
-    cause: Option<&SpellAbility>,
-) -> bool {
+pub fn cant_transform(cards: &[Card], card: &Card, cause: Option<&SpellAbility>) -> bool {
     for source in cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in source.static_abilities.iter().filter(|sa| sa.mode == StaticMode::CantTransform && sa.zones_check(source.zone)) {
+        for st_ab in source
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::CantTransform && sa.zones_check(source.zone))
+        {
             if apply_cant_transform_ability(st_ab, card, source, cause) {
                 return true;
             }
@@ -43,8 +43,5 @@ pub fn apply_cant_transform_ability(
 /// CardTraitBase validation used elsewhere. Here we reuse `matches_valid_cause`
 /// with the same token grammar (SpellAbility, Spell, Activated, etc.).
 fn matches_except_cause(except_cause: &str, cause: &SpellAbility) -> bool {
-    super::static_ability_cant_sacrifice::matches_valid_cause(
-        Some(except_cause),
-        Some(cause),
-    )
+    super::static_ability_cant_sacrifice::matches_valid_cause(Some(except_cause), Some(cause))
 }

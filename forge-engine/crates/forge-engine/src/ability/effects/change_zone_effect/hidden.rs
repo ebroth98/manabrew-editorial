@@ -5,18 +5,18 @@
 
 use forge_foundation::ZoneType;
 
-use crate::parsing::keys;
+use super::super::{resolve_defined_player_with_sa, EffectContext};
 use super::helpers::{
-    can_search_library, find_opposition_agent, find_search_limit,
-    matches_with_context, resolve_destination,
+    can_search_library, find_opposition_agent, find_search_limit, matches_with_context,
+    resolve_destination,
 };
 use super::move_cards::move_cards;
 use super::search::{
     resolve_defined_player_choice, resolve_each_search, resolve_multi_search,
     resolve_random_selection, resolve_single_search,
 };
-use super::super::{resolve_defined_player_with_sa, EffectContext};
 use crate::ids::PlayerId;
+use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
 /// Resolve zone changes from hidden zones (Library, Hand).
@@ -60,14 +60,26 @@ pub(super) fn resolve_hidden_origin(
             // TopOfLibrary, TopOfLibrary2, etc.
             let n = defined
                 .strip_prefix("TopOfLibrary")
-                .and_then(|s| if s.is_empty() { Some(1) } else { s.parse::<usize>().ok() })
+                .and_then(|s| {
+                    if s.is_empty() {
+                        Some(1)
+                    } else {
+                        s.parse::<usize>().ok()
+                    }
+                })
                 .unwrap_or(1);
             let lib = ctx.game.cards_in_zone(origin_zone, controller);
             lib.iter().take(n).copied().collect()
         } else if defined.starts_with("BottomOfLibrary") {
             let n = defined
                 .strip_prefix("BottomOfLibrary")
-                .and_then(|s| if s.is_empty() { Some(1) } else { s.parse::<usize>().ok() })
+                .and_then(|s| {
+                    if s.is_empty() {
+                        Some(1)
+                    } else {
+                        s.parse::<usize>().ok()
+                    }
+                })
                 .unwrap_or(1);
             let lib = ctx.game.cards_in_zone(origin_zone, controller);
             let len = lib.len();
@@ -88,8 +100,18 @@ pub(super) fn resolve_hidden_origin(
             // (line 1509), so Defined moves never trigger a search shuffle.
             // The shuffle is handled separately by a SubAbility$ DBShuffle if needed.
             let mut sa_no_shuffle = sa.clone();
-            sa_no_shuffle.params.put("NoShuffle".to_string(), "True".to_string());
-            move_cards(ctx, &sa_no_shuffle, &valid, origin_zone, dest_zone, &lib_position, controller);
+            sa_no_shuffle
+                .params
+                .put("NoShuffle".to_string(), "True".to_string());
+            move_cards(
+                ctx,
+                &sa_no_shuffle,
+                &valid,
+                origin_zone,
+                dest_zone,
+                &lib_position,
+                controller,
+            );
         }
         // For known defined types (Remembered, Imprinted, etc.), always return
         // even if empty — do NOT fall through to a full zone search.
@@ -104,7 +126,15 @@ pub(super) fn resolve_hidden_origin(
         && !defined.eq_ignore_ascii_case("Opponent")
     {
         let cards = resolve_defined_player_choice(ctx, sa, origin_zone, &change_type);
-        move_cards(ctx, sa, &cards, origin_zone, dest_zone, &lib_position, controller);
+        move_cards(
+            ctx,
+            sa,
+            &cards,
+            origin_zone,
+            dest_zone,
+            &lib_position,
+            controller,
+        );
         return;
     }
 
@@ -115,8 +145,7 @@ pub(super) fn resolve_hidden_origin(
     };
 
     let chooser = if let Some(chooser_def) = sa.chooser() {
-        resolve_defined_player_with_sa(chooser_def, sa, controller, ctx.game)
-            .unwrap_or(controller)
+        resolve_defined_player_with_sa(chooser_def, sa, controller, ctx.game).unwrap_or(controller)
     } else {
         controller
     };
@@ -157,9 +186,18 @@ pub(super) fn resolve_hidden_origin(
     }
 
     let cards_to_move = if let Some(each_spec) = change_type.strip_prefix("EACH ") {
-        resolve_each_search(ctx, sa, each_spec, &mut zone_cards, effective_chooser, is_optional)
+        resolve_each_search(
+            ctx,
+            sa,
+            each_spec,
+            &mut zone_cards,
+            effective_chooser,
+            is_optional,
+        )
     } else {
-        let candidates: Vec<_> = zone_cards.iter().copied()
+        let candidates: Vec<_> = zone_cards
+            .iter()
+            .copied()
             .filter(|&cid| matches_with_context(ctx, sa, cid, &change_type))
             .collect();
         if candidates.is_empty() {
@@ -169,7 +207,14 @@ pub(super) fn resolve_hidden_origin(
         } else if change_num == 1 {
             resolve_single_search(ctx, sa, &candidates, effective_chooser, is_optional)
         } else {
-            resolve_multi_search(ctx, sa, &candidates, effective_chooser, change_num, is_optional)
+            resolve_multi_search(
+                ctx,
+                sa,
+                &candidates,
+                effective_chooser,
+                change_num,
+                is_optional,
+            )
         }
     };
 
@@ -183,7 +228,11 @@ pub(super) fn resolve_hidden_origin(
     }
 
     // Reveal chosen cards (NoLooking$ suppresses)
-    if !sa.param_is_true(keys::NO_LOOKING) && sa.is_reveal() && !cards_to_move.is_empty() && origin_zone == ZoneType::Library {
+    if !sa.param_is_true(keys::NO_LOOKING)
+        && sa.is_reveal()
+        && !cards_to_move.is_empty()
+        && origin_zone == ZoneType::Library
+    {
         for agent in ctx.agents.iter_mut() {
             agent.on_library_peek(ctx.game, &cards_to_move);
         }
@@ -192,26 +241,49 @@ pub(super) fn resolve_hidden_origin(
     // RememberLKI$
     if sa.param_is_true(keys::REMEMBER_LKI) {
         if let Some(sid) = sa.source {
-            for &cid in &cards_to_move { ctx.game.card_mut(sid).add_remembered_card(cid); }
+            for &cid in &cards_to_move {
+                ctx.game.card_mut(sid).add_remembered_card(cid);
+            }
         }
     }
 
-    move_cards(ctx, sa, &cards_to_move, origin_zone, dest_zone, &lib_position, controller);
+    move_cards(
+        ctx,
+        sa,
+        &cards_to_move,
+        origin_zone,
+        dest_zone,
+        &lib_position,
+        controller,
+    );
 }
 
 /// Offer Panglacial Wurm cast during library search (CR 702.113).
 fn offer_panglacial_cast(
-    ctx: &mut EffectContext, _sa: &SpellAbility, controller: PlayerId, zone_cards: &mut Vec<crate::ids::CardId>,
+    ctx: &mut EffectContext,
+    _sa: &SpellAbility,
+    controller: PlayerId,
+    zone_cards: &mut Vec<crate::ids::CardId>,
 ) {
-    let panglacial: Vec<_> = zone_cards.iter().copied()
-        .filter(|&cid| ctx.game.card(cid).keywords.contains_string_ignore_case("Panglacial"))
+    let panglacial: Vec<_> = zone_cards
+        .iter()
+        .copied()
+        .filter(|&cid| {
+            ctx.game
+                .card(cid)
+                .keywords
+                .contains_string_ignore_case("Panglacial")
+        })
         .collect();
     for pg_id in panglacial {
         let name = ctx.game.card(pg_id).card_name.clone();
         let cast = ctx.agents[controller.index()].confirm_action(
-            controller, Some("PanglacialCast"),
+            controller,
+            Some("PanglacialCast"),
             &format!("Cast {} from library while searching?", name),
-            &[], Some(&name), None,
+            &[],
+            Some(&name),
+            None,
         );
         if cast {
             zone_cards.retain(|&cid| cid != pg_id);

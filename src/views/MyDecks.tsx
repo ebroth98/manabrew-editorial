@@ -17,8 +17,8 @@ import { inferFormats } from "@/lib/formats";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { DeckCard } from "@/components/deck/DeckCard";
 import type { Card } from "@/types/openmagic";
+import type { CardIdentity } from "@/types/server";
 import { fetchCardCollection } from "@/api/scryfall";
-import type { ScryfallCard } from "@/types/scryfall";
 import { scryfallCardToPartial } from "@/lib/scryfall.utils";
 import { ROUTES, DEFAULT_DECK_NAME } from "@/lib/constants";
 import {
@@ -87,7 +87,14 @@ export default function MyDecks() {
     if (!selected) return;
     if (enrichedDecksRef.current.has(selected.id)) return;
 
-    const allCards = [...selected.deck.cards, ...selected.deck.sideboard];
+    const allCards = [
+      ...selected.deck.cards,
+      ...selected.deck.sideboard,
+      ...(selected.deck.attractions ?? []),
+      ...(selected.deck.contraptions ?? []),
+      ...(selected.deck.schemes ?? []),
+      ...(selected.deck.planes ?? []),
+    ];
     const toFetch = allCards
       .filter((c) => (c.cmc === undefined || c.cmc === null) && !c.manaCost)
       .map((c) => c.name);
@@ -119,6 +126,10 @@ export default function MyDecks() {
   }, [selectedId]);
   const allMainGroups = selected ? groupCards(selected.deck.cards) : [];
   const sideGroups = selected ? groupCards(selected.deck.sideboard) : [];
+  const attractionGroups = selected ? groupCards(selected.deck.attractions ?? []) : [];
+  const contraptionGroups = selected ? groupCards(selected.deck.contraptions ?? []) : [];
+  const schemeGroups = selected ? groupCards(selected.deck.schemes ?? []) : [];
+  const planeGroups = selected ? groupCards(selected.deck.planes ?? []) : [];
   const filterLc = cardFilter.toLowerCase();
   const mainGroups = filterLc
     ? allMainGroups.filter((g) => g.card.name.toLowerCase().includes(filterLc))
@@ -252,6 +263,18 @@ export default function MyDecks() {
                   <span>{selected.deck.cards.length} main</span>
                   {selected.deck.sideboard.length > 0 && (
                     <span>{selected.deck.sideboard.length} side</span>
+                  )}
+                  {(selected.deck.attractions?.length ?? 0) > 0 && (
+                    <span>{selected.deck.attractions!.length} attractions</span>
+                  )}
+                  {(selected.deck.contraptions?.length ?? 0) > 0 && (
+                    <span>{selected.deck.contraptions!.length} contraptions</span>
+                  )}
+                  {(selected.deck.schemes?.length ?? 0) > 0 && (
+                    <span>{selected.deck.schemes!.length} schemes</span>
+                  )}
+                  {(selected.deck.planes?.length ?? 0) > 0 && (
+                    <span>{selected.deck.planes!.length} planes</span>
                   )}
                   {colors.length > 0 && (
                     <ManaSymbols cost={colors.map((c) => `{${c}}`).join("")} size="sm" />
@@ -405,38 +428,48 @@ export default function MyDecks() {
                   </div>
                 ))}
 
-                {/* Sideboard */}
-                {sideGroups.length > 0 && (
+                {/* Supplementary decks */}
+                {(sideGroups.length > 0 || attractionGroups.length > 0 || contraptionGroups.length > 0 || schemeGroups.length > 0 || planeGroups.length > 0) && (
                   <>
                     <Separator />
-                    <div>
-                      <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
-                        Sideboard ({selected.deck.sideboard.length})
-                      </h3>
-                      <div className="space-y-0.5">
-                        {sideGroups.map(({ card, count }) => (
-                          <div
-                            key={card.name}
-                            className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40"
-                            {...makeHoverHandlers(card, setHovered)}
-                          >
-                            <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
-                              {count}
-                            </span>
-                            <span className="text-sm flex-1 truncate">
-                              {card.name}
-                            </span>
-                            {card.manaCost && (
-                              <ManaSymbols
-                                cost={card.manaCost}
-                                size="sm"
-                                className="shrink-0"
-                              />
-                            )}
+                    {[
+                      ["Sideboard", selected.deck.sideboard.length, sideGroups],
+                      ["Attractions", selected.deck.attractions?.length ?? 0, attractionGroups],
+                      ["Contraptions", selected.deck.contraptions?.length ?? 0, contraptionGroups],
+                      ["Schemes", selected.deck.schemes?.length ?? 0, schemeGroups],
+                      ["Planes", selected.deck.planes?.length ?? 0, planeGroups],
+                    ].map(([label, count, groups]) =>
+                      Number(count) === 0 ? null : (
+                        <div key={String(label)}>
+                          <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
+                            {String(label)} ({Number(count)})
+                          </h3>
+                          <div className="space-y-0.5">
+                            {(groups as typeof sideGroups).map(({ card, count: copies }) => (
+                              <div
+                                key={`${label}-${card.name}`}
+                                className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40"
+                                {...makeHoverHandlers(card, setHovered)}
+                              >
+                                <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">
+                                  {copies}
+                                </span>
+                                <span className="text-sm flex-1 truncate">
+                                  {card.name}
+                                </span>
+                                {card.manaCost && (
+                                  <ManaSymbols
+                                    cost={card.manaCost}
+                                    size="sm"
+                                    className="shrink-0"
+                                  />
+                                )}
+                              </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    </div>
+                        </div>
+                      )
+                    )}
                   </>
                 )}
               </div>
@@ -468,8 +501,8 @@ export default function MyDecks() {
         open={playDialogOpen}
         onOpenChange={setPlayDialogOpen}
         preSelectedDeckId={playDeckId}
-        onStart={(cardNames, formatId, commanderName) => {
-          startGame(cardNames, formatId, commanderName);
+        onStart={(deckList: CardIdentity[], formatId, commanderName) => {
+          startGame(deckList, formatId, commanderName);
           navigate(ROUTES.PLAY);
         }}
       />

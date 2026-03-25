@@ -20,6 +20,7 @@ pub fn emit_zone_trigger(
         TriggerType::ChangesZone,
         RunParams {
             card: Some(card_id),
+            card_lki: Some(card_id),
             origin: Some(origin),
             destination: Some(destination),
             ..Default::default()
@@ -42,6 +43,7 @@ pub fn emit_zone_trigger_with_lki_counters(
         TriggerType::ChangesZone,
         RunParams {
             card: Some(card_id),
+            card_lki: Some(card_id),
             origin: Some(origin),
             destination: Some(destination),
             lki_p1p1_counters: Some(lki_p1p1_counters),

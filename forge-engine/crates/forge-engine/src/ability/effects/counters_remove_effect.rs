@@ -33,10 +33,7 @@ use crate::spellability::SpellAbility;
 /// - `SP$ RemoveCounter | ValidTgts$ Creature.YouCtrl | CounterType$ P1P1 | CounterNum$ All`
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Parse counter type — skip unsupported "Any" / "All" type modes.
-    let counter_type_str = sa
-        .params
-        .get("CounterType")
-        .unwrap_or("P1P1");
+    let counter_type_str = sa.params.get("CounterType").unwrap_or("P1P1");
     if counter_type_str.eq_ignore_ascii_case("Any") || counter_type_str.eq_ignore_ascii_case("All")
     {
         // Interactive counter type selection — not yet supported.
@@ -120,10 +117,7 @@ fn resolve_target_card(ctx: &EffectContext, sa: &SpellAbility) -> Option<CardId>
         return Some(card_id);
     }
 
-    let defined = sa
-        .params
-        .get("Defined")
-        .unwrap_or("Self");
+    let defined = sa.params.get("Defined").unwrap_or("Self");
 
     match defined {
         "Self" => sa.source,

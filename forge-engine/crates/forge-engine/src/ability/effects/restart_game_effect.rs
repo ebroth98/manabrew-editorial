@@ -24,14 +24,17 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     ];
 
     // Optional: RestrictFromZone — leave some cards in a zone
-    let leave_zone = sa.params.get(keys::RESTRICT_FROM_ZONE).and_then(|z| match z {
-        "Battlefield" => Some(ZoneType::Battlefield),
-        "Hand" => Some(ZoneType::Hand),
-        "Graveyard" => Some(ZoneType::Graveyard),
-        "Exile" => Some(ZoneType::Exile),
-        "Library" => Some(ZoneType::Library),
-        _ => None,
-    });
+    let leave_zone = sa
+        .params
+        .get(keys::RESTRICT_FROM_ZONE)
+        .and_then(|z| match z {
+            "Battlefield" => Some(ZoneType::Battlefield),
+            "Hand" => Some(ZoneType::Hand),
+            "Graveyard" => Some(ZoneType::Graveyard),
+            "Exile" => Some(ZoneType::Exile),
+            "Library" => Some(ZoneType::Library),
+            _ => None,
+        });
 
     for &player_id in &player_ids {
         // Reset player state
@@ -87,8 +90,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.card_mut(card_id).set_toughness_modifier(0);
             ctx.game.card_mut(card_id).set_controller(player_id);
             ctx.game.card_mut(card_id).clear_intrinsic_keywords();
-            ctx.game
-                .move_card(card_id, ZoneType::Library, player_id);
+            ctx.game.move_card(card_id, ZoneType::Library, player_id);
         }
 
         // Shuffle library

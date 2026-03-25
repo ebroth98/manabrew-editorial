@@ -61,7 +61,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Move host to "merged" zone (track via svar)
-    ctx.game.card_mut(source).set_s_var("MergedTo", format!("{}", target.0));
+    ctx.game
+        .card_mut(source)
+        .set_s_var("MergedTo", format!("{}", target.0));
     ctx.game.card_mut(source).set_controller(controller);
 
     // Track mutation count

@@ -420,6 +420,7 @@ impl CombatState {
                     if to_player > 0 {
                         deal_combat_damage_to_player(
                             game,
+                            attacker_id,
                             defending_player,
                             to_player,
                             attacker_has_lifelink,
@@ -466,13 +467,11 @@ impl CombatState {
                         None,
                     )
                 {
-                    if let Some(chosen) =
-                        agents[attacker_controller.index()].choose_target_card(
-                            attacker_controller,
-                            &defending_creatures,
-                            None,
-                        )
-                    {
+                    if let Some(chosen) = agents[attacker_controller.index()].choose_target_card(
+                        attacker_controller,
+                        &defending_creatures,
+                        None,
+                    ) {
                         deal_combat_damage_to_card(
                             game,
                             attacker_id,
@@ -507,6 +506,7 @@ impl CombatState {
                     DefenderId::Player(defending_player) => {
                         deal_combat_damage_to_player(
                             game,
+                            attacker_id,
                             defending_player,
                             attacker_power,
                             attacker_has_lifelink,
@@ -785,6 +785,7 @@ impl CombatState {
                         DefenderId::Player(defending_player) => {
                             deal_combat_damage_to_player(
                                 game,
+                                attacker_id,
                                 defending_player,
                                 defender_damage,
                                 attacker_has_lifelink,
@@ -891,10 +892,7 @@ impl CombatState {
 
     /// Initialize attack constraints for this combat.
     /// Mirrors Java `Combat.initConstraints()`.
-    pub fn init_constraints(
-        &self,
-        game: &GameState,
-    ) -> attack_constraints::AttackConstraints {
+    pub fn init_constraints(&self, game: &GameState) -> attack_constraints::AttackConstraints {
         let attacking_player = self
             .attacking_player
             .expect("init_constraints called without attacking player");
@@ -953,7 +951,8 @@ impl CombatState {
     /// Remove a specific blocker from a specific attacker.
     /// Mirrors Java `Combat.removeBlockAssignment()`.
     pub fn remove_block_assignment(&mut self, attacker: CardId, blocker: CardId) {
-        self.blockers.retain(|&(b, a)| !(b == blocker && a == attacker));
+        self.blockers
+            .retain(|&(b, a)| !(b == blocker && a == attacker));
     }
 
     /// Remove a blocker from all attacker assignments.
@@ -980,8 +979,11 @@ impl CombatState {
                 self.damage_order.insert(attacker_id, blockers);
             } else {
                 let attacking_player = self.attacking_player.unwrap_or(PlayerId(0));
-                let ordered = agents[attacking_player.index()]
-                    .choose_damage_assignment_order(attacking_player, attacker_id, &blockers);
+                let ordered = agents[attacking_player.index()].choose_damage_assignment_order(
+                    attacking_player,
+                    attacker_id,
+                    &blockers,
+                );
                 self.damage_order.insert(attacker_id, ordered);
             }
         }
@@ -1134,7 +1136,9 @@ impl CombatState {
 
     /// Check if a card is blocking a specific attacker.
     pub fn is_blocking_attacker(&self, blocker: CardId, attacker: CardId) -> bool {
-        self.blockers.iter().any(|&(b, a)| b == blocker && a == attacker)
+        self.blockers
+            .iter()
+            .any(|&(b, a)| b == blocker && a == attacker)
     }
 
     /// Check if an attacker is unblocked (declared, blockers declared, but none assigned).
@@ -1219,8 +1223,7 @@ fn validate_damage_assignment(
         let lethal = if has_deathtouch {
             1
         } else if game.card(blocker_id).type_line.is_planeswalker() {
-            game
-                .card(blocker_id)
+            game.card(blocker_id)
                 .counter_count(&crate::card::CounterType::Loyalty)
                 .max(0)
         } else {
@@ -1242,7 +1245,13 @@ fn validate_damage_assignment(
     }
 
     if invalid {
-        return fallback_damage_assignment(game, attacker_id, blockers_in_order, defender, total_damage);
+        return fallback_damage_assignment(
+            game,
+            attacker_id,
+            blockers_in_order,
+            defender,
+            total_damage,
+        );
     }
 
     let mut ordered_blocker_assignments: Vec<(CardId, i32)> = Vec::new();
@@ -1290,8 +1299,7 @@ fn fallback_damage_assignment(
         let lethal = if has_deathtouch {
             1
         } else if game.card(blocker_id).type_line.is_planeswalker() {
-            game
-                .card(blocker_id)
+            game.card(blocker_id)
                 .counter_count(&crate::card::CounterType::Loyalty)
                 .max(0)
         } else {
@@ -1421,6 +1429,7 @@ pub fn filter_legal_blockers(
 /// Deal combat damage to a player, handling lifelink, Infect, and Toxic.
 fn deal_combat_damage_to_player(
     game: &mut GameState,
+    source: CardId,
     target: PlayerId,
     amount: i32,
     lifelink: bool,
@@ -1439,7 +1448,8 @@ fn deal_combat_damage_to_player(
                 game.player_mut(target).poison_counters += amount;
             }
         } else {
-            game.deal_damage_to_player(target, amount);
+            let dealt = game.deal_damage_to_player(target, amount);
+            game.record_player_damage_assignment(Some(source), Some(target), dealt, true);
         }
         // Toxic: add poison counters in addition to normal damage
         if let Some(toxic) = source_toxic_count {
@@ -1458,17 +1468,30 @@ fn deal_combat_damage_to_player(
             )
         {
             // Run GainLife replacement effects (e.g. Tainted Remedy).
-            let mut gl_event = crate::replacement::replacement_handler::ReplacementEvent::GainLife {
-                player: source_controller,
-                amount,
-            };
-            let gl_result = crate::replacement::replacement_handler::apply_replacements(game, &mut gl_event);
+            let mut gl_event =
+                crate::replacement::replacement_handler::ReplacementEvent::GainLife {
+                    player: source_controller,
+                    amount,
+                };
+            let gl_result =
+                crate::replacement::replacement_handler::apply_replacements(game, &mut gl_event);
             if gl_result != crate::replacement::ReplacementResult::Skipped
                 && gl_result != crate::replacement::ReplacementResult::Replaced
             {
-                let final_amount = if let crate::replacement::replacement_handler::ReplacementEvent::GainLife { amount: a, .. } = gl_event { a } else { amount };
+                let final_amount =
+                    if let crate::replacement::replacement_handler::ReplacementEvent::GainLife {
+                        amount: a,
+                        ..
+                    } = gl_event
+                    {
+                        a
+                    } else {
+                        amount
+                    };
                 if final_amount > 0 {
                     game.player_mut(source_controller).gain_life(final_amount);
+                    game.player_mut(source_controller)
+                        .life_gained_by_team_this_turn += final_amount;
                 }
             }
         }
@@ -1514,17 +1537,30 @@ fn deal_combat_damage_to_card(
             )
         {
             // Run GainLife replacement effects (e.g. Tainted Remedy).
-            let mut gl_event = crate::replacement::replacement_handler::ReplacementEvent::GainLife {
-                player: source_controller,
-                amount,
-            };
-            let gl_result = crate::replacement::replacement_handler::apply_replacements(game, &mut gl_event);
+            let mut gl_event =
+                crate::replacement::replacement_handler::ReplacementEvent::GainLife {
+                    player: source_controller,
+                    amount,
+                };
+            let gl_result =
+                crate::replacement::replacement_handler::apply_replacements(game, &mut gl_event);
             if gl_result != crate::replacement::ReplacementResult::Skipped
                 && gl_result != crate::replacement::ReplacementResult::Replaced
             {
-                let final_amount = if let crate::replacement::replacement_handler::ReplacementEvent::GainLife { amount: a, .. } = gl_event { a } else { amount };
+                let final_amount =
+                    if let crate::replacement::replacement_handler::ReplacementEvent::GainLife {
+                        amount: a,
+                        ..
+                    } = gl_event
+                    {
+                        a
+                    } else {
+                        amount
+                    };
                 if final_amount > 0 {
                     game.player_mut(source_controller).gain_life(final_amount);
+                    game.player_mut(source_controller)
+                        .life_gained_by_team_this_turn += final_amount;
                 }
             }
         }

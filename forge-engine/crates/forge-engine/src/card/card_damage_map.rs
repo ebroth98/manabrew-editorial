@@ -5,6 +5,8 @@
 
 use std::collections::{HashMap, HashSet};
 
+use serde::{Deserialize, Serialize};
+
 use crate::card::valid_filter;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
@@ -12,13 +14,13 @@ use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 use crate::trigger::TriggerHandler;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum DamageTarget {
     Card(CardId),
     Player(PlayerId),
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CardDamageMap {
     data: HashMap<CardId, HashMap<DamageTarget, i32>>,
 }
@@ -33,11 +35,7 @@ impl CardDamageMap {
     }
 
     pub fn total_amount(&self) -> i32 {
-        self.data
-            .values()
-            .flat_map(|m| m.values())
-            .copied()
-            .sum()
+        self.data.values().flat_map(|m| m.values()).copied().sum()
     }
 
     pub fn entries(&self) -> Vec<(CardId, DamageTarget, i32)> {
@@ -87,11 +85,7 @@ impl CardDamageMap {
         out
     }
 
-    pub fn trigger_prevent_damage(
-        &self,
-        trigger_handler: &mut TriggerHandler,
-        is_combat: bool,
-    ) {
+    pub fn trigger_prevent_damage(&self, trigger_handler: &mut TriggerHandler, is_combat: bool) {
         let mut by_target: HashMap<DamageTarget, i32> = HashMap::new();
         for targets in self.data.values() {
             for (&target, &amount) in targets {
@@ -224,7 +218,11 @@ impl CardDamageMap {
             let dealt: i32 = self
                 .data
                 .values()
-                .map(|m| m.get(&DamageTarget::Card(target_card)).copied().unwrap_or(0))
+                .map(|m| {
+                    m.get(&DamageTarget::Card(target_card))
+                        .copied()
+                        .unwrap_or(0)
+                })
                 .sum();
             if dealt <= 0 {
                 continue;

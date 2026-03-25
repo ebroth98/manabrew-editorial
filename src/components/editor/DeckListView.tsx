@@ -505,7 +505,7 @@ export interface DeckListViewProps {
   commander: Card | null;
   mainSections: Array<SectionDefinition & { groups: CardGroup[] }>;
   otherGroups: CardGroup[];
-  sideGroups: CardGroup[];
+  supplementarySections: Array<{ id: string; label: string; groups: CardGroup[] }>;
   stackColumns: Array<SectionDefinition & { groups: CardGroup[] }>;
   isOverSide: boolean;
   setSideDropRef: (node: HTMLElement | null) => void;
@@ -535,7 +535,7 @@ export interface DeckListViewProps {
 
 export function DeckListView({
   viewMode, cardSize, commander,
-  mainSections, otherGroups, sideGroups, stackColumns,
+  mainSections, otherGroups, supplementarySections, stackColumns,
   isOverSide, setSideDropRef,
   onAddOne, onRemoveOne, onRemoveAll, onSetCommander, onRemoveCommander,
   onMoveToSide, onMoveToMain, onPickPrint, onHover, onLeave,
@@ -548,6 +548,10 @@ export function DeckListView({
   const [selectMode, setSelectMode] = useState(false);
   const gridCols = GRID_COLS[cardSize] ?? "grid-cols-8";
   const cardWidth = CARD_WIDTH_MAP[cardSize] ?? 115;
+  const supplementaryCount = supplementarySections.reduce(
+    (sum, section) => sum + section.groups.reduce((sectionSum, group) => sectionSum + group.count, 0),
+    0,
+  );
 
   const handleMarqueeComplete = useCallback((rect: { left: number; top: number; width: number; height: number }, additive: boolean) => {
     if (!containerRef.current || !onSelectAll) return;
@@ -719,20 +723,25 @@ export function DeckListView({
             className={cn("shrink-0 rounded-lg transition-colors p-2 -m-1 min-h-[160px]", isOverSide && "bg-primary/10 border-2 border-dashed border-primary/40")}
             style={{ minWidth: cardWidth + 8 }}
           >
-            {sideGroups.length > 0 ? (
-              <StackColumn
-                label="Sideboard"
-                sectionId="sideboard"
-                groups={sideGroups}
-                cardWidth={cardWidth}
-                onAddOne={(g) => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
-                onRemoveOne={onRemoveFromSide}
-                onHover={onHover}
-                onLeave={onLeave}
-              />
+            {supplementarySections.length > 0 ? (
+              <div className="space-y-4">
+                {supplementarySections.map((section) => (
+                  <StackColumn
+                    key={section.id}
+                    label={section.label}
+                    sectionId={section.id}
+                    groups={section.groups}
+                    cardWidth={cardWidth}
+                    onAddOne={(g) => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
+                    onRemoveOne={onRemoveFromSide}
+                    onHover={onHover}
+                    onLeave={onLeave}
+                  />
+                ))}
+              </div>
             ) : (
               <div className="flex flex-col h-full" style={{ width: cardWidth }}>
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Sideboard</div>
+                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Supplementary</div>
                 <div className="border-2 border-dashed border-border/40 rounded-lg flex-1 flex items-center justify-center">
                   <p className="text-[10px] text-muted-foreground/40 text-center">Drop cards here</p>
                 </div>
@@ -923,67 +932,85 @@ export function DeckListView({
         <div className="px-2 pt-2 pb-1">
           <div className="flex items-center gap-2 mb-1.5">
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Sideboard ({sideGroups.reduce((s, g) => s + g.count, 0)})
+              Supplementary ({supplementaryCount})
             </span>
             <span className="text-xs text-muted-foreground/40">— drop cards here</span>
           </div>
-          {sideGroups.length === 0 ? (
+          {supplementarySections.length === 0 ? (
             <div className="py-4 text-center">
-              <p className="text-xs text-muted-foreground/40">Drag cards here for sideboard</p>
+              <p className="text-xs text-muted-foreground/40">Drag cards here for sideboard or supplementary decks</p>
             </div>
           ) : viewMode === "list" ? (
-            <div className="space-y-0.5 pb-1">
-              {sideGroups.map((g) => (
-                <div
-                  key={g.card.name}
-                  className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
-                  onMouseEnter={(e) => onHover(g.card, e.clientX, e.clientY)}
-                  onMouseMove={(e) => onHover(g.card, e.clientX, e.clientY)}
-                  onMouseLeave={onLeave}
-                >
-                  <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">{g.count}</span>
-                  <span className="text-sm flex-1 truncate">{g.card.name}</span>
-                  {g.card.manaCost && <ManaSymbols cost={g.card.manaCost} size="sm" className="shrink-0" />}
-                  <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                    <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground" title="Move to main" onClick={() => onMoveToMain(g.card.name)}>
-                      <Upload className="h-3 w-3" />
-                    </Button>
-                    <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={() => onRemoveFromSide(g.card.name)}>
-                      <X className="h-3 w-3" />
-                    </Button>
+            <div className="space-y-3 pb-1">
+              {supplementarySections.map((section) => (
+                <div key={section.id}>
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    {section.label} ({section.groups.reduce((sum, group) => sum + group.count, 0)})
+                  </div>
+                  <div className="space-y-0.5">
+                    {section.groups.map((g) => (
+                      <div
+                        key={`${section.id}-${g.card.name}`}
+                        className="flex items-center gap-1 group hover:bg-muted/40 rounded px-1 py-0.5"
+                        onMouseEnter={(e) => onHover(g.card, e.clientX, e.clientY)}
+                        onMouseMove={(e) => onHover(g.card, e.clientX, e.clientY)}
+                        onMouseLeave={onLeave}
+                      >
+                        <span className="text-xs font-mono w-4 text-right text-muted-foreground shrink-0">{g.count}</span>
+                        <span className="text-sm flex-1 truncate">{g.card.name}</span>
+                        {g.card.manaCost && <ManaSymbols cost={g.card.manaCost} size="sm" className="shrink-0" />}
+                        <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          <Button size="icon" variant="ghost" className="h-5 w-5 text-muted-foreground" title="Move to main" onClick={() => onMoveToMain(g.card.name)}>
+                            <Upload className="h-3 w-3" />
+                          </Button>
+                          <Button size="icon" variant="ghost" className="h-5 w-5 text-destructive" onClick={() => onRemoveFromSide(g.card.name)}>
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className={cn("grid gap-2 pb-1", gridCols)}>
-              {sideGroups.map((g) => (
-                <div
-                  key={g.card.name}
-                  className="relative group"
-                  onMouseEnter={(e) => onHover(g.card, e.clientX, e.clientY)}
-                  onMouseMove={(e) => onHover(g.card, e.clientX, e.clientY)}
-                  onMouseLeave={onLeave}
-                >
-                  {g.card.imageUrl ? (
-                    <img src={g.card.imageUrl} alt={g.card.name} className="w-full rounded-lg border border-border/50" draggable={false} />
-                  ) : (
-                    <div className="w-full aspect-[2.5/3.5] rounded-lg border border-border bg-muted flex items-center justify-center p-2">
-                      <span className="text-xs text-center text-muted-foreground">{g.card.name}</span>
-                    </div>
-                  )}
-                  {g.count > 1 && (
-                    <div className="absolute top-1 left-1 bg-overlay/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
-                      {g.count}
-                    </div>
-                  )}
-                  <div className="absolute inset-0 bg-overlay/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-1 pointer-events-none group-hover:pointer-events-auto">
-                    <Button size="sm" variant="secondary" className="h-6 w-4/5 text-xs" onClick={() => onMoveToMain(g.card.name)}>
-                      → Main
-                    </Button>
-                    <Button size="sm" variant="ghost" className="h-6 w-4/5 text-xs text-white/80 hover:text-white" onClick={() => onRemoveFromSide(g.card.name)}>
-                      <X className="h-3 w-3 mr-1" /> Remove
-                    </Button>
+            <div className="space-y-3 pb-1">
+              {supplementarySections.map((section) => (
+                <div key={section.id}>
+                  <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1">
+                    {section.label} ({section.groups.reduce((sum, group) => sum + group.count, 0)})
+                  </div>
+                  <div className={cn("grid gap-2", gridCols)}>
+                    {section.groups.map((g) => (
+                      <div
+                        key={`${section.id}-${g.card.name}`}
+                        className="relative group"
+                        onMouseEnter={(e) => onHover(g.card, e.clientX, e.clientY)}
+                        onMouseMove={(e) => onHover(g.card, e.clientX, e.clientY)}
+                        onMouseLeave={onLeave}
+                      >
+                        {g.card.imageUrl ? (
+                          <img src={g.card.imageUrl} alt={g.card.name} className="w-full rounded-lg border border-border/50" draggable={false} />
+                        ) : (
+                          <div className="w-full aspect-[2.5/3.5] rounded-lg border border-border bg-muted flex items-center justify-center p-2">
+                            <span className="text-xs text-center text-muted-foreground">{g.card.name}</span>
+                          </div>
+                        )}
+                        {g.count > 1 && (
+                          <div className="absolute top-1 left-1 bg-overlay/80 text-white text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center">
+                            {g.count}
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-overlay/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-lg flex flex-col items-center justify-center gap-1 pointer-events-none group-hover:pointer-events-auto">
+                          <Button size="sm" variant="secondary" className="h-6 w-4/5 text-xs" onClick={() => onMoveToMain(g.card.name)}>
+                            → Main
+                          </Button>
+                          <Button size="sm" variant="ghost" className="h-6 w-4/5 text-xs text-white/80 hover:text-white" onClick={() => onRemoveFromSide(g.card.name)}>
+                            <X className="h-3 w-3 mr-1" /> Remove
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}

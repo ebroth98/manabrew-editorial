@@ -3,9 +3,9 @@ use forge_foundation::ZoneType;
 use crate::card::Card;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
+use crate::parsing::Params;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticMode;
-use crate::parsing::Params;
 
 pub fn cant_target(
     cards: &[Card],
@@ -29,11 +29,7 @@ pub fn cant_target(
                 continue;
             }
 
-            if !matches_valid_target(
-                st_ab.params.get(keys::VALID_TARGET),
-                target,
-                source,
-            ) {
+            if !matches_valid_target(st_ab.params.get(keys::VALID_TARGET), target, source) {
                 continue;
             }
             if !matches_valid_activator(
@@ -51,10 +47,9 @@ pub fn cant_target(
                     continue;
                 }
             }
-            if let (Some(valid_source), Some(src)) = (
-                st_ab.params.get(keys::VALID_SOURCE),
-                source_card,
-            ) {
+            if let (Some(valid_source), Some(src)) =
+                (st_ab.params.get(keys::VALID_SOURCE), source_card)
+            {
                 if !matches_valid_target(Some(valid_source), src, source) {
                     continue;
                 }
@@ -85,7 +80,11 @@ pub fn apply_cant_target_ability(
     if !matches_valid_target(st_ab.params.get(keys::VALID_TARGET), target, source) {
         return false;
     }
-    if !matches_valid_activator(st_ab.params.get(keys::ACTIVATOR), activator, source.controller) {
+    if !matches_valid_activator(
+        st_ab.params.get(keys::ACTIVATOR),
+        activator,
+        source.controller,
+    ) {
         return false;
     }
     if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
@@ -120,7 +119,10 @@ fn spell_ability_matches(valid_sa: &str, ability_line: &str) -> bool {
             "spell" => params.has(keys::SP),
             "istargeting" => params.has(keys::VALID_TGTS),
             "xcost" => {
-                params.get(keys::COST).map(|c| c.contains('X')).unwrap_or(false)
+                params
+                    .get(keys::COST)
+                    .map(|c| c.contains('X'))
+                    .unwrap_or(false)
                     || ability_line.contains("X")
             }
             _ => false,

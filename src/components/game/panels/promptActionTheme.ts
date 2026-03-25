@@ -10,7 +10,7 @@ export function usePromptActionColors() {
 }
 
 export function getPromptActionButtonStyle(baseColor: string): CSSProperties {
-  const resolved = baseColor || GAME_THEME_COLORS.promptAction.default;
+  const resolved = baseColor || GAME_THEME_COLORS.promptAction.passAction;
   const shadow = `0 4px 14px ${withAlpha(resolved, 0.28)}`;
 
   return {

@@ -33,11 +33,17 @@ fn ring_tempts(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
     // If no ring-bearer, choose one
     let has_bearer = ctx.game.player(player).ring_bearer.is_some();
     if !has_bearer {
-        let creatures: Vec<CardId> = ctx.game.cards.iter()
+        let creatures: Vec<CardId> = ctx
+            .game
+            .cards
+            .iter()
             .filter(|c| {
                 c.zone == ZoneType::Battlefield
                     && c.controller == player
-                    && c.type_line.core_types.iter().any(|ct| matches!(ct, forge_foundation::CoreType::Creature))
+                    && c.type_line
+                        .core_types
+                        .iter()
+                        .any(|ct| matches!(ct, forge_foundation::CoreType::Creature))
             })
             .map(|c| c.id)
             .collect();
@@ -45,7 +51,10 @@ fn ring_tempts(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
         if !creatures.is_empty() {
             ctx.agents[player.index()].snapshot_state(ctx.game, ctx.mana_pools);
             if let Some(chosen) = ctx.agents[player.index()].choose_single_card_for_zone_change(
-                player, &creatures, "Choose your Ring-bearer", false,
+                player,
+                &creatures,
+                "Choose your Ring-bearer",
+                false,
             ) {
                 ctx.game.player_mut(player).ring_bearer = Some(chosen);
             }

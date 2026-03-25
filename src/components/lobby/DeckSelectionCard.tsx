@@ -1,7 +1,8 @@
 import { Badge } from "@/components/ui/badge";
 import { AlertCircle, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Card } from "@/types/openmagic";
+import type { Card, DeckLabel } from "@/types/openmagic";
+import type { CardIdentity } from "@/types/server";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 
 interface DeckSelectionCardProps {
@@ -10,8 +11,8 @@ interface DeckSelectionCardProps {
   desc?: string;
   color?: string;
   badge?: string | null;
-  labels?: string[];
-  deckList: { name: string; setCode: string }[];
+  labels?: DeckLabel[];
+  deckList: CardIdentity[];
   cards: Card[];
   isPreset: boolean;
   isSelected: boolean;

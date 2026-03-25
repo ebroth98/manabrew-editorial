@@ -1,9 +1,9 @@
 //! Java-parity perpetual abilities applicator.
 
-use crate::card::Card;
 use crate::card::card_trait_changes::CardTraitChanges;
 use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::perpetual_record::PerpetualRecord;
+use crate::card::Card;
 
 #[derive(Debug, Clone)]
 pub struct PerpetualAbilities {

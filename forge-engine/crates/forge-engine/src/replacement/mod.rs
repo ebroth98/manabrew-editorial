@@ -1,7 +1,7 @@
 // Core types (extracted from replacement_effect.rs to match Java file structure)
-pub mod replacement_type;
 pub mod replacement_layer;
 pub mod replacement_result;
+pub mod replacement_type;
 
 // Replacement effect struct + parser
 pub mod replacement_effect;
@@ -55,8 +55,8 @@ pub mod replace_turn_face_up;
 pub mod replace_untap;
 
 // Re-export all public types for convenience
-pub use replacement_type::ReplacementType;
-pub use replacement_layer::ReplacementLayer;
-pub use replacement_result::ReplacementResult;
 pub use replacement_effect::*;
 pub use replacement_handler::*;
+pub use replacement_layer::ReplacementLayer;
+pub use replacement_result::ReplacementResult;
+pub use replacement_type::ReplacementType;

@@ -10,7 +10,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .card(sid)
             .svars
             .get("IntensifyCount")
-            .and_then(|s| s.strip_prefix("Number$").and_then(|n| n.parse::<i32>().ok()))
+            .and_then(|s| {
+                s.strip_prefix("Number$")
+                    .and_then(|n| n.parse::<i32>().ok())
+            })
             .unwrap_or(0);
         ctx.game
             .card_mut(sid)

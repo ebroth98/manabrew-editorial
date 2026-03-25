@@ -15,10 +15,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let num = parse_param(&sa.ability_text, "NumTurns$ ").unwrap_or(1);
 
-    let defined = sa
-        .params
-        .get("Defined")
-        .unwrap_or("You");
+    let defined = sa.params.get("Defined").unwrap_or("You");
 
     let targets = resolve_defined_players(defined, controller, ctx.game);
     for target in targets {
@@ -57,6 +54,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,

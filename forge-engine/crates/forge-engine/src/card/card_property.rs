@@ -27,11 +27,7 @@ pub fn card_has_property(card: &Card, filter: &str, source_controller: PlayerId)
 
 /// Match a single property qualifier against a card.
 /// Mirrors individual property checks in Java's `CardProperty.cardHasProperty()`.
-fn matches_single_property(
-    card: &Card,
-    property: &str,
-    source_controller: PlayerId,
-) -> bool {
+fn matches_single_property(card: &Card, property: &str, source_controller: PlayerId) -> bool {
     match property {
         // Inclusive type checks (mirrors Java Card.isValid type token before dot).
         fc::CARD | "card" => true,

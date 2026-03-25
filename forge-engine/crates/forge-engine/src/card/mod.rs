@@ -1,6 +1,6 @@
+pub mod activation_table;
 mod alt_costs;
 mod card_assembly;
-pub mod activation_table;
 pub mod card_changed_words;
 pub mod card_clone_states;
 pub mod card_collection;
@@ -68,13 +68,13 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::ability::activated::{parse_activated_ability, ActivatedAbility};
+use crate::card::perpetual::perpetual_record::PerpetualRecord;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::parse_or_warn;
 use crate::replacement::{parse_replacement_effect, ReplacementEffect};
-use crate::staticability::{parse_static_ability, StaticAbility};
-use crate::card::perpetual::perpetual_record::PerpetualRecord;
-use crate::trigger::Trigger;
 use crate::spellability::SpellAbility;
+use crate::staticability::{parse_static_ability, StaticAbility};
+use crate::trigger::Trigger;
 
 /// Build the full `"Plotted:{turn}"` keyword string.
 pub fn make_plotted_keyword(turn: u32) -> String {
@@ -375,6 +375,8 @@ pub struct Card {
     pub chosen_type_revealed: bool,
     /// Opponent chosen for PromiseGift cost.
     pub promised_gift: Option<PlayerId>,
+    /// Attraction lights printed on the card face.
+    pub attraction_lights: Vec<u32>,
     /// Attraction sector assignment.
     pub sector: Option<String>,
     /// Chosen sector before assignment effects resolve.
@@ -509,14 +511,18 @@ impl Card {
         let activated_abilities: Vec<ActivatedAbility> = abilities
             .iter()
             .enumerate()
-            .filter_map(|(i, raw)| parse_or_warn(parse_activated_ability(raw, i), "ActivatedAbility", raw))
+            .filter_map(|(i, raw)| {
+                parse_or_warn(parse_activated_ability(raw, i), "ActivatedAbility", raw)
+            })
             .collect();
 
         // Parse replacement effects from R$ lines in card abilities.
         // Mirrors Java Card constructor calling ReplacementHandler registration.
         let replacement_effects: Vec<ReplacementEffect> = abilities
             .iter()
-            .filter_map(|raw| parse_or_warn(parse_replacement_effect(raw), "ReplacementEffect", raw))
+            .filter_map(|raw| {
+                parse_or_warn(parse_replacement_effect(raw), "ReplacementEffect", raw)
+            })
             .collect();
 
         // Parse static abilities from S$ lines.
@@ -565,7 +571,9 @@ impl Card {
             exerted: false,
             damage: 0,
             counters: BTreeMap::new(),
-            keywords: crate::keyword::keyword_collection::KeywordCollection::from_strings(&keywords),
+            keywords: crate::keyword::keyword_collection::KeywordCollection::from_strings(
+                &keywords,
+            ),
             granted_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
             pump_keywords: crate::keyword::keyword_collection::KeywordCollection::new(),
             pump_trigger_count: 0,
@@ -627,6 +635,7 @@ impl Card {
             chosen_player_revealed: false,
             chosen_type_revealed: false,
             promised_gift: None,
+            attraction_lights: Vec::new(),
             sector: None,
             chosen_sector: None,
             sprocket: 0,
@@ -1060,8 +1069,7 @@ impl Card {
 
     /// Get Toxic count (e.g. "Toxic:1" → Some(1)).
     pub fn get_toxic_count(&self) -> Option<i32> {
-        self.get_keyword_cost("Toxic")
-            .and_then(|s| s.parse().ok())
+        self.get_keyword_cost("Toxic").and_then(|s| s.parse().ok())
     }
 
     /// Whether this card has the Storm keyword.
@@ -1088,7 +1096,11 @@ impl Card {
     /// Get all "Protection from X" values this card has.
     pub fn get_protections(&self) -> Vec<String> {
         let mut prots = Vec::new();
-        for kw in self.keywords.iter_strings().chain(self.granted_keywords.iter_strings()) {
+        for kw in self
+            .keywords
+            .iter_strings()
+            .chain(self.granted_keywords.iter_strings())
+        {
             if let Some(from) = kw.strip_prefix("Protection from ") {
                 prots.push(from.to_lowercase());
             }
@@ -1496,6 +1508,14 @@ impl Card {
 
     pub fn assign_sector(&mut self, sector: &str) {
         self.sector = Some(sector.to_string());
+    }
+
+    pub fn has_attraction_light(&self, light: i32) -> bool {
+        light > 0
+            && self
+                .attraction_lights
+                .iter()
+                .any(|&entry| entry == light as u32)
     }
 
     pub fn has_sector(&self) -> bool {
@@ -2304,14 +2324,30 @@ impl Card {
         self.is_permanent()
     }
 
-    pub fn add_untap_command(&mut self) { self.set_s_var("_cmd_untap", "1"); }
-    pub fn add_unattach_command(&mut self) { self.set_s_var("_cmd_unattach", "1"); }
-    pub fn add_faceup_command(&mut self) { self.set_s_var("_cmd_faceup", "1"); }
-    pub fn add_facedown_command(&mut self) { self.set_s_var("_cmd_facedown", "1"); }
-    pub fn add_change_controller_command(&mut self) { self.set_s_var("_cmd_change_controller", "1"); }
-    pub fn add_phase_out_command(&mut self) { self.set_s_var("_cmd_phase_out", "1"); }
-    pub fn add_leaves_play_command(&mut self) { self.set_s_var("_cmd_leaves_play", "1"); }
-    pub fn add_static_command_list(&mut self) { self.set_s_var("_cmd_static", "1"); }
+    pub fn add_untap_command(&mut self) {
+        self.set_s_var("_cmd_untap", "1");
+    }
+    pub fn add_unattach_command(&mut self) {
+        self.set_s_var("_cmd_unattach", "1");
+    }
+    pub fn add_faceup_command(&mut self) {
+        self.set_s_var("_cmd_faceup", "1");
+    }
+    pub fn add_facedown_command(&mut self) {
+        self.set_s_var("_cmd_facedown", "1");
+    }
+    pub fn add_change_controller_command(&mut self) {
+        self.set_s_var("_cmd_change_controller", "1");
+    }
+    pub fn add_phase_out_command(&mut self) {
+        self.set_s_var("_cmd_phase_out", "1");
+    }
+    pub fn add_leaves_play_command(&mut self) {
+        self.set_s_var("_cmd_leaves_play", "1");
+    }
+    pub fn add_static_command_list(&mut self) {
+        self.set_s_var("_cmd_static", "1");
+    }
     pub fn run_leaves_play_commands(&mut self) {
         if self.has_s_var("_cmd_leaves_play") {
             self.cleanup_exiled_with();
@@ -2477,34 +2513,95 @@ impl Card {
         self.type_line.subtypes.clear();
     }
 
-    pub fn clear_changed_card_types(&mut self) { self.update_types(); }
-    pub fn clear_changed_card_colors(&mut self) { self.color = ColorSet::COLORLESS; }
-    pub fn add_changed_card_types_by_text(&mut self) { self.update_types(); }
-    pub fn remove_changed_card_types_by_text(&mut self) { self.update_types(); }
-    pub fn add_changed_card_types(&mut self) { self.update_types(); }
-    pub fn remove_changed_card_types(&mut self) { self.update_types(); }
-    pub fn update_type_cache(&mut self) { self.type_line = CardTypeLine::parse(&self.type_line.to_string()); }
-    pub fn has_changed_card_colors(&self) -> bool { !self.color.is_colorless() }
-    pub fn add_color_by_text(&mut self, color: ColorSet) { self.add_color(color); }
-    pub fn remove_color_by_text(&mut self) { self.remove_color(); }
-    pub fn remove_color(&mut self) { self.color = ColorSet::COLORLESS; }
-    pub fn add_clone_state(&mut self) { self.set_s_var("CloneState", "True"); }
-    pub fn remove_clone_state(&mut self) { self.remove_s_var("CloneState"); }
-    pub fn remove_clone_states(&mut self) { self.remove_s_var("CloneState"); }
-    pub fn add_new_pt_by_text(&mut self, p: i32, t: i32) { self.base_power = Some(p); self.base_toughness = Some(t); }
-    pub fn remove_new_p_tby_text(&mut self) { self.clear_new_pt(); }
-    pub fn add_new_pt(&mut self, p: i32, t: i32) { self.base_power = Some(p); self.base_toughness = Some(t); }
-    pub fn remove_new_pt(&mut self) { self.clear_new_pt(); }
-    pub fn clear_new_pt(&mut self) { self.base_power = None; self.base_toughness = None; }
-    pub fn toughness_assigns_damage(&self) -> bool { self.has_keyword("CARDNAME assigns combat damage equal to its toughness") }
-    pub fn assign_no_combat_damage(&self) -> bool { self.has_keyword("CARDNAME assigns no combat damage") }
-    pub fn add_pt_boost(&mut self, p: i32, t: i32) { self.power_modifier += p; self.toughness_modifier += t; }
-    pub fn remove_pt_boost(&mut self, p: i32, t: i32) { self.power_modifier -= p; self.toughness_modifier -= t; }
-    pub fn add_draft_action(&mut self) { self.set_s_var("DraftAction", "True"); }
-    pub fn add_intensity(&mut self, v: i32) { self.intensity += v; }
-    pub fn has_intensity(&self) -> bool { self.intensity > 0 }
-    pub fn has_perpetual(&self) -> bool { !self.perpetual.is_empty() }
-    pub fn get_perpetual(&self) -> &[PerpetualRecord] { &self.perpetual }
+    pub fn clear_changed_card_types(&mut self) {
+        self.update_types();
+    }
+    pub fn clear_changed_card_colors(&mut self) {
+        self.color = ColorSet::COLORLESS;
+    }
+    pub fn add_changed_card_types_by_text(&mut self) {
+        self.update_types();
+    }
+    pub fn remove_changed_card_types_by_text(&mut self) {
+        self.update_types();
+    }
+    pub fn add_changed_card_types(&mut self) {
+        self.update_types();
+    }
+    pub fn remove_changed_card_types(&mut self) {
+        self.update_types();
+    }
+    pub fn update_type_cache(&mut self) {
+        self.type_line = CardTypeLine::parse(&self.type_line.to_string());
+    }
+    pub fn has_changed_card_colors(&self) -> bool {
+        !self.color.is_colorless()
+    }
+    pub fn add_color_by_text(&mut self, color: ColorSet) {
+        self.add_color(color);
+    }
+    pub fn remove_color_by_text(&mut self) {
+        self.remove_color();
+    }
+    pub fn remove_color(&mut self) {
+        self.color = ColorSet::COLORLESS;
+    }
+    pub fn add_clone_state(&mut self) {
+        self.set_s_var("CloneState", "True");
+    }
+    pub fn remove_clone_state(&mut self) {
+        self.remove_s_var("CloneState");
+    }
+    pub fn remove_clone_states(&mut self) {
+        self.remove_s_var("CloneState");
+    }
+    pub fn add_new_pt_by_text(&mut self, p: i32, t: i32) {
+        self.base_power = Some(p);
+        self.base_toughness = Some(t);
+    }
+    pub fn remove_new_p_tby_text(&mut self) {
+        self.clear_new_pt();
+    }
+    pub fn add_new_pt(&mut self, p: i32, t: i32) {
+        self.base_power = Some(p);
+        self.base_toughness = Some(t);
+    }
+    pub fn remove_new_pt(&mut self) {
+        self.clear_new_pt();
+    }
+    pub fn clear_new_pt(&mut self) {
+        self.base_power = None;
+        self.base_toughness = None;
+    }
+    pub fn toughness_assigns_damage(&self) -> bool {
+        self.has_keyword("CARDNAME assigns combat damage equal to its toughness")
+    }
+    pub fn assign_no_combat_damage(&self) -> bool {
+        self.has_keyword("CARDNAME assigns no combat damage")
+    }
+    pub fn add_pt_boost(&mut self, p: i32, t: i32) {
+        self.power_modifier += p;
+        self.toughness_modifier += t;
+    }
+    pub fn remove_pt_boost(&mut self, p: i32, t: i32) {
+        self.power_modifier -= p;
+        self.toughness_modifier -= t;
+    }
+    pub fn add_draft_action(&mut self) {
+        self.set_s_var("DraftAction", "True");
+    }
+    pub fn add_intensity(&mut self, v: i32) {
+        self.intensity += v;
+    }
+    pub fn has_intensity(&self) -> bool {
+        self.intensity > 0
+    }
+    pub fn has_perpetual(&self) -> bool {
+        !self.perpetual.is_empty()
+    }
+    pub fn get_perpetual(&self) -> &[PerpetualRecord] {
+        &self.perpetual
+    }
     pub fn add_perpetual(&mut self, p: PerpetualRecord) {
         self.apply_perpetual_record(p, true);
     }
@@ -2528,36 +2625,86 @@ impl Card {
             }
         }
     }
-    pub fn set_perpetual_from(&mut self, old_card: &Card) { self.set_perpetual(old_card, true); }
+    pub fn set_perpetual_from(&mut self, old_card: &Card) {
+        self.set_perpetual(old_card, true);
+    }
     pub fn apply_perpetual_record(&mut self, p: PerpetualRecord, remember: bool) {
         if remember {
             self.perpetual.push(p.clone());
         }
         p.apply_effect(self);
     }
-    pub fn add_trigger_for_static_ability(&mut self, trig: Trigger) { self.add_trigger(trig); }
-    pub fn visit_keywords(&self) -> Vec<String> { self.keywords.as_string_list() }
-    pub fn update_keywords(&mut self) { self.update_keywords_cache(); }
-    pub fn add_changed_card_keywords(&mut self, kw: &str) { self.add_intrinsic_keyword(kw); }
-    pub fn add_keyword_for_static_ability(&mut self, kw: &str) { self.granted_keywords.add(kw); }
-    pub fn add_changed_card_keywords_by_text(&mut self, kw: &str) { self.add_intrinsic_keyword(kw); }
-    pub fn add_changed_card_keywords_internal(&mut self, kw: &str) { self.add_intrinsic_keyword(kw); }
-    pub fn remove_changed_card_keywords(&mut self, kw: &str) { self.remove_intrinsic_keyword(kw); }
-    pub fn remove_changed_card_keywords_by_text(&mut self, kw: &str) { self.remove_intrinsic_keyword(kw); }
-    pub fn clear_changed_card_keywords(&mut self) { self.keywords.clear(); }
-    pub fn clear_static_changed_card_keywords(&mut self) { self.granted_keywords.clear(); }
-    pub fn add_hidden_extrinsic_keywords(&mut self, kw: &str) { self.granted_keywords.add(kw); }
-    pub fn remove_hidden_extrinsic_keywords(&mut self, kw: &str) { self.granted_keywords.remove(kw); }
-    pub fn remove_hidden_extrinsic_keyword(&mut self, kw: &str) { self.granted_keywords.remove(kw); }
-    pub fn has_start_of_keyword(&self, prefix: &str) -> bool { self.keywords.iter_strings().any(|k| k.starts_with(prefix)) }
-    pub fn has_start_of_un_hidden_keyword(&self, prefix: &str) -> bool { self.has_start_of_keyword(prefix) }
-    pub fn has_any_keyword(&self) -> bool { !self.keywords.as_string_list().is_empty() || !self.granted_keywords.as_string_list().is_empty() || !self.pump_keywords.as_string_list().is_empty() }
-    pub fn add_cant_have_keyword(&mut self, kw: &str) { self.cant_have_keywords.insert(kw.to_ascii_lowercase()); }
-    pub fn remove_cant_have_keyword(&mut self, kw: &str) { self.cant_have_keywords.remove(&kw.to_ascii_lowercase()); }
-    pub fn add_changed_text_color_word(&mut self, from: &str, to: &str) { self.set_s_var(&format!("TextColor:{from}"), to); }
-    pub fn remove_changed_text_color_word(&mut self, from: &str) { self.remove_s_var(&format!("TextColor:{from}")); }
-    pub fn add_changed_text_type_word(&mut self, from: &str, to: &str) { self.set_s_var(&format!("TextType:{from}"), to); }
-    pub fn remove_changed_text_type_word(&mut self, from: &str) { self.remove_s_var(&format!("TextType:{from}")); }
+    pub fn add_trigger_for_static_ability(&mut self, trig: Trigger) {
+        self.add_trigger(trig);
+    }
+    pub fn visit_keywords(&self) -> Vec<String> {
+        self.keywords.as_string_list()
+    }
+    pub fn update_keywords(&mut self) {
+        self.update_keywords_cache();
+    }
+    pub fn add_changed_card_keywords(&mut self, kw: &str) {
+        self.add_intrinsic_keyword(kw);
+    }
+    pub fn add_keyword_for_static_ability(&mut self, kw: &str) {
+        self.granted_keywords.add(kw);
+    }
+    pub fn add_changed_card_keywords_by_text(&mut self, kw: &str) {
+        self.add_intrinsic_keyword(kw);
+    }
+    pub fn add_changed_card_keywords_internal(&mut self, kw: &str) {
+        self.add_intrinsic_keyword(kw);
+    }
+    pub fn remove_changed_card_keywords(&mut self, kw: &str) {
+        self.remove_intrinsic_keyword(kw);
+    }
+    pub fn remove_changed_card_keywords_by_text(&mut self, kw: &str) {
+        self.remove_intrinsic_keyword(kw);
+    }
+    pub fn clear_changed_card_keywords(&mut self) {
+        self.keywords.clear();
+    }
+    pub fn clear_static_changed_card_keywords(&mut self) {
+        self.granted_keywords.clear();
+    }
+    pub fn add_hidden_extrinsic_keywords(&mut self, kw: &str) {
+        self.granted_keywords.add(kw);
+    }
+    pub fn remove_hidden_extrinsic_keywords(&mut self, kw: &str) {
+        self.granted_keywords.remove(kw);
+    }
+    pub fn remove_hidden_extrinsic_keyword(&mut self, kw: &str) {
+        self.granted_keywords.remove(kw);
+    }
+    pub fn has_start_of_keyword(&self, prefix: &str) -> bool {
+        self.keywords.iter_strings().any(|k| k.starts_with(prefix))
+    }
+    pub fn has_start_of_un_hidden_keyword(&self, prefix: &str) -> bool {
+        self.has_start_of_keyword(prefix)
+    }
+    pub fn has_any_keyword(&self) -> bool {
+        !self.keywords.as_string_list().is_empty()
+            || !self.granted_keywords.as_string_list().is_empty()
+            || !self.pump_keywords.as_string_list().is_empty()
+    }
+    pub fn add_cant_have_keyword(&mut self, kw: &str) {
+        self.cant_have_keywords.insert(kw.to_ascii_lowercase());
+    }
+    pub fn remove_cant_have_keyword(&mut self, kw: &str) {
+        self.cant_have_keywords.remove(&kw.to_ascii_lowercase());
+    }
+    pub fn add_changed_text_color_word(&mut self, from: &str, to: &str) {
+        self.set_s_var(&format!("TextColor:{from}"), to);
+    }
+    pub fn remove_changed_text_color_word(&mut self, from: &str) {
+        self.remove_s_var(&format!("TextColor:{from}"));
+    }
+    pub fn add_changed_text_type_word(&mut self, from: &str, to: &str) {
+        self.set_s_var(&format!("TextType:{from}"), to);
+    }
+    pub fn remove_changed_text_type_word(&mut self, from: &str) {
+        self.remove_s_var(&format!("TextType:{from}"));
+    }
     pub fn copy_changed_text_from(&mut self, other: &Card) {
         for (k, v) in &other.svars {
             if k.starts_with("TextColor:") || k.starts_with("TextType:") {
@@ -2565,11 +2712,27 @@ impl Card {
             }
         }
     }
-    pub fn has_playable_land_face(&self) -> bool { self.is_land() || self.other_part.as_ref().map(|p| p.type_line.is_land()).unwrap_or(false) }
-    pub fn phase(&mut self) { self.phased_out = !self.phased_out; }
-    pub fn associated_with_color(&self, color: &str) -> bool { self.can_produce_color_mana(color) || self.has_keyword(&format!("Protection from {}", color.to_lowercase())) }
-    pub fn has_no_name(&self) -> bool { self.card_name.trim().is_empty() }
-    pub fn shares_name_with(&self, other: &Card) -> bool { self.card_name.eq_ignore_ascii_case(&other.card_name) }
+    pub fn has_playable_land_face(&self) -> bool {
+        self.is_land()
+            || self
+                .other_part
+                .as_ref()
+                .map(|p| p.type_line.is_land())
+                .unwrap_or(false)
+    }
+    pub fn phase(&mut self) {
+        self.phased_out = !self.phased_out;
+    }
+    pub fn associated_with_color(&self, color: &str) -> bool {
+        self.can_produce_color_mana(color)
+            || self.has_keyword(&format!("Protection from {}", color.to_lowercase()))
+    }
+    pub fn has_no_name(&self) -> bool {
+        self.card_name.trim().is_empty()
+    }
+    pub fn shares_name_with(&self, other: &Card) -> bool {
+        self.card_name.eq_ignore_ascii_case(&other.card_name)
+    }
     pub fn shares_color_with(&self, other: &Card) -> bool {
         (self.color.has_white() && other.color.has_white())
             || (self.color.has_blue() && other.color.has_blue())
@@ -2578,55 +2741,184 @@ impl Card {
             || (self.color.has_green() && other.color.has_green())
             || (self.color.is_colorless() && other.color.is_colorless())
     }
-    pub fn shares_cmc_with(&self, other: &Card) -> bool { self.mana_value() == other.mana_value() }
-    pub fn shares_creature_type_with(&self, other: &Card) -> bool { self.type_line.subtypes.iter().any(|s| other.type_line.subtypes.iter().any(|o| o.eq_ignore_ascii_case(s))) }
-    pub fn shares_land_type_with(&self, other: &Card) -> bool { self.shares_creature_type_with(other) && self.is_land() && other.is_land() }
-    pub fn shares_permanent_type_with(&self, other: &Card) -> bool { (self.is_creature() && other.is_creature()) || (self.is_land() && other.is_land()) || (self.type_line.is_artifact() && other.type_line.is_artifact()) || (self.type_line.is_enchantment() && other.type_line.is_enchantment()) || (self.type_line.is_planeswalker() && other.type_line.is_planeswalker()) }
-    pub fn shares_card_type_with(&self, other: &Card) -> bool { self.shares_permanent_type_with(other) }
-    pub fn shares_all_card_types_with(&self, other: &Card) -> bool { self.type_line.core_types == other.type_line.core_types }
-    pub fn shares_controller_with(&self, other: &Card) -> bool { self.controller == other.controller }
-    pub fn has_a_basic_land_type(&self) -> bool { self.type_line.has_subtype("Plains") || self.type_line.has_subtype("Island") || self.type_line.has_subtype("Swamp") || self.type_line.has_subtype("Mountain") || self.type_line.has_subtype("Forest") }
-    pub fn has_a_non_basic_land_type(&self) -> bool { self.is_land() && !self.has_a_basic_land_type() }
-    pub fn has_dealt_damage_to_opponent_this_turn(&self) -> bool { self.total_damage_done_this_turn > 0 }
-    pub fn has_been_dealt_deathtouch_damage(&self) -> bool { self.has_deathtouch_damage }
-    pub fn has_been_dealt_excess_damage_this_turn(&self) -> bool { self.damage > self.toughness() }
-    pub fn log_excess_damage(&mut self) { self.set_s_var("ExcessDamageLogged", "True"); }
-    pub fn add_assigned_damage(&mut self, amount: i32) { self.assigned_damage += amount; }
-    pub fn clear_assigned_damage(&mut self) { self.assigned_damage = 0; }
-    pub fn can_damage_prevented(&self) -> bool { !self.has_keyword("Damage can't be prevented") }
-    pub fn static_replace_damage(&self, amount: i32) -> i32 { amount }
-    pub fn add_damage_after_prevention(&mut self, amount: i32) -> i32 { let dealt = amount.max(0); self.damage += dealt; dealt }
-    pub fn border_color(&self) -> &'static str { if self.color.is_colorless() { "Colorless" } else if self.color.has_white() { "White" } else if self.color.has_blue() { "Blue" } else if self.color.has_black() { "Black" } else if self.color.has_red() { "Red" } else { "Green" } }
-    pub fn was_discarded(&self) -> bool { self.discarded }
-    pub fn was_surveilled(&self) -> bool { self.surveilled }
-    pub fn was_milled(&self) -> bool { self.milled }
-    pub fn clear_ring_bearer(&mut self) { self.remove_s_var("RingBearer"); }
-    pub fn add_saddled_by_this_turn(&mut self, card: CardId) { self.set_s_var("SaddledBy", format!("{}", card.0)); }
-    pub fn reset_saddled(&mut self) { self.remove_s_var("SaddledBy"); }
-    pub fn can_specialize(&self) -> bool { self.has_keyword("Specialize") }
-    pub fn can_crew(&self) -> bool { self.is_permanent() }
-    pub fn reset_times_crewed_this_turn(&mut self) { self.times_crewed_this_turn = 0; }
-    pub fn becomes_crewed(&mut self) { self.is_crewed = true; self.times_crewed_this_turn += 1; }
-    pub fn reset_crewed(&mut self) { self.is_crewed = false; }
-    pub fn add_crewed_by_this_turn(&mut self, _card: CardId) { self.times_crewed_this_turn += 1; }
-    pub fn visit_attraction(&mut self) { self.visited_this_turn = true; }
-    pub fn was_visited_this_turn(&self) -> bool { self.visited_this_turn }
-    pub fn animate_bestow(&mut self) { self.is_bestowed = false; }
-    pub fn unanimate_bestow(&mut self) { self.is_bestowed = true; }
-    pub fn equals_with_game_timestamp(&self, other: &Card) -> bool { self.id == other.id && self.zone_timestamp == other.zone_timestamp }
-    pub fn update_world_timestamp(&mut self) { self.zone_timestamp = self.zone_timestamp.saturating_add(1); }
-    pub fn can_be_discarded_by(&self, _player: PlayerId) -> bool { true }
-    pub fn can_be_destroyed(&self) -> bool { !self.has_indestructible() }
-    pub fn can_be_targeted_by(&self, _player: PlayerId) -> bool { true }
-    pub fn cant_be_attached_msg(&self) -> Option<String> { None }
-    pub fn can_be_sacrificed_by(&self, _player: PlayerId) -> bool { true }
-    pub fn can_exiled_by(&self, _player: PlayerId) -> bool { true }
-    pub fn update_static_abilities(&mut self) { self.recompute_changed_card_traits(); }
-    pub fn update_triggers(&mut self) { self.recompute_changed_card_traits(); }
-    pub fn update_replacement_effects(&mut self) { self.recompute_changed_card_traits(); }
-    pub fn was_cast(&self) -> bool { self.zone != ZoneType::None }
-    pub fn on_end_of_combat(&mut self) { self.assigned_damage = 0; }
-    pub fn on_cleanup_phase(&mut self) { self.became_target_this_turn = false; self.visited_this_turn = false; self.damage_prevention = 0; }
+    pub fn shares_cmc_with(&self, other: &Card) -> bool {
+        self.mana_value() == other.mana_value()
+    }
+    pub fn shares_creature_type_with(&self, other: &Card) -> bool {
+        self.type_line.subtypes.iter().any(|s| {
+            other
+                .type_line
+                .subtypes
+                .iter()
+                .any(|o| o.eq_ignore_ascii_case(s))
+        })
+    }
+    pub fn shares_land_type_with(&self, other: &Card) -> bool {
+        self.shares_creature_type_with(other) && self.is_land() && other.is_land()
+    }
+    pub fn shares_permanent_type_with(&self, other: &Card) -> bool {
+        (self.is_creature() && other.is_creature())
+            || (self.is_land() && other.is_land())
+            || (self.type_line.is_artifact() && other.type_line.is_artifact())
+            || (self.type_line.is_enchantment() && other.type_line.is_enchantment())
+            || (self.type_line.is_planeswalker() && other.type_line.is_planeswalker())
+    }
+    pub fn shares_card_type_with(&self, other: &Card) -> bool {
+        self.shares_permanent_type_with(other)
+    }
+    pub fn shares_all_card_types_with(&self, other: &Card) -> bool {
+        self.type_line.core_types == other.type_line.core_types
+    }
+    pub fn shares_controller_with(&self, other: &Card) -> bool {
+        self.controller == other.controller
+    }
+    pub fn has_a_basic_land_type(&self) -> bool {
+        self.type_line.has_subtype("Plains")
+            || self.type_line.has_subtype("Island")
+            || self.type_line.has_subtype("Swamp")
+            || self.type_line.has_subtype("Mountain")
+            || self.type_line.has_subtype("Forest")
+    }
+    pub fn has_a_non_basic_land_type(&self) -> bool {
+        self.is_land() && !self.has_a_basic_land_type()
+    }
+    pub fn has_dealt_damage_to_opponent_this_turn(&self) -> bool {
+        self.total_damage_done_this_turn > 0
+    }
+    pub fn has_been_dealt_deathtouch_damage(&self) -> bool {
+        self.has_deathtouch_damage
+    }
+    pub fn has_been_dealt_excess_damage_this_turn(&self) -> bool {
+        self.damage > self.toughness()
+    }
+    pub fn log_excess_damage(&mut self) {
+        self.set_s_var("ExcessDamageLogged", "True");
+    }
+    pub fn add_assigned_damage(&mut self, amount: i32) {
+        self.assigned_damage += amount;
+    }
+    pub fn clear_assigned_damage(&mut self) {
+        self.assigned_damage = 0;
+    }
+    pub fn can_damage_prevented(&self) -> bool {
+        !self.has_keyword("Damage can't be prevented")
+    }
+    pub fn static_replace_damage(&self, amount: i32) -> i32 {
+        amount
+    }
+    pub fn add_damage_after_prevention(&mut self, amount: i32) -> i32 {
+        let dealt = amount.max(0);
+        self.damage += dealt;
+        dealt
+    }
+    pub fn border_color(&self) -> &'static str {
+        if self.color.is_colorless() {
+            "Colorless"
+        } else if self.color.has_white() {
+            "White"
+        } else if self.color.has_blue() {
+            "Blue"
+        } else if self.color.has_black() {
+            "Black"
+        } else if self.color.has_red() {
+            "Red"
+        } else {
+            "Green"
+        }
+    }
+    pub fn was_discarded(&self) -> bool {
+        self.discarded
+    }
+    pub fn was_surveilled(&self) -> bool {
+        self.surveilled
+    }
+    pub fn was_milled(&self) -> bool {
+        self.milled
+    }
+    pub fn clear_ring_bearer(&mut self) {
+        self.remove_s_var("RingBearer");
+    }
+    pub fn add_saddled_by_this_turn(&mut self, card: CardId) {
+        self.set_s_var("SaddledBy", format!("{}", card.0));
+    }
+    pub fn reset_saddled(&mut self) {
+        self.remove_s_var("SaddledBy");
+    }
+    pub fn can_specialize(&self) -> bool {
+        self.has_keyword("Specialize")
+    }
+    pub fn can_crew(&self) -> bool {
+        self.is_permanent()
+    }
+    pub fn reset_times_crewed_this_turn(&mut self) {
+        self.times_crewed_this_turn = 0;
+    }
+    pub fn becomes_crewed(&mut self) {
+        self.is_crewed = true;
+        self.times_crewed_this_turn += 1;
+    }
+    pub fn reset_crewed(&mut self) {
+        self.is_crewed = false;
+    }
+    pub fn add_crewed_by_this_turn(&mut self, _card: CardId) {
+        self.times_crewed_this_turn += 1;
+    }
+    pub fn visit_attraction(&mut self) {
+        self.visited_this_turn = true;
+    }
+    pub fn was_visited_this_turn(&self) -> bool {
+        self.visited_this_turn
+    }
+    pub fn animate_bestow(&mut self) {
+        self.is_bestowed = false;
+    }
+    pub fn unanimate_bestow(&mut self) {
+        self.is_bestowed = true;
+    }
+    pub fn equals_with_game_timestamp(&self, other: &Card) -> bool {
+        self.id == other.id && self.zone_timestamp == other.zone_timestamp
+    }
+    pub fn update_world_timestamp(&mut self) {
+        self.zone_timestamp = self.zone_timestamp.saturating_add(1);
+    }
+    pub fn can_be_discarded_by(&self, _player: PlayerId) -> bool {
+        true
+    }
+    pub fn can_be_destroyed(&self) -> bool {
+        !self.has_indestructible()
+    }
+    pub fn can_be_targeted_by(&self, _player: PlayerId) -> bool {
+        true
+    }
+    pub fn cant_be_attached_msg(&self) -> Option<String> {
+        None
+    }
+    pub fn can_be_sacrificed_by(&self, _player: PlayerId) -> bool {
+        true
+    }
+    pub fn can_exiled_by(&self, _player: PlayerId) -> bool {
+        true
+    }
+    pub fn update_static_abilities(&mut self) {
+        self.recompute_changed_card_traits();
+    }
+    pub fn update_triggers(&mut self) {
+        self.recompute_changed_card_traits();
+    }
+    pub fn update_replacement_effects(&mut self) {
+        self.recompute_changed_card_traits();
+    }
+    pub fn was_cast(&self) -> bool {
+        self.zone != ZoneType::None
+    }
+    pub fn on_end_of_combat(&mut self) {
+        self.assigned_damage = 0;
+    }
+    pub fn on_cleanup_phase(&mut self) {
+        self.became_target_this_turn = false;
+        self.visited_this_turn = false;
+        self.damage_prevention = 0;
+    }
     pub fn has_etb_trigger(&self) -> bool {
         self.triggers.iter().any(|t| {
             matches!(
@@ -2638,29 +2930,78 @@ impl Card {
             )
         })
     }
-    pub fn has_etb_replacement(&self) -> bool { self.has_replacement_effect() }
-    pub fn can_move_to_command_zone(&self) -> bool { self.is_commander }
-    pub fn from_paper_card(&mut self) { self.is_token = false; }
-    pub fn cleanup_copied_changes_from(&mut self) { self.clear_changed_card_traits(); }
-    pub fn activated_this_turn(&self) -> bool { self.ability_activated_this_turn > 0 }
-    pub fn add_ability_activated(&mut self) { self.ability_activated_this_turn += 1; }
-    pub fn add_ability_resolved(&mut self) { self.ability_resolved_this_turn += 1; }
-    pub fn reset_ability_resolved_this_turn(&mut self) { self.ability_resolved_this_turn = 0; }
-    pub fn add_chosen_modes(&mut self, modes: Vec<usize>, turn: u32) { self.chosen_modes = Some(modes); self.chosen_modes_turn = Some(turn); }
-    pub fn reset_chosen_mode_turn(&mut self) { self.chosen_modes_turn = None; self.chosen_modes = None; }
-    pub fn add_planeswalker_ability_activated(&mut self) { self.planeswalker_abilities_activated += 1; }
-    pub fn planeswalker_activation_limit_used(&self, limit: u32) -> bool { self.planeswalker_abilities_activated >= limit }
-    pub fn reset_activations_per_turn(&mut self) { self.ability_activated_this_turn = 0; self.planeswalker_abilities_activated = 0; }
-    pub fn add_can_block_additional(&mut self, n: i32) { self.can_block_additional += n; }
-    pub fn remove_can_block_additional(&mut self, n: i32) { self.can_block_additional = (self.can_block_additional - n).max(0); }
-    pub fn can_block_additional(&self) -> i32 { self.can_block_additional }
-    pub fn add_can_block_any(&mut self) { self.can_block_any = true; }
-    pub fn remove_can_block_any(&mut self) { self.can_block_any = false; }
-    pub fn can_block_any(&self) -> bool { self.can_block_any }
-    pub fn ignore_legend_rule(&self) -> bool { self.ignore_legend_rule_flag }
-    pub fn attack_vigilance(&self) -> bool { self.has_vigilance() }
-    pub fn unlock_room(&mut self) { self.set_s_var("RoomLocked", "False"); }
-    pub fn lock_room(&mut self) { self.set_s_var("RoomLocked", "True"); }
+    pub fn has_etb_replacement(&self) -> bool {
+        self.has_replacement_effect()
+    }
+    pub fn can_move_to_command_zone(&self) -> bool {
+        self.is_commander
+    }
+    pub fn from_paper_card(&mut self) {
+        self.is_token = false;
+    }
+    pub fn cleanup_copied_changes_from(&mut self) {
+        self.clear_changed_card_traits();
+    }
+    pub fn activated_this_turn(&self) -> bool {
+        self.ability_activated_this_turn > 0
+    }
+    pub fn add_ability_activated(&mut self) {
+        self.ability_activated_this_turn += 1;
+    }
+    pub fn add_ability_resolved(&mut self) {
+        self.ability_resolved_this_turn += 1;
+    }
+    pub fn reset_ability_resolved_this_turn(&mut self) {
+        self.ability_resolved_this_turn = 0;
+    }
+    pub fn add_chosen_modes(&mut self, modes: Vec<usize>, turn: u32) {
+        self.chosen_modes = Some(modes);
+        self.chosen_modes_turn = Some(turn);
+    }
+    pub fn reset_chosen_mode_turn(&mut self) {
+        self.chosen_modes_turn = None;
+        self.chosen_modes = None;
+    }
+    pub fn add_planeswalker_ability_activated(&mut self) {
+        self.planeswalker_abilities_activated += 1;
+    }
+    pub fn planeswalker_activation_limit_used(&self, limit: u32) -> bool {
+        self.planeswalker_abilities_activated >= limit
+    }
+    pub fn reset_activations_per_turn(&mut self) {
+        self.ability_activated_this_turn = 0;
+        self.planeswalker_abilities_activated = 0;
+    }
+    pub fn add_can_block_additional(&mut self, n: i32) {
+        self.can_block_additional += n;
+    }
+    pub fn remove_can_block_additional(&mut self, n: i32) {
+        self.can_block_additional = (self.can_block_additional - n).max(0);
+    }
+    pub fn can_block_additional(&self) -> i32 {
+        self.can_block_additional
+    }
+    pub fn add_can_block_any(&mut self) {
+        self.can_block_any = true;
+    }
+    pub fn remove_can_block_any(&mut self) {
+        self.can_block_any = false;
+    }
+    pub fn can_block_any(&self) -> bool {
+        self.can_block_any
+    }
+    pub fn ignore_legend_rule(&self) -> bool {
+        self.ignore_legend_rule_flag
+    }
+    pub fn attack_vigilance(&self) -> bool {
+        self.has_vigilance()
+    }
+    pub fn unlock_room(&mut self) {
+        self.set_s_var("RoomLocked", "False");
+    }
+    pub fn lock_room(&mut self) {
+        self.set_s_var("RoomLocked", "True");
+    }
     pub fn update_rooms(&mut self) {
         if !self.has_s_var("RoomLocked") {
             self.set_s_var("RoomLocked", "False");
@@ -2695,7 +3036,9 @@ impl Card {
                 .abilities
                 .iter()
                 .enumerate()
-                .filter_map(|(i, raw)| parse_or_warn(parse_activated_ability(raw, i), "ActivatedAbility", raw))
+                .filter_map(|(i, raw)| {
+                    parse_or_warn(parse_activated_ability(raw, i), "ActivatedAbility", raw)
+                })
                 .collect();
 
             self.is_transformed = !self.is_transformed;
@@ -2772,17 +3115,17 @@ impl Card {
         for layer in self.changed_card_traits_by_text.values() {
             spell_abilities = crate::card::card_state::apply_spell_ability(layer, spell_abilities);
             triggers = crate::card::card_state::apply_trigger(layer, triggers);
-            replacements =
-                crate::card::card_state::apply_replacement_effect(layer, replacements);
-            static_abilities = crate::card::card_state::apply_static_ability(layer, static_abilities);
+            replacements = crate::card::card_state::apply_replacement_effect(layer, replacements);
+            static_abilities =
+                crate::card::card_state::apply_static_ability(layer, static_abilities);
             keywords = crate::card::card_state::apply_keywords(layer, keywords);
         }
         for layer in self.changed_card_traits.values() {
             spell_abilities = crate::card::card_state::apply_spell_ability(layer, spell_abilities);
             triggers = crate::card::card_state::apply_trigger(layer, triggers);
-            replacements =
-                crate::card::card_state::apply_replacement_effect(layer, replacements);
-            static_abilities = crate::card::card_state::apply_static_ability(layer, static_abilities);
+            replacements = crate::card::card_state::apply_replacement_effect(layer, replacements);
+            static_abilities =
+                crate::card::card_state::apply_static_ability(layer, static_abilities);
             keywords = crate::card::card_state::apply_keywords(layer, keywords);
         }
 
@@ -2801,7 +3144,8 @@ impl Card {
         static_id: i64,
     ) {
         self.capture_changed_card_traits_baseline_if_needed();
-        self.changed_card_traits.insert((timestamp, static_id), layer);
+        self.changed_card_traits
+            .insert((timestamp, static_id), layer);
         self.recompute_changed_card_traits();
     }
 
@@ -2911,6 +3255,7 @@ impl Card {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use forge_carddb::parse_card_script;
     use forge_foundation::ManaCost;
 
     #[test]
@@ -3111,5 +3456,17 @@ mod tests {
         assert!(card.has_hexproof_from("blue"));
         assert!(!card.has_hexproof_from("red"));
         assert!(!card.has_hexproof()); // partial hexproof is not full hexproof
+    }
+
+    #[test]
+    fn from_rules_copies_attraction_lights() {
+        let rules = parse_card_script(
+            "Name:Balloon Stand\nTypes:Artifact Attraction\nLights: 2 4 6\nOracle:Test.",
+        )
+        .expect("card script should parse");
+        let card = Card::from_rules(&rules, PlayerId(0));
+        assert_eq!(card.attraction_lights, vec![2, 4, 6]);
+        assert!(card.has_attraction_light(4));
+        assert!(!card.has_attraction_light(3));
     }
 }

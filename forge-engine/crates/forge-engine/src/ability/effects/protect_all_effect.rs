@@ -22,7 +22,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .get(crate::parsing::keys::VALID_CARDS)
         .unwrap_or("Creature.YouCtrl")
         .to_string();
-    let gains = sa.params.get(crate::parsing::keys::GAINS).unwrap_or("").to_string();
+    let gains = sa
+        .params
+        .get(crate::parsing::keys::GAINS)
+        .unwrap_or("")
+        .to_string();
 
     // If choosing a color, do it once for all targets
     let prot_keyword = if gains.contains("chosen color") {
@@ -70,10 +74,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     for cid in targets {
         if ctx.game.card(cid).zone == ZoneType::Battlefield {
-            ctx.game
-                .card_mut(cid)
-                .pump_keywords
-                .add(&prot_keyword);
+            ctx.game.card_mut(cid).pump_keywords.add(&prot_keyword);
         }
     }
 }

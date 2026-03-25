@@ -13,10 +13,7 @@ use crate::spellability::SpellAbility;
 /// A:SP$ AddPhase | ExtraPhase$ Combat | Amount$ 2
 /// ```
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let extra_phase = sa
-        .params
-        .get("ExtraPhase")
-        .unwrap_or("Combat");
+    let extra_phase = sa.params.get("ExtraPhase").unwrap_or("Combat");
 
     let amount = parse_param(&sa.ability_text, "Amount$ ").unwrap_or(1) as u32;
 
@@ -59,6 +56,7 @@ mod tests {
         let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
         let mut ctx = EffectContext {
             game: &mut game,
+            combat: None,
             agents: &mut agents,
             trigger_handler: &mut th,
             token_templates: &templates,

@@ -35,10 +35,22 @@ pub(super) fn matches_with_context(
                 v
             } else if raw_max.eq_ignore_ascii_case("X") {
                 sa.source
-                    .and_then(|sid| ctx.game.card(sid).svars.get("X").map(|e| evaluate_svar(e, sa)))
+                    .and_then(|sid| {
+                        ctx.game
+                            .card(sid)
+                            .svars
+                            .get("X")
+                            .map(|e| evaluate_svar(e, sa))
+                    })
                     .unwrap_or(sa.x_mana_cost_paid as i32)
             } else {
-                match sa.source.and_then(|sid| ctx.game.card(sid).svars.get(raw_max).map(|e| evaluate_svar(e, sa))) {
+                match sa.source.and_then(|sid| {
+                    ctx.game
+                        .card(sid)
+                        .svars
+                        .get(raw_max)
+                        .map(|e| evaluate_svar(e, sa))
+                }) {
                     Some(v) => v,
                     None => return false,
                 }
@@ -68,7 +80,9 @@ pub(super) fn all_candidates_fungible(ctx: &EffectContext, candidates: &[CardId]
 
 /// Collect all card IDs currently on the battlefield.
 pub(super) fn battlefield_card_ids(ctx: &EffectContext) -> Vec<CardId> {
-    ctx.game.cards.iter()
+    ctx.game
+        .cards
+        .iter()
         .filter(|c| c.zone == ZoneType::Battlefield)
         .map(|c| c.id)
         .collect()
@@ -80,8 +94,13 @@ const BASIC_LAND_TYPES: &[&str] = &["Plains", "Island", "Swamp", "Mountain", "Fo
 
 /// Extract basic land subtypes from a card's subtypes list.
 pub(super) fn get_land_subtypes(subtypes: &[String]) -> Vec<String> {
-    subtypes.iter()
-        .filter(|s| BASIC_LAND_TYPES.iter().any(|blt| s.eq_ignore_ascii_case(blt)))
+    subtypes
+        .iter()
+        .filter(|s| {
+            BASIC_LAND_TYPES
+                .iter()
+                .any(|blt| s.eq_ignore_ascii_case(blt))
+        })
         .cloned()
         .collect()
 }
@@ -89,12 +108,20 @@ pub(super) fn get_land_subtypes(subtypes: &[String]) -> Vec<String> {
 // ─── Search Restrictions ────────────────────────────────────────────────────
 
 /// Check for Aven Mindcensor — limits search to top N cards.
-pub(super) fn find_search_limit(ctx: &EffectContext, _search_player: PlayerId, searcher: PlayerId) -> Option<usize> {
+pub(super) fn find_search_limit(
+    ctx: &EffectContext,
+    _search_player: PlayerId,
+    searcher: PlayerId,
+) -> Option<usize> {
     for card in ctx.game.cards.iter() {
-        if card.zone != ZoneType::Battlefield || card.controller == searcher { continue; }
+        if card.zone != ZoneType::Battlefield || card.controller == searcher {
+            continue;
+        }
         for kw in card.keywords.iter_strings() {
             if let Some(rest) = kw.strip_prefix("LimitSearchLibrary:") {
-                if let Ok(n) = rest.trim().parse::<usize>() { return Some(n); }
+                if let Ok(n) = rest.trim().parse::<usize>() {
+                    return Some(n);
+                }
             }
         }
     }
@@ -104,13 +131,17 @@ pub(super) fn find_search_limit(ctx: &EffectContext, _search_player: PlayerId, s
 /// Check for Opposition Agent — redirects search control to an opponent.
 pub(super) fn find_opposition_agent(ctx: &EffectContext, searcher: PlayerId) -> Option<PlayerId> {
     for card in ctx.game.cards.iter() {
-        if card.zone != ZoneType::Battlefield || card.controller == searcher { continue; }
+        if card.zone != ZoneType::Battlefield || card.controller == searcher {
+            continue;
+        }
         for kw in card.keywords.iter_strings() {
             if kw.eq_ignore_ascii_case("OppositionAgent") || kw.contains("ControlSearching") {
                 return Some(card.controller);
             }
         }
-        if card.card_name == "Opposition Agent" { return Some(card.controller); }
+        if card.card_name == "Opposition Agent" {
+            return Some(card.controller);
+        }
     }
     None
 }
@@ -118,10 +149,16 @@ pub(super) fn find_opposition_agent(ctx: &EffectContext, searcher: PlayerId) -> 
 /// Check if a player can search their library (Leonin Arbiter, etc.)
 pub(super) fn can_search_library(ctx: &EffectContext, searcher: PlayerId) -> bool {
     for card in ctx.game.cards.iter() {
-        if card.zone != ZoneType::Battlefield { continue; }
+        if card.zone != ZoneType::Battlefield {
+            continue;
+        }
         for kw in card.keywords.iter_strings() {
-            if kw.eq_ignore_ascii_case("CantSearchLibrary") { return false; }
-            if kw.starts_with("CantSearchLibraryUnlessPaid") && card.controller != searcher { return false; }
+            if kw.eq_ignore_ascii_case("CantSearchLibrary") {
+                return false;
+            }
+            if kw.starts_with("CantSearchLibraryUnlessPaid") && card.controller != searcher {
+                return false;
+            }
         }
     }
     true
@@ -131,21 +168,34 @@ pub(super) fn can_search_library(ctx: &EffectContext, searcher: PlayerId) -> boo
 
 /// Handle DestinationAlternative$ — player chooses between two destinations.
 pub(super) fn resolve_destination(
-    ctx: &mut EffectContext, sa: &SpellAbility, dest_zone: ZoneType,
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    dest_zone: ZoneType,
 ) -> (ZoneType, String) {
     let lib_position = sa.library_position().unwrap_or("").to_string();
     if let Some(alt_dest_str) = sa.destination_alternative() {
         if let Some(alt_zone) = parse_zone_type(alt_dest_str) {
-            let alt_lib_pos = sa.params.get(keys::LIBRARY_POSITION_ALTERNATIVE)
-                .unwrap_or("0").to_string();
+            let alt_lib_pos = sa
+                .params
+                .get(keys::LIBRARY_POSITION_ALTERNATIVE)
+                .unwrap_or("0")
+                .to_string();
             let chooser = sa.activating_player;
             ctx.agents[chooser.index()].snapshot_state(ctx.game, ctx.mana_pools);
             let options = vec![format!("{:?}", dest_zone), format!("{:?}", alt_zone)];
             let use_alt = ctx.agents[chooser.index()].confirm_action(
-                chooser, Some("ChangeZoneToAltDestination"), "Choose destination",
-                &options, None, None,
+                chooser,
+                Some("ChangeZoneToAltDestination"),
+                "Choose destination",
+                &options,
+                None,
+                None,
             );
-            return if use_alt { (alt_zone, alt_lib_pos) } else { (dest_zone, lib_position) };
+            return if use_alt {
+                (alt_zone, alt_lib_pos)
+            } else {
+                (dest_zone, lib_position)
+            };
         }
     }
     (dest_zone, lib_position)
@@ -153,7 +203,10 @@ pub(super) fn resolve_destination(
 
 /// Determine the controller/owner for the destination zone.
 pub(super) fn resolve_dest_owner(
-    ctx: &EffectContext, sa: &SpellAbility, card_id: CardId, dest_zone: ZoneType,
+    ctx: &EffectContext,
+    sa: &SpellAbility,
+    card_id: CardId,
+    dest_zone: ZoneType,
 ) -> PlayerId {
     if dest_zone == ZoneType::Battlefield && sa.is_gain_control() {
         sa.activating_player
@@ -166,18 +219,28 @@ pub(super) fn resolve_dest_owner(
 
 /// Apply pre-move effects. Returns false if the card should NOT be moved.
 pub(super) fn apply_pre_move(
-    ctx: &mut EffectContext, card_id: CardId, sa: &SpellAbility, dest_zone: ZoneType,
+    ctx: &mut EffectContext,
+    card_id: CardId,
+    sa: &SpellAbility,
+    dest_zone: ZoneType,
 ) -> bool {
     // canExiledBy check
     if dest_zone == ZoneType::Exile {
-        if ctx.game.card(card_id).keywords.contains_string_ignore_case("CantBeExiled") {
+        if ctx
+            .game
+            .card(card_id)
+            .keywords
+            .contains_string_ignore_case("CantBeExiled")
+        {
             return false;
         }
     }
 
     if dest_zone == ZoneType::Battlefield {
         // FaceDown$ — before move
-        if sa.is_face_down() { ctx.game.card_mut(card_id).set_face_down(true); }
+        if sa.is_face_down() {
+            ctx.game.card_mut(card_id).set_face_down(true);
+        }
 
         // Transformed$ — before move
         if sa.is_transformed() {
@@ -199,19 +262,30 @@ pub(super) fn apply_pre_move(
 
         // AttachedTo$ — choose and attach before ETB
         if let Some(attached_to_def) = sa.attached_to() {
-            let valid: Vec<CardId> = battlefield_card_ids(ctx).into_iter()
+            let valid: Vec<CardId> = battlefield_card_ids(ctx)
+                .into_iter()
                 .filter(|&cid| matches_change_type(ctx.game.card(cid), attached_to_def, &[]))
                 .collect();
             if !valid.is_empty() {
                 let ctrl = sa.activating_player;
                 ctx.agents[ctrl.index()].snapshot_state(ctx.game, ctx.mana_pools);
                 if let Some(target) = ctx.agents[ctrl.index()].choose_single_card_for_zone_change(
-                    ctrl, &valid, "Select a card to attach to", false,
+                    ctrl,
+                    &valid,
+                    "Select a card to attach to",
+                    false,
                 ) {
                     ctx.game.card_mut(card_id).set_attached_to(Some(target));
                     ctx.game.card_mut(target).add_attachment(card_id);
                 }
-            } else if ctx.game.card(card_id).type_line.subtypes.iter().any(|s| s.eq_ignore_ascii_case("Aura")) {
+            } else if ctx
+                .game
+                .card(card_id)
+                .type_line
+                .subtypes
+                .iter()
+                .any(|s| s.eq_ignore_ascii_case("Aura"))
+            {
                 return false;
             }
         }
@@ -219,7 +293,9 @@ pub(super) fn apply_pre_move(
         // AttachedToPlayer$ — Curses
         if let Some(atp_def) = sa.params.get(keys::ATTACHED_TO_PLAYER) {
             let players = resolve_defined_players(atp_def, sa.activating_player, ctx.game);
-            if players.is_empty() { return false; }
+            if players.is_empty() {
+                return false;
+            }
         }
     }
 
@@ -228,14 +304,21 @@ pub(super) fn apply_pre_move(
 
 /// Apply shared post-move logic for a card entering a destination zone.
 pub(super) fn apply_post_move(
-    ctx: &mut EffectContext, card_id: CardId, sa: &SpellAbility,
-    old_zone: ZoneType, dest_zone: ZoneType, dest_owner: PlayerId, lib_position: &str,
+    ctx: &mut EffectContext,
+    card_id: CardId,
+    sa: &SpellAbility,
+    old_zone: ZoneType,
+    dest_zone: ZoneType,
+    dest_owner: PlayerId,
+    lib_position: &str,
 ) {
     let controller = sa.activating_player;
 
     // Remember / Forget / Imprint
     if sa.is_remember_changed() {
-        if let Some(sid) = sa.source { ctx.game.card_mut(sid).add_remembered_card(card_id); }
+        if let Some(sid) = sa.source {
+            ctx.game.card_mut(sid).add_remembered_card(card_id);
+        }
     }
     if sa.is_forget_changed() {
         if let Some(sid) = sa.source {
@@ -253,7 +336,9 @@ pub(super) fn apply_post_move(
     }
 
     // Library bottom positioning
-    if dest_zone == ZoneType::Library && (lib_position == "-1" || lib_position.eq_ignore_ascii_case("Bottom")) {
+    if dest_zone == ZoneType::Library
+        && (lib_position == "-1" || lib_position.eq_ignore_ascii_case("Bottom"))
+    {
         let zone = ctx.game.zone_mut(ZoneType::Library, dest_owner);
         if let Some(pos) = zone.cards.iter().rposition(|&c| c == card_id) {
             zone.cards.remove(pos);
@@ -263,44 +348,57 @@ pub(super) fn apply_post_move(
 
     // Battlefield entry effects
     if dest_zone == ZoneType::Battlefield {
-        if sa.is_tapped() { ctx.game.tap(card_id); }
-        if sa.is_gain_control() { ctx.game.card_mut(card_id).set_controller(controller); }
+        if sa.is_tapped() {
+            ctx.game.tap(card_id);
+        }
+        if sa.is_gain_control() {
+            ctx.game.card_mut(card_id).set_controller(controller);
+        }
         if sa.param_is_true(keys::NINJUTSU) {
-            let defender = ctx.game.opponent_of(controller);
-            ctx.game
-                .card_mut(card_id)
-                .set_attacking_player(defender);
+            let _ = super::super::add_to_combat(ctx, sa, card_id, keys::NINJUTSU);
         }
         if sa.param_is_true(keys::UNEARTH) {
             ctx.game.card_mut(card_id).add_pump_keyword("Haste");
             ctx.game.card_mut(card_id).set_summoning_sick(false);
             ctx.game.card_mut(card_id).set_unearthed(true);
-            ctx.trigger_handler.register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
-                mode: TriggerType::Phase, trigger_mode: crate::trigger::TriggerMode::Always,
-                execute_svar: "UneartheExileDelayedTrigger".to_string(),
-                controller, source_card: card_id, target_card: Some(card_id), remembered_amount: 0,
-            });
+            ctx.trigger_handler
+                .register_delayed_trigger(crate::trigger::handler::DelayedTrigger {
+                    mode: TriggerType::Phase,
+                    trigger_mode: crate::trigger::TriggerMode::Always,
+                    execute_svar: "UneartheExileDelayedTrigger".to_string(),
+                    controller,
+                    source_card: card_id,
+                    target_card: Some(card_id),
+                    remembered_amount: 0,
+                });
         }
         if sa.param_is_true(keys::ATTACKING) {
-            let defender = ctx.game.opponent_of(controller);
-            ctx.game
-                .card_mut(card_id)
-                .set_attacking_player(defender);
+            let _ = super::super::add_to_combat(ctx, sa, card_id, keys::ATTACKING);
         }
         if let Some(ct_str) = sa.with_counters_type() {
-            ctx.game.card_mut(card_id).add_counter(&parse_counter_type(ct_str), sa.with_counters_amount().unwrap_or(1));
+            ctx.game.card_mut(card_id).add_counter(
+                &parse_counter_type(ct_str),
+                sa.with_counters_amount().unwrap_or(1),
+            );
         }
-        ctx.trigger_handler.register_active_trigger(ctx.game, card_id);
+        ctx.trigger_handler
+            .register_active_trigger(ctx.game, card_id);
 
         // AttachAfter$
         if let Some(attach_def) = sa.params.get(keys::ATTACH_AFTER) {
-            let valid: Vec<CardId> = battlefield_card_ids(ctx).into_iter()
-                .filter(|&cid| cid != card_id && matches_change_type(ctx.game.card(cid), attach_def, &[]))
+            let valid: Vec<CardId> = battlefield_card_ids(ctx)
+                .into_iter()
+                .filter(|&cid| {
+                    cid != card_id && matches_change_type(ctx.game.card(cid), attach_def, &[])
+                })
                 .collect();
             if !valid.is_empty() {
                 ctx.agents[controller.index()].snapshot_state(ctx.game, ctx.mana_pools);
                 if let Some(t) = ctx.agents[controller.index()].choose_single_card_for_zone_change(
-                    controller, &valid, "Select a card to attach to", false,
+                    controller,
+                    &valid,
+                    "Select a card to attach to",
+                    false,
                 ) {
                     ctx.game.card_mut(card_id).set_attached_to(Some(t));
                     ctx.game.card_mut(t).add_attachment(card_id);
@@ -311,32 +409,44 @@ pub(super) fn apply_post_move(
 
     // Exile effects
     if dest_zone == ZoneType::Exile {
-        if sa.is_exile_face_down() { ctx.game.card_mut(card_id).set_face_down(true); }
+        if sa.is_exile_face_down() {
+            ctx.game.card_mut(card_id).set_face_down(true);
+        }
         if !ctx.game.card(card_id).is_token {
             if let Some(sid) = sa.source {
                 // Only set exiled_by when the exile has a Duration$ that returns the card
                 // when the host leaves. Permanent exile (like Stalking Leonin) should NOT
                 // set exiled_by, otherwise the SBA code will incorrectly return the card
                 // when the source leaves play.
-                let has_return_duration = sa.params.get(keys::DURATION).map_or(false, |d|
+                let has_return_duration = sa.params.get(keys::DURATION).map_or(false, |d| {
                     d.eq_ignore_ascii_case("UntilHostLeavesPlay")
-                    || d.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT")
-                    || d.eq_ignore_ascii_case("UntilYourNextTurn")
-                );
+                        || d.eq_ignore_ascii_case("UntilHostLeavesPlayOrEOT")
+                        || d.eq_ignore_ascii_case("UntilYourNextTurn")
+                });
                 if has_return_duration {
                     ctx.game.card_mut(card_id).set_exiled_by(Some(sid));
                 }
                 let src_zone = ctx.game.card(sid).zone;
-                if matches!(src_zone, ZoneType::Battlefield | ZoneType::Stack | ZoneType::Command) {
+                if matches!(
+                    src_zone,
+                    ZoneType::Battlefield | ZoneType::Stack | ZoneType::Command
+                ) {
                     if !ctx.game.card(sid).remembered_cards.contains(&card_id) {
                         ctx.game.card_mut(sid).add_remembered_card(card_id);
                     }
                 }
             }
         }
-        ctx.trigger_handler.run_trigger(TriggerType::Exiled, RunParams {
-            card: Some(card_id), origin: Some(old_zone), destination: Some(dest_zone), ..Default::default()
-        }, false);
+        ctx.trigger_handler.run_trigger(
+            TriggerType::Exiled,
+            RunParams {
+                card: Some(card_id),
+                origin: Some(old_zone),
+                destination: Some(dest_zone),
+                ..Default::default()
+            },
+            false,
+        );
 
         if sa.param_is_true(keys::FORETOLD) {
             ctx.game.card_mut(card_id).set_foretold(true);
@@ -347,18 +457,34 @@ pub(super) fn apply_post_move(
 
         // Warp keyword
         let is_warp = sa.params.has(keys::WARP)
-            || (sa.trigger_source.is_some() && ctx.game.card(card_id).keywords.contains_string_ignore_case("Warp"));
-        if is_warp { create_warp_effect(ctx, sa, card_id); }
+            || (sa.trigger_source.is_some()
+                && ctx
+                    .game
+                    .card(card_id)
+                    .keywords
+                    .contains_string_ignore_case("Warp"));
+        if is_warp {
+            create_warp_effect(ctx, sa, card_id);
+        }
     }
 
-    if sa.param_is_true(keys::TRACK_DISCARDED) { ctx.game.card_mut(card_id).set_discarded(true); }
+    if sa.param_is_true(keys::TRACK_DISCARDED) {
+        ctx.game.card_mut(card_id).set_discarded(true);
+    }
 
     // Champion$
     if sa.param_is_true(keys::CHAMPION) {
-        ctx.trigger_handler.run_trigger(TriggerType::ChangesZone, RunParams {
-            card: Some(card_id), origin: Some(old_zone), destination: Some(dest_zone),
-            player: Some(controller), ..Default::default()
-        }, false);
+        ctx.trigger_handler.run_trigger(
+            TriggerType::ChangesZone,
+            RunParams {
+                card: Some(card_id),
+                origin: Some(old_zone),
+                destination: Some(dest_zone),
+                player: Some(controller),
+                ..Default::default()
+            },
+            false,
+        );
     }
 
     // WithNotedCounters$
@@ -367,7 +493,10 @@ pub(super) fn apply_post_move(
             let noted = ctx.game.card(sid).remembered_cmc.clone();
             let amount: i32 = noted.iter().sum();
             if amount > 0 {
-                let ct = sa.with_counters_type().map(parse_counter_type).unwrap_or_else(|| parse_counter_type("P1P1"));
+                let ct = sa
+                    .with_counters_type()
+                    .map(parse_counter_type)
+                    .unwrap_or_else(|| parse_counter_type("P1P1"));
                 ctx.game.card_mut(card_id).add_counter(&ct, amount);
             }
         }
@@ -382,9 +511,16 @@ fn create_warp_effect(ctx: &mut EffectContext, sa: &SpellAbility, exiled_card_id
     let controller = sa.activating_player;
     let card_name = ctx.game.card(exiled_card_id).card_name.clone();
     let mut effect = Card::new(
-        CardId(0), format!("Warped {}", card_name), controller,
-        CardTypeLine::parse("Effect"), ManaCost::parse("0"), ColorSet::COLORLESS,
-        None, None, vec![], vec![],
+        CardId(0),
+        format!("Warped {}", card_name),
+        controller,
+        CardTypeLine::parse("Effect"),
+        ManaCost::parse("0"),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
     );
     effect.set_controller(controller);
     effect.set_effect_source(sa.source);

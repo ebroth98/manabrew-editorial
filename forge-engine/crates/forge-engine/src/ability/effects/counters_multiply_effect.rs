@@ -19,7 +19,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     };
 
     for card_id in targets {
-        if ctx.game.card(card_id).zone != ZoneType::Battlefield { continue; }
+        if ctx.game.card(card_id).zone != ZoneType::Battlefield {
+            continue;
+        }
 
         if let Some(ref ct_str) = counter_type_filter {
             // Multiply specific counter type
@@ -31,8 +33,13 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             }
         } else {
             // Multiply ALL counter types
-            let counters: Vec<(crate::card::CounterType, i32)> = ctx.game.card(card_id)
-                .counters.iter().map(|(k, &v)| (k.clone(), v)).collect();
+            let counters: Vec<(crate::card::CounterType, i32)> = ctx
+                .game
+                .card(card_id)
+                .counters
+                .iter()
+                .map(|(k, &v)| (k.clone(), v))
+                .collect();
             for (ct, current) in counters {
                 let to_add = current * (multiplier - 1);
                 if to_add > 0 {

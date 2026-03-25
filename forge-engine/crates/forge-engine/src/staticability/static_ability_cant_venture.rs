@@ -5,8 +5,16 @@ use crate::parsing::keys;
 use crate::staticability::StaticMode;
 
 pub fn cant_venture(game: &GameState, player: PlayerId) -> bool {
-    for card in game.cards.iter().filter(|c| c.zone.is_static_ability_source()) {
-        for st_ab in card.static_abilities.iter().filter(|sa| sa.mode == StaticMode::CantVenture && sa.zones_check(card.zone)) {
+    for card in game
+        .cards
+        .iter()
+        .filter(|c| c.zone.is_static_ability_source())
+    {
+        for st_ab in card
+            .static_abilities
+            .iter()
+            .filter(|sa| sa.mode == StaticMode::CantVenture && sa.zones_check(card.zone))
+        {
             if valid_filter::matches_valid_player_opt(
                 st_ab.params.get(keys::VALID_PLAYER),
                 player,

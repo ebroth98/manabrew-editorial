@@ -104,14 +104,8 @@ fn matches_change_zone_all_filter(
 }
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
-    let origin_str = sa
-        .params
-        .get(keys::ORIGIN)
-        .unwrap_or("Battlefield");
-    let destination_str = sa
-        .params
-        .get(keys::DESTINATION)
-        .unwrap_or("Graveyard");
+    let origin_str = sa.params.get(keys::ORIGIN).unwrap_or("Battlefield");
+    let destination_str = sa.params.get(keys::DESTINATION).unwrap_or("Graveyard");
     // Forge uses ChangeType$ as the primary filter for ChangeZoneAll; fall back to ValidCards$.
     let valid_cards_filter = sa
         .params
