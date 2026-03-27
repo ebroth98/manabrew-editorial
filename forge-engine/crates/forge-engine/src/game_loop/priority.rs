@@ -200,36 +200,75 @@ impl GameLoop {
                         // Resolve the primary (tap-cost) mana ability
                         let primary = &mana_abs[0];
                         self.with_shared_state_mutation(game, agents, |this, game, agents| {
-                            this.resolve_mana_ability(game, agents, priority_player, land_id, primary);
+                            this.resolve_mana_ability(
+                                game,
+                                agents,
+                                priority_player,
+                                land_id,
+                                primary,
+                            );
                         });
                         // Resolve additional mana abilities whose tap cost was already paid
                         for ab in mana_abs.iter().skip(1) {
                             let is_tap_only = ab.cost.parts.len() == 1
-                                && ab.cost.parts.iter().all(|p| matches!(p, crate::cost::CostPart::Tap));
+                                && ab
+                                    .cost
+                                    .parts
+                                    .iter()
+                                    .all(|p| matches!(p, crate::cost::CostPart::Tap));
                             if is_tap_only {
-                                self.with_shared_state_mutation(game, agents, |this, game, agents| {
-                                    let produced = ab.params.get(crate::parsing::keys::PRODUCED).unwrap_or("");
-                                    let mana_string = crate::mana::determine_mana_production(
-                                        game, agents, priority_player, land_id, produced, ab.params.get(crate::parsing::keys::AMOUNT),
-                                    );
-                                    if let Some(ms) = mana_string {
-                                        let source_is_snow = game.card(land_id).type_line.is_snow();
-                                        let mana_params = crate::mana::ManaProductionParams {
-                                            source_card: land_id,
-                                            is_snow: source_is_snow,
-                                            restriction: ab.params.get_cloned(crate::parsing::keys::RESTRICT_VALID),
-                                            adds_no_counter: ab.params.is_true(crate::parsing::keys::ADDS_NO_COUNTER),
-                                            adds_keywords: ab.params.get_cloned(crate::parsing::keys::ADDS_KEYWORDS),
-                                            adds_keywords_valid: ab.params.get_cloned(crate::parsing::keys::ADDS_KEYWORDS_VALID),
-                                            adds_counters: ab.params.get_cloned(crate::parsing::keys::ADDS_COUNTERS),
-                                            adds_counters_valid: ab.params.get_cloned(crate::parsing::keys::ADDS_COUNTERS_VALID),
-                                            triggers_when_spent: ab.params.get_cloned(crate::parsing::keys::TRIGGERS_WHEN_SPENT),
-                                        };
-                                        crate::mana::add_produced_mana_to_pool(
-                                            this.pool_mut(priority_player), &ms, &mana_params,
+                                self.with_shared_state_mutation(
+                                    game,
+                                    agents,
+                                    |this, game, agents| {
+                                        let produced = ab
+                                            .params
+                                            .get(crate::parsing::keys::PRODUCED)
+                                            .unwrap_or("");
+                                        let mana_string = crate::mana::determine_mana_production(
+                                            game,
+                                            agents,
+                                            priority_player,
+                                            land_id,
+                                            produced,
+                                            ab.params.get(crate::parsing::keys::AMOUNT),
                                         );
-                                    }
-                                });
+                                        if let Some(ms) = mana_string {
+                                            let source_is_snow =
+                                                game.card(land_id).type_line.is_snow();
+                                            let mana_params = crate::mana::ManaProductionParams {
+                                                source_card: land_id,
+                                                is_snow: source_is_snow,
+                                                restriction: ab.params.get_cloned(
+                                                    crate::parsing::keys::RESTRICT_VALID,
+                                                ),
+                                                adds_no_counter: ab
+                                                    .params
+                                                    .is_true(crate::parsing::keys::ADDS_NO_COUNTER),
+                                                adds_keywords: ab.params.get_cloned(
+                                                    crate::parsing::keys::ADDS_KEYWORDS,
+                                                ),
+                                                adds_keywords_valid: ab.params.get_cloned(
+                                                    crate::parsing::keys::ADDS_KEYWORDS_VALID,
+                                                ),
+                                                adds_counters: ab.params.get_cloned(
+                                                    crate::parsing::keys::ADDS_COUNTERS,
+                                                ),
+                                                adds_counters_valid: ab.params.get_cloned(
+                                                    crate::parsing::keys::ADDS_COUNTERS_VALID,
+                                                ),
+                                                triggers_when_spent: ab.params.get_cloned(
+                                                    crate::parsing::keys::TRIGGERS_WHEN_SPENT,
+                                                ),
+                                            };
+                                            crate::mana::add_produced_mana_to_pool(
+                                                this.pool_mut(priority_player),
+                                                &ms,
+                                                &mana_params,
+                                            );
+                                        }
+                                    },
+                                );
                             }
                         }
                     } else {
@@ -267,7 +306,12 @@ impl GameLoop {
                                 // Resolve mana triggers inline (e.g. Utopia Sprawl).
                                 let pending = this.trigger_handler.run_waiting_triggers(game);
                                 for pt in pending {
-                                    this.resolve_single_effect(game, agents, &pt.entry.spell_ability, None);
+                                    this.resolve_single_effect(
+                                        game,
+                                        agents,
+                                        &pt.entry.spell_ability,
+                                        None,
+                                    );
                                 }
                             }
                         });
@@ -323,7 +367,8 @@ impl GameLoop {
                             game.untap(land_id);
                             // Remove all mana produced by the last tap — covers base,
                             // aura triggers, static doublers, and any other source.
-                            if let Some(produced) = game.card_mut(land_id).last_mana_produced.take() {
+                            if let Some(produced) = game.card_mut(land_id).last_mana_produced.take()
+                            {
                                 this.pool_mut(priority_player).rollback_tap(&produced);
                             } else {
                                 // Fallback: remove the first matching base atom

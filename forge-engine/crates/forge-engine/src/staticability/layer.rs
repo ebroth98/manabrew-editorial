@@ -410,8 +410,12 @@ pub fn apply_continuous_effects(game: &mut GameState) {
                 // Parse the ability text and add it to the target's activated abilities.
                 // This grants abilities like "{T}: Add one mana of any color."
                 let next_idx = game.cards[effect.target.index()].activated_abilities.len();
-                if let Some(ab) = crate::ability::activated::parse_activated_ability(&ab_text, next_idx) {
-                    game.cards[effect.target.index()].activated_abilities.push(ab);
+                if let Some(ab) =
+                    crate::ability::activated::parse_activated_ability(&ab_text, next_idx)
+                {
+                    game.cards[effect.target.index()]
+                        .activated_abilities
+                        .push(ab);
                 }
             }
         }

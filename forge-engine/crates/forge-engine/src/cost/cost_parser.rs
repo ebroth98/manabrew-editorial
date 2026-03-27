@@ -109,13 +109,7 @@ fn try_parse_prefixed(token: &str) -> Option<CostPart> {
         .or_else(|| try_strip_parse(token, "GainLife<", parse_gain_life))
         .or_else(|| try_strip_parse(token, "GainControl<", parse_gain_control))
         .or_else(|| try_strip_parse(token, "RemoveAnyCounter<", parse_remove_any_counter))
-        .or_else(|| {
-            if token.starts_with("Unattach<") {
-                Some(CostPart::Unattach)
-            } else {
-                None
-            }
-        })
+        .or_else(|| try_strip_parse(token, "Unattach<", parse_unattach))
         .or_else(|| try_strip_parse(token, "Waterbend<", parse_waterbend))
         .or_else(|| try_strip_parse(token, "AddMana<", parse_add_mana))
         .or_else(|| try_strip_parse(token, "CollectEvidence<", parse_collect_evidence))
@@ -156,9 +150,37 @@ fn try_parse_prefixed(token: &str) -> Option<CostPart> {
 // ---------------------------------------------------------------------------
 
 fn parse_mana_cost(inner: &str) -> Option<CostPart> {
-    let mana_text = inner.split('\\').next().unwrap_or(inner);
+    let split: Vec<&str> = inner.splitn(2, '\\').collect();
+    let mana_text = split[0];
+    let restriction = if split.len() > 1 {
+        Some(split[1])
+    } else {
+        None
+    };
     let mana_cost = ManaCost::parse(mana_text);
-    Some(CostPart::Mana(mana_cost))
+
+    let mut x_min = 0i32;
+    let mut is_exiled_creature_cost = false;
+    let mut is_enchanted_creature_cost = false;
+    let mut is_cost_pay_any_number_of_times = false;
+
+    if let Some(r) = restriction {
+        if r.starts_with("XMin") {
+            x_min = r[4..].parse::<i32>().unwrap_or(0);
+        }
+        is_exiled_creature_cost = r.eq_ignore_ascii_case("Exiled");
+        is_enchanted_creature_cost = r.eq_ignore_ascii_case("EnchantedCost");
+        is_cost_pay_any_number_of_times = r.eq_ignore_ascii_case("NumTimes");
+    }
+
+    Some(CostPart::Mana {
+        cost: mana_cost,
+        x_min,
+        is_exiled_creature_cost,
+        is_enchanted_creature_cost,
+        is_cost_pay_any_number_of_times,
+        max_waterbend: None,
+    })
 }
 
 fn parse_sacrifice(inner: &str) -> Option<CostPart> {
@@ -345,6 +367,9 @@ fn parse_untap_type(inner: &str) -> Option<CostPart> {
     Some(CostPart::UntapType {
         amount,
         type_filter: filter,
+        // Default to true; post-processing in parse_cost sets the real value
+        // based on whether the cost also has an Untap (Q) part.
+        can_untap_source: true,
     })
 }
 
@@ -473,6 +498,23 @@ fn parse_remove_any_counter(inner: &str) -> Option<CostPart> {
         amount,
         type_filter,
         counter_type,
+    })
+}
+
+/// Parse `Unattach<Type/Description>`.
+/// Java: `abCostParse(parse, 2)` splits into [type, description].
+/// The constructor passes `("1", type, desc)` to `CostPartWithList`.
+fn parse_unattach(inner: &str) -> Option<CostPart> {
+    let (type_filter, description) = if let Some(slash_idx) = inner.find('/') {
+        let tf = inner[..slash_idx].to_string();
+        let desc = inner[slash_idx + 1..].to_string();
+        (tf, if desc.is_empty() { None } else { Some(desc) })
+    } else {
+        (inner.to_string(), None)
+    };
+    Some(CostPart::Unattach {
+        type_filter,
+        description,
     })
 }
 

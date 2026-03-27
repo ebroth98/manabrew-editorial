@@ -171,7 +171,14 @@ pub fn build_spell_ability_for_card_cast(
         // Card-cast context: if SP$ omitted Cost$, default to card mana cost.
         if sa.pay_costs.is_none() {
             sa.pay_costs = Some(Cost {
-                parts: vec![CostPart::Mana(host.mana_cost.clone())],
+                parts: vec![CostPart::Mana {
+                    cost: host.mana_cost.clone(),
+                    x_min: 0,
+                    is_exiled_creature_cost: false,
+                    is_enchanted_creature_cost: false,
+                    is_cost_pay_any_number_of_times: false,
+                    max_waterbend: None,
+                }],
                 has_tap: false,
                 mandatory: false,
             });
@@ -210,6 +217,7 @@ pub fn build_spell_ability_for_card_cast(
     SpellAbility {
         api: None,
         source: Some(card_id),
+        original_host: card.effect_source,
         activating_player: player,
         targeting_player: None,
         ability_text: String::new(),
@@ -217,7 +225,14 @@ pub fn build_spell_ability_for_card_cast(
         target_restrictions,
         target_chosen: TargetChoices::default(),
         pay_costs: Some(Cost {
-            parts: vec![CostPart::Mana(card.mana_cost.clone())],
+            parts: vec![CostPart::Mana {
+                cost: card.mana_cost.clone(),
+                x_min: 0,
+                is_exiled_creature_cost: false,
+                is_enchanted_creature_cost: false,
+                is_cost_pay_any_number_of_times: false,
+                max_waterbend: None,
+            }],
             has_tap: false,
             mandatory: false,
         }),
@@ -305,6 +320,7 @@ fn build_spell_ability_of_type(
     SpellAbility {
         api,
         source: Some(host.id),
+        original_host: host.effect_source,
         activating_player: player,
         targeting_player: None,
         ability_text: ability_text.to_string(),

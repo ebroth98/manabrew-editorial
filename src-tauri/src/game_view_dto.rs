@@ -361,38 +361,50 @@ pub fn card_to_dto(
 
     // Face-down cards show as nameless 2/2 creatures with no info
     let morph_pt = forge_engine_core::spellability::MORPH_PT.to_string();
-    let (name, types, subtypes, supertypes, power, toughness, base_power, base_toughness, text, color, mana_cost_str, cmc) =
-        if card.face_down && card.zone == ZoneType::Battlefield {
-            (
-                "Face-down creature".to_string(),
-                vec!["Creature".to_string()],
-                vec![],
-                vec![],
-                Some(morph_pt.clone()),
-                Some(morph_pt),
-                None,
-                None,
-                String::new(),
-                String::new(),
-                String::new(),
-                0,
-            )
-        } else {
-            (
-                card.card_name.clone(),
-                types,
-                subtypes,
-                supertypes,
-                power,
-                toughness,
-                base_power,
-                base_toughness,
-                text,
-                card.color.to_string(),
-                card.mana_cost.to_string(),
-                card.mana_cost.cmc(),
-            )
-        };
+    let (
+        name,
+        types,
+        subtypes,
+        supertypes,
+        power,
+        toughness,
+        base_power,
+        base_toughness,
+        text,
+        color,
+        mana_cost_str,
+        cmc,
+    ) = if card.face_down && card.zone == ZoneType::Battlefield {
+        (
+            "Face-down creature".to_string(),
+            vec!["Creature".to_string()],
+            vec![],
+            vec![],
+            Some(morph_pt.clone()),
+            Some(morph_pt),
+            None,
+            None,
+            String::new(),
+            String::new(),
+            String::new(),
+            0,
+        )
+    } else {
+        (
+            card.card_name.clone(),
+            types,
+            subtypes,
+            supertypes,
+            power,
+            toughness,
+            base_power,
+            base_toughness,
+            text,
+            card.color.to_string(),
+            card.mana_cost.to_string(),
+            card.mana_cost.cmc(),
+        )
+    };
 
     CardDto {
         id: card_id_str(cid),
@@ -443,7 +455,11 @@ pub fn card_to_dto(
         is_face_down: card.face_down,
         is_bestowed: card.is_bestowed,
         attached_to: card.attached_to.map(card_id_str),
-        attachment_ids: card.attachments.iter().map(|&aid| card_id_str(aid)).collect(),
+        attachment_ids: card
+            .attachments
+            .iter()
+            .map(|&aid| card_id_str(aid))
+            .collect(),
         phased_out: card.phased_out,
         exerted: card.exerted,
         effective_mana_cost: {
@@ -467,9 +483,7 @@ pub fn card_to_dto(
             }
         },
         madness_cost: card.get_madness_cost(),
-        is_madness_exiled: card.has_keyword(
-            forge_engine_core::card::KEYWORD_MADNESS_EXILED,
-        ),
+        is_madness_exiled: card.has_keyword(forge_engine_core::card::KEYWORD_MADNESS_EXILED),
         is_plotted: card
             .keywords
             .iter_strings()

@@ -26,7 +26,7 @@ impl GameLoop {
     pub(super) fn mana_from_cost(cost: &crate::cost::Cost) -> forge_foundation::ManaCost {
         let mut out = forge_foundation::ManaCost::generic(0);
         for part in &cost.parts {
-            if let CostPart::Mana(mc) = part {
+            if let CostPart::Mana { cost: mc, .. } = part {
                 out = out.add(mc);
             }
         }
@@ -251,7 +251,7 @@ impl GameLoop {
                             .cost
                             .parts
                             .iter()
-                            .all(|p| matches!(p, CostPart::Mana(_)))
+                            .all(|p| matches!(p, CostPart::Mana { .. }))
                     })
                     .any(|entry| {
                         let base = Self::mana_from_cost(&entry.cost);

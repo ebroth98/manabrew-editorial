@@ -299,10 +299,7 @@ fn collect_files(base: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
             collect_files(base, &path, out);
         } else if path.is_file() {
             // Only hash source-like files
-            let ext = path
-                .extension()
-                .and_then(|e| e.to_str())
-                .unwrap_or("");
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
             if matches!(ext, "java" | "json" | "xml" | "properties") {
                 if let Ok(content) = fs::read(&path) {
                     let rel = path
@@ -382,9 +379,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
 
         let cache1 = JavaCache::open(dir.path(), "hash_v1".into()).unwrap();
-        cache1
-            .put("a", "b", 42, 10, false, &dummy_data())
-            .unwrap();
+        cache1.put("a", "b", 42, 10, false, &dummy_data()).unwrap();
         assert!(cache1.get("a", "b", 42, 10, false).is_some());
 
         // Reopen with different hash → cache wiped

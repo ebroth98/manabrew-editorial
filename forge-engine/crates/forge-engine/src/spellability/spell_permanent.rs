@@ -32,6 +32,7 @@ pub fn create_permanent_spell(
     SpellAbility {
         api: Some(api),
         source: Some(card_id),
+        original_host: None,
         activating_player: player,
         targeting_player: None,
         ability_text: String::new(),

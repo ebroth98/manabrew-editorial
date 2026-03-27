@@ -652,7 +652,9 @@ pub fn parse_static_ability(raw: &str) -> Option<StaticAbility> {
         Some("ActivateAbilityAsIfHaste") => StaticMode::ActivateAbilityAsIfHaste,
         Some("CanAdapt") => StaticMode::CanAdapt,
         Some("AlternativeCost") => StaticMode::AlternativeCost,
-        Some("CantAttackBlock") | Some("CantAttack,CantBlock") | Some("CantBlock,CantAttack") => StaticMode::CantAttackBlock,
+        Some("CantAttackBlock") | Some("CantAttack,CantBlock") | Some("CantBlock,CantAttack") => {
+            StaticMode::CantAttackBlock
+        }
         Some("CantBeCopied") => StaticMode::CantBeCopied,
         Some("CantBeSuspected") => StaticMode::CantBeSuspected,
         Some("CantBecomeMonarch") => StaticMode::CantBecomeMonarch,

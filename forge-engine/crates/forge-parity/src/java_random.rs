@@ -51,7 +51,13 @@ impl JavaRandom {
         };
 
         if std::env::var("FORGE_RNG_TRACE").is_ok() {
-            eprintln!("[rng-rust #{} ({})] nextInt({}) = {}", call_before + 1, self.label, bound, result);
+            eprintln!(
+                "[rng-rust #{} ({})] nextInt({}) = {}",
+                call_before + 1,
+                self.label,
+                bound,
+                result
+            );
         }
         result
     }

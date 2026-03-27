@@ -104,7 +104,7 @@ impl GameLoop {
                 .cost
                 .parts
                 .iter()
-                .any(|p| matches!(p, crate::cost::CostPart::Mana(_)));
+                .any(|p| matches!(p, crate::cost::CostPart::Mana { .. }));
             let mana_for_check = if needs_mana {
                 // Java parity: ComputerUtilMana.canPayManaCost(...) excludes mana
                 // abilities on the same host card as the spell/ability being paid for.
@@ -516,7 +516,10 @@ impl GameLoop {
             // Subtract the card's mana cost from the ability's mana cost
             let card_mc = game.card(card_id).mana_cost.clone();
             for part in &mut cost.parts {
-                if let crate::cost::CostPart::Mana(ref mut mc) = part {
+                if let crate::cost::CostPart::Mana {
+                    cost: ref mut mc, ..
+                } = part
+                {
                     *mc = mc.reduce_generic(card_mc.cmc() as i32);
                     break;
                 }

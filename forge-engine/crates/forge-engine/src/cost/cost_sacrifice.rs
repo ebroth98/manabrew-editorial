@@ -3,8 +3,6 @@
 //! Java's `CostSacrifice` extends `CostPartWithList` and uses `doListPayment()`
 //! to call `game.getAction().sacrifice()`. The LKI/card tracking lists are
 //! managed by the `CostPartWithList` base class.
-//!
-//! NOTE: Payability check is in `can_pay_inner()` in `mod.rs` (the central dispatcher).
 
 use forge_foundation::ZoneType;
 
@@ -43,3 +41,80 @@ pub fn pay_as_decided_cards(game: &mut GameState, cards: &[CardId], _player: Pla
 /// Mirrors Java's `CostSacrifice.getHashForLKIList()` / `getHashForCardList()`.
 pub const HASH_LKI: &str = "Sacrificed";
 pub const HASH_CARDS: &str = "SacrificedCards";
+
+pub fn payment_order(part: &super::CostPart) -> i32 {
+    part.payment_order()
+}
+
+pub fn can_pay(
+    game: &crate::game::GameState,
+    _available_mana: &crate::mana::ManaPool,
+    source: crate::ids::CardId,
+    player: crate::ids::PlayerId,
+    ability: Option<&crate::spellability::SpellAbility>,
+    part: &super::CostPart,
+) -> bool {
+    let super::CostPart::Sacrifice {
+        type_filter,
+        amount,
+    } = part
+    else {
+        return false;
+    };
+    let card = game.card(source);
+    let static_source_cards = super::static_ability_source_cards(game);
+    if type_filter == "CARDNAME" {
+        if card.zone != ZoneType::Battlefield {
+            return false;
+        }
+        return !crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
+            &static_source_cards,
+            card,
+            ability,
+            true,
+        );
+    }
+    if type_filter.eq_ignore_ascii_case("All") {
+        let targets = super::get_sacrifice_targets(game, player, type_filter);
+        return targets.iter().all(|&cid| {
+            !crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
+                &static_source_cards,
+                game.card(cid),
+                ability,
+                true,
+            )
+        });
+    }
+    let targets = super::get_sacrifice_targets(game, player, type_filter);
+    let valid = targets
+        .iter()
+        .filter(|&&cid| {
+            !crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
+                &static_source_cards,
+                game.card(cid),
+                ability,
+                true,
+            )
+        })
+        .count() as i32;
+    valid >= *amount
+}
+
+pub fn pay_with_decision(
+    game: &mut GameState,
+    player: PlayerId,
+    source: CardId,
+    part: &super::CostPart,
+    decision: &crate::cost::payment_decision::PaymentDecision,
+) -> bool {
+    let super::CostPart::Sacrifice { type_filter, .. } = part else {
+        return false;
+    };
+    if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
+        return pay_as_decided_self(game, source, player);
+    }
+    if let crate::cost::payment_decision::PaymentDecision::Cards(cards) = decision {
+        return pay_as_decided_cards(game, cards, player);
+    }
+    false
+}

@@ -160,9 +160,9 @@ impl Storage {
 
     /// Return the (deck1, deck2) of the most recently inserted non-fuzz game.
     pub fn last_preset_pair(&self) -> SqlResult<Option<(String, String)>> {
-        let mut stmt = self.conn.prepare(
-            "SELECT deck1, deck2 FROM runs WHERE is_fuzz = 0 ORDER BY id DESC LIMIT 1",
-        )?;
+        let mut stmt = self
+            .conn
+            .prepare("SELECT deck1, deck2 FROM runs WHERE is_fuzz = 0 ORDER BY id DESC LIMIT 1")?;
         let mut rows = stmt.query([])?;
         if let Some(row) = rows.next()? {
             Ok(Some((row.get(0)?, row.get(1)?)))
@@ -274,7 +274,9 @@ impl Storage {
 
         // Only count preset games from the current session for games/minute
         let session_games: usize = self.conn.query_row(
-            &format!("SELECT COUNT(*) FROM runs WHERE timestamp >= ?1 AND is_fuzz = 0{exclude_filter}"),
+            &format!(
+                "SELECT COUNT(*) FROM runs WHERE timestamp >= ?1 AND is_fuzz = 0{exclude_filter}"
+            ),
             params![start_time_iso],
             |r| r.get(0),
         )?;
@@ -298,7 +300,9 @@ impl Storage {
             |r| r.get(0),
         )?;
         let fuzz_passed: usize = self.conn.query_row(
-            &format!("SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 1{time_filter}"),
+            &format!(
+                "SELECT COUNT(*) FROM runs WHERE status = 'pass' AND is_fuzz = 1{time_filter}"
+            ),
             [],
             |r| r.get(0),
         )?;
@@ -387,8 +391,7 @@ impl Storage {
             })
         };
         if let Some(s) = since {
-            stmt.query_map(params![limit as i64, s], map_row)?
-                .collect()
+            stmt.query_map(params![limit as i64, s], map_row)?.collect()
         } else {
             stmt.query_map(params![limit as i64], map_row)?.collect()
         }
@@ -475,7 +478,11 @@ impl Storage {
     }
 
     /// Get pass rate heatmap by deck pair.
-    pub fn deck_pair_matrix(&self, since: Option<&str>, exclude_prefixes: &[String]) -> SqlResult<Vec<DeckPairStats>> {
+    pub fn deck_pair_matrix(
+        &self,
+        since: Option<&str>,
+        exclude_prefixes: &[String],
+    ) -> SqlResult<Vec<DeckPairStats>> {
         let since_clause = if since.is_some() {
             "AND timestamp >= ?1"
         } else {

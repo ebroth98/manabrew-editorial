@@ -8,6 +8,7 @@ use forge_foundation::mana::ManaAtom;
 use forge_foundation::PhaseType;
 use serde::{Deserialize, Serialize};
 
+use super::mana_conversion_matrix::ManaConversionMatrix;
 use super::{mana_meets_restriction, Mana, ManaPaymentContext};
 use crate::ids::CardId;
 
@@ -28,11 +29,29 @@ pub struct ManaPool {
     /// multiple colored requirements simultaneously.
     #[serde(skip)]
     pub source_colors: Option<Vec<u16>>,
+    /// Mana conversion/restriction matrix controlling what colors can pay for what.
+    /// Mirrors Java's `ManaPool` inheriting from `ManaConversionMatrix`.
+    #[serde(skip)]
+    pub color_matrix: ManaConversionMatrix,
 }
 
 impl ManaPool {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    // ── ManaConversionMatrix delegation (Java inheritance parity) ────
+
+    /// Reset the color conversion matrix to identity.
+    /// Mirrors Java's `ManaPool.restoreColorReplacements()`.
+    pub fn restore_color_replacements(&mut self) {
+        self.color_matrix.restore_color_replacements();
+    }
+
+    /// Merge another matrix into this pool's matrix.
+    /// Mirrors Java's `ManaPool.applyCardMatrix(ManaConversionMatrix)`.
+    pub fn apply_card_matrix(&mut self, other: &ManaConversionMatrix) {
+        self.color_matrix.apply_card_matrix(other);
     }
 
     pub fn add(&mut self, atom: u16, amount: i32) {

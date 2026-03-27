@@ -7,6 +7,25 @@ pub(crate) enum CostPaymentContext {
 }
 
 impl GameLoop {
+    fn emit_untap_all_cost_trigger(&mut self, player: PlayerId, card_id: CardId) {
+        self.trigger_handler.run_trigger(
+            TriggerType::UntapAll,
+            RunParams {
+                card: Some(card_id),
+                player: Some(player),
+                ..Default::default()
+            },
+            false,
+        );
+    }
+
+    fn record_paid_cost_exile(&mut self, game: &mut GameState, source: CardId, exiled: CardId) {
+        let host = game.card_mut(source);
+        if !host.paid_cost_exiled_cards.contains(&exiled) {
+            host.paid_cost_exiled_cards.push(exiled);
+        }
+    }
+
     /// Pay life and fire the LifeLost trigger.
     fn pay_life_cost(&mut self, game: &mut GameState, player: PlayerId, amount: i32) {
         if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life(
@@ -79,7 +98,7 @@ impl GameLoop {
         match part {
             CostPart::Tap => "Tap",
             CostPart::Untap => "Untap",
-            CostPart::Mana(_) => "Mana",
+            CostPart::Mana { .. } => "Mana",
             CostPart::PayLife(_) => "PayLife",
             CostPart::Sacrifice { .. } => "Sacrifice",
             CostPart::Discard { .. } => "Discard",
@@ -101,7 +120,7 @@ impl GameLoop {
             CostPart::GainLife(_) => "GainLife",
             CostPart::GainControl { .. } => "GainControl",
             CostPart::RemoveAnyCounter { .. } => "RemoveAnyCounter",
-            CostPart::Unattach => "Unattach",
+            CostPart::Unattach { .. } => "Unattach",
             CostPart::ExiledMoveToGrave { .. } => "ExiledMoveToGrave",
             CostPart::AddMana { .. } => "AddMana",
             CostPart::Waterbend { .. } => "Waterbend",
@@ -160,15 +179,45 @@ impl GameLoop {
                 (type_filter == "CARDNAME" && !mandatory) || type_filter == "OriginalHost"
             }
             CostPart::SubCounter { .. } => !source_is_planeswalker,
-            CostPart::Unattach => true,
+            CostPart::Unattach { .. } => true,
 
             // HumanPlay.payCostDuringAbilityResolve(...) explicit branches
             CostPart::Discard { type_filter, .. } => {
                 type_filter == "Hand" || type_filter == "Random"
             }
-            CostPart::Mana(mana_cost) => mana_cost.is_zero(),
+            CostPart::Mana {
+                cost: mana_cost, ..
+            } => mana_cost.is_zero(),
             _ => false,
         }
+    }
+
+    fn choose_unattach_target(
+        &mut self,
+        game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        source: CardId,
+        type_filter: &str,
+        sa: Option<&SpellAbility>,
+    ) -> CardId {
+        if type_filter == "CARDNAME" || type_filter == "NICKNAME" || type_filter == "OriginalHost" {
+            let candidates =
+                crate::cost::cost_unattach::find_card_to_unattach(game, source, type_filter, sa);
+            return candidates.into_iter().next().unwrap_or(source);
+        }
+
+        let candidates =
+            crate::cost::cost_unattach::find_card_to_unattach(game, source, type_filter, sa);
+        if candidates.is_empty() {
+            return source;
+        }
+
+        agents[player.index()]
+            .choose_cards_for_effect(player, &candidates, 1, 1)
+            .into_iter()
+            .next()
+            .unwrap_or(candidates[0])
     }
 
     fn confirm_cost_part_payment(
@@ -206,6 +255,7 @@ impl GameLoop {
         sa: Option<&SpellAbility>,
     ) -> bool {
         let _ = context;
+        game.card_mut(card_id).paid_cost_exiled_cards.clear();
         // Java CostPayment is transactional: if any later cost part fails,
         // previously applied parts are undone. Mirror that via full snapshot.
         let payment_snapshot = self.make_snapshot(game, true);
@@ -294,9 +344,18 @@ impl GameLoop {
                     );
                 }
                 CostPart::Untap => {
+                    let was_tapped = game.card(card_id).tapped;
                     game.untap(card_id);
+                    if was_tapped {
+                        self.emit_untap_all_cost_trigger(player, card_id);
+                    }
                 }
-                CostPart::Mana(mana_cost) => {
+                CostPart::Mana { .. } => {
+                    let saved_matrix = crate::cost::cost_part_mana::save_matrix_before_payment(
+                        &self.mana_pools[player.index()],
+                    );
+                    let mana_cost =
+                        crate::cost::cost_part_mana::get_mana_cost_for(game, card_id, sa, &part);
                     // Check if this ability also sacrifices itself (e.g. Food Token
                     // "{2}, {T}, Sacrifice this: Gain 3 life"). If so, allow the
                     // auto-tapper to reuse the reserved source for mana.
@@ -350,7 +409,7 @@ impl GameLoop {
                             game,
                             &mut self.mana_pools[player.index()],
                             player,
-                            mana_cost,
+                            &mana_cost,
                             Some(card_id),
                             &mut callback,
                         )
@@ -359,13 +418,18 @@ impl GameLoop {
                             game,
                             &mut self.mana_pools[player.index()],
                             player,
-                            mana_cost,
+                            &mana_cost,
                             Some(card_id),
                             &mut callback,
                         )
                     };
                     self.emit_tap_for_mana_triggers(player, &tapped);
-                    if !self.mana_pools[player.index()].try_pay(mana_cost) {
+                    let mana_paid = self.mana_pools[player.index()].try_pay(&mana_cost);
+                    crate::cost::cost_part_mana::restore_matrix_after_payment(
+                        &mut self.mana_pools[player.index()],
+                        &saved_matrix,
+                    );
+                    if !mana_paid {
                         payment_ok = false;
                         break;
                     }
@@ -452,13 +516,27 @@ impl GameLoop {
                     amount,
                     type_filter,
                 } => {
-                    self.pay_exile_from_any_grave_cost(game, agents, player, type_filter, *amount);
+                    self.pay_exile_from_any_grave_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                    );
                 }
                 CostPart::ExileFromSameGrave {
                     amount,
                     type_filter,
                 } => {
-                    self.pay_exile_from_same_grave_cost(game, agents, player, type_filter, *amount);
+                    self.pay_exile_from_same_grave_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                    );
                 }
                 CostPart::SubCounter {
                     amount,
@@ -479,6 +557,7 @@ impl GameLoop {
                 } => {
                     if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
                         game.move_card(card_id, ZoneType::Exile, game.card(card_id).owner);
+                        self.record_paid_cost_exile(game, card_id, card_id);
                     } else {
                         self.pay_exile_cost(
                             game,
@@ -520,8 +599,17 @@ impl GameLoop {
                 CostPart::UntapType {
                     amount,
                     type_filter,
+                    can_untap_source,
                 } => {
-                    self.pay_untap_type_cost(game, agents, player, card_id, type_filter, *amount);
+                    self.pay_untap_type_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                        *can_untap_source,
+                    );
                 }
                 CostPart::PayEnergy(amount) => {
                     let resolved_amount =
@@ -633,13 +721,14 @@ impl GameLoop {
                         counter_type.as_ref(),
                     );
                 }
-                CostPart::Unattach => {
-                    // Detach the source equipment from whatever it is equipping
-                    game.detach(card_id);
+                CostPart::Unattach { type_filter, .. } => {
+                    let target =
+                        self.choose_unattach_target(game, agents, player, card_id, type_filter, sa);
+                    game.detach(target);
                     self.trigger_handler.run_trigger(
                         TriggerType::Unattached,
                         RunParams {
-                            card: Some(card_id),
+                            card: Some(target),
                             player: Some(player),
                             ..Default::default()
                         },
@@ -911,6 +1000,7 @@ impl GameLoop {
         sa: Option<&SpellAbility>,
     ) -> bool {
         let payment_snapshot = self.make_snapshot(game, true);
+        game.card_mut(card_id).paid_cost_exiled_cards.clear();
         let mut payment_ok = true;
         for part in spell_cost.parts.clone() {
             // Java deterministic parity does not route confirm-payment prompts
@@ -920,7 +1010,7 @@ impl GameLoop {
             match &part {
                 // Mana is already paid by play_card's main mana payment flow.
                 // Tap/Untap are not applicable to spell additional costs.
-                CostPart::Mana(_) | CostPart::Tap | CostPart::Untap => {}
+                CostPart::Mana { .. } | CostPart::Tap | CostPart::Untap => {}
                 CostPart::PayLife(amount) => {
                     self.pay_life_cost(game, player, *amount);
                 }
@@ -954,13 +1044,27 @@ impl GameLoop {
                     amount,
                     type_filter,
                 } => {
-                    self.pay_exile_from_any_grave_cost(game, agents, player, type_filter, *amount);
+                    self.pay_exile_from_any_grave_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                    );
                 }
                 CostPart::ExileFromSameGrave {
                     amount,
                     type_filter,
                 } => {
-                    self.pay_exile_from_same_grave_cost(game, agents, player, type_filter, *amount);
+                    self.pay_exile_from_same_grave_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                    );
                 }
                 CostPart::SubCounter {
                     amount,
@@ -987,6 +1091,7 @@ impl GameLoop {
                         if game.card(card_id).zone == *from {
                             let owner = game.card(card_id).owner;
                             game.move_card(card_id, ZoneType::Exile, owner);
+                            self.record_paid_cost_exile(game, card_id, card_id);
                         }
                     } else {
                         self.pay_exile_cost(
@@ -1026,8 +1131,17 @@ impl GameLoop {
                 CostPart::UntapType {
                     amount,
                     type_filter,
+                    can_untap_source,
                 } => {
-                    self.pay_untap_type_cost(game, agents, player, card_id, type_filter, *amount);
+                    self.pay_untap_type_cost(
+                        game,
+                        agents,
+                        player,
+                        card_id,
+                        type_filter,
+                        *amount,
+                        *can_untap_source,
+                    );
                 }
                 CostPart::PayEnergy(amount) => {
                     let resolved_amount =
@@ -1138,12 +1252,14 @@ impl GameLoop {
                         counter_type.as_ref(),
                     );
                 }
-                CostPart::Unattach => {
-                    game.detach(card_id);
+                CostPart::Unattach { type_filter, .. } => {
+                    let target =
+                        self.choose_unattach_target(game, agents, player, card_id, type_filter, sa);
+                    game.detach(target);
                     self.trigger_handler.run_trigger(
                         TriggerType::Unattached,
                         RunParams {
-                            card: Some(card_id),
+                            card: Some(target),
                             player: Some(player),
                             ..Default::default()
                         },
@@ -1466,6 +1582,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         type_filter: &str,
         amount: i32,
     ) {
@@ -1493,6 +1610,7 @@ impl GameLoop {
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Exile, owner);
+                self.record_paid_cost_exile(game, source, chosen);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
                     chosen,
@@ -1510,6 +1628,7 @@ impl GameLoop {
         game: &mut GameState,
         agents: &mut [Box<dyn PlayerAgent>],
         player: PlayerId,
+        source: CardId,
         type_filter: &str,
         amount: i32,
     ) {
@@ -1544,6 +1663,7 @@ impl GameLoop {
                 chosen_owner = Some(game.card(chosen).owner);
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Exile, owner);
+                self.record_paid_cost_exile(game, source, chosen);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
                     chosen,
@@ -1583,6 +1703,7 @@ impl GameLoop {
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let owner = game.card(chosen).owner;
                 game.move_card(chosen, ZoneType::Exile, owner);
+                self.record_paid_cost_exile(game, source, chosen);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
                     chosen,
@@ -2435,30 +2556,40 @@ impl GameLoop {
         source: CardId,
         type_filter: &str,
         amount: i32,
+        can_untap_source: bool,
     ) {
+        let mut untapped_ids: Vec<CardId> = Vec::new();
         for _ in 0..amount {
             let valid: Vec<CardId> = game
-                .cards_in_zone(ZoneType::Battlefield, player)
-                .to_vec()
-                .into_iter()
+                .players
+                .iter()
+                .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id).to_vec())
                 .filter(|&cid| {
-                    cid != source
-                        && game.card(cid).tapped
-                        && (type_filter == "Card"
-                            || type_filter.is_empty()
-                            || crate::ability::effects::matches_change_type(
-                                game.card(cid),
-                                type_filter,
-                                &[],
-                            ))
+                    if !can_untap_source && cid == source {
+                        return false;
+                    }
+                    let c = game.card(cid);
+                    let stun = crate::card::CounterType::Named("STUN".to_string());
+                    (type_filter == "Card"
+                        || type_filter.is_empty()
+                        || crate::ability::effects::matches_change_type(c, type_filter, &[]))
+                        && c.can_untap()
+                        && (c.counter_count(&stun) == 0 || c.can_remove_counters(&stun))
                 })
                 .collect();
             if valid.is_empty() {
                 break;
             }
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+                let was_tapped = game.card(chosen).tapped;
                 game.untap(chosen);
+                if was_tapped {
+                    untapped_ids.push(chosen);
+                }
             }
+        }
+        for card_id in untapped_ids {
+            self.emit_untap_all_cost_trigger(player, card_id);
         }
     }
 

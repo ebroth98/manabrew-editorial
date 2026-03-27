@@ -1,6 +1,7 @@
 pub mod cost_add_mana;
 pub mod cost_adjustment;
 pub mod cost_behold;
+pub mod cost_behold_exile;
 pub mod cost_blight;
 pub mod cost_choose_color;
 pub mod cost_choose_creature_type;
@@ -20,6 +21,10 @@ pub mod cost_gain_control;
 pub mod cost_gain_life;
 pub mod cost_mill;
 mod cost_parser;
+pub mod cost_part;
+pub mod cost_part_mana;
+pub mod cost_part_with_list;
+pub mod cost_part_with_trigger;
 pub mod cost_pay_energy;
 pub mod cost_pay_life;
 pub mod cost_pay_shards;
@@ -28,6 +33,7 @@ pub mod cost_promise_gift;
 pub mod cost_put_card_to_lib;
 pub mod cost_put_counter;
 pub mod cost_remove_any_counter;
+pub mod cost_remove_counter;
 pub mod cost_return;
 pub mod cost_reveal;
 pub mod cost_reveal_chosen;
@@ -40,7 +46,10 @@ pub mod cost_unattach;
 pub mod cost_untap;
 pub mod cost_untap_type;
 pub mod cost_waterbend;
+pub mod individual_cost_payment_instance;
 pub mod payment_decision;
+pub mod trait_cost_decision_maker;
+pub mod trait_cost_visitor;
 
 use forge_foundation::{ManaCost, ZoneType};
 use serde::{Deserialize, Serialize};
@@ -51,12 +60,13 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
 use crate::spellability::SpellAbility;
+use crate::spellability::spell::Spell;
 use crate::staticability::static_ability_cant_exile::cant_exile;
 use crate::staticability::static_ability_cant_gain_lose_pay_life::cant_pay_life;
 use crate::staticability::static_ability_cant_put_counter::any_cant_put_counter_on_card;
 use crate::staticability::static_ability_cant_sacrifice::cant_sacrifice;
 
-const DYNAMIC_X_SENTINEL: i32 = i32::MIN;
+pub(crate) const DYNAMIC_X_SENTINEL: i32 = i32::MIN;
 
 pub(super) fn parse_i32_or_x(inner: &str, default: i32) -> i32 {
     let trimmed = inner.trim();
@@ -119,8 +129,26 @@ pub enum RevealFrom {
 pub enum CostPart {
     /// Tap the source permanent. {T}
     Tap,
-    /// Pay mana.
-    Mana(ManaCost),
+    /// Pay mana. Mirrors Java `CostPartMana`.
+    Mana {
+        cost: ManaCost,
+        /// Minimum value for X in the mana cost (parsed from restriction "XMin<N>").
+        #[serde(default)]
+        x_min: i32,
+        /// When true, the base mana cost is augmented by the exiled creature's mana cost.
+        #[serde(default)]
+        is_exiled_creature_cost: bool,
+        /// When true, the base mana cost is augmented by the enchanted creature's mana cost.
+        #[serde(default)]
+        is_enchanted_creature_cost: bool,
+        /// When true, the base mana cost is multiplied by an SVar-determined count.
+        #[serde(default)]
+        is_cost_pay_any_number_of_times: bool,
+        /// Maximum number of permanents that can be tapped to reduce the mana cost
+        /// via the Waterbend mechanic. Mirrors Java's `CostPartMana.maxWaterbend`.
+        #[serde(default)]
+        max_waterbend: Option<String>,
+    },
     /// Pay life. Mirrors CostPayLife.
     PayLife(i32),
     /// Sacrifice permanents. type_filter "CARDNAME" means sacrifice self.
@@ -160,7 +188,11 @@ pub enum CostPart {
     /// Untap permanents as cost. Mirrors CostUntap.
     Untap,
     /// Untap other permanents of a type as cost (untapYType<n/filter>). Mirrors CostUntapType.
-    UntapType { amount: i32, type_filter: String },
+    UntapType {
+        amount: i32,
+        type_filter: String,
+        can_untap_source: bool,
+    },
     /// Pay energy counters. Mirrors CostPayEnergy.
     PayEnergy(i32),
     /// Pay shard counters. Mirrors CostPayShards.
@@ -190,8 +222,13 @@ pub enum CostPart {
         type_filter: String,
         counter_type: Option<CounterType>,
     },
-    /// Unattach the source equipment from whatever it is equipping. Mirrors CostUnattach.
-    Unattach,
+    /// Unattach equipment as a cost. Mirrors CostUnattach.
+    /// `type_filter` can be "CARDNAME" (source is the equipment), "OriginalHost",
+    /// or a card filter expression (source is the equipped creature, filter matches equipment).
+    Unattach {
+        type_filter: String,
+        description: Option<String>,
+    },
     /// Move cards from exile to graveyard as cost. Mirrors CostExiledMoveToGrave.
     ExiledMoveToGrave { amount: i32, type_filter: String },
     /// Add mana to the pool as a cost (AddMana<amount/type>). Mirrors CostAddMana.
@@ -251,7 +288,16 @@ impl CostPart {
         match self {
             CostPart::Tap => -1,
             CostPart::Untap => 20,
-            CostPart::Mana(_) => 0,
+            CostPart::Mana {
+                is_exiled_creature_cost,
+                ..
+            } => {
+                if *is_exiled_creature_cost {
+                    200
+                } else {
+                    0
+                }
+            }
             CostPart::PayEnergy(_) => 7,
             CostPart::PayShards(_) => 7,
             CostPart::SubCounter { .. } => 8,
@@ -282,7 +328,7 @@ impl CostPart {
             CostPart::UntapType { .. } => 18,
             CostPart::GainControl { .. } => 8,
             CostPart::RemoveAnyCounter { .. } => 8,
-            CostPart::Unattach => 5,
+            CostPart::Unattach { .. } => 5,
             CostPart::ExiledMoveToGrave { .. } => 15,
             CostPart::AddMana { .. } => 5,
             CostPart::Waterbend { .. } => 0,
@@ -314,11 +360,133 @@ pub struct Cost {
 }
 
 impl Cost {
+    pub fn has_tap_cost(&self) -> bool {
+        self.has_tap
+    }
+
+    pub fn has_no_mana_cost(&self) -> bool {
+        !self
+            .parts
+            .iter()
+            .any(|p| matches!(p, CostPart::Mana { .. }))
+    }
+
+    pub fn has_mana_cost(&self) -> bool {
+        !self.has_no_mana_cost()
+    }
+
+    pub fn has_specific_cost_type(&self, probe: &CostPart) -> bool {
+        let tag = std::mem::discriminant(probe);
+        self.parts.iter().any(|p| std::mem::discriminant(p) == tag)
+    }
+
+    pub fn has_only_specific_cost_type(&self, probe: &CostPart) -> bool {
+        let tag = std::mem::discriminant(probe);
+        self.parts.iter().all(|p| std::mem::discriminant(p) == tag)
+    }
+
+    pub fn sort(&mut self) {
+        self.parts.sort_by_key(|p| p.payment_order());
+    }
+
+    pub fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    pub fn copy_with_no_mana(&self) -> Self {
+        let mut out = self.clone();
+        out.parts.retain(|p| !matches!(p, CostPart::Mana { .. }));
+        out
+    }
+
+    pub fn copy_with_defined_mana(&self, mana_cost: ManaCost) -> Self {
+        let mut out = self.clone();
+        out.parts.retain(|p| !matches!(p, CostPart::Mana { .. }));
+        out.parts.push(CostPart::Mana {
+            cost: mana_cost,
+            x_min: 0,
+            is_exiled_creature_cost: false,
+            is_enchanted_creature_cost: false,
+            is_cost_pay_any_number_of_times: false,
+            max_waterbend: None,
+        });
+        out.sort();
+        out
+    }
+
+    pub fn refund_paid_cost(&self, game: &mut GameState, source: CardId, player: PlayerId) {
+        for part in self.parts.iter().rev() {
+            crate::cost::cost_part::refund(game, source, player, part);
+        }
+    }
+
+    pub fn to_string_alt(&self) -> String {
+        to_simple_string(self)
+    }
+
+    pub fn to_simple_string(&self) -> String {
+        to_simple_string(self)
+    }
+
     pub fn is_zero_cost(&self) -> bool {
         self.parts.is_empty()
             || (self.parts.len() == 1
-                && matches!(&self.parts[0], CostPart::Mana(mana) if mana.is_zero()))
+                && matches!(&self.parts[0], CostPart::Mana { cost: mana, .. } if mana.is_zero()))
     }
+}
+
+pub fn convert_amount_type_to_words(amount: i32, amount_expr: &str, noun: &str) -> String {
+    if amount_expr == "X" {
+        format!("X {}", noun)
+    } else if amount == 1 {
+        format!("a {}", noun)
+    } else {
+        format!("{} {}s", amount, noun)
+    }
+}
+
+pub fn convert_int_and_type_to_words(amount: i32, noun: &str) -> String {
+    convert_amount_type_to_words(amount, &amount.to_string(), noun)
+}
+
+pub fn merge_to(dst: &mut Cost, src: &Cost) {
+    dst.parts.extend(src.parts.clone());
+    dst.has_tap = dst.has_tap || src.has_tap;
+    dst.mandatory = dst.mandatory || src.mandatory;
+    dst.sort();
+}
+
+pub fn add(cost: &mut Cost, part: CostPart) {
+    cost.has_tap = cost.has_tap || matches!(part, CostPart::Tap);
+    cost.parts.push(part);
+    cost.sort();
+}
+
+pub fn apply_text_change_effects(cost: &mut Cost, game: &GameState, host: CardId) {
+    for part in &mut cost.parts {
+        crate::cost::cost_part::apply_text_change_effects(part, game, host);
+    }
+}
+
+pub fn has_x_in_any_cost_part(cost: &Cost) -> bool {
+    cost.parts.iter().any(|p| match p {
+        CostPart::Mana { cost, .. } => cost.count_x() > 0,
+        _ => false,
+    })
+}
+
+pub fn to_simple_string(cost: &Cost) -> String {
+    let mut out = Vec::new();
+    for part in &cost.parts {
+        match part {
+            CostPart::Tap => out.push("{T}".to_string()),
+            CostPart::Untap => out.push("{Q}".to_string()),
+            CostPart::Mana { cost, .. } => out.push(format!("{}", cost)),
+            CostPart::PayLife(v) => out.push(format!("Pay {} life", v)),
+            _ => out.push(format!("{:?}", part)),
+        }
+    }
+    out.join(", ")
 }
 
 /// Parse a Cost$ value from the DSL.
@@ -342,6 +510,9 @@ pub fn parse_cost(raw: &str) -> Cost {
     let mut mandatory = false;
     let mut mana_tokens: Vec<&str> = Vec::new();
 
+    // Pre-scan for untap cost (Q/Untap), mirroring Java's pre-scan for hasUntapInPrice.
+    let has_untap = tokens.iter().any(|t| *t == "Q" || *t == "Untap");
+
     for token in &tokens {
         match cost_parser::parse_cost_token(token) {
             cost_parser::TokenResult::Part(part) => parts.push(part),
@@ -358,12 +529,30 @@ pub fn parse_cost(raw: &str) -> Cost {
         }
     }
 
+    // Post-process: set can_untap_source on UntapType parts.
+    // Mirrors Java: canUntapSource = !hasUntapInPrice
+    for part in &mut parts {
+        if let CostPart::UntapType {
+            can_untap_source, ..
+        } = part
+        {
+            *can_untap_source = !has_untap;
+        }
+    }
+
     // If we have mana tokens, combine them into a ManaCost
     if !mana_tokens.is_empty() {
         let mana_str = mana_tokens.join(" ");
         let mana_cost = ManaCost::parse(&mana_str);
         if mana_cost.cmc() > 0 || !mana_str.is_empty() {
-            parts.push(CostPart::Mana(mana_cost));
+            parts.push(CostPart::Mana {
+                cost: mana_cost,
+                x_min: 0,
+                is_exiled_creature_cost: false,
+                is_enchanted_creature_cost: false,
+                is_cost_pay_any_number_of_times: false,
+                max_waterbend: None,
+            });
         }
     }
 
@@ -653,29 +842,29 @@ pub fn normalize_exile_base_filter(type_filter: &str) -> String {
     }
 }
 
-fn parse_exile_total_cmc_eq(type_filter: &str) -> Option<&str> {
+pub(crate) fn parse_exile_total_cmc_eq(type_filter: &str) -> Option<&str> {
     type_filter
         .split_once("+withTotalCMCEQ")
         .map(|(_, rhs)| rhs.trim())
 }
 
-fn parse_exile_total_cmc_ge(type_filter: &str) -> Option<&str> {
+pub(crate) fn parse_exile_total_cmc_ge(type_filter: &str) -> Option<&str> {
     type_filter
         .split_once("+withTotalCMCGE")
         .map(|(_, rhs)| rhs.trim())
 }
 
-fn parse_exile_types_ge(type_filter: &str) -> Option<i32> {
+pub(crate) fn parse_exile_types_ge(type_filter: &str) -> Option<i32> {
     type_filter
         .split_once("+withTypesGE")
         .and_then(|(_, rhs)| rhs.trim().parse::<i32>().ok())
 }
 
-fn exile_requires_shared_card_type(type_filter: &str) -> bool {
+pub(crate) fn exile_requires_shared_card_type(type_filter: &str) -> bool {
     type_filter.contains("+withSharedCardType")
 }
 
-fn reveal_candidates(
+pub(crate) fn reveal_candidates(
     game: &GameState,
     player: PlayerId,
     source: CardId,
@@ -740,11 +929,17 @@ fn reveal_candidates(
 pub fn can_pay(
     cost: &Cost,
     game: &GameState,
-    available_mana: &ManaPool,
+    available_mana: Option<&ManaPool>,
     source: CardId,
     player: PlayerId,
+    ability: Option<&SpellAbility>
 ) -> bool {
-    can_pay_inner(cost, game, Some(available_mana), source, player, None)
+    for part in &cost.parts {
+        if !can_pay_part_distributed(part, game, available_mana, source, player, ability) {
+            return false;
+        }
+    }
+    true
 }
 
 /// Java parity helper: canPay(cost, ability-context).
@@ -756,7 +951,7 @@ pub fn can_pay_with_ability(
     player: PlayerId,
     ability: Option<&SpellAbility>,
 ) -> bool {
-    can_pay_inner(cost, game, Some(available_mana), source, player, ability)
+    can_pay(cost, game, Some(available_mana), source, player, ability)
 }
 
 /// Check if a cost can be paid ignoring mana requirements.
@@ -767,7 +962,7 @@ pub fn can_pay_ignoring_mana(
     source: CardId,
     player: PlayerId,
 ) -> bool {
-    can_pay_inner(cost, game, None, source, player, None)
+    can_pay(cost, game, None, source, player, None)
 }
 
 /// Check if a cost can be paid ignoring mana requirements, for a spell.
@@ -781,782 +976,100 @@ pub fn can_pay_ignoring_mana_for_spell(
 ) -> bool {
     let mut stub = SpellAbility::new_empty(Some(source), player);
     stub.is_spell = true;
-    can_pay_inner(cost, game, None, source, player, Some(&stub))
+    can_pay(cost, game, None, source, player, Some(&stub))
 }
 
-/// Shared implementation for cost payability checks.
-/// When `available_mana` is None, mana costs are skipped.
-fn can_pay_inner(
-    cost: &Cost,
+fn can_pay_part_distributed(
+    part: &CostPart,
     game: &GameState,
     available_mana: Option<&ManaPool>,
     source: CardId,
     player: PlayerId,
     ability: Option<&SpellAbility>,
 ) -> bool {
-    let card = game.card(source);
-    let static_source_cards = static_ability_source_cards(game);
+    let empty_pool = ManaPool::new();
+    let pool = available_mana.unwrap_or(&empty_pool);
 
-    for part in &cost.parts {
-        match part {
-            CostPart::Tap => {
-                // Mirrors Java's CostTap.canPay() → source.canTap() && !source.isAbilitySick()
-                if card.tapped || card.phased_out {
-                    return false;
-                }
-                if card.is_creature() && card.summoning_sick && !card.has_haste() {
-                    return false;
-                }
-            }
-            CostPart::Untap => {
-                // Mirrors Java's CostUntap.canPay() → source.canUntap() && !source.isAbilitySick()
-                if !card.tapped || card.phased_out {
-                    return false;
-                }
-                if card.is_creature() && card.summoning_sick && !card.has_haste() {
-                    return false;
-                }
-                // Stun counters prevent untapping
-                if *card
-                    .counters
-                    .get(&CounterType::Named("STUN".to_string()))
-                    .unwrap_or(&0)
-                    > 0
-                {
-                    return false;
-                }
-            }
-            CostPart::Mana(mana_cost) => {
-                if let Some(pool) = available_mana {
-                    if !pool.can_pay(mana_cost) {
-                        return false;
-                    }
-                }
-            }
-            CostPart::PayLife(amount) => {
-                // Static abilities (Platinum Emperion, etc.) can prevent life payment.
-                if cant_pay_life(game, player, true, None) {
-                    return false;
-                }
-                // Player needs at least `amount` life — paying lethal life is legal in MTG.
-                if game.player(player).life < *amount {
-                    return false;
-                }
-            }
-            CostPart::Sacrifice {
-                type_filter,
-                amount,
-            } => {
-                if type_filter == "CARDNAME" {
-                    if card.zone != ZoneType::Battlefield {
-                        return false;
-                    }
-                    // Mirrors Java's canBeSacrificedBy()
-                    if cant_sacrifice(&static_source_cards, card, ability, true) {
-                        return false;
-                    }
-                } else if type_filter.eq_ignore_ascii_case("All") {
-                    // Java: "All" requires every matching card canBeSacrificedBy
-                    let targets = get_sacrifice_targets(game, player, type_filter);
-                    if targets.iter().any(|&cid| {
-                        cant_sacrifice(&static_source_cards, game.card(cid), ability, true)
-                    }) {
-                        return false;
-                    }
-                } else {
-                    let targets = get_sacrifice_targets(game, player, type_filter);
-                    let valid = targets
-                        .iter()
-                        .filter(|&&cid| {
-                            !cant_sacrifice(&static_source_cards, game.card(cid), ability, true)
-                        })
-                        .count() as i32;
-                    if valid < *amount {
-                        return false;
-                    }
-                }
-            }
-            CostPart::Discard {
-                type_filter,
-                amount,
-            } => {
-                if type_filter == "CARDNAME" {
-                    // Discard the source card itself — it must be in hand.
-                    if card.zone != ZoneType::Hand {
-                        return false;
-                    }
-                } else if type_filter == "Card" || type_filter.is_empty() {
-                    // Any card — just need enough cards in hand.
-                    let mut hand_size = game.cards_in_zone(ZoneType::Hand, player).len() as i32;
-                    if card.zone == ZoneType::Hand && card.owner == player {
-                        hand_size -= 1;
-                    }
-                    if hand_size < *amount {
-                        return false;
-                    }
-                } else {
-                    // Type-filtered discard — count matching cards in hand.
-                    // Mirrors Java CostDiscard.getMaxAmountX() filtering by getType().
-                    let mut matching = game
-                        .cards_in_zone(ZoneType::Hand, player)
-                        .iter()
-                        .filter(|&&cid| matches_change_type(game.card(cid), type_filter, &[]))
-                        .count() as i32;
-                    if card.zone == ZoneType::Hand
-                        && card.owner == player
-                        && matches_change_type(card, type_filter, &[])
-                    {
-                        matching -= 1;
-                    }
-                    if matching < *amount {
-                        return false;
-                    }
-                }
-            }
-            CostPart::SubCounter {
-                amount,
-                counter_type,
-            } => {
-                // Mirrors Java's CostRemoveCounter.canPay(): !source.isPhasedOut()
-                if card.zone != ZoneType::Battlefield || card.phased_out {
-                    return false;
-                }
-                if card.counter_count(counter_type) < *amount {
-                    return false;
-                }
-            }
-            CostPart::AddCounter { .. } => {
-                // AddCounter (put counter on source) is always payable if source is on battlefield.
-                if card.zone != ZoneType::Battlefield {
-                    return false;
-                }
-            }
-            CostPart::Exile {
-                amount,
-                type_filter,
-                from,
-            } => {
-                if type_filter == "All" {
-                    continue;
-                }
-                if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
-                    if card.zone != *from {
-                        return false;
-                    }
-                    // Mirrors Java: CantExile static ability check on self-exile
-                    if cant_exile(&static_source_cards, card, ability, true) {
-                        return false;
-                    }
-                } else {
-                    let base_filter = normalize_exile_base_filter(type_filter);
-                    let candidates: Vec<CardId> =
-                        get_zone_targets(game, player, *from, &base_filter)
-                            .into_iter()
-                            .filter(|&cid| {
-                                !cant_exile(&static_source_cards, game.card(cid), ability, true)
-                            })
-                            .collect();
-                    let mut available = candidates.len() as i32;
-                    if *from == ZoneType::Hand
-                        && card.zone == ZoneType::Hand
-                        && card.owner == player
-                        && matches_change_type(card, &base_filter, &[])
-                    {
-                        available -= 1;
-                    }
-                    if let Some(n) = parse_exile_types_ge(type_filter) {
-                        let mut unique_types = std::collections::BTreeSet::new();
-                        for cid in &candidates {
-                            for t in &game.card(*cid).type_line.core_types {
-                                unique_types.insert(format!("{:?}", t));
-                            }
-                        }
-                        if (unique_types.len() as i32) < n {
-                            return false;
-                        }
-                    }
-                    if let Some(expr) = parse_exile_total_cmc_eq(type_filter) {
-                        let target = if expr.eq_ignore_ascii_case("X") {
-                            None
-                        } else {
-                            expr.parse::<i32>().ok()
-                        };
-                        if let Some(target) = target {
-                            let values: Vec<i32> = candidates
-                                .iter()
-                                .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
-                                .collect();
-                            if !cmc_can_sum_to(target, &values) {
-                                return false;
-                            }
-                        }
-                    }
-                    if let Some(expr) = parse_exile_total_cmc_ge(type_filter) {
-                        let target = if expr.eq_ignore_ascii_case("X") {
-                            None
-                        } else {
-                            expr.parse::<i32>().ok()
-                        };
-                        if let Some(target) = target {
-                            let total: i32 = candidates
-                                .iter()
-                                .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
-                                .sum();
-                            if total < target {
-                                return false;
-                            }
-                        }
-                    }
-                    if exile_requires_shared_card_type(type_filter) {
-                        if available < *amount {
-                            return false;
-                        }
-                        let mut has_pair = false;
-                        for &a in &candidates {
-                            for &b in &candidates {
-                                if a != b && shares_card_type(game, a, b) {
-                                    has_pair = true;
-                                    break;
-                                }
-                            }
-                            if has_pair {
-                                break;
-                            }
-                        }
-                        if !has_pair {
-                            return false;
-                        }
-                    }
-                    if available < *amount {
-                        return false;
-                    }
-                }
-            }
-            CostPart::Return {
-                amount,
-                type_filter,
-            } => {
-                if type_filter == "CARDNAME" {
-                    if card.zone != ZoneType::Battlefield {
-                        return false;
-                    }
-                } else {
-                    let targets = get_sacrifice_targets(game, player, type_filter);
-                    if (targets.len() as i32) < *amount {
-                        return false;
-                    }
-                }
-            }
-            CostPart::TapType {
-                amount,
-                type_filter,
-                min_total_power,
-            } => {
-                let targets = get_tap_type_targets(game, player, type_filter, source);
-                if let Some(power_threshold) = min_total_power {
-                    // Crew: check total power of all valid targets >= threshold
-                    let total_power: i32 = targets.iter().map(|&cid| game.card(cid).power()).sum();
-                    if total_power < *power_threshold {
-                        return false;
-                    }
-                } else if (targets.len() as i32) < *amount {
-                    return false;
-                }
-            }
-            CostPart::UntapType {
-                amount,
-                type_filter,
-            } => {
-                // Untap tapped permanents matching type
-                let count = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .filter(|&&cid| {
-                        cid != source
-                            && game.card(cid).tapped
-                            && (type_filter == "Card"
-                                || type_filter.is_empty()
-                                || matches_change_type(game.card(cid), type_filter, &[]))
-                    })
-                    .count() as i32;
-                if count < *amount {
-                    return false;
-                }
-            }
-            CostPart::PayEnergy(amount) => {
-                if game.player(player).energy_counters < *amount {
-                    return false;
-                }
-            }
-            CostPart::PayShards(amount) => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                if game.player(player).mana_shards < resolved_amount {
-                    return false;
-                }
-            }
-            CostPart::DamageYou(_) => {
-                // Mirrors Java CostDamage.canPay() — always returns true.
-                // The player may die as a state-based action after payment; that's legal.
-            }
-            CostPart::Draw(amount) => {
-                // Mirrors Java's CostDraw.canPay() → p.canDrawAmount(c)
-                let resolved = resolve_dynamic_amount(game, source, player, *amount);
-                let allowed = crate::staticability::static_ability_cant_draw::can_draw_amount(
-                    game, player, resolved,
-                );
-                if allowed < resolved {
-                    return false;
-                }
-            }
-            CostPart::Mill(amount) => {
-                // Mirrors Java's CostMill.canPay(): amount < library.size() (strict <)
-                let resolved = resolve_dynamic_amount(game, source, player, *amount);
-                let lib_size = game.zone(ZoneType::Library, player).len() as i32;
-                if lib_size <= resolved {
-                    return false;
-                }
-            }
-            CostPart::Reveal {
-                amount,
-                type_filter,
-                from,
-            } => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                if type_filter == "Hand" {
-                    continue;
-                }
-                if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
-                    let src_zone = game.card(source).zone;
-                    let in_zone = match from {
-                        RevealFrom::Hand => src_zone == ZoneType::Hand,
-                        RevealFrom::Exile => src_zone == ZoneType::Exile,
-                        RevealFrom::HandOrBattlefield => {
-                            src_zone == ZoneType::Hand || src_zone == ZoneType::Battlefield
-                        }
-                        RevealFrom::All => true,
-                    };
-                    if !in_zone {
-                        return false;
-                    }
-                    continue;
-                }
-                let candidates = reveal_candidates(game, player, source, type_filter, from);
-                if type_filter == "SameColor" {
-                    let mut ok = false;
-                    for &cid in &candidates {
-                        let color = game.card(cid).color;
-                        let count = candidates
-                            .iter()
-                            .filter(|&&other| game.card(other).color.shares_color_with(color))
-                            .count() as i32;
-                        if count >= resolved_amount {
-                            ok = true;
-                            break;
-                        }
-                    }
-                    if !ok {
-                        return false;
-                    }
-                } else if (candidates.len() as i32) < resolved_amount {
-                    return false;
-                }
-            }
-            CostPart::Exert {
-                amount,
-                type_filter,
-            } => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
-                    if resolved_amount > 1 {
-                        return false;
-                    }
-                } else {
-                    let count = game
-                        .cards_in_zone(ZoneType::Battlefield, player)
-                        .iter()
-                        .filter(|&&cid| matches_change_type(game.card(cid), type_filter, &[]))
-                        .count() as i32;
-                    if count < resolved_amount {
-                        return false;
-                    }
-                }
-            }
-            CostPart::GainLife(_) => {
-                // Mirrors Java's CostGainLife.canPay() → opponent.canGainLife()
-                let opponent = game.opponent_of(player);
-                if crate::staticability::static_ability_cant_gain_lose_pay_life::cant_gain_life(
-                    game, opponent,
-                ) {
-                    return false;
-                }
-            }
-            CostPart::GainControl {
-                amount,
-                type_filter,
-            } => {
-                // Scan all players' battlefields — can gain control of any matching permanent.
-                // Mirrors Java CostGainControl.canPay() which calls getCardsIn(ZoneType.Battlefield)
-                // across all players.
-                let count = game
-                    .players
-                    .iter()
-                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
-                    .filter(|&&cid| matches_change_type(game.card(cid), type_filter, &[]))
-                    .count() as i32;
-                if count < *amount {
-                    return false;
-                }
-            }
-            CostPart::RemoveAnyCounter {
-                amount,
-                type_filter,
-                counter_type,
-            } => {
-                // Sum counters of the given type (or any type) across all matching permanents
-                let total: i32 = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .filter(|&&cid| {
-                        type_filter == "Permanent"
-                            || type_filter.is_empty()
-                            || matches_change_type(game.card(cid), type_filter, &[])
-                    })
-                    .map(|&cid| {
-                        let c = game.card(cid);
-                        match counter_type {
-                            Some(ct) => c.counter_count(ct),
-                            None => c.counters.values().sum(),
-                        }
-                    })
-                    .sum();
-                if total < *amount {
-                    return false;
-                }
-            }
-            CostPart::Unattach => {
-                // Source must be on the battlefield and currently equipping something
-                if card.zone != ZoneType::Battlefield {
-                    return false;
-                }
-                if card.attached_to.is_none() {
-                    return false;
-                }
-            }
-            CostPart::ExileFromAnyGrave {
-                amount,
-                type_filter,
-            } => {
-                let base_filter = normalize_exile_base_filter(type_filter);
-                // Cards in ANY player's graveyard matching filter.
-                let count = game
-                    .players
-                    .iter()
-                    .flat_map(|p| game.cards_in_zone(ZoneType::Graveyard, p.id))
-                    .filter(|&&cid| {
-                        (base_filter == "Card"
-                            || base_filter.is_empty()
-                            || matches_change_type(game.card(cid), &base_filter, &[]))
-                            && !cant_exile(&static_source_cards, game.card(cid), ability, true)
-                    })
-                    .count() as i32;
-                if count < *amount {
-                    return false;
-                }
-            }
-            CostPart::ExileFromSameGrave {
-                amount,
-                type_filter,
-            } => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                let base_filter = normalize_exile_base_filter(type_filter);
-                let mut by_owner: std::collections::HashMap<PlayerId, i32> =
-                    std::collections::HashMap::new();
-                for p in &game.players {
-                    for &cid in game.cards_in_zone(ZoneType::Graveyard, p.id) {
-                        if base_filter == "Card"
-                            || base_filter.is_empty()
-                            || matches_change_type(game.card(cid), &base_filter, &[])
-                        {
-                            if cant_exile(&static_source_cards, game.card(cid), ability, true) {
-                                continue;
-                            }
-                            let owner = game.card(cid).owner;
-                            *by_owner.entry(owner).or_insert(0) += 1;
-                        }
-                    }
-                }
-                if by_owner.values().all(|&v| v < resolved_amount) {
-                    return false;
-                }
-            }
-            CostPart::ExiledMoveToGrave {
-                amount,
-                type_filter,
-            } => {
-                // Count cards in exile across all players matching the filter
-                let exiled = get_exiled_targets(game, type_filter).len() as i32;
-                if exiled < *amount {
-                    return false;
-                }
-            }
-            CostPart::AddMana { .. } => {
-                // Adding mana to pool is always payable (mirrors Java CostAddMana.canPay)
-            }
-            CostPart::Waterbend { amount } => {
-                // Payable if available mana + tappable artifacts/creatures >= amount
-                let pool_total = available_mana.map_or(0, |p| p.total_mana());
-                let tappable_count = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .filter(|&&cid| {
-                        let c = game.card(cid);
-                        !c.tapped && cid != source && (c.is_creature() || c.type_line.is_artifact())
-                    })
-                    .count() as i32;
-                if pool_total + tappable_count < *amount {
-                    return false;
-                }
-            }
-            CostPart::ChooseColor(_) => {}
-            CostPart::ChooseCreatureType(_) => {}
-            CostPart::FlipCoin(_) => {}
-            CostPart::RollDice { .. } => {}
-            CostPart::PromiseGift => {}
-            CostPart::RevealChosen { reveal_type } => {
-                let source_card = game.card(source);
-                if reveal_type.eq_ignore_ascii_case("Player") {
-                    if source_card.chosen_player.is_none() {
-                        return false;
-                    }
-                    if source_card
-                        .chosen_player_controller
-                        .is_some_and(|pid| pid != player)
-                    {
-                        return false;
-                    }
-                } else if reveal_type.eq_ignore_ascii_case("Type") {
-                    if source_card.chosen_type.is_none() {
-                        return false;
-                    }
-                    if source_card
-                        .chosen_type_controller
-                        .is_some_and(|pid| pid != player)
-                    {
-                        return false;
-                    }
-                }
-            }
-            CostPart::CollectEvidence(amount) => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                let total_mv: i32 = game
-                    .cards_in_zone(ZoneType::Graveyard, player)
-                    .iter()
-                    .filter(|&&cid| {
-                        !cant_exile(&static_source_cards, game.card(cid), ability, true)
-                    })
-                    .map(|&cid| game.card(cid).mana_cost.cmc() as i32)
-                    .sum();
-                if total_mv < resolved_amount {
-                    return false;
-                }
-            }
-            CostPart::Forage => {
-                let gy_count = game
-                    .cards_in_zone(ZoneType::Graveyard, player)
-                    .iter()
-                    .filter(|&&cid| {
-                        !cant_exile(&static_source_cards, game.card(cid), ability, true)
-                    })
-                    .count() as i32;
-                let has_food = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .any(|&cid| {
-                        game.card(cid).type_line.has_subtype("Food")
-                            && !cant_sacrifice(&static_source_cards, game.card(cid), ability, true)
-                    });
-                if gy_count < 3 && !has_food {
-                    return false;
-                }
-            }
-            CostPart::ExileFromStack {
-                amount,
-                type_filter,
-            } => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                if type_filter == "All" {
-                    continue;
-                }
-                let count = game
-                    .stack
-                    .iter()
-                    .filter(|e| e.spell_ability.is_spell)
-                    .filter_map(|e| e.spell_ability.source)
-                    .filter(|&cid| matches_exile_from_stack_filter(game, cid, player, type_filter))
-                    .count() as i32;
-                if count < resolved_amount {
-                    return false;
-                }
-            }
-            CostPart::PutCardToLib {
-                amount,
-                type_filter,
-                from,
-                same_zone,
-                ..
-            } => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
-                    if *same_zone {
-                        let in_zone = game
-                            .players
-                            .iter()
-                            .any(|p| game.cards_in_zone(*from, p.id).contains(&source));
-                        if !in_zone {
-                            return false;
-                        }
-                    } else if game.card(source).zone != *from {
-                        return false;
-                    }
-                    continue;
-                }
-                if *same_zone {
-                    let pool: Vec<CardId> = game
-                        .players
-                        .iter()
-                        .flat_map(|p| game.cards_in_zone(*from, p.id).to_vec())
-                        .filter(|&cid| {
-                            type_filter == "Card"
-                                || type_filter.is_empty()
-                                || matches_change_type(game.card(cid), type_filter, &[])
-                        })
-                        .collect();
-                    let mut by_controller: std::collections::HashMap<PlayerId, i32> =
-                        std::collections::HashMap::new();
-                    for cid in pool {
-                        let ctrl = game.card(cid).controller;
-                        *by_controller.entry(ctrl).or_insert(0) += 1;
-                    }
-                    if by_controller.values().all(|&v| v < resolved_amount) {
-                        return false;
-                    }
-                } else {
-                    let count = get_zone_targets(game, player, *from, type_filter).len() as i32;
-                    if count < resolved_amount {
-                        return false;
-                    }
-                }
-            }
-            CostPart::Enlist { .. } => {
-                let valid = get_enlist_targets(game, player);
-                if valid.is_empty() {
-                    return false;
-                }
-            }
-            CostPart::Behold {
-                amount,
-                type_filter,
-                ..
-            } => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                if type_filter.ends_with("ChosenType") {
-                    let mut cards = game.cards_in_zone(ZoneType::Hand, player).to_vec();
-                    cards.extend(
-                        game.cards_in_zone(ZoneType::Battlefield, player)
-                            .iter()
-                            .copied(),
-                    );
-                    let mut ok = false;
-                    for &cid in &cards {
-                        let shared = cards
-                            .iter()
-                            .filter(|&&other| shares_creature_type(game, cid, other))
-                            .count() as i32;
-                        if shared >= resolved_amount {
-                            ok = true;
-                            break;
-                        }
-                    }
-                    if !ok {
-                        return false;
-                    }
-                    continue;
-                }
-                let mut count = 0i32;
-                for &cid in game.cards_in_zone(ZoneType::Hand, player) {
-                    // While casting a spell from hand, the source card itself can't be
-                    // revealed/exiled to satisfy its own Behold additional cost.
-                    if cid == source {
-                        continue;
-                    }
-                    if type_filter == "Card"
-                        || type_filter.is_empty()
-                        || matches_change_type(game.card(cid), type_filter, &[])
-                    {
-                        count += 1;
-                    }
-                }
-                for &cid in game.cards_in_zone(ZoneType::Battlefield, player) {
-                    if type_filter == "Card"
-                        || type_filter.is_empty()
-                        || matches_change_type(game.card(cid), type_filter, &[])
-                    {
-                        count += 1;
-                    }
-                }
-                if count < resolved_amount {
-                    return false;
-                }
-            }
-            CostPart::Blight(amount) => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                let battlefield_cards: Vec<_> = game
-                    .players
-                    .iter()
-                    .flat_map(|p| game.cards_in_zone(ZoneType::Battlefield, p.id))
-                    .map(|&cid| game.card(cid).clone())
-                    .collect();
-                let creature_count = game
-                    .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .filter(|&&cid| {
-                        let c = game.card(cid);
-                        c.is_creature()
-                            && !any_cant_put_counter_on_card(
-                                &battlefield_cards,
-                                c,
-                                &CounterType::M1M1,
-                            )
-                    })
-                    .count() as i32;
-                if creature_count < resolved_amount {
-                    return false;
-                }
-            }
-            CostPart::ExileCtrlOrGrave {
-                amount,
-                type_filter,
-            } => {
-                let resolved_amount = resolve_dynamic_amount(game, source, player, *amount);
-                let base_filter = normalize_exile_base_filter(type_filter);
-                let bf = get_zone_targets(game, player, ZoneType::Battlefield, &base_filter)
-                    .into_iter()
-                    .filter(|&cid| !cant_exile(&static_source_cards, game.card(cid), ability, true))
-                    .count();
-                let gy = get_zone_targets(game, player, ZoneType::Graveyard, &base_filter)
-                    .into_iter()
-                    .filter(|&cid| !cant_exile(&static_source_cards, game.card(cid), ability, true))
-                    .count();
-                if ((bf + gy) as i32) < resolved_amount {
-                    return false;
-                }
+    match part {
+        CostPart::Tap => cost_tap::can_pay(game, pool, source, player, ability, part),
+        CostPart::Untap => cost_untap::can_pay(game, pool, source, player, ability, part),
+        CostPart::Mana { .. } => {
+            available_mana.is_none()
+                || cost_part_mana::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::PayLife(_) => cost_pay_life::can_pay(game, pool, source, player, ability, part),
+        CostPart::Sacrifice { .. } => {
+            cost_sacrifice::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::Discard { .. } => cost_discard::can_pay(game, pool, source, player, ability, part),
+        CostPart::SubCounter { .. } => cost_sub_counter::can_pay(game, source, part),
+        CostPart::AddCounter { .. } => {
+            cost_put_counter::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::Exile { .. } | CostPart::ExileFromAnyGrave { .. } | CostPart::ExileFromSameGrave { .. } => {
+            cost_exile::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::Return { .. } => cost_return::can_pay(game, pool, source, player, ability, part),
+        CostPart::TapType { .. } => cost_tap_type::can_pay(game, pool, source, player, ability, part),
+        CostPart::UntapType { .. } => {
+            cost_untap_type::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::PayEnergy(_) => cost_pay_energy::can_pay(game, pool, source, player, ability, part),
+        CostPart::PayShards(_) => cost_pay_shards::can_pay(game, pool, source, player, ability, part),
+        CostPart::DamageYou(_) => cost_damage::can_pay(game, pool, source, player, ability, part),
+        CostPart::Draw(_) => cost_draw::can_pay(game, pool, source, player, ability, part),
+        CostPart::Mill(_) => cost_mill::can_pay(game, pool, source, player, ability, part),
+        CostPart::Reveal { .. } => cost_reveal::can_pay(game, pool, source, player, ability, part),
+        CostPart::Exert { .. } => cost_exert::can_pay(game, pool, source, player, ability, part),
+        CostPart::GainLife(_) => cost_gain_life::can_pay(game, pool, source, player, ability, part),
+        CostPart::GainControl { .. } => {
+            cost_gain_control::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::RemoveAnyCounter { .. } => {
+            cost_remove_any_counter::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::Unattach { .. } => cost_unattach::can_pay(game, pool, source, player, ability, part),
+        CostPart::ExiledMoveToGrave { .. } => {
+            cost_exiled_move_to_grave::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::AddMana { .. } => cost_add_mana::can_pay(game, pool, source, player, ability, part),
+        CostPart::Waterbend { .. } => cost_waterbend::can_pay(game, available_mana, source, player, part),
+        CostPart::ChooseColor(_) => {
+            cost_choose_color::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::ChooseCreatureType(_) => {
+            cost_choose_creature_type::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::FlipCoin(_) => cost_flip_coin::can_pay(game, pool, source, player, ability, part),
+        CostPart::RollDice { .. } => cost_roll_dice::can_pay(game, pool, source, player, ability, part),
+        CostPart::ExileFromStack { .. } => {
+            cost_exile_from_stack::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::CollectEvidence(_) => {
+            cost_collect_evidence::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::Forage => cost_forage::can_pay(game, pool, source, player, ability, part),
+        CostPart::PutCardToLib { .. } => {
+            cost_put_card_to_lib::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::Enlist { .. } => cost_enlist::can_pay(game, pool, source, player, ability, part),
+        CostPart::PromiseGift => cost_promise_gift::can_pay(game, pool, source, player, ability, part),
+        CostPart::RevealChosen { .. } => {
+            cost_reveal_chosen::can_pay(game, pool, source, player, ability, part)
+        }
+        CostPart::Behold { exile, .. } => {
+            if *exile {
+                cost_behold_exile::can_pay(game, pool, source, player, ability, part)
+            } else {
+                cost_behold::can_pay(game, pool, source, player, ability, part)
             }
         }
+        CostPart::Blight(_) => cost_blight::can_pay(game, source, player, part),
+        CostPart::ExileCtrlOrGrave { .. } => {
+            cost_exile_ctrl_or_grave::can_pay(game, source, player, ability, part)
+        }
     }
-
-    true
 }
-
 pub fn static_ability_source_cards(game: &GameState) -> Vec<Card> {
     use std::collections::HashSet;
 
@@ -1582,7 +1095,7 @@ pub fn static_ability_source_cards(game: &GameState) -> Vec<Card> {
     ids.into_iter().map(|cid| game.card(cid).clone()).collect()
 }
 
-fn shares_creature_type(game: &GameState, a: CardId, b: CardId) -> bool {
+pub(crate) fn shares_creature_type(game: &GameState, a: CardId, b: CardId) -> bool {
     let ca = game.card(a);
     let cb = game.card(b);
     if !ca.is_creature() || !cb.is_creature() {
@@ -1594,7 +1107,7 @@ fn shares_creature_type(game: &GameState, a: CardId, b: CardId) -> bool {
         .any(|st| cb.type_line.has_subtype(st))
 }
 
-fn shares_card_type(game: &GameState, a: CardId, b: CardId) -> bool {
+pub(crate) fn shares_card_type(game: &GameState, a: CardId, b: CardId) -> bool {
     let ca = game.card(a);
     let cb = game.card(b);
     ca.type_line
@@ -1603,7 +1116,7 @@ fn shares_card_type(game: &GameState, a: CardId, b: CardId) -> bool {
         .any(|t| cb.type_line.core_types.contains(t))
 }
 
-fn cmc_can_sum_to(target: i32, values: &[i32]) -> bool {
+pub(crate) fn cmc_can_sum_to(target: i32, values: &[i32]) -> bool {
     if target < 0 {
         return false;
     }
@@ -1646,7 +1159,7 @@ mod tests {
         assert!(!cost.has_tap);
         assert_eq!(cost.parts.len(), 1);
         match &cost.parts[0] {
-            CostPart::Mana(mc) => assert_eq!(mc.cmc(), 2),
+            CostPart::Mana { cost: mc, .. } => assert_eq!(mc.cmc(), 2),
             _ => panic!("expected Mana cost part"),
         }
     }
@@ -1658,7 +1171,7 @@ mod tests {
         assert_eq!(cost.parts.len(), 2);
         // Tap should come first (payment_order = -1)
         assert!(matches!(cost.parts[0], CostPart::Tap));
-        assert!(matches!(cost.parts[1], CostPart::Mana(_)));
+        assert!(matches!(cost.parts[1], CostPart::Mana { .. }));
     }
 
     #[test]
@@ -1702,7 +1215,7 @@ mod tests {
         let cost = parse_cost("B Sac<1/Creature>");
         assert_eq!(cost.parts.len(), 2);
         // Mana (order 0) before Sacrifice (order 15)
-        assert!(matches!(cost.parts[0], CostPart::Mana(_)));
+        assert!(matches!(cost.parts[0], CostPart::Mana { .. }));
         match &cost.parts[1] {
             CostPart::Sacrifice {
                 amount,
@@ -1721,7 +1234,7 @@ mod tests {
         let cost = parse_cost("PayLife<2> T 1 G Sac<1/CARDNAME>");
         assert_eq!(cost.parts.len(), 4);
         assert!(matches!(cost.parts[0], CostPart::Tap));
-        assert!(matches!(cost.parts[1], CostPart::Mana(_)));
+        assert!(matches!(cost.parts[1], CostPart::Mana { .. }));
         assert!(matches!(cost.parts[2], CostPart::PayLife(_)));
         assert!(matches!(cost.parts[3], CostPart::Sacrifice { .. }));
     }
@@ -1826,7 +1339,7 @@ mod tests {
     fn parse_explicit_mana_token() {
         let cost = parse_cost("Mana<2 G>");
         assert_eq!(cost.parts.len(), 1);
-        assert!(matches!(cost.parts[0], CostPart::Mana(_)));
+        assert!(matches!(cost.parts[0], CostPart::Mana { .. }));
     }
 
     #[test]

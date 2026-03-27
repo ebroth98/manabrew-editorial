@@ -1,6 +1,4 @@
 //! Pay energy counters as a cost. Mirrors Java's `CostPayEnergy`.
-//!
-//! NOTE: Payability check is in `can_pay_inner()` in `mod.rs` (the central dispatcher).
 
 use crate::game::GameState;
 use crate::ids::PlayerId;
@@ -16,4 +14,36 @@ pub fn pay_as_decided(game: &mut GameState, player: PlayerId, amount: i32) -> bo
 /// Mirrors Java's `CostPayEnergy.refund()` → `source.getController().loseEnergy(-amount)`.
 pub fn refund(game: &mut GameState, player: PlayerId, amount: i32) {
     game.player_mut(player).energy_counters += amount;
+}
+
+pub fn payment_order(part: &super::CostPart) -> i32 {
+    part.payment_order()
+}
+
+pub fn can_pay(
+    game: &crate::game::GameState,
+    _available_mana: &crate::mana::ManaPool,
+    _source: crate::ids::CardId,
+    player: crate::ids::PlayerId,
+    _ability: Option<&crate::spellability::SpellAbility>,
+    part: &super::CostPart,
+) -> bool {
+    let super::CostPart::PayEnergy(amount) = part else {
+        return false;
+    };
+    game.player(player).energy_counters >= *amount
+}
+
+pub fn pay_with_decision(
+    game: &mut GameState,
+    player: PlayerId,
+    source: crate::ids::CardId,
+    part: &super::CostPart,
+    _decision: &crate::cost::payment_decision::PaymentDecision,
+) -> bool {
+    let super::CostPart::PayEnergy(amount) = part else {
+        return false;
+    };
+    let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    pay_as_decided(game, player, resolved)
 }

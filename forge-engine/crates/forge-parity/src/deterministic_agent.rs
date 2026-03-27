@@ -637,7 +637,8 @@ impl PlayerAgent for DeterministicAgent {
             let lethal = if has_deathtouch {
                 1
             } else if game.card(blocker).type_line.is_planeswalker() {
-                game.card(blocker).counter_count(&forge_engine_core::card::CounterType::Loyalty)
+                game.card(blocker)
+                    .counter_count(&forge_engine_core::card::CounterType::Loyalty)
             } else {
                 (game.card(blocker).toughness() - game.card(blocker).damage).max(0)
             };
@@ -675,7 +676,12 @@ impl PlayerAgent for DeterministicAgent {
         Some(target)
     }
 
-    fn choose_target_player(&mut self, _player: PlayerId, valid: &[PlayerId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
+    fn choose_target_player(
+        &mut self,
+        _player: PlayerId,
+        valid: &[PlayerId],
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Option<PlayerId> {
         if valid.is_empty() {
             return None;
         }
@@ -684,7 +690,12 @@ impl PlayerAgent for DeterministicAgent {
         Some(target)
     }
 
-    fn choose_target_card(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
+    fn choose_target_card(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Option<CardId> {
         if valid.is_empty() {
             return None;
         }
@@ -840,7 +851,12 @@ impl PlayerAgent for DeterministicAgent {
         choice_space::pick_one(&sorted, &mut self.rng.borrow_mut()).unwrap_or(duplicates[0])
     }
 
-    fn choose_sacrifice(&mut self, _player: PlayerId, valid: &[CardId], _sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
+    fn choose_sacrifice(
+        &mut self,
+        _player: PlayerId,
+        valid: &[CardId],
+        _sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Option<CardId> {
         if valid.is_empty() {
             return None;
         }
@@ -1136,7 +1152,11 @@ impl PlayerAgent for DeterministicAgent {
         }
     }
 
-    fn choose_single_replacement_effect(&mut self, _player: PlayerId, descriptions: &[String]) -> usize {
+    fn choose_single_replacement_effect(
+        &mut self,
+        _player: PlayerId,
+        descriptions: &[String],
+    ) -> usize {
         choice_space::pick_index(descriptions.len(), &mut self.rng.borrow_mut())
     }
 }

@@ -56,6 +56,10 @@ pub struct SpellAbility {
     pub api: Option<ApiType>,
     /// The card that hosts this ability. Mirrors Java's `hostCard`.
     pub source: Option<CardId>,
+    /// Java parity: original host card for granted/copied abilities.
+    /// Used by costs like `Unattach<OriginalHost>`.
+    #[serde(default)]
+    pub original_host: Option<CardId>,
     /// The player who activated/cast this. Mirrors Java's `activatingPlayer`.
     pub activating_player: PlayerId,
     /// The player who chooses this ability's targets. Mirrors Java's
@@ -289,6 +293,7 @@ impl SpellAbility {
         SpellAbility {
             api,
             source,
+            original_host: None,
             activating_player: player,
             targeting_player: None,
             ability_text: ability_text.to_string(),

@@ -923,7 +923,10 @@ impl Trigger {
         host_card: CardId,
         activating_player: PlayerId,
     ) -> bool {
-        if !matches!(self.mode, TriggerMode::TapsForMana { .. } | TriggerMode::ManaAdded { .. }) {
+        if !matches!(
+            self.mode,
+            TriggerMode::TapsForMana { .. } | TriggerMode::ManaAdded { .. }
+        ) {
             return false;
         }
         self.ensure_ability(game, host_card, activating_player)
@@ -2527,11 +2530,25 @@ impl TriggerMode {
                 host_controller,
             ),
             TriggerMode::Immediate => super::trigger_immediate::perform_test(),
-            TriggerMode::Enlisted { valid_card, valid_enlisted } => {
+            TriggerMode::Enlisted {
+                valid_card,
+                valid_enlisted,
+            } => {
                 // Mirrors Java TriggerEnlisted.performTest():
                 // ValidCard$ checks the enlisting creature, ValidEnlisted$ checks the enlisted one.
-                check_card_filter(valid_card, run_params.card, host_card, host_controller, game)
-                    && check_card_filter(valid_enlisted, run_params.enlisted, host_card, host_controller, game)
+                check_card_filter(
+                    valid_card,
+                    run_params.card,
+                    host_card,
+                    host_controller,
+                    game,
+                ) && check_card_filter(
+                    valid_enlisted,
+                    run_params.enlisted,
+                    host_card,
+                    host_controller,
+                    game,
+                )
             }
             _ => unreachable!("missing TriggerMode::perform_test dispatch for {:?}", self),
         }
@@ -2630,8 +2647,12 @@ impl TriggerMode {
             TriggerMode::SpellCopy { .. } => TriggerType::SpellCopy,
             TriggerMode::SpellAbilityCopy { .. } => TriggerType::SpellAbilityCopy,
             TriggerMode::SpellCastOrCopy { .. } => TriggerType::SpellCastOrCopy,
-            TriggerMode::AttackersDeclared { one_target: true, .. } => TriggerType::AttackersDeclaredOneTarget,
-            TriggerMode::AttackersDeclared { one_target: false, .. } => TriggerType::AttackersDeclared,
+            TriggerMode::AttackersDeclared {
+                one_target: true, ..
+            } => TriggerType::AttackersDeclaredOneTarget,
+            TriggerMode::AttackersDeclared {
+                one_target: false, ..
+            } => TriggerType::AttackersDeclared,
             TriggerMode::BlockersDeclared => TriggerType::BlockersDeclared,
             TriggerMode::ChangesController { .. } => TriggerType::ChangesController,
             TriggerMode::TurnBegin { .. } => TriggerType::TurnBegin,

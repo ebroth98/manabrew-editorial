@@ -359,7 +359,7 @@ fn can_pay_non_tap_mana_ability_costs(
         .clone();
     for part in &cost_parts {
         match part {
-            CostPart::Tap | CostPart::Mana(_) => {}
+            CostPart::Tap | CostPart::Mana { .. } => {}
             CostPart::PayLife(amount) => {
                 if game.player(player).life < *amount {
                     return false;
@@ -416,7 +416,7 @@ fn pay_non_tap_mana_ability_costs(
         .clone();
     for part in &cost_parts {
         match part {
-            CostPart::Tap | CostPart::Mana(_) => {}
+            CostPart::Tap | CostPart::Mana { .. } => {}
             CostPart::PayLife(amount) => {
                 if game.player(player).life < *amount {
                     return false;
@@ -725,7 +725,12 @@ fn group_sources_by_mana_color(
             if !ab.is_mana_ability {
                 continue;
             }
-            if ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_))) {
+            if ab
+                .cost
+                .parts
+                .iter()
+                .any(|p| matches!(p, CostPart::Mana { .. }))
+            {
                 continue;
             }
             if !can_pay_ignoring_mana(&ab.cost, game, card_id, player) {
@@ -835,7 +840,12 @@ fn get_available_mana_sources(game: &GameState, player: PlayerId) -> Vec<CardId>
             if !ab.is_mana_ability {
                 continue;
             }
-            if ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_))) {
+            if ab
+                .cost
+                .parts
+                .iter()
+                .any(|p| matches!(p, CostPart::Mana { .. }))
+            {
                 continue;
             }
             if can_pay_ignoring_mana(&ab.cost, game, cid, player) {

@@ -260,11 +260,9 @@ pub fn spawn_ai_prompt_responder(
                         ordered_card_ids: card_ids,
                     })
                 }
-                AgentPromptInner::ExploreDecision { .. } => {
-                    Some(PlayerAction::ExploreResponse {
-                        put_in_graveyard: false,
-                    })
-                }
+                AgentPromptInner::ExploreDecision { .. } => Some(PlayerAction::ExploreResponse {
+                    put_in_graveyard: false,
+                }),
                 AgentPromptInner::HelpPayAssist { .. } => {
                     Some(PlayerAction::AssistDecision { amount_to_pay: 0 })
                 }

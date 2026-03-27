@@ -801,7 +801,9 @@ fn pay_roll_cost(
 
     for part in &cost.parts {
         match part {
-            CostPart::Mana(mana_cost) => {
+            CostPart::Mana {
+                cost: mana_cost, ..
+            } => {
                 let mut callback = |kind: mana::ManaPayCallback<'_>| -> Option<crate::ids::CardId> {
                     match kind {
                         mana::ManaPayCallback::ChooseSacrifice(valid) => {

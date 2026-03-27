@@ -17,13 +17,9 @@ card/CardFaceView.java -> skip
 # is split across multiple sub-modules. Cannot have both file.rs and file/ in Rust.
 ability/effects/ChangeZoneEffect.java -> ability/effects/change_zone_effect/mod.rs
 
-# Java UI-only types not needed in Rust engine
 zone/ZoneView.java -> skip
 
-# SpellAbility module: Java UI-only types
 spellability/SpellAbilityView.java -> skip
 spellability/StackItemView.java -> skip
 
-# Trigger module remaps
-trigger/Trigger.java -> trigger/trigger.rs
-trigger/TriggerHandler.java -> trigger/trigger_handler.rs
+cost/PaymentDecision.java/type -> cost/payment_decision.rs/type_choice

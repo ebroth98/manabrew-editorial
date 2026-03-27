@@ -485,19 +485,45 @@ impl PlayerAgent for CapturingAgent {
                                 "0".to_string()
                             }
                             PlayCardMode::Alternative(AlternativeCost::Plot) => "Plot".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Awaken) => "Awaken".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Disturb) => "Disturb".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Harmonize) => "Harmonize".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Freerunning) => "Freerunning".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Impending) => "Impending".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Mayhem) => "Mayhem".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::MTMtE) => "MTMtE".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Mutate) => "Mutate".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Prowl) => "Prowl".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Sneak) => "Sneak".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Surge) => "Surge".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::WebSlinging) => "WebSlinging".to_string(),
-                            PlayCardMode::Alternative(AlternativeCost::Plotted) => "Plotted".to_string(),
+                            PlayCardMode::Alternative(AlternativeCost::Awaken) => {
+                                "Awaken".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Disturb) => {
+                                "Disturb".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Harmonize) => {
+                                "Harmonize".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Freerunning) => {
+                                "Freerunning".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Impending) => {
+                                "Impending".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Mayhem) => {
+                                "Mayhem".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::MTMtE) => {
+                                "MTMtE".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Mutate) => {
+                                "Mutate".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Prowl) => {
+                                "Prowl".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Sneak) => {
+                                "Sneak".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Surge) => {
+                                "Surge".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::WebSlinging) => {
+                                "WebSlinging".to_string()
+                            }
+                            PlayCardMode::Alternative(AlternativeCost::Plotted) => {
+                                "Plotted".to_string()
+                            }
                             PlayCardMode::StaticAlternative => "0".to_string(),
                             PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
                             PlayCardMode::ForetellExile => "ForetellExile".to_string(),
@@ -797,11 +823,21 @@ impl PlayerAgent for CapturingAgent {
         chosen
     }
 
-    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
+    fn choose_target_player(
+        &mut self,
+        player: PlayerId,
+        valid: &[PlayerId],
+        sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Option<PlayerId> {
         self.inner.choose_target_player(player, valid, sa)
     }
 
-    fn choose_target_card(&mut self, player: PlayerId, valid: &[CardId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
+    fn choose_target_card(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Option<CardId> {
         self.inner.choose_target_card(player, valid, sa)
     }
 
@@ -812,7 +848,8 @@ impl PlayerAgent for CapturingAgent {
         valid: &[CardId],
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
-        self.inner.choose_target_card_from_zone(player, zone, valid, sa)
+        self.inner
+            .choose_target_card_from_zone(player, zone, valid, sa)
     }
 
     fn choose_target_any(
@@ -830,7 +867,12 @@ impl PlayerAgent for CapturingAgent {
         self.inner.choose_legend_keep(player, duplicates)
     }
 
-    fn choose_sacrifice(&mut self, player: PlayerId, valid: &[CardId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
+    fn choose_sacrifice(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Option<CardId> {
         self.inner.choose_sacrifice(player, valid, sa)
     }
 
@@ -1224,12 +1266,21 @@ impl PlayerAgent for CapturingAgent {
         self.inner.notify_state_changed();
     }
 
-    fn choose_single_replacement_effect(&mut self, player: PlayerId, descriptions: &[String]) -> usize {
-        let chosen = self.inner.choose_single_replacement_effect(player, descriptions);
+    fn choose_single_replacement_effect(
+        &mut self,
+        player: PlayerId,
+        descriptions: &[String],
+    ) -> usize {
+        let chosen = self
+            .inner
+            .choose_single_replacement_effect(player, descriptions);
         self.record_verbose_decision(
             "choose_single_replacement_effect",
             descriptions.to_vec(),
-            descriptions.get(chosen).cloned().unwrap_or_else(|| format!("Effect#{}", chosen)),
+            descriptions
+                .get(chosen)
+                .cloned()
+                .unwrap_or_else(|| format!("Effect#{}", chosen)),
         );
         chosen
     }

@@ -97,7 +97,10 @@ pub fn get_token_db() -> &'static CardDatabase {
 pub fn get_token_image_map() -> &'static HashMap<String, TokenImageInfo> {
     TOKEN_IMAGE_MAP.get_or_init(|| {
         let dir = editions_dir();
-        eprintln!("[tokendb] Parsing edition files from {:?} for token images …", dir);
+        eprintln!(
+            "[tokendb] Parsing edition files from {:?} for token images …",
+            dir
+        );
         let map = parse_edition_token_map(&dir);
         eprintln!("[tokendb] Built token image map with {} entries", map.len());
         map
@@ -171,10 +174,11 @@ fn parse_edition_token_map(editions_dir: &PathBuf) -> HashMap<String, TokenImage
                 let token_set_code = format!("t{}", ec.to_lowercase());
                 // Only insert if not already present — first edition wins,
                 // ensuring we get a valid mapping without overwriting.
-                map.entry(script_name.to_string()).or_insert(TokenImageInfo {
-                    set_code: token_set_code,
-                    collector_number: collector_number.to_string(),
-                });
+                map.entry(script_name.to_string())
+                    .or_insert(TokenImageInfo {
+                        set_code: token_set_code,
+                        collector_number: collector_number.to_string(),
+                    });
             }
         }
     }

@@ -634,27 +634,25 @@ impl GameState {
                     }
                     // CR 702.89: Umbra armor (Totem Armor) — if enchanted creature
                     // would be destroyed, instead remove all damage and destroy the aura.
-                    let has_umbra = self.cards[cid.index()]
-                        .attachments
-                        .iter()
-                        .any(|&aid| {
-                            aid.index() < self.cards.len()
-                                && self.cards[aid.index()].zone == ZoneType::Battlefield
-                                && (self.cards[aid.index()].has_keyword("Umbra armor")
-                                    || self.cards[aid.index()].has_keyword("Totem armor"))
-                        });
+                    let has_umbra = self.cards[cid.index()].attachments.iter().any(|&aid| {
+                        aid.index() < self.cards.len()
+                            && self.cards[aid.index()].zone == ZoneType::Battlefield
+                            && (self.cards[aid.index()].has_keyword("Umbra armor")
+                                || self.cards[aid.index()].has_keyword("Totem armor"))
+                    });
                     if has_umbra && !zero_toughness {
                         // Find the first umbra armor aura and destroy it instead
-                        let umbra_id = self.cards[cid.index()]
-                            .attachments
-                            .iter()
-                            .copied()
-                            .find(|&aid| {
-                                aid.index() < self.cards.len()
-                                    && self.cards[aid.index()].zone == ZoneType::Battlefield
-                                    && (self.cards[aid.index()].has_keyword("Umbra armor")
-                                        || self.cards[aid.index()].has_keyword("Totem armor"))
-                            });
+                        let umbra_id =
+                            self.cards[cid.index()]
+                                .attachments
+                                .iter()
+                                .copied()
+                                .find(|&aid| {
+                                    aid.index() < self.cards.len()
+                                        && self.cards[aid.index()].zone == ZoneType::Battlefield
+                                        && (self.cards[aid.index()].has_keyword("Umbra armor")
+                                            || self.cards[aid.index()].has_keyword("Totem armor"))
+                                });
                         if let Some(umbra_id) = umbra_id {
                             // Remove all damage from the creature
                             self.cards[cid.index()].damage = 0;
@@ -665,7 +663,10 @@ impl GameState {
                             self.move_card(umbra_id, ZoneType::Graveyard, umbra_owner);
                             if let Some(handler) = trigger_handler.as_deref_mut() {
                                 crate::ability::effects::emit_zone_trigger(
-                                    handler, umbra_id, old_zone, ZoneType::Graveyard,
+                                    handler,
+                                    umbra_id,
+                                    old_zone,
+                                    ZoneType::Graveyard,
                                 );
                             }
                             any_changes = true;

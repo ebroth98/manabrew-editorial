@@ -47,10 +47,10 @@ use forge_carddb::CardDatabase;
 use forge_parity::card_pool::CardPool;
 use forge_parity::comparator;
 use forge_parity::deck_generator;
-use forge_parity::java_cache::{self, JavaCache};
 use forge_parity::java_bridge::{
     JavaBridge, JavaBridgeConfig, JavaBridgeError, JavaMatchupData, JavaServer, JavaServerConfig,
 };
+use forge_parity::java_cache::{self, JavaCache};
 use forge_parity::java_random::JavaRandom;
 use forge_parity::protocol::{
     DecisionRecord, Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
@@ -1178,7 +1178,10 @@ fn run_matrix_mode(cli: &Cli) {
                 Some(c)
             }
             Err(e) => {
-                eprintln!("[parity] Failed to open Java cache: {} (continuing without)", e);
+                eprintln!(
+                    "[parity] Failed to open Java cache: {} (continuing without)",
+                    e
+                );
                 None
             }
         }
@@ -1291,14 +1294,22 @@ fn run_matrix_mode(cli: &Cli) {
                     MatchupStatus::Pass => {
                         eprintln!(
                             "[parity] [{}/{}] {} vs {} seed={} ... PASS ({} snapshots)",
-                            n, total, config.deck1, config.deck2, config.seed,
+                            n,
+                            total,
+                            config.deck1,
+                            config.deck2,
+                            config.seed,
                             result.snapshots_compared
                         );
                     }
                     MatchupStatus::Fail => {
                         eprintln!(
                             "[parity] [{}/{}] {} vs {} seed={} ... FAIL ({} divergences)",
-                            n, total, config.deck1, config.deck2, config.seed,
+                            n,
+                            total,
+                            config.deck1,
+                            config.deck2,
+                            config.seed,
                             result.divergence_count
                         );
                     }
@@ -2848,7 +2859,13 @@ fn run_serve_mode(cli: &Cli) {
             // Store in DB
             {
                 let storage = app_state.storage.lock().unwrap();
-                if let Err(e) = storage.insert_run(0, &result, duration_ms, false, app_state.commit_sha.as_deref()) {
+                if let Err(e) = storage.insert_run(
+                    0,
+                    &result,
+                    duration_ms,
+                    false,
+                    app_state.commit_sha.as_deref(),
+                ) {
                     tracing::error!(%e, "DB insert error");
                 }
             }
@@ -3015,7 +3032,13 @@ fn run_serve_mode(cli: &Cli) {
         // Write to storage under lock
         {
             let storage = app_state.storage.lock().unwrap();
-            if let Err(e) = storage.insert_run(job.batch_id, &result, duration_ms, job.is_fuzz, app_state.commit_sha.as_deref()) {
+            if let Err(e) = storage.insert_run(
+                job.batch_id,
+                &result,
+                duration_ms,
+                job.is_fuzz,
+                app_state.commit_sha.as_deref(),
+            ) {
                 tracing::error!(%e, "DB insert error");
             }
         }

@@ -309,7 +309,12 @@ impl GameLoop {
                         player,
                     )
                     .into_iter()
-                    .find(|e| e.cost.parts.iter().all(|p| matches!(p, CostPart::Mana(_))));
+                    .find(|e| {
+                        e.cost
+                            .parts
+                            .iter()
+                            .all(|p| matches!(p, CostPart::Mana { .. }))
+                    });
                 if entry.is_none() {
                     return None;
                 }
@@ -345,7 +350,7 @@ impl GameLoop {
                     .parts
                     .iter()
                     .filter_map(|part| {
-                        if let CostPart::Mana(mc) = part {
+                        if let CostPart::Mana { cost: mc, .. } = part {
                             Some(mc.clone())
                         } else {
                             None

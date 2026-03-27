@@ -59,6 +59,22 @@ impl PaymentDecision {
         PaymentDecision::Colors(choices)
     }
 
+    pub fn mana(_symbols: Vec<String>) -> Self {
+        PaymentDecision::None
+    }
+
+    pub fn players(_players: Vec<crate::ids::PlayerId>) -> Self {
+        PaymentDecision::None
+    }
+
+    pub fn spellabilities(_ids: Vec<CardId>) -> Self {
+        PaymentDecision::None
+    }
+
+    pub fn counters(_entries: Vec<(CardId, String, i32)>) -> Self {
+        PaymentDecision::None
+    }
+
     pub fn none() -> Self {
         PaymentDecision::None
     }

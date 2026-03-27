@@ -29,6 +29,8 @@
 
 use crate::agent::PlayerAgent;
 use crate::cost::payment_decision::PaymentDecision;
+use crate::cost::trait_cost_decision_maker::DefaultCostDecisionMaker;
+use crate::cost::trait_cost_visitor::CostVisitor;
 use crate::cost::{Cost, CostPart};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -109,8 +111,16 @@ impl CostPayment {
             parts = agent.order_cost_parts(parts);
         }
 
+        let mut decision_maker = DefaultCostDecisionMaker {
+            player: self.player,
+            ability: None,
+            source: self.source,
+            effect: self.is_effect,
+            agent,
+        };
+
         for part in &parts {
-            let decision = agent.decide_cost_part(self.player, self.source, part, game);
+            let decision = decision_maker.visit(self.player, self.source, part, game);
 
             match decision {
                 Some(pd) => {
@@ -140,15 +150,22 @@ impl CostPayment {
     ) -> bool {
         // TODO: adjust cost via CostAdjustment::adjust()
         let parts = self.adjusted_cost.parts.clone();
+        let mut decision_maker = DefaultCostDecisionMaker {
+            player: self.player,
+            ability: None,
+            source: self.source,
+            effect: self.is_effect,
+            agent,
+        };
 
         // Phase 1: Collect all decisions
         let mut decisions: Vec<(CostPart, PaymentDecision)> = Vec::new();
         for part in &parts {
-            let decision = agent.decide_cost_part(self.player, self.source, part, game);
+            let decision = decision_maker.visit(self.player, self.source, part, game);
 
             match decision {
                 Some(pd) => {
-                    if agent.pays_right_after_decision() {
+                    if decision_maker.pays_right_after_decision() {
                         if !pay_as_decided(
                             game,
                             self.player,
@@ -219,322 +236,146 @@ pub fn pay_as_decided(
     decision: &PaymentDecision,
     _is_effect: bool,
 ) -> bool {
+    pay_as_decided_distributed(game, player, source, cost_part, decision)
+}
+
+fn pay_as_decided_distributed(
+    game: &mut GameState,
+    player: PlayerId,
+    source: CardId,
+    cost_part: &CostPart,
+    decision: &PaymentDecision,
+) -> bool {
     match cost_part {
-        // ── Tap/Untap ───────────────────────────────────────────────────
         CostPart::Tap => {
-            crate::cost::cost_tap::pay_as_decided(game, source);
-            true
+            crate::cost::cost_tap::pay_with_decision(game, player, source, cost_part, decision)
         }
         CostPart::Untap => {
-            crate::cost::cost_untap::pay_as_decided(game, source);
-            true
+            crate::cost::cost_untap::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Mana ────────────────────────────────────────────────────────
-        CostPart::Mana(_) => {
-            // Mana payment is special — Java calls player.getController().payManaCost()
-            // which dispatches to InputPayMana (human) or ComputerUtilMana (AI).
-            // In Rust, handled by GameLoop via auto_tap_lands + mana_pool.try_pay().
-            // This is a no-op here; GameLoop handles it before calling pay_as_decided.
-            true
+        CostPart::Mana { .. } => crate::cost::cost_part_mana::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::PayLife(_) => {
+            crate::cost::cost_pay_life::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Life ────────────────────────────────────────────────────────
-        CostPart::PayLife(amount) => {
-            let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
-            crate::cost::cost_pay_life::pay_as_decided(game, player, resolved);
-            true
+        CostPart::Sacrifice { .. } => crate::cost::cost_sacrifice::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::Discard { .. } => {
+            crate::cost::cost_discard::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Sacrifice ───────────────────────────────────────────────────
-        CostPart::Sacrifice { type_filter, .. } => {
-            if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
-                crate::cost::cost_sacrifice::pay_as_decided_self(game, source, player);
-            } else if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_sacrifice::pay_as_decided_cards(game, cards, player);
-            }
-            // Trigger firing (Sacrificed) handled by GameLoop caller
-            true
-        }
-
-        // ── Discard ─────────────────────────────────────────────────────
-        CostPart::Discard { type_filter, .. } => {
-            if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
-                crate::cost::cost_discard::pay_as_decided_self(game, source, player);
-            } else if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_discard::pay_as_decided_cards(game, cards, player);
-            }
-            // Trigger firing (Discarded, DiscardedAll) handled by GameLoop caller
-            true
-        }
-
-        // ── Counters ────────────────────────────────────────────────────
-        CostPart::SubCounter {
-            amount,
-            counter_type,
-        } => {
-            let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
-            crate::cost::cost_sub_counter::pay_as_decided(game, source, resolved, counter_type);
-            true
-        }
-        CostPart::AddCounter {
-            amount,
-            counter_type,
-        } => {
-            let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
-            crate::cost::cost_put_counter::pay_as_decided(game, source, resolved, counter_type);
-            true
-        }
-
-        // ── Exile ───────────────────────────────────────────────────────
-        CostPart::Exile { type_filter, .. } => {
-            if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
-                crate::cost::cost_exile::pay_as_decided_self(game, source);
-            } else if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_exile::pay_as_decided_cards(game, cards);
-            }
-            true
-        }
-        CostPart::ExileFromAnyGrave { .. } | CostPart::ExileFromSameGrave { .. } => {
-            if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_exile::pay_as_decided_cards(game, cards);
-            }
-            true
+        CostPart::SubCounter { .. } => crate::cost::cost_remove_counter::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::AddCounter { .. } => crate::cost::cost_put_counter::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::Exile { .. }
+        | CostPart::ExileFromAnyGrave { .. }
+        | CostPart::ExileFromSameGrave { .. } => {
+            crate::cost::cost_exile::pay_with_decision(game, player, source, cost_part, decision)
         }
         CostPart::ExileCtrlOrGrave { .. } => {
-            if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_exile_ctrl_or_grave::pay_as_decided_cards(game, cards);
-            }
-            true
+            crate::cost::cost_exile_ctrl_or_grave::pay_with_decision(
+                game, player, source, cost_part, decision,
+            )
         }
-
-        // ── Return ──────────────────────────────────────────────────────
-        CostPart::Return { type_filter, .. } => {
-            if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
-                crate::cost::cost_return::pay_as_decided_self(game, source);
-            } else if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_return::pay_as_decided_cards(game, cards);
-            }
-            true
+        CostPart::Return { .. } => {
+            crate::cost::cost_return::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Tap/Untap Type ──────────────────────────────────────────────
         CostPart::TapType { .. } => {
-            if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_tap_type::pay_as_decided_cards(game, cards);
-            }
-            // Taps trigger per card handled by GameLoop caller
-            true
+            crate::cost::cost_tap_type::pay_with_decision(game, player, source, cost_part, decision)
         }
-        CostPart::UntapType { .. } => {
-            if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_untap_type::pay_as_decided_cards(game, cards);
-            }
-            true
+        CostPart::UntapType { .. } => crate::cost::cost_untap_type::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::PayEnergy(_) => crate::cost::cost_pay_energy::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::PayShards(_) => crate::cost::cost_pay_shards::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::DamageYou(_) => {
+            crate::cost::cost_damage::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Energy/Shards ───────────────────────────────────────────────
-        CostPart::PayEnergy(amount) => {
-            let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
-            crate::cost::cost_pay_energy::pay_as_decided(game, player, resolved);
-            true
+        CostPart::Draw(_) => {
+            crate::cost::cost_draw::pay_with_decision(game, player, source, cost_part, decision)
         }
-        CostPart::PayShards(amount) => {
-            let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
-            crate::cost::cost_pay_shards::pay_as_decided(game, player, resolved);
-            true
+        CostPart::Mill(_) => {
+            crate::cost::cost_mill::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Damage ──────────────────────────────────────────────────────
-        CostPart::DamageYou(amount) => {
-            crate::cost::cost_damage::pay_as_decided(game, player, *amount);
-            // DamageDone trigger handled by GameLoop caller
-            true
-        }
-
-        // ── Draw ────────────────────────────────────────────────────────
-        CostPart::Draw(amount) => {
-            let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
-            crate::cost::cost_draw::pay_as_decided(game, player, resolved);
-            true
-        }
-
-        // ── Mill ────────────────────────────────────────────────────────
-        CostPart::Mill(amount) => {
-            let resolved = crate::cost::resolve_dynamic_amount(game, source, player, *amount);
-            crate::cost::cost_mill::pay_as_decided(game, player, resolved);
-            // Milled trigger per card + zone change triggers handled by GameLoop caller
-            true
-        }
-
-        // ── Reveal ──────────────────────────────────────────────────────
         CostPart::Reveal { .. } => {
-            // Card selection done by agent in GameLoop; reveal is display-only.
-            // Java's CostReveal.doPayment() calls game.getAction().reveal().
-            true
+            crate::cost::cost_reveal::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Exert ───────────────────────────────────────────────────────
         CostPart::Exert { .. } => {
-            // Exert sets card.exerted = true; needs agent for target selection.
-            // Handled by GameLoop::pay_exert_cost().
-            true
+            crate::cost::cost_exert::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Enlist ──────────────────────────────────────────────────────
         CostPart::Enlist { .. } => {
-            // Needs agent for creature selection + power transfer + Enlisted trigger.
-            // Handled by GameLoop::pay_enlist_cost().
-            true
+            crate::cost::cost_enlist::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Gain Life (opponent) ────────────────────────────────────────
-        CostPart::GainLife(amount) => {
-            crate::cost::cost_gain_life::pay_as_decided(game, player, *amount);
-            true
-        }
-
-        // ── Gain Control ────────────────────────────────────────────────
-        CostPart::GainControl { .. } => {
-            if let PaymentDecision::Cards(cards) = decision {
-                let opponent = game.opponent_of(player);
-                crate::cost::cost_gain_control::pay_as_decided_cards(game, cards, opponent);
-            }
-            true
-        }
-
-        // ── Remove Any Counter ──────────────────────────────────────────
+        CostPart::GainLife(_) => crate::cost::cost_gain_life::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::GainControl { .. } => crate::cost::cost_gain_control::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
         CostPart::RemoveAnyCounter { .. } => {
-            // Needs agent to choose which permanent and which counter type.
-            // Handled by GameLoop::pay_remove_any_counter_cost().
-            true
+            crate::cost::cost_remove_any_counter::pay_with_decision(
+                game, player, source, cost_part, decision,
+            )
         }
-
-        // ── Unattach ────────────────────────────────────────────────────
-        CostPart::Unattach => {
-            crate::cost::cost_unattach::pay_as_decided(game, source);
-            // Unattached trigger handled by GameLoop caller
-            true
+        CostPart::Unattach { .. } => {
+            crate::cost::cost_unattach::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Exiled Move To Grave ────────────────────────────────────────
         CostPart::ExiledMoveToGrave { .. } => {
-            if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_exiled_move_to_grave::pay_as_decided_cards(game, cards);
-            }
-            true
+            crate::cost::cost_exiled_move_to_grave::pay_with_decision(
+                game, player, source, cost_part, decision,
+            )
         }
-
-        // ── Add Mana ────────────────────────────────────────────────────
         CostPart::AddMana { .. } => {
-            // Needs ManaPool access from GameLoop
-            // Handled by GameLoop::pay_ability_cost().
-            true
+            crate::cost::cost_add_mana::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Waterbend ───────────────────────────────────────────────────
-        CostPart::Waterbend { .. } => {
-            // Needs agent (choose_convoke) + mana pool access.
-            // Handled by GameLoop::pay_waterbend_cost().
-            true
-        }
-
-        // ── Choose Color ────────────────────────────────────────────────
-        CostPart::ChooseColor(_) => {
-            if let PaymentDecision::Colors(colors) = decision {
-                game.card_mut(source).chosen_colors =
-                    colors.iter().map(|c| c.long_name().to_string()).collect();
-            }
-            true
-        }
-
-        // ── Choose Creature Type ────────────────────────────────────────
+        CostPart::Waterbend { .. } => crate::cost::cost_waterbend::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::ChooseColor(_) => crate::cost::cost_choose_color::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
         CostPart::ChooseCreatureType(_) => {
-            if let PaymentDecision::Type(t) = decision {
-                let card = game.card_mut(source);
-                card.chosen_type = Some(t.clone());
-                card.chosen_type_controller = Some(player);
-                card.chosen_type_revealed = false;
-            }
-            true
+            crate::cost::cost_choose_creature_type::pay_with_decision(
+                game, player, source, cost_part, decision,
+            )
         }
-
-        // ── Flip Coin ───────────────────────────────────────────────────
-        CostPart::FlipCoin(_) => {
-            // Needs GameRng + FlippedCoin trigger.
-            // Handled by GameLoop::pay_ability_cost().
-            true
-        }
-
-        // ── Roll Dice ───────────────────────────────────────────────────
-        CostPart::RollDice { .. } => {
-            // Needs GameRng + RolledDie/RolledDieOnce triggers.
-            // Handled by GameLoop::pay_ability_cost().
-            true
-        }
-
-        // ── Exile From Stack ────────────────────────────────────────────
-        CostPart::ExileFromStack { .. } => {
-            // Needs agent for stack target selection.
-            // Handled by GameLoop::pay_exile_from_stack_cost().
-            true
-        }
-
-        // ── Collect Evidence ────────────────────────────────────────────
-        CostPart::CollectEvidence(_) => {
-            // Needs agent for graveyard card selection + CollectEvidence trigger.
-            // Handled by GameLoop::pay_collect_evidence_cost().
-            true
-        }
-
-        // ── Forage ──────────────────────────────────────────────────────
+        CostPart::FlipCoin(_) => crate::cost::cost_flip_coin::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::RollDice { .. } => crate::cost::cost_roll_dice::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::ExileFromStack { .. } => crate::cost::cost_exile_from_stack::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::CollectEvidence(_) => crate::cost::cost_collect_evidence::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
         CostPart::Forage => {
-            // Needs agent for exile-3 vs sac-food choice + Forage trigger.
-            // Handled by GameLoop::pay_forage_cost().
-            true
+            crate::cost::cost_forage::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Put Card To Library ─────────────────────────────────────────
-        CostPart::PutCardToLib {
-            lib_pos,
-            type_filter,
-            ..
-        } => {
-            if type_filter == "CARDNAME" || type_filter == "NICKNAME" {
-                crate::cost::cost_put_card_to_lib::pay_as_decided_self(game, source, *lib_pos);
-            } else if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_put_card_to_lib::pay_as_decided_cards(game, cards, *lib_pos);
-            }
-            true
+        CostPart::PutCardToLib { .. } => crate::cost::cost_put_card_to_lib::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::PromiseGift => crate::cost::cost_promise_gift::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::RevealChosen { .. } => crate::cost::cost_reveal_chosen::pay_with_decision(
+            game, player, source, cost_part, decision,
+        ),
+        CostPart::Behold { .. } => {
+            crate::cost::cost_behold::pay_with_decision(game, player, source, cost_part, decision)
         }
-
-        // ── Promise Gift ────────────────────────────────────────────────
-        CostPart::PromiseGift => {
-            // Needs agent for opponent selection.
-            // GameLoop sets game.card_mut(source).promised_gift = chosen.
-            true
-        }
-
-        // ── Reveal Chosen ───────────────────────────────────────────────
-        CostPart::RevealChosen { reveal_type } => {
-            crate::cost::cost_reveal_chosen::pay_as_decided(game, source, reveal_type);
-            true
-        }
-
-        // ── Behold ──────────────────────────────────────────────────────
-        CostPart::Behold { exile, .. } => {
-            if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_behold::pay_as_decided_cards(game, cards, *exile);
-            }
-            true
-        }
-
-        // ── Blight ──────────────────────────────────────────────────────
         CostPart::Blight(_) => {
-            if let PaymentDecision::Cards(cards) = decision {
-                crate::cost::cost_blight::pay_as_decided_cards(game, cards);
-            }
-            true
+            crate::cost::cost_blight::pay_with_decision(game, player, source, cost_part, decision)
         }
     }
 }
@@ -555,9 +396,7 @@ fn refund_cost_part(game: &mut GameState, source: CardId, player: PlayerId, part
         CostPart::SubCounter {
             amount,
             counter_type,
-        } => {
-            crate::cost::cost_sub_counter::refund(game, source, *amount, counter_type);
-        }
+        } => crate::cost::cost_remove_counter::refund(game, source, *amount, counter_type),
         CostPart::AddCounter {
             amount,
             counter_type,

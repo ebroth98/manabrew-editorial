@@ -59,7 +59,7 @@ pub fn cast_card_from_effect(
     if without_mana_cost {
         if let Some(ref mut cost) = spell_sa.pay_costs {
             cost.parts
-                .retain(|part| !matches!(part, crate::cost::CostPart::Mana(_)));
+                .retain(|part| !matches!(part, crate::cost::CostPart::Mana { .. }));
         }
         spell_sa
             .params

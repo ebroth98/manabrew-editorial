@@ -3,8 +3,6 @@
 //! Java's `CostPutCounter` extends `CostPartWithList` and manages counter
 //! placement on source or target permanents. It also handles ETB replacement
 //! effects where counters are placed as the card enters the battlefield.
-//!
-//! NOTE: Payability check is in `can_pay_inner()` in `mod.rs` (the central dispatcher).
 
 use crate::card::CounterType;
 use crate::game::GameState;
@@ -32,3 +30,38 @@ pub fn refund(game: &mut GameState, source: CardId, amount: i32, counter_type: &
 
 pub const HASH_LKI: &str = "CounterPut";
 pub const HASH_CARDS: &str = "CounterPutCards";
+
+pub fn payment_order(part: &super::CostPart) -> i32 {
+    part.payment_order()
+}
+
+pub fn can_pay(
+    game: &crate::game::GameState,
+    _available_mana: &crate::mana::ManaPool,
+    source: crate::ids::CardId,
+    _player: crate::ids::PlayerId,
+    _ability: Option<&crate::spellability::SpellAbility>,
+    _part: &super::CostPart,
+) -> bool {
+    game.card(source).zone == forge_foundation::ZoneType::Battlefield
+}
+
+pub fn pay_with_decision(
+    game: &mut GameState,
+    player: crate::ids::PlayerId,
+    source: CardId,
+    part: &super::CostPart,
+    _decision: &crate::cost::payment_decision::PaymentDecision,
+) -> bool {
+    let super::CostPart::AddCounter {
+        amount,
+        counter_type,
+    } = part
+    else {
+        return false;
+    };
+    let resolved = super::resolve_dynamic_amount(game, source, player, *amount);
+    pay_as_decided(game, source, resolved, counter_type)
+}
+
+pub fn reset_lists() {}

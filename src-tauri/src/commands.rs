@@ -15,7 +15,13 @@ pub async fn start_game(
     commander_name: Option<String>,
     opponent_deck_list: Option<Vec<crate::preset_decks::CardIdentity>>,
 ) -> Result<String, String> {
-    gm.start_game(app, deck_list, starting_life, commander_name, opponent_deck_list)
+    gm.start_game(
+        app,
+        deck_list,
+        starting_life,
+        commander_name,
+        opponent_deck_list,
+    )
 }
 
 #[tauri::command]

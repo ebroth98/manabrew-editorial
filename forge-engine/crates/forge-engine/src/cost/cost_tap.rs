@@ -1,6 +1,4 @@
 //! Tap the source permanent as a cost. Mirrors Java's `CostTap`.
-//!
-//! NOTE: Payability check is in `can_pay_inner()` in `mod.rs` (the central dispatcher).
 
 use crate::game::GameState;
 use crate::ids::CardId;
@@ -18,4 +16,33 @@ pub fn pay_as_decided(game: &mut GameState, source: CardId) -> bool {
 /// Mirrors Java's `CostTap.refund()`.
 pub fn refund(game: &mut GameState, source: CardId) {
     game.untap(source);
+}
+
+pub fn payment_order(part: &super::CostPart) -> i32 {
+    part.payment_order()
+}
+
+pub fn can_pay(
+    game: &crate::game::GameState,
+    _available_mana: &crate::mana::ManaPool,
+    source: crate::ids::CardId,
+    _player: crate::ids::PlayerId,
+    _ability: Option<&crate::spellability::SpellAbility>,
+    _part: &super::CostPart,
+) -> bool {
+    let card = game.card(source);
+    if card.tapped || card.phased_out {
+        return false;
+    }
+    !(card.is_creature() && card.summoning_sick && !card.has_haste())
+}
+
+pub fn pay_with_decision(
+    game: &mut GameState,
+    _player: crate::ids::PlayerId,
+    source: CardId,
+    _part: &super::CostPart,
+    _decision: &crate::cost::payment_decision::PaymentDecision,
+) -> bool {
+    pay_as_decided(game, source)
 }

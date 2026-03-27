@@ -503,8 +503,14 @@ mod tests {
             vec![],
         );
 
-        assert_eq!(fallback_deck_zone_for_card(&attraction), ZoneType::AttractionDeck);
-        assert_eq!(fallback_deck_zone_for_card(&contraption), ZoneType::ContraptionDeck);
+        assert_eq!(
+            fallback_deck_zone_for_card(&attraction),
+            ZoneType::AttractionDeck
+        );
+        assert_eq!(
+            fallback_deck_zone_for_card(&contraption),
+            ZoneType::ContraptionDeck
+        );
         assert_eq!(fallback_deck_zone_for_card(&normal), ZoneType::Library);
     }
 

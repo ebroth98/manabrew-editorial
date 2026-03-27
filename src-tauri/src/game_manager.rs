@@ -427,7 +427,10 @@ fn run_game(
     // Designate commander for the human player (must happen before game_loop.run which shuffles).
     if let Some(ref name) = commander_name {
         let command_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Command, p0).to_vec();
-        if command_cards.iter().any(|&cid| game.card(cid).card_name == *name) {
+        if command_cards
+            .iter()
+            .any(|&cid| game.card(cid).card_name == *name)
+        {
             for cid in command_cards {
                 if game.card(cid).card_name == *name {
                     game.card_mut(cid).is_commander = true;

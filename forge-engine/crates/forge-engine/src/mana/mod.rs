@@ -531,7 +531,12 @@ pub fn land_mana_atoms(card: &Card) -> Vec<u16> {
         }
         // Java parity: don't treat mana abilities with mana activation costs as free
         // producers during static source detection.
-        if ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_))) {
+        if ab
+            .cost
+            .parts
+            .iter()
+            .any(|p| matches!(p, CostPart::Mana { .. }))
+        {
             continue;
         }
         if let Some(produced) = ab.params.get(keys::PRODUCED) {
@@ -850,7 +855,7 @@ pub fn calculate_available_mana_excluding(
             .iter()
             .filter(|ab| {
                 ab.is_mana_ability
-                    && !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana(_)))
+                    && !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Mana { .. }))
                     && (!is_tapped || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))
                     && (!summoning_sick
                         || !ab.cost.parts.iter().any(|p| matches!(p, CostPart::Tap)))

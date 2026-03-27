@@ -288,6 +288,9 @@ pub struct Card {
     pub until_leaves_battlefield: Vec<CardId>,
     /// Cards exiled by this card/effect.
     pub exiled_cards: Vec<CardId>,
+    /// Cards exiled specifically to pay this card's current activation/cast cost.
+    /// This is reset at the start of each cost payment attempt.
+    pub paid_cost_exiled_cards: Vec<CardId>,
     /// Cards haunting this card.
     pub haunted_by: Vec<CardId>,
     /// Card currently haunted by this card.
@@ -602,6 +605,7 @@ impl Card {
             gain_control_targets: Vec::new(),
             until_leaves_battlefield: Vec::new(),
             exiled_cards: Vec::new(),
+            paid_cost_exiled_cards: Vec::new(),
             haunted_by: Vec::new(),
             haunting: None,
             chosen_map: HashMap::new(),

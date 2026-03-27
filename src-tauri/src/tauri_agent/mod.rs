@@ -527,15 +527,29 @@ impl PlayerAgent for TauriAgent {
         )
     }
 
-    fn choose_target_player(&mut self, player: PlayerId, valid: &[PlayerId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<PlayerId> {
+    fn choose_target_player(
+        &mut self,
+        player: PlayerId,
+        valid: &[PlayerId],
+        sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Option<PlayerId> {
         let source = sa.and_then(|s| s.source);
-        let hostile = sa.map(|s| crate::game_view_dto::is_hostile_api(s)).unwrap_or(false);
+        let hostile = sa
+            .map(|s| crate::game_view_dto::is_hostile_api(s))
+            .unwrap_or(false);
         targeting::choose_target_player(self, player, valid, source, hostile)
     }
 
-    fn choose_target_card(&mut self, player: PlayerId, valid: &[CardId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
+    fn choose_target_card(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Option<CardId> {
         let source = sa.and_then(|s| s.source);
-        let hostile = sa.map(|s| crate::game_view_dto::is_hostile_api(s)).unwrap_or(false);
+        let hostile = sa
+            .map(|s| crate::game_view_dto::is_hostile_api(s))
+            .unwrap_or(false);
         targeting::choose_target_card(self, player, valid, source, hostile)
     }
 
@@ -547,7 +561,9 @@ impl PlayerAgent for TauriAgent {
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> Option<CardId> {
         let source = sa.and_then(|s| s.source);
-        let hostile = sa.map(|s| crate::game_view_dto::is_hostile_api(s)).unwrap_or(false);
+        let hostile = sa
+            .map(|s| crate::game_view_dto::is_hostile_api(s))
+            .unwrap_or(false);
         targeting::choose_target_card_from_zone(self, player, zone, valid, source, hostile)
     }
 
@@ -559,11 +575,18 @@ impl PlayerAgent for TauriAgent {
         sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> TargetChoice {
         let source = sa.and_then(|s| s.source);
-        let hostile = sa.map(|s| crate::game_view_dto::is_hostile_api(s)).unwrap_or(false);
+        let hostile = sa
+            .map(|s| crate::game_view_dto::is_hostile_api(s))
+            .unwrap_or(false);
         targeting::choose_target_any(self, player, valid_players, valid_cards, source, hostile)
     }
 
-    fn choose_sacrifice(&mut self, player: PlayerId, valid: &[CardId], sa: Option<&forge_engine_core::spellability::SpellAbility>) -> Option<CardId> {
+    fn choose_sacrifice(
+        &mut self,
+        player: PlayerId,
+        valid: &[CardId],
+        sa: Option<&forge_engine_core::spellability::SpellAbility>,
+    ) -> Option<CardId> {
         let source = sa.and_then(|s| s.source);
         targeting::choose_sacrifice(self, player, valid, source)
     }

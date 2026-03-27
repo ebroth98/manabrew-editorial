@@ -959,7 +959,7 @@ fn try_pay_unless_cost(
         match part {
             CostPart::DamageYou(_)
             | CostPart::PayLife(_)
-            | CostPart::Mana(_)
+            | CostPart::Mana { .. }
             | CostPart::PayEnergy(_)
             | CostPart::PayShards(_)
             | CostPart::Draw(_)
@@ -1046,7 +1046,9 @@ fn try_pay_unless_cost(
                     false,
                 );
             }
-            CostPart::Mana(mana_cost) => {
+            CostPart::Mana {
+                cost: mana_cost, ..
+            } => {
                 let _ = ctx.mana_pools[payer.index()].try_pay(mana_cost);
             }
             CostPart::PayEnergy(amount) => {
@@ -1274,7 +1276,9 @@ pub(super) fn try_pay_cumulative_upkeep(
                     false,
                 );
             }
-            CostPart::Mana(mana_cost) => {
+            CostPart::Mana {
+                cost: mana_cost, ..
+            } => {
                 let _ = ctx.mana_pools[payer.index()].try_pay(mana_cost);
             }
             CostPart::Mill(amount) => {

@@ -781,3 +781,13 @@ pub fn apply_cost_reductions(
         cost.clone()
     }
 }
+
+/// Scanner parity shim for Java `CostAdjustment.adjust(...)`.
+pub fn adjust(
+    game: &GameState,
+    spell_card: &Card,
+    caster: PlayerId,
+    cast_zone: ZoneType,
+) -> CostAdjustment {
+    compute_cost_adjustment(game, spell_card, caster, cast_zone)
+}
