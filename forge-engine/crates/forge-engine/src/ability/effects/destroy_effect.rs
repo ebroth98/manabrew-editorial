@@ -34,7 +34,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 false,
             );
 
-            ctx.game.move_card(target_card, ZoneType::Graveyard, owner);
+            ctx.move_card(target_card, ZoneType::Graveyard, owner);
 
             emit_zone_trigger_with_lki_counters(
                 ctx.trigger_handler,

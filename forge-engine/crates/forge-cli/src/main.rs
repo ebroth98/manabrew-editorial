@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 use std::io::{self, Write};
 
-use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::player::actions::{AbilityRef, PlayerAction};
 use forge_engine_core::parsing::keys;
 use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -369,7 +370,7 @@ impl PlayerAgent for InteractiveAgent {
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
-    ) -> MainPhaseAction {
+    ) -> PlayerAction {
         let game = self.game();
 
         let opp = game.opponent_of(player);
@@ -381,11 +382,11 @@ impl PlayerAgent for InteractiveAgent {
             && activatable.is_empty()
         {
             println!("  {}No actions available.{}", DIM, RESET);
-            return MainPhaseAction::Pass;
+            return PlayerAction::PassPriority;
         }
 
         // Build a unified action list: untap lands, tap lands, play cards, activate abilities
-        let mut actions: Vec<MainPhaseAction> = Vec::new();
+        let mut actions: Vec<PlayerAction> = Vec::new();
         println!("\n{}{}Available actions:{}", CYAN, BOLD, RESET);
         for &cid in untappable_lands {
             let card = game.card(cid);
@@ -396,7 +397,7 @@ impl PlayerAgent for InteractiveAgent {
                 RESET,
                 card.card_name
             );
-            actions.push(MainPhaseAction::UntapMana(cid));
+            actions.push(PlayerAction::UndoMana(cid));
         }
         for &cid in tappable_lands {
             let card = game.card(cid);
@@ -407,7 +408,7 @@ impl PlayerAgent for InteractiveAgent {
                 RESET,
                 card.card_name
             );
-            actions.push(MainPhaseAction::ActivateMana(cid));
+            actions.push(PlayerAction::ActivateMana(cid));
         }
         for &play in playable {
             let card = game.card(play.card_id);
@@ -420,7 +421,7 @@ impl PlayerAgent for InteractiveAgent {
                 verb,
                 format_card_with_cost(card)
             );
-            actions.push(MainPhaseAction::Play(play));
+            actions.push(PlayerAction::CastSpell(play));
         }
         for &(cid, ab_idx) in activatable {
             let card = game.card(cid);
@@ -438,13 +439,16 @@ impl PlayerAgent for InteractiveAgent {
                 card.card_name,
                 desc
             );
-            actions.push(MainPhaseAction::ActivateAbility(cid, ab_idx));
+            actions.push(PlayerAction::ActivateAbility(AbilityRef {
+                card_id: cid,
+                ability_index: ab_idx,
+            }));
         }
         println!("  {}(enter number to act, or 'p' to pass){}", DIM, RESET);
 
         read_number(&format!("{}> {}", CYAN, RESET), actions.len())
             .map(|idx| actions[idx])
-            .unwrap_or(MainPhaseAction::Pass)
+            .unwrap_or(PlayerAction::PassPriority)
     }
 
     fn choose_attackers(
@@ -679,12 +683,12 @@ impl PlayerAgent for SimpleAiAgent {
         _: &[CardId],
         _: &[CardId],
         _: &[(CardId, usize)],
-    ) -> MainPhaseAction {
+    ) -> PlayerAction {
         playable
             .first()
             .copied()
-            .map(MainPhaseAction::Play)
-            .unwrap_or(MainPhaseAction::Pass)
+            .map(PlayerAction::CastSpell)
+            .unwrap_or(PlayerAction::PassPriority)
     }
 
     fn choose_attackers(

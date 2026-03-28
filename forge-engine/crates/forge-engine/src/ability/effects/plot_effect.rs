@@ -17,7 +17,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let card_name = ctx.game.card(card_id).card_name.clone();
     let turn = ctx.game.turn.turn_number;
 
-    ctx.game.move_card(card_id, ZoneType::Exile, player);
+    ctx.move_card(card_id, ZoneType::Exile, player);
     ctx.game
         .card_mut(card_id)
         .keywords

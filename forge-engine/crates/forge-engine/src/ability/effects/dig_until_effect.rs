@@ -95,7 +95,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         } else {
             owner
         };
-        ctx.game.move_card(id, found_dest, dest_owner);
+        ctx.move_card(id, found_dest, dest_owner);
         if found_dest == ZoneType::Battlefield {
             let _ = super::add_to_combat(ctx, sa, id, keys::ATTACKING);
         }
@@ -113,7 +113,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .insert(0, id);
             ctx.game.card_mut(id).set_zone(ZoneType::Library);
         } else {
-            ctx.game.move_card(id, revealed_dest, owner);
+            ctx.move_card(id, revealed_dest, owner);
             emit_zone_trigger(ctx.trigger_handler, id, ZoneType::Library, revealed_dest);
         }
     }

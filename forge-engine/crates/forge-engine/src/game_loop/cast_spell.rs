@@ -42,7 +42,7 @@ impl GameLoop {
                 crate::staticability::layer::get_etb_unless_reveal_cost(game.card(card_id));
 
             // Play land — goes directly to battlefield
-            game.move_card(card_id, ZoneType::Battlefield, player);
+            game.move_card_with_agents(card_id, ZoneType::Battlefield, player, agents);
 
             // Handle "reveal or enter tapped" before the shock-land check
             if let Some((_n, filter_str)) = etb_reveal_cost {
@@ -91,7 +91,7 @@ impl GameLoop {
                         // Player pays life — untap the card (it wasn't tapped by apply_etb_tapped
                         // since we removed the third pass, but ensure untapped state)
                         game.card_mut(card_id).set_tapped(false);
-                        game.player_mut(player).lose_life(life_cost);
+                        game.player_lose_life(player, life_cost);
                         self.trigger_handler.run_trigger(
                             TriggerType::LifeLost,
                             RunParams {
@@ -108,7 +108,7 @@ impl GameLoop {
                 }
             }
 
-            game.player_mut(player).lands_played_this_turn += 1;
+            game.player_record_land_play(player);
             crate::agent::notify_all_agents(
                 agents,
                 crate::agent::GameLogEvent::action(format!("Played land: {}", card_name))
@@ -191,7 +191,7 @@ impl GameLoop {
                         self.emit_tap_for_mana_triggers(player, &tapped);
                         self.pool_mut(player).try_pay(&foretell_exile_cost);
                         game.card_mut(card_id).set_face_down(true);
-                        game.move_card(card_id, ZoneType::Exile, player);
+                        game.move_card_with_agents(card_id, ZoneType::Exile, player, agents);
                         self.trigger_handler.run_trigger(
                             TriggerType::Foretell,
                             RunParams {
@@ -252,7 +252,7 @@ impl GameLoop {
                             );
                             self.emit_tap_for_mana_triggers(player, &tapped);
                             self.pool_mut(player).try_pay(&suspend_mc);
-                            game.move_card(card_id, ZoneType::Exile, player);
+                            game.move_card_with_agents(card_id, ZoneType::Exile, player, agents);
                             game.card_mut(card_id)
                                 .add_counter(&crate::card::CounterType::Time, counters);
                             crate::agent::notify_all_agents(
@@ -463,7 +463,7 @@ impl GameLoop {
                             ZoneType::Graveyard,
                         );
                         self.trigger_handler.flush_waiting_triggers(game);
-                        game.move_card(sac_id, ZoneType::Graveyard, sac_owner);
+                        game.move_card_with_agents(sac_id, ZoneType::Graveyard, sac_owner, agents);
                     }
                 }
                 cost
@@ -521,7 +521,7 @@ impl GameLoop {
                             ZoneType::Graveyard,
                         );
                         self.trigger_handler.flush_waiting_triggers(game);
-                        game.move_card(sac_id, ZoneType::Graveyard, sac_owner);
+                        game.move_card_with_agents(sac_id, ZoneType::Graveyard, sac_owner, agents);
                     }
                 }
                 cost
@@ -900,9 +900,9 @@ impl GameLoop {
 
             // Detect commander cast from Command zone (for commander tax)
             let is_commander_cast =
-                game.card(card_id).is_commander && game.card(card_id).zone == ZoneType::Command;
+                game.player_is_commander(player, card_id) && game.card(card_id).zone == ZoneType::Command;
             let mut commander_tax = if is_commander_cast {
-                game.card(card_id).commander_cast_count as i32 * 2
+                game.player_commander_tax(player, card_id)
             } else {
                 0
             };
@@ -1019,7 +1019,7 @@ impl GameLoop {
                             || result == ReplacementResult::Replaced
                     };
                     if !skip_life {
-                        game.player_mut(player).lose_life(life_to_pay);
+                        game.player_lose_life(player, life_to_pay);
                         self.trigger_handler.run_trigger(
                             TriggerType::LifeLost,
                             RunParams {
@@ -1059,7 +1059,7 @@ impl GameLoop {
                         );
                         let delve_count = to_exile.len().min(max_delve) as i32;
                         for cid in &to_exile[..delve_count as usize] {
-                            game.move_card(*cid, ZoneType::Exile, player);
+                            game.move_card_with_agents(*cid, ZoneType::Exile, player, agents);
                         }
                         if delve_count > 0 {
                             // Reduce generic cost (or commander tax first, then generic)
@@ -1304,7 +1304,7 @@ impl GameLoop {
                     // handlePlayingSpellAbilityDeterministic() moves spells to stack
                     // before setupTargets(), and a setupTargets() failure is not rolled back.
                     // Net effect is the spell leaves hand without resolving.
-                    game.move_card(card_id, ZoneType::Stack, player);
+                    game.move_card_with_agents(card_id, ZoneType::Stack, player, agents);
                     return None;
                 }
                 // Post-targeting validation: reject cast if MustTarget (Flagbearer)
@@ -1615,6 +1615,7 @@ impl GameLoop {
                         layer: ReplacementLayer::CantHappen,
                         params,
                         active_zones: vec![], // active everywhere (including stack)
+                        suppressed: false,
                     });
             }
 
@@ -1642,7 +1643,7 @@ impl GameLoop {
                 if mana_spent > 0 {
                     let starting = game.player(player).mana_expended_this_turn;
                     let total = starting + mana_spent;
-                    game.player_mut(player).mana_expended_this_turn = total;
+                    game.player_set_mana_expended(player, total);
                     // Fire trigger for each cumulative amount from starting+1 to total
                     for i in (starting + 1)..=total {
                         self.trigger_handler.run_trigger(
@@ -1928,7 +1929,7 @@ impl GameLoop {
                         .take(exile_count as usize)
                         .collect();
                     for cid in gy_cards {
-                        game.move_card(cid, ZoneType::Exile, player);
+                        game.move_card_with_agents(cid, ZoneType::Exile, player, agents);
                     }
                 }
             }
@@ -1937,7 +1938,7 @@ impl GameLoop {
             if is_gainlife_alt {
                 if let Some((life_amount, _)) = game.card(card_id).get_gainlife_alt_cost() {
                     let opp = game.opponent_of(player);
-                    game.player_mut(opp).life += life_amount;
+                    game.player_gain_life(opp, life_amount);
                 }
             }
 
@@ -1950,13 +1951,11 @@ impl GameLoop {
 
             // Increment commander cast count (before moving card to stack)
             if is_commander_cast {
-                game.card_mut(card_id).increment_commander_cast_count();
+                game.player_increment_commander_cast(player, card_id);
             }
 
             {
-                let p = game.player_mut(player);
-                p.spells_cast_this_turn += 1;
-                p.cards_cast_this_turn.push(card_id);
+                game.player_record_spell_cast(player, card_id);
             }
             // Track spell cast on the stack (storm count, etc.)
             game.stack.record_spell_cast(card_id);
@@ -2102,11 +2101,11 @@ impl GameLoop {
             }
 
             // Move spell to stack zone
-            game.move_card(card_id, ZoneType::Stack, player);
+            game.move_card_with_agents(card_id, ZoneType::Stack, player, agents);
 
             // Storm: create N copies where N = spells_cast_this_turn - 1.
             if game.card(card_id).has_storm() {
-                let storm_count = game.player(player).spells_cast_this_turn - 1;
+                let storm_count = game.player_storm_count(player);
                 if storm_count > 0 {
                     crate::agent::notify_all_agents(
                         agents,
@@ -2267,7 +2266,7 @@ impl GameLoop {
             if top_id == CardId(0) {
                 break; // Safety: should never happen
             }
-            game.move_card(top_id, ZoneType::Exile, player);
+            game.move_card_with_agents(top_id, ZoneType::Exile, player, agents);
             let card = game.card(top_id);
             let is_land = card.is_land();
             let mv = card.mana_value();
@@ -2333,13 +2332,11 @@ impl GameLoop {
                         .with_player(player)
                         .with_card(cascade_card_id),
                 );
-                game.move_card(cascade_card_id, ZoneType::Stack, player);
+                game.move_card_with_agents(cascade_card_id, ZoneType::Stack, player, agents);
 
                 // Cascade spell counts as being cast
                 {
-                    let p = game.player_mut(player);
-                    p.spells_cast_this_turn += 1;
-                    p.cards_cast_this_turn.push(cascade_card_id);
+                    game.player_record_spell_cast(player, cascade_card_id);
                 }
                 game.stack.record_spell_cast(cascade_card_id);
                 self.trigger_handler.run_trigger(

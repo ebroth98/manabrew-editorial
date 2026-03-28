@@ -11,15 +11,15 @@ card/IHasCardView.java -> skip
 card/CardView.java -> skip
 card/IHasCardView.java -> skip
 card/CardFaceView.java -> skip
+zone/ZoneView.java -> skip
+spellability/SpellAbilityView.java -> skip
+spellability/StackItemView.java -> skip
+player/AchievementTracker.java -> skip
 
 
 # Directory modules — Rust uses mod.rs inside a directory when an effect
 # is split across multiple sub-modules. Cannot have both file.rs and file/ in Rust.
 ability/effects/ChangeZoneEffect.java -> ability/effects/change_zone_effect/mod.rs
 
-zone/ZoneView.java -> skip
-
-spellability/SpellAbilityView.java -> skip
-spellability/StackItemView.java -> skip
 
 cost/PaymentDecision.java/type -> cost/payment_decision.rs/type_choice

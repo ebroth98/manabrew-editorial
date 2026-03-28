@@ -274,55 +274,64 @@ impl ReplacementHandler {
     fn run_layer(
         &mut self,
         game: &GameState,
-        agents: Option<&mut [Box<dyn PlayerAgent>]>,
+        mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
         event: &mut ReplacementEvent,
         layer: ReplacementLayer,
     ) -> ReplacementResult {
         let effects = collect_effects(game, event, layer);
+        let mut declined_effects: HashSet<(CardId, usize)> = HashSet::new();
 
         if effects.is_empty() {
             return ReplacementResult::NotReplaced;
         }
 
-        // Filter out effects we've already run (loop prevention).
-        let eligible: Vec<_> = effects
-            .into_iter()
-            .filter(|(card_id, _re, effect_idx)| !self.has_run.contains(&(*card_id, *effect_idx)))
-            .collect();
+        loop {
+            let eligible: Vec<_> = effects
+                .iter()
+                .filter(|(card_id, _re, effect_idx)| {
+                    !self.has_run.contains(&(*card_id, *effect_idx))
+                        && !declined_effects.contains(&(*card_id, *effect_idx))
+                })
+                .cloned()
+                .collect();
 
-        if eligible.is_empty() {
-            return ReplacementResult::NotReplaced;
-        }
-
-        // Choose which effect to apply.
-        let chosen_idx = if eligible.len() > 1 && layer != ReplacementLayer::CantHappen {
-            // Multiple effects — let agent choose.
-            if let Some(agents) = agents {
-                // Build human-readable descriptions for the agent/UI.
-                let descriptions: Vec<String> = eligible
-                    .iter()
-                    .map(|(card_id, re, _)| {
-                        let card_name = &game.cards[card_id.index()].card_name;
-                        let desc = re.description();
-                        format!("{card_name}: {desc}")
-                    })
-                    .collect();
-
-                let affected_player = affected_player_for_event(event, game);
-                let agent = &mut agents[affected_player.index()];
-                agent
-                    .choose_single_replacement_effect(affected_player, &descriptions)
-                    .min(eligible.len() - 1)
-            } else {
-                0 // No agents — auto-select first
+            if eligible.is_empty() {
+                return ReplacementResult::NotReplaced;
             }
-        } else {
-            0
-        };
 
-        let (source_card_id, ref effect, effect_idx) = eligible[chosen_idx];
-        self.has_run.insert((source_card_id, effect_idx));
-        execute_effect(game, source_card_id, effect, event)
+            let chosen_idx = if eligible.len() > 1 && layer != ReplacementLayer::CantHappen {
+                if let Some(agents) = agents.as_deref_mut() {
+                    let descriptions: Vec<String> = eligible
+                        .iter()
+                        .map(|(card_id, re, _)| {
+                            let card_name = &game.cards[card_id.index()].card_name;
+                            let desc = re.description();
+                            format!("{card_name}: {desc}")
+                        })
+                        .collect();
+
+                    let affected_player = affected_player_for_event(event, game);
+                    let agent = &mut agents[affected_player.index()];
+                    agent
+                        .choose_single_replacement_effect(affected_player, &descriptions)
+                        .min(eligible.len() - 1)
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
+
+            let (source_card_id, ref effect, effect_idx) = eligible[chosen_idx];
+            self.has_run.insert((source_card_id, effect_idx));
+            let result = execute_effect(game, source_card_id, effect, event, agents.as_deref_mut());
+            if result == ReplacementResult::NotReplaced {
+                self.has_run.remove(&(source_card_id, effect_idx));
+                declined_effects.insert((source_card_id, effect_idx));
+                continue;
+            }
+            return result;
+        }
     }
 }
 
@@ -383,6 +392,15 @@ fn affected_player_for_event(event: &ReplacementEvent, game: &GameState) -> Play
 pub fn apply_replacements(game: &GameState, event: &mut ReplacementEvent) -> ReplacementResult {
     let mut handler = ReplacementHandler::new();
     handler.run(game, None, event)
+}
+
+pub fn apply_replacements_with_agents(
+    game: &GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    event: &mut ReplacementEvent,
+) -> ReplacementResult {
+    let mut handler = ReplacementHandler::new();
+    handler.run(game, Some(agents), event)
 }
 
 pub(crate) fn replacement_event_amount(event: &ReplacementEvent) -> Option<i32> {
@@ -774,6 +792,7 @@ fn execute_effect(
     card_id: CardId,
     effect: &ReplacementEffect,
     event: &mut ReplacementEvent,
+    agents: Option<&mut [Box<dyn PlayerAgent>]>,
 ) -> ReplacementResult {
     use super::{
         replace_add_counter,
@@ -817,6 +836,26 @@ fn execute_effect(
         replace_turn_face_up,
         replace_untap,
     };
+
+    if effect.params.get(keys::OPTIONAL) == Some("True") {
+        let decider = optional_decider_for_effect(effect, game, card_id, event)
+            .unwrap_or_else(|| affected_player_for_event(event, game));
+        let host = game.card(card_id);
+        let question = replacement_question(effect, host, game, event);
+        let confirmed = if let Some(agents) = agents {
+            agents[decider.index()].confirm_replacement_effect(
+                decider,
+                &question,
+                effect.description(),
+                Some(&host.card_name),
+            )
+        } else {
+            true
+        };
+        if !confirmed {
+            return ReplacementResult::NotReplaced;
+        }
+    }
 
     match effect.event {
         ReplacementType::DamageDone => replace_damage::execute(effect, event, game, card_id),
@@ -877,6 +916,40 @@ fn execute_effect(
     }
 }
 
+fn optional_decider_for_effect(
+    effect: &ReplacementEffect,
+    game: &GameState,
+    source_card_id: CardId,
+    event: &ReplacementEvent,
+) -> Option<PlayerId> {
+    let expr = effect.params.get(keys::OPTIONAL_DECIDER)?.trim();
+    match expr {
+        "You" | "Controller" => Some(game.card(source_card_id).controller),
+        "Owner" => Some(game.card(source_card_id).owner),
+        "Affected" | "AffectedController" => Some(affected_player_for_event(event, game)),
+        "Opponent" => Some(game.opponent_of(game.card(source_card_id).controller)),
+        _ => None,
+    }
+}
+
+fn replacement_question(
+    effect: &ReplacementEffect,
+    host: &crate::card::Card,
+    game: &GameState,
+    event: &ReplacementEvent,
+) -> String {
+    let desc = effect.description().replace("CARDNAME", &host.card_name);
+    match event {
+        ReplacementEvent::Moved { card, .. } => format!(
+            "Apply {} to {}?\n{}",
+            host.card_name,
+            game.card(*card).card_name,
+            desc
+        ),
+        _ => format!("Apply {}?\n{}", host.card_name, desc),
+    }
+}
+
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -884,6 +957,7 @@ mod tests {
     use super::*;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
 
+    use crate::agent::PlayerAgent;
     use crate::card::Card;
     use crate::ids::{CardId, PlayerId};
 
@@ -916,6 +990,101 @@ mod tests {
 
     fn put_on_battlefield(game: &mut GameState, card_id: CardId, owner: PlayerId) {
         game.move_card(card_id, ZoneType::Battlefield, owner);
+    }
+
+    struct ConfirmReplacementAgent {
+        confirm: bool,
+    }
+
+    impl PlayerAgent for ConfirmReplacementAgent {
+        fn mulligan_decision(
+            &mut self,
+            _player: PlayerId,
+            _hand: &[CardId],
+            _mulligan_count: u32,
+        ) -> bool {
+            true
+        }
+
+        fn choose_action(
+            &mut self,
+            _player: PlayerId,
+            _playable: &[crate::agent::types::PlayOption],
+            _tappable_lands: &[CardId],
+            _untappable_lands: &[CardId],
+            _activatable: &[(CardId, usize)],
+        ) -> crate::player::actions::PlayerAction {
+            crate::player::actions::PlayerAction::PassPriority
+        }
+
+        fn choose_attackers(
+            &mut self,
+            _player: PlayerId,
+            _available: &[CardId],
+            _possible_defenders: &[crate::combat::DefenderId],
+        ) -> Vec<(CardId, crate::combat::DefenderId)> {
+            vec![]
+        }
+
+        fn choose_blockers(
+            &mut self,
+            _player: PlayerId,
+            _attackers: &[CardId],
+            _available_blockers: &[CardId],
+            _max_blockers: Option<usize>,
+        ) -> Vec<(CardId, CardId)> {
+            vec![]
+        }
+
+        fn choose_target_player(
+            &mut self,
+            _player: PlayerId,
+            valid: &[PlayerId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> Option<PlayerId> {
+            valid.first().copied()
+        }
+
+        fn choose_target_card(
+            &mut self,
+            _player: PlayerId,
+            valid: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> Option<CardId> {
+            valid.first().copied()
+        }
+
+        fn choose_target_any(
+            &mut self,
+            _player: PlayerId,
+            valid_players: &[PlayerId],
+            valid_cards: &[CardId],
+            _sa: Option<&crate::spellability::SpellAbility>,
+        ) -> crate::agent::TargetChoice {
+            if let Some(player) = valid_players.first() {
+                crate::agent::TargetChoice::Player(*player)
+            } else if let Some(card) = valid_cards.first() {
+                crate::agent::TargetChoice::Card(*card)
+            } else {
+                crate::agent::TargetChoice::None
+            }
+        }
+
+        fn choose_land_or_spell(&mut self, _player: PlayerId) -> Option<bool> {
+            Some(true)
+        }
+
+        fn notify(&mut self, _message: &str) {}
+
+        fn confirm_replacement_effect(
+            &mut self,
+            _player: PlayerId,
+            _question: &str,
+            _effect_description: &str,
+            _card_name: Option<&str>,
+        ) -> bool {
+            self.confirm
+        }
     }
 
     // ── Draw replacement tests ────────────────────────────────────────────
@@ -1342,6 +1511,71 @@ mod tests {
         };
         let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
+    }
+
+    #[test]
+    fn declined_optional_replacement_falls_through_to_next_candidate() {
+        let mut game = make_game();
+        let alice = PlayerId(0);
+        let cid = add_creature_with_abilities(
+            &mut game,
+            alice,
+            "Optional Bear",
+            vec![
+                "R$ Event$ Moved | Destination$ Graveyard | Origin$ Battlefield | ValidCard$ Card.Self | Optional$ True | OptionalDecider$ You | NewDestination$ Command".to_string(),
+                "R$ Event$ Moved | Destination$ Graveyard | Origin$ Battlefield | ValidCard$ Card.Self | NewDestination$ Exile".to_string(),
+            ],
+        );
+        put_on_battlefield(&mut game, cid, alice);
+
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+            Box::new(ConfirmReplacementAgent { confirm: false }),
+            Box::new(ConfirmReplacementAgent { confirm: false }),
+        ];
+        let mut event = ReplacementEvent::Moved {
+            card: cid,
+            origin: ZoneType::Battlefield,
+            destination: ZoneType::Graveyard,
+        };
+        let result = apply_replacements_with_agents(&game, agents.as_mut_slice(), &mut event);
+        assert_eq!(result, ReplacementResult::Updated);
+        if let ReplacementEvent::Moved { destination, .. } = event {
+            assert_eq!(destination, ZoneType::Exile);
+        } else {
+            panic!("unexpected event type");
+        }
+    }
+
+    #[test]
+    fn accepted_optional_replacement_updates_destination() {
+        let mut game = make_game();
+        let alice = PlayerId(0);
+        let cid = add_creature_with_abilities(
+            &mut game,
+            alice,
+            "Optional Bear",
+            vec![
+                "R$ Event$ Moved | Destination$ Graveyard | Origin$ Battlefield | ValidCard$ Card.Self | Optional$ True | OptionalDecider$ You | NewDestination$ Command".to_string(),
+            ],
+        );
+        put_on_battlefield(&mut game, cid, alice);
+
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![
+            Box::new(ConfirmReplacementAgent { confirm: true }),
+            Box::new(ConfirmReplacementAgent { confirm: true }),
+        ];
+        let mut event = ReplacementEvent::Moved {
+            card: cid,
+            origin: ZoneType::Battlefield,
+            destination: ZoneType::Graveyard,
+        };
+        let result = apply_replacements_with_agents(&game, agents.as_mut_slice(), &mut event);
+        assert_eq!(result, ReplacementResult::Updated);
+        if let ReplacementEvent::Moved { destination, .. } = event {
+            assert_eq!(destination, ZoneType::Command);
+        } else {
+            panic!("unexpected event type");
+        }
     }
 
     // ── No effects test ───────────────────────────────────────────────────

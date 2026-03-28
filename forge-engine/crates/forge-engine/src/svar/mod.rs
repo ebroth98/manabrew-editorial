@@ -164,51 +164,6 @@ fn resolve_svar_expression(
     0
 }
 
-fn player_has_property(
-    player: PlayerId,
-    property: &str,
-    game: &GameState,
-    source_id: CardId,
-    controller: PlayerId,
-    sa: &SpellAbility,
-) -> bool {
-    if property.eq_ignore_ascii_case("hasInitiative") {
-        return game.initiative_holder == Some(player);
-    }
-    if property.eq_ignore_ascii_case("maxSpeed") {
-        return game.player(player).speed == 4;
-    }
-    if property.eq_ignore_ascii_case("noSpeed") {
-        return game.player(player).speed == 0;
-    }
-    if property.eq_ignore_ascii_case("attackedYouTheirCurrentTurn") {
-        return game.cards.iter().any(|card| {
-            card.controller == player
-                && card
-                    .damage_history
-                    .has_attacked_this_turn(TrackedEntity::Player(controller))
-        });
-    }
-    let lower = property.to_ascii_lowercase();
-    if let Some(rest) = lower.strip_prefix("life") {
-        let actual = game.player(player).life;
-        for op in ["ge", "gt", "le", "lt", "eq"] {
-            if let Some(rhs) = rest.strip_prefix(op) {
-                let threshold = resolve_svar_expression(rhs, game, source_id, controller, sa);
-                return match op {
-                    "ge" => actual >= threshold,
-                    "gt" => actual > threshold,
-                    "le" => actual <= threshold,
-                    "lt" => actual < threshold,
-                    "eq" => actual == threshold,
-                    _ => false,
-                };
-            }
-        }
-    }
-    false
-}
-
 fn player_x_property(
     player: PlayerId,
     expr: &str,
@@ -345,7 +300,7 @@ fn player_x_property(
                 0
             }
         }
-        _ if value.starts_with("HasProperty") => i32::from(player_has_property(
+        _ if value.starts_with("HasProperty") => i32::from(crate::player::player_has_property(
             player,
             value.strip_prefix("HasProperty").unwrap_or(""),
             game,
@@ -357,6 +312,34 @@ fn player_x_property(
     };
 
     do_x_math(base, operators)
+}
+
+pub fn player_condition_matches(
+    player: PlayerId,
+    property: &str,
+    game: &GameState,
+    source_id: CardId,
+    controller: PlayerId,
+    sa: &SpellAbility,
+) -> bool {
+    let Some(rest) = property.strip_prefix("Condition") else {
+        return false;
+    };
+    let Some((lhs, prop_expr)) = rest.split_once(' ') else {
+        return false;
+    };
+    let (cmp, rhs_expr) = if lhs.is_empty() {
+        ("GE", "1")
+    } else if lhs.len() >= 2 {
+        (&lhs[..2], &lhs[2..])
+    } else {
+        ("GE", "1")
+    };
+    let rhs = resolve_svar_expression(rhs_expr, game, source_id, controller, sa);
+    compare_expr(
+        player_x_property(player, prop_expr, game, source_id, controller, sa),
+        &format!("{cmp}{rhs}"),
+    )
 }
 
 fn resolve_direct_player_expr(
@@ -401,7 +384,7 @@ fn resolve_player_count_svar(
     } else if let Some(property) = kind.strip_prefix("Property") {
         game.alive_players()
             .into_iter()
-            .filter(|&pid| player_has_property(pid, property, game, source_id, controller, sa))
+            .filter(|&pid| crate::player::player_has_property(pid, property, game, source_id, controller, sa))
             .collect()
     } else if let Some(defined) = kind.strip_prefix("Defined") {
         crate::ability::ability_utils::resolve_defined_players_with_sa(
@@ -457,7 +440,7 @@ fn resolve_player_count_svar(
     if let Some(raw_property) = property.strip_prefix("HasProperty") {
         return players
             .into_iter()
-            .filter(|&pid| player_has_property(pid, raw_property, game, source_id, controller, sa))
+            .filter(|&pid| crate::player::player_has_property(pid, raw_property, game, source_id, controller, sa))
             .count() as i32;
     }
     if let Some(rest) = property.strip_prefix("Condition") {

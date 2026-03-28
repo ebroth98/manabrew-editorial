@@ -31,7 +31,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Try targeted player
     if let Some(pid) = sa.target_chosen.target_player {
-        ctx.game.player_mut(pid).damage_prevention += amount;
+        ctx.game.player_add_damage_prevention(pid, amount);
         return;
     }
 
@@ -53,11 +53,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         Some("You") => {
             let controller = sa.activating_player;
-            ctx.game.player_mut(controller).damage_prevention += amount;
+            ctx.game.player_add_damage_prevention(controller, amount);
         }
         Some("Opponent") => {
             let opp = ctx.game.opponent_of(sa.activating_player);
-            ctx.game.player_mut(opp).damage_prevention += amount;
+            ctx.game.player_add_damage_prevention(opp, amount);
         }
         _ => {
             // Default: prevent damage to self (source card)

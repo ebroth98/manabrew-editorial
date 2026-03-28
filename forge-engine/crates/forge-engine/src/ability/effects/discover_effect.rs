@@ -48,7 +48,7 @@ fn discover_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: Playe
 
         // Exile one at a time (Java: exileSeq = true)
         let old_zone = ctx.game.card(top).zone;
-        ctx.game.move_card(top, ZoneType::Exile, player);
+        ctx.move_card(top, ZoneType::Exile, player);
         emit_zone_trigger(ctx.trigger_handler, top, old_zone, ZoneType::Exile);
 
         if !is_land && cmc <= max_cmc {
@@ -83,17 +83,17 @@ fn discover_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: Playe
                 if !ok {
                     // Failed to cast — put in hand instead
                     let old = ctx.game.card(card_id).zone;
-                    ctx.game.move_card(card_id, ZoneType::Hand, player);
+                    ctx.move_card(card_id, ZoneType::Hand, player);
                     emit_zone_trigger(ctx.trigger_handler, card_id, old, ZoneType::Hand);
                 }
             } else {
                 let old = ctx.game.card(card_id).zone;
-                ctx.game.move_card(card_id, ZoneType::Hand, player);
+                ctx.move_card(card_id, ZoneType::Hand, player);
                 emit_zone_trigger(ctx.trigger_handler, card_id, old, ZoneType::Hand);
             }
         } else {
             let old = ctx.game.card(card_id).zone;
-            ctx.game.move_card(card_id, ZoneType::Hand, player);
+            ctx.move_card(card_id, ZoneType::Hand, player);
             emit_zone_trigger(ctx.trigger_handler, card_id, old, ZoneType::Hand);
         }
     }
@@ -102,7 +102,7 @@ fn discover_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: Playe
     ctx.rng.shuffle_cards(&mut exiled_rest);
     for card_id in exiled_rest {
         let old = ctx.game.card(card_id).zone;
-        ctx.game.move_card(card_id, ZoneType::Library, player);
+        ctx.move_card(card_id, ZoneType::Library, player);
         let zone = ctx.game.zone_mut(ZoneType::Library, player);
         if let Some(pos) = zone.cards.iter().rposition(|&c| c == card_id) {
             zone.cards.remove(pos);

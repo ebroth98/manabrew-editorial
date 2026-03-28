@@ -158,8 +158,18 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                         return false;
                     }
                 }
+                "youown" => {
+                    if card.owner != source.controller {
+                        return false;
+                    }
+                }
                 "oppctrl" | "opponentctrl" | "opponent" => {
                     if card.controller == source.controller {
+                        return false;
+                    }
+                }
+                "iscommander" => {
+                    if !card.is_commander {
                         return false;
                     }
                 }
@@ -515,62 +525,13 @@ pub fn check_condition(game: &GameState, params: &Params, source: &Card) -> bool
     match condition {
         "PlayerTurn" => game.active_player() == source.controller,
         "NotPlayerTurn" => game.active_player() != source.controller,
-        "Threshold" => {
-            game.cards_in_zone(ZoneType::Graveyard, source.controller)
-                .len()
-                >= 7
-        }
-        "Hellbent" => game
-            .cards_in_zone(ZoneType::Hand, source.controller)
-            .is_empty(),
-        "Metalcraft" => {
-            game.cards_in_zone(ZoneType::Battlefield, source.controller)
-                .iter()
-                .filter(|&&cid| game.card(cid).type_line.is_artifact())
-                .count()
-                >= 3
-        }
-        "Delirium" => {
-            let graveyard = game.cards_in_zone(ZoneType::Graveyard, source.controller);
-            let mut types = std::collections::HashSet::new();
-            for &cid in graveyard {
-                let card = game.card(cid);
-                if card.is_creature() {
-                    types.insert("creature");
-                }
-                if card.type_line.is_instant() {
-                    types.insert("instant");
-                }
-                if card.type_line.is_sorcery() {
-                    types.insert("sorcery");
-                }
-                if card.type_line.is_artifact() {
-                    types.insert("artifact");
-                }
-                if card.type_line.is_enchantment() {
-                    types.insert("enchantment");
-                }
-                if card.is_land() {
-                    types.insert("land");
-                }
-                if card.type_line.is_planeswalker() {
-                    types.insert("planeswalker");
-                }
-            }
-            types.len() >= 4
-        }
-        "Ferocious" => game
-            .cards_in_zone(ZoneType::Battlefield, source.controller)
-            .iter()
-            .any(|&cid| {
-                let c = game.card(cid);
-                c.is_creature() && c.power() >= 4
-            }),
-        "Desert" => game
-            .cards_in_zone(ZoneType::Battlefield, source.controller)
-            .iter()
-            .any(|&cid| game.card(cid).type_line.has_subtype("Desert")),
-        "Blessing" => game.player(source.controller).has_city_blessing,
+        "Threshold" => game.player_has_threshold(source.controller),
+        "Hellbent" => game.player_has_hellbent(source.controller),
+        "Metalcraft" => game.player_has_metalcraft(source.controller),
+        "Delirium" => game.player_has_delirium(source.controller),
+        "Ferocious" => game.player_has_ferocious(source.controller),
+        "Desert" => game.player_has_desert(source.controller),
+        "Blessing" => game.player_has_blessing(source.controller),
         "Monarch" => game.monarch == Some(source.controller),
         "Night" => game.is_night,
         "FatefulHour" => game.player(source.controller).life <= 5,

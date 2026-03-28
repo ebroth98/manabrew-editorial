@@ -183,5 +183,5 @@ fn add_type_effect(
     }
 
     let effect_id = ctx.game.create_card(effect);
-    ctx.game.move_card(effect_id, ZoneType::Command, controller);
+    ctx.move_card(effect_id, ZoneType::Command, controller);
 }

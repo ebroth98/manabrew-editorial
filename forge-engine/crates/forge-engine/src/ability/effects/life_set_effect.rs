@@ -27,7 +27,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue;
         }
 
-        let diff = ctx.game.player_mut(target).set_life(amount);
+        let diff = ctx.game.player_set_life(target, amount);
 
         // Fire the appropriate life trigger based on the difference
         if diff > 0 {

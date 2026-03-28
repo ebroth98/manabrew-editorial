@@ -502,7 +502,7 @@ fn roll_action(
     let mut natural_rolls = Vec::new();
     for _ in 0..roll_count {
         natural_rolls.push(rng.next_int(sides) + 1);
-        game.player_mut(player).num_rolls_this_turn += 1;
+        game.player_record_roll(player, None);
     }
     natural_rolls.sort();
 
@@ -870,7 +870,7 @@ fn pay_roll_cost(
                 }
             }
             CostPart::PayLife(amount) => {
-                game.player_mut(player).lose_life(*amount);
+                game.player_lose_life(player, *amount);
                 trigger_handler.run_trigger(
                     TriggerType::LifeLost,
                     RunParams {
@@ -1062,8 +1062,8 @@ mod tests {
             _tappable_lands: &[CardId],
             _untappable_lands: &[CardId],
             _activatable: &[(CardId, usize)],
-        ) -> crate::agent::MainPhaseAction {
-            crate::agent::MainPhaseAction::Pass
+        ) -> crate::player::actions::PlayerAction {
+            crate::player::actions::PlayerAction::PassPriority
         }
 
         fn choose_attackers(
@@ -1159,8 +1159,8 @@ mod tests {
             _tappable_lands: &[CardId],
             _untappable_lands: &[CardId],
             _activatable: &[(CardId, usize)],
-        ) -> crate::agent::MainPhaseAction {
-            crate::agent::MainPhaseAction::Pass
+        ) -> crate::player::actions::PlayerAction {
+            crate::player::actions::PlayerAction::PassPriority
         }
 
         fn choose_attackers(
@@ -1267,8 +1267,8 @@ mod tests {
             _tappable_lands: &[CardId],
             _untappable_lands: &[CardId],
             _activatable: &[(CardId, usize)],
-        ) -> crate::agent::MainPhaseAction {
-            crate::agent::MainPhaseAction::Pass
+        ) -> crate::player::actions::PlayerAction {
+            crate::player::actions::PlayerAction::PassPriority
         }
 
         fn choose_attackers(
@@ -1671,7 +1671,7 @@ pub fn visit_attractions(
         let first_visit = !game.card(card_id).was_visited_this_turn();
         game.card_mut(card_id).visit_attraction();
         if first_visit {
-            game.player_mut(player).attractions_visited_this_turn += 1;
+            game.player_record_attraction_visit(player, 1);
         }
         trigger_handler.run_trigger(
             TriggerType::VisitAttraction,

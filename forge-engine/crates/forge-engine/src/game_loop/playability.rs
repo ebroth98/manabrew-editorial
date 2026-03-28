@@ -188,11 +188,11 @@ impl GameLoop {
 
                 // Spectacle: alt cost if opponent lost life this turn
                 let spectacle_ok = if let Some(spec_cost_str) = card.get_spectacle_cost() {
-                    let opp = game.opponent_of(player);
                     let adjusted = cost_adj
                         .apply(&forge_foundation::ManaCost::parse(&spec_cost_str))
                         .add(&raise_mana);
-                    game.player(opp).life_lost_this_turn > 0 && available_mana.can_pay(&adjusted)
+                    game.player_opponents_lost_life_this_turn(player)
+                        && available_mana.can_pay(&adjusted)
                 } else {
                     false
                 };
@@ -704,11 +704,11 @@ impl GameLoop {
         let command_zone: Vec<CardId> = game.cards_in_zone(ZoneType::Command, player).to_vec();
         for card_id in command_zone {
             let card = game.card(card_id);
-            if card.is_commander {
+            if game.player_is_commander(player, card_id) {
                 if must_be_instant && !has_flash_permission(card_id) {
                     continue;
                 }
-                let tax = card.commander_cast_count as i32 * 2;
+                let tax = game.player_commander_tax(player, card_id);
                 let cost_adj = crate::cost::cost_adjustment::compute_cost_adjustment(
                     game,
                     card,

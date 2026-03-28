@@ -694,7 +694,7 @@ pub fn discard_with_madness_replacement(
 ) {
     let owner = game.card(card_id).owner;
     let has_madness = game.card(card_id).get_madness_cost().is_some();
-    game.player_mut(discard_player).discarded_this_turn += 1;
+    game.player_record_discard(discard_player, 1);
     game.card_mut(card_id).set_discarded(true);
 
     if has_madness {

@@ -96,7 +96,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Move chosen pile to zone1
     for cid in chosen_pile {
         if ctx.game.card(cid).zone == ZoneType::Library {
-            ctx.game.move_card(cid, zone1, controller);
+            ctx.move_card(cid, zone1, controller);
             emit_zone_trigger(ctx.trigger_handler, cid, ZoneType::Library, zone1);
         }
     }
@@ -104,7 +104,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Move unchosen pile to zone2
     for cid in unchosen_pile {
         if ctx.game.card(cid).zone == ZoneType::Library {
-            ctx.game.move_card(cid, zone2, controller);
+            ctx.move_card(cid, zone2, controller);
             emit_zone_trigger(ctx.trigger_handler, cid, ZoneType::Library, zone2);
         }
     }

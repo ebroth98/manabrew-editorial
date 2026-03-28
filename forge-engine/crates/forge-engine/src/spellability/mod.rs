@@ -27,6 +27,7 @@ use crate::ability::api_type::ApiType;
 use crate::agent::{PlayerAgent, TargetChoice};
 use crate::card::card_damage_map::CardDamageMap;
 use crate::card::card_zone_table::CardZoneTable;
+use crate::event::AbilityValue;
 use crate::cost::{parse_cost, Cost};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
@@ -170,6 +171,9 @@ pub struct SpellAbility {
     /// Java parity: non-scalar trigger objects that carry spell/ability context.
     #[serde(default)]
     pub trigger_spell_abilities: HashMap<String, SpellAbility>,
+    /// Java parity: trigger remembered objects copied from the originating trigger.
+    #[serde(default)]
+    pub trigger_remembered: Vec<AbilityValue>,
     /// Activation restriction for this ability.
     #[serde(default)]
     pub restriction: SpellAbilityRestriction,
@@ -333,6 +337,7 @@ impl SpellAbility {
             is_land_ability: false,
             trigger_objects: HashMap::new(),
             trigger_spell_abilities: HashMap::new(),
+            trigger_remembered: Vec::new(),
             restriction: SpellAbilityRestriction::default(),
             condition: SpellAbilityCondition::default(),
             rollback_effects: Vec::new(),

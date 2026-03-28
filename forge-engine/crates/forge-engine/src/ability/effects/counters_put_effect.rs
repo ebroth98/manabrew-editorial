@@ -33,7 +33,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if let Some(target_player) = resolve_defined_player(defined, controller, ctx.game) {
             match counter_type_str.to_uppercase().as_str() {
                 "ENERGY" => {
-                    ctx.game.player_mut(target_player).energy_counters += count;
+                    ctx.game.player_add_energy(target_player, count);
                     return;
                 }
                 _ => {

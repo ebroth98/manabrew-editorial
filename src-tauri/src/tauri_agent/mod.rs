@@ -2,13 +2,15 @@ use std::sync::mpsc;
 use std::time::Duration;
 
 use forge_engine_core::agent::{
-    BinaryChoiceKind, CombatCostAction, GameLogEvent, MainPhaseAction, ManaCostAction, PlayOption,
+    BinaryChoiceKind, CombatCostAction, GameLogEvent, ManaCostAction, PlayOption,
     PlayerAgent, TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
+use forge_engine_core::player::actions::player_action::AbilityRef;
+use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
 use forge_foundation::{PhaseType, ZoneType};
 
 use crate::game_log_event::GameLogEntryDto;
@@ -362,7 +364,7 @@ impl PlayerAgent for TauriAgent {
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
-    ) -> MainPhaseAction {
+    ) -> EnginePlayerAction {
         let playable_card_ids: Vec<String> = playable
             .iter()
             .map(|play| card_id_str(play.card_id))
@@ -419,6 +421,31 @@ impl PlayerAgent for TauriAgent {
             card.is_playable = playable_card_ids.contains(&card.id);
         }
 
+        let available_player_actions = playable
+            .iter()
+            .copied()
+            .map(EnginePlayerAction::CastSpell)
+            .chain(
+                tappable_lands
+                    .iter()
+                    .copied()
+                    .map(EnginePlayerAction::ActivateMana),
+            )
+            .chain(
+                untappable_lands
+                    .iter()
+                    .copied()
+                    .map(EnginePlayerAction::UndoMana),
+            )
+            .chain(activatable.iter().map(|&(card_id, ability_index)| {
+                EnginePlayerAction::ActivateAbility(AbilityRef {
+                    card_id,
+                    ability_index,
+                })
+            }))
+            .chain(std::iter::once(EnginePlayerAction::PassPriority))
+            .collect();
+
         self.send_prompt(AgentPromptInner::ChooseAction {
             game_view: view,
             playable_card_ids,
@@ -426,16 +453,18 @@ impl PlayerAgent for TauriAgent {
             tappable_land_ids,
             untappable_land_ids,
             activatable_ability_ids,
+            available_player_actions,
         });
         match self.recv_action() {
+            PlayerAction::EngineAction { action } => action,
             PlayerAction::RestoreSnapshot { checkpoint_id } => {
                 self.pending_restore_checkpoint = Some(checkpoint_id);
-                MainPhaseAction::Pass
+                EnginePlayerAction::PassPriority
             }
             PlayerAction::PlayCard { card_id, mode } => card_id
                 .and_then(|id| {
                     let cid = parse_card_id(&id)?;
-                    // If mode is specified, find the exact PlayOption matching card+mode
+                    // If mode is specified, find the exact PlayOption matching card+mode.
                     if let Some(mode_str) = &mode {
                         if let Some(parsed_mode) = Self::parse_play_mode(mode_str) {
                             return playable
@@ -444,37 +473,42 @@ impl PlayerAgent for TauriAgent {
                                 .find(|play| play.card_id == cid && play.mode == parsed_mode);
                         }
                     }
-                    // Fallback: first matching PlayOption for this card
+                    // Fallback: first matching PlayOption for this card.
                     playable.iter().copied().find(|play| play.card_id == cid)
                 })
-                .map(MainPhaseAction::Play)
-                .unwrap_or(MainPhaseAction::Pass),
+                .map(EnginePlayerAction::CastSpell)
+                .unwrap_or(EnginePlayerAction::PassPriority),
             PlayerAction::TapLand { card_id } => {
                 let parsed = parse_card_id(&card_id);
                 match parsed {
                     Some(cid) => {
-                        // Prefer ActivateAbility if card has an activatable ability
-                        // (handles dual lands, non-basic lands with AB$ Mana, and non-land mana sources)
                         if let Some(&(id, idx)) = activatable.iter().find(|(id, _)| *id == cid) {
-                            MainPhaseAction::ActivateAbility(id, idx)
+                            EnginePlayerAction::ActivateAbility(AbilityRef {
+                                card_id: id,
+                                ability_index: idx,
+                            })
                         } else {
-                            // Basic land without AB$ Mana — use ActivateMana
-                            MainPhaseAction::ActivateMana(cid)
+                            EnginePlayerAction::ActivateMana(cid)
                         }
                     }
-                    None => MainPhaseAction::Pass,
+                    None => EnginePlayerAction::PassPriority,
                 }
             }
             PlayerAction::ActivateAbility {
                 card_id,
                 ability_index,
             } => parse_card_id(&card_id)
-                .map(|cid| MainPhaseAction::ActivateAbility(cid, ability_index))
-                .unwrap_or(MainPhaseAction::Pass),
+                .map(|cid| {
+                    EnginePlayerAction::ActivateAbility(AbilityRef {
+                        card_id: cid,
+                        ability_index,
+                    })
+                })
+                .unwrap_or(EnginePlayerAction::PassPriority),
             PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)
-                .map(MainPhaseAction::UntapMana)
-                .unwrap_or(MainPhaseAction::Pass),
-            _ => MainPhaseAction::Pass,
+                .map(EnginePlayerAction::UndoMana)
+                .unwrap_or(EnginePlayerAction::PassPriority),
+            _ => EnginePlayerAction::PassPriority,
         }
     }
 

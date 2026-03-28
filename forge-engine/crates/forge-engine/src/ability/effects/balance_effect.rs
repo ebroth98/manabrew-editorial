@@ -85,7 +85,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                                 },
                                 false,
                             );
-                            ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
+                            ctx.move_card(card_id, ZoneType::Graveyard, owner);
                             emit_zone_trigger(
                                 ctx.trigger_handler,
                                 card_id,
@@ -104,10 +104,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
                 for &card_id in to_discard.iter().take(excess) {
                     if ctx.game.card(card_id).zone == ZoneType::Hand {
-                        ctx.game.player_mut(pid).discarded_this_turn += 1;
+                        ctx.game.player_record_discard(pid, 1);
                         ctx.game.card_mut(card_id).set_discarded(true);
                         let owner = ctx.game.card(card_id).owner;
-                        ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
+                        ctx.move_card(card_id, ZoneType::Graveyard, owner);
                         emit_zone_trigger(
                             ctx.trigger_handler,
                             card_id,

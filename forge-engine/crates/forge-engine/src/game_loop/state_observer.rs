@@ -158,7 +158,7 @@ impl GameLoop {
             let cleared = self.mana_pools[pidx].clear_pool_with_keep(phase, keep_colors);
             // Mana burn: if player has ManaBurn static, lose life equal to cleared mana
             if cleared > 0 && has_mana_burn(game, player_id) {
-                game.player_mut(player_id).life -= cleared as i32;
+                game.player_lose_life(player_id, cleared as i32);
             }
         }
         game.turn.phase = phase;

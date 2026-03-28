@@ -64,7 +64,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .counters
             .get(&crate::card::CounterType::P1P1)
             .unwrap_or(&0);
-        ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
+        ctx.move_card(card_id, ZoneType::Graveyard, owner);
         ctx.trigger_handler.run_trigger(
             TriggerType::Destroyed,
             RunParams {

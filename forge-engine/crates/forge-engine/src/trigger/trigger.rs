@@ -1009,6 +1009,7 @@ impl Trigger {
         sa.trigger_source = Some(host_card);
         sa.source_trigger_id = Some(self.id);
         sa.trigger_index = Some(trigger_index);
+        sa.trigger_remembered = self.trigger_remembered.clone();
         self.set_triggering_objects(&mut sa, params, game, host_card, host_controller);
         self.configure_triggered_spell_ability(&mut sa, params, game, &svar_text);
         sa

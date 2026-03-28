@@ -47,7 +47,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
         let old_zone = ctx.game.card(card_id).zone;
         let owner = ctx.game.card(card_id).owner;
-        ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
+        ctx.move_card(card_id, ZoneType::Graveyard, owner);
         super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Graveyard);
     }
 }

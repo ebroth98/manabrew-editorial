@@ -31,8 +31,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let life_b = ctx.game.player(other).life;
 
     // Set each player's life to the other's previous total
-    let diff_a = ctx.game.player_mut(controller).set_life(life_b);
-    let diff_b = ctx.game.player_mut(other).set_life(life_a);
+    let diff_a = ctx.game.player_set_life(controller, life_b);
+    let diff_b = ctx.game.player_set_life(other, life_a);
 
     // Fire triggers for controller
     if diff_a > 0 {

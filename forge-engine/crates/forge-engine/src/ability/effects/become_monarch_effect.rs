@@ -1,5 +1,4 @@
 use super::{resolve_defined_player, EffectContext};
-use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ BecomeMonarch` — make a player the monarch.
@@ -23,16 +22,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    ctx.game.monarch = Some(target);
-
-    ctx.trigger_handler.run_trigger(
-        TriggerType::BecomeMonarch,
-        RunParams {
-            player: Some(target),
-            ..Default::default()
-        },
-        false,
-    );
+    ctx.game.player_set_monarch(target, Some(ctx.trigger_handler));
 }
 
 #[cfg(test)]

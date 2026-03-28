@@ -9,5 +9,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .target_chosen
         .target_player
         .unwrap_or(sa.activating_player);
-    ctx.game.player_mut(target).radiation_counters += amount;
+    ctx.game.player_add_radiation(target, amount);
+    ctx.game
+        .player_register_radiation_effect(target, ctx.trigger_handler);
 }

@@ -80,7 +80,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Move source card out of battlefield (merged zone representation)
     let old_zone = ctx.game.card(source).zone;
-    ctx.game.move_card(source, ZoneType::Command, controller);
+    ctx.move_card(source, ZoneType::Command, controller);
 
     // Fire Mutates trigger
     ctx.trigger_handler.run_trigger(

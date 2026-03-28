@@ -24,7 +24,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if i == loser_idx {
             let life = ctx.game.player(pid).life;
             let loss = (life + 1) / 2; // round up
-            ctx.game.player_mut(pid).lose_life(loss);
+            ctx.game.player_lose_life(pid, loss);
         }
     }
 

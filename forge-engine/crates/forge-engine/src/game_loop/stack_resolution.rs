@@ -108,7 +108,7 @@ impl GameLoop {
                     } else {
                         ZoneType::Graveyard
                     };
-                    game.move_card(card_id, dest, owner);
+                    game.move_card_with_agents(card_id, dest, owner, agents);
                 }
             }
             apply_continuous_effects(game);
@@ -143,7 +143,7 @@ impl GameLoop {
                         if let Some(source_id) = entry.spell_ability.source {
                             if game.card(source_id).zone == ZoneType::Exile {
                                 let owner = game.card(source_id).owner;
-                                game.move_card(source_id, ZoneType::Graveyard, owner);
+                                game.move_card_with_agents(source_id, ZoneType::Graveyard, owner, agents);
                                 crate::ability::effects::helpers::remove_madness_exiled_marker(
                                     game.card_mut(source_id),
                                 );
@@ -371,7 +371,7 @@ impl GameLoop {
                 let etb_reveal_cost =
                     crate::staticability::layer::get_etb_unless_reveal_cost(game.card(card_id));
 
-                game.move_card(card_id, ZoneType::Battlefield, player);
+                game.move_card_with_agents(card_id, ZoneType::Battlefield, player, agents);
 
                 // Attach aura to its chosen target.
                 // Mirrors Java's PermanentEffect which calls card.enchantEntity()
@@ -416,7 +416,7 @@ impl GameLoop {
                     );
                     if pay {
                         game.card_mut(card_id).set_tapped(false);
-                        game.player_mut(player).lose_life(life_cost);
+                        game.player_lose_life(player, life_cost);
                         self.trigger_handler.run_trigger(
                             TriggerType::LifeLost,
                             RunParams {
@@ -673,7 +673,7 @@ impl GameLoop {
                     } else {
                         ZoneType::Graveyard
                     };
-                    game.move_card(card_id, dest, owner);
+                    game.move_card_with_agents(card_id, dest, owner, agents);
                 }
             }
         }

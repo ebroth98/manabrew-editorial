@@ -13,7 +13,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Target a player
     if let Some(pid) = sa.target_chosen.target_player {
-        ctx.game.player_mut(pid).damage_prevention += amount;
+        ctx.game.player_add_damage_prevention(pid, amount);
         return;
     }
 
@@ -29,7 +29,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if let Some(def) = sa.defined() {
         if def.eq_ignore_ascii_case("You") || def.eq_ignore_ascii_case("Self") {
             let controller = sa.activating_player;
-            ctx.game.player_mut(controller).damage_prevention += amount;
+            ctx.game.player_add_damage_prevention(controller, amount);
         }
     }
 }

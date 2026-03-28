@@ -412,7 +412,7 @@ fn refund_cost_part(game: &mut GameState, source: CardId, player: PlayerId, part
         CostPart::PayLife(amount) => {
             // Restore life — mirrors Java's CostPayLife not having explicit refund,
             // but the snapshot rollback handles this. Included for completeness.
-            game.player_mut(player).life += *amount;
+            game.player_gain_life(player, *amount);
         }
         CostPart::ChooseColor(_) => {
             crate::cost::cost_choose_color::refund(game, source);

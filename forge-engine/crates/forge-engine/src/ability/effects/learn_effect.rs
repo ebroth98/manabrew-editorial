@@ -79,12 +79,12 @@ fn learn_lesson(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
     if card_zone == ZoneType::Sideboard {
         // Lesson from sideboard → hand
         let old_zone = ctx.game.card(card_id).zone;
-        ctx.game.move_card(card_id, ZoneType::Hand, player);
+        ctx.move_card(card_id, ZoneType::Hand, player);
         emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Hand);
     } else if card_zone == ZoneType::Hand {
         // Discard from hand, then draw 1
         let old_zone = ctx.game.card(card_id).zone;
-        ctx.game.player_mut(player).discarded_this_turn += 1;
+        ctx.game.player_record_discard(player, 1);
         ctx.game.card_mut(card_id).set_discarded(true);
         ctx.game
             .move_card(card_id, ZoneType::Graveyard, ctx.game.card(card_id).owner);
@@ -106,7 +106,7 @@ fn learn_lesson(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
         let lib = ctx.game.cards_in_zone(ZoneType::Library, player).to_vec();
         if let Some(&top) = lib.last() {
             let dz = ctx.game.card(top).zone;
-            ctx.game.move_card(top, ZoneType::Hand, player);
+            ctx.move_card(top, ZoneType::Hand, player);
             ctx.trigger_handler.run_trigger(
                 TriggerType::Drawn,
                 RunParams {

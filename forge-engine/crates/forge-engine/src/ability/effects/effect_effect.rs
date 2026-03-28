@@ -84,7 +84,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         );
 
         let effect_id = ctx.game.create_card(effect);
-        ctx.game.move_card(effect_id, ZoneType::Command, owner);
+        ctx.move_card(effect_id, ZoneType::Command, owner);
     }
 }
 

@@ -207,7 +207,7 @@ fn create_dungeon(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId) 
     card.set_s_var("CurrentRoom", String::new());
 
     let id = ctx.game.create_card(card);
-    ctx.game.move_card(id, ZoneType::Command, player);
+    ctx.move_card(id, ZoneType::Command, player);
     ctx.trigger_handler.register_active_trigger(ctx.game, id);
 
     id
@@ -216,7 +216,7 @@ fn create_dungeon(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId) 
 fn complete_dungeon(ctx: &mut EffectContext, player: PlayerId, dungeon_id: CardId) {
     // Move completed dungeon out of command zone
     let old_zone = ctx.game.card(dungeon_id).zone;
-    ctx.game.move_card(dungeon_id, ZoneType::Exile, player);
+    ctx.move_card(dungeon_id, ZoneType::Exile, player);
     super::emit_zone_trigger(ctx.trigger_handler, dungeon_id, old_zone, ZoneType::Exile);
 
     // Fire dungeon completed trigger

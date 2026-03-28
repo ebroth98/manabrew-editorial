@@ -511,7 +511,7 @@ pub(crate) fn tap_land_for_mana(
         pool.add(atom, 1);
     }
     if pain > 0 {
-        game.player_mut(player).lose_life(pain);
+        game.player_lose_life(player, pain);
     }
     tapped_lands.push(land_id);
 }
@@ -616,27 +616,7 @@ pub fn determine_mana_production(
     let mut mana_string: Option<String> = None;
 
     if produced == "Combo ColorIdentity" {
-        let command_cards = game.cards_in_zone(ZoneType::Command, player).to_vec();
-        let colors: Vec<String> = command_cards
-            .iter()
-            .find_map(|&cid| {
-                let c = game.card(cid);
-                if c.is_commander {
-                    let cols: Vec<String> = c
-                        .color
-                        .iter()
-                        .map(|col| capitalize_color(col.long_name()))
-                        .collect();
-                    if cols.is_empty() {
-                        None
-                    } else {
-                        Some(cols)
-                    }
-                } else {
-                    None
-                }
-            })
-            .unwrap_or_default();
+        let colors = game.player_commander_color_identity(player);
 
         if !colors.is_empty() {
             if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
@@ -929,24 +909,8 @@ pub fn calculate_available_mana_excluding(
             } else if let Some(produced) = ab.params.get(keys::PRODUCED) {
                 if produced == "Combo ColorIdentity" {
                     // Commander Color Identity support: in non-commander games this remains empty.
-                    let command_cards = game.cards_in_zone(ZoneType::Command, player).to_vec();
-                    if let Some(colors) = command_cards.iter().find_map(|&cid| {
-                        let c = game.card(cid);
-                        if c.is_commander {
-                            let cols: Vec<String> = c
-                                .color
-                                .iter()
-                                .map(|col| capitalize_color(col.long_name()))
-                                .collect();
-                            if cols.is_empty() {
-                                None
-                            } else {
-                                Some(cols)
-                            }
-                        } else {
-                            None
-                        }
-                    }) {
+                    let colors = game.player_commander_color_identity(player);
+                    if !colors.is_empty() {
                         for atom in chosen_colors_to_atoms(&colors) {
                             if !added_atoms.contains(&atom) {
                                 avail_add!(available, card_is_snow, atom);
@@ -1085,6 +1049,7 @@ fn resolve_mana_ability_amount(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::agent::{PassAgent, PlayerAgent};
     use crate::card::Card;
     use crate::game::GameState;
     use crate::ids::{CardId, PlayerId};
@@ -1268,5 +1233,40 @@ mod tests {
         // Canyons or Island2 for the generic {1} cost — either is valid.
         let generic_tapped = game.card(island2).tapped || game.card(canyons).tapped;
         assert!(generic_tapped);
+    }
+
+    #[test]
+    fn combo_color_identity_uses_registered_commander_outside_command_zone() {
+        let mut game = GameState::new(&["P1", "P2"], 20);
+        let p0 = PlayerId(0);
+
+        let commander = Card::new(
+            CardId(0),
+            "Commander".to_string(),
+            p0,
+            CardTypeLine::parse("Legendary Creature Wizard"),
+            ManaCost::parse("2 U"),
+            ColorSet::BLUE,
+            Some(2),
+            Some(2),
+            vec![],
+            vec![],
+        );
+        let commander_id = game.create_card(commander);
+        game.player_register_commander(p0, commander_id);
+        game.player_create_commander_effect(p0, None);
+        game.move_card(commander_id, ZoneType::Battlefield, p0);
+
+        let mut agents: Vec<Box<dyn PlayerAgent>> = vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let produced = determine_mana_production(
+            &mut game,
+            &mut agents,
+            p0,
+            commander_id,
+            "Combo ColorIdentity",
+            None,
+        );
+
+        assert_eq!(produced.as_deref(), Some("U"));
     }
 }

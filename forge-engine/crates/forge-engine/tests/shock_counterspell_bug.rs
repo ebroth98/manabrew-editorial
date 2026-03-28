@@ -1,11 +1,12 @@
 /// Reproduces the bug: Counterspell resolves but Shock still deals damage
 /// This should NOT happen - countered spells should never resolve
-use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::player::actions::PlayerAction;
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use std::cell::RefCell;
@@ -45,7 +46,7 @@ impl PlayerAgent for ShockTestAgent {
         tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
-    ) -> MainPhaseAction {
+    ) -> PlayerAction {
         self.step += 1;
 
         let game = self.game_state.borrow();
@@ -58,12 +59,12 @@ impl PlayerAgent for ShockTestAgent {
                         let card = game.card(opt.card_id);
                         card.card_name == "Counterspell"
                     }) {
-                        MainPhaseAction::Play(opt)
+                        PlayerAction::CastSpell(opt)
                     } else {
-                        MainPhaseAction::Pass
+                        PlayerAction::PassPriority
                     }
                 }
-                _ => MainPhaseAction::Pass,
+                _ => PlayerAction::PassPriority,
             }
         } else {
             // Bob: Cast Shock at Alice
@@ -73,12 +74,12 @@ impl PlayerAgent for ShockTestAgent {
                         let card = game.card(opt.card_id);
                         card.card_name == "Shock"
                     }) {
-                        MainPhaseAction::Play(opt)
+                        PlayerAction::CastSpell(opt)
                     } else {
-                        MainPhaseAction::Pass
+                        PlayerAction::PassPriority
                     }
                 }
-                _ => MainPhaseAction::Pass,
+                _ => PlayerAction::PassPriority,
             }
         }
     }

@@ -171,7 +171,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     pid,
                     &crate::card::CounterType::Poison,
                 ) {
-                    ctx.game.player_mut(pid).poison_counters += num_dmg;
+                    ctx.game.player_add_poison(pid, num_dmg);
                 }
             } else if use_damage_map {
                 if let Some(src_id) = source {

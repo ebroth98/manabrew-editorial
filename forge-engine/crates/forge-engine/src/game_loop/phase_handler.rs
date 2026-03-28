@@ -48,7 +48,7 @@ impl GameLoop {
                     // SkipPhase: skip untap if flag set
                     let active = game.active_player();
                     if game.player(active).skip_next_untap {
-                        game.player_mut(active).skip_next_untap = false;
+                        game.player_clear_skip_untap(active);
                         TurnMachineState::Upkeep
                     } else {
                         self.apply_turn_event(
@@ -89,7 +89,7 @@ impl GameLoop {
                     // SkipPhase: skip draw if flag set
                     let active = game.active_player();
                     if game.player(active).skip_next_draw {
-                        game.player_mut(active).skip_next_draw = false;
+                        game.player_clear_skip_draw(active);
                         TurnMachineState::Main1
                     } else {
                         // Java parity: Java's isSkippingPhase(DRAW) returns true on turn 1
@@ -162,7 +162,7 @@ impl GameLoop {
                     // SkipPhase: skip combat if flag set
                     let active = game.active_player();
                     if game.player(active).skip_next_combat {
-                        game.player_mut(active).skip_next_combat = false;
+                        game.player_clear_skip_combat(active);
                         TurnMachineState::Main2
                     } else {
                         self.apply_turn_event(game, agents, TurnEvent::CombatStep);
@@ -307,7 +307,7 @@ impl GameLoop {
                     if let Some((player, _skip)) =
                         game.turn.advance_turn(&mut game.extra_turns, &player_order)
                     {
-                        game.player_mut(player).skip_next_untap = true;
+                        game.player_set_skip_untap(player);
                     }
                 });
             }
@@ -487,13 +487,6 @@ impl GameLoop {
         game.extra_combat_phases = 0;
         game.stack.reset_max_distinct_sources();
 
-        // Monarch draw (issue #22): at end of turn, the monarch draws a card.
-        if let Some(monarch_id) = game.monarch {
-            if game.player(monarch_id).is_alive() && monarch_id == active {
-                game.draw_card(monarch_id);
-            }
-        }
-
         // Empty mana pool at end of turn (cleanup step), per Magic rules.
         self.pool_mut(active).reset_pool();
         self.trigger_handler.clear_this_turn_delayed_trigger();
@@ -534,10 +527,10 @@ impl GameLoop {
             }
         }
 
-        // Reset player damage prevention shields at end of turn.
-        // Mirrors Java's DamagePreventEffect which exiles Effect cards at EOT.
-        for player in &mut game.players {
-            player.damage_prevention = 0;
+        // Player-owned cleanup state that expires at end of turn.
+        let player_ids = game.player_order.clone();
+        for player in player_ids {
+            game.player_cleanup_turn_state(player);
         }
 
         // Remove damage and reset until-end-of-turn effects on all battlefield permanents
@@ -725,11 +718,7 @@ impl GameLoop {
                 let is_creature = game.card(card_id).is_creature();
                 let is_permanent = game.card(card_id).is_permanent();
                 // Move from exile to stack
-                {
-                    let p = game.player_mut(active);
-                    p.spells_cast_this_turn += 1;
-                    p.cards_cast_this_turn.push(card_id);
-                }
+                game.player_record_spell_cast(active, card_id);
 
                 // Emit SpellCast trigger
                 self.trigger_handler.run_trigger(
@@ -761,7 +750,7 @@ impl GameLoop {
 
                 game.stack.push(entry);
                 self.log_stack_push(&card_name, &game.player(active).name);
-                game.move_card(card_id, ZoneType::Stack, active);
+                game.move_card_with_agents(card_id, ZoneType::Stack, active, agents);
                 crate::agent::notify_all_agents(
                     agents,
                     crate::agent::GameLogEvent::stack(format!(

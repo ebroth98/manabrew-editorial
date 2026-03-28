@@ -34,7 +34,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     if result == ReplacementResult::Skipped || amount <= 0 {
         return;
     }
-    ctx.game.player_mut(target).gain_life(amount);
+    ctx.game.player_gain_life(target, amount);
 
     // Fire LifeGained trigger
     ctx.trigger_handler.run_trigger(

@@ -31,9 +31,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue;
         }
         match phase {
-            "Draw" => ctx.game.player_mut(target).skip_next_draw = true,
-            "Combat" | "BeginCombat" => ctx.game.player_mut(target).skip_next_combat = true,
-            "Untap" => ctx.game.player_mut(target).skip_next_untap = true,
+            "Draw" => ctx.game.player_set_skip_draw(target),
+            "Combat" | "BeginCombat" => ctx.game.player_set_skip_combat(target),
+            "Untap" => ctx.game.player_set_skip_untap(target),
             _ => {
                 let err = crate::ability::IllegalAbilityException::new(format!(
                     "Unknown phase to skip: {:?}",

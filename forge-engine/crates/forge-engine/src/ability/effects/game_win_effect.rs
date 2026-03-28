@@ -30,13 +30,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Set the winner
-    ctx.game.player_mut(winner).has_won = true;
+    ctx.game.player_mark_won(winner);
 
     // All other players lose
     let all_players: Vec<_> = ctx.game.player_order.clone();
     for &pid in &all_players {
         if pid != winner {
-            ctx.game.player_mut(pid).has_lost = true;
+            ctx.game
+                .player_mark_lost(pid, crate::replacement::GameLossReason::OpponentWon);
         }
     }
 

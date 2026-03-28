@@ -2,13 +2,14 @@
 /// This validates that the UI components (chooseTargetSpell, stack rendering, priority passing)
 /// have proper backend support
 use forge_engine_core::agent::{
-    MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
+    PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
 };
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::player::actions::PlayerAction;
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, PhaseType, ZoneType};
 
@@ -40,27 +41,27 @@ impl PlayerAgent for CounterspellAgent {
         tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
-    ) -> MainPhaseAction {
+    ) -> PlayerAction {
         self.step += 1;
 
         match self.step {
             1 => {
                 // Turn 1: Play first playable card (should be a land)
                 if let Some(&opt) = playable.first() {
-                    MainPhaseAction::Play(opt)
+                    PlayerAction::CastSpell(opt)
                 } else {
-                    MainPhaseAction::Pass
+                    PlayerAction::PassPriority
                 }
             }
             2 => {
                 // Later turn: Cast Counterspell if available
                 if let Some(&opt) = playable.first() {
-                    MainPhaseAction::Play(opt)
+                    PlayerAction::CastSpell(opt)
                 } else {
-                    MainPhaseAction::Pass
+                    PlayerAction::PassPriority
                 }
             }
-            _ => MainPhaseAction::Pass,
+            _ => PlayerAction::PassPriority,
         }
     }
 

@@ -81,7 +81,7 @@ fn prompt_optional_play(
 fn madness_exile_to_graveyard(ctx: &mut EffectContext, card_id: CardId) {
     if ctx.game.card(card_id).zone == ZoneType::Exile {
         let owner = ctx.game.card(card_id).owner;
-        ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
+        ctx.move_card(card_id, ZoneType::Graveyard, owner);
         super::helpers::remove_madness_exiled_marker(ctx.game.card_mut(card_id));
     }
 }
@@ -113,12 +113,8 @@ fn push_spell_to_stack(
     let trigger_sa = entry.spell_ability.clone();
 
     ctx.game.stack.push(entry);
-    ctx.game.move_card(card_id, ZoneType::Stack, controller);
-    {
-        let p = ctx.game.player_mut(controller);
-        p.spells_cast_this_turn += 1;
-        p.cards_cast_this_turn.push(card_id);
-    }
+    ctx.move_card(card_id, ZoneType::Stack, controller);
+    ctx.game.player_record_spell_cast(controller, card_id);
 
     ctx.trigger_handler.run_trigger(
         TriggerType::SpellCast,

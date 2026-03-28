@@ -53,7 +53,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if ctx.game.card(explorer_id).zone != ZoneType::Battlefield {
             return;
         }
-        ctx.game.player_mut(controller).explored_this_turn += 1;
+        ctx.game.player_record_explore(controller, 1);
 
         // Check if library has cards
         let lib = ctx.game.cards_in_zone(ZoneType::Library, controller);
@@ -92,7 +92,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         if is_land {
             // Land → put into hand
             let owner = ctx.game.card(top_card).owner;
-            ctx.game.move_card(top_card, ZoneType::Hand, owner);
+            ctx.move_card(top_card, ZoneType::Hand, owner);
             emit_zone_trigger(
                 ctx.trigger_handler,
                 top_card,
@@ -139,7 +139,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
             if put_in_gy {
                 let owner = ctx.game.card(top_card).owner;
-                ctx.game.move_card(top_card, ZoneType::Graveyard, owner);
+                ctx.move_card(top_card, ZoneType::Graveyard, owner);
                 emit_zone_trigger(
                     ctx.trigger_handler,
                     top_card,

@@ -79,7 +79,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
             let card_id = ctx.game.create_card(card);
             let old_zone = ctx.game.card(card_id).zone;
-            ctx.game.move_card(card_id, zone, controller);
+            ctx.move_card(card_id, zone, controller);
             super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, zone);
 
             if sa.param_is_true(keys::REMEMBER_MADE) {

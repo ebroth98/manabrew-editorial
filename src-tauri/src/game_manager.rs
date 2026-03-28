@@ -3,10 +3,12 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
+use forge_engine_core::card::CardInstance;
 use forge_engine_core::agent::PlayerAgent;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::player::RegisteredPlayer;
 use forge_foundation::ZoneType;
 
 use rand::SeedableRng;
@@ -23,8 +25,9 @@ use crate::multiplayer_controller::{
     spawn_remote_prompt_forwarder, spawn_snapshot_forwarder,
 };
 use crate::preset_decks::{
-    build_ai_opponent, build_custom_deck, build_preset_deck_for_player, build_preset_opponent,
-    is_preset_id, CardIdentity,
+    is_preset_id, prepare_ai_registered_player, prepare_custom_registered_player,
+    prepare_preset_opponent_registered_player, prepare_preset_registered_player,
+    CardIdentity, PreparedRegisteredPlayer,
 };
 use crate::prompt::{AgentPrompt, AgentPromptInner, PlayerAction};
 use crate::tauri_agent::TauriAgent;
@@ -385,6 +388,42 @@ fn uuid_simple() -> String {
     format!("{:08x}{:08x}", rng.gen::<u32>(), rng.gen::<u32>())
 }
 
+fn force_commander_by_name(player: &mut PreparedRegisteredPlayer, commander_name: &str) {
+    let already_present = player
+        .registered
+        .commanders
+        .iter()
+        .any(|name| name == commander_name);
+    if already_present {
+        return;
+    }
+
+    if let Some((_, zone)) = player
+        .cards
+        .iter_mut()
+        .find(|(card, _)| card.card_name == commander_name)
+    {
+        *zone = ZoneType::Command;
+        player.registered.commanders.push(commander_name.to_string());
+        player.registered
+            .current_deck
+            .retain(|name| name != commander_name);
+        player.registered
+            .original_deck
+            .retain(|name| name != commander_name);
+    }
+}
+
+fn instantiate_registered_players(
+    game: &mut GameState,
+    prepared_players: Vec<PreparedRegisteredPlayer>,
+) {
+    for (idx, prepared) in prepared_players.into_iter().enumerate() {
+        let pid = PlayerId(idx as u32);
+        game.initialize_registered_player_cards(pid, &prepared.registered, prepared.cards, None);
+    }
+}
+
 fn run_game(
     game_id: String,
     deck_list: Vec<CardIdentity>,
@@ -396,59 +435,38 @@ fn run_game(
     notify_tx: mpsc::Sender<GameLogEntryDto>,
     snapshot_tx: mpsc::Sender<GameSnapshotEventDto>,
 ) {
-    let p0 = PlayerId(0);
-    let p1 = PlayerId(1);
-
-    let mut game = GameState::new(&["You", "AI Opponent"], starting_life);
-
-    // Build human player deck
-    if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
-        build_preset_deck_for_player(&mut game, &deck_list[0].name, p0);
+    let mut players = Vec::with_capacity(2);
+    let mut human = if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
+        prepare_preset_registered_player("You", &deck_list[0].name)
     } else {
-        build_custom_deck(&mut game, p0, &deck_list);
+        prepare_custom_registered_player("You", &deck_list)
+    };
+    human.registered.starting_life = starting_life;
+    if let Some(ref name) = commander_name {
+        force_commander_by_name(&mut human, name);
     }
+    players.push(human);
 
-    // Build AI opponent deck: use user-chosen opponent if provided,
-    // otherwise fall back to the preset's configured opponent or random.
-    if let Some(ref opp_deck) = opponent_deck_list {
+    let mut opponent = if let Some(ref opp_deck) = opponent_deck_list {
         if opp_deck.len() == 1 && is_preset_id(&opp_deck[0].name) {
-            build_preset_deck_for_player(&mut game, &opp_deck[0].name, p1);
+            prepare_preset_registered_player("AI Opponent", &opp_deck[0].name)
         } else {
-            build_custom_deck(&mut game, p1, opp_deck);
+            prepare_custom_registered_player("AI Opponent", opp_deck)
         }
     } else if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
-        // Legacy behavior: use the preset's configured opponent
-        let preset_id = &deck_list[0].name;
-        build_preset_opponent(&mut game, preset_id, p1);
+        prepare_preset_opponent_registered_player("AI Opponent", &deck_list[0].name)
     } else {
-        build_ai_opponent(&mut game, p1);
-    }
+        prepare_ai_registered_player("AI Opponent")
+    };
+    opponent.registered.starting_life = starting_life;
+    players.push(opponent);
 
-    // Designate commander for the human player (must happen before game_loop.run which shuffles).
-    if let Some(ref name) = commander_name {
-        let command_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Command, p0).to_vec();
-        if command_cards
-            .iter()
-            .any(|&cid| game.card(cid).card_name == *name)
-        {
-            for cid in command_cards {
-                if game.card(cid).card_name == *name {
-                    game.card_mut(cid).is_commander = true;
-                    break;
-                }
-            }
-        } else {
-            let library_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Library, p0).to_vec();
-            for cid in library_cards {
-                if game.card(cid).card_name == *name {
-                    game.card_mut(cid).is_commander = true;
-                    game.move_card(cid, ZoneType::Command, p0);
-                    eprintln!("[game] Designated '{}' as commander for player 0", name);
-                    break;
-                }
-            }
-        }
-    }
+    let registered: Vec<RegisteredPlayer> = players.iter().map(|p| p.registered.clone()).collect();
+    let mut game = GameState::new_from_registered_players(&registered);
+    instantiate_registered_players(&mut game, players);
+
+    let p0 = PlayerId(0);
+    let p1 = PlayerId(1);
 
     let human = TauriAgent::new_local(
         p0,
@@ -516,8 +534,22 @@ fn run_multiplayer_game(
     remote_response_rxs: Vec<(usize, mpsc::Receiver<PlayerAction>)>,
 ) {
     let num_players = player_names.len();
-    let name_refs: Vec<&str> = player_names.iter().map(|s| s.as_str()).collect();
-    let mut game = GameState::new(&name_refs, starting_life);
+    let mut prepared_players = Vec::with_capacity(num_players);
+    for i in 0..num_players {
+        let mut prepared = if deck_lists[i].len() == 1 && is_preset_id(&deck_lists[i][0].name) {
+            prepare_preset_registered_player(player_names[i].clone(), &deck_lists[i][0].name)
+        } else {
+            prepare_custom_registered_player(player_names[i].clone(), &deck_lists[i])
+        };
+        prepared.registered.starting_life = starting_life;
+        prepared_players.push(prepared);
+    }
+    let registered: Vec<RegisteredPlayer> = prepared_players
+        .iter()
+        .map(|p| p.registered.clone())
+        .collect();
+    let mut game = GameState::new_from_registered_players(&registered);
+    instantiate_registered_players(&mut game, prepared_players);
 
     // Build agents inside the thread (avoids Send issues with trait objects).
     let engine_pid = PlayerId(engine_player_index as u32);
@@ -545,16 +577,6 @@ fn run_multiplayer_game(
             let agent =
                 TauriAgent::new_relay(pid, i, game_id.clone(), remote_prompt_tx.clone(), resp_rx);
             agents.push(Box::new(agent));
-        }
-    }
-
-    for i in 0..num_players {
-        let pid = PlayerId(i as u32);
-        let deck_list = &deck_lists[i];
-        if deck_list.len() == 1 && is_preset_id(&deck_list[0].name) {
-            build_preset_deck_for_player(&mut game, &deck_list[0].name, pid);
-        } else {
-            build_custom_deck(&mut game, pid, deck_list);
         }
     }
 

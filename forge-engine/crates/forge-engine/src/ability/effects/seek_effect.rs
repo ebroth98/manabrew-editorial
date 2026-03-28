@@ -64,7 +64,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // Move each to hand
             for card_id in selected {
                 let old_zone = ctx.game.card(card_id).zone;
-                ctx.game.move_card(card_id, ZoneType::Hand, pid);
+                ctx.move_card(card_id, ZoneType::Hand, pid);
                 emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Hand);
                 sought.push(card_id);
             }

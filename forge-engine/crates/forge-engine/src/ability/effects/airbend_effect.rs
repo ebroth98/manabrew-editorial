@@ -34,7 +34,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Exile the card
         let old_zone = ctx.game.card(card_id).zone;
         let owner = ctx.game.card(card_id).owner;
-        ctx.game.move_card(card_id, ZoneType::Exile, owner);
+        ctx.move_card(card_id, ZoneType::Exile, owner);
         super::emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Exile);
 
         // Mark the card as castable for {2} from exile (via svar)

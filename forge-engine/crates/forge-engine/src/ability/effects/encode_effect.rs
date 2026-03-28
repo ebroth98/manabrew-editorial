@@ -62,7 +62,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Exile the spell card
     let owner = ctx.game.card(spell_card).owner;
     if ctx.game.card(spell_card).zone != ZoneType::Exile {
-        ctx.game.move_card(spell_card, ZoneType::Exile, owner);
+        ctx.move_card(spell_card, ZoneType::Exile, owner);
     }
 
     // Encode it onto the creature

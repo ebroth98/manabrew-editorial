@@ -69,6 +69,7 @@ pub fn execute(
             "Hand" => Some(ZoneType::Hand),
             "Library" => Some(ZoneType::Library),
             "Battlefield" => Some(ZoneType::Battlefield),
+            "Command" => Some(ZoneType::Command),
             _ => None,
         };
         if let Some(z) = new_zone {

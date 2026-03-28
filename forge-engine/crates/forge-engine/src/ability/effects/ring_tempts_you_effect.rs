@@ -27,7 +27,7 @@ fn ring_tempts(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
     // Increment ring level (max 4)
     let current_level = ctx.game.player(player).ring_level;
     if current_level < 4 {
-        ctx.game.player_mut(player).ring_level = current_level + 1;
+        ctx.game.player_ring_tempt(player);
     }
 
     // If no ring-bearer, choose one
@@ -56,7 +56,7 @@ fn ring_tempts(ctx: &mut EffectContext, _sa: &SpellAbility, player: PlayerId) {
                 "Choose your Ring-bearer",
                 false,
             ) {
-                ctx.game.player_mut(player).ring_bearer = Some(chosen);
+                ctx.game.player_set_ring_bearer(player, Some(chosen));
             }
         }
     }

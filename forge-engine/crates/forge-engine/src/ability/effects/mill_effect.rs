@@ -46,7 +46,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     for _ in 0..count {
         let top = ctx.game.zone_mut(ZoneType::Library, target).take_top();
         if let Some(card_id) = top {
-            ctx.game.move_card(card_id, ZoneType::Graveyard, target);
+            ctx.move_card(card_id, ZoneType::Graveyard, target);
             milled_cards.push(card_id);
             emit_zone_trigger(
                 ctx.trigger_handler,

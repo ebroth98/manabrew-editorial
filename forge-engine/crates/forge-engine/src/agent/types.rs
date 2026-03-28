@@ -1,22 +1,24 @@
+use serde::{Deserialize, Serialize};
+
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::AlternativeCost;
 
 /// A game entity that can be a player or a card (permanent).
 /// Used by effects like Proliferate that operate on mixed entity lists.
 /// Mirrors Java's `GameEntity` hierarchy used in `chooseEntitiesForEffect`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum GameEntity {
     Player(PlayerId),
     Card(CardId),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PlayOption {
     pub card_id: CardId,
     pub mode: PlayCardMode,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum PlayCardMode {
     Normal,
     Alternative(AlternativeCost),
@@ -27,7 +29,7 @@ pub enum PlayCardMode {
 }
 
 /// A target choice that can be a player, a card, or nothing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum TargetChoice {
     Player(PlayerId),
     Card(CardId),

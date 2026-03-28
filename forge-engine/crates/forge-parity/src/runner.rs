@@ -11,7 +11,7 @@ use std::sync::{Arc, Mutex};
 
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::{
-    BinaryChoiceKind, GameEntity, MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent,
+    BinaryChoiceKind, GameEntity, PlayCardMode, PlayOption, PlayerAgent,
 };
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
@@ -397,7 +397,7 @@ impl PlayerAgent for CapturingAgent {
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
-    ) -> forge_engine_core::agent::MainPhaseAction {
+    ) -> forge_engine_core::player::actions::PlayerAction {
         #[derive(Clone, Copy)]
         enum EntryKind {
             Card(PlayOption),
@@ -594,8 +594,8 @@ impl PlayerAgent for CapturingAgent {
         }
 
         let choice = match action {
-            MainPhaseAction::Pass => "PASS".to_string(),
-            MainPhaseAction::Play(play) => entries
+            forge_engine_core::player::actions::PlayerAction::PassPriority => "PASS".to_string(),
+            forge_engine_core::player::actions::PlayerAction::CastSpell(play) => entries
                 .iter()
                 .enumerate()
                 .find(|(_, (_, kind))| matches!(kind, EntryKind::Card(id) if *id == play))
@@ -612,18 +612,31 @@ impl PlayerAgent for CapturingAgent {
                         format!("SPELL:{}{}", self.card_name(cid), fb_tag)
                     }
                 }),
-            MainPhaseAction::ActivateMana(cid) => format!("MANA:{}", self.card_name(cid)),
-            MainPhaseAction::UntapMana(cid) => format!("UNTAP_MANA:{}", self.card_name(cid)),
-            MainPhaseAction::ActivateAbility(cid, ab_idx) => entries
+            forge_engine_core::player::actions::PlayerAction::ActivateMana(cid) => {
+                format!("MANA:{}", self.card_name(cid))
+            }
+            forge_engine_core::player::actions::PlayerAction::UndoMana(cid) => {
+                format!("UNTAP_MANA:{}", self.card_name(cid))
+            }
+            forge_engine_core::player::actions::PlayerAction::ActivateAbility(ability) => entries
                 .iter()
                 .enumerate()
                 .find(|(_, (_, kind))| {
-                    matches!(kind, EntryKind::Ability(id, idx) if *id == cid && *idx == ab_idx)
+                    matches!(
+                        kind,
+                        EntryKind::Ability(id, idx)
+                            if *id == ability.card_id && *idx == ability.ability_index
+                    )
                 })
                 .map(|(idx, _)| options[idx].clone())
                 .unwrap_or_else(|| {
-                    format!("AB:{}@{}", self.card_name(cid), self.parity_map.id(cid))
+                    format!(
+                        "AB:{}@{}",
+                        self.card_name(ability.card_id),
+                        self.parity_map.id(ability.card_id)
+                    )
                 }),
+            _ => "PASS".to_string(),
         };
         self.record_decision("main_action", options, choice);
         action

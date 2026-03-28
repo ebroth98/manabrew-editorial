@@ -36,8 +36,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Highest bidder pays life
     if highest_bid > 0 {
-        ctx.game.player_mut(highest_bidder).life -= highest_bid;
-        ctx.game.player_mut(highest_bidder).life_lost_this_turn += highest_bid;
+        ctx.game.player_lose_life(highest_bidder, highest_bid);
     }
 
     // Remember the winner for sub-ability resolution

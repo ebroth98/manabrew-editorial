@@ -60,10 +60,10 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             if !ctx.game.card(*card_id).is_land() {
                 nonland_count += 1;
             }
-            ctx.game.player_mut(controller).discarded_this_turn += 1;
+            ctx.game.player_record_discard(controller, 1);
             ctx.game.card_mut(*card_id).set_discarded(true);
             let owner = ctx.game.card(*card_id).owner;
-            ctx.game.move_card(*card_id, ZoneType::Graveyard, owner);
+            ctx.move_card(*card_id, ZoneType::Graveyard, owner);
             emit_zone_trigger(
                 ctx.trigger_handler,
                 *card_id,

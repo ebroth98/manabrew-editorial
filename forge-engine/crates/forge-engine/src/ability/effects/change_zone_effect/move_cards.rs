@@ -75,7 +75,7 @@ pub(super) fn move_cards(
 
         let dest_owner = resolve_dest_owner(ctx, sa, card_id, dest_zone);
         let old_zone = ctx.game.card(card_id).zone;
-        ctx.game.move_card(card_id, dest_zone, dest_owner);
+        ctx.move_card(card_id, dest_zone, dest_owner);
         apply_post_move(
             ctx,
             card_id,
@@ -92,7 +92,7 @@ pub(super) fn move_cards(
             if ctx.game.card(meld_id).zone == old_zone {
                 let mo = ctx.game.card(meld_id).owner;
                 let mz = ctx.game.card(meld_id).zone;
-                ctx.game.move_card(meld_id, dest_zone, mo);
+                ctx.move_card(meld_id, dest_zone, mo);
                 emit_zone_trigger(ctx.trigger_handler, meld_id, mz, dest_zone);
                 moved.push(meld_id);
             }

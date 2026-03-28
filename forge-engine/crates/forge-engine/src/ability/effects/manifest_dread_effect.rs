@@ -54,7 +54,7 @@ fn manifest_dread_once(ctx: &mut EffectContext, _sa: &SpellAbility, player: Play
     ctx.game.card_mut(chosen).set_manifested(true);
     ctx.game.card_mut(chosen).set_base_pt(Some(2), Some(2));
     ctx.game.card_mut(chosen).set_controller(player);
-    ctx.game.move_card(chosen, ZoneType::Battlefield, player);
+    ctx.move_card(chosen, ZoneType::Battlefield, player);
     ctx.trigger_handler
         .register_active_trigger(ctx.game, chosen);
     emit_zone_trigger(ctx.trigger_handler, chosen, old_zone, ZoneType::Battlefield);
@@ -63,7 +63,7 @@ fn manifest_dread_once(ctx: &mut EffectContext, _sa: &SpellAbility, player: Play
     for &card_id in &top2 {
         if card_id != chosen {
             let gz = ctx.game.card(card_id).zone;
-            ctx.game.move_card(card_id, ZoneType::Graveyard, player);
+            ctx.move_card(card_id, ZoneType::Graveyard, player);
             emit_zone_trigger(ctx.trigger_handler, card_id, gz, ZoneType::Graveyard);
         }
     }

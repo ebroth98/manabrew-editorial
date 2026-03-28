@@ -10,7 +10,7 @@ pub fn pay_as_decided(game: &mut GameState, player: PlayerId, amount: i32) -> bo
     if amount <= 0 {
         return true;
     }
-    game.player_mut(player).life -= amount;
+    game.player_lose_life(player, amount);
     // TODO: Fire LifeLost trigger — Java's player.payLife() fires LoseLife trigger.
     // Currently handled by GameLoop::pay_life_cost() which also checks cant_pay_life.
     true

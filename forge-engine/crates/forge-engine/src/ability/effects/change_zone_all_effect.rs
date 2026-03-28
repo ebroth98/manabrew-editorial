@@ -174,7 +174,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 continue; // already moved
             }
             let old_zone = ctx.game.card(card_id).zone;
-            ctx.game.move_card(card_id, dest_zone, dest_owner);
+            ctx.move_card(card_id, dest_zone, dest_owner);
             // Mark cards exiled by a UntilHostLeavesPlay effect so they can return
             // when the source leaves the battlefield.
             if dest_zone == ZoneType::Exile {

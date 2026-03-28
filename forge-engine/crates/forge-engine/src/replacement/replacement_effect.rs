@@ -11,30 +11,18 @@
 //! R$ Event$ Destroy | ValidCard$ Card.Self | Description$ ~ is indestructible.
 //! ```
 
-use serde::{Deserialize, Serialize};
-
 use forge_foundation::ZoneType;
+use serde::{Deserialize, Serialize};
 
 use crate::card::{valid_filter, Card};
 use crate::ids::PlayerId;
 use crate::parsing::{keys, Params};
+pub use crate::player::GameLossReason;
 
 // Re-export so existing `use crate::replacement::replacement_effect::{ReplacementType, ReplacementLayer}`
 // paths keep working.
 pub use super::replacement_layer::ReplacementLayer;
 pub use super::replacement_type::ReplacementType;
-
-/// Reasons a player can lose the game.
-/// Mirrors Java `GameLossReason` values used by `ValidLoseReason$`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum GameLossReason {
-    LifeReachedZero,
-    Poisoned,
-    CommanderDamage,
-    Milled,
-    OpponentWon,
-    SpellEffect,
-}
 
 // ── ReplacementEffect ─────────────────────────────────────────────────────────
 
@@ -56,6 +44,9 @@ pub struct ReplacementEffect {
     /// Zones where this effect is active. Empty = active everywhere.
     /// Parsed from `ActiveZones$` parameter.
     pub active_zones: Vec<ZoneType>,
+    /// Temporary suppression flag used by effects like commander replacement.
+    #[serde(default)]
+    pub suppressed: bool,
 }
 
 impl ReplacementEffect {
@@ -64,7 +55,7 @@ impl ReplacementEffect {
     /// An empty `active_zones` list means the effect is always active (mirrors
     /// Java `zonesCheck()` returning `true` when `activeZones` is empty).
     pub fn active_in_zone(&self, zone: ZoneType) -> bool {
-        self.active_zones.is_empty() || self.active_zones.contains(&zone)
+        !self.suppressed && (self.active_zones.is_empty() || self.active_zones.contains(&zone))
     }
 
     /// Returns a human-readable description for this effect (from `Description$`).
@@ -100,15 +91,16 @@ pub fn matches_valid_player(expr: &str, player: PlayerId, source: &Card) -> bool
 
 /// Check if a zone name string matches `zone`.
 pub fn zone_matches(expr: &str, zone: ZoneType) -> bool {
-    match expr.trim() {
-        "Battlefield" => zone == ZoneType::Battlefield,
-        "Graveyard" => zone == ZoneType::Graveyard,
-        "Hand" => zone == ZoneType::Hand,
-        "Library" => zone == ZoneType::Library,
-        "Exile" => zone == ZoneType::Exile,
-        "Command" => zone == ZoneType::Command,
-        _ => false,
-    }
+    expr.split(',')
+        .any(|part| match part.trim() {
+            "Battlefield" => zone == ZoneType::Battlefield,
+            "Graveyard" => zone == ZoneType::Graveyard,
+            "Hand" => zone == ZoneType::Hand,
+            "Library" => zone == ZoneType::Library,
+            "Exile" => zone == ZoneType::Exile,
+            "Command" => zone == ZoneType::Command,
+            _ => false,
+        })
 }
 
 // ── Parser ────────────────────────────────────────────────────────────────────
@@ -163,6 +155,7 @@ pub fn parse_replacement_effect(raw: &str) -> Option<ReplacementEffect> {
         layer,
         params,
         active_zones,
+        suppressed: false,
     })
 }
 

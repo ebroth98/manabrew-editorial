@@ -531,5 +531,5 @@ fn create_warp_effect(ctx: &mut EffectContext, sa: &SpellAbility, exiled_card_id
         effect.add_static_ability(parsed);
     }
     let eid = ctx.game.create_card(effect);
-    ctx.game.move_card(eid, ZoneType::Command, controller);
+    ctx.move_card(eid, ZoneType::Command, controller);
 }

@@ -200,6 +200,8 @@ impl GameState {
             ZoneType::ContraptionDeck,
             ZoneType::Junkyard,
             ZoneType::Ante,
+            ZoneType::ExtraHand,
+            ZoneType::Subgame,
             ZoneType::Stack,
         ];
 

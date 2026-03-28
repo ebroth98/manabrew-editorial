@@ -421,7 +421,7 @@ fn pay_non_tap_mana_ability_costs(
                 if game.player(player).life < *amount {
                     return false;
                 }
-                game.player_mut(player).lose_life(*amount);
+                game.player_lose_life(player, *amount);
             }
             CostPart::SubCounter {
                 amount,

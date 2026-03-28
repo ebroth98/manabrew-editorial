@@ -499,7 +499,7 @@ impl GameLoop {
 
         // Tap attackers (Vigilance skips tapping)
         let num_attackers = chosen_attackers.len() as i32;
-        game.player_mut(active).attacked_players_this_combat.clear();
+        game.player_attack_combat_reset(active);
         for &(attacker_id, defender) in &chosen_attackers {
             if !game.card(attacker_id).has_vigilance() {
                 // We pre-tapped attackers before OptionalAttackCost resolution to
@@ -547,16 +547,14 @@ impl GameLoop {
                     .attacked_players_this_turn
                     .contains(&pid)
                 {
-                    game.player_mut(active).attacked_players_this_turn.push(pid);
+                    game.player_record_attacked_player(active, pid);
                 }
                 if !game
                     .player(active)
                     .attacked_players_this_combat
                     .contains(&pid)
                 {
-                    game.player_mut(active)
-                        .attacked_players_this_combat
-                        .push(pid);
+                    game.player_record_attacked_player(active, pid);
                 }
             }
 

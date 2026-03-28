@@ -40,6 +40,7 @@ pub fn can_replace(
                 GameLossReason::Milled => "Milled",
                 GameLossReason::OpponentWon => "OpponentWon",
                 GameLossReason::SpellEffect => "SpellEffect",
+                GameLossReason::IntentionalDraw => "IntentionalDraw",
             })
         });
         if !matches_reason {

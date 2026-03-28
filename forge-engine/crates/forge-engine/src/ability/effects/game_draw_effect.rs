@@ -13,7 +13,8 @@ pub fn resolve(ctx: &mut EffectContext, _sa: &SpellAbility) {
     // All players lose — no winner
     let all_players: Vec<_> = ctx.game.player_order.clone();
     for &pid in &all_players {
-        ctx.game.player_mut(pid).has_lost = true;
+        ctx.game
+            .player_mark_lost(pid, crate::replacement::GameLossReason::IntentionalDraw);
     }
 
     ctx.game.game_over = true;

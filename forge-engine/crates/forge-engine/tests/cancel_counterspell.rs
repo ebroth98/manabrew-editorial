@@ -1,10 +1,11 @@
 /// Test for Cancel (1UU) - should counter any spell including creature spells
 /// This tests the fix for the TargetType$ Spell + ValidTgts$ Card combination
-use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::player::actions::PlayerAction;
 use forge_engine_core::spellability::target_restrictions::{self, has_valid_spell_with_filter};
 use forge_engine_core::spellability::{SpellAbility, StackEntry};
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -29,8 +30,8 @@ impl PlayerAgent for PassAgent {
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
-    ) -> MainPhaseAction {
-        MainPhaseAction::Pass
+    ) -> PlayerAction {
+        PlayerAction::PassPriority
     }
 
     fn choose_target_spell(&mut self, _player: PlayerId, valid: &[u32]) -> Option<u32> {

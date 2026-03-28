@@ -34,7 +34,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    ctx.game.player_mut(loser).has_lost = true;
+    ctx.game
+        .player_mark_lost(loser, crate::replacement::GameLossReason::SpellEffect);
 
     // SBA will determine if the game is over and set the winner
     let alive = ctx.game.alive_players();

@@ -1,11 +1,12 @@
 use std::collections::BTreeMap;
 
-use forge_engine_core::agent::{MainPhaseAction, PlayOption, PlayerAgent, TargetChoice};
+use forge_engine_core::agent::{PlayOption, PlayerAgent, TargetChoice};
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::player::actions::{AbilityRef, PlayerAction};
 use forge_engine_core::staticability::layer::apply_continuous_effects;
 use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
@@ -59,19 +60,19 @@ impl PlayerAgent for ScriptedAgent {
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
-    ) -> MainPhaseAction {
+    ) -> PlayerAction {
         if self.action_idx >= self.actions.len() {
-            return MainPhaseAction::Pass;
+            return PlayerAction::PassPriority;
         }
         let action = self.actions[self.action_idx];
         self.action_idx += 1;
         match action {
-            None => MainPhaseAction::Pass,
+            None => PlayerAction::PassPriority,
             Some(idx) => {
                 if idx < playable.len() {
-                    MainPhaseAction::Play(playable[idx])
+                    PlayerAction::CastSpell(playable[idx])
                 } else {
-                    MainPhaseAction::Pass
+                    PlayerAction::PassPriority
                 }
             }
         }
@@ -428,12 +429,12 @@ fn full_game_runs() {
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
-        ) -> MainPhaseAction {
+        ) -> PlayerAction {
             playable
                 .first()
                 .copied()
-                .map(MainPhaseAction::Play)
-                .unwrap_or(MainPhaseAction::Pass)
+                .map(PlayerAction::CastSpell)
+                .unwrap_or(PlayerAction::PassPriority)
         }
         fn choose_attackers(
             &mut self,
@@ -451,6 +452,7 @@ fn full_game_runs() {
             _: PlayerId,
             _: &[CardId],
             _: &[CardId],
+            _: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             Vec::new() // no blocks
         }
@@ -947,8 +949,8 @@ fn upkeep_trigger_fires_each_turn() {
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
-        ) -> MainPhaseAction {
-            MainPhaseAction::Pass
+        ) -> PlayerAction {
+            PlayerAction::PassPriority
         }
         fn choose_attackers(
             &mut self,
@@ -963,6 +965,7 @@ fn upkeep_trigger_fires_each_turn() {
             _: PlayerId,
             _: &[CardId],
             _: &[CardId],
+            _: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
@@ -1066,12 +1069,12 @@ fn full_game_with_triggers_runs() {
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
-        ) -> MainPhaseAction {
+        ) -> PlayerAction {
             playable
                 .first()
                 .copied()
-                .map(MainPhaseAction::Play)
-                .unwrap_or(MainPhaseAction::Pass)
+                .map(PlayerAction::CastSpell)
+                .unwrap_or(PlayerAction::PassPriority)
         }
         fn choose_attackers(
             &mut self,
@@ -1089,6 +1092,7 @@ fn full_game_with_triggers_runs() {
             _: PlayerId,
             _: &[CardId],
             _: &[CardId],
+            _: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
@@ -1238,26 +1242,29 @@ fn llanowar_elves_taps_for_mana() {
             _tappable: &[CardId],
             _untappable: &[CardId],
             activatable: &[(CardId, usize)],
-        ) -> MainPhaseAction {
+        ) -> PlayerAction {
             self.step += 1;
             match self.step {
                 1 => {
                     // First: activate Llanowar Elves mana ability
                     if let Some(&(cid, idx)) = activatable.first() {
-                        MainPhaseAction::ActivateAbility(cid, idx)
+                        PlayerAction::ActivateAbility(AbilityRef {
+                            card_id: cid,
+                            ability_index: idx,
+                        })
                     } else {
-                        MainPhaseAction::Pass
+                        PlayerAction::PassPriority
                     }
                 }
                 2 => {
                     // Second: cast Grizzly Bears (should now be playable)
                     if let Some(&opt) = playable.first() {
-                        MainPhaseAction::Play(opt)
+                        PlayerAction::CastSpell(opt)
                     } else {
-                        MainPhaseAction::Pass
+                        PlayerAction::PassPriority
                     }
                 }
-                _ => MainPhaseAction::Pass,
+                _ => PlayerAction::PassPriority,
             }
         }
         fn choose_attackers(
@@ -1273,6 +1280,7 @@ fn llanowar_elves_taps_for_mana() {
             _: PlayerId,
             _: &[CardId],
             _: &[CardId],
+            _: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
@@ -1380,9 +1388,9 @@ fn summoning_sick_creature_cant_tap() {
             _tappable: &[CardId],
             _untappable: &[CardId],
             activatable: &[(CardId, usize)],
-        ) -> MainPhaseAction {
+        ) -> PlayerAction {
             self.saw_activatable = !activatable.is_empty();
-            MainPhaseAction::Pass
+            PlayerAction::PassPriority
         }
         fn choose_attackers(
             &mut self,
@@ -1397,6 +1405,7 @@ fn summoning_sick_creature_cant_tap() {
             _: PlayerId,
             _: &[CardId],
             _: &[CardId],
+            _: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
@@ -1488,14 +1497,17 @@ fn prodigal_sorcerer_pings_opponent() {
             _tappable: &[CardId],
             _untappable: &[CardId],
             activatable: &[(CardId, usize)],
-        ) -> MainPhaseAction {
+        ) -> PlayerAction {
             if !self.activated {
                 self.activated = true;
                 if let Some(&(cid, idx)) = activatable.first() {
-                    return MainPhaseAction::ActivateAbility(cid, idx);
+                    return PlayerAction::ActivateAbility(AbilityRef {
+                        card_id: cid,
+                        ability_index: idx,
+                    });
                 }
             }
-            MainPhaseAction::Pass
+            PlayerAction::PassPriority
         }
         fn choose_attackers(
             &mut self,
@@ -1510,6 +1522,7 @@ fn prodigal_sorcerer_pings_opponent() {
             _: PlayerId,
             _: &[CardId],
             _: &[CardId],
+            _: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }
@@ -1613,14 +1626,17 @@ fn sakura_tribe_elder_fetches_land() {
             _tappable: &[CardId],
             _untappable: &[CardId],
             activatable: &[(CardId, usize)],
-        ) -> MainPhaseAction {
+        ) -> PlayerAction {
             if !self.activated {
                 self.activated = true;
                 if let Some(&(cid, idx)) = activatable.first() {
-                    return MainPhaseAction::ActivateAbility(cid, idx);
+                    return PlayerAction::ActivateAbility(AbilityRef {
+                        card_id: cid,
+                        ability_index: idx,
+                    });
                 }
             }
-            MainPhaseAction::Pass
+            PlayerAction::PassPriority
         }
         fn choose_attackers(
             &mut self,
@@ -1635,6 +1651,7 @@ fn sakura_tribe_elder_fetches_land() {
             _: PlayerId,
             _: &[CardId],
             _: &[CardId],
+            _: Option<usize>,
         ) -> Vec<(CardId, CardId)> {
             Vec::new()
         }

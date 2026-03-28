@@ -48,7 +48,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Lose life equal to number of non-land cards milled
     if non_land_count > 0 {
-        ctx.game.player_mut(controller).lose_life(non_land_count);
+        ctx.game.player_lose_life(controller, non_land_count);
 
         // Fire LifeLost trigger
         ctx.trigger_handler.run_trigger(
@@ -64,5 +64,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Remove rad counters equal to non-land cards milled
     let current_rad = ctx.game.player(controller).radiation_counters;
-    ctx.game.player_mut(controller).radiation_counters = (current_rad - non_land_count).max(0);
+    ctx.game
+        .player_set_radiation(controller, (current_rad - non_land_count).max(0));
 }

@@ -511,6 +511,13 @@ pub struct EffectContext<'a> {
     pub rng: &'a mut dyn crate::game_rng::GameRng,
 }
 
+impl EffectContext<'_> {
+    pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
+        self.game
+            .move_card_with_agents(card_id, dest_zone, dest_owner, self.agents);
+    }
+}
+
 fn choose_defender(
     ctx: &mut EffectContext,
     sa: &SpellAbility,
@@ -1035,7 +1042,7 @@ fn try_pay_unless_cost(
                 );
             }
             CostPart::PayLife(amount) => {
-                ctx.game.player_mut(payer).lose_life(*amount);
+                ctx.game.player_lose_life(payer, *amount);
                 ctx.trigger_handler.run_trigger(
                     TriggerType::LifeLost,
                     RunParams {
@@ -1052,10 +1059,10 @@ fn try_pay_unless_cost(
                 let _ = ctx.mana_pools[payer.index()].try_pay(mana_cost);
             }
             CostPart::PayEnergy(amount) => {
-                ctx.game.player_mut(payer).energy_counters -= *amount;
+                ctx.game.player_add_energy(payer, -*amount);
             }
             CostPart::PayShards(amount) => {
-                ctx.game.player_mut(payer).mana_shards -= *amount;
+                ctx.game.player_add_shards(payer, -*amount);
             }
             CostPart::Draw(amount) => {
                 for _ in 0..*amount {
@@ -1065,7 +1072,7 @@ fn try_pay_unless_cost(
             CostPart::Mill(amount) => {
                 for _ in 0..*amount {
                     if let Some(top) = ctx.game.zone_mut(ZoneType::Library, payer).take_top() {
-                        ctx.game.move_card(top, ZoneType::Graveyard, payer);
+                        ctx.move_card(top, ZoneType::Graveyard, payer);
                         ctx.trigger_handler.run_trigger(
                             TriggerType::Milled,
                             RunParams {
@@ -1151,7 +1158,7 @@ fn try_pay_unless_cost(
                             },
                             false,
                         );
-                        ctx.game.move_card(chosen, ZoneType::Graveyard, owner);
+                        ctx.move_card(chosen, ZoneType::Graveyard, owner);
                         emit_zone_trigger(
                             &mut ctx.trigger_handler,
                             chosen,
@@ -1265,7 +1272,7 @@ pub(super) fn try_pay_cumulative_upkeep(
                 );
             }
             CostPart::PayLife(amount) => {
-                ctx.game.player_mut(payer).lose_life(*amount);
+                ctx.game.player_lose_life(payer, *amount);
                 ctx.trigger_handler.run_trigger(
                     TriggerType::LifeLost,
                     RunParams {
@@ -1284,7 +1291,7 @@ pub(super) fn try_pay_cumulative_upkeep(
             CostPart::Mill(amount) => {
                 for _ in 0..*amount {
                     if let Some(top) = ctx.game.zone_mut(ZoneType::Library, payer).take_top() {
-                        ctx.game.move_card(top, ZoneType::Graveyard, payer);
+                        ctx.move_card(top, ZoneType::Graveyard, payer);
                         ctx.trigger_handler.run_trigger(
                             TriggerType::Milled,
                             RunParams {

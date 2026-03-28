@@ -59,6 +59,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             lki_p1p1,
         );
         ctx.trigger_handler.flush_waiting_triggers(ctx.game);
-        ctx.game.move_card(card_id, ZoneType::Graveyard, owner);
+        ctx.move_card(card_id, ZoneType::Graveyard, owner);
     }
 }

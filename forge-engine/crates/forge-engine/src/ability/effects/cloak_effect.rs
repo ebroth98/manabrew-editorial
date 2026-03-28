@@ -46,7 +46,7 @@ fn cloak_for_player(ctx: &mut EffectContext, sa: &SpellAbility, player: PlayerId
             ctx.game.tap(card_id);
         }
 
-        ctx.game.move_card(card_id, ZoneType::Battlefield, player);
+        ctx.move_card(card_id, ZoneType::Battlefield, player);
         ctx.trigger_handler
             .register_active_trigger(ctx.game, card_id);
 

@@ -441,12 +441,12 @@ impl CombatState {
                             },
                             lifelink_amount: if attacker_has_lifelink { to_player } else { 0 },
                         });
-                        if game.card(attacker_id).is_commander {
-                            *game
-                                .player_mut(defending_player)
-                                .commander_damage_received
-                                .entry(attacker_id.0)
-                                .or_insert(0) += to_player;
+                        if game.player_is_commander(game.card(attacker_id).owner, attacker_id) {
+                            game.player_add_commander_damage(
+                                defending_player,
+                                attacker_id,
+                                to_player,
+                            );
                         }
                     }
                     continue;
@@ -532,12 +532,12 @@ impl CombatState {
                             },
                         });
                         // Track commander damage
-                        if game.card(attacker_id).is_commander {
-                            *game
-                                .player_mut(defending_player)
-                                .commander_damage_received
-                                .entry(attacker_id.0)
-                                .or_insert(0) += attacker_power;
+                        if game.player_is_commander(game.card(attacker_id).owner, attacker_id) {
+                            game.player_add_commander_damage(
+                                defending_player,
+                                attacker_id,
+                                attacker_power,
+                            );
                         }
                     }
                     DefenderId::Permanent(target_id) => {
@@ -811,11 +811,11 @@ impl CombatState {
                                 },
                             });
                             if game.card(attacker_id).is_commander {
-                                *game
-                                    .player_mut(defending_player)
-                                    .commander_damage_received
-                                    .entry(attacker_id.0)
-                                    .or_insert(0) += defender_damage;
+                                game.player_add_commander_damage(
+                                    defending_player,
+                                    attacker_id,
+                                    defender_damage,
+                                );
                             }
                         }
                         DefenderId::Permanent(target_id) => {
@@ -1445,7 +1445,7 @@ fn deal_combat_damage_to_player(
                 target,
                 &crate::card::CounterType::Poison,
             ) {
-                game.player_mut(target).poison_counters += amount;
+                game.player_add_poison(target, amount);
             }
         } else {
             let dealt = game.deal_damage_to_player(target, amount);
@@ -1458,7 +1458,7 @@ fn deal_combat_damage_to_player(
                 target,
                 &crate::card::CounterType::Poison,
             ) {
-                game.player_mut(target).poison_counters += toxic;
+                game.player_add_poison(target, toxic);
             }
         }
         if lifelink
@@ -1489,9 +1489,8 @@ fn deal_combat_damage_to_player(
                         amount
                     };
                 if final_amount > 0 {
-                    game.player_mut(source_controller).gain_life(final_amount);
-                    game.player_mut(source_controller)
-                        .life_gained_by_team_this_turn += final_amount;
+                    game.player_gain_life(source_controller, final_amount);
+                    game.player_add_team_life_gained(source_controller, final_amount);
                 }
             }
         }
@@ -1558,9 +1557,8 @@ fn deal_combat_damage_to_card(
                         amount
                     };
                 if final_amount > 0 {
-                    game.player_mut(source_controller).gain_life(final_amount);
-                    game.player_mut(source_controller)
-                        .life_gained_by_team_this_turn += final_amount;
+                    game.player_gain_life(source_controller, final_amount);
+                    game.player_add_team_life_gained(source_controller, final_amount);
                 }
             }
         }

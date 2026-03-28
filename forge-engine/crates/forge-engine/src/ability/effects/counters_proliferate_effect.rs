@@ -87,11 +87,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 fn proliferate_player(ctx: &mut EffectContext, pid: crate::ids::PlayerId) {
     let p = ctx.game.player(pid);
     if p.poison_counters > 0 {
-        ctx.game.player_mut(pid).poison_counters += 1;
+        ctx.game.player_add_poison(pid, 1);
     }
     let p = ctx.game.player(pid);
     if p.energy_counters > 0 {
-        ctx.game.player_mut(pid).energy_counters += 1;
+        ctx.game.player_add_energy(pid, 1);
     }
 }
 

@@ -4,6 +4,7 @@ use crate::cost::CostPart;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::mana::ManaPool;
+use crate::player::actions::PlayerAction;
 use crate::spellability::SpellAbility;
 use forge_foundation::PhaseType;
 
@@ -64,7 +65,7 @@ pub trait PlayerAgent {
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
-    ) -> MainPhaseAction;
+    ) -> PlayerAction;
 
     /// Choose attackers from available creatures, assigning each to a defender.
     /// `possible_defenders` lists valid attack targets (opponent players + their planeswalkers).
@@ -401,6 +402,19 @@ pub trait PlayerAgent {
         _description: &str,
         _card_name: Option<&str>,
         _api: Option<crate::ability::api_type::ApiType>,
+    ) -> bool {
+        true
+    }
+
+    /// Java-parity replacement confirmation hook.
+    /// Mirrors `PlayerController.confirmReplacementEffect(...)`.
+    /// Default: accept, preserving prior replacement behavior for non-interactive agents.
+    fn confirm_replacement_effect(
+        &mut self,
+        _player: PlayerId,
+        _question: &str,
+        _effect_description: &str,
+        _card_name: Option<&str>,
     ) -> bool {
         true
     }
@@ -941,8 +955,8 @@ impl PlayerAgent for PassAgent {
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         _activatable: &[(CardId, usize)],
-    ) -> MainPhaseAction {
-        MainPhaseAction::Pass
+    ) -> PlayerAction {
+        PlayerAction::PassPriority
     }
 
     fn choose_attackers(

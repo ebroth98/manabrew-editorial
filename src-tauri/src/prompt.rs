@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::game_view_dto::{CardDto, GameViewDto};
+use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
 
 /// A display-only event that the frontend should animate before rendering the prompt's game state.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +75,11 @@ pub enum AgentPromptInner {
         /// Activated abilities on battlefield permanents.
         #[serde(rename = "activatableAbilityIds")]
         activatable_ability_ids: Vec<ActivatableAbilityInfo>,
+        /// Canonical engine-defined actions for this priority window.
+        /// Backward-compatible addition: existing UI can ignore this and keep
+        /// using the legacy response variants until migrated.
+        #[serde(rename = "availablePlayerActions", default)]
+        available_player_actions: Vec<EnginePlayerAction>,
     },
     ChooseAttackers {
         #[serde(rename = "gameView")]
@@ -592,6 +598,10 @@ pub struct ActivatableAbilityInfo {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum PlayerAction {
+    /// Canonical engine-defined response payload for engine-owned actions.
+    EngineAction {
+        action: EnginePlayerAction,
+    },
     MulliganDecision {
         keep: bool,
     },

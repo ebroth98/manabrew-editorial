@@ -29,7 +29,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             // Grant city's blessing (permanent for rest of game)
             // In Java this is Player.setBlessing(true). We track via a flag.
             // The blessing is checked by card scripts via "Player.hasCityBlessing"
-            ctx.game.player_mut(pid).has_city_blessing = true;
+            ctx.game.player_set_blessing(pid, true);
         }
     }
 }

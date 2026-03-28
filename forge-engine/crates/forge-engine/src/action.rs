@@ -1,95 +1,20 @@
 use forge_foundation::ZoneType;
 
-use crate::card::Card;
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
-use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::agent::PlayerAgent;
+use crate::replacement::replacement_handler::{
+    apply_replacements, apply_replacements_with_agents, ReplacementEvent,
+};
 use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
 use crate::staticability::layer::apply_etb_tapped;
 use crate::trigger::handler::TriggerHandler;
-use crate::trigger::parse_trigger;
 
 /// Game state mutation methods — moving cards, dealing damage, state-based actions.
 impl GameState {
-    fn ensure_speed_effect(
-        &mut self,
-        player: PlayerId,
-        trigger_handler: Option<&mut TriggerHandler>,
-    ) {
-        if self.player(player).speed == 0 || self.player(player).speed_effect_card.is_some() {
-            return;
-        }
-
-        let mut effect = Card::new(
-            CardId(0),
-            "Start Your Engines!".to_string(),
-            player,
-            forge_foundation::CardTypeLine::parse("Effect"),
-            forge_foundation::ManaCost::parse("0"),
-            forge_foundation::ColorSet::COLORLESS,
-            None,
-            None,
-            vec![],
-            vec![],
-        );
-        effect.set_controller(player);
-        effect.set_s_var("SpeedUp", "DB$ ChangeSpeed");
-
-        let mut next_trigger_id = 0;
-        if let Some(trigger) = parse_trigger(
-            "Mode$ LifeLostAll | ValidPlayer$ Opponent | TriggerZones$ Command | ActivationLimit$ 1 | PlayerTurn$ True | CheckSVar$ Count$YourSpeed | SVarCompare$ LT4 | Execute$ SpeedUp | TriggerDescription$ Whenever one or more opponents lose life during your turn, if your speed is less than 4, your speed increases by 1. This ability triggers only once each turn.",
-            &mut next_trigger_id,
-        ) {
-            effect.add_trigger(trigger);
-        }
-
-        let effect_id = self.create_card(effect);
-        self.move_card(effect_id, ZoneType::Command, player);
-        self.player_mut(player).speed_effect_card = Some(effect_id);
-
-        if let Some(handler) = trigger_handler {
-            handler.register_active_trigger(self, effect_id);
-        }
-    }
-
-    pub fn set_player_speed(
-        &mut self,
-        player: PlayerId,
-        speed: i32,
-        trigger_handler: Option<&mut TriggerHandler>,
-    ) {
-        let speed = speed.clamp(0, 4);
-        self.player_mut(player).speed = speed;
-        if speed > 0 {
-            self.ensure_speed_effect(player, trigger_handler);
-        }
-    }
-
-    pub fn increase_player_speed(
-        &mut self,
-        player: PlayerId,
-        trigger_handler: Option<&mut TriggerHandler>,
-    ) {
-        let current = self.player(player).speed;
-        if current < 4 {
-            self.set_player_speed(player, current + 1, trigger_handler);
-        }
-    }
-
-    pub fn decrease_player_speed(
-        &mut self,
-        player: PlayerId,
-        trigger_handler: Option<&mut TriggerHandler>,
-    ) {
-        let current = self.player(player).speed;
-        if current > 1 {
-            self.set_player_speed(player, current - 1, trigger_handler);
-        }
-    }
-
     pub fn record_player_damage_assignment(
         &mut self,
         source: Option<CardId>,
@@ -97,51 +22,80 @@ impl GameState {
         amount: i32,
         is_combat: bool,
     ) {
-        if amount <= 0 {
-            return;
-        }
-        let Some(source_id) = source else {
-            return;
-        };
-        let controller = self.card(source_id).controller;
-        {
-            let controller_state = self.player_mut(controller);
-            controller_state.assigned_damage_this_turn += amount;
-            if is_combat {
-                controller_state.assigned_combat_damage_this_turn += amount;
-            }
-        }
-        if let Some(target) = target_player {
-            if target != controller {
-                self.player_mut(controller)
-                    .opponents_assigned_damage_this_turn += amount;
-            }
-            if is_combat {
-                self.player_mut(target)
-                    .been_dealt_combat_damage_since_last_turn = true;
-            }
-        }
+        self.player_record_damage_assignment(source, target_player, amount, is_combat);
     }
 
     /// Move a card from its current zone to a new zone.
     pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
-        // Commander redirect: commanders going to GY or Exile return to Command zone instead.
-        // Mirrors Java's GameAction.stateBasedAction_Commander().
-        let (dest_zone, dest_owner) = if self.cards[card_id.index()].is_commander
-            && (dest_zone == ZoneType::Graveyard || dest_zone == ZoneType::Exile)
-        {
-            let owner = self.cards[card_id.index()].owner;
-            (ZoneType::Command, owner)
-        } else {
-            (dest_zone, dest_owner)
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, true);
+    }
+
+    pub fn move_card_with_agents(
+        &mut self,
+        card_id: CardId,
+        dest_zone: ZoneType,
+        dest_owner: PlayerId,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) {
+        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true);
+    }
+
+    fn move_card_without_replacement(
+        &mut self,
+        card_id: CardId,
+        dest_zone: ZoneType,
+        dest_owner: PlayerId,
+    ) {
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, false);
+    }
+
+    fn move_card_internal(
+        &mut self,
+        card_id: CardId,
+        dest_zone: ZoneType,
+        dest_owner: PlayerId,
+        agents: Option<&mut [Box<dyn PlayerAgent>]>,
+        apply_move_replacement: bool,
+    ) {
+        let (src_zone, src_owner, was_permanent, was_land, is_token) = {
+            let card = &self.cards[card_id.index()];
+            (
+                card.zone,
+                card.controller,
+                card.type_line.is_permanent(),
+                card.is_land(),
+                card.is_token,
+            )
         };
-
-        let card = &self.cards[card_id.index()];
-        let src_zone = card.zone;
-        let src_owner = card.controller;
-
+        let mut moved_event = ReplacementEvent::Moved {
+            card: card_id,
+            origin: src_zone,
+            destination: dest_zone,
+        };
+        if apply_move_replacement {
+            if let Some(agents) = agents {
+                apply_replacements_with_agents(self, agents, &mut moved_event);
+            } else {
+                apply_replacements(self, &mut moved_event);
+            }
+        }
+        let dest_zone = match moved_event {
+            ReplacementEvent::Moved { destination, .. } => destination,
+            _ => dest_zone,
+        };
+        let dest_owner = if dest_zone == ZoneType::Command {
+            self.card(card_id).owner
+        } else {
+            dest_owner
+        };
         let host_left_battlefield =
             src_zone == ZoneType::Battlefield && dest_zone != ZoneType::Battlefield;
+        if host_left_battlefield && was_permanent {
+            self.player_record_permanent_left_battlefield(src_owner);
+        }
+        if dest_zone == ZoneType::Graveyard && was_permanent && !is_token {
+            self.player_record_permanent_put_into_graveyard(self.card(card_id).owner);
+        }
         let forget_effects: Vec<CardId> = self
             .cards
             .iter()
@@ -155,7 +109,7 @@ impl GameState {
 
         // Tokens and copy-tokens cease to exist when leaving the battlefield (CR 110.5g).
         // Set zone to None (limbo) and remove from source zone without adding to destination.
-        if card.is_token && dest_zone != ZoneType::Battlefield {
+        if is_token && dest_zone != ZoneType::Battlefield {
             if let Some(table) = self.pending_change_zone_table.as_mut() {
                 table.put(Some(src_zone), Some(ZoneType::None), card_id);
             }
@@ -209,6 +163,9 @@ impl GameState {
                 // Add to destination zone first so the card is "on the
                 // battlefield" when ETB-tapped checks run against it.
                 self.zone_mut(dest_zone, dest_owner).add(card_id);
+                if was_land {
+                    self.player_record_landfall(dest_owner);
+                }
                 // Apply ETB-tapped effects (intrinsic + extrinsic).
                 apply_etb_tapped(self, card_id);
                 // Keyword ETB counters: K:etbCounter:TYPE:N
@@ -478,8 +435,7 @@ impl GameState {
         } = event
         {
             if final_amount > 0 {
-                self.players[target.index()].deal_damage(final_amount);
-                return final_amount;
+                return self.player_deal_damage(target, final_amount);
             }
         }
         0
@@ -496,8 +452,25 @@ impl GameState {
     /// returns the CardId to keep.  Mirrors Java's `chooseSingleEntityForEffect`.
     pub fn check_state_based_actions_with_triggers(
         &mut self,
+        trigger_handler: Option<&mut TriggerHandler>,
+        legend_keep_fn: Option<&mut dyn FnMut(PlayerId, &[CardId]) -> CardId>,
+    ) -> bool {
+        self.check_state_based_actions_impl(trigger_handler, legend_keep_fn, None)
+    }
+
+    pub fn check_state_based_actions_with_trigger_agents(
+        &mut self,
+        trigger_handler: Option<&mut TriggerHandler>,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) -> bool {
+        self.check_state_based_actions_impl(trigger_handler, None, Some(agents))
+    }
+
+    fn check_state_based_actions_impl(
+        &mut self,
         mut trigger_handler: Option<&mut TriggerHandler>,
         mut legend_keep_fn: Option<&mut dyn FnMut(PlayerId, &[CardId]) -> CardId>,
+        mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
     ) -> bool {
         // Capture battlefield state before SBA processing. Used by DisableTriggers
         // (Hushbringer) to check LKI — if a creature with DisableTriggers dies in
@@ -515,6 +488,21 @@ impl GameState {
 
         // Check players with 0 or less life
         for pid in self.player_order.clone() {
+            if self.player(pid).tried_to_draw_from_empty_library && self.player(pid).is_alive() {
+                self.player_mut(pid).tried_to_draw_from_empty_library = false;
+                let mut event = ReplacementEvent::GameLoss {
+                    player: pid,
+                    reason: GameLossReason::Milled,
+                };
+                let result = apply_replacements(self, &mut event);
+                if result != ReplacementResult::Replaced {
+                    if !self.player(pid).has_lost {
+                        self.player_mark_lost(pid, GameLossReason::Milled);
+                        newly_lost_players.push(pid);
+                        any_changes = true;
+                    }
+                }
+            }
             if self.player(pid).life <= 0 && self.player(pid).is_alive() {
                 let mut event = ReplacementEvent::GameLoss {
                     player: pid,
@@ -523,7 +511,7 @@ impl GameState {
                 let result = apply_replacements(self, &mut event);
                 if result != ReplacementResult::Replaced {
                     if !self.player(pid).has_lost {
-                        self.player_mut(pid).has_lost = true;
+                        self.player_mark_lost(pid, GameLossReason::LifeReachedZero);
                         newly_lost_players.push(pid);
                         any_changes = true;
                     }
@@ -537,33 +525,28 @@ impl GameState {
                 };
                 let result = apply_replacements(self, &mut event);
                 if result != ReplacementResult::Replaced {
-                    let mut event = ReplacementEvent::GameLoss {
-                        player: pid,
-                        reason: GameLossReason::CommanderDamage,
-                    };
-                    let result = apply_replacements(self, &mut event);
-                    if result != ReplacementResult::Replaced {
-                        if !self.player(pid).has_lost {
-                            self.player_mut(pid).has_lost = true;
-                            newly_lost_players.push(pid);
-                        }
+                    if !self.player(pid).has_lost {
+                        self.player_mark_lost(pid, GameLossReason::Poisoned);
+                        newly_lost_players.push(pid);
                     }
                     any_changes = true;
                 }
             }
             // Check commander damage (21+ from a single commander source = lose)
-            let commander_dmg_entries: Vec<(u32, i32)> = self
-                .player(pid)
-                .commander_damage_received
-                .iter()
-                .map(|(&k, &v)| (k, v))
-                .collect();
-            for (_card_raw_id, dmg) in commander_dmg_entries {
-                if dmg >= 21 && self.player(pid).is_alive() {
-                    if !self.player(pid).has_lost {
-                        self.player_mut(pid).has_lost = true;
-                        newly_lost_players.push(pid);
-                        any_changes = true;
+            if self.player(pid).commander_damage_enabled {
+                let commander_dmg_entries: Vec<(u32, i32)> = self
+                    .player(pid)
+                    .commander_damage_received
+                    .iter()
+                    .map(|(&k, &v)| (k, v))
+                    .collect();
+                for (_card_raw_id, dmg) in commander_dmg_entries {
+                    if dmg >= 21 && self.player(pid).is_alive() {
+                        if !self.player(pid).has_lost {
+                            self.player_mark_lost(pid, GameLossReason::CommanderDamage);
+                            newly_lost_players.push(pid);
+                            any_changes = true;
+                        }
                     }
                 }
             }
@@ -686,7 +669,11 @@ impl GameState {
                             origin: ZoneType::Battlefield,
                             destination: ZoneType::Graveyard,
                         };
-                        apply_replacements(self, &mut moved_event);
+                        if let Some(agents) = agents.as_deref_mut() {
+                            apply_replacements_with_agents(self, agents, &mut moved_event);
+                        } else {
+                            apply_replacements(self, &mut moved_event);
+                        }
                         let final_dest =
                             if let ReplacementEvent::Moved { destination, .. } = moved_event {
                                 destination
@@ -715,7 +702,7 @@ impl GameState {
                             );
                             handler.flush_waiting_triggers(self);
                         }
-                        self.move_card(cid, final_dest, owner);
+                        self.move_card_without_replacement(cid, final_dest, owner);
                         any_changes = true;
                     } else {
                         // Indestructible — destruction was replaced; creature stays.
@@ -770,6 +757,8 @@ impl GameState {
                 // chooseSingleEntityForEffect), or default to first in zone order.
                 let keep = if let Some(ref mut chooser) = legend_keep_fn {
                     chooser(pid, &ids)
+                } else if let Some(agents) = agents.as_deref_mut() {
+                    agents[pid.index()].choose_legend_keep(pid, &ids)
                 } else {
                     ids[0]
                 };
@@ -779,7 +768,11 @@ impl GameState {
                     }
                     let owner = self.card(cid).owner;
                     let old_zone = self.card(cid).zone;
-                    self.move_card(cid, ZoneType::Graveyard, owner);
+                    if let Some(agents) = agents.as_deref_mut() {
+                        self.move_card_with_agents(cid, ZoneType::Graveyard, owner, agents);
+                    } else {
+                        self.move_card(cid, ZoneType::Graveyard, owner);
+                    }
                     if let Some(handler) = trigger_handler.as_deref_mut() {
                         crate::ability::effects::emit_zone_trigger(
                             handler,
@@ -879,34 +872,12 @@ impl GameState {
     ///
     /// Mirrors Java `GameAction.draw()` calling `ReplacementHandler.run(Draw, …)`.
     pub fn draw_card(&mut self, player: PlayerId) -> Option<CardId> {
-        if crate::staticability::static_ability_cant_draw::can_draw_amount(self, player, 1) <= 0 {
-            return None;
-        }
-        // Run Draw replacement effects.
-        let mut event = ReplacementEvent::Draw { player };
-        let result = apply_replacements(self, &mut event);
-        if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
-            return None;
-        }
-
-        let card_id = self.zone_mut(ZoneType::Library, player).take_top()?;
-        self.move_card(card_id, ZoneType::Hand, player);
-        self.player_mut(player).drawn_this_turn += 1;
-        Some(card_id)
+        self.player_draw_one(player)
     }
 
     /// Draw N cards for a player. Returns drawn card IDs.
     pub fn draw_cards(&mut self, player: PlayerId, n: usize) -> Vec<CardId> {
-        let mut drawn = Vec::new();
-        for _ in 0..n {
-            if let Some(cid) = self.draw_card(player) {
-                drawn.push(cid);
-            } else {
-                // Drawing from empty library — player loses (handled by SBA)
-                break;
-            }
-        }
-        drawn
+        self.player_draw_cards(player, n)
     }
 
     /// Shuffle a player's library using the provided RNG.
@@ -918,12 +889,12 @@ impl GameState {
 
     /// Reset per-turn state for all cards and players of a given player.
     pub fn new_turn_for_player(&mut self, player: PlayerId) {
-        self.player_mut(player).new_turn();
+        self.player_new_turn(player);
         // Reset drawn_this_turn for ALL players (mirrors Java Game.newTurn).
         // The Drawn trigger Number$ check requires an accurate per-turn count.
         for pid in &self.player_order.clone() {
             if *pid != player {
-                self.player_mut(*pid).drawn_this_turn = 0;
+                self.player_reset_drawn_this_turn(*pid);
             }
         }
 
@@ -1041,6 +1012,7 @@ impl GameState {
 mod tests {
     use super::*;
     use crate::card::Card;
+    use crate::player::RegisteredPlayer;
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
 
     fn make_creature(game: &mut GameState, name: &str, owner: PlayerId, p: i32, t: i32) -> CardId {
@@ -1115,5 +1087,23 @@ mod tests {
         assert!(!game.tap(cid)); // already tapped
         assert!(game.untap(cid));
         assert!(!game.card(cid).tapped);
+    }
+
+    #[test]
+    fn commander_moves_to_command_zone_via_replacement_effect() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let commander = make_creature(&mut game, "Commander Bear", PlayerId(0), 2, 2);
+        game.move_card(commander, ZoneType::Command, PlayerId(0));
+
+        let mut registered = RegisteredPlayer::new("Alice".to_string());
+        registered.commanders.push("Commander Bear".to_string());
+        game.initialize_player_commanders_from_registered(PlayerId(0), &registered, None);
+
+        game.move_card(commander, ZoneType::Battlefield, PlayerId(0));
+        game.move_card(commander, ZoneType::Graveyard, PlayerId(0));
+
+        assert_eq!(game.card(commander).zone, ZoneType::Command);
+        assert!(game.zone(ZoneType::Command, PlayerId(0)).contains(commander));
+        assert_eq!(game.zone(ZoneType::Graveyard, PlayerId(0)).len(), 0);
     }
 }

@@ -72,6 +72,7 @@ pub fn create_permanent_spell(
         is_land_ability: false,
         trigger_objects: HashMap::new(),
         trigger_spell_abilities: HashMap::new(),
+        trigger_remembered: Vec::new(),
         restriction: SpellAbilityRestriction::default(),
         condition: SpellAbilityCondition::default(),
         rollback_effects: Vec::new(),

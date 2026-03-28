@@ -97,8 +97,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let old1 = ctx.game.card(obj1).zone;
     let old2 = ctx.game.card(obj2).zone;
 
-    ctx.game.move_card(obj1, zone2, controller);
-    ctx.game.move_card(obj2, zone1, controller);
+    ctx.move_card(obj1, zone2, controller);
+    ctx.move_card(obj2, zone1, controller);
 
     super::emit_zone_trigger(ctx.trigger_handler, obj1, old1, zone2);
     super::emit_zone_trigger(ctx.trigger_handler, obj2, old2, zone1);

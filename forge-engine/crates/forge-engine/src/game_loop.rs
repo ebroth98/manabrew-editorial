@@ -294,7 +294,7 @@ impl GameLoop {
 
         // SkipTurn (issue #22): if the active player has skip_turns > 0, skip entirely.
         if game.player(active).skip_turns > 0 {
-            game.player_mut(active).skip_turns -= 1;
+            game.player_decrement_skip_turns(active);
             self.log_turn_skipped(game, active, game.player(active).skip_turns);
             // Still advance turn state so the next player gets their turn
             game.turn.next_player_turn(&game.player_order.clone());
@@ -407,11 +407,7 @@ fn check_sba(
     trigger_handler: &mut TriggerHandler,
     agents: &mut [Box<dyn PlayerAgent>],
 ) -> bool {
-    let mut legend_fn = |player: PlayerId, ids: &[CardId]| -> CardId {
-        agents[player.index()].choose_legend_keep(player, ids)
-    };
-    let result =
-        game.check_state_based_actions_with_triggers(Some(trigger_handler), Some(&mut legend_fn));
+    let result = game.check_state_based_actions_with_trigger_agents(Some(trigger_handler), agents);
     if result {
         // Flush triggers fired during SBA before re-registering. This preserves
         // triggers from Animate effects (pump_trigger_count) that were active
@@ -445,7 +441,8 @@ mod tests {
     use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
     use rand::SeedableRng;
 
-    use crate::agent::{MainPhaseAction, PlayerAgent, TargetChoice};
+    use crate::agent::{PlayCardMode, PlayerAgent, TargetChoice};
+    use crate::player::actions::PlayerAction;
     use crate::card::Card;
 
     use super::*;
@@ -476,10 +473,10 @@ mod tests {
             _tappable_lands: &[CardId],
             _untappable_lands: &[CardId],
             _activatable: &[(CardId, usize)],
-        ) -> MainPhaseAction {
-            MainPhaseAction::Play(crate::agent::PlayOption {
+        ) -> PlayerAction {
+            PlayerAction::CastSpell(crate::agent::PlayOption {
                 card_id: CardId(u32::MAX),
-                mode: crate::agent::PlayCardMode::Normal,
+                mode: PlayCardMode::Normal,
             })
         }
 
@@ -579,14 +576,14 @@ mod tests {
             _tappable_lands: &[CardId],
             _untappable_lands: &[CardId],
             _activatable: &[(CardId, usize)],
-        ) -> MainPhaseAction {
+        ) -> PlayerAction {
             if self.last_priority != Some(player) {
                 self.bad_priority_seen.store(true, Ordering::SeqCst);
             }
             if let Some(phase) = self.last_phase {
                 self.phases_seen.lock().unwrap().push(phase);
             }
-            MainPhaseAction::Pass
+            PlayerAction::PassPriority
         }
 
         fn choose_attackers(

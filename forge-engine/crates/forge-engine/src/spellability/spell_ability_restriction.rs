@@ -175,71 +175,36 @@ impl SpellAbilityRestriction {
 
         // Check cards in hand requirement
         let required = self.variables.cards_in_hand();
-        if required >= 0 {
-            let hand_count = game.cards_in_zone(ZoneType::Hand, player).len() as i32;
-            if hand_count < required {
-                return false;
-            }
+        if required >= 0 && game.player_hand_count(player) < required as usize {
+            return false;
         }
 
-        // Check hellbent (no cards in hand)
-        if self.variables.hellbent() {
-            let hand_count = game.cards_in_zone(ZoneType::Hand, player).len();
-            if hand_count > 0 {
-                return false;
-            }
+        if self.variables.hellbent() && !game.player_has_hellbent(player) {
+            return false;
         }
 
-        // Check threshold (7+ cards in graveyard)
-        if self.variables.threshold() {
-            let gy_count = game.cards_in_zone(ZoneType::Graveyard, player).len();
-            if gy_count < 7 {
-                return false;
-            }
+        if self.variables.threshold() && !game.player_has_threshold(player) {
+            return false;
         }
 
-        // Check metalcraft (3+ artifacts on battlefield)
-        if self.variables.metalcraft() {
-            let artifact_count = game
-                .cards_in_zone(ZoneType::Battlefield, player)
-                .iter()
-                .filter(|&&cid| game.card(cid).type_line.is_artifact())
-                .count();
-            if artifact_count < 3 {
-                return false;
-            }
+        if self.variables.metalcraft() && !game.player_has_metalcraft(player) {
+            return false;
         }
 
-        // Check delirium (4+ card types in graveyard)
-        if self.variables.delirium() {
-            let mut types = std::collections::HashSet::new();
-            for &cid in game.cards_in_zone(ZoneType::Graveyard, player) {
-                let c = game.card(cid);
-                if c.is_creature() {
-                    types.insert("creature");
-                }
-                if c.is_land() {
-                    types.insert("land");
-                }
-                if c.type_line.is_artifact() {
-                    types.insert("artifact");
-                }
-                if c.type_line.is_enchantment() {
-                    types.insert("enchantment");
-                }
-                if c.type_line.is_instant() {
-                    types.insert("instant");
-                }
-                if c.type_line.is_sorcery() {
-                    types.insert("sorcery");
-                }
-                if c.type_line.is_planeswalker() {
-                    types.insert("planeswalker");
-                }
-            }
-            if types.len() < 4 {
-                return false;
-            }
+        if self.variables.delirium() && !game.player_has_delirium(player) {
+            return false;
+        }
+
+        if self.variables.revolt() && !game.player_has_revolt(player) {
+            return false;
+        }
+
+        if self.variables.desert() && !game.player_has_desert(player) {
+            return false;
+        }
+
+        if self.variables.blessing() && !game.player_has_blessing(player) {
+            return false;
         }
 
         true
@@ -293,27 +258,26 @@ impl SpellAbilityRestriction {
     /// Check other restrictions (threshold, metalcraft, etc.).
     /// Mirrors Java's `SpellAbilityRestriction.checkOtherRestrictions(Card, SpellAbility)`.
     pub fn check_other_restrictions(&self, game: &GameState, player: PlayerId) -> bool {
-        if self.variables.hellbent() {
-            let hand_count = game.cards_in_zone(ZoneType::Hand, player).len();
-            if hand_count > 0 {
-                return false;
-            }
+        if self.variables.hellbent() && !game.player_has_hellbent(player) {
+            return false;
         }
-        if self.variables.threshold() {
-            let gy_count = game.cards_in_zone(ZoneType::Graveyard, player).len();
-            if gy_count < 7 {
-                return false;
-            }
+        if self.variables.threshold() && !game.player_has_threshold(player) {
+            return false;
         }
-        if self.variables.metalcraft() {
-            let artifact_count = game
-                .cards_in_zone(ZoneType::Battlefield, player)
-                .iter()
-                .filter(|&&cid| game.card(cid).type_line.is_artifact())
-                .count();
-            if artifact_count < 3 {
-                return false;
-            }
+        if self.variables.metalcraft() && !game.player_has_metalcraft(player) {
+            return false;
+        }
+        if self.variables.delirium() && !game.player_has_delirium(player) {
+            return false;
+        }
+        if self.variables.revolt() && !game.player_has_revolt(player) {
+            return false;
+        }
+        if self.variables.desert() && !game.player_has_desert(player) {
+            return false;
+        }
+        if self.variables.blessing() && !game.player_has_blessing(player) {
+            return false;
         }
         true
     }

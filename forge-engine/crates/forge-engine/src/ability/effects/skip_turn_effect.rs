@@ -20,7 +20,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let targets = resolve_defined_players(defined, controller, ctx.game);
     for target in targets {
         if ctx.game.player(target).is_alive() {
-            ctx.game.player_mut(target).skip_turns += num;
+            ctx.game.player_add_skip_turns(target, num);
         }
     }
 }

@@ -62,7 +62,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Move chosen cards to graveyard.
     for &id in &graveyard {
-        ctx.game.move_card(id, ZoneType::Graveyard, target);
+        ctx.move_card(id, ZoneType::Graveyard, target);
         emit_zone_trigger(
             ctx.trigger_handler,
             id,
@@ -131,8 +131,8 @@ mod tests {
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
-        ) -> crate::agent::MainPhaseAction {
-            crate::agent::MainPhaseAction::Pass
+        ) -> crate::player::actions::PlayerAction {
+            crate::player::actions::PlayerAction::PassPriority
         }
         fn choose_attackers(
             &mut self,

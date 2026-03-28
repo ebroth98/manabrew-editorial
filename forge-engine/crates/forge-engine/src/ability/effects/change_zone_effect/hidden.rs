@@ -287,7 +287,7 @@ fn offer_panglacial_cast(
         );
         if cast {
             zone_cards.retain(|&cid| cid != pg_id);
-            ctx.game.move_card(pg_id, ZoneType::Stack, controller);
+            ctx.move_card(pg_id, ZoneType::Stack, controller);
         }
     }
 }

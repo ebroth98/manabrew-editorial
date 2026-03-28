@@ -83,7 +83,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             continue;
         }
         let old_zone = ctx.game.card(card_id).zone;
-        ctx.game.move_card(card_id, ZoneType::Exile, controller);
+        ctx.move_card(card_id, ZoneType::Exile, controller);
         emit_zone_trigger(ctx.trigger_handler, card_id, old_zone, ZoneType::Exile);
         exiled.push(card_id);
     }

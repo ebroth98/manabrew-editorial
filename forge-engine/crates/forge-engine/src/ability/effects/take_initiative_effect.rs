@@ -1,5 +1,4 @@
 use super::{resolve_defined_player, EffectContext};
-use crate::event::{RunParams, TriggerType};
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ TakeInitiative` — a player takes the initiative.
@@ -23,16 +22,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    ctx.game.initiative_holder = Some(target);
-
-    ctx.trigger_handler.run_trigger(
-        TriggerType::TakeInitiative,
-        RunParams {
-            player: Some(target),
-            ..Default::default()
-        },
-        false,
-    );
+    ctx.game.player_take_initiative(target, Some(ctx.trigger_handler));
 }
 
 #[cfg(test)]

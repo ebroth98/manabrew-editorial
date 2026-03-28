@@ -23,13 +23,14 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use forge_engine_core::agent::{
-    BinaryChoiceKind, GameEntity, MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent,
+    BinaryChoiceKind, GameEntity, PlayCardMode, PlayOption, PlayerAgent,
     TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
+use forge_engine_core::player::actions::{AbilityRef, PlayerAction};
 use forge_engine_core::spellability::AlternativeCost;
 use forge_foundation::PhaseType;
 
@@ -333,10 +334,10 @@ impl PlayerAgent for DeterministicAgent {
         _tappable_lands: &[CardId],
         _untappable_lands: &[CardId],
         activatable: &[(CardId, usize)],
-    ) -> MainPhaseAction {
+    ) -> PlayerAction {
         if playable.is_empty() && activatable.is_empty() {
             self.log_decision("Main phase: PASS (nothing playable)");
-            return MainPhaseAction::Pass;
+            return PlayerAction::PassPriority;
         }
 
         // Match Java harness ActionSpace: omit explicit mana abilities from the
@@ -363,7 +364,7 @@ impl PlayerAgent for DeterministicAgent {
         });
         if choices.is_empty() {
             self.log_decision("Main phase: PASS (no non-mana actions)");
-            return MainPhaseAction::Pass;
+            return PlayerAction::PassPriority;
         }
         // Pick randomly:
         // - default: each action + pass are equally likely
@@ -376,7 +377,7 @@ impl PlayerAgent for DeterministicAgent {
             );
             if idx >= choices.len() {
                 self.log_decision("Main phase: PASS (random weighted)");
-                return MainPhaseAction::Pass;
+                return PlayerAction::PassPriority;
             }
             idx
         } else {
@@ -399,7 +400,7 @@ impl PlayerAgent for DeterministicAgent {
             }
             if idx >= choices.len() {
                 self.log_decision("Main phase: PASS (random)");
-                return MainPhaseAction::Pass;
+                return PlayerAction::PassPriority;
             }
             idx
         };
@@ -411,7 +412,7 @@ impl PlayerAgent for DeterministicAgent {
                     "Main phase: PLAY {} (random idx={})",
                     name, chosen_idx
                 ));
-                MainPhaseAction::Play(chosen)
+                PlayerAction::CastSpell(chosen)
             }
             ActionChoice::Ability(card_id, ability_idx) => {
                 let name = self.card_name(card_id);
@@ -419,7 +420,12 @@ impl PlayerAgent for DeterministicAgent {
                     "Main phase: ACTIVATE {} [ab#{}] (random idx={})",
                     name, ability_idx, chosen_idx
                 ));
-                MainPhaseAction::ActivateAbility(card_id, ability_idx)
+                PlayerAction::ActivateAbility(
+                    AbilityRef {
+                        card_id,
+                        ability_index: ability_idx,
+                    },
+                )
             }
         }
     }

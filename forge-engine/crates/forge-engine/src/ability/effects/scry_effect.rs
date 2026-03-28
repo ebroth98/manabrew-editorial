@@ -154,8 +154,8 @@ mod tests {
             _: &[CardId],
             _: &[CardId],
             _: &[(CardId, usize)],
-        ) -> crate::agent::MainPhaseAction {
-            crate::agent::MainPhaseAction::Pass
+        ) -> crate::player::actions::PlayerAction {
+            crate::player::actions::PlayerAction::PassPriority
         }
         fn choose_attackers(
             &mut self,

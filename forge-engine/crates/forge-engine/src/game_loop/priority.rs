@@ -1,4 +1,6 @@
 use super::*;
+use crate::player::PlayerController;
+use crate::player::actions::PlayerActionOutcome;
 
 impl GameLoop {
     fn describe_priority_action(
@@ -79,16 +81,18 @@ impl GameLoop {
             }
 
             let action_space = self.action_space(game, priority_player, is_main_phase);
-
-            agents[priority_player.index()].snapshot_state(game, &self.mana_pools);
             self.log_waiting_for_priority(game, priority_player);
-            let action = agents[priority_player.index()].choose_action(
-                priority_player,
-                &action_space.playable,
-                &action_space.tappable_lands,
-                &action_space.untappable_lands,
-                &action_space.activatable,
-            );
+            let action = {
+                let agent = agents[priority_player.index()].as_mut();
+                let mut controller = PlayerController::new(game, priority_player, agent);
+                controller.snapshot_state(&self.mana_pools);
+                controller.choose_priority_action(
+                    &action_space.playable,
+                    &action_space.tappable_lands,
+                    &action_space.untappable_lands,
+                    &action_space.activatable,
+                )
+            };
 
             if self.apply_pending_snapshot_restore(game, agents) {
                 passed_count = 0;
@@ -96,7 +100,36 @@ impl GameLoop {
                 continue;
             }
 
-            match action {
+            let priority_action = {
+                let agent = agents[priority_player.index()].as_mut();
+                let mut controller = PlayerController::new(game, priority_player, agent);
+                match action.run(
+                    &mut controller,
+                    &action_space.playable,
+                    &action_space.tappable_lands,
+                    &action_space.untappable_lands,
+                    &action_space.activatable,
+                ) {
+                    PlayerActionOutcome::Priority(action) => action,
+                    PlayerActionOutcome::Pending | PlayerActionOutcome::Target(_) => {
+                        crate::agent::notify_all_agents(
+                            agents,
+                            crate::agent::GameLogEvent::warning(
+                                "Illegal action ignored: unsupported priority action",
+                            )
+                            .with_player(priority_player),
+                        );
+                        passed_count += 1;
+                        priority_player = game.next_player(priority_player);
+                        self.with_shared_state_mutation(game, agents, |_this, game, _agents| {
+                            game.turn.priority_player = priority_player;
+                        });
+                        continue;
+                    }
+                }
+            };
+
+            match priority_action {
                 MainPhaseAction::Pass => {
                     self.log_priority_pass(game, priority_player);
                     passed_count += 1;
@@ -109,7 +142,7 @@ impl GameLoop {
                     self.log_priority_response(
                         game,
                         priority_player,
-                        &self.describe_priority_action(game, action, None),
+                        &self.describe_priority_action(game, priority_action, None),
                     );
                     if !action_space.playable.contains(&play) {
                         crate::agent::notify_all_agents(
@@ -166,7 +199,7 @@ impl GameLoop {
                     self.log_priority_response(
                         game,
                         priority_player,
-                        &self.describe_priority_action(game, action, None),
+                        &self.describe_priority_action(game, priority_action, None),
                     );
                     if !action_space.tappable_lands.contains(&land_id) {
                         crate::agent::notify_all_agents(
@@ -331,7 +364,7 @@ impl GameLoop {
                     self.log_priority_response(
                         game,
                         priority_player,
-                        &self.describe_priority_action(game, action, None),
+                        &self.describe_priority_action(game, priority_action, None),
                     );
                     if !action_space.untappable_lands.contains(&land_id) {
                         crate::agent::notify_all_agents(
@@ -398,7 +431,7 @@ impl GameLoop {
                     self.log_priority_response(
                         game,
                         priority_player,
-                        &self.describe_priority_action(game, action, Some(ability_idx)),
+                        &self.describe_priority_action(game, priority_action, Some(ability_idx)),
                     );
                     if !action_space.activatable.contains(&(card_id, ability_idx)) {
                         crate::agent::notify_all_agents(

@@ -1,6 +1,8 @@
 use std::sync::mpsc;
 use std::thread;
 
+use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
+
 use crate::prompt::{
     AgentPrompt, AgentPromptInner, BlockAssignment, PlayerAction, TargetAnyChoice,
 };
@@ -23,11 +25,24 @@ pub fn spawn_ai_prompt_responder(
                     card_ids: hand_card_ids.into_iter().take(count).collect(),
                 }),
                 AgentPromptInner::ChooseAction {
-                    playable_card_ids, ..
-                } => Some(PlayerAction::PlayCard {
-                    card_id: playable_card_ids.first().cloned(),
-                    mode: None,
-                }),
+                    available_player_actions,
+                    ..
+                } => available_player_actions
+                    .iter()
+                    .copied()
+                    .find(|action| matches!(action, EnginePlayerAction::CastSpell(_)))
+                    .map(|action| PlayerAction::EngineAction { action })
+                    .or_else(|| {
+                        available_player_actions
+                            .iter()
+                            .copied()
+                            .find(|action| matches!(action, EnginePlayerAction::PassPriority))
+                            .map(|action| PlayerAction::EngineAction { action })
+                    })
+                    .or_else(|| available_player_actions
+                        .first()
+                    .copied()
+                    .map(|action| PlayerAction::EngineAction { action })),
                 AgentPromptInner::ChooseAttackers {
                     available_attacker_ids,
                     possible_defender_ids,

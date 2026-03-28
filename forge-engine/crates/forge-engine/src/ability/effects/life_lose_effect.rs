@@ -45,7 +45,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    ctx.game.player_mut(target).lose_life(amount);
+    ctx.game.player_lose_life(target, amount);
 
     // Set AFLifeLost SVar on source card so chained sub-abilities (e.g. GainLife) can read it.
     // Mirrors Java's `sa.setSVar("AFLifeLost", "Number$" + lifeLost)`.

@@ -1,7 +1,9 @@
 use std::sync::OnceLock;
 
+use forge_engine_core::card::CardInstance;
 use forge_engine_core::game::GameState;
 use forge_engine_core::ids::PlayerId;
+use forge_engine_core::player::RegisteredPlayer;
 use forge_foundation::CoreType;
 use forge_foundation::ZoneType;
 use rand::seq::SliceRandom;
@@ -16,6 +18,12 @@ pub struct CardIdentity {
     pub set_code: String,
     #[serde(default)]
     pub section: Option<String>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PreparedRegisteredPlayer {
+    pub registered: RegisteredPlayer,
+    pub cards: Vec<(CardInstance, ZoneType)>,
 }
 
 // ── Preset deck registry ───────────────────────────────────────────
@@ -305,6 +313,18 @@ pub fn build_preset_deck_for_player(game: &mut GameState, preset_id: &str, owner
     }
 }
 
+pub fn prepare_preset_registered_player(
+    name: impl Into<String>,
+    preset_id: &str,
+) -> PreparedRegisteredPlayer {
+    let mut registered = RegisteredPlayer::new(name);
+    let preset = get_preset_by_id(preset_id).or_else(|| get_preset_by_id("red_burn"));
+    let cards = preset
+        .map(|preset| prepare_cards_from_entries(&preset.cards, &mut registered))
+        .unwrap_or_default();
+    PreparedRegisteredPlayer { registered, cards }
+}
+
 /// Build the opponent deck configured for a given preset id.
 ///
 /// Reads the preset's `opponent` field and loads that deck for `owner`.
@@ -332,6 +352,27 @@ pub fn build_preset_opponent(game: &mut GameState, preset_id: &str, owner: Playe
             let ai_cards = random_ai_deck_cards();
             build_deck_from_entries(game, owner, ai_cards);
         }
+    }
+}
+
+pub fn prepare_preset_opponent_registered_player(
+    name: impl Into<String>,
+    preset_id: &str,
+) -> PreparedRegisteredPlayer {
+    match get_preset_by_id(preset_id).and_then(|p| p.opponent.as_deref()) {
+        Some("random") => prepare_ai_registered_player(name),
+        Some(opp_id) => {
+            if get_preset_by_id(opp_id).is_some() {
+                prepare_preset_registered_player(name, opp_id)
+            } else {
+                eprintln!(
+                    "[preset_decks] Unknown opponent '{}', using random AI deck",
+                    opp_id
+                );
+                prepare_ai_registered_player(name)
+            }
+        }
+        None => prepare_ai_registered_player(name),
     }
 }
 
@@ -365,6 +406,12 @@ fn random_ai_deck_cards() -> &'static Vec<DeckCardEntry> {
 pub fn build_ai_opponent(game: &mut GameState, owner: PlayerId) {
     let cards = random_ai_deck_cards();
     build_deck_from_entries(game, owner, cards);
+}
+
+pub fn prepare_ai_registered_player(name: impl Into<String>) -> PreparedRegisteredPlayer {
+    let mut registered = RegisteredPlayer::new(name);
+    let cards = prepare_cards_from_entries(random_ai_deck_cards(), &mut registered);
+    PreparedRegisteredPlayer { registered, cards }
 }
 
 /// Build a deck from a list of DeckCardEntry, loading each card definition
@@ -413,6 +460,85 @@ pub fn build_custom_deck(game: &mut GameState, owner: PlayerId, identities: &[Ca
             }
             None => eprintln!("[custom_deck] Unknown card '{}' — skipped", name),
         }
+    }
+}
+
+pub fn prepare_custom_registered_player(
+    name: impl Into<String>,
+    identities: &[CardIdentity],
+) -> PreparedRegisteredPlayer {
+    let mut registered = RegisteredPlayer::new(name);
+    let cards = prepare_cards_from_identities(identities, &mut registered);
+    PreparedRegisteredPlayer { registered, cards }
+}
+
+fn prepare_cards_from_entries(
+    deck: &[DeckCardEntry],
+    registered: &mut RegisteredPlayer,
+) -> Vec<(CardInstance, ZoneType)> {
+    let db = get_card_db();
+    let mut cards = Vec::new();
+    for entry in deck {
+        match db.get_by_card_name(&entry.name) {
+            Some(rules) => {
+                for _ in 0..entry.count {
+                    let mut card = card_rules_to_instance(rules, PlayerId(0));
+                    if !entry.set.is_empty() {
+                        card.set_code = Some(entry.set.clone());
+                    }
+                    let destination = fallback_deck_zone_for_card(&card);
+                    register_card_name(registered, &card.card_name, destination);
+                    cards.push((card, destination));
+                }
+            }
+            None => eprintln!("[deck] Unknown card '{}' — skipped", entry.name),
+        }
+    }
+    cards
+}
+
+fn prepare_cards_from_identities(
+    identities: &[CardIdentity],
+    registered: &mut RegisteredPlayer,
+) -> Vec<(CardInstance, ZoneType)> {
+    let db = get_card_db();
+    let mut cards = Vec::new();
+    for identity in identities {
+        match db.get_by_card_name(&identity.name) {
+            Some(rules) => {
+                let mut card = card_rules_to_instance(rules, PlayerId(0));
+                if !identity.set_code.is_empty() {
+                    card.set_code = Some(identity.set_code.clone());
+                }
+                let destination = deck_zone_for_identity(identity, &card);
+                register_card_name(registered, &card.card_name, destination);
+                cards.push((card, destination));
+            }
+            None => eprintln!("[custom_deck] Unknown card '{}' — skipped", identity.name),
+        }
+    }
+    cards
+}
+
+fn register_card_name(
+    registered: &mut RegisteredPlayer,
+    card_name: &str,
+    destination: ZoneType,
+) {
+    let name = card_name.to_string();
+    match destination {
+        ZoneType::Library => {
+            registered.original_deck.push(name.clone());
+            registered.current_deck.push(name);
+        }
+        ZoneType::Command => registered.commanders.push(name),
+        ZoneType::Battlefield => registered.cards_on_battlefield.push(name),
+        ZoneType::SchemeDeck => registered.schemes.push(name),
+        ZoneType::PlanarDeck => registered.planes.push(name),
+        ZoneType::AttractionDeck => registered.attractions.push(name),
+        ZoneType::ContraptionDeck => registered.contraptions.push(name),
+        ZoneType::Sideboard => {}
+        _ => {}
     }
 }
 

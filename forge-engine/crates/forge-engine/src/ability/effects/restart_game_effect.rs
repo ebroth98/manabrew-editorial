@@ -38,34 +38,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     for &player_id in &player_ids {
         // Reset player state
-        let starting_life = ctx.game.player(player_id).starting_life;
-        let player = ctx.game.player_mut(player_id);
-        player.life = starting_life;
-        player.poison_counters = 0;
-        player.lands_played_this_turn = 0;
-        player.max_land_plays_per_turn = 1;
-        player.spells_cast_this_turn = 0;
-        player.max_hand_size = 7;
-        player.drawn_this_turn = 0;
-        player.has_lost = false;
-        player.has_won = false;
-        player.has_conceded = false;
-        player.commander_damage_received.clear();
-        player.skip_turns = 0;
-        player.skip_next_draw = false;
-        player.skip_next_combat = false;
-        player.skip_next_untap = false;
-        player.damage_prevention = 0;
-        player.energy_counters = 0;
-        player.mana_shards = 0;
-        player.mana_expended_this_turn = 0;
-        player.controlled_by = None;
-        player.has_city_blessing = false;
-        player.ring_level = 0;
-        player.ring_bearer = None;
-        player.radiation_counters = 0;
-        player.life_gained_this_turn = 0;
-        player.life_lost_this_turn = 0;
+        ctx.game.player_reset_for_restart(player_id);
 
         // Collect all cards from restart zones for this player
         let cards_to_move: Vec<CardId> = ctx
@@ -90,7 +63,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ctx.game.card_mut(card_id).set_toughness_modifier(0);
             ctx.game.card_mut(card_id).set_controller(player_id);
             ctx.game.card_mut(card_id).clear_intrinsic_keywords();
-            ctx.game.move_card(card_id, ZoneType::Library, player_id);
+            ctx.move_card(card_id, ZoneType::Library, player_id);
         }
 
         // Shuffle library

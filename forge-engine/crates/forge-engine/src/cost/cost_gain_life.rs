@@ -7,7 +7,7 @@ use crate::ids::PlayerId;
 /// Mirrors Java's `CostGainLife.payAsDecided()`.
 pub fn pay_as_decided(game: &mut GameState, player: PlayerId, amount: i32) -> bool {
     let opponent = game.opponent_of(player);
-    game.player_mut(opponent).gain_life(amount);
+    game.player_gain_life(opponent, amount);
     true
 }
 

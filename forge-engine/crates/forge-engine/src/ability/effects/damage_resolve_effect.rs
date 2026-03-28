@@ -83,7 +83,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                         pid,
                         &CounterType::Poison,
                     ) {
-                        ctx.game.player_mut(pid).poison_counters += amount;
+                        ctx.game.player_add_poison(pid, amount);
                     }
                 } else {
                     let dealt = ctx.game.deal_damage_to_player(pid, amount);

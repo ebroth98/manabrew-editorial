@@ -32,7 +32,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         // Set the controlled_by field on the target player
         // This will be checked by the game loop to route decisions
         // through the controller's agent instead of the target's agent
-        ctx.game.player_mut(target_player).controlled_by = Some(controller);
+        ctx.game
+            .player_set_controlled_by(target_player, Some(controller));
 
         // Register a cleanup to remove control at end of next turn
         // Java uses addUntil on the cleanup step — we use a delayed trigger

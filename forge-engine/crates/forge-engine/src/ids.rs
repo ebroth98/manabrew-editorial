@@ -1,11 +1,11 @@
 use serde::{Deserialize, Serialize};
 
 /// Typed index into the card arena. Not a reference — just an index.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct CardId(pub u32);
 
 /// Typed index into the player arena.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PlayerId(pub u32);
 
 impl CardId {

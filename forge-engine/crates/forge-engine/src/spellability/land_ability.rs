@@ -62,7 +62,7 @@ pub fn resolve(sa: &SpellAbility, game: &mut GameState) {
     game.move_card(card_id, ZoneType::Battlefield, player);
 
     // Track land play
-    game.player_mut(player).lands_played_this_turn += 1;
+    game.player_record_land_play(player);
 }
 
 /// Whether this is a land ability.

@@ -3,13 +3,14 @@
 use std::collections::BTreeMap;
 
 use forge_engine_core::agent::{
-    MainPhaseAction, PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
+    PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
 };
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
 use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::player::actions::PlayerAction;
 use forge_engine_core::trigger::parse_trigger;
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 use rand::SeedableRng;
@@ -232,12 +233,12 @@ impl PlayerAgent for VerboseAgent {
         _: &[CardId],
         _: &[CardId],
         _: &[(CardId, usize)],
-    ) -> MainPhaseAction {
+    ) -> PlayerAction {
         playable
             .first()
             .copied()
-            .map(MainPhaseAction::Play)
-            .unwrap_or(MainPhaseAction::Pass)
+            .map(PlayerAction::CastSpell)
+            .unwrap_or(PlayerAction::PassPriority)
     }
     fn choose_attackers(
         &mut self,

@@ -38,7 +38,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
         // Mana burn: if player has ManaBurn static, lose life equal to drained mana
         if crate::staticability::static_ability_unspent_mana::has_mana_burn(ctx.game, *pid) {
-            ctx.game.player_mut(*pid).life -= amount as i32;
+            ctx.game.player_lose_life(*pid, amount as i32);
         }
 
         pool.reset_pool();

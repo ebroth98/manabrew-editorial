@@ -17,11 +17,6 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         return;
     }
 
-    // Support negative amounts (remove poison counters, floor at 0)
-    let apply_poison = |counters: &mut i32, amt: i32| {
-        *counters = (*counters + amt).max(0);
-    };
-
     let controller = sa.activating_player;
 
     // If targeting was used (ValidTgts$ Player), use the chosen target.
@@ -32,10 +27,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 target_player,
                 &crate::card::CounterType::Poison,
             ) {
-                apply_poison(
-                    &mut ctx.game.player_mut(target_player).poison_counters,
-                    amount,
-                );
+                if amount > 0 {
+                    ctx.game.player_add_poison(target_player, amount);
+                } else {
+                    ctx.game.player_remove_poison(target_player, -amount);
+                }
             }
         }
         return;
@@ -54,7 +50,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 pid,
                 &crate::card::CounterType::Poison,
             ) {
-                apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
+                if amount > 0 {
+                    ctx.game.player_add_poison(pid, amount);
+                } else {
+                    ctx.game.player_remove_poison(pid, -amount);
+                }
             }
         }
         return;
@@ -68,7 +68,11 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 pid,
                 &crate::card::CounterType::Poison,
             ) {
-                apply_poison(&mut ctx.game.player_mut(pid).poison_counters, amount);
+                if amount > 0 {
+                    ctx.game.player_add_poison(pid, amount);
+                } else {
+                    ctx.game.player_remove_poison(pid, -amount);
+                }
             }
         }
     }

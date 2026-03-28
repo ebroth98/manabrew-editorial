@@ -35,7 +35,7 @@ pub(super) fn resolve_stack_removal(
 
     let old_zone = ctx.game.card(card_id).zone;
     let dest_owner = ctx.game.card(card_id).owner;
-    ctx.game.move_card(card_id, dest_zone, dest_owner);
+    ctx.move_card(card_id, dest_zone, dest_owner);
 
     // ExiledWith for exile
     if dest_zone == ZoneType::Exile {

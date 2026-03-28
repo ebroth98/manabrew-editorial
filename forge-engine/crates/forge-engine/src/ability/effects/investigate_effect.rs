@@ -44,7 +44,7 @@ fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::
         token.set_is_token(true);
 
         let token_id = ctx.game.create_card(token);
-        ctx.game.move_card(token_id, ZoneType::Battlefield, player);
+        ctx.move_card(token_id, ZoneType::Battlefield, player);
         ctx.trigger_handler
             .register_active_trigger(ctx.game, token_id);
 
@@ -85,7 +85,7 @@ fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::
         token.set_is_token(true);
 
         let token_id = ctx.game.create_card(token);
-        ctx.game.move_card(token_id, ZoneType::Battlefield, player);
+        ctx.move_card(token_id, ZoneType::Battlefield, player);
         ctx.trigger_handler
             .register_active_trigger(ctx.game, token_id);
 
