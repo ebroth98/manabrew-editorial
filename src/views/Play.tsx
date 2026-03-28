@@ -33,8 +33,19 @@ export default function Play() {
       const selected = (playerDecks ?? []).find((entry) => entry.username === playerName);
       return selected?.deck_list ?? [];
     });
+    const commanderNamesByPlayer = playerOrder.map((playerName) => {
+      const selected = (playerDecks ?? []).find((entry) => entry.username === playerName);
+      return selected?.commander_name ?? null;
+    });
     setMultiplayerState(true, isHost, myPlayerSlot);
-    startMultiplayerGame(playerOrder, deckListsByPlayer, engineIndex, isHost, startingLife);
+    startMultiplayerGame(
+      playerOrder,
+      deckListsByPlayer,
+      commanderNamesByPlayer,
+      engineIndex,
+      isHost,
+      startingLife,
+    );
   }, [mpState]);
 
   if (isGameActive) {
@@ -62,8 +73,8 @@ export default function Play() {
   // Single-player: fighting-game style deck selector
   return (
     <DeckVsSelector
-      onStart={(playerDeck, opponentDeck) => {
-        startGame(playerDeck, undefined, undefined, opponentDeck);
+      onStart={(playerDeck, opponentDeck, formatId, commanderName) => {
+        startGame(playerDeck, formatId, commanderName, opponentDeck);
       }}
     />
   );

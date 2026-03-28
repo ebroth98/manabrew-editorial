@@ -45,12 +45,13 @@ export const useGameStore = create<GameState>((set, get) => ({
     }
   },
 
-  startMultiplayerGame: async (playerNames, deckLists, enginePlayerIndex, localIsHost, startingLife) => {
+  startMultiplayerGame: async (playerNames, deckLists, commanderNames, enginePlayerIndex, localIsHost, startingLife) => {
     try {
       set({ debugInfo: 'Starting multiplayer game...' });
       await tauriApi.game.startMultiplayerGame({
         playerNames,
         deckLists,
+        commanderNames,
         enginePlayerIndex,
         localIsHost,
         startingLife,

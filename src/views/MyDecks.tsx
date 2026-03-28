@@ -13,7 +13,6 @@ import { toast } from "sonner";
 import { CardPreview } from "@/components/game/CardPreview";
 import { DeckStats } from "@/components/editor/DeckStats";
 import { FormatBadge } from "@/components/game/FormatBadge";
-import { inferFormats } from "@/lib/formats";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { DeckCard } from "@/components/deck/DeckCard";
 import type { Card } from "@/types/openmagic";
@@ -31,6 +30,7 @@ import {
   groupCards,
   categorize,
 } from "./myDecks.utils";
+import { getDeckCardNames } from "@/lib/decks";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -260,7 +260,7 @@ export default function MyDecks() {
                   {selected.deck.name}
                 </h2>
                 <div className="flex items-center gap-2 flex-wrap text-sm text-muted-foreground">
-                  <span>{selected.deck.cards.length} main</span>
+                  <span>{getDeckCardNames(selected.deck).length} main</span>
                   {selected.deck.sideboard.length > 0 && (
                     <span>{selected.deck.sideboard.length} side</span>
                   )}
@@ -279,11 +279,7 @@ export default function MyDecks() {
                   {colors.length > 0 && (
                     <ManaSymbols cost={colors.map((c) => `{${c}}`).join("")} size="sm" />
                   )}
-                  {inferFormats(selected.deck.cards.map((c) => c.name)).map(
-                    (f) => (
-                      <FormatBadge key={f.id} formatId={f.id} />
-                    ),
-                  )}
+                  <FormatBadge formatId={selected.deck.format ?? "constructed"} />
                 </div>
               </div>
               <div className="flex gap-2 shrink-0">

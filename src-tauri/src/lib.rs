@@ -14,13 +14,46 @@ mod server_client;
 mod server_commands;
 mod tauri_agent;
 
+use std::path::PathBuf;
+
+use forge_engine_core::game::TypeRegistry;
 use game_manager::GameManager;
 use server_client::ServerClient;
+
+fn load_type_registry() -> Result<(), String> {
+    let project_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .ok_or_else(|| "Could not resolve project root".to_string())?
+        .to_path_buf();
+    let type_lists_path = project_root
+        .join("forge")
+        .join("forge-gui")
+        .join("res")
+        .join("lists")
+        .join("TypeLists.txt");
+
+    let contents = std::fs::read_to_string(&type_lists_path).map_err(|err| {
+        format!(
+            "Failed to read TypeLists.txt at {}: {}",
+            type_lists_path.display(),
+            err
+        )
+    })?;
+    TypeRegistry::load(&contents);
+    Ok(())
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .setup(|_app| {
+            load_type_registry().map_err(|err| {
+                eprintln!("[startup] {}", err);
+                Box::<dyn std::error::Error>::from(err)
+            })?;
+            Ok(())
+        })
         .manage(GameManager::new())
         .manage(ServerClient::new())
         .invoke_handler(tauri::generate_handler![

@@ -3,10 +3,11 @@ import { tauriApi, type PresetDeckInfo } from "@/api/tauri";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { Search, Shuffle, Swords, User, Bot } from "lucide-react";
+import { Search, Shuffle, Swords, User, Bot, Crown } from "lucide-react";
 import { useDeckStore } from "@/stores/useDeckStore";
-import type { Card } from "@/types/openmagic";
-import type { CardIdentity, DeckSection } from "@/types/server";
+import type { CardIdentity } from "@/types/server";
+import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
+import { FormatBadge } from "@/components/game/FormatBadge";
 
 interface SelectedDeck {
   id: string;
@@ -14,46 +15,28 @@ interface SelectedDeck {
   desc?: string;
   color?: string;
   deckList: CardIdentity[];
+  formatId?: string;
+  commanderName?: string;
 }
 
 interface DeckVsSelectorProps {
   onStart: (
     playerDeck: CardIdentity[],
-    opponentDeck: CardIdentity[]
+    opponentDeck: CardIdentity[],
+    formatId?: string,
+    commanderName?: string,
   ) => void;
 }
 
 type PickingSide = "player" | "opponent";
-
-function deckSectionForCard(card: Card, fallback: DeckSection): DeckSection {
-  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "attraction")) {
-    return "attractions";
-  }
-  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "contraption")) {
-    return "contraptions";
-  }
-  if (card.types.some((type) => type.toLowerCase() === "scheme")) {
-    return "schemes";
-  }
-  if (card.types.some((type) => type.toLowerCase() === "plane")) {
-    return "planes";
-  }
-  return fallback;
-}
-
-function toCardIdentity(card: Card, section: DeckSection): CardIdentity {
-  return {
-    name: card.name,
-    setCode: card.setCode ?? "",
-    section: deckSectionForCard(card, section),
-  };
-}
+type PlayFormatId = "constructed" | "commander";
 
 export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
   const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
   const [playerDeck, setPlayerDeck] = useState<SelectedDeck | null>(null);
   const [opponentDeck, setOpponentDeck] = useState<SelectedDeck | null>(null);
   const [pickingSide, setPickingSide] = useState<PickingSide>("player");
+  const [selectedFormat, setSelectedFormat] = useState<PlayFormatId>("constructed");
   const [deckSearch, setDeckSearch] = useState("");
   const { savedDecks, currentDeck } = useDeckStore();
 
@@ -74,38 +57,40 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       )
     : presetDecks;
 
-  const userDeckEntries: SelectedDeck[] = [
-    {
-      id: "current",
-      name: currentDeck.name,
-      deckList: [
-        ...currentDeck.cards.map((c) => toCardIdentity(c, "main")),
-        ...currentDeck.sideboard.map((c) => toCardIdentity(c, "sideboard")),
-        ...(currentDeck.attractions ?? []).map((c) => toCardIdentity(c, "attractions")),
-        ...(currentDeck.contraptions ?? []).map((c) => toCardIdentity(c, "contraptions")),
-        ...(currentDeck.schemes ?? []).map((c) => toCardIdentity(c, "schemes")),
-        ...(currentDeck.planes ?? []).map((c) => toCardIdentity(c, "planes")),
-        ...(currentDeck.commander ? [toCardIdentity(currentDeck.commander, "commander")] : []),
-      ],
-    },
-    ...savedDecks.map((s) => ({
-      id: s.id,
-      name: s.deck.name,
-      deckList: [
-        ...s.deck.cards.map((c) => toCardIdentity(c, "main")),
-        ...s.deck.sideboard.map((c) => toCardIdentity(c, "sideboard")),
-        ...(s.deck.attractions ?? []).map((c) => toCardIdentity(c, "attractions")),
-        ...(s.deck.contraptions ?? []).map((c) => toCardIdentity(c, "contraptions")),
-        ...(s.deck.schemes ?? []).map((c) => toCardIdentity(c, "schemes")),
-        ...(s.deck.planes ?? []).map((c) => toCardIdentity(c, "planes")),
-        ...(s.deck.commander ? [toCardIdentity(s.deck.commander, "commander")] : []),
-      ],
-    })),
-  ];
+  const currentDeckFingerprint = getDeckFingerprint(currentDeck);
+  const distinctSavedDecks = savedDecks.filter(
+    (saved) => getDeckFingerprint(saved.deck) !== currentDeckFingerprint,
+  );
 
+  const userDeckEntries: SelectedDeck[] = [
+    currentDeck,
+    ...distinctSavedDecks.map((s) => s.deck),
+  ].map((deck, index) => {
+    const deckList = serializeDeck(deck);
+    return {
+      id: index === 0 ? "current" : distinctSavedDecks[index - 1]!.id,
+      name: deck.name,
+      deckList,
+      formatId: deck.format ?? "constructed",
+      commanderName: deck.commander?.name,
+    };
+  });
+
+  const formatFilteredUserDecks = userDeckEntries.filter(
+    (deck) => deck.formatId === selectedFormat,
+  );
   const filteredUserDecks = searchLower
-    ? userDeckEntries.filter((d) => d.name.toLowerCase().includes(searchLower))
-    : userDeckEntries;
+    ? formatFilteredUserDecks.filter((d) => d.name.toLowerCase().includes(searchLower))
+    : formatFilteredUserDecks;
+
+  useEffect(() => {
+    if (playerDeck && playerDeck.formatId !== selectedFormat) {
+      setPlayerDeck(null);
+    }
+    if (opponentDeck && opponentDeck.formatId !== selectedFormat) {
+      setOpponentDeck(null);
+    }
+  }, [selectedFormat, playerDeck, opponentDeck]);
 
   function assignDeck(selected: SelectedDeck) {
     if (pickingSide === "player") {
@@ -117,12 +102,14 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
   }
 
   function selectDeck(deck: PresetDeckInfo) {
+    if (selectedFormat !== "constructed") return;
     assignDeck({
       id: deck.id,
       name: deck.label,
       desc: deck.desc,
       color: deck.color,
       deckList: [{ name: deck.id, setCode: "", section: "main" }],
+      formatId: "constructed",
     });
   }
 
@@ -132,6 +119,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
 
   function handleRandomOpponent() {
     // Pick a random preset for the opponent
+    if (selectedFormat !== "constructed") return;
     if (presetDecks.length === 0) return;
     const random = presetDecks[Math.floor(Math.random() * presetDecks.length)];
     setOpponentDeck({
@@ -140,12 +128,18 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       desc: random.desc,
       color: random.color,
       deckList: [{ name: random.id, setCode: "", section: "main" }],
+      formatId: "constructed",
     });
   }
 
   function handleFight() {
     if (!playerDeck || !opponentDeck) return;
-    onStart(playerDeck.deckList, opponentDeck.deckList);
+    onStart(
+      playerDeck.deckList,
+      opponentDeck.deckList,
+      playerDeck.formatId,
+      playerDeck.commanderName,
+    );
   }
 
   const isReady = !!playerDeck && !!opponentDeck;
@@ -230,6 +224,45 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
         </div>
       </div>
 
+      <div className="px-4 py-3 border-b bg-muted/5 flex items-center justify-between gap-3 flex-shrink-0">
+        <div>
+          <p className="text-xs font-medium">Format</p>
+          <p className="text-[10px] text-muted-foreground">
+            Choose the game mode before selecting decks.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => setSelectedFormat("constructed")}
+            className={cn(
+              "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors",
+              selectedFormat === "constructed"
+                ? "border-primary bg-primary/5"
+                : "border-border hover:bg-muted/60",
+            )}
+          >
+            <Swords className="h-3.5 w-3.5" />
+            <span>Standard</span>
+            <FormatBadge formatId="constructed" />
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedFormat("commander")}
+            className={cn(
+              "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors",
+              selectedFormat === "commander"
+                ? "border-primary bg-primary/5"
+                : "border-border hover:bg-muted/60",
+            )}
+          >
+            <Crown className="h-3.5 w-3.5" />
+            <span>Commander</span>
+            <FormatBadge formatId="commander" />
+          </button>
+        </div>
+      </div>
+
       {/* ── Search bar ── */}
       <div className="px-4 pt-3 pb-2 flex-shrink-0">
         <div className="relative">
@@ -287,6 +320,9 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
                     <span className="font-semibold text-xs leading-tight block pr-5 truncate">
                       {entry.name}
                     </span>
+                    <div className="mt-1">
+                      <FormatBadge formatId={selectedFormat} />
+                    </div>
                     <p className="text-[10px] text-muted-foreground mt-0.5">
                       {entry.deckList.length} cards
                     </p>
@@ -304,7 +340,11 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
               Preset Decks
             </p>
           )}
-          {filteredDecks.length === 0 ? (
+          {selectedFormat === "commander" ? (
+            <p className="text-xs text-muted-foreground italic py-4">
+              Preset AI decks are only available for Standard right now. For Commander, pick a saved Commander deck for the AI side.
+            </p>
+          ) : filteredDecks.length === 0 ? (
             <p className="text-xs text-muted-foreground italic py-4">
               No decks match your search.
             </p>

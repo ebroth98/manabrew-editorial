@@ -307,6 +307,16 @@ fn phase_to_step(phase: forge_foundation::PhaseType) -> &'static str {
     }
 }
 
+fn should_show_command_zone_card(game: &GameState, cid: CardId) -> bool {
+    let card = game.card(cid);
+    !(card.type_line.core_types.is_empty()
+        && card
+            .type_line
+            .subtypes
+            .iter()
+            .any(|subtype| subtype.eq_ignore_ascii_case("Effect")))
+}
+
 pub fn card_to_dto(
     game: &GameState,
     cid: CardId,
@@ -463,18 +473,28 @@ pub fn card_to_dto(
         phased_out: card.phased_out,
         exerted: card.exerted,
         effective_mana_cost: {
-            if playable_ids.contains(&cid) && !card.is_land() {
+            let is_command_zone_commander =
+                card.zone == ZoneType::Command && game.player_is_commander(card.controller, cid);
+            if (playable_ids.contains(&cid) || is_command_zone_commander) && !card.is_land() {
                 let cost_adj = forge_engine_core::staticability::static_ability_cost_change::compute_cost_adjustment(
                     game, card, card.controller, card.zone,
                 );
-                if !cost_adj.is_empty() {
-                    let adjusted = cost_adj.apply(&card.mana_cost);
-                    let adjusted_str = adjusted.to_string();
-                    if adjusted_str != card.mana_cost.to_string() {
-                        Some(adjusted_str)
-                    } else {
-                        None
+                let mut adjusted = if !cost_adj.is_empty() {
+                    cost_adj.apply(&card.mana_cost)
+                } else {
+                    card.mana_cost.clone()
+                };
+
+                if is_command_zone_commander {
+                    let commander_tax = game.player_commander_tax(card.controller, cid);
+                    if commander_tax > 0 {
+                        adjusted = adjusted.add(&forge_foundation::ManaCost::generic(commander_tax));
                     }
+                }
+
+                let adjusted_str = adjusted.to_string();
+                if adjusted_str != card.mana_cost.to_string() {
+                    Some(adjusted_str)
                 } else {
                     None
                 }
@@ -615,14 +635,18 @@ impl GameViewDto {
         let my_command_zone: Vec<CardDto> = game
             .cards_in_zone(ZoneType::Command, human_player)
             .iter()
-            .map(|&cid| card_to_dto(game, cid, playable_ids, choosable_ids, "command"))
+            .copied()
+            .filter(|&cid| should_show_command_zone_card(game, cid))
+            .map(|cid| card_to_dto(game, cid, playable_ids, choosable_ids, "command"))
             .collect();
 
         let opponent_command_zone: Vec<CardDto> = opponent_player
             .map(|pid| {
                 game.cards_in_zone(ZoneType::Command, pid)
                     .iter()
-                    .map(|&cid| card_to_dto(game, cid, &[], &[], "command"))
+                    .copied()
+                    .filter(|&cid| should_show_command_zone_card(game, cid))
+                    .map(|cid| card_to_dto(game, cid, &[], &[], "command"))
                     .collect()
             })
             .unwrap_or_default();

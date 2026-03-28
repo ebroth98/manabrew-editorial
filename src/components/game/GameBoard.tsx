@@ -268,7 +268,14 @@ export function GameBoard({
                     isFlashing={turnFlashPlayerId === me.id}
                     onOpenCommandZone={() => {
                       if ((myCommandZone?.length ?? 0) > 0) {
-                        onOpenZone("Your Command Zone", myCommandZone!);
+                        const hasPlayable = myCommandZone!.some((c) => c.isPlayable);
+                        if (hasPlayable && promptType === PT.ChooseAction) {
+                          onOpenZoneAndCast("Your Command Zone", myCommandZone!, (_cardId) => {
+                            // Parent will close zone and call handleCastSpell
+                          });
+                        } else {
+                          onOpenZone("Your Command Zone", myCommandZone!);
+                        }
                       }
                     }}
                     commandZoneCount={myCommandZone?.length ?? 0}

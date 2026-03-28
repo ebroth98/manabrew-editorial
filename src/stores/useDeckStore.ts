@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { Deck, Card } from '@/types/openmagic';
+import type { Deck, Card, DeckFormatId } from '@/types/openmagic';
 import { STORAGE_KEYS, DEFAULT_DECK_NAME } from '@/lib/constants';
 
 /** Apply a map of name→patch to an array of cards. */
@@ -28,11 +28,20 @@ function isPlaneCard(card: Card): boolean {
 }
 
 function normalizeDeck(deck: Deck): Deck {
+  const main = [...(deck.cards ?? [])];
   const sideboard = [...(deck.sideboard ?? [])];
   const attractions = [...(deck.attractions ?? [])];
   const contraptions = [...(deck.contraptions ?? [])];
   const schemes = [...(deck.schemes ?? [])];
   const planes = [...(deck.planes ?? [])];
+  const commander = deck.commander;
+
+  if (commander) {
+    const commanderIndex = main.findIndex((card) => card.name === commander.name);
+    if (commanderIndex !== -1) {
+      main.splice(commanderIndex, 1);
+    }
+  }
 
   const remainingSideboard: Card[] = [];
   for (const card of sideboard) {
@@ -51,6 +60,8 @@ function normalizeDeck(deck: Deck): Deck {
 
   return {
     ...deck,
+    format: deck.format ?? (deck.commander ? 'commander' : 'constructed'),
+    cards: main,
     sideboard: remainingSideboard,
     attractions,
     contraptions,
@@ -61,6 +72,9 @@ function normalizeDeck(deck: Deck): Deck {
 
 function patchDeckCards(deck: Deck, updates: Map<string, Partial<Card>>): Deck {
   const normalized = normalizeDeck(deck);
+  const commanderPatch = normalized.commander
+    ? updates.get(normalized.commander.name.toLowerCase())
+    : undefined;
   return {
     ...normalized,
     cards: patchCardsByName(normalized.cards, updates),
@@ -69,6 +83,9 @@ function patchDeckCards(deck: Deck, updates: Map<string, Partial<Card>>): Deck {
     contraptions: patchCardsByName(normalized.contraptions ?? [], updates),
     schemes: patchCardsByName(normalized.schemes ?? [], updates),
     planes: patchCardsByName(normalized.planes ?? [], updates),
+    ...(commanderPatch
+      ? { commander: { ...normalized.commander!, ...commanderPatch } }
+      : {}),
   };
 }
 
@@ -88,6 +105,7 @@ interface DeckState {
   removeFromMain: (cardId: string) => void;
   removeFromSide: (cardId: string) => void;
   setDeckName: (name: string) => void;
+  setDeckFormat: (format: DeckFormatId) => void;
   clearDeck: () => void;
   loadDeck: (deck: Deck) => void;
   saveCurrentDeck: () => void;
@@ -120,6 +138,7 @@ interface DeckState {
 
 const initialDeck: Deck = {
   name: DEFAULT_DECK_NAME,
+  format: 'constructed',
   cards: [],
   sideboard: [],
   attractions: [],
@@ -216,16 +235,63 @@ export const useDeckStore = create<DeckState>()(
         set((state) => ({
           currentDeck: { ...state.currentDeck, name },
         })),
+      setDeckFormat: (format) =>
+        set((state) => {
+          const deck = normalizeDeck(state.currentDeck);
+          if (format === 'constructed' && deck.commander) {
+            return {
+              currentDeck: {
+                ...deck,
+                format,
+                cards: [...deck.cards, { ...deck.commander, id: crypto.randomUUID() }],
+                commander: undefined,
+              },
+            };
+          }
+          return {
+            currentDeck: {
+              ...deck,
+              format,
+            },
+          };
+        }),
       clearDeck: () => set({ currentDeck: { ...initialDeck } }),
       loadDeck: (deck) => set({ currentDeck: normalizeDeck(deck) }),
       setCommander: (card) =>
-        set((state) => ({
-          currentDeck: { ...state.currentDeck, commander: card },
-        })),
+        set((state) => {
+          const deck = normalizeDeck(state.currentDeck);
+          const nextMain = [...deck.cards];
+          const selectedIndex = nextMain.findIndex((entry) => entry.id === card.id);
+          const selectedCard =
+            selectedIndex !== -1
+              ? nextMain.splice(selectedIndex, 1)[0]
+              : { ...card };
+
+          if (deck.commander) {
+            nextMain.push({ ...deck.commander, id: crypto.randomUUID() });
+          }
+
+          return {
+            currentDeck: {
+              ...deck,
+              format: 'commander',
+              cards: nextMain,
+              commander: selectedCard,
+            },
+          };
+        }),
       removeCommander: () =>
-        set((state) => ({
-          currentDeck: { ...state.currentDeck, commander: undefined },
-        })),
+        set((state) => {
+          const deck = normalizeDeck(state.currentDeck);
+          if (!deck.commander) return state;
+          return {
+            currentDeck: {
+              ...deck,
+              cards: [...deck.cards, { ...deck.commander, id: crypto.randomUUID() }],
+              commander: undefined,
+            },
+          };
+        }),
       updatePrint: (cardName, scryfallCard) =>
         set((state) => {
           const updates = new Map<string, Partial<Card>>();
@@ -234,14 +300,8 @@ export const useDeckStore = create<DeckState>()(
             imageUrl: scryfallCard.image_uris?.normal ?? scryfallCard.image_uris?.large ?? undefined,
             cardNumber: scryfallCard.collector_number,
           });
-          const deck = normalizeDeck(state.currentDeck);
-          const cmd = deck.commander;
-          const cmdPatch = cmd ? updates.get(cmd.name.toLowerCase()) : undefined;
           return {
-            currentDeck: {
-              ...patchDeckCards(deck, updates),
-              ...(cmdPatch ? { commander: { ...cmd!, ...cmdPatch } } : {}),
-            }
+            currentDeck: patchDeckCards(state.currentDeck, updates),
           };
         }),
       saveCurrentDeck: () =>
@@ -273,14 +333,8 @@ export const useDeckStore = create<DeckState>()(
         })),
       enrichDeckCards: (updates) =>
         set((state) => {
-          const deck = normalizeDeck(state.currentDeck);
-          const cmd = deck.commander;
-          const cmdPatch = cmd ? updates.get(cmd.name.toLowerCase()) : undefined;
           return {
-            currentDeck: {
-              ...patchDeckCards(deck, updates),
-              ...(cmdPatch ? { commander: { ...cmd!, ...cmdPatch } } : {}),
-            },
+            currentDeck: patchDeckCards(state.currentDeck, updates),
           };
         }),
       addCardToSavedDeck: (id, card) =>

@@ -3,11 +3,10 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use forge_engine_core::card::CardInstance;
 use forge_engine_core::agent::PlayerAgent;
 use forge_engine_core::game::GameState;
 use forge_engine_core::game_loop::GameLoop;
-use forge_engine_core::ids::{CardId, PlayerId};
+use forge_engine_core::ids::PlayerId;
 use forge_engine_core::player::RegisteredPlayer;
 use forge_foundation::ZoneType;
 
@@ -209,6 +208,7 @@ impl GameManager {
         app: AppHandle,
         player_names: Vec<String>,
         deck_lists: Vec<Vec<CardIdentity>>,
+        commander_names: Vec<Option<String>>,
         engine_player_index: usize,
         local_is_host: bool,
         starting_life: i32,
@@ -222,6 +222,9 @@ impl GameManager {
         }
         if deck_lists.len() != num_players {
             return Err("Deck list count must match player count".into());
+        }
+        if commander_names.len() != num_players {
+            return Err("Commander list count must match player count".into());
         }
         if deck_lists.iter().any(|deck| deck.is_empty()) {
             return Err("All players must have a selected deck".into());
@@ -292,6 +295,7 @@ impl GameManager {
         // Game thread
         let player_name_strs = player_names.clone();
         let selected_deck_lists = deck_lists.clone();
+        let selected_commander_names = commander_names.clone();
         let handle = thread::spawn(move || {
             eprintln!(
                 "[game_thread] Starting multiplayer game: {} with {} players",
@@ -302,6 +306,7 @@ impl GameManager {
                     game_id_clone.clone(),
                     player_name_strs,
                     selected_deck_lists,
+                    selected_commander_names,
                     engine_player_index,
                     starting_life,
                     game_engine_prompt_tx,
@@ -524,6 +529,7 @@ fn run_multiplayer_game(
     game_id: String,
     player_names: Vec<String>,
     deck_lists: Vec<Vec<CardIdentity>>,
+    commander_names: Vec<Option<String>>,
     engine_player_index: usize,
     starting_life: i32,
     engine_prompt_tx: mpsc::Sender<AgentPrompt>,
@@ -542,6 +548,9 @@ fn run_multiplayer_game(
             prepare_custom_registered_player(player_names[i].clone(), &deck_lists[i])
         };
         prepared.registered.starting_life = starting_life;
+        if let Some(ref commander_name) = commander_names[i] {
+            force_commander_by_name(&mut prepared, commander_name);
+        }
         prepared_players.push(prepared);
     }
     let registered: Vec<RegisteredPlayer> = prepared_players

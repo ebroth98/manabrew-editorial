@@ -30,6 +30,7 @@ export interface StartGameParams {
 export interface StartMultiplayerGameParams {
   playerNames: string[];
   deckLists: CardIdentity[][];
+  commanderNames: Array<string | null>;
   enginePlayerIndex: number;
   localIsHost: boolean;
   startingLife: number;

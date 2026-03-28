@@ -1,11 +1,14 @@
 // Core OpenMagic Types (mirrored from Java forge-game)
 
+export type DeckFormatId = "constructed" | "commander";
+
 export interface Card {
   id: string; // UUID
   name: string;
   setCode: string;
   cardNumber: string;
   color: string;
+  colorIdentity?: string[];
   manaCost: string;
   cmc?: number;
   types: string[];
@@ -71,6 +74,7 @@ export interface DeckLabel {
 
 export interface Deck {
   name: string;
+  format?: DeckFormatId;
   cards: Card[];
   sideboard: Card[];
   /** Supplementary Attraction deck, separate from the sideboard like Forge RegisteredPlayer.getAttractions(). */

@@ -5,7 +5,6 @@ import { FormatBadge } from "@/components/game/FormatBadge";
 import { Pencil, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { extractColors } from "@/views/myDecks.utils";
-import { inferFormats } from "@/lib/formats";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import type { SavedDeck } from "@/stores/useDeckStore";
 
@@ -36,7 +35,6 @@ export function DeckCard({
   onEditNameChange,
 }: DeckCardProps) {
   const deckColors = extractColors(deck.deck.cards);
-  const deckFormats = inferFormats(deck.deck.cards.map((c: { name: string }) => c.name));
 
   return (
     <div
@@ -79,11 +77,11 @@ export function DeckCard({
         )}
         <div className="flex items-center gap-1 flex-wrap">
           <span className="text-xs text-muted-foreground">
-            {deck.deck.cards.length} cards
+            {deck.deck.format === "commander"
+              ? deck.deck.cards.length + (deck.deck.commander ? 1 : 0)
+              : deck.deck.cards.length} cards
           </span>
-          {deckFormats.map((f) => (
-            <FormatBadge key={f.id} formatId={f.id} />
-          ))}
+          <FormatBadge formatId={deck.deck.format ?? "constructed"} />
           {deck.deck.labels?.map((label) => (
             <Badge key={label.name} variant="outline" className="text-[9px] h-4 px-1 text-primary/80 border-primary/30">
               {label.name}

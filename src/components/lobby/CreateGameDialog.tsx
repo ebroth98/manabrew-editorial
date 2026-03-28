@@ -8,14 +8,18 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import type { Card } from "@/types/openmagic";
-import type { CardIdentity, DeckSection } from "@/types/server";
 import { useDeckStore } from "@/stores/useDeckStore";
-import { GAME_FORMATS, validateDeck, type GameFormat } from "@/lib/formats";
+import type { CardIdentity } from "@/types/server";
+import {
+  GAME_FORMATS,
+  validateDeckSections,
+  type GameFormat,
+} from "@/lib/formats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckSelectionCard } from "./DeckSelectionCard";
 import { cn } from "@/lib/utils";
 import { Search, Shuffle, Swords } from "lucide-react";
+import { getDeckFingerprint, serializeDeck } from "@/lib/decks";
 
 interface CreateGameDialogProps {
   open: boolean;
@@ -34,30 +38,6 @@ interface CreateGameDialogProps {
     playerCount?: number,
     deckName?: string
   ) => void;
-}
-
-function deckSectionForCard(card: Card, fallback: DeckSection): DeckSection {
-  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "attraction")) {
-    return "attractions";
-  }
-  if (card.subtypes.some((subtype) => subtype.toLowerCase() === "contraption")) {
-    return "contraptions";
-  }
-  if (card.types.some((type) => type.toLowerCase() === "scheme")) {
-    return "schemes";
-  }
-  if (card.types.some((type) => type.toLowerCase() === "plane")) {
-    return "planes";
-  }
-  return fallback;
-}
-
-function toCardIdentity(card: Card, section: DeckSection): CardIdentity {
-  return {
-    name: card.name,
-    setCode: card.setCode || "",
-    section: deckSectionForCard(card, section),
-  };
 }
 
 export function CreateGameDialog({
@@ -94,6 +74,11 @@ export function CreateGameDialog({
     if (forced) setSelectedFormat(forced);
   }, [forcedFormatId]);
 
+  const currentDeckFingerprint = getDeckFingerprint(currentDeck);
+  const distinctSavedDecks = savedDecks.filter(
+    (saved) => getDeckFingerprint(saved.deck) !== currentDeckFingerprint,
+  );
+
   // User-built decks
   const userDecks = [
     {
@@ -101,35 +86,37 @@ export function CreateGameDialog({
       name: currentDeck.name,
       badge: "editing",
       labels: currentDeck.labels,
-      deckList: [
-        ...currentDeck.cards.map((c) => toCardIdentity(c, "main")),
-        ...currentDeck.sideboard.map((c) => toCardIdentity(c, "sideboard")),
-        ...(currentDeck.attractions ?? []).map((c) => toCardIdentity(c, "attractions")),
-        ...(currentDeck.contraptions ?? []).map((c) => toCardIdentity(c, "contraptions")),
-        ...(currentDeck.schemes ?? []).map((c) => toCardIdentity(c, "schemes")),
-        ...(currentDeck.planes ?? []).map((c) => toCardIdentity(c, "planes")),
-        ...(currentDeck.commander ? [toCardIdentity(currentDeck.commander, "commander")] : []),
-      ],
+      deckList: serializeDeck(currentDeck),
       isPreset: false as const,
-      cards: currentDeck.cards,
+      cards: [
+        ...currentDeck.cards,
+        ...currentDeck.sideboard,
+        ...(currentDeck.attractions ?? []),
+        ...(currentDeck.contraptions ?? []),
+        ...(currentDeck.schemes ?? []),
+        ...(currentDeck.planes ?? []),
+        ...(currentDeck.commander ? [currentDeck.commander] : []),
+      ],
+      formatId: currentDeck.format ?? "constructed",
       commanderName: currentDeck.commander?.name,
     },
-    ...savedDecks.map((s) => ({
+    ...distinctSavedDecks.map((s) => ({
       id: s.id,
       name: s.deck.name,
       badge: null as string | null,
       labels: s.deck.labels,
-      deckList: [
-        ...s.deck.cards.map((c) => toCardIdentity(c, "main")),
-        ...s.deck.sideboard.map((c) => toCardIdentity(c, "sideboard")),
-        ...(s.deck.attractions ?? []).map((c) => toCardIdentity(c, "attractions")),
-        ...(s.deck.contraptions ?? []).map((c) => toCardIdentity(c, "contraptions")),
-        ...(s.deck.schemes ?? []).map((c) => toCardIdentity(c, "schemes")),
-        ...(s.deck.planes ?? []).map((c) => toCardIdentity(c, "planes")),
-        ...(s.deck.commander ? [toCardIdentity(s.deck.commander, "commander")] : []),
-      ],
+      deckList: serializeDeck(s.deck),
       isPreset: false as const,
-      cards: s.deck.cards,
+      cards: [
+        ...s.deck.cards,
+        ...s.deck.sideboard,
+        ...(s.deck.attractions ?? []),
+        ...(s.deck.contraptions ?? []),
+        ...(s.deck.schemes ?? []),
+        ...(s.deck.planes ?? []),
+        ...(s.deck.commander ? [s.deck.commander] : []),
+      ],
+      formatId: s.deck.format ?? "constructed",
       commanderName: s.deck.commander?.name,
     })),
   ];
@@ -140,7 +127,7 @@ export function CreateGameDialog({
     name: deck.label,
     desc: deck.desc,
     color: deck.color,
-    deckList: [{ name: deck.id, setCode: "", section: "main" as DeckSection }],
+    deckList: [{ name: deck.id, setCode: "", section: "main" as const }],
     isPreset: true as const,
     cards: [],
     commanderName: undefined as string | undefined,
@@ -157,9 +144,10 @@ export function CreateGameDialog({
           d.desc?.toLowerCase().includes(searchLower),
       )
     : presetDeckEntries;
+  const formatUserDecks = userDecks.filter((d) => d.formatId === selectedFormat.id);
   const filteredUserDecks = searchLower
-    ? userDecks.filter((d) => d.name.toLowerCase().includes(searchLower))
-    : userDecks;
+    ? formatUserDecks.filter((d) => d.name.toLowerCase().includes(searchLower))
+    : formatUserDecks;
 
   // Auto-populate commander when the selected deck changes
   useEffect(() => {
@@ -172,7 +160,11 @@ export function CreateGameDialog({
   const selectedDeckList = selectedDeckEntry?.deckList ?? [];
   const selectedDeckValidation = selectedDeckEntry?.isPreset
     ? { legal: true, errors: [] as string[] }
-    : validateDeck(selectedDeckList.map(c => c.name), selectedFormat);
+    : validateDeckSections({
+        deckList: selectedDeckList,
+        availableCards: selectedDeckEntry?.cards ?? [],
+        commanderName: selectedCommander || selectedDeckEntry?.commanderName,
+      }, selectedFormat);
 
   const legendaryCreatures = selectedDeckEntry
     ? Array.from(
@@ -190,7 +182,7 @@ export function CreateGameDialog({
       )
     : [];
 
-  const needsCommander = !isLobbyMode && selectedFormat.deckRules.requiresCommander;
+  const needsCommander = selectedFormat.deckRules.requiresCommander;
   const commanderValid = !needsCommander || selectedCommander !== "";
   const isReady = !!selectedDeckEntry && selectedDeckValidation.legal && commanderValid;
 
@@ -427,7 +419,13 @@ export function CreateGameDialog({
               ) : (
                 <div className="grid grid-cols-3 gap-2">
                   {filteredUserDecks.map((d) => {
-                    const validation = validateDeck(d.deckList.map((c) => c.name), selectedFormat);
+                    const validation = validateDeckSections({
+                      deckList: d.deckList,
+                      availableCards: d.cards,
+                      commanderName: selectedFormat.deckRules.requiresCommander
+                        ? (d.id === selectedDeck ? selectedCommander || d.commanderName : d.commanderName)
+                        : undefined,
+                    }, selectedFormat);
                     return (
                       <DeckSelectionCard
                         key={d.id}

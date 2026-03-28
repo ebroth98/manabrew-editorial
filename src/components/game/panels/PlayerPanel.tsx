@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import type { Player } from "@/types/openmagic";
 import { cn } from "@/lib/utils";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -6,6 +6,59 @@ import { Heart, Layers, Sword } from "lucide-react";
 import { ManaPool as ManaPoolDisplay } from "./ManaPool";
 import { getAvatarColor, getInitials } from "../game.utils";
 import { useGameThemeColors, withAlpha } from "../game.theme";
+
+interface StatBadgeProps {
+  label: string;
+  children: ReactNode;
+  asButton?: boolean;
+  className?: string;
+  style?: CSSProperties;
+  onClick?: () => void;
+  disabled?: boolean;
+}
+
+function StatBadge({
+  label,
+  children,
+  asButton = false,
+  className,
+  style,
+  onClick,
+  disabled,
+}: StatBadgeProps) {
+  const baseClassName = cn(
+    "relative inline-flex items-center",
+    asButton && "disabled:opacity-80",
+    className,
+  );
+
+  const tooltip = (
+    <span className="pointer-events-none absolute left-1/2 top-full z-40 mt-1 -translate-x-1/2 whitespace-nowrap rounded bg-black/85 px-1.5 py-0.5 text-[10px] font-semibold text-white opacity-0 transition-opacity duration-150 delay-0 group-hover/stat:delay-300 group-hover/stat:opacity-100">
+      {label}
+    </span>
+  );
+
+  if (asButton) {
+    return (
+      <button
+        className={cn(baseClassName, "group/stat")}
+        style={style}
+        onClick={onClick}
+        disabled={disabled}
+      >
+        {children}
+        {tooltip}
+      </button>
+    );
+  }
+
+  return (
+    <span className={cn(baseClassName, "group/stat")} style={style}>
+      {children}
+      {tooltip}
+    </span>
+  );
+}
 
 interface PlayerPanelProps {
   player: Player;
@@ -55,62 +108,74 @@ export function PlayerPanel({
           backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58),
         }}
       >
-        <span className="inline-flex items-center gap-1 text-white">
-          <Heart
-            className="h-3 w-3"
-            style={{ color: themeColors.promptAction.attackAction }}
-          />
-          <span className="font-extrabold text-[11px] leading-none tabular-nums">
-            {player.life}
+        <StatBadge label="Life Total">
+          <span className="inline-flex items-center gap-1 text-white">
+            <Heart
+              className="h-3 w-3"
+              style={{ color: themeColors.promptAction.attackAction }}
+            />
+            <span className="font-extrabold text-[11px] leading-none tabular-nums">
+              {player.life}
+            </span>
           </span>
-        </span>
+        </StatBadge>
         <span className="text-white/20">|</span>
-        <span className="inline-flex items-center gap-1 text-white/90">
-          <Layers
-            className="h-3 w-3"
-            style={{ color: themeColors.promptAction.defenseAction }}
-          />
-          <span className="font-bold text-[11px] leading-none tabular-nums">
-            {player.handCount}
+        <StatBadge label="Cards in Hand">
+          <span className="inline-flex items-center gap-1 text-white/90">
+            <Layers
+              className="h-3 w-3"
+              style={{ color: themeColors.promptAction.defenseAction }}
+            />
+            <span className="font-bold text-[11px] leading-none tabular-nums">
+              {player.handCount}
+            </span>
           </span>
-        </span>
+        </StatBadge>
         {(DEV_SHOW_ALL_STATS || player.poison > 0) && (
           <>
             <span className="text-white/20">|</span>
-            <span className="inline-flex items-center gap-1 font-bold text-[11px] text-emerald-500">
-              ☠<span className="tabular-nums">{player.poison || 0}</span>
-            </span>
+            <StatBadge label="Poison Counters">
+              <span className="inline-flex items-center gap-1 font-bold text-[11px] text-emerald-500">
+                ☠<span className="tabular-nums">{player.poison || 0}</span>
+              </span>
+            </StatBadge>
           </>
         )}
         {(DEV_SHOW_ALL_STATS || (player.energyCounters ?? 0) > 0) && (
           <>
             <span className="text-white/20">|</span>
-            <span
-              className="inline-flex items-center gap-1 font-bold text-[11px]"
-              style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}
-            >
-              ⚡
-              <span className="tabular-nums">{player.energyCounters ?? 0}</span>
-            </span>
+            <StatBadge label="Energy Counters">
+              <span
+                className="inline-flex items-center gap-1 font-bold text-[11px]"
+                style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}
+              >
+                ⚡
+                <span className="tabular-nums">{player.energyCounters ?? 0}</span>
+              </span>
+            </StatBadge>
           </>
         )}
         {(DEV_SHOW_ALL_STATS || totalCmdDmg > 0) && (
           <>
             <span className="text-white/20">|</span>
-            <span
-              className="inline-flex items-center gap-1 font-bold text-[11px]"
-              style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}
-            >
-              ⚔<span className="tabular-nums">{totalCmdDmg || 0}</span>
-            </span>
+            <StatBadge label="Commander Damage Taken">
+              <span
+                className="inline-flex items-center gap-1 font-bold text-[11px]"
+                style={{ color: withAlpha(themeColors.activeAction.active, 0.9) }}
+              >
+                ⚔<span className="tabular-nums">{totalCmdDmg || 0}</span>
+              </span>
+            </StatBadge>
           </>
         )}
         {(DEV_SHOW_ALL_STATS || commandZoneCount > 0) && (
           <>
             <span className="text-white/20">|</span>
-            <button
+            <StatBadge
+              label="Command Zone"
+              asButton
               className={cn(
-                "inline-flex items-center gap-1 font-bold text-[11px]",
+                "font-bold text-[11px]",
                 onOpenCommandZone ? "" : "text-muted-foreground/80",
               )}
               style={
@@ -120,11 +185,10 @@ export function PlayerPanel({
               }
               onClick={onOpenCommandZone}
               disabled={!onOpenCommandZone}
-              title="Command Zone"
             >
               <Sword className="h-3 w-3" />
               <span className="tabular-nums">{commandZoneCount}</span>
-            </button>
+            </StatBadge>
           </>
         )}
       </div>
@@ -181,14 +245,16 @@ export function PlayerPanel({
       <div className={cn("absolute left-2 flex items-center gap-0.5", isTop ? "top-0" : "bottom-0")}>
         {statsBar}
         {hasMana && (
-          <div
-            className="flex items-center rounded-full px-1.5 py-0.5 shrink-0 backdrop-blur-sm shadow-sm"
-            style={{
-              backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58),
-            }}
-          >
-            <ManaPoolDisplay pool={player.manaPool} />
-          </div>
+          <StatBadge label="Mana Pool">
+            <div
+              className="flex items-center rounded-full px-1.5 py-0.5 shrink-0 backdrop-blur-sm shadow-sm"
+              style={{
+                backgroundColor: withAlpha(themeColors.promptAction.cancel, 0.58),
+              }}
+            >
+              <ManaPoolDisplay pool={player.manaPool} />
+            </div>
+          </StatBadge>
         )}
       </div>
     </div>

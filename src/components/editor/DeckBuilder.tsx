@@ -28,6 +28,9 @@ import { createEmptyCard, scryfallToXMage } from "@/lib/scryfall.utils";
 import { DROP_ZONE } from "@/lib/constants";
 import { useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
+import { getFormat, validateDeckSections } from "@/lib/formats";
+import { serializeDeck } from "@/lib/decks";
+import { FormatBadge } from "@/components/game/FormatBadge";
 import { DeckListView } from "./DeckListView";
 import { CardDetailModal } from "./CardDetailModal";
 import { DeckLabelsModal } from "./DeckLabelsModal";
@@ -56,6 +59,30 @@ function setUnsavedState(_snapshot: string, current: string) {
     _hasUnsavedChanges = next;
     _listeners.forEach((fn) => fn());
   }
+}
+
+function buildDeckSnapshot(deck: {
+  format?: string;
+  cards: Card[];
+  commander?: Card;
+  sideboard: Card[];
+  attractions?: Card[];
+  contraptions?: Card[];
+  schemes?: Card[];
+  planes?: Card[];
+  name: string;
+}): string {
+  return JSON.stringify({
+    format: deck.format,
+    cards: deck.cards,
+    commander: deck.commander,
+    sideboard: deck.sideboard,
+    attractions: deck.attractions ?? [],
+    contraptions: deck.contraptions ?? [],
+    schemes: deck.schemes ?? [],
+    planes: deck.planes ?? [],
+    name: deck.name,
+  });
 }
 
 /** Hook to read unsaved changes state from outside DeckBuilder. */
@@ -206,6 +233,7 @@ export function DeckBuilder() {
     addToSide,
     setDeckName,
     clearDeck,
+    setDeckFormat,
     saveCurrentDeck,
     loadSavedDeck,
     deleteSavedDeck,
@@ -226,35 +254,20 @@ export function DeckBuilder() {
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [cardSize, setCardSize] = useState(3);
   const [groupBy, setGroupBy] = useState<GroupByMode>("type");
-  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => JSON.stringify({
-    cards: currentDeck.cards,
-    sideboard: currentDeck.sideboard,
-    attractions: currentDeck.attractions ?? [],
-    contraptions: currentDeck.contraptions ?? [],
-    schemes: currentDeck.schemes ?? [],
-    planes: currentDeck.planes ?? [],
-    name: currentDeck.name,
-  }));
+  const [lastSavedSnapshot, setLastSavedSnapshot] = useState(() => buildDeckSnapshot(currentDeck));
   const [pendingSwitchAction, setPendingSwitchAction] = useState<(() => void) | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
   const enrichedNamesRef = useRef(new Set<string>());
 
   const supplementaryCards = [
+    ...(currentDeck.commander ? [currentDeck.commander] : []),
     ...currentDeck.sideboard,
     ...(currentDeck.attractions ?? []),
     ...(currentDeck.contraptions ?? []),
     ...(currentDeck.schemes ?? []),
     ...(currentDeck.planes ?? []),
   ];
-  const currentSnapshot = JSON.stringify({
-    cards: currentDeck.cards,
-    sideboard: currentDeck.sideboard,
-    attractions: currentDeck.attractions ?? [],
-    contraptions: currentDeck.contraptions ?? [],
-    schemes: currentDeck.schemes ?? [],
-    planes: currentDeck.planes ?? [],
-    name: currentDeck.name,
-  });
+  const currentSnapshot = buildDeckSnapshot(currentDeck);
   const hasUnsavedChanges = currentSnapshot !== lastSavedSnapshot;
 
   // Sync shared unsaved state for DeckEditor blocker
@@ -265,15 +278,9 @@ export function DeckBuilder() {
   // Reset snapshot when a deck is loaded
   const deckIdentity = `${currentDeck.name}:${savedDecks.length}`;
   useEffect(() => {
-    setLastSavedSnapshot(JSON.stringify({
-      cards: currentDeck.cards,
-      sideboard: currentDeck.sideboard,
-      attractions: currentDeck.attractions ?? [],
-      contraptions: currentDeck.contraptions ?? [],
-      schemes: currentDeck.schemes ?? [],
-      planes: currentDeck.planes ?? [],
-      name: currentDeck.name,
-    }));
+    const snapshot = buildDeckSnapshot(currentDeck);
+    setLastSavedSnapshot(snapshot);
+    setUnsavedState(snapshot, snapshot);
   }, [deckIdentity]);
 
   // Warn on navigation/tab close with unsaved changes
@@ -461,16 +468,32 @@ export function DeckBuilder() {
   }
 
   function handleSave() {
+    const format = getFormat(currentDeck.format ?? "constructed");
+    if (!format) {
+      toast.error("Unknown deck format");
+      return;
+    }
+    const validation = validateDeckSections({
+      deckList: serializeDeck(currentDeck),
+      availableCards: [
+        ...currentDeck.cards,
+        ...currentDeck.sideboard,
+        ...(currentDeck.attractions ?? []),
+        ...(currentDeck.contraptions ?? []),
+        ...(currentDeck.schemes ?? []),
+        ...(currentDeck.planes ?? []),
+        ...(currentDeck.commander ? [currentDeck.commander] : []),
+      ],
+      commanderName: currentDeck.commander?.name,
+    }, format);
+    if (!validation.legal) {
+      toast.error(validation.errors[0] ?? "Deck is not legal");
+      return;
+    }
     saveCurrentDeck();
-    setLastSavedSnapshot(JSON.stringify({
-      cards: currentDeck.cards,
-      sideboard: currentDeck.sideboard,
-      attractions: currentDeck.attractions ?? [],
-      contraptions: currentDeck.contraptions ?? [],
-      schemes: currentDeck.schemes ?? [],
-      planes: currentDeck.planes ?? [],
-      name: currentDeck.name,
-    }));
+    const snapshot = buildDeckSnapshot(currentDeck);
+    setLastSavedSnapshot(snapshot);
+    setUnsavedState(snapshot, snapshot);
     toast.success(`Deck "${currentDeck.name}" saved`);
   }
 
@@ -511,6 +534,32 @@ export function DeckBuilder() {
               onClick={() => { setNameInput(currentDeck.name); setEditingName(true); }}>
               <Pencil className="h-3 w-3" />
             </Button>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                onClick={() => setDeckFormat("constructed")}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-xs transition-colors",
+                  (currentDeck.format ?? "constructed") === "constructed"
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:bg-muted/60",
+                )}
+              >
+                <FormatBadge formatId="constructed" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setDeckFormat("commander")}
+                className={cn(
+                  "rounded-md border px-2 py-1 text-xs transition-colors",
+                  (currentDeck.format ?? "constructed") === "commander"
+                    ? "border-primary bg-primary/5"
+                    : "border-border hover:bg-muted/60",
+                )}
+              >
+                <FormatBadge formatId="commander" />
+              </button>
+            </div>
             {(currentDeck.labels ?? []).map((label) => (
               <span
                 key={label.name}
@@ -524,7 +573,9 @@ export function DeckBuilder() {
               </span>
             ))}
             <span className="text-xs text-muted-foreground ml-auto shrink-0">
-              {currentDeck.cards.length}
+              {(currentDeck.format ?? "constructed") === "commander"
+                ? currentDeck.cards.length + (currentDeck.commander ? 1 : 0)
+                : currentDeck.cards.length}
               {currentDeck.sideboard.length > 0 && <span className="text-muted-foreground/50"> · SB:{currentDeck.sideboard.length}</span>}
               {(currentDeck.attractions?.length ?? 0) > 0 && <span className="text-muted-foreground/50"> · AT:{currentDeck.attractions!.length}</span>}
               {(currentDeck.contraptions?.length ?? 0) > 0 && <span className="text-muted-foreground/50"> · CT:{currentDeck.contraptions!.length}</span>}
@@ -548,15 +599,19 @@ export function DeckBuilder() {
                 clearDeck();
                 setNameInput("New Deck");
                 setDeckName("New Deck");
-                setLastSavedSnapshot(JSON.stringify({
+                const snapshot = buildDeckSnapshot({
+                  format: "constructed",
                   cards: [],
                   sideboard: [],
+                  commander: undefined,
                   attractions: [],
                   contraptions: [],
                   schemes: [],
                   planes: [],
                   name: "New Deck",
-                }));
+                });
+                setLastSavedSnapshot(snapshot);
+                setUnsavedState(snapshot, snapshot);
                 toast.success("New deck created");
               })}
               className="gap-2 text-primary"
@@ -715,7 +770,7 @@ export function DeckBuilder() {
           <Button size="icon" variant="ghost" className="h-7 w-7" title="Import from clipboard" onClick={handleImport}>
             <ClipboardPaste className="h-3.5 w-3.5" />
           </Button>
-          <Button size="icon" variant="ghost" className="h-7 w-7" title="Export to clipboard" onClick={handleExport} disabled={currentDeck.cards.length === 0}>
+          <Button size="icon" variant="ghost" className="h-7 w-7" title="Export to clipboard" onClick={handleExport} disabled={currentDeck.cards.length === 0 && !currentDeck.commander}>
             <ClipboardCopy className="h-3.5 w-3.5" />
           </Button>
           <Button size="icon" variant="ghost" className="h-7 w-7 relative" title="Labels" onClick={() => setLabelsOpen(true)}>
@@ -804,7 +859,7 @@ export function DeckBuilder() {
           onLeave={() => setHovered(null)}
           onAddToSide={(card) => addToSide(card)}
           onRemoveFromSide={handleRemoveOneFromSide}
-          totalCards={currentDeck.cards.length}
+          totalCards={currentDeck.cards.length + (currentDeck.commander ? 1 : 0)}
           customTags={currentDeck.customTags}
           cardTags={currentDeck.cardTags}
           allMainCards={currentDeck.cards}

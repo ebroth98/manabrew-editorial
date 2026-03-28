@@ -186,6 +186,7 @@ export interface GameState {
   startMultiplayerGame: (
     playerNames: string[],
     deckLists: CardIdentity[][],
+    commanderNames: Array<string | null>,
     enginePlayerIndex: number,
     localIsHost: boolean,
     startingLife: number
