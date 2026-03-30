@@ -291,7 +291,7 @@ public final class Main {
                 if (currentTurn == 1) {
                     ParityCardMap.initializeFromOpeningState(game);
                 }
-
+                ParityCardMap.syncWithGame(game);
                 String snap = SnapshotExtractor.snapshotJson(game);
                 protocolOut.println(snap);
                 protocolOut.flush();

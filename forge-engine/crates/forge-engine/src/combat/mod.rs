@@ -68,8 +68,18 @@ pub struct CombatState {
     pub defending_player: Option<PlayerId>,
     /// (attacker CardId, defender — player or permanent)
     pub attackers: Vec<(CardId, DefenderId)>,
+    /// Zone timestamp of each attacker at declare-attackers time.
+    #[serde(default)]
+    pub attacker_zone_timestamps: HashMap<CardId, u64>,
     /// (blocker CardId, attacker CardId)
     pub blockers: Vec<(CardId, CardId)>,
+    /// Attackers that became blocked at any point this combat, even if
+    /// blockers later left combat before damage.
+    #[serde(default)]
+    pub blocked_attackers: HashSet<CardId>,
+    /// Zone timestamp of each blocker at declare-blockers time.
+    #[serde(default)]
+    pub blocker_zone_timestamps: HashMap<CardId, u64>,
     /// Damage assignment order: attacker → ordered list of blockers.
     /// The attacker must assign lethal to each blocker in order before
     /// moving to the next. Set after blocker declaration.
@@ -90,7 +100,10 @@ impl CombatState {
         self.attacking_player = None;
         self.defending_player = None;
         self.attackers.clear();
+        self.attacker_zone_timestamps.clear();
         self.blockers.clear();
+        self.blocked_attackers.clear();
+        self.blocker_zone_timestamps.clear();
         self.damage_order.clear();
         self.lki_cache.clear();
     }
@@ -106,12 +119,15 @@ impl CombatState {
         self.lki_cache = lki;
     }
 
-    pub fn declare_attacker(&mut self, attacker: CardId, defending: DefenderId) {
+    pub fn declare_attacker(&mut self, attacker: CardId, defending: DefenderId, zone_timestamp: u64) {
         self.attackers.push((attacker, defending));
+        self.attacker_zone_timestamps.insert(attacker, zone_timestamp);
     }
 
-    pub fn declare_blocker(&mut self, blocker: CardId, attacker: CardId) {
+    pub fn declare_blocker(&mut self, blocker: CardId, attacker: CardId, zone_timestamp: u64) {
         self.blockers.push((blocker, attacker));
+        self.blocked_attackers.insert(attacker);
+        self.blocker_zone_timestamps.insert(blocker, zone_timestamp);
     }
 
     pub fn is_attacking(&self, card: CardId) -> bool {
@@ -120,6 +136,11 @@ impl CombatState {
 
     pub fn is_blocked(&self, attacker: CardId) -> bool {
         self.blockers.iter().any(|(_, a)| *a == attacker)
+    }
+
+    /// True if attacker was blocked at any time this combat.
+    pub fn was_blocked_this_combat(&self, attacker: CardId) -> bool {
+        self.blocked_attackers.contains(&attacker) || self.is_blocked(attacker)
     }
 
     pub fn get_blockers_for(&self, attacker: CardId) -> Vec<CardId> {
@@ -207,19 +228,34 @@ impl CombatState {
 
         self.attackers.retain(|&(id, _)| {
             let card = &cards[id.index()];
-            card.zone == ZoneType::Battlefield && card.is_creature()
+            let timestamp_ok = self
+                .attacker_zone_timestamps
+                .get(&id)
+                .map(|&ts| ts == card.zone_timestamp)
+                .unwrap_or(true);
+            card.zone == ZoneType::Battlefield && card.is_creature() && timestamp_ok
         });
         self.blockers.retain(|&(id, _)| {
             let card = &cards[id.index()];
-            card.zone == ZoneType::Battlefield && card.is_creature()
+            let timestamp_ok = self
+                .blocker_zone_timestamps
+                .get(&id)
+                .map(|&ts| ts == card.zone_timestamp)
+                .unwrap_or(true);
+            card.zone == ZoneType::Battlefield && card.is_creature() && timestamp_ok
         });
 
-        // Clean damage_order keys for removed attackers
         let attacker_ids: HashSet<CardId> = self.attackers.iter().map(|(a, _)| *a).collect();
+        self.attacker_zone_timestamps
+            .retain(|attacker_id, _| attacker_ids.contains(attacker_id));
+
+        // Clean damage_order keys for removed attackers
         self.damage_order.retain(|k, _| attacker_ids.contains(k));
 
         // Also remove dead blockers from damage_order values
         let blocker_ids: HashSet<CardId> = self.blockers.iter().map(|(b, _)| *b).collect();
+        self.blocker_zone_timestamps
+            .retain(|blocker_id, _| blocker_ids.contains(blocker_id));
         for order in self.damage_order.values_mut() {
             order.retain(|b| blocker_ids.contains(b));
         }
@@ -345,6 +381,7 @@ impl CombatState {
                         as_unblocked_choices.contains(&attacker_id),
                     );
 
+            let attacker_was_blocked = self.was_blocked_this_combat(attacker_id);
             let blockers = if assign_as_unblocked {
                 Vec::new()
             } else if let Some(ordered) = self.damage_order.get(&attacker_id) {
@@ -354,7 +391,7 @@ impl CombatState {
                 self.get_blockers_for(attacker_id)
             };
 
-            if blockers.is_empty() {
+            if blockers.is_empty() && !attacker_was_blocked {
                 // Unblocked — damage goes to defender (player or permanent)
                 if !attacker_deals_damage || attacker_power <= 0 {
                     continue;
@@ -453,7 +490,7 @@ impl CombatState {
                 }
 
                 if can_assign_unblocked_to_creature
-                    && !self.is_blocked(attacker_id)
+                    && !attacker_was_blocked
                     && !defending_creatures.is_empty()
                     && agents[attacker_controller.index()].confirm_action(
                         attacker_controller,
@@ -940,6 +977,7 @@ impl CombatState {
     /// Mirrors Java `Combat.addBlocker()`.
     pub fn add_blocker(&mut self, attacker: CardId, blocker: CardId) {
         self.blockers.push((blocker, attacker));
+        self.blocked_attackers.insert(attacker);
         // If damage order already exists for this attacker, add blocker to it
         if let Some(order) = self.damage_order.get_mut(&attacker) {
             if !order.contains(&blocker) {
@@ -953,12 +991,16 @@ impl CombatState {
     pub fn remove_block_assignment(&mut self, attacker: CardId, blocker: CardId) {
         self.blockers
             .retain(|&(b, a)| !(b == blocker && a == attacker));
+        if !self.blockers.iter().any(|(b, _)| *b == blocker) {
+            self.blocker_zone_timestamps.remove(&blocker);
+        }
     }
 
     /// Remove a blocker from all attacker assignments.
     /// Mirrors Java `Combat.undoBlockingAssignment()`.
     pub fn undo_blocking_assignment(&mut self, blocker: CardId) {
         self.blockers.retain(|&(b, _)| b != blocker);
+        self.blocker_zone_timestamps.remove(&blocker);
     }
 
     /// Order blockers for damage assignment. For each attacker, store the
@@ -1024,6 +1066,11 @@ impl CombatState {
 
         // Remove attacker entry
         self.attackers.retain(|(a, _)| *a != card);
+        self.attacker_zone_timestamps.remove(&card);
+        self.blockers.retain(|(_, a)| *a != card);
+        let blocker_ids: HashSet<CardId> = self.blockers.iter().map(|(b, _)| *b).collect();
+        self.blocker_zone_timestamps
+            .retain(|blocker_id, _| blocker_ids.contains(blocker_id));
     }
 
     /// Remove a blocker from combat, cleaning up all indices.
@@ -1036,6 +1083,7 @@ impl CombatState {
 
         // Remove blocker entries
         self.blockers.retain(|(b, _)| *b != card);
+        self.blocker_zone_timestamps.remove(&card);
     }
 
     /// Remove a combatant (attacker or blocker) from combat.

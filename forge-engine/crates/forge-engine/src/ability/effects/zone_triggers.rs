@@ -38,6 +38,8 @@ pub fn emit_zone_trigger_with_lki_counters(
     origin: ZoneType,
     destination: ZoneType,
     lki_p1p1_counters: i32,
+    lki_power: i32,
+    lki_toughness: i32,
 ) {
     trigger_handler.run_trigger(
         TriggerType::ChangesZone,
@@ -47,6 +49,8 @@ pub fn emit_zone_trigger_with_lki_counters(
             origin: Some(origin),
             destination: Some(destination),
             lki_p1p1_counters: Some(lki_p1p1_counters),
+            lki_power: Some(lki_power),
+            lki_toughness: Some(lki_toughness),
             ..Default::default()
         },
         false,

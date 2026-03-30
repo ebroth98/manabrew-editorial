@@ -82,6 +82,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ZoneType::Battlefield,
             ZoneType::Graveyard,
             lki_p1p1,
+            ctx.game
+                .card(card_id)
+                .lki_power
+                .unwrap_or_else(|| ctx.game.card(card_id).power()),
+            ctx.game
+                .card(card_id)
+                .lki_toughness
+                .unwrap_or_else(|| ctx.game.card(card_id).toughness()),
         );
     }
 }

@@ -215,6 +215,12 @@ pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
     if params.origin == Some(forge_foundation::ZoneType::Battlefield) {
         if let Some(card_id) = params.card_lki.or(params.card) {
             sa.add_triggering_object("Card", &card_id.0.to_string());
+            if let Some(power) = params.lki_power {
+                sa.add_triggering_object("TriggeredCardPower", &power.to_string());
+            }
+            if let Some(toughness) = params.lki_toughness {
+                sa.add_triggering_object("TriggeredCardToughness", &toughness.to_string());
+            }
         }
         if let Some(card_id) = params.card {
             sa.add_triggering_object("NewCard", &card_id.0.to_string());

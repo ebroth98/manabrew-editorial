@@ -30,6 +30,7 @@ import { cn } from "@/lib/utils";
 import { Navigate, useLocation } from "react-router-dom";
 import { PromptType } from "@/types/promptType";
 import { useStackUIStore } from "@/stores/useStackUIStore";
+import type { HandActionOption } from "@/stores/useGameUIStore";
 import type { PlacementGhost } from "@/components/game/zones/FreeBattlefield";
 
 /** Prompt types where hover card preview is allowed (no modal overlay). */
@@ -138,6 +139,29 @@ export default function Game() {
     toggleActionPanel,
   } = useGameUIStore();
 
+  const getHandActionOptions = (card: XMageCard): HandActionOption[] => {
+    const castOptions = (currentPrompt?.playableOptions ?? [])
+      .filter((option) => option.cardId === card.id)
+      .map((option) => ({
+        kind: "cast" as const,
+        cardId: card.id,
+        mode: option.mode,
+        label: option.modeLabel,
+      }));
+
+    const handAbilities = (currentPrompt?.activatableAbilityIds ?? [])
+      .filter((ability) => ability.cardId === card.id)
+      .map((ability) => ({
+        kind: "ability" as const,
+        cardId: card.id,
+        abilityIndex: ability.abilityIndex,
+        label: ability.description,
+        isManaAbility: ability.isManaAbility,
+      }));
+
+    return [...castOptions, ...handAbilities];
+  };
+
   // Wraps castSpell: if a card has multiple play modes, show picker first
   const handleCastSpell = (cardId: string) => {
     const options = currentPrompt?.playableOptions?.filter((o) => o.cardId === cardId);
@@ -152,6 +176,41 @@ export default function Game() {
     } else {
       castSpell(cardId);
     }
+  };
+
+  const handleHandCardAction = (card: XMageCard) => {
+    const actions = getHandActionOptions(card);
+    if (actions.length === 0) {
+      if (card.isPlayable) {
+        handleCastSpell(card.id);
+      }
+      return;
+    }
+
+    if (actions.length === 1) {
+      const [action] = actions;
+      if (action.kind === "cast") {
+        castSpell(card.id, action.mode);
+      } else if (action.abilityIndex != null) {
+        activateAbility(card.id, action.abilityIndex);
+      }
+      return;
+    }
+
+    openAbilityPicker({
+      cardId: card.id,
+      cardName: card.name,
+      abilities: actions,
+    });
+  };
+
+  const handleHandCardDragStart = (card: XMageCard, e: React.MouseEvent) => {
+    const actions = getHandActionOptions(card);
+    if (actions.length > 1 || actions.some((action) => action.kind === "ability")) {
+      handleHandCardAction(card);
+      return;
+    }
+    startHandCardDrag(card, e);
   };
 
   // Combat state + battlefield/targeting click handlers
@@ -193,7 +252,14 @@ export default function Game() {
     }
 
     const abilities = (currentPrompt?.activatableAbilityIds ?? [])
-      .filter((a) => a.cardId === card.id);
+      .filter((a) => a.cardId === card.id)
+      .map((ability) => ({
+        kind: "ability" as const,
+        cardId: ability.cardId,
+        abilityIndex: ability.abilityIndex,
+        label: ability.description,
+        isManaAbility: ability.isManaAbility,
+      }));
     const isManaSource = (currentPrompt?.tappableLandIds ?? []).includes(card.id);
     const hasManaAbility = isManaSource && card.types.includes("Land");
 
@@ -202,9 +268,10 @@ export default function Game() {
       const pickerAbilities = hasManaAbility
         ? [
             {
+              kind: "ability" as const,
               cardId: card.id,
               abilityIndex: -1,
-              description: "{T}: Tap for mana",
+              label: "{T}: Tap for mana",
               isManaAbility: true,
             },
             ...abilities,
@@ -216,7 +283,9 @@ export default function Game() {
         abilities: pickerAbilities,
       });
     } else if (abilities.length === 1) {
-      activateAbility(card.id, abilities[0].abilityIndex);
+      if (abilities[0].abilityIndex != null) {
+        activateAbility(card.id, abilities[0].abilityIndex);
+      }
     } else {
       tapLand(card.id);
     }
@@ -611,7 +680,8 @@ export default function Game() {
           handContainerRef={handContainerRef}
           draggingCardId={draggingHandCard?.id}
           castingCardId={casting.castingCardId}
-          onHandCardDragStart={startHandCardDrag}
+          onHandCardDragStart={handleHandCardDragStart}
+          onHandCardClick={handleHandCardAction}
           onHoverCard={handleHoverCardGuarded}
           onFlipCard={handleFlipCard}
           onBattlefieldClick={handleBattlefieldClick}
@@ -735,9 +805,11 @@ export default function Game() {
         onCloseStack={() => setSpellStackModalOpen(false)}
         abilityPickerState={abilityPickerState}
         onSelectAbility={(ability) => {
-          if (ability.abilityIndex === -1) {
+          if (ability.kind === "cast") {
+            castSpell(ability.cardId, ability.mode);
+          } else if (ability.abilityIndex === -1) {
             tapLand(abilityPickerState!.cardId);
-          } else {
+          } else if (ability.abilityIndex != null) {
             activateAbility(abilityPickerState!.cardId, ability.abilityIndex);
           }
           closeAbilityPicker();

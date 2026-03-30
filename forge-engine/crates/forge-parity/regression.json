@@ -73,6 +73,22 @@
   },
   {
     "name": "realMonoBlackSacrice",
+    "args": "--deck1 real_mono_black_sacrifice --deck2 real_mono_black_sacrifice --seed 42 --max-turns 40 --games 20"
+  },
+  {
+    "name": "realMonoBlackSacrice2",
+    "args": "--deck1 real_mono_black_sacrifice --deck2 real_mono_black_sacrifice --seed 89 --max-turns 40 --games 20"
+  },
+  {
+    "name": "realMonoBlackSacriceS1",
+    "args": "--deck1 real_mono_black_sacrifice --deck2 real_mono_black_sacrifice --seed 153 --max-turns 40"
+  },
+  {
+    "name": "realMonoBlackSacriceS2",
+    "args": "--deck1 real_mono_black_sacrifice --deck2 real_mono_black_sacrifice --seed 144 --max-turns 40"
+  },
+  {
+    "name": "blacsac_vs_staticab",
     "args": "--deck1 staticability_test --deck2 real_mono_black_sacrifice --seed 42 --max-turns 40 --games 10"
   },
   {

@@ -8,6 +8,7 @@ use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
+use std::time::Instant;
 
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::{
@@ -31,6 +32,7 @@ use crate::java_random::JavaRandom;
 use crate::parity_card_map::ParityCardMap;
 use crate::parity_id;
 use crate::parity_order;
+use crate::perf;
 use crate::protocol::{DecisionRecord, GameTrace, MechanicSignal, StateSnapshot};
 use crate::snapshot::snapshot_game;
 
@@ -309,11 +311,16 @@ impl PlayerAgent for CapturingAgent {
         game: &GameState,
         mana_pools: &[forge_engine_core::mana::ManaPool],
     ) {
+        let t_total = Instant::now();
         self.inner.snapshot_state(game, mana_pools);
         self.card_names.clear();
         self.card_is_land.clear();
         self.ability_is_mana.clear();
+        let t_clone = Instant::now();
         self.last_game_state = Some(game.clone());
+        perf::record("agent.snapshot_state.clone_game", t_clone.elapsed());
+
+        let t_cache = Instant::now();
         for c in &game.cards {
             let name = if c.face_down {
                 String::new()
@@ -327,11 +334,16 @@ impl PlayerAgent for CapturingAgent {
                     .insert((c.id, ab.ability_index), ab.is_mana_ability);
             }
         }
+        perf::record("agent.snapshot_state.rebuild_card_caches", t_cache.elapsed());
         if !self.capture_snapshots {
+            perf::record("agent.snapshot_state.total", t_total.elapsed());
             return;
         }
         // Cache the snapshot — it will be pushed when notify_turn_changed fires
+        let t_snap = Instant::now();
         self.pending_snapshot = Some(snapshot_game(game));
+        perf::record("agent.snapshot_state.snapshot_game", t_snap.elapsed());
+        perf::record("agent.snapshot_state.total", t_total.elapsed());
     }
 
     fn notify_turn_changed(&mut self, active_player: PlayerId, turn_number: u32) {
@@ -1323,6 +1335,7 @@ pub struct LoadedData {
 
 /// Load the card database and token templates once.
 pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, String> {
+    let t_total = Instant::now();
     let cards_dir = cards_dir.unwrap_or("forge/forge-gui/res/cardsfolder");
     let cards_path = std::path::Path::new(cards_dir);
 
@@ -1336,7 +1349,9 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
     if verbose {
         eprintln!("[parity] Loading cards from {:?} ...", cards_path);
     }
+    let t_cards = Instant::now();
     let (db, result) = CardDatabase::load_from_directory(cards_path);
+    perf::record("load_data.cards_db", t_cards.elapsed());
     if verbose {
         eprintln!(
             "[parity] Loaded {} cards ({} failed)",
@@ -1356,7 +1371,9 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
                 token_dir_path
             );
         }
+        let t_tokens = Instant::now();
         let (token_db, token_result) = CardDatabase::load_from_directory(&token_dir_path);
+        perf::record("load_data.token_db", t_tokens.elapsed());
         if verbose {
             eprintln!("[parity] Loaded {} token scripts", token_result.loaded);
         }
@@ -1382,13 +1399,17 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         if verbose {
             eprintln!("[parity] Loading type lists from {:?} ...", type_list_path);
         }
+        let t_types_read = Instant::now();
         let content = std::fs::read_to_string(&type_list_path).map_err(|e| {
             format!(
                 "Failed to read TypeLists.txt at {:?}: {}",
                 type_list_path, e
             )
         })?;
+        perf::record("load_data.typelist_read", t_types_read.elapsed());
+        let t_types_parse = Instant::now();
         forge_engine_core::game::TypeRegistry::load(&content);
+        perf::record("load_data.typelist_parse", t_types_parse.elapsed());
         if verbose {
             eprintln!(
                 "[parity] Loaded {} creature types",
@@ -1397,6 +1418,7 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
         }
     }
 
+    perf::record("load_data.total", t_total.elapsed());
     Ok(LoadedData {
         db,
         token_templates,
@@ -1405,18 +1427,23 @@ pub fn load_data(cards_dir: Option<&str>, verbose: bool) -> Result<LoadedData, S
 
 /// Run a game using pre-loaded data (avoids reloading the DB for each matchup).
 pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace, String> {
+    let t_total = Instant::now();
     // Resolve deck lists — supports preset names, inline: specs, and file: specs
     let decks_dir = config.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
+    let t_resolve = Instant::now();
     let deck1_spec = resolve_deck_spec(&config.deck1, decks_dir)?;
     let deck2_spec = resolve_deck_spec(&config.deck2, decks_dir)?;
+    perf::record("run_with_data.resolve_deck_spec", t_resolve.elapsed());
 
     // Set up game
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
     let mut game = GameState::new(&["Player1", "Player2"], 20);
 
+    let t_build = Instant::now();
     build_deck_from_spec(&mut game, &data.db, p0, &deck1_spec, config.verbose);
     build_deck_from_spec(&mut game, &data.db, p1, &deck2_spec, config.verbose);
+    perf::record("run_with_data.build_deck", t_build.elapsed());
 
     let mut game_loop = GameLoop::new(2);
 
@@ -1454,6 +1481,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         r
     }));
     {
+        let t_shuffle = Instant::now();
         let mut shuffle_rng = game_rng.borrow_mut();
         for &pid in &game.player_order.clone() {
             // Sort library by card name for deterministic pre-shuffle ordering,
@@ -1473,6 +1501,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
             // Write back the shuffled order
             game.zone_mut(ZoneType::Library, pid).cards = lib_cards;
         }
+        perf::record("run_with_data.shuffle_libraries", t_shuffle.elapsed());
     }
 
     // Match Java's determineFirstTurnPlayer() "coin flip".
@@ -1542,7 +1571,9 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
 
     // Run turns — CapturingAgent captures turn-start snapshots automatically
     while !game.game_over && game.turn.turn_number <= config.max_turns {
+        let t_turn = Instant::now();
         game_loop.run_turn(&mut game, &mut agents, &mut rng);
+        perf::record("run_with_data.run_turn", t_turn.elapsed());
     }
 
     // Collect turn-start snapshots from the shared storage.
@@ -1566,6 +1597,7 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         })
         .collect();
 
+    perf::record("run_with_data.total", t_total.elapsed());
     Ok(GameTrace {
         seed: config.seed,
         deck1: config.deck1.clone(),

@@ -448,6 +448,8 @@ impl GameLoop {
                             .counters
                             .get(&crate::card::CounterType::P1P1)
                             .unwrap_or(&0);
+                        let lki_power = game.card(card_id).power();
+                        let lki_toughness = game.card(card_id).toughness();
                         self.trigger_handler.run_trigger(
                             TriggerType::Sacrificed,
                             RunParams {
@@ -470,6 +472,8 @@ impl GameLoop {
                             ZoneType::Battlefield,
                             ZoneType::Graveyard,
                             lki_p1p1,
+                            lki_power,
+                            lki_toughness,
                         );
                         self.trigger_handler.flush_waiting_triggers(game);
                         game.move_card_with_agents(card_id, ZoneType::Graveyard, owner, agents);
@@ -998,10 +1002,12 @@ impl GameLoop {
         _api: Option<&str>,
         _mandatory: bool,
         sa: Option<&SpellAbility>,
+        prechosen_sacrifices: Option<&[CardId]>,
     ) -> bool {
         let payment_snapshot = self.make_snapshot(game, true);
         game.card_mut(card_id).paid_cost_exiled_cards.clear();
         let mut payment_ok = true;
+        let mut pre_sac_idx = 0usize;
         for part in spell_cost.parts.clone() {
             // Java deterministic parity does not route confirm-payment prompts
             // through RNG while paying spell costs; confirmPayment() returns true
@@ -1019,7 +1025,16 @@ impl GameLoop {
                     amount,
                 } => {
                     if type_filter != "CARDNAME" {
-                        self.pay_sacrifice_cost(game, agents, player, type_filter, *amount, sa);
+                        self.pay_sacrifice_cost_internal(
+                            game,
+                            agents,
+                            player,
+                            type_filter,
+                            *amount,
+                            sa,
+                            prechosen_sacrifices,
+                            &mut pre_sac_idx,
+                        );
                     }
                 }
                 CostPart::Discard {
@@ -1516,6 +1531,38 @@ impl GameLoop {
         true
     }
 
+    pub(crate) fn prechoose_additional_cost_sacrifices(
+        &mut self,
+        game: &GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        spell_cost: &crate::cost::Cost,
+        sa: Option<&SpellAbility>,
+    ) -> Option<Vec<CardId>> {
+        let mut picked: Vec<CardId> = Vec::new();
+        for part in spell_cost.parts.clone() {
+            if let CostPart::Sacrifice {
+                type_filter,
+                amount,
+            } = part
+            {
+                if type_filter == "CARDNAME" {
+                    continue;
+                }
+                let mut valid = cost::get_sacrifice_targets(game, player, &type_filter);
+                if valid.len() < amount.max(0) as usize {
+                    return None;
+                }
+                for _ in 0..amount.max(0) {
+                    let chosen = agents[player.index()].choose_sacrifice(player, &valid, sa)?;
+                    picked.push(chosen);
+                    valid.retain(|&cid| cid != chosen);
+                }
+            }
+        }
+        Some(picked)
+    }
+
     /// Pay a Waterbend cost: pay `amount` generic mana, but the player can tap
     /// artifacts and/or creatures to help (each tapped pays {1}).
     /// Mirrors Java's CostWaterbend + adjustCostByWaterbend.
@@ -1862,6 +1909,8 @@ impl GameLoop {
                 .counters
                 .get(&crate::card::CounterType::P1P1)
                 .unwrap_or(&0);
+            let lki_power = game.card(chosen).power();
+            let lki_toughness = game.card(chosen).toughness();
             {
                 let card = game.card_mut(chosen);
                 card.clear_pump_triggers();
@@ -1881,6 +1930,8 @@ impl GameLoop {
                 ZoneType::Battlefield,
                 ZoneType::Graveyard,
                 lki_p1p1,
+                lki_power,
+                lki_toughness,
             );
             self.trigger_handler.flush_waiting_triggers(game);
             game.move_card_with_agents(chosen, ZoneType::Graveyard, owner, agents);
@@ -1896,6 +1947,8 @@ impl GameLoop {
                         .counters
                         .get(&crate::card::CounterType::P1P1)
                         .unwrap_or(&0);
+                    let lki_power = game.card(chosen).power();
+                    let lki_toughness = game.card(chosen).toughness();
                     self.trigger_handler.run_trigger(
                         TriggerType::Sacrificed,
                         RunParams {
@@ -1915,6 +1968,8 @@ impl GameLoop {
                         ZoneType::Battlefield,
                         ZoneType::Graveyard,
                         lki_p1p1,
+                        lki_power,
+                        lki_toughness,
                     );
                     self.trigger_handler.flush_waiting_triggers(game);
                     game.move_card_with_agents(chosen, ZoneType::Graveyard, owner, agents);
@@ -2731,12 +2786,47 @@ impl GameLoop {
         amount: i32,
         sa: Option<&SpellAbility>,
     ) {
+        let mut pre_idx = 0usize;
+        self.pay_sacrifice_cost_internal(
+            game,
+            agents,
+            player,
+            type_filter,
+            amount,
+            sa,
+            None,
+            &mut pre_idx,
+        );
+    }
+
+    fn pay_sacrifice_cost_internal(
+        &mut self,
+        game: &mut GameState,
+        agents: &mut [Box<dyn PlayerAgent>],
+        player: PlayerId,
+        type_filter: &str,
+        amount: i32,
+        sa: Option<&SpellAbility>,
+        prechosen_sacrifices: Option<&[CardId]>,
+        pre_sac_idx: &mut usize,
+    ) {
         for _ in 0..amount {
             let valid = cost::get_sacrifice_targets(game, player, type_filter);
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, sa) {
+            let chosen = if let Some(prechosen) = prechosen_sacrifices {
+                if *pre_sac_idx < prechosen.len() && valid.contains(&prechosen[*pre_sac_idx]) {
+                    let cid = prechosen[*pre_sac_idx];
+                    *pre_sac_idx += 1;
+                    Some(cid)
+                } else {
+                    None
+                }
+            } else {
+                agents[player.index()].choose_sacrifice(player, &valid, sa)
+            };
+            if let Some(chosen) = chosen {
                 if crate::staticability::static_ability_cant_sacrifice::cant_sacrifice(
                     &game.cards,
                     game.card(chosen),
@@ -2769,6 +2859,8 @@ impl GameLoop {
                     .counters
                     .get(&crate::card::CounterType::P1P1)
                     .unwrap_or(&0);
+                let lki_power = game.card(chosen).power();
+                let lki_toughness = game.card(chosen).toughness();
                 // Fire Sacrificed trigger before moving
                 self.trigger_handler.run_trigger(
                     TriggerType::Sacrificed,
@@ -2790,6 +2882,8 @@ impl GameLoop {
                     ZoneType::Battlefield,
                     ZoneType::Graveyard,
                     lki_p1p1,
+                    lki_power,
+                    lki_toughness,
                 );
                 self.trigger_handler.flush_waiting_triggers(game);
                 game.move_card_with_agents(chosen, ZoneType::Graveyard, owner, agents);

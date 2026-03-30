@@ -525,7 +525,8 @@ impl GameLoop {
             // Set attacking_player to the controlling player of the defender
             let def_player = defender.controlling_player(game);
             game.card_mut(attacker_id).set_attacking_player(def_player);
-            self.combat.declare_attacker(attacker_id, defender);
+            self.combat
+                .declare_attacker(attacker_id, defender, game.card(attacker_id).zone_timestamp);
 
             // Record attack in damage history
             game.card_mut(attacker_id)
@@ -725,7 +726,8 @@ impl GameLoop {
                     if !combat::can_creature_block(game, blocker, attacker) {
                         continue; // illegal block
                     }
-                    self.combat.declare_blocker(blocker, attacker);
+                    self.combat
+                        .declare_blocker(blocker, attacker, game.card(blocker).zone_timestamp);
 
                     // Fire Blocks trigger for each (blocker, attacker) pair
                     self.trigger_handler.run_trigger(
@@ -790,7 +792,11 @@ impl GameLoop {
                     if !must_targets.iter().any(|t| currently_blocking.contains(t)) {
                         // Not blocking any required target — force-assign first
                         if combat::can_creature_block(game, blocker_id, must_targets[0]) {
-                            self.combat.declare_blocker(blocker_id, must_targets[0]);
+                            self.combat.declare_blocker(
+                                blocker_id,
+                                must_targets[0],
+                                game.card(blocker_id).zone_timestamp,
+                            );
                         }
                     }
                 }
@@ -934,6 +940,10 @@ impl GameLoop {
                 return;
             }
         }
+
+        // Java parity: combatants may leave/re-enter during declare blockers
+        // priority (e.g. sacrificing an attacker). Re-prune before damage.
+        self.combat.remove_absent_combatants(&game.cards);
 
         // Pre-populate LKI cache for all combat participants so that if a
         // creature dies during damage, its combat role is already recorded.

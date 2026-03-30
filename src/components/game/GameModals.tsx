@@ -2,8 +2,9 @@ import { PromptModals } from "@/components/game/modals/PromptModals";
 import { CostModals } from "@/components/game/modals/CostModals";
 import { TargetModals } from "@/components/game/modals/TargetModals";
 import type { LibraryPeekMode } from "@/components/game/modals";
-import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/openmagic";
+import type { Card as XMageCard, StackObject } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
+import type { AbilityPickerState, HandActionOption } from "@/stores/useGameUIStore";
 import type { PromptType } from "@/types/promptType";
 
 interface GameModalsProps {
@@ -26,8 +27,8 @@ interface GameModalsProps {
   onTargetSpell: (spellId: string) => void;
   onCloseStack: () => void;
   // Ability picker
-  abilityPickerState: { cardId: string; cardName: string; abilities: ActivatableAbilityInfo[] } | null;
-  onSelectAbility: (ability: ActivatableAbilityInfo) => void;
+  abilityPickerState: AbilityPickerState | null;
+  onSelectAbility: (ability: HandActionOption) => void;
   onCancelAbilityPicker: () => void;
   // Mulligan callbacks
   onMulliganDecision: (keep: boolean) => void;

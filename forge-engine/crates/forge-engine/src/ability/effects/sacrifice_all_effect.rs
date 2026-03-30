@@ -36,6 +36,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .counters
             .get(&crate::card::CounterType::P1P1)
             .unwrap_or(&0);
+        let lki_power = ctx.game.card(card_id).power();
+        let lki_toughness = ctx.game.card(card_id).toughness();
         // Clear temporary Animate triggers before firing events (CR 400.7).
         {
             let card = ctx.game.card_mut(card_id);
@@ -57,6 +59,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             ZoneType::Battlefield,
             ZoneType::Graveyard,
             lki_p1p1,
+            lki_power,
+            lki_toughness,
         );
         ctx.trigger_handler.flush_waiting_triggers(ctx.game);
         ctx.move_card(card_id, ZoneType::Graveyard, owner);

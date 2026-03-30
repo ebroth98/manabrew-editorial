@@ -15,6 +15,10 @@ use crate::ids::{CardId, PlayerId};
 pub struct TargetChoices {
     pub target_player: Option<PlayerId>,
     pub target_card: Option<CardId>,
+    /// Zone timestamp captured when `target_card` was chosen.
+    /// Used to preserve object identity across zone changes (CR 400.7).
+    #[serde(default)]
+    pub target_card_zone_timestamp: Option<u64>,
     /// ID of a targeted stack entry (for Counter effects).
     pub target_stack_entry: Option<u32>,
     /// Divided damage/effect allocation per target card.
@@ -29,6 +33,8 @@ impl TargetChoices {
     pub fn add(&mut self, target_card: Option<CardId>, target_player: Option<PlayerId>) {
         if let Some(card) = target_card {
             self.target_card = Some(card);
+            // Caller can override with the actual captured timestamp if available.
+            self.target_card_zone_timestamp = None;
         }
         if let Some(player) = target_player {
             self.target_player = Some(player);
@@ -40,6 +46,7 @@ impl TargetChoices {
     pub fn remove(&mut self, card: CardId) {
         if self.target_card == Some(card) {
             self.target_card = None;
+            self.target_card_zone_timestamp = None;
         }
         self.divided_map.remove(&card);
     }
@@ -48,6 +55,7 @@ impl TargetChoices {
     /// Mirrors Java's `TargetChoices.removeAll()`.
     pub fn remove_all(&mut self) {
         self.target_card = None;
+        self.target_card_zone_timestamp = None;
         self.target_player = None;
         self.target_stack_entry = None;
         self.divided_map.clear();
@@ -64,6 +72,7 @@ impl TargetChoices {
     pub fn replace_target_card(&mut self, old: CardId, new: CardId) {
         if self.target_card == Some(old) {
             self.target_card = Some(new);
+            self.target_card_zone_timestamp = None;
             // Move divided allocation if present
             if let Some(amount) = self.divided_map.remove(&old) {
                 self.divided_map.insert(new, amount);

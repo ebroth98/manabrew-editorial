@@ -10,10 +10,12 @@
 use std::io::{BufRead, BufReader, BufWriter, Write};
 use std::path::PathBuf;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
 use crate::protocol::{DecisionRecord, StateSnapshot};
+use crate::perf;
 
 /// Configuration for a Java bridge subprocess.
 pub struct JavaBridgeConfig {
@@ -61,6 +63,7 @@ impl JavaBridge {
     /// Launches `java -jar <path> --deck1 ... --deck2 ... --seed ... --max-turns ...`
     /// and reads JSONL output (one `StateSnapshot` per line) from stdout.
     pub fn run(&self) -> Result<JavaMatchupData, JavaBridgeError> {
+        let t_total = Instant::now();
         let jar = &self.config.jar_path;
         let verbose = self.config.verbose;
 
@@ -130,11 +133,13 @@ impl JavaBridge {
             }
         }
 
+        let t_spawn = Instant::now();
         let mut child = cmd
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| JavaBridgeError::SpawnError(format!("Failed to spawn java: {}", e)))?;
+        perf::record("java_bridge.oneshot.spawn", t_spawn.elapsed());
 
         // Read stderr in a background thread for diagnostics
         let stderr = child.stderr.take();
@@ -169,6 +174,7 @@ impl JavaBridge {
         let mut snapshots = Vec::new();
         let mut decisions = Vec::new();
 
+        let t_read = Instant::now();
         for line_result in reader.lines() {
             let line = line_result.map_err(|e| {
                 JavaBridgeError::ProtocolError(format!("Failed to read stdout: {}", e))
@@ -206,6 +212,7 @@ impl JavaBridge {
                 }
             }
         }
+        perf::record("java_bridge.oneshot.read_stdout", t_read.elapsed());
 
         // Wait for process to finish
         let _ = stderr_handle.join();
@@ -227,6 +234,7 @@ impl JavaBridge {
                 snapshots.len()
             );
         }
+        perf::record("java_bridge.oneshot.total", t_total.elapsed());
         Ok(JavaMatchupData {
             snapshots,
             decisions,
@@ -286,6 +294,7 @@ pub struct JavaServer {
 impl JavaServer {
     /// Spawn a new Java server process with `--server` flag.
     pub fn spawn(config: &JavaServerConfig) -> Result<Self, JavaBridgeError> {
+        let t_total = Instant::now();
         let jar = &config.jar_path;
         let verbose = config.verbose;
 
@@ -340,12 +349,14 @@ impl JavaServer {
             }
         }
 
+        let t_spawn = Instant::now();
         let mut child = cmd
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| JavaBridgeError::SpawnError(format!("Failed to spawn java: {}", e)))?;
+        perf::record("java_bridge.server.spawn_process", t_spawn.elapsed());
 
         let stdin = child
             .stdin
@@ -383,6 +394,7 @@ impl JavaServer {
             eprintln!("[parity] Java server spawned (pid={})", child.id());
         }
 
+        perf::record("java_bridge.server.spawn_total", t_total.elapsed());
         Ok(Self {
             child,
             stdin: BufWriter::new(stdin),
@@ -401,6 +413,7 @@ impl JavaServer {
         max_turns: u32,
         prefer_actions: bool,
     ) -> Result<JavaMatchupData, JavaBridgeError> {
+        let t_total = Instant::now();
         let request = MatchupRequest {
             command: "run".to_string(),
             deck1: deck1.to_string(),
@@ -430,6 +443,7 @@ impl JavaServer {
         let mut decisions = Vec::new();
         let mut line_buf = String::new();
 
+        let t_read = Instant::now();
         loop {
             line_buf.clear();
             let bytes_read = self.stdout.read_line(&mut line_buf).map_err(|e| {
@@ -488,6 +502,7 @@ impl JavaServer {
                 }
             }
         }
+        perf::record("java_bridge.server.read_stdout", t_read.elapsed());
 
         if self.verbose {
             eprintln!(
@@ -495,6 +510,7 @@ impl JavaServer {
                 snapshots.len()
             );
         }
+        perf::record("java_bridge.server.run_matchup.total", t_total.elapsed());
         Ok(JavaMatchupData {
             snapshots,
             decisions,
@@ -522,6 +538,7 @@ impl JavaServer {
     where
         F: FnMut(usize, &StateSnapshot) -> bool,
     {
+        let t_total = Instant::now();
         let request = MatchupRequest {
             command: "run".to_string(),
             deck1: deck1.to_string(),
@@ -551,6 +568,7 @@ impl JavaServer {
         let mut snapshot_idx: usize = 0;
         let mut draining = false;
 
+        let t_read = Instant::now();
         loop {
             line_buf.clear();
             let bytes_read = self.stdout.read_line(&mut line_buf).map_err(|e| {
@@ -616,6 +634,7 @@ impl JavaServer {
                 }
             }
         }
+        perf::record("java_bridge.server_streaming.read_stdout", t_read.elapsed());
 
         if self.verbose {
             eprintln!(
@@ -624,6 +643,7 @@ impl JavaServer {
                 if draining { " (early divergence)" } else { "" }
             );
         }
+        perf::record("java_bridge.server_streaming.total", t_total.elapsed());
         Ok(JavaMatchupData {
             snapshots,
             decisions,

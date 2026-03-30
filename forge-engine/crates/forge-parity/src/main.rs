@@ -39,6 +39,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
+use std::time::Instant;
 
 use clap::Parser;
 use rayon::prelude::*;
@@ -52,6 +53,7 @@ use forge_parity::java_bridge::{
 };
 use forge_parity::java_cache::{self, JavaCache};
 use forge_parity::java_random::JavaRandom;
+use forge_parity::perf;
 use forge_parity::protocol::{
     DecisionRecord, Divergence, FuzzReport, FuzzResult, MatchupResult, MatchupStatus, MatrixReport,
     MechanicSignal,
@@ -318,6 +320,7 @@ fn main() {
 }
 
 fn run_multi_game_mode(cli: &Cli) {
+    let t_mode = Instant::now();
     if cli.verbose {
         eprintln!(
             "[parity] Running: {} vs {} | games={} | seed_start={} | max_turns={}",
@@ -370,6 +373,7 @@ fn run_multi_game_mode(cli: &Cli) {
             java_heap: cli.java_heap.clone(),
         };
 
+        let t_match = Instant::now();
         let result = if let Some(ref mut srv) = server {
             if srv.is_alive() {
                 run_single_matchup_server(&config, &data, srv)
@@ -385,6 +389,7 @@ fn run_multi_game_mode(cli: &Cli) {
         } else {
             run_single_matchup_rust_only(&config, &data)
         };
+        perf::record("multi_game.single_matchup_total", t_match.elapsed());
 
         if cli.verbose {
             let n = i + 1;
@@ -446,6 +451,7 @@ fn run_multi_game_mode(cli: &Cli) {
     let output = match cli.format.as_str() {
         "json" => report::format_matrix_json(&report_data),
         _ => {
+            let t_report = Instant::now();
             let mut out = String::new();
             let dd = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
             out.push_str(&build_coverage_report(
@@ -462,10 +468,12 @@ fn run_multi_game_mode(cli: &Cli) {
                 dd,
             ));
             out.push_str(&report::format_matrix_text(&report_data));
+            perf::record("multi_game.report_format_text", t_report.elapsed());
             out
         }
     };
     write_output(cli, &output);
+    perf::record("multi_game.total", t_mode.elapsed());
 
     if failed > 0 || errors > 0 {
         std::process::exit(1);
@@ -668,6 +676,7 @@ fn run_single_matchup_server(
     data: &LoadedData,
     server: &mut JavaServer,
 ) -> MatchupResult {
+    let t_total = Instant::now();
     // Run Rust and Java engines concurrently:
     // Rust on a scoped thread, Java on the current thread (needs &mut server).
     let (rust_result, java_result) = std::thread::scope(|s| {
@@ -728,14 +737,17 @@ fn run_single_matchup_server(
         }
     };
 
+    let t_cmp = Instant::now();
     let mut result = compare_snapshots(
         config,
         &rust_trace.snapshots,
         &rust_trace.decisions,
         &java_data,
     );
+    perf::record("single_matchup_server.compare_snapshots", t_cmp.elapsed());
     result.covered_cards = rust_trace.covered_cards;
     result.mechanic_signals = rust_trace.mechanic_signals;
+    perf::record("single_matchup_server.total", t_total.elapsed());
     result
 }
 
@@ -746,6 +758,7 @@ fn run_single_matchup_oneshot(
     data: &LoadedData,
     jar_path: &PathBuf,
 ) -> MatchupResult {
+    let t_total = Instant::now();
     // Run Rust and Java engines concurrently
     let (rust_result, java_result) = std::thread::scope(|s| {
         let rust_handle = s.spawn(|| runner::run_with_data(config, data));
@@ -815,14 +828,17 @@ fn run_single_matchup_oneshot(
         }
     };
 
+    let t_cmp = Instant::now();
     let mut result = compare_snapshots(
         config,
         &rust_trace.snapshots,
         &rust_trace.decisions,
         &java_data,
     );
+    perf::record("single_matchup_oneshot.compare_snapshots", t_cmp.elapsed());
     result.covered_cards = rust_trace.covered_cards;
     result.mechanic_signals = rust_trace.mechanic_signals;
+    perf::record("single_matchup_oneshot.total", t_total.elapsed());
     result
 }
 
@@ -1858,6 +1874,7 @@ fn run_fuzz_mode(cli: &Cli) {
 }
 
 fn write_output(cli: &Cli, output: &str) {
+    let t_write = Instant::now();
     if let Some(ref path) = cli.output {
         match std::fs::write(path, output) {
             Ok(_) => eprintln!("[parity] Report written to {:?}", path),
@@ -1869,6 +1886,8 @@ fn write_output(cli: &Cli, output: &str) {
     } else {
         println!("{}", output);
     }
+    perf::record("write_output.total", t_write.elapsed());
+    perf::print_summary("forge-parity");
 }
 
 fn collect_unique_deck_cards(deck1: &str, deck2: &str, decks_dir: &str) -> Vec<String> {

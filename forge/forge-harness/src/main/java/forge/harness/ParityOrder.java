@@ -102,7 +102,13 @@ public final class ParityOrder {
     public static String targetSortKey(final GameEntity e) {
         if (e instanceof Card) {
             Card c = (Card) e;
-            return "1|" + c.getName() + "|" + String.format("%05d", ParityCardMap.parityId(c));
+            final int ownerId = c.getOwner() == null ? Integer.MAX_VALUE : c.getOwner().getId();
+            final int controllerId = c.getController() == null ? Integer.MAX_VALUE : c.getController().getId();
+            return "1|"
+                + c.getName()
+                + "|O" + String.format("%05d", ownerId)
+                + "|C" + String.format("%05d", controllerId)
+                + "|I" + String.format("%05d", ParityCardMap.parityId(c));
         }
         // Player — sort by index (name or ID)
         return "0|" + e.getName();

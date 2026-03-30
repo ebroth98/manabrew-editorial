@@ -47,6 +47,7 @@ export function HandDisplayCool({
   cards,
   onHoverCard,
   onStartDrag,
+  onClickCard,
   onFlipCard,
   showBackFace,
   draggingCardId,
@@ -217,8 +218,10 @@ export function HandDisplayCool({
                 className="pointer-events-auto"
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  if (card.isPlayable) {
+                  if (card.isPlayable && onStartDrag) {
                     onStartDrag?.(card, e);
+                  } else if (card.isPlayable) {
+                    onClickCard?.(card);
                   } else {
                     startTug(card.id, e.clientX, e.clientY);
                   }

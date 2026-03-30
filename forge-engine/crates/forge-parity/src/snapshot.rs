@@ -5,6 +5,7 @@
 //! compared field-by-field.
 
 use std::collections::BTreeMap;
+use std::time::Instant;
 
 use forge_engine_core::card::CounterType;
 use forge_engine_core::game::GameState;
@@ -12,13 +13,17 @@ use forge_engine_core::ids::PlayerId;
 use forge_foundation::ZoneType;
 
 use crate::protocol::{CardSnapshot, PlayerSnapshot, StateSnapshot};
+use crate::perf;
 
 /// Extract a normalized snapshot from the current game state.
 pub fn snapshot_game(game: &GameState) -> StateSnapshot {
+    let t_total = Instant::now();
     let mut players = Vec::new();
+    let t_players = Instant::now();
     for player in &game.players {
         players.push(snapshot_player(game, player.id));
     }
+    perf::record("snapshot_game.players", t_players.elapsed());
 
     // Stack: collect card/ability names
     let mut stack: Vec<String> = game
@@ -33,6 +38,7 @@ pub fn snapshot_game(game: &GameState) -> StateSnapshot {
         })
         .collect();
     stack.sort();
+    perf::record("snapshot_game.total", t_total.elapsed());
 
     StateSnapshot {
         turn: game.turn.turn_number,

@@ -106,8 +106,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
 
     // Ask the activating player to choose mode(s)
     let card_name = ctx.game.card(source_id).card_name.clone();
+    let use_preselected_modes = should_use_preselected_modes(ctx.game, source_id, &mode_texts);
     // Check if modes were pre-selected (Spree — chosen during casting before payment)
-    let pre_selected = ctx.game.card_mut(source_id).chosen_modes.take();
+    let pre_selected = if use_preselected_modes {
+        ctx.game.card_mut(source_id).chosen_modes.take()
+    } else {
+        ctx.game.card_mut(source_id).chosen_modes = None;
+        None
+    };
     let chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
         // Spree: modes already chosen before payment
         pre
@@ -226,7 +232,13 @@ pub fn make_choices_precast(
         return false;
     }
 
-    let pre_selected = game.card_mut(source_id).chosen_modes.take();
+    let use_preselected_modes = should_use_preselected_modes(game, source_id, &mode_texts);
+    let pre_selected = if use_preselected_modes {
+        game.card_mut(source_id).chosen_modes.take()
+    } else {
+        game.card_mut(source_id).chosen_modes = None;
+        None
+    };
     let chosen_indices: Vec<usize> = if let Some(pre) = pre_selected {
         pre
     } else if sa.params.has(keys::ENTWINE) || (has_entwine && sa.kicked) {
@@ -250,8 +262,6 @@ pub fn make_choices_precast(
         return false;
     }
 
-    game.card_mut(source_id)
-        .set_chosen_modes(chosen_indices.clone());
     sa.sub_ability = None;
     let parent_trigger_remembered = sa.trigger_remembered_amount;
     for idx in chosen_indices {
@@ -371,6 +381,22 @@ fn append_subability(root: &mut SpellAbility, mode_sa: SpellAbility) {
     }
 }
 
+fn should_use_preselected_modes(
+    game: &GameState,
+    source_id: crate::ids::CardId,
+    mode_texts: &[String],
+) -> bool {
+    let source = game.card(source_id);
+    if source.has_keyword("Spree") || source.has_keyword("Tiered") {
+        return true;
+    }
+
+    mode_texts.iter().any(|text| {
+        let params = Params::from_raw(text);
+        params.has(keys::MODE_COST)
+    })
+}
+
 fn mode_has_valid_targets_in_game(
     game: &GameState,
     mode_text: &str,
@@ -382,48 +408,15 @@ fn mode_has_valid_targets_in_game(
         Some(tr) => tr,
         None => return true, // No targeting = always valid
     };
-    match &tr.target_kind {
-        TargetKind::Player => true,
-        TargetKind::Spell => !get_all_candidates_spells(game).is_empty(),
-        TargetKind::Creature(ref filter) => {
-            !crate::spellability::target_restrictions::apply_other_source_filter(
-                get_all_candidates_creature_filtered(game, filter.as_deref(), player),
-                filter.as_deref(),
-                sa.source,
-            )
-            .is_empty()
-        }
-        TargetKind::Permanent(ref filter) => {
-            !crate::spellability::target_restrictions::apply_other_source_filter(
-                get_all_battlefield_permanents_filtered(game, filter.as_deref(), player),
-                filter.as_deref(),
-                sa.source,
-            )
-            .is_empty()
-        }
-        TargetKind::CardInZone { zone, filter } => game.player_order.iter().any(|&pid| {
-            !get_valid_cards_in_zone(game, *zone, pid, filter.as_deref(), sa.source).is_empty()
-        }),
-        TargetKind::Any => {
-            if crate::spellability::target_restrictions::any_target_allows_players(&tr.valid_tgts)
-                && !game.alive_players().is_empty()
-            {
-                return true;
-            }
-            crate::spellability::target_restrictions::get_all_candidates_any_filtered(
-                game,
-                &tr.valid_tgts,
-                player,
-            )
-            .into_iter()
-            .any(|cid| {
-                crate::spellability::target_restrictions::can_be_targeted_by_sa(
-                    game, cid, player, &sa,
-                )
-            })
-        }
-        TargetKind::None => true,
+
+    // Match Java CharmEffect.makePossibleOptions(): only drop a targeted mode
+    // when it requires at least one target and the full targeting engine finds
+    // zero legal candidates.
+    if tr.get_min_targets(game, &sa) <= 0 {
+        return true;
     }
+
+    tr.has_candidates(game, player, sa.source)
 }
 
 /// Set up targeting for a charm mode SpellAbility at resolution time.
@@ -669,5 +662,68 @@ mod tests {
         assert_eq!(p0_hand_after, p0_hand_before + 1);
         // p1 should not have drawn
         assert_eq!(ctx.game.cards_in_zone(ZoneType::Hand, p1).len(), 0);
+    }
+
+    #[test]
+    fn charm_precast_does_not_reuse_stale_chosen_modes() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        let p1 = PlayerId(1);
+
+        let mut svars = BTreeMap::new();
+        svars.insert(
+            "BraveTheStench".to_string(),
+            "DB$ Pump | ValidTgts$ Creature.OppCtrl | TgtPrompt$ Select target creature an opponent controls. | NumAtt$ -1 | NumDef$ -1 | IsCurse$ True | SpellDescription$ Brave the Stench".to_string(),
+        );
+        svars.insert(
+            "SearchTheBody".to_string(),
+            "DB$ Token | TokenScript$ c_a_treasure_sac | TokenOwner$ You | SpellDescription$ Search the Body".to_string(),
+        );
+
+        let ghast = Card::new(
+            CardId(0),
+            "Shambling Ghast".into(),
+            p1,
+            CardTypeLine::parse("Creature Zombie"),
+            ManaCost::parse("B"),
+            ColorSet::from_names("b"),
+            Some(1),
+            Some(1),
+            vec!["A:SP$ Charm | Choices$ BraveTheStench,SearchTheBody".to_string()],
+            vec![],
+        );
+        let ghast_id = game.create_card(ghast);
+        game.card_mut(ghast_id).set_svars_map(svars);
+
+        let patient_zero = game.create_card(Card::new(
+            CardId(0),
+            "Patient Zero".into(),
+            p0,
+            CardTypeLine::parse("Creature Zombie"),
+            ManaCost::parse("1 B"),
+            ColorSet::from_names("b"),
+            Some(2),
+            Some(2),
+            vec![],
+            vec![],
+        ));
+        game.move_card(patient_zero, ZoneType::Battlefield, p0);
+
+        let mut sa = SpellAbility::new_simple(
+            Some(ghast_id),
+            p1,
+            "A:SP$ Charm | Choices$ BraveTheStench,SearchTheBody",
+        );
+        // Simulate a prior life of the same card instance choosing "Search the Body".
+        game.card_mut(ghast_id).set_chosen_modes(vec![1]);
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
+
+        assert!(super::make_choices_precast(&mut game, &mut agents, &mut sa));
+        assert!(game.card(ghast_id).chosen_modes.is_none());
+        assert_eq!(
+            sa.sub_ability.as_ref().and_then(|sub| sub.api),
+            Some(crate::ability::api_type::ApiType::Pump)
+        );
     }
 }

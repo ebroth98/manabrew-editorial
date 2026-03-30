@@ -38,6 +38,8 @@ fn do_sacrifice(
         .counters
         .get(&crate::card::CounterType::P1P1)
         .unwrap_or(&0);
+    let lki_power = ctx.game.card(card_id).power();
+    let lki_toughness = ctx.game.card(card_id).toughness();
 
     // Clear temporary Animate triggers before firing events (CR 400.7).
     {
@@ -62,6 +64,8 @@ fn do_sacrifice(
         ZoneType::Battlefield,
         ZoneType::Graveyard,
         lki_p1p1,
+        lki_power,
+        lki_toughness,
     );
     ctx.trigger_handler.flush_waiting_triggers(ctx.game);
     ctx.move_card(card_id, ZoneType::Graveyard, owner);

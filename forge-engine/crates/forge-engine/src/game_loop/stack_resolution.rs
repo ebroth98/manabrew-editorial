@@ -39,7 +39,7 @@ impl GameLoop {
         // Mirrors Java MagicStack line 623: game.copyLastState() before resolving.
         game.copy_last_state();
 
-        let entry = game.stack.resolve_stack().unwrap();
+        let mut entry = game.stack.resolve_stack().unwrap();
         let stack_item_name = entry
             .spell_ability
             .source
@@ -81,7 +81,7 @@ impl GameLoop {
                 stack_item_name, entry.spell_ability.api
             );
         }
-        if Self::has_fizzled(&entry.spell_ability, game) {
+        if Self::has_fizzled(&mut entry.spell_ability, game) {
             crate::agent::notify_all_agents(
                 agents,
                 crate::agent::GameLogEvent::warning(format!(
@@ -765,7 +765,7 @@ impl GameLoop {
     /// Walks the SpellAbility chain. If every targeting node has only invalid
     /// targets, the whole spell/ability is countered by game rules.
     /// Returns `false` if no node uses targeting at all.
-    fn has_fizzled(sa: &SpellAbility, game: &GameState) -> bool {
+    fn has_fizzled(sa: &mut SpellAbility, game: &GameState) -> bool {
         let result = Self::has_fizzled_inner(sa, game, None);
         // Java: `return fizzle != null && fizzle;`
         result.unwrap_or(false)
@@ -777,7 +777,7 @@ impl GameLoop {
     ///   `Some(true)`  = all targeting nodes have only invalid targets
     ///   `Some(false)` = at least one valid target found somewhere
     fn has_fizzled_inner(
-        sa: &SpellAbility,
+        sa: &mut SpellAbility,
         game: &GameState,
         mut fizzle: Option<bool>,
     ) -> Option<bool> {
@@ -800,20 +800,33 @@ impl GameLoop {
                 // Mirrors Java's for loop over `sa.getTargets()`.
 
                 if let Some(target_card_id) = sa.target_chosen.target_card {
-                    if Self::is_card_target_valid(sa, target_card_id, game) {
+                    if Self::is_card_target_valid(
+                        sa,
+                        target_card_id,
+                        sa.target_chosen.target_card_zone_timestamp,
+                        game,
+                    ) {
                         fizzle = Some(false);
+                    } else {
+                        sa.target_chosen.target_card = None;
+                        sa.target_chosen.target_card_zone_timestamp = None;
+                        sa.target_chosen.divided_map.remove(&target_card_id);
                     }
                 }
 
                 if let Some(target_player_id) = sa.target_chosen.target_player {
                     if Self::is_player_target_valid(target_player_id, game) {
                         fizzle = Some(false);
+                    } else {
+                        sa.target_chosen.target_player = None;
                     }
                 }
 
                 if let Some(target_stack_id) = sa.target_chosen.target_stack_entry {
                     if game.stack.find_by_id(target_stack_id).is_some() {
                         fizzle = Some(false);
+                    } else {
+                        sa.target_chosen.target_stack_entry = None;
                     }
                 }
 
@@ -827,7 +840,7 @@ impl GameLoop {
         // Recurse into sub-abilities — mirrors Java's:
         //   if (sa.getSubAbility() != null)
         //       fizzle = hasFizzled(sa.getSubAbility(), source, fizzle);
-        if let Some(sub) = sa.get_sub_ability() {
+        if let Some(sub) = sa.get_sub_ability_mut() {
             fizzle = Self::has_fizzled_inner(sub, game, fizzle);
         }
 
@@ -839,13 +852,25 @@ impl GameLoop {
     /// - For Battlefield targets (Creature/Permanent/Any): must be on battlefield
     /// - For CardInZone targets: must be in the specified zone
     /// - The card must also still be targetable (hexproof etc.)
-    fn is_card_target_valid(sa: &SpellAbility, target_card_id: CardId, game: &GameState) -> bool {
+    fn is_card_target_valid(
+        sa: &SpellAbility,
+        target_card_id: CardId,
+        target_zone_timestamp: Option<u64>,
+        game: &GameState,
+    ) -> bool {
         // Check if card index is valid
         if target_card_id.index() >= game.cards.len() {
             return false;
         }
 
         let card = game.card(target_card_id);
+
+        // Java parity: target object identity uses both card id and game timestamp.
+        if let Some(chosen_ts) = target_zone_timestamp {
+            if card.zone_timestamp != chosen_ts {
+                return false;
+            }
+        }
 
         // Determine expected zone from target restrictions
         let expected_zone = if let Some(ref tr) = sa.target_restrictions {

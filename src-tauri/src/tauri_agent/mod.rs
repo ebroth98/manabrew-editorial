@@ -323,18 +323,24 @@ impl PlayerAgent for TauriAgent {
 
         // Cache per-ability descriptions from battlefield cards
         self.ability_descriptions.clear();
-        let battlefield =
-            game.cards_in_zone(forge_foundation::ZoneType::Battlefield, self.player_id);
-        for &card_id in battlefield {
-            let card = game.card(card_id);
-            for ab in &card.activated_abilities {
-                let desc = ab
-                    .params
-                    .get("SpellDescription")
-                    .map(|s| s.to_string())
-                    .unwrap_or_else(|| ab.ability_text.clone());
-                self.ability_descriptions
-                    .insert((card_id.0, ab.ability_index), (desc, ab.is_mana_ability));
+        for zone in [
+            forge_foundation::ZoneType::Battlefield,
+            forge_foundation::ZoneType::Hand,
+            forge_foundation::ZoneType::Graveyard,
+            forge_foundation::ZoneType::Exile,
+        ] {
+            for &card_id in game.cards_in_zone(zone, self.player_id) {
+                let card = game.card(card_id);
+                for ab in &card.activated_abilities {
+                    let desc = ab
+                        .params
+                        .get("SpellDescription")
+                        .or_else(|| ab.params.get("PrecostDesc"))
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| ab.ability_text.clone());
+                    self.ability_descriptions
+                        .insert((card_id.0, ab.ability_index), (desc, ab.is_mana_ability));
+                }
             }
         }
     }
@@ -409,10 +415,17 @@ impl PlayerAgent for TauriAgent {
             }
         }
 
+        let hand_activatable_ids: Vec<String> = activatable
+            .iter()
+            .map(|&(card_id, _)| card_id_str(card_id))
+            .filter(|card_id| view_ref.my_hand.iter().any(|card| card.id == *card_id))
+            .collect();
+
         // Update the view with playable info (hand, graveyard, command zone)
         let mut view = view_ref;
         for card in &mut view.my_hand {
-            card.is_playable = playable_card_ids.contains(&card.id);
+            card.is_playable =
+                playable_card_ids.contains(&card.id) || hand_activatable_ids.contains(&card.id);
         }
         for card in &mut view.graveyard {
             card.is_playable = playable_card_ids.contains(&card.id);

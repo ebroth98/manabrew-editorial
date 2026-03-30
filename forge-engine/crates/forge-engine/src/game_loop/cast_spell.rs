@@ -1325,6 +1325,25 @@ impl GameLoop {
                 }
             }
 
+            // Java CostPayment decides sacrifice/discard targets in the accept
+            // phase before paying mana. Pre-choose sacrifice targets here so RNG
+            // consumption order matches Java for spell additional costs.
+            let spell_cost = Self::parse_spell_cost(&abilities_for_spell);
+            let prechosen_spell_sacrifices = if let Some(ref sc) = spell_cost {
+                match self.prechoose_additional_cost_sacrifices(
+                    game,
+                    agents,
+                    player,
+                    sc,
+                    Some(&sa),
+                ) {
+                    Some(picks) => Some(picks),
+                    None => return None,
+                }
+            } else {
+                None
+            };
+
             // Build mana payment context for restriction checking
             let payment_ctx = {
                 let card = game.card(card_id);
@@ -1786,7 +1805,6 @@ impl GameLoop {
             }
 
             // Pay additional costs from SP$ line (e.g. sacrifice a creature).
-            let spell_cost = Self::parse_spell_cost(&abilities_for_spell);
             let mut waterbend_tapped: Vec<CardId> = Vec::new();
             if let Some(ref sc) = spell_cost {
                 let has_waterbend = sc
@@ -1816,6 +1834,7 @@ impl GameLoop {
                     None,
                     sc.mandatory,
                     Some(&sa),
+                    prechosen_spell_sacrifices.as_deref(),
                 ) {
                     return None;
                 }
@@ -1858,6 +1877,7 @@ impl GameLoop {
                     None,
                     rc.mandatory,
                     Some(&sa),
+                    None,
                 ) {
                     return None;
                 }
@@ -1903,6 +1923,7 @@ impl GameLoop {
                     None,
                     fb_cost.mandatory,
                     Some(&sa),
+                    None,
                 ) {
                     return None;
                 }

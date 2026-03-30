@@ -2,6 +2,7 @@ package forge.harness;
 
 import forge.game.Game;
 import forge.game.card.Card;
+import forge.game.card.CardCollection;
 import forge.game.player.Player;
 import forge.game.spellability.SpellAbility;
 import forge.game.zone.ZoneType;
@@ -43,23 +44,49 @@ public final class ParityCardMap {
 
         for (final Player p : players) {
             for (final Card c : p.getCardsIn(ZoneType.Hand)) {
-                if (!CARD_TO_PARITY.containsKey(c.getId())) {
-                    CARD_TO_PARITY.put(c.getId(), nextParityId++);
-                }
+                assignIfAbsent(c);
             }
             for (final Card c : p.getCardsIn(ZoneType.Library)) {
-                if (!CARD_TO_PARITY.containsKey(c.getId())) {
-                    CARD_TO_PARITY.put(c.getId(), nextParityId++);
-                }
+                assignIfAbsent(c);
             }
         }
         initialized = true;
+    }
+    /**
+     * Assign parity IDs for all currently existing cards in a canonical order.
+     *
+     * <p>This prevents ID assignment from depending on first-touch order at
+     * decision time (which can differ between Rust/Java for same-name cards,
+     * especially tokens).
+     */
+    public static synchronized void syncWithGame(final Game game) {
+        if (game == null) {
+            return;
+        }
+        final List<Player> players = new ArrayList<>(game.getRegisteredPlayers());
+        players.sort(Comparator.comparingInt(Player::getId));
+
+        for (final Player p : players) {
+            assignZoneSorted(p, ZoneType.Hand, true);
+            // Java iterates library in draw order (top -> bottom).
+            for (final Card c : p.getCardsIn(ZoneType.Library)) {
+                assignIfAbsent(c);
+            }
+            assignZoneSorted(p, ZoneType.Battlefield, true);
+            // Skip token cards in graveyard/exile to avoid drift from transient
+            // "dies then ceases to exist" object-lifetime differences.
+            assignZoneSorted(p, ZoneType.Graveyard, false);
+            assignZoneSorted(p, ZoneType.Exile, false);
+            assignZoneSorted(p, ZoneType.Stack, false);
+        }
     }
 
     public static synchronized int parityId(final Card c) {
         if (c == null) {
             return Integer.MAX_VALUE;
         }
+        syncWithGame(c.getGame());
+
         final Integer existing = CARD_TO_PARITY.get(c.getId());
         if (existing != null) {
             return existing;
@@ -82,6 +109,30 @@ public final class ParityCardMap {
             final Function<SpellAbility, String> baseLabel
     ) {
         return appendKey(abilities, baseLabel, sa -> String.valueOf(parityId(sa.getHostCard())));
+    }
+
+    private static void assignIfAbsent(final Card c) {
+        if (c == null || CARD_TO_PARITY.containsKey(c.getId())) {
+            return;
+        }
+        CARD_TO_PARITY.put(c.getId(), nextParityId++);
+    }
+
+    private static void assignZoneSorted(final Player p, final ZoneType zone, final boolean includeTokens) {
+        final CardCollection cards = new CardCollection(p.getCardsIn(zone));
+        final Comparator<Card> comparator = Comparator
+            .comparing((Card c) -> c.getName(), Comparator.nullsFirst(String::compareTo))
+            .thenComparingInt(c -> c.getOwner() == null ? Integer.MAX_VALUE : c.getOwner().getId())
+            .thenComparingInt(c -> c.getController() == null ? Integer.MAX_VALUE : c.getController().getId())
+            .thenComparingLong(c -> c.getGameTimestamp())
+            .thenComparingInt(c -> c.getId());
+        cards.sort(comparator);
+        for (final Card c : cards) {
+            if (!includeTokens && c.isToken()) {
+                continue;
+            }
+            assignIfAbsent(c);
+        }
     }
 
     private static <T> List<String> appendKey(

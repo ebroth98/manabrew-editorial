@@ -45,6 +45,8 @@ pub fn create_permanent_spell(
         is_trigger: false,
         is_activated: false,
         trigger_source: None,
+        trigger_source_zone_timestamp: None,
+        source_zone_timestamp: None,
         source_trigger_id: None,
         trigger_index: None,
         alt_cost: None,

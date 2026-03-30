@@ -91,6 +91,14 @@ pub struct SpellAbility {
     pub is_activated: bool,
     /// Card that owns the trigger (for intervening-if recheck).
     pub trigger_source: Option<CardId>,
+    /// Zone timestamp of the trigger source when this triggered ability was created.
+    /// Used to preserve object identity across zone changes (CR 400.7).
+    #[serde(default)]
+    pub trigger_source_zone_timestamp: Option<u64>,
+    /// Zone timestamp of `source` when this SpellAbility instance was created.
+    /// Used for non-target references like `Defined$ Self` to preserve object identity.
+    #[serde(default)]
+    pub source_zone_timestamp: Option<u64>,
     /// Source trigger id (Java `sourceTrigger`), used for state-trigger dedupe.
     pub source_trigger_id: Option<u32>,
     /// Index into card.triggers for intervening-if recheck.
@@ -310,6 +318,8 @@ impl SpellAbility {
             is_trigger: false,
             is_activated: false,
             trigger_source: None,
+            trigger_source_zone_timestamp: None,
+            source_zone_timestamp: None,
             source_trigger_id: None,
             trigger_index: None,
             alt_cost: None,
@@ -1214,7 +1224,10 @@ fn choose_targets_for(
             let agent = &mut agents[player.index()];
             match agent.choose_target_any(player, &valid_players, &valid_cards, Some(sa)) {
                 TargetChoice::Player(pid) => sa.target_chosen.target_player = Some(pid),
-                TargetChoice::Card(cid) => sa.target_chosen.target_card = Some(cid),
+                TargetChoice::Card(cid) => {
+                    sa.target_chosen.target_card = Some(cid);
+                    sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
+                }
                 TargetChoice::None => {}
             }
         }
@@ -1235,6 +1248,9 @@ fn choose_targets_for(
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
+            if let Some(cid) = sa.target_chosen.target_card {
+                sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
+            }
         }
         TargetKind::Permanent(ref filter) => {
             let base = target_restrictions::get_all_battlefield_permanents_filtered(
@@ -1253,6 +1269,9 @@ fn choose_targets_for(
             agents[player.index()].snapshot_state(game, mana_pools);
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card = agent.choose_target_card(player, &valid, Some(sa));
+            if let Some(cid) = sa.target_chosen.target_card {
+                sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
+            }
         }
         TargetKind::CardInZone { zone, filter } => {
             let valid: Vec<CardId> = target_restrictions::get_valid_cards_in_zone(
@@ -1269,6 +1288,9 @@ fn choose_targets_for(
             let agent = &mut agents[player.index()];
             sa.target_chosen.target_card =
                 agent.choose_target_card_from_zone(player, *zone, &valid, Some(sa));
+            if let Some(cid) = sa.target_chosen.target_card {
+                sa.target_chosen.target_card_zone_timestamp = Some(game.card(cid).zone_timestamp);
+            }
         }
         TargetKind::Spell => {
             let valid = target_restrictions::get_all_candidates_spells(game);

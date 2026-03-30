@@ -27,6 +27,12 @@ fn parse_trigger_card_object(sa: &SpellAbility, key: &str) -> Option<CardId> {
         .map(CardId)
 }
 
+fn parse_trigger_int_object(sa: &SpellAbility, key: &str) -> Option<i32> {
+    sa.trigger_objects
+        .get(key)
+        .and_then(|value| value.trim().parse::<i32>().ok())
+}
+
 fn do_x_math(num: i32, operators: &str) -> i32 {
     if operators.is_empty() {
         return num;
@@ -564,6 +570,9 @@ pub fn resolve_numeric_svar(
                 // Must be checked before resolve_direct_player_expr which would
                 // incorrectly match "TriggeredCard" as a player definition.
                 if svar_expr == "TriggeredCard$CardPower" {
+                    if let Some(power) = parse_trigger_int_object(sa, "TriggeredCardPower") {
+                        return power;
+                    }
                     if let Some(trigger_src) =
                         parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                     {
@@ -572,6 +581,10 @@ pub fn resolve_numeric_svar(
                     return 0;
                 }
                 if svar_expr == "TriggeredCard$CardToughness" {
+                    if let Some(toughness) = parse_trigger_int_object(sa, "TriggeredCardToughness")
+                    {
+                        return toughness;
+                    }
                     if let Some(trigger_src) =
                         parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                     {
@@ -650,6 +663,9 @@ pub fn resolve_numeric_svar(
             // Mirrors Java AbilityUtils: TriggeredCard → Card, then Card$CardPower.
             // Must be checked before resolve_direct_player_expr.
             if svar_expr == "TriggeredCard$CardPower" {
+                if let Some(power) = parse_trigger_int_object(sa, "TriggeredCardPower") {
+                    return power;
+                }
                 if let Some(trigger_src) =
                     parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                 {
@@ -658,6 +674,9 @@ pub fn resolve_numeric_svar(
                 return 0;
             }
             if svar_expr == "TriggeredCard$CardToughness" {
+                if let Some(toughness) = parse_trigger_int_object(sa, "TriggeredCardToughness") {
+                    return toughness;
+                }
                 if let Some(trigger_src) =
                     parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                 {

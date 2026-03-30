@@ -1,12 +1,21 @@
 import { create } from "zustand";
-import type { Card, ActivatableAbilityInfo } from "@/types/openmagic";
+import type { Card } from "@/types/openmagic";
 
 // ── State Shapes ──────────────────────────────────────────────────────────────
 
-interface AbilityPickerState {
+export interface HandActionOption {
+  kind: "cast" | "ability";
+  cardId: string;
+  label: string;
+  mode?: string;
+  abilityIndex?: number;
+  isManaAbility?: boolean;
+}
+
+export interface AbilityPickerState {
   cardId: string;
   cardName: string;
-  abilities: ActivatableAbilityInfo[];
+  abilities: HandActionOption[];
 }
 
 interface PlayModePickerState {

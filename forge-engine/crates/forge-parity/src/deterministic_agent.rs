@@ -156,6 +156,15 @@ impl DeterministicAgent {
         String::new()
     }
 
+    fn target_owner_controller_key(&self, id: CardId) -> (u32, u32) {
+        if let Some(ref snap) = self.last_game_snapshot {
+            let card = snap.game.card(id);
+            (card.owner.0, card.controller.0)
+        } else {
+            (u32::MAX, u32::MAX)
+        }
+    }
+
     fn play_option_label(&self, play: PlayOption) -> String {
         if self.is_land(play.card_id) {
             return format!("LAND:{}", self.card_name(play.card_id));
@@ -285,6 +294,10 @@ impl DeterministicAgent {
 
 impl PlayerAgent for DeterministicAgent {
     fn snapshot_state(&mut self, game: &GameState, _mana_pools: &[ManaPool]) {
+        // Assign parity IDs for all currently existing cards as soon as we
+        // observe state, so later parity_id reads are not first-touch dependent.
+        self.parity_map.sync_with_game(game);
+
         // Cache card names, land status, and turn info for deterministic ordering
         let card_names: Vec<(CardId, String)> = game
             .cards
@@ -705,12 +718,15 @@ impl PlayerAgent for DeterministicAgent {
         if valid.is_empty() {
             return None;
         }
-        // Sort valid targets by (card_name, parity_id) for deterministic cross-engine parity,
-        // matching the canonical sort used for attackers, blockers, and main-phase actions.
+        // Keep target ordering aligned with Java parity harness:
+        // sort by card name, then owner/controller, then parity id.
         let sorted = choice_space::sort_native(valid, |a, b| {
-            let an = self.card_name(*a);
-            let bn = self.card_name(*b);
-            an.cmp(&bn)
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| {
+                    self.target_owner_controller_key(*a)
+                        .cmp(&self.target_owner_controller_key(*b))
+                })
                 .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
         });
         let target = choice_space::pick_one(&sorted, &mut self.rng.borrow_mut())?;
@@ -735,11 +751,15 @@ impl PlayerAgent for DeterministicAgent {
         valid_cards: &[CardId],
         _sa: Option<&forge_engine_core::spellability::SpellAbility>,
     ) -> TargetChoice {
-        // Sort valid card targets by (card_name, parity_id) for deterministic cross-engine parity.
+        // Keep target ordering aligned with Java parity harness:
+        // sort by card name, then owner/controller, then parity id.
         let sorted_cards = choice_space::sort_native(valid_cards, |a, b| {
-            let an = self.card_name(*a);
-            let bn = self.card_name(*b);
-            an.cmp(&bn)
+            self.card_name(*a)
+                .cmp(&self.card_name(*b))
+                .then_with(|| {
+                    self.target_owner_controller_key(*a)
+                        .cmp(&self.target_owner_controller_key(*b))
+                })
                 .then_with(|| self.parity_map.id(*a).cmp(&self.parity_map.id(*b)))
         });
 

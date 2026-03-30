@@ -697,8 +697,16 @@ impl GameState {
                                 .counters
                                 .get(&crate::card::CounterType::P1P1)
                                 .unwrap_or(&0);
+                            let lki_power = self.card(cid).power();
+                            let lki_toughness = self.card(cid).toughness();
                             crate::ability::effects::emit_zone_trigger_with_lki_counters(
-                                handler, cid, old_zone, final_dest, lki_p1p1,
+                                handler,
+                                cid,
+                                old_zone,
+                                final_dest,
+                                lki_p1p1,
+                                lki_power,
+                                lki_toughness,
                             );
                             handler.flush_waiting_triggers(self);
                         }

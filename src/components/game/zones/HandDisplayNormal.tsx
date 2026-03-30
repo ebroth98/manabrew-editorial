@@ -12,6 +12,7 @@ export function HandDisplayNormal({
   cards,
   onHoverCard,
   onStartDrag,
+  onClickCard,
   onFlipCard,
   showBackFace,
   draggingCardId,
@@ -89,8 +90,10 @@ export function HandDisplayNormal({
                 style={isTugging ? { transform: `translate(${tugOffset.x}px, ${tugOffset.y}px)`, zIndex: 100 } : undefined}
                 onMouseDown={(e) => {
                   e.preventDefault();
-                  if (card.isPlayable) {
+                  if (card.isPlayable && onStartDrag) {
                     onStartDrag?.(card, e);
+                  } else if (card.isPlayable) {
+                    onClickCard?.(card);
                   } else {
                     startTug(card.id, e.clientX, e.clientY);
                   }

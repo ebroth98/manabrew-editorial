@@ -64,6 +64,15 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         }
     };
     let Some(card_id) = target_id else { return };
+    if sa.params.get(keys::DEFINED).unwrap_or("Self") == "Self" && sa.source == Some(card_id) {
+        // Java parity: self-referential card effects must apply to the same object instance.
+        // If host card changed zones, this ability resolves with no effect on the new object.
+        if let Some(created_at) = sa.source_zone_timestamp {
+            if ctx.game.card(card_id).zone_timestamp != created_at {
+                return;
+            }
+        }
+    }
     if ctx.game.card(card_id).zone != ZoneType::Battlefield {
         return;
     }
@@ -271,5 +280,44 @@ mod tests {
         game.move_card(clay_golem, ZoneType::Hand, p0);
 
         assert!(!game.card(clay_golem).monstrous);
+    }
+
+    #[test]
+    fn triggered_self_skips_when_source_is_new_zone_object() {
+        let mut game = GameState::new(&["Alice", "Bob"], 20);
+        let p0 = PlayerId(0);
+        let beetle = make_creature(&mut game, p0, "Mortician Beetle");
+        game.move_card(beetle, ZoneType::Battlefield, p0);
+        let original_ts = game.card(beetle).zone_timestamp;
+
+        let mut sa = SpellAbility::new_simple(
+            Some(beetle),
+            p0,
+            "DB$ PutCounter | Defined$ Self | CounterType$ P1P1 | CounterNum$ 1",
+        );
+        sa.is_trigger = true;
+        sa.trigger_source = Some(beetle);
+        sa.trigger_source_zone_timestamp = Some(original_ts);
+
+        // Simulate a zone change creating a new object identity for the same card id.
+        game.assign_zone_timestamp(beetle);
+
+        let mut trigger_handler = TriggerHandler::new();
+        let mut agents: Vec<Box<dyn crate::agent::PlayerAgent>> =
+            vec![Box::new(PassAgent), Box::new(PassAgent)];
+        let mut mana_pools = vec![ManaPool::default(), ManaPool::default()];
+        let token_templates = HashMap::new();
+        let mut rng_adapter = crate::game_rng::ThreadRngAdapter;
+        let mut ctx = make_ctx(
+            &mut game,
+            &mut agents,
+            &mut trigger_handler,
+            &mut mana_pools,
+            &token_templates,
+            &mut rng_adapter,
+        );
+
+        super::resolve(&mut ctx, &sa);
+        assert_eq!(ctx.game.card(beetle).counter_count(&CounterType::P1P1), 0);
     }
 }

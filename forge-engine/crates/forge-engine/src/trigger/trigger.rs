@@ -1007,6 +1007,7 @@ impl Trigger {
         let mut sa = build_spell_ability(game, host_card, &svar_text, host_controller);
         sa.is_trigger = true;
         sa.trigger_source = Some(host_card);
+        sa.trigger_source_zone_timestamp = Some(game.card(host_card).zone_timestamp);
         sa.source_trigger_id = Some(self.id);
         sa.trigger_index = Some(trigger_index);
         sa.trigger_remembered = self.trigger_remembered.clone();

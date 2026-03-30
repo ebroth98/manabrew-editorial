@@ -419,6 +419,7 @@ impl TriggerHandler {
                 );
                 sa.is_trigger = true;
                 sa.trigger_source = Some(delayed.source_card);
+                sa.trigger_source_zone_timestamp = Some(game.card(delayed.source_card).zone_timestamp);
                 sa.trigger_remembered_amount = delayed.remembered_amount;
 
                 let entry = StackEntry {

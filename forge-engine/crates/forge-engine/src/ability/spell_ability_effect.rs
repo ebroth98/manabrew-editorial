@@ -144,6 +144,19 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
     }
 
     match defined {
+        "Self" | "CARDNAME" => {
+            if sa.is_trigger {
+                if let (Some(source), Some(created_at)) =
+                    (sa.trigger_source, sa.trigger_source_zone_timestamp)
+                {
+                    let current = game.card(source);
+                    if current.zone_timestamp != created_at {
+                        return Vec::new();
+                    }
+                }
+            }
+            sa.source.into_iter().collect()
+        }
         "Targeted" => sa.target_chosen.target_card.into_iter().collect(),
         "TriggeredCard" | "TriggeredCardLKICopy" => {
             let cards = parse_card_ids(sa.trigger_objects.get("Card"));

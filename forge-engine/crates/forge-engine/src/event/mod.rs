@@ -559,6 +559,12 @@ pub struct RunParams {
     /// LKI +1/+1 counter count on a card that just left the battlefield.
     /// Used by Modular triggers to know how many counters to move.
     pub lki_p1p1_counters: Option<i32>,
+    /// LKI power on a card that just left the battlefield.
+    /// Used for TriggeredCard$CardPower without depending on mutable card state.
+    pub lki_power: Option<i32>,
+    /// LKI toughness on a card that just left the battlefield.
+    /// Used for TriggeredCard$CardToughness without depending on mutable card state.
+    pub lki_toughness: Option<i32>,
     /// Whether cumulative upkeep was paid (for PayCumulativeUpkeep trigger).
     pub cumulative_upkeep_paid: Option<bool>,
     /// Whether echo was paid (for PayEcho trigger).

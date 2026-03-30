@@ -8,8 +8,9 @@ import {
   PromptModalController,
 } from "@/components/game/modals";
 import { ZoneTargetSelector } from "@/components/game/ZoneTargetSelector";
-import type { Card as XMageCard, StackObject, ActivatableAbilityInfo } from "@/types/openmagic";
+import type { Card as XMageCard, StackObject } from "@/types/openmagic";
 import type { AgentPrompt } from "@/stores/useGameStore";
+import type { AbilityPickerState, HandActionOption } from "@/stores/useGameUIStore";
 import type { PromptType } from "@/types/promptType";
 import { PromptType as PT } from "@/types/promptType";
 
@@ -33,8 +34,8 @@ interface TargetModalsProps {
   onTargetSpell: (spellId: string) => void;
   onCloseStack: () => void;
   // Ability picker
-  abilityPickerState: { cardId: string; cardName: string; abilities: ActivatableAbilityInfo[] } | null;
-  onSelectAbility: (ability: ActivatableAbilityInfo) => void;
+  abilityPickerState: AbilityPickerState | null;
+  onSelectAbility: (ability: HandActionOption) => void;
   onCancelAbilityPicker: () => void;
   // Card selection
   onChooseCardsDecision: (cardIds: string[]) => void;

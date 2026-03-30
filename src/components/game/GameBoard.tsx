@@ -69,6 +69,7 @@ interface GameBoardProps {
 
   // Callbacks
   onHandCardDragStart: (card: Card, e: React.MouseEvent) => void;
+  onHandCardClick: (card: Card) => void;
   onHoverCard: (card: Card | null, e?: React.MouseEvent) => void;
   onFlipCard: () => void;
   onBattlefieldClick: (card: Card) => void;
@@ -112,6 +113,7 @@ export function GameBoard({
   draggingCardId,
   castingCardId,
   onHandCardDragStart,
+  onHandCardClick,
   onHoverCard,
   onFlipCard,
   onBattlefieldClick,
@@ -329,6 +331,7 @@ export function GameBoard({
                   <HandDisplay
                     cards={myHand}
                     onHoverCard={onHoverCard}
+                    onClickCard={onHandCardClick}
                     onFlipCard={onFlipCard}
                     showBackFace={showBackFace}
                     onStartDrag={onHandCardDragStart}
