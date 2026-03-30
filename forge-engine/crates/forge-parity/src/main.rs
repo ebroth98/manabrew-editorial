@@ -337,8 +337,9 @@ fn run_multi_game_mode(cli: &Cli) {
         }
     };
 
-    // Reuse one Java server across all games when possible.
-    let mut server = if let Some(ref jar_path) = cli.java_jar {
+    let total = seeds.len();
+    let results: Vec<MatchupResult> = if let Some(ref jar_path) = cli.java_jar {
+        let workers = cli.java_workers.unwrap_or(1).max(1);
         let server_config = JavaServerConfig {
             jar_path: jar_path.clone(),
             forge_home: None,
@@ -346,83 +347,167 @@ fn run_multi_game_mode(cli: &Cli) {
             verbose: cli.verbose,
             java_heap: cli.java_heap.clone(),
         };
-        match JavaServer::spawn(&server_config) {
-            Ok(s) => Some(s),
+        match ServerPool::spawn(workers, &server_config) {
+            Ok(pool) => {
+                if cli.verbose {
+                    eprintln!(
+                        "[parity] Multi-game mode: {} Java worker(s), {} games",
+                        workers, total
+                    );
+                }
+                let completed = AtomicUsize::new(0);
+                let mut indexed: Vec<(usize, MatchupResult)> = seeds
+                    .par_iter()
+                    .enumerate()
+                    .map(|(i, &seed)| {
+                        let config = RunConfig {
+                            deck1: cli.deck1.clone(),
+                            deck2: cli.deck2.clone(),
+                            seed,
+                            max_turns: cli.max_turns,
+                            cards_dir: cli.cards_dir.clone(),
+                            decks_dir: cli.decks_dir.clone(),
+                            verbose: cli.verbose,
+                            prefer_actions: cli.prefer_actions,
+                            java_heap: cli.java_heap.clone(),
+                        };
+
+                        let t_match = Instant::now();
+                        let result = run_single_matchup_pool(&config, &data, &pool);
+                        perf::record("multi_game.single_matchup_total", t_match.elapsed());
+
+                        if cli.verbose {
+                            let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                            match result.status {
+                                MatchupStatus::Pass => {
+                                    eprintln!(
+                                        "[parity] [{}/{}] seed={} ... PASS ({} snapshots)",
+                                        n, total, seed, result.snapshots_compared
+                                    );
+                                }
+                                MatchupStatus::Fail => {
+                                    eprintln!(
+                                        "[parity] [{}/{}] seed={} ... FAIL ({} divergences)",
+                                        n, total, seed, result.divergence_count
+                                    );
+                                }
+                                MatchupStatus::Error => {
+                                    eprintln!(
+                                        "[parity] [{}/{}] seed={} ... ERROR: {}",
+                                        n,
+                                        total,
+                                        seed,
+                                        result.error_message.as_deref().unwrap_or("unknown")
+                                    );
+                                }
+                            }
+                        }
+                        (i, result)
+                    })
+                    .collect();
+                indexed.sort_by_key(|(i, _)| *i);
+                let results = indexed.into_iter().map(|(_, r)| r).collect();
+                pool.shutdown();
+                results
+            }
             Err(e) => {
-                eprintln!("[parity] Failed to spawn Java server: {}", e);
+                eprintln!("[parity] Failed to spawn Java server pool: {}", e);
                 eprintln!("[parity] Falling back to one-shot mode");
-                None
+                let mut results: Vec<MatchupResult> = Vec::with_capacity(total);
+                for (i, seed) in seeds.iter().copied().enumerate() {
+                    let config = RunConfig {
+                        deck1: cli.deck1.clone(),
+                        deck2: cli.deck2.clone(),
+                        seed,
+                        max_turns: cli.max_turns,
+                        cards_dir: cli.cards_dir.clone(),
+                        decks_dir: cli.decks_dir.clone(),
+                        verbose: cli.verbose,
+                        prefer_actions: cli.prefer_actions,
+                        java_heap: cli.java_heap.clone(),
+                    };
+                    let t_match = Instant::now();
+                    let result = run_single_matchup_oneshot(&config, &data, jar_path);
+                    perf::record("multi_game.single_matchup_total", t_match.elapsed());
+                    if cli.verbose {
+                        let n = i + 1;
+                        match result.status {
+                            MatchupStatus::Pass => {
+                                eprintln!(
+                                    "[parity] [{}/{}] seed={} ... PASS ({} snapshots)",
+                                    n, total, seed, result.snapshots_compared
+                                );
+                            }
+                            MatchupStatus::Fail => {
+                                eprintln!(
+                                    "[parity] [{}/{}] seed={} ... FAIL ({} divergences)",
+                                    n, total, seed, result.divergence_count
+                                );
+                            }
+                            MatchupStatus::Error => {
+                                eprintln!(
+                                    "[parity] [{}/{}] seed={} ... ERROR: {}",
+                                    n,
+                                    total,
+                                    seed,
+                                    result.error_message.as_deref().unwrap_or("unknown")
+                                );
+                            }
+                        }
+                    }
+                    results.push(result);
+                }
+                results
             }
         }
     } else {
-        None
-    };
+        let mut results: Vec<MatchupResult> = Vec::with_capacity(total);
+        for (i, seed) in seeds.iter().copied().enumerate() {
+            let config = RunConfig {
+                deck1: cli.deck1.clone(),
+                deck2: cli.deck2.clone(),
+                seed,
+                max_turns: cli.max_turns,
+                cards_dir: cli.cards_dir.clone(),
+                decks_dir: cli.decks_dir.clone(),
+                verbose: cli.verbose,
+                prefer_actions: cli.prefer_actions,
+                java_heap: cli.java_heap.clone(),
+            };
 
-    let total = seeds.len();
-    let mut results: Vec<MatchupResult> = Vec::with_capacity(total);
-    for (i, seed) in seeds.iter().copied().enumerate() {
-        let config = RunConfig {
-            deck1: cli.deck1.clone(),
-            deck2: cli.deck2.clone(),
-            seed,
-            max_turns: cli.max_turns,
-            cards_dir: cli.cards_dir.clone(),
-            decks_dir: cli.decks_dir.clone(),
-            verbose: cli.verbose,
-            prefer_actions: cli.prefer_actions,
-            java_heap: cli.java_heap.clone(),
-        };
-
-        let t_match = Instant::now();
-        let result = if let Some(ref mut srv) = server {
-            if srv.is_alive() {
-                run_single_matchup_server(&config, &data, srv)
-            } else {
-                if let Some(ref jar_path) = cli.java_jar {
-                    run_single_matchup_oneshot(&config, &data, jar_path)
-                } else {
-                    run_single_matchup_rust_only(&config, &data)
+            let t_match = Instant::now();
+            let result = run_single_matchup_rust_only(&config, &data);
+            perf::record("multi_game.single_matchup_total", t_match.elapsed());
+            if cli.verbose {
+                let n = i + 1;
+                match result.status {
+                    MatchupStatus::Pass => {
+                        eprintln!(
+                            "[parity] [{}/{}] seed={} ... PASS ({} snapshots)",
+                            n, total, seed, result.snapshots_compared
+                        );
+                    }
+                    MatchupStatus::Fail => {
+                        eprintln!(
+                            "[parity] [{}/{}] seed={} ... FAIL ({} divergences)",
+                            n, total, seed, result.divergence_count
+                        );
+                    }
+                    MatchupStatus::Error => {
+                        eprintln!(
+                            "[parity] [{}/{}] seed={} ... ERROR: {}",
+                            n,
+                            total,
+                            seed,
+                            result.error_message.as_deref().unwrap_or("unknown")
+                        );
+                    }
                 }
             }
-        } else if let Some(ref jar_path) = cli.java_jar {
-            run_single_matchup_oneshot(&config, &data, jar_path)
-        } else {
-            run_single_matchup_rust_only(&config, &data)
-        };
-        perf::record("multi_game.single_matchup_total", t_match.elapsed());
-
-        if cli.verbose {
-            let n = i + 1;
-            match result.status {
-                MatchupStatus::Pass => {
-                    eprintln!(
-                        "[parity] [{}/{}] seed={} ... PASS ({} snapshots)",
-                        n, total, seed, result.snapshots_compared
-                    );
-                }
-                MatchupStatus::Fail => {
-                    eprintln!(
-                        "[parity] [{}/{}] seed={} ... FAIL ({} divergences)",
-                        n, total, seed, result.divergence_count
-                    );
-                }
-                MatchupStatus::Error => {
-                    eprintln!(
-                        "[parity] [{}/{}] seed={} ... ERROR: {}",
-                        n,
-                        total,
-                        seed,
-                        result.error_message.as_deref().unwrap_or("unknown")
-                    );
-                }
-            }
+            results.push(result);
         }
-        results.push(result);
-    }
-
-    if let Some(srv) = server {
-        srv.shutdown();
-    }
+        results
+    };
 
     let passed = results
         .iter()
@@ -751,6 +836,83 @@ fn run_single_matchup_server(
     result
 }
 
+/// Run a single matchup using a Java server pool entry.
+/// Rust and Java run concurrently; Java work is dispatched to any available pool server.
+fn run_single_matchup_pool(
+    config: &RunConfig,
+    data: &LoadedData,
+    pool: &ServerPool,
+) -> MatchupResult {
+    let t_total = Instant::now();
+    let (rust_result, java_result) = std::thread::scope(|s| {
+        let rust_handle = s.spawn(|| runner::run_with_data(config, data));
+        let java_result = pool.run_matchup(
+            &config.deck1,
+            &config.deck2,
+            config.seed,
+            config.max_turns,
+            config.prefer_actions,
+        );
+        let rust_result = rust_handle.join().expect("Rust engine thread panicked");
+        (rust_result, java_result)
+    });
+
+    let rust_trace = match rust_result {
+        Ok(trace) => trace,
+        Err(e) => {
+            return MatchupResult {
+                deck1: config.deck1.clone(),
+                deck2: config.deck2.clone(),
+                seed: config.seed,
+                status: MatchupStatus::Error,
+                snapshots_compared: 0,
+                divergence_count: 0,
+                first_divergence: None,
+                error_message: Some(format!("Rust engine error: {}", e)),
+                trace: None,
+                java_trace: None,
+                covered_cards: vec![],
+                mechanic_signals: vec![],
+                finished_turn: None,
+            };
+        }
+    };
+
+    let java_data = match java_result {
+        Ok(snaps) => snaps,
+        Err(e) => {
+            return MatchupResult {
+                deck1: config.deck1.clone(),
+                deck2: config.deck2.clone(),
+                seed: config.seed,
+                status: MatchupStatus::Error,
+                snapshots_compared: 0,
+                divergence_count: 0,
+                first_divergence: None,
+                error_message: Some(format!("Java server error: {}", e)),
+                trace: None,
+                java_trace: None,
+                covered_cards: vec![],
+                mechanic_signals: vec![],
+                finished_turn: None,
+            };
+        }
+    };
+
+    let t_cmp = Instant::now();
+    let mut result = compare_snapshots(
+        config,
+        &rust_trace.snapshots,
+        &rust_trace.decisions,
+        &java_data,
+    );
+    perf::record("single_matchup_pool.compare_snapshots", t_cmp.elapsed());
+    result.covered_cards = rust_trace.covered_cards;
+    result.mechanic_signals = rust_trace.mechanic_signals;
+    perf::record("single_matchup_pool.total", t_total.elapsed());
+    result
+}
+
 /// Run a single matchup using one-shot JavaBridge (fallback mode).
 /// Rust and Java engines run in parallel using scoped threads.
 fn run_single_matchup_oneshot(
@@ -1065,6 +1227,18 @@ impl ServerPool {
             .lock()
             .map_err(|e| JavaBridgeError::ProtocolError(format!("Mutex poisoned: {}", e)))?;
         server.run_matchup_streaming(deck1, deck2, seed, max_turns, prefer_actions, on_snapshot)
+    }
+
+    /// Run a matchup and collect all snapshots/decisions.
+    fn run_matchup(
+        &self,
+        deck1: &str,
+        deck2: &str,
+        seed: u64,
+        max_turns: u32,
+        prefer_actions: bool,
+    ) -> Result<JavaMatchupData, JavaBridgeError> {
+        self.run_matchup_streaming(deck1, deck2, seed, max_turns, prefer_actions, |_, _| true)
     }
 
     /// Shutdown all servers in parallel.
