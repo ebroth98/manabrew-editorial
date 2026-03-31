@@ -269,6 +269,10 @@ pub struct MatchupRequest {
     pub seed: u64,
     pub max_turns: u32,
     pub prefer_actions: bool,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub variant: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub commanders: Vec<String>,
 }
 
 /// Sentinel line from the Java server indicating end-of-game.
@@ -412,6 +416,8 @@ impl JavaServer {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        variant: &str,
+        commanders: &[String],
     ) -> Result<JavaMatchupData, JavaBridgeError> {
         let t_total = Instant::now();
         let request = MatchupRequest {
@@ -421,6 +427,8 @@ impl JavaServer {
             seed,
             max_turns,
             prefer_actions,
+            variant: variant.to_string(),
+            commanders: commanders.to_vec(),
         };
 
         // Write request as a single JSON line
@@ -533,6 +541,8 @@ impl JavaServer {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        variant: &str,
+        commanders: &[String],
         mut on_snapshot: F,
     ) -> Result<JavaMatchupData, JavaBridgeError>
     where
@@ -546,6 +556,8 @@ impl JavaServer {
             seed,
             max_turns,
             prefer_actions,
+            variant: variant.to_string(),
+            commanders: commanders.to_vec(),
         };
 
         let request_json = serde_json::to_string(&request).map_err(|e| {

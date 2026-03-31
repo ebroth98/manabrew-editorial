@@ -1325,6 +1325,10 @@ pub struct RunConfig {
     pub prefer_actions: bool,
     /// Maximum JVM heap size (e.g. "512m", "1g").
     pub java_heap: String,
+    /// Game variant: "Constructed", "Commander", "Oathbreaker", "TinyLeaders", "Brawl".
+    pub variant: String,
+    /// Commander card names for Commander variants.
+    pub commanders: Vec<String>,
 }
 
 /// Pre-loaded card database and token templates, reusable across multiple matchups.
@@ -1435,15 +1439,52 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     let deck2_spec = resolve_deck_spec(&config.deck2, decks_dir)?;
     perf::record("run_with_data.resolve_deck_spec", t_resolve.elapsed());
 
+    // Determine starting life based on variant
+    let starting_life = match config.variant.as_str() {
+        "Commander" => 40,
+        "Oathbreaker" => 20,
+        "TinyLeaders" => 25,
+        "Brawl" => 30,
+        _ => 20, // Constructed and other variants
+    };
+
     // Set up game
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
-    let mut game = GameState::new(&["Player1", "Player2"], 20);
+    let mut game = GameState::new(&["Player1", "Player2"], starting_life);
 
     let t_build = Instant::now();
     build_deck_from_spec(&mut game, &data.db, p0, &deck1_spec, config.verbose);
     build_deck_from_spec(&mut game, &data.db, p1, &deck2_spec, config.verbose);
     perf::record("run_with_data.build_deck", t_build.elapsed());
+
+    // Set up commanders if in a commander variant
+    let is_commander_variant = matches!(
+        config.variant.as_str(),
+        "Commander" | "Oathbreaker" | "TinyLeaders" | "Brawl"
+    );
+    if is_commander_variant && !config.commanders.is_empty() {
+        // For each player, find commander cards in their library and move to command zone
+        for &pid in &[p0, p1] {
+            let lib_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Library, pid).to_vec();
+            for commander_name in &config.commanders {
+                // Find first card with matching name in library
+                if let Some(&card_id) = lib_cards
+                    .iter()
+                    .find(|&&cid| game.card(cid).card_name == *commander_name)
+                {
+                    // Move to command zone and register as commander
+                    game.move_card(card_id, ZoneType::Command, pid);
+                    game.player_register_commander(pid, card_id);
+                }
+            }
+        }
+        // Set commander_damage_enabled based on variant
+        let commander_damage_enabled = config.variant == "Commander";
+        for &pid in &[p0, p1] {
+            game.player_mut(pid).commander_damage_enabled = commander_damage_enabled;
+        }
+    }
 
     let mut game_loop = GameLoop::new(2);
 
@@ -1603,6 +1644,8 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         deck1: config.deck1.clone(),
         deck2: config.deck2.clone(),
         max_turns: config.max_turns,
+        variant: config.variant.clone(),
+        commanders: config.commanders.clone(),
         snapshots,
         decisions,
         covered_cards,

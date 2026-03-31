@@ -176,6 +176,16 @@ struct Cli {
     #[arg(long, default_value = "512m")]
     java_heap: String,
 
+    /// Game variant: Constructed, Commander, Oathbreaker, TinyLeaders, Brawl.
+    /// Commander variants adjust starting life and enable commander mechanics.
+    #[arg(long, default_value = "Constructed")]
+    variant: String,
+
+    /// Comma-separated commander card names for Commander variants.
+    /// Required when variant is Commander, Oathbreaker, TinyLeaders, or Brawl.
+    #[arg(long, value_delimiter = ',')]
+    commanders: Option<Vec<String>>,
+
     /// Run continuous parity testing: execute games, store in SQLite, exit with threshold check
     #[arg(long)]
     continuous: bool,
@@ -370,6 +380,8 @@ fn run_multi_game_mode(cli: &Cli) {
                             verbose: cli.verbose,
                             prefer_actions: cli.prefer_actions,
                             java_heap: cli.java_heap.clone(),
+                            variant: cli.variant.clone(),
+                            commanders: cli.commanders.clone().unwrap_or_default(),
                         };
 
                         let t_match = Instant::now();
@@ -425,6 +437,8 @@ fn run_multi_game_mode(cli: &Cli) {
                         verbose: cli.verbose,
                         prefer_actions: cli.prefer_actions,
                         java_heap: cli.java_heap.clone(),
+                        variant: cli.variant.clone(),
+                        commanders: cli.commanders.clone().unwrap_or_default(),
                     };
                     let t_match = Instant::now();
                     let result = run_single_matchup_oneshot(&config, &data, jar_path);
@@ -473,6 +487,8 @@ fn run_multi_game_mode(cli: &Cli) {
                 verbose: cli.verbose,
                 prefer_actions: cli.prefer_actions,
                 java_heap: cli.java_heap.clone(),
+                variant: cli.variant.clone(),
+                commanders: cli.commanders.clone().unwrap_or_default(),
             };
 
             let t_match = Instant::now();
@@ -590,6 +606,8 @@ fn run_rust_only_mode(cli: &Cli) {
         verbose: cli.verbose,
         prefer_actions: cli.prefer_actions,
         java_heap: cli.java_heap.clone(),
+        variant: cli.variant.clone(),
+        commanders: cli.commanders.clone().unwrap_or_default(),
     };
 
     let data = match runner::load_data(config.cards_dir.as_deref(), cli.verbose) {
@@ -651,6 +669,8 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
         verbose: cli.verbose,
         prefer_actions: cli.prefer_actions,
         java_heap: cli.java_heap.clone(),
+        variant: cli.variant.clone(),
+        commanders: cli.commanders.clone().unwrap_or_default(),
     };
 
     let data = match runner::load_data(config.cards_dir.as_deref(), cli.verbose) {
@@ -692,6 +712,8 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
             deck1: config.deck1.clone(),
             deck2: config.deck2.clone(),
             max_turns: config.max_turns,
+            variant: config.variant.clone(),
+            commanders: config.commanders.clone(),
             snapshots: vec![], // not used by build_report beyond len
             decisions: vec![],
             covered_cards: vec![],
@@ -774,6 +796,8 @@ fn run_single_matchup_server(
             config.seed,
             config.max_turns,
             config.prefer_actions,
+            &config.variant,
+            &config.commanders,
         );
 
         let rust_result = rust_handle.join().expect("Rust engine thread panicked");
@@ -852,6 +876,8 @@ fn run_single_matchup_pool(
             config.seed,
             config.max_turns,
             config.prefer_actions,
+            &config.variant,
+            &config.commanders,
         );
         let rust_result = rust_handle.join().expect("Rust engine thread panicked");
         (rust_result, java_result)
@@ -1148,6 +1174,8 @@ fn format_rust_trace(
         deck1: config.deck1.clone(),
         deck2: config.deck2.clone(),
         max_turns: config.max_turns,
+        variant: config.variant.clone(),
+        commanders: config.commanders.clone(),
         snapshots: rust_snapshots.to_vec(),
         decisions: rust_decisions.to_vec(),
         covered_cards: vec![],
@@ -1165,6 +1193,8 @@ fn format_java_trace(
         deck1: config.deck1.clone(),
         deck2: config.deck2.clone(),
         max_turns: config.max_turns,
+        variant: config.variant.clone(),
+        commanders: config.commanders.clone(),
         snapshots: java_snapshots.to_vec(),
         decisions: java_decisions.to_vec(),
         covered_cards: vec![],
@@ -1203,6 +1233,8 @@ impl ServerPool {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        variant: &str,
+        commanders: &[String],
         on_snapshot: F,
     ) -> Result<JavaMatchupData, JavaBridgeError>
     where
@@ -1219,6 +1251,8 @@ impl ServerPool {
                     seed,
                     max_turns,
                     prefer_actions,
+                    variant,
+                    commanders,
                     on_snapshot,
                 );
             }
@@ -1226,7 +1260,7 @@ impl ServerPool {
         let mut server = self.servers[0]
             .lock()
             .map_err(|e| JavaBridgeError::ProtocolError(format!("Mutex poisoned: {}", e)))?;
-        server.run_matchup_streaming(deck1, deck2, seed, max_turns, prefer_actions, on_snapshot)
+        server.run_matchup_streaming(deck1, deck2, seed, max_turns, prefer_actions, variant, commanders, on_snapshot)
     }
 
     /// Run a matchup and collect all snapshots/decisions.
@@ -1237,8 +1271,10 @@ impl ServerPool {
         seed: u64,
         max_turns: u32,
         prefer_actions: bool,
+        variant: &str,
+        commanders: &[String],
     ) -> Result<JavaMatchupData, JavaBridgeError> {
-        self.run_matchup_streaming(deck1, deck2, seed, max_turns, prefer_actions, |_, _| true)
+        self.run_matchup_streaming(deck1, deck2, seed, max_turns, prefer_actions, variant, commanders, |_, _| true)
     }
 
     /// Shutdown all servers in parallel.
@@ -1398,6 +1434,8 @@ fn run_matrix_mode(cli: &Cli) {
                 verbose: cli.verbose,
                 prefer_actions: cli.prefer_actions,
                 java_heap: cli.java_heap.clone(),
+                variant: cli.variant.clone(),
+                commanders: cli.commanders.clone().unwrap_or_default(),
             };
             let result = runner::run_with_data(&config, &data);
             if cli.verbose {
@@ -1594,6 +1632,8 @@ fn run_java_compare_and_cache(
         config.seed,
         config.max_turns,
         config.prefer_actions,
+        &config.variant,
+        &config.commanders,
         |_, _| true, // collect all snapshots
     ) {
         Ok(data) => data,
@@ -1661,6 +1701,8 @@ fn run_java_streaming_compare_pool(
         config.seed,
         config.max_turns,
         config.prefer_actions,
+        &config.variant,
+        &config.commanders,
         |idx, java_snap| {
             if let Some(rust_snap) = rust_snapshots.get(idx) {
                 let divs = comparator::compare(idx, rust_snap, java_snap);
@@ -1931,6 +1973,8 @@ fn run_fuzz_mode(cli: &Cli) {
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
             java_heap: cli.java_heap.clone(),
+            variant: "Constructed".to_string(),
+            commanders: vec![],
         };
 
         let matchup_result = if let Some(ref mut srv) = server {
@@ -2539,6 +2583,8 @@ fn run_continuous_mode(cli: &Cli) {
             verbose: cli.verbose,
             prefer_actions: cli.prefer_actions,
             java_heap: cli.java_heap.clone(),
+            variant: cli.variant.clone(),
+            commanders: cli.commanders.clone().unwrap_or_default(),
         };
 
         let game_start = Instant::now();
@@ -2948,6 +2994,8 @@ fn run_serve_mode(cli: &Cli) {
                 verbose: cli_verbose,
                 prefer_actions: cli_prefer_actions,
                 java_heap: cli_java_heap.clone(),
+                variant: "Constructed".to_string(),
+                commanders: vec![],
             };
 
             let game_start = Instant::now();
@@ -3166,6 +3214,8 @@ fn run_serve_mode(cli: &Cli) {
             verbose: cli_verbose,
             prefer_actions: cli_prefer_actions,
             java_heap: cli_java_heap.clone(),
+            variant: "Constructed".to_string(),
+            commanders: vec![],
         };
 
         let game_start = Instant::now();

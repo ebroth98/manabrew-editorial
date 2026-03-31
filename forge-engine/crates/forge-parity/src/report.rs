@@ -559,6 +559,8 @@ mod tests {
             deck1: "red_burn".into(),
             deck2: "green_stompy".into(),
             max_turns: 5,
+            variant: "Constructed".into(),
+            commanders: vec![],
             decisions: vec![],
             covered_cards: vec![],
             mechanic_signals: vec![],

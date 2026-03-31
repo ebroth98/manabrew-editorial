@@ -3,12 +3,16 @@ package forge.harness;
 import com.google.common.eventbus.Subscribe;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import forge.card.CardDb;
+import forge.deck.CardPool;
 import forge.deck.Deck;
+import forge.deck.DeckSection;
 import forge.game.*;
 import forge.game.event.GameEventTurnPhase;
 import forge.game.phase.PhaseType;
 import forge.game.player.RegisteredPlayer;
 import forge.gui.GuiBase;
+import forge.item.PaperCard;
 import forge.model.FModel;
 
 import java.io.*;
@@ -48,6 +52,8 @@ public final class Main {
         boolean preferActions = false;
         String forgeHome = null;
         boolean serverMode = false;
+        String variant = "Constructed";
+        String commandersArg = null;
 
         for (int i = 0; i < args.length; i++) {
             switch (args[i]) {
@@ -72,12 +78,26 @@ public final class Main {
                 case "--server":
                     serverMode = true;
                     break;
+                case "--variant":
+                    if (i + 1 < args.length) variant = args[++i];
+                    break;
+                case "--commanders":
+                    if (i + 1 < args.length) commandersArg = args[++i];
+                    break;
                 case "--help":
                     printUsage();
                     return;
                 default:
                     System.err.println("[harness] Unknown argument: " + args[i]);
                     break;
+            }
+        }
+
+        // Parse commanders from comma-separated list
+        List<String> commanders = new ArrayList<>();
+        if (commandersArg != null && !commandersArg.isEmpty()) {
+            for (String cmd : commandersArg.split(",")) {
+                commanders.add(cmd.trim());
             }
         }
 
@@ -110,7 +130,7 @@ public final class Main {
         if (serverMode) {
             runServerMode();
         } else {
-            runOneShot(deck1Name, deck2Name, seed, maxTurns, preferActions);
+            runOneShot(deck1Name, deck2Name, seed, maxTurns, preferActions, variant, commanders);
         }
     }
 
@@ -122,15 +142,17 @@ public final class Main {
         String deck2Name,
         long seed,
         int maxTurns,
-        boolean preferActions
+        boolean preferActions,
+        String variant,
+        List<String> commanders
     ) {
         // In one-shot mode, protocol output goes to real System.out
         protocolOut = System.out;
 
-        System.err.printf("[harness] Running: %s vs %s | seed=%d | max_turns=%d%n",
-            deck1Name, deck2Name, seed, maxTurns);
+        System.err.printf("[harness] Running: %s vs %s | seed=%d | max_turns=%d | variant=%s%n",
+            deck1Name, deck2Name, seed, maxTurns, variant);
 
-        runGame(deck1Name, deck2Name, seed, maxTurns, preferActions);
+        runGame(deck1Name, deck2Name, seed, maxTurns, preferActions, variant, commanders);
 
         System.err.println("[harness] Done.");
         protocolOut.flush();
@@ -184,12 +206,19 @@ public final class Main {
                 long gameSeed = request.has("seed") ? request.get("seed").getAsLong() : 42;
                 int gameMaxTurns = request.has("max_turns") ? request.get("max_turns").getAsInt() : 10;
                 boolean gamePreferActions = request.has("prefer_actions") && request.get("prefer_actions").getAsBoolean();
+                String gameVariant = request.has("variant") ? request.get("variant").getAsString() : "Constructed";
+                List<String> gameCommanders = new ArrayList<>();
+                if (request.has("commanders") && request.get("commanders").isJsonArray()) {
+                    for (var elem : request.get("commanders").getAsJsonArray()) {
+                        gameCommanders.add(elem.getAsString());
+                    }
+                }
 
-                System.err.printf("[harness] Request: %s vs %s | seed=%d | max_turns=%d%n",
-                    deck1, deck2, gameSeed, gameMaxTurns);
+                System.err.printf("[harness] Request: %s vs %s | seed=%d | max_turns=%d | variant=%s%n",
+                    deck1, deck2, gameSeed, gameMaxTurns, gameVariant);
 
                 try {
-                    runGame(deck1, deck2, gameSeed, gameMaxTurns, gamePreferActions);
+                    runGame(deck1, deck2, gameSeed, gameMaxTurns, gamePreferActions, gameVariant, gameCommanders);
                     protocolOut.println("{\"done\":true,\"error\":null}");
                 } catch (Exception e) {
                     System.err.println("[harness] Game error: " + e.getMessage());
@@ -218,7 +247,9 @@ public final class Main {
         String deck2Name,
         long seed,
         int maxTurns,
-        boolean preferActions
+        boolean preferActions,
+        String variant,
+        List<String> commanders
     ) {
         // Build decks
         Deck deck1 = PresetDecks.buildDeck(deck1Name);
@@ -233,14 +264,34 @@ public final class Main {
                 ". Available: " + Arrays.toString(PresetDecks.availablePresets()));
         }
 
+        // Add commanders to decks if provided
+        if (commanders != null && !commanders.isEmpty()) {
+            CardDb cardDb = FModel.getMagicDb().getCommonCards();
+            CardPool cmdSection1 = deck1.getOrCreate(DeckSection.Commander);
+            CardPool cmdSection2 = deck2.getOrCreate(DeckSection.Commander);
+            for (String cmdName : commanders) {
+                PaperCard cmd = cardDb.getCard(cmdName);
+                if (cmd != null) {
+                    cmdSection1.add(cmd, 1);
+                    cmdSection2.add(cmd, 1);
+                } else {
+                    System.err.println("[harness] WARNING: Commander not found: " + cmdName);
+                }
+            }
+        }
+
         System.err.printf("[harness] Deck 1: %s (%d cards)%n", deck1Name,
             deck1.getMain().countAll());
         System.err.printf("[harness] Deck 2: %s (%d cards)%n", deck2Name,
             deck2.getMain().countAll());
 
+        // Parse variant to GameType
+        GameType gameType = parseGameType(variant);
+        Set<GameType> appliedVariants = EnumSet.of(gameType);
+
         // Set up game
-        GameRules rules = new GameRules(GameType.Constructed);
-        rules.setAppliedVariants(EnumSet.of(GameType.Constructed));
+        GameRules rules = new GameRules(gameType);
+        rules.setAppliedVariants(appliedVariants);
         rules.setSimTimeout(120);
 
         // Reset RNG for this game — fresh seed each time for reproducibility
@@ -253,11 +304,14 @@ public final class Main {
 
         List<RegisteredPlayer> players = new ArrayList<>();
 
-        RegisteredPlayer rp1 = new RegisteredPlayer(deck1);
+        // Create registered players with variant support
+        RegisteredPlayer rp1 = RegisteredPlayer.forVariants(
+            2, appliedVariants, deck1, null, false, null, null);
         rp1.setPlayer(new DeterministicLobbyPlayer("Player1", agentRng, preferActions));
         players.add(rp1);
 
-        RegisteredPlayer rp2 = new RegisteredPlayer(deck2);
+        RegisteredPlayer rp2 = RegisteredPlayer.forVariants(
+            2, appliedVariants, deck2, null, false, null, null);
         rp2.setPlayer(new DeterministicLobbyPlayer("Player2", agentRng, preferActions));
         players.add(rp2);
 
@@ -383,8 +437,32 @@ public final class Main {
         System.err.println("  --prefer-actions     Bias random choices toward acting instead of passing");
         System.err.println("  --forge-home <path>  Path to forge-gui/ assets directory");
         System.err.println("  --server             Run in server mode (stdin/stdout JSONL protocol)");
+        System.err.println("  --variant <type>     Game variant: Constructed, Commander, Oathbreaker, TinyLeaders, Brawl");
+        System.err.println("  --commanders <names> Comma-separated commander card names");
         System.err.println("  --help               Show this help");
         System.err.println();
         System.err.println("Available decks: " + Arrays.toString(PresetDecks.availablePresets()));
+    }
+
+    /**
+     * Parse a variant string to a GameType enum value.
+     */
+    private static GameType parseGameType(String variant) {
+        if (variant == null || variant.isEmpty()) {
+            return GameType.Constructed;
+        }
+        switch (variant) {
+            case "Commander":
+                return GameType.Commander;
+            case "Oathbreaker":
+                return GameType.Oathbreaker;
+            case "TinyLeaders":
+                return GameType.TinyLeaders;
+            case "Brawl":
+                return GameType.Brawl;
+            case "Constructed":
+            default:
+                return GameType.Constructed;
+        }
     }
 }

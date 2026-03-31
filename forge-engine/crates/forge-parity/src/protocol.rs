@@ -161,6 +161,12 @@ pub struct GameTrace {
     pub deck1: String,
     pub deck2: String,
     pub max_turns: u32,
+    /// Game variant (e.g., "Constructed", "Commander", "Oathbreaker").
+    #[serde(default = "default_variant")]
+    pub variant: String,
+    /// Commander card names (for Commander variants).
+    #[serde(default)]
+    pub commanders: Vec<String>,
     pub snapshots: Vec<StateSnapshot>,
     #[serde(default)]
     pub decisions: Vec<DecisionRecord>,
@@ -168,6 +174,10 @@ pub struct GameTrace {
     pub covered_cards: Vec<String>,
     /// Low-effort mechanic signals extracted from notify messages.
     pub mechanic_signals: Vec<MechanicSignal>,
+}
+
+fn default_variant() -> String {
+    "Constructed".to_string()
 }
 
 /// A normalized decision record emitted at a choice point.
