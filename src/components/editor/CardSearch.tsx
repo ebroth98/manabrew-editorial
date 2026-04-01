@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/game/Card";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, LayoutGrid, List, Info, SlidersHorizontal } from "lucide-react";
+import { Loader2, LayoutGrid, List, Info, SlidersHorizontal, PanelRightClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { ScryfallCard } from "@/types/scryfall";
@@ -480,9 +480,10 @@ function DraggableCardRow({
 
 interface CardSearchProps {
   standalone?: boolean;
+  onClose?: () => void;
 }
 
-export function CardSearch({ standalone }: CardSearchProps) {
+export function CardSearch({ standalone, onClose }: CardSearchProps) {
   const [text, setText] = useState("");
   const [debouncedText, setDebouncedText] = useState("");
   const [activeColors, setActiveColors] = useState<Set<string>>(new Set());
@@ -545,6 +546,11 @@ export function CardSearch({ standalone }: CardSearchProps) {
       {/* Filters */}
       <div className="p-3 border-b space-y-2 shrink-0">
         <div className="flex gap-2">
+          {onClose && (
+            <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" title="Close search panel" onClick={onClose}>
+              <PanelRightClose className="h-4 w-4" />
+            </Button>
+          )}
           <Input
             placeholder="Search cards…"
             value={text}

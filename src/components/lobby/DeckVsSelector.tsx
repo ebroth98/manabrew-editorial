@@ -59,7 +59,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
 
   const currentDeckFingerprint = getDeckFingerprint(currentDeck);
   const distinctSavedDecks = savedDecks.filter(
-    (saved) => getDeckFingerprint(saved.deck) !== currentDeckFingerprint,
+    (saved) => !saved.deck.draft && getDeckFingerprint(saved.deck) !== currentDeckFingerprint,
   );
 
   const userDeckEntries: SelectedDeck[] = [
@@ -72,7 +72,7 @@ export function DeckVsSelector({ onStart }: DeckVsSelectorProps) {
       name: deck.name,
       deckList,
       formatId: deck.format ?? "constructed",
-      commanderName: deck.commander?.name,
+      commanderName: deck.commanders?.[0]?.name,
     };
   });
 

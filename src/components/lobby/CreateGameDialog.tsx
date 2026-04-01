@@ -56,7 +56,7 @@ export function CreateGameDialog({
   const [selectedFormat, setSelectedFormat] = useState<GameFormat>(initialFormat);
   const [selectedDeck, setSelectedDeck] = useState<string>(preSelectedDeckId ?? "current");
   const [selectedCommander, setSelectedCommander] = useState<string>(
-    currentDeck.commander?.name ?? ""
+    currentDeck.commanders?.[0]?.name ?? ""
   );
   const [presetDecks, setPresetDecks] = useState<PresetDeckInfo[]>([]);
   const [playerCount, setPlayerCount] = useState(2);
@@ -76,30 +76,31 @@ export function CreateGameDialog({
 
   const currentDeckFingerprint = getDeckFingerprint(currentDeck);
   const distinctSavedDecks = savedDecks.filter(
-    (saved) => getDeckFingerprint(saved.deck) !== currentDeckFingerprint,
+    (saved) => !saved.deck.draft && getDeckFingerprint(saved.deck) !== currentDeckFingerprint,
   );
 
-  // User-built decks
+  // User-built decks (exclude drafts)
+  const currentDeckEntry = currentDeck.draft ? [] : [{
+    id: "current",
+    name: currentDeck.name,
+    badge: "editing",
+    labels: currentDeck.labels,
+    deckList: serializeDeck(currentDeck),
+    isPreset: false as const,
+    cards: [
+      ...currentDeck.cards,
+      ...currentDeck.sideboard,
+      ...(currentDeck.attractions ?? []),
+      ...(currentDeck.contraptions ?? []),
+      ...(currentDeck.schemes ?? []),
+      ...(currentDeck.planes ?? []),
+      ...(currentDeck.commanders ?? []),
+    ],
+    formatId: currentDeck.format ?? "constructed",
+    commanderName: currentDeck.commanders?.[0]?.name,
+  }];
   const userDecks = [
-    {
-      id: "current",
-      name: currentDeck.name,
-      badge: "editing",
-      labels: currentDeck.labels,
-      deckList: serializeDeck(currentDeck),
-      isPreset: false as const,
-      cards: [
-        ...currentDeck.cards,
-        ...currentDeck.sideboard,
-        ...(currentDeck.attractions ?? []),
-        ...(currentDeck.contraptions ?? []),
-        ...(currentDeck.schemes ?? []),
-        ...(currentDeck.planes ?? []),
-        ...(currentDeck.commander ? [currentDeck.commander] : []),
-      ],
-      formatId: currentDeck.format ?? "constructed",
-      commanderName: currentDeck.commander?.name,
-    },
+    ...currentDeckEntry,
     ...distinctSavedDecks.map((s) => ({
       id: s.id,
       name: s.deck.name,
@@ -114,10 +115,10 @@ export function CreateGameDialog({
         ...(s.deck.contraptions ?? []),
         ...(s.deck.schemes ?? []),
         ...(s.deck.planes ?? []),
-        ...(s.deck.commander ? [s.deck.commander] : []),
+        ...(s.deck.commanders ?? []),
       ],
       formatId: s.deck.format ?? "constructed",
-      commanderName: s.deck.commander?.name,
+      commanderName: s.deck.commanders?.[0]?.name,
     })),
   ];
 

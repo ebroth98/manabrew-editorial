@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Modal } from "@/components/game/modals/Modal";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import { Plus, Minus, Loader2, Image as ImageIcon, ChevronDown, Tag, Check, Crown } from "lucide-react";
+import { Plus, Minus, Loader2, Image as ImageIcon, ChevronDown, Tag, Check, Crown, RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { useCardRulings } from "@/hooks/useCards";
 import { usePreferredPrintsStore } from "@/stores/usePreferredPrintsStore";
@@ -24,6 +24,7 @@ interface DeckEditorActions {
   onPickPrint: (cardName: string) => void;
   onSetCommander: (cardName: string) => void;
   isCommander?: boolean;
+  deckFormat?: string;
   customTags?: string[];
   onTagCard?: (cardName: string, tag: string) => void;
   onAddTag?: (tag: string) => void;
@@ -40,16 +41,35 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
   const [showDeckPicker, setShowDeckPicker] = useState(false);
   const [newTagInput, setNewTagInput] = useState("");
   const [selectedPrint, setSelectedPrint] = useState<ScryfallCard | null>(null);
+  const [faceIndex, setFaceIndex] = useState<0 | 1>(0);
   const { data: rulingsData, isLoading: rulingsLoading } = useCardRulings(initialCard?.rulings_uri);
   const { setPreferredPrint } = usePreferredPrintsStore();
   const setLookup = useSetLookup();
   const { savedDecks, currentDeck, addToMain, addCardToSavedDeck, updatePrint } = useDeckStore();
 
+  // Reset selected print and face when switching to a different card
+  useEffect(() => {
+    setSelectedPrint(null);
+    setShowPrints(false);
+    setShowDeckPicker(false);
+    setFaceIndex(0);
+  }, [initialCard?.id]);
+
   if (!initialCard) return null;
 
   const card = selectedPrint ?? initialCard;
-  const imageUrl = getScryfallImageUrl(card);
-  const manaCost = getScryfallManaCost(card);
+  const isDoubleFaced = !!(card.card_faces && card.card_faces.length >= 2);
+
+  // Derive per-face data when the card has faces
+  const activeFace = isDoubleFaced ? card.card_faces![faceIndex] : null;
+  const imageUrl = activeFace?.image_uris?.normal ?? activeFace?.image_uris?.large ?? getScryfallImageUrl(card);
+  const manaCost = activeFace?.mana_cost ?? getScryfallManaCost(card);
+  const displayName = activeFace?.name ?? card.name;
+  const typeLine = activeFace?.type_line ?? card.type_line;
+  const oracleText = activeFace?.oracle_text ?? card.oracle_text;
+  const power = (activeFace as { power?: string } | null)?.power ?? card.power;
+  const toughness = (activeFace as { toughness?: string } | null)?.toughness ?? card.toughness;
+
   const rulings = rulingsData?.data ?? [];
 
   function handleAddToCurrentDeck() {
@@ -75,6 +95,7 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
 
   function handleSelectPrint(print: ScryfallCard) {
     setSelectedPrint(print);
+    setFaceIndex(0);
     setPreferredPrint(initialCard!.oracle_id, {
       set: print.set,
       collectorNumber: print.collector_number,
@@ -90,7 +111,12 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
       <Modal onClose={onClose} maxWidth="max-w-4xl" maxHeight="max-h-[90vh]">
         <Modal.Header onClose={onClose}>
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-bold truncate">{card.name}</h2>
+            <h2 className="text-lg font-bold truncate">{displayName}</h2>
+            {isDoubleFaced && (
+              <span className="text-xs text-muted-foreground shrink-0">
+                {faceIndex === 0 ? "Front" : "Back"} face
+              </span>
+            )}
             {manaCost && <ManaSymbols cost={manaCost} size="sm" className="shrink-0" />}
           </div>
         </Modal.Header>
@@ -101,12 +127,26 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
               <div className="flex gap-6">
                 <div className="shrink-0 w-64">
                   {imageUrl ? (
-                    <img src={imageUrl} alt={card.name} className="w-full rounded-lg shadow-lg" />
+                    <img src={imageUrl} alt={displayName} className="w-full rounded-lg shadow-lg" />
                   ) : (
                     <div className="w-full aspect-[5/7] rounded-lg bg-muted flex items-center justify-center">
                       <span className="text-muted-foreground text-sm">No Image</span>
                     </div>
                   )}
+
+                  {/* Flip button — only for double-faced cards */}
+                  {isDoubleFaced && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full mt-2 gap-1.5"
+                      onClick={() => setFaceIndex(faceIndex === 0 ? 1 : 0)}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                      {faceIndex === 0 ? `Show back: ${card.card_faces![1].name}` : `Show front: ${card.card_faces![0].name}`}
+                    </Button>
+                  )}
+
                   {!deckEditorActions && (
                     <Button
                       variant="outline"
@@ -123,23 +163,23 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                 <div className="flex-1 min-w-0 space-y-3">
                   <div>
                     <div className="text-sm font-semibold text-muted-foreground">Type</div>
-                    <div className="text-sm">{card.type_line}</div>
+                    <div className="text-sm">{typeLine}</div>
                   </div>
 
-                  {card.oracle_text && (
+                  {oracleText && (
                     <div>
                       <div className="text-sm font-semibold text-muted-foreground">Oracle Text</div>
                       <div className="text-sm whitespace-pre-wrap bg-muted/30 rounded p-2 border">
-                        {card.oracle_text}
+                        {oracleText}
                       </div>
                     </div>
                   )}
 
-                  {card.power && card.toughness && (
+                  {power && toughness && (
                     <div className="flex gap-4">
                       <div>
                         <span className="text-sm font-semibold text-muted-foreground">P/T: </span>
-                        <span className="text-sm font-bold">{card.power}/{card.toughness}</span>
+                        <span className="text-sm font-bold">{power}/{toughness}</span>
                       </div>
                       <div>
                         <span className="text-sm font-semibold text-muted-foreground">CMC: </span>
@@ -267,15 +307,27 @@ export function CardDetailModal({ card: initialCard, onClose, deckEditorActions 
                     onClick={() => setShowPrints(true)}>
                     <ImageIcon className="h-3.5 w-3.5" />
                   </Button>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className={cn("h-7 w-7", deckEditorActions.isCommander && "text-commander")}
-                    title={deckEditorActions.isCommander ? "Remove as commander" : "Set as commander"}
-                    onClick={() => { deckEditorActions.onSetCommander(card.name); toast.success(deckEditorActions.isCommander ? `Removed ${card.name} as commander` : `Set ${card.name} as commander`); }}
-                  >
-                    <Crown className="h-3.5 w-3.5" />
-                  </Button>
+                  {isDoubleFaced && (
+                    <Button
+                      size="icon" variant="ghost"
+                      className="h-7 w-7"
+                      title={faceIndex === 0 ? `Flip to back: ${card.card_faces![1].name}` : `Flip to front: ${card.card_faces![0].name}`}
+                      onClick={() => setFaceIndex(faceIndex === 0 ? 1 : 0)}
+                    >
+                      <RotateCcw className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
+                  {deckEditorActions.deckFormat === "commander" && (
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      className={cn("h-7 w-7", deckEditorActions.isCommander && "text-commander")}
+                      title={deckEditorActions.isCommander ? "Remove as commander" : "Set as commander"}
+                      onClick={() => { deckEditorActions.onSetCommander(card.name); toast.success(deckEditorActions.isCommander ? `Removed ${card.name} as commander` : `Set ${card.name} as commander`); }}
+                    >
+                      <Crown className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
 
                 {/* Tag dropdown */}

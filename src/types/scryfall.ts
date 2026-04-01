@@ -27,6 +27,9 @@ export interface ScryfallCard {
   /** Present on double-faced cards instead of top-level image_uris. */
   card_faces?: Array<{
     name: string;
+    type_line?: string;
+    oracle_text?: string;
+    mana_cost?: string;
     image_uris?: {
       small: string;
       normal: string;

@@ -44,8 +44,25 @@ const DEFAULT_CARD_FIELDS: Pick<
   zoneId: "",
 };
 
+/** Get the front-face type line, handling DFCs where type_line lives on card_faces. */
+function getFrontTypeLine(sc: ScryfallCard): string {
+  if (sc.type_line) return sc.type_line.split("//")[0].trim();
+  return sc.card_faces?.[0]?.type_line ?? "";
+}
+
+/** Get the front-face oracle text, handling DFCs. */
+function getFrontOracleText(sc: ScryfallCard): string {
+  if (sc.oracle_text) return sc.oracle_text;
+  return sc.card_faces?.[0]?.oracle_text ?? "";
+}
+
+/** True when a Scryfall card has two separate illustrated faces (transform, modal DFC, etc.). */
+function detectIsDoubleFaced(sc: ScryfallCard): boolean {
+  return !!(sc.card_faces && sc.card_faces.length >= 2 && sc.card_faces[1]?.image_uris);
+}
+
 export function scryfallToXMage(sc: ScryfallCard, id?: string): Card {
-  const { supertypes, types, subtypes } = parseTypeLine(sc.type_line);
+  const { supertypes, types, subtypes } = parseTypeLine(getFrontTypeLine(sc));
   return {
     ...DEFAULT_CARD_FIELDS,
     id: id ?? crypto.randomUUID(),
@@ -61,16 +78,18 @@ export function scryfallToXMage(sc: ScryfallCard, id?: string): Card {
     supertypes,
     power: sc.power,
     toughness: sc.toughness,
-    text: sc.oracle_text || "",
+    text: getFrontOracleText(sc),
     imageUrl: getScryfallImageUrl(sc),
+    isDoubleFaced: detectIsDoubleFaced(sc) || undefined,
   };
 }
 
 // ─── ScryfallCard → Partial<Card> (for enrichment) ───────────────────────────
 
 export function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
-  const { supertypes, types, subtypes } = parseTypeLine(sc.type_line);
+  const { supertypes, types, subtypes } = parseTypeLine(getFrontTypeLine(sc));
   const imageUrl = getScryfallImageUrl(sc);
+  const isDoubleFaced = detectIsDoubleFaced(sc) || undefined;
   return {
     manaCost: getScryfallManaCost(sc) ?? "",
     cmc: sc.cmc,
@@ -83,6 +102,8 @@ export function scryfallCardToPartial(sc: ScryfallCard): Partial<Card> {
     toughness: sc.toughness,
     setCode: sc.set,
     cardNumber: sc.collector_number,
+    text: getFrontOracleText(sc),
+    isDoubleFaced,
     ...(imageUrl ? { imageUrl } : {}),
   };
 }

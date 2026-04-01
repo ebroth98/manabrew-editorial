@@ -1,4 +1,5 @@
 import { Badge } from "@/components/ui/badge";
+import { DeckLabelBadge } from "@/components/deck/DeckLabelBadge";
 import { AlertCircle, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Card, DeckLabel } from "@/types/openmagic";
@@ -111,9 +112,7 @@ export function DeckSelectionCard({
           {deckList.length} cards
         </span>
         {labels?.map((label) => (
-          <Badge key={typeof label === 'string' ? label : label.name} variant="outline" className="text-[8px] h-3.5 px-1 text-primary/80 border-primary/30">
-            {typeof label === 'string' ? label : label.name}
-          </Badge>
+          <DeckLabelBadge key={label.name} label={label} size="sm" />
         ))}
         {badge && (
           <Badge variant="outline" className="text-[9px] h-4 px-1 ml-auto">

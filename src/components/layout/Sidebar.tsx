@@ -74,7 +74,7 @@ export function Sidebar({ className }: SidebarProps) {
                   className="w-full justify-start"
                 >
                   <Layers className="mr-2 h-4 w-4" />
-                  Deck Editor
+                  My Decks
                 </Button>
               )}
             </NavLink>

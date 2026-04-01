@@ -39,7 +39,7 @@ export function serializeDeck(deck: Deck): CardIdentity[] {
     ...(deck.contraptions ?? []).map((card) => toCardIdentity(card, "contraptions")),
     ...(deck.schemes ?? []).map((card) => toCardIdentity(card, "schemes")),
     ...(deck.planes ?? []).map((card) => toCardIdentity(card, "planes")),
-    ...(deck.commander ? [toCardIdentity(deck.commander, "commander")] : []),
+    ...(deck.commanders ?? []).map((card) => toCardIdentity(card, "commander")),
   ];
 }
 
@@ -51,7 +51,7 @@ export function getDeckCardPool(deck: Deck): Card[] {
     ...(deck.contraptions ?? []),
     ...(deck.schemes ?? []),
     ...(deck.planes ?? []),
-    ...(deck.commander ? [deck.commander] : []),
+    ...(deck.commanders ?? []),
   ];
 }
 
@@ -68,7 +68,7 @@ export function getDeckFingerprint(deck: Deck): string {
   return JSON.stringify({
     name: deck.name,
     format: deck.format ?? "constructed",
-    commander: deck.commander?.name ?? null,
+    commander: deck.commanders?.[0]?.name ?? null,
     cards: serialized,
   });
 }

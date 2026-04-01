@@ -6,6 +6,7 @@
 import { Button } from "@/components/ui/button";
 import { Plus, Minus, Tag, ChevronDown, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useCardImage } from "@/hooks/useCardImage";
 import type { LucideIcon } from "lucide-react";
 
 // ─── Card Count Badge ────────────────────────────────────────────────────────
@@ -33,10 +34,13 @@ export function CardThumbnail({
   fallbackClassName?: string;
   fallbackStyle?: React.CSSProperties;
 }) {
-  if (imageUrl) {
+  const { data: fetchedUrl } = useCardImage(name, imageUrl);
+  const resolvedUrl = imageUrl ?? fetchedUrl ?? null;
+
+  if (resolvedUrl) {
     return (
       <img
-        src={imageUrl}
+        src={resolvedUrl}
         alt={name}
         className={cn("w-full rounded-lg border border-border/50 shadow-sm", className)}
         draggable={false}

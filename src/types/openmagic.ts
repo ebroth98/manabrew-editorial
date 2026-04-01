@@ -85,14 +85,24 @@ export interface Deck {
   schemes?: Card[];
   /** Supplementary Planar deck, separate from the sideboard like Forge RegisteredPlayer.getPlanes(). */
   planes?: Card[];
-  /** Designated commander (Commander format). Not included in cards[]. */
-  commander?: Card;
+  /** Designated commander(s) (Commander format). Not included in cards[]. Supports Partner. */
+  commanders?: Card[];
+  /** Designated companion (any format). Not included in cards[] or sideboard[]. */
+  companion?: Card;
+  /** Cards being considered but not in the playable deck. */
+  maybeboard?: Card[];
+  /** When true, deck is a work-in-progress and not playable. */
+  draft?: boolean;
   /** User-assigned labels for the deck (e.g. "Aggro", "Budget", "Competitive"). */
   labels?: DeckLabel[];
   /** User-created tag/label names for organizing cards into custom sections. */
   customTags?: string[];
   /** Maps card name (lowercased) → array of tag names the card belongs to. */
   cardTags?: Record<string, string[]>;
+  /** Name of the card whose art is used as the deck cover. Falls back to cards[0] when absent or card no longer in deck. */
+  coverCardName?: string;
+  /** Which face of a double-faced cover card to use: 0 = front (default), 1 = back. */
+  coverCardFace?: 0 | 1;
 }
 
 export interface Player {

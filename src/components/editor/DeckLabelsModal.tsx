@@ -3,6 +3,7 @@ import { Modal } from "@/components/game/modals/Modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { DeckLabelBadge } from "@/components/deck/DeckLabelBadge";
 import { X, Plus } from "lucide-react";
 import { useDeckStore } from "@/stores/useDeckStore";
 import { toast } from "sonner";
@@ -70,13 +71,7 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
               <div className="flex flex-wrap gap-2">
                 {labels.map((label) => (
                   <div key={label.name} className="flex items-center gap-1.5">
-                    <Badge
-                      variant="secondary"
-                      className="gap-1.5 pr-1"
-                      style={label.color ? { backgroundColor: label.color, color: getContrastColor(label.color) } : undefined}
-                    >
-                      {label.name}
-                    </Badge>
+                    <DeckLabelBadge label={label} size="md" />
                     <input
                       type="color"
                       value={label.color ?? "#6b7280"}
@@ -165,10 +160,3 @@ export function DeckLabelsModal({ open, onClose }: DeckLabelsModalProps) {
   );
 }
 
-function getContrastColor(hexColor: string): string {
-  const r = parseInt(hexColor.slice(1, 3), 16);
-  const g = parseInt(hexColor.slice(3, 5), 16);
-  const b = parseInt(hexColor.slice(5, 7), 16);
-  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  return luminance > 0.5 ? "#000000" : "#ffffff";
-}

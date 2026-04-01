@@ -32,6 +32,20 @@ export const BASIC_LAND_NAMES = new Set([
   "Forest",
 ]);
 
+/**
+ * Returns true when a card's oracle text explicitly declares that a deck may
+ * contain any number of copies (e.g. Relentless Rats, Shadowborn Apostle,
+ * Dragon's Approach, Rat Colony …).
+ *
+ * Matches phrases like:
+ *   "A deck can have any number of cards named …"
+ *   "You may have any number of cards named …"
+ */
+export function allowsAnyNumberOfCopies(oracleText: string | undefined): boolean {
+  if (!oracleText) return false;
+  return /any number of cards named/i.test(oracleText);
+}
+
 export const GAME_FORMATS: GameFormat[] = [
   {
     id: "constructed",
@@ -84,11 +98,16 @@ export function getFormat(id: string): GameFormat | undefined {
 
 /**
  * Validate a deck (as an array of card names, one per copy) against a format.
- * Basic lands are exempt from the per-card copy limit.
+ * Basic lands and cards whose text explicitly allows any number of copies are
+ * exempt from the per-card copy limit.
+ *
+ * @param anyNumberNames - optional set of card names that carry the
+ *   "any number of copies" exemption (derived from oracle text by the caller).
  */
 export function validateDeck(
   cardNames: string[],
-  format: GameFormat
+  format: GameFormat,
+  anyNumberNames?: ReadonlySet<string>,
 ): DeckValidation {
   const errors: string[] = [];
   const { minDeckSize, maxDeckSize, maxCopies } = format.deckRules;
@@ -110,7 +129,11 @@ export function validateDeck(
     counts.set(name, (counts.get(name) ?? 0) + 1);
   }
   for (const [name, count] of counts) {
-    if (!BASIC_LAND_NAMES.has(name) && count > maxCopies) {
+    if (
+      !BASIC_LAND_NAMES.has(name) &&
+      !anyNumberNames?.has(name) &&
+      count > maxCopies
+    ) {
       errors.push(
         `Too many copies of "${name}": ${count} (max ${maxCopies})`
       );
@@ -145,12 +168,78 @@ function getCardIdentity(card?: Card): string[] {
   return [...new Set((card.color ?? "").split("").filter(Boolean))];
 }
 
-function isCommanderEligible(card?: Card): boolean {
+// ─── Partner utilities ───────────────────────────────────────────────────────
+
+/** Returns true if the card has the generic "Partner" keyword (not "Partner with"). */
+export function hasPartner(card?: Card): boolean {
   if (!card) return false;
-  const isLegendaryCreature =
-    card.supertypes.includes("Legendary") && card.types.includes("Creature");
-  if (isLegendaryCreature) return true;
-  return card.text.toLowerCase().includes("can be your commander");
+  if (card.keywords?.some((k) => /^partner$/i.test(k.trim()))) return true;
+  return /(?:^|\n)partner(?!\s+with)/im.test(card.text);
+}
+
+/**
+ * Returns the specific partner name this card must pair with ("Partner with Xxx"),
+ * or null if it doesn't have the specific-partner ability.
+ */
+export function getPartnerWithName(card?: Card): string | null {
+  if (!card) return null;
+  const fromKeywords = card.keywords?.find((k) => /^partner with /i.test(k));
+  if (fromKeywords) return fromKeywords.replace(/^partner with /i, "").trim();
+  const match = card.text.match(/partner with ([^\n(]+)/i);
+  return match ? match[1].trim() : null;
+}
+
+function hasFriendsForever(card?: Card): boolean {
+  if (!card) return false;
+  if (card.keywords?.some((k) => /^friends forever$/i.test(k.trim()))) return true;
+  return /friends forever/i.test(card.text);
+}
+
+function hasChooseBackground(card?: Card): boolean {
+  if (!card) return false;
+  return card.text.toLowerCase().includes("choose a background");
+}
+
+function isBackgroundCard(card?: Card): boolean {
+  if (!card) return false;
+  return card.subtypes?.some((s) => s.toLowerCase() === "background") ?? false;
+}
+
+/**
+ * Returns true if two cards are a legal pair of partner commanders.
+ * Handles: generic Partner, "Partner with [Name]", Friends forever, and Background.
+ */
+export function canBePartners(a: Card, b: Card): boolean {
+  // Generic Partner: both must have Partner
+  if (hasPartner(a) && hasPartner(b)) return true;
+  // Friends forever: both must have Friends forever
+  if (hasFriendsForever(a) && hasFriendsForever(b)) return true;
+  // Partner with: each must specifically name the other
+  const pwA = getPartnerWithName(a);
+  const pwB = getPartnerWithName(b);
+  if (
+    pwA && pwB &&
+    pwA.toLowerCase() === b.name.toLowerCase() &&
+    pwB.toLowerCase() === a.name.toLowerCase()
+  ) return true;
+  // Background: one has "Choose a Background" text, the other is a Background
+  if (hasChooseBackground(a) && isBackgroundCard(b)) return true;
+  if (hasChooseBackground(b) && isBackgroundCard(a)) return true;
+  return false;
+}
+
+export function isCommanderEligible(card?: Card): boolean {
+  if (!card) return false;
+  const isLegendary = card.supertypes.includes("Legendary");
+  if (isLegendary && card.types.includes("Creature")) return true;
+  if (isLegendary && card.subtypes?.some((s) => ["vehicle", "spacecraft"].includes(s.toLowerCase()))) return true;
+  // Also allow legendary planeswalkers that say "can be your commander"
+  // and backgrounds (for "choose a background")
+  const hasCommanderText = card.text.toLowerCase().includes("can be your commander");
+  if (hasCommanderText) return true;
+  const isBackground = card.subtypes?.some((s) => s.toLowerCase() === "background") ?? false;
+  if (isBackground) return true;
+  return false;
 }
 
 function normalizeCommanderSelection(
@@ -188,7 +277,14 @@ export function validateDeckSections(
     (card) => card.section === undefined || card.section === "main",
   );
 
-  const baseValidation = validateDeck(mainDeck.map((card) => card.name), format);
+  // Build the set of card names whose text allows unlimited copies
+  const anyNumberNames = new Set(
+    availableCards
+      .filter((c) => allowsAnyNumberOfCopies(c.text))
+      .map((c) => c.name),
+  );
+
+  const baseValidation = validateDeck(mainDeck.map((card) => card.name), format, anyNumberNames);
   errors.push(...baseValidation.errors);
 
   if (sideboard.length > format.deckRules.sideboardMax) {
@@ -199,24 +295,42 @@ export function validateDeckSections(
 
   if (format.deckRules.requiresCommander) {
     if (commanders.length === 0) {
-      errors.push("Deck must have exactly 1 commander");
-    } else if (commanders.length > 1) {
-      errors.push(`Deck must have exactly 1 commander (has ${commanders.length})`);
+      errors.push("Deck must have at least 1 commander");
+    } else if (commanders.length > 2) {
+      errors.push(`Deck can have at most 2 commanders (has ${commanders.length})`);
     }
 
-    if (mainOnly.length !== format.deckRules.minDeckSize - 1) {
+    const expectedMainSize = format.deckRules.minDeckSize - commanders.length;
+    if (mainOnly.length !== expectedMainSize) {
       errors.push(
-        `Commander deck must have exactly ${format.deckRules.minDeckSize - 1} non-commander cards (has ${mainOnly.length})`,
+        `Commander deck must have exactly ${expectedMainSize} non-commander cards (has ${mainOnly.length})`,
       );
     }
 
-    const commanderCard = getCardByName(availableCards, commanders[0]?.name ?? "");
-    if (commanders.length === 1 && !isCommanderEligible(commanderCard)) {
-      errors.push(`"${commanders[0]!.name}" is not a legal commander`);
+    // Validate each commander's eligibility
+    for (const cmd of commanders) {
+      const commanderCard = getCardByName(availableCards, cmd.name);
+      if (!isCommanderEligible(commanderCard)) {
+        errors.push(`"${cmd.name}" is not a legal commander`);
+      }
     }
 
-    const commanderIdentity = new Set(getCardIdentity(commanderCard));
-    if (commanders.length === 1 && commanderIdentity.size > 0) {
+    // Validate partner legality when there are 2 commanders
+    if (commanders.length === 2) {
+      const cmd1 = getCardByName(availableCards, commanders[0].name);
+      const cmd2 = getCardByName(availableCards, commanders[1].name);
+      if (cmd1 && cmd2 && !canBePartners(cmd1, cmd2)) {
+        errors.push(
+          `"${commanders[0].name}" and "${commanders[1].name}" cannot be paired — both commanders must have a compatible partner ability`,
+        );
+      }
+    }
+
+    // Combined color identity of all commanders
+    const commanderIdentity = new Set(
+      commanders.flatMap((cmd) => getCardIdentity(getCardByName(availableCards, cmd.name))),
+    );
+    if (commanderIdentity.size > 0) {
       const invalidCards = mainOnly
         .map((identity) => getCardByName(availableCards, identity.name))
         .filter((card): card is Card => Boolean(card))

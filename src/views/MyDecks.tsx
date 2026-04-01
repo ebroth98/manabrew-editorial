@@ -15,6 +15,7 @@ import { DeckStats } from "@/components/editor/DeckStats";
 import { FormatBadge } from "@/components/game/FormatBadge";
 import { CreateGameDialog } from "@/components/lobby/CreateGameDialog";
 import { DeckCard } from "@/components/deck/DeckCard";
+import { DeckListControls } from "@/components/deck/DeckListControls";
 import type { Card } from "@/types/openmagic";
 import type { CardIdentity } from "@/types/server";
 import { fetchCardCollection } from "@/api/scryfall";
@@ -29,7 +30,9 @@ import {
   extractColors,
   groupCards,
   categorize,
+  applyDeckFilters,
 } from "./myDecks.utils";
+import type { SortBy } from "./myDecks.utils";
 import { getDeckCardNames } from "@/lib/decks";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -66,6 +69,9 @@ export default function MyDecks() {
   const [playDialogOpen, setPlayDialogOpen] = useState(false);
   const [playDeckId, setPlayDeckId] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
+  const [formatFilter, setFormatFilter] = useState("");
+  const [colorFilter, setColorFilter] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortBy>("name");
   const [cardFilter, setCardFilter] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
@@ -76,9 +82,15 @@ export default function MyDecks() {
   } | null>(null);
   const enrichedDecksRef = useRef(new Set<string>());
 
-  const filtered = savedDecks.filter((s) =>
-    s.deck.name.toLowerCase().includes(search.toLowerCase()),
-  );
+  function toggleColor(color: string) {
+    setColorFilter((prev) =>
+      prev.includes(color) ? prev.filter((c) => c !== color) : [...prev, color]
+    );
+  }
+
+  const { valid: filteredValid, drafts: filteredDrafts } = applyDeckFilters(savedDecks, {
+    search, formatFilter, colorFilter, sortBy,
+  });
 
   const selected = savedDecks.find((s) => s.id === selectedId) ?? null;
 
@@ -155,7 +167,7 @@ export default function MyDecks() {
 
   function handleEdit(id: string) {
     loadSavedDeck(id);
-    navigate(ROUTES.DECK_EDITOR);
+    navigate(ROUTES.DECK_EDITOR, { state: { directToEditor: true } });
   }
 
   function handlePlay(id: string) {
@@ -196,36 +208,35 @@ export default function MyDecks() {
       {/* ── Left: deck list (Forge-style) ────────────────────────── */}
       <ResizablePanel defaultSize={28} minSize={18} maxSize={300}>
         <div className="h-full flex flex-col border-r">
-          <div className="p-3 border-b flex items-center gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Filter decks..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-7 text-sm"
-              />
-            </div>
-            <Button
-              size="sm"
-              className="h-8 shrink-0 gap-1"
-              onClick={handleNew}
-            >
+          <div className="px-3 py-2 border-b flex items-center gap-2 shrink-0">
+            <span className="text-sm font-semibold flex-1">My Decks</span>
+            <Button size="sm" className="h-7 shrink-0 gap-1" onClick={handleNew}>
               <Plus className="h-3.5 w-3.5" />
               New
             </Button>
           </div>
 
+          <DeckListControls
+            search={search}
+            onSearchChange={setSearch}
+            formatFilter={formatFilter}
+            onFormatChange={setFormatFilter}
+            colorFilter={colorFilter}
+            onColorToggle={toggleColor}
+            sortBy={sortBy}
+            onSortChange={setSortBy}
+          />
+
           <ScrollArea className="flex-1">
-            {filtered.length === 0 ? (
+            {filteredValid.length === 0 && filteredDrafts.length === 0 ? (
               <div className="p-6 text-center text-sm text-muted-foreground">
                 {savedDecks.length === 0
                   ? "No saved decks. Create one in the Deck Editor."
-                  : "No decks match your filter."}
+                  : "No decks match your filters."}
               </div>
             ) : (
               <div className="py-1">
-                {filtered.map((s) => (
+                {filteredValid.map((s) => (
                   <DeckCard
                     key={s.id}
                     deck={s}
@@ -241,6 +252,35 @@ export default function MyDecks() {
                     onEditNameChange={setEditName}
                   />
                 ))}
+
+                {filteredDrafts.length > 0 && (
+                  <>
+                    <div className="px-3 pt-3 pb-1 flex items-center gap-2 border-t mt-1">
+                      <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                        Drafts
+                      </span>
+                      <span className="text-[10px] text-muted-foreground">
+                        ({filteredDrafts.length})
+                      </span>
+                    </div>
+                    {filteredDrafts.map((s) => (
+                      <DeckCard
+                        key={s.id}
+                        deck={s}
+                        isSelected={s.id === selectedId}
+                        isEditing={editingId === s.id}
+                        editName={editName}
+                        onSelect={() => setSelectedId(s.id)}
+                        onRename={(name) => setEditName(name)}
+                        onStartRename={() => startRename(s.id, s.deck.name)}
+                        onConfirmRename={() => confirmRename(s.id)}
+                        onCancelRename={() => setEditingId(null)}
+                        onDelete={() => handleDelete(s.id)}
+                        onEditNameChange={setEditName}
+                      />
+                    ))}
+                  </>
+                )}
               </div>
             )}
           </ScrollArea>
@@ -327,22 +367,22 @@ export default function MyDecks() {
             <ScrollArea className="flex-1 px-4 py-3">
               <div className="space-y-4">
                 {/* Commander section */}
-                {selected.deck.commander && !cardFilter && (
+                {selected.deck.commanders?.[0] && !cardFilter && (
                   <div>
                     <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
                       Commander
                     </h3>
                     <div
                       className="flex items-center gap-2 py-0.5 px-1 rounded hover:bg-muted/40 group"
-                      {...makeHoverHandlers(selected.deck.commander!, setHovered)}
+                      {...makeHoverHandlers(selected.deck.commanders![0], setHovered)}
                     >
                       <Crown className="h-3 w-3 text-yellow-500 shrink-0" />
                       <span className="text-sm flex-1 truncate">
-                        {selected.deck.commander.name}
+                        {selected.deck.commanders![0].name}
                       </span>
-                      {selected.deck.commander.manaCost && (
+                      {selected.deck.commanders![0].manaCost && (
                         <ManaSymbols
-                          cost={selected.deck.commander.manaCost}
+                          cost={selected.deck.commanders![0].manaCost}
                           size="sm"
                           className="shrink-0"
                         />
@@ -368,7 +408,7 @@ export default function MyDecks() {
                     <div className="space-y-0.5">
                       {items.map(({ card, count }) => {
                         const isCommander =
-                          selected.deck.commander?.name === card.name;
+                          selected.deck.commanders?.[0]?.name === card.name;
                         return (
                           <div
                             key={card.name}
