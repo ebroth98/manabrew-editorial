@@ -64,6 +64,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
             .counters
             .get(&crate::card::CounterType::P1P1)
             .unwrap_or(&0);
+        // Capture LKI counters for death triggers
+        {
+            let lki_counters = ctx.game.card(card_id).counters.clone();
+            let lki_power = ctx.game.card(card_id).power();
+            let lki_toughness = ctx.game.card(card_id).toughness();
+            ctx.game.card_mut(card_id).lki_counters = Some(lki_counters);
+            ctx.game.card_mut(card_id).set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
+        }
         ctx.move_card(card_id, ZoneType::Graveyard, owner);
         ctx.trigger_handler.run_trigger(
             TriggerType::Destroyed,

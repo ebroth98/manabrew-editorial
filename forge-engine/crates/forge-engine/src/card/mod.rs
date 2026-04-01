@@ -268,6 +268,9 @@ pub struct Card {
     // Mirrors Java `Card.getAttachedTo()` / `Card.getAttachedCards()`.
     /// The permanent this card is currently attached to (for Auras/Equipment).
     pub attached_to: Option<CardId>,
+    /// Whether this equipment was attached/moved this turn (AI memory to prevent ping-ponging).
+    /// Cleared at start of each turn. Mirrors Java `AiCardMemory.MemorySet.ATTACHED_THIS_TURN`.
+    pub attached_this_turn: bool,
     /// Cards currently attached to this permanent (inverse of `attached_to`).
     pub attachments: Vec<CardId>,
 
@@ -412,6 +415,9 @@ pub struct Card {
     /// Last-known information: toughness when this card last left the battlefield.
     /// `None` means LKI was never captured; `Some(0)` means toughness was 0.
     pub lki_toughness: Option<i32>,
+    /// Last-known information: counters when this card last left the battlefield.
+    /// Used by `TriggeredCard$CardCounters.TYPE` (e.g. Servant of the Scale death trigger).
+    pub lki_counters: Option<std::collections::BTreeMap<CounterType, i32>>,
     /// Damage history tracking (attacks, blocks, damage dealt).
     /// Mirrors Java `CardDamageHistory`.
     #[serde(skip)]
@@ -595,6 +601,7 @@ impl Card {
             is_token: false,
             replacement_effects,
             attached_to: None,
+            attached_this_turn: false,
             attachments: Vec::new(),
             remembered_cards: Vec::new(),
             remembered_players: Vec::new(),
@@ -652,6 +659,7 @@ impl Card {
             total_damage_done_this_turn: 0,
             lki_power: None,
             lki_toughness: None,
+            lki_counters: None,
             damage_history: damage_history::DamageHistory::default(),
             must_block_cards: Vec::new(),
             etb_counters_p1p1: 0,
@@ -1222,6 +1230,7 @@ impl Card {
     pub fn new_turn(&mut self) {
         self.entered_battlefield_this_turn = false;
         self.attacked_this_turn = false;
+        self.attached_this_turn = false;
         self.has_deathtouch_damage = false;
         self.damage_sources_this_turn.clear();
         self.total_damage_done_this_turn = 0;
@@ -1708,6 +1717,12 @@ impl Card {
 
     pub fn has_state(&self) -> bool {
         self.is_transformed || self.other_part.is_some()
+    }
+
+    /// Whether this card is double-faced (has a back side).
+    /// Mirrors Java `Card.isDoubleFaced()`.
+    pub fn is_double_faced(&self) -> bool {
+        self.other_part.is_some()
     }
 
     pub fn change_to_state(&mut self) {

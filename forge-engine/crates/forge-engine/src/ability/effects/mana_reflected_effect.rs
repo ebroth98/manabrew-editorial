@@ -6,6 +6,29 @@ use crate::mana::{color_name_to_mana_atom, Mana};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
+/// Configure the spell ability during construction.
+/// Mirrors Java `ManaReflectedEffect.buildSpellAbility` — creates the
+/// `AbilityManaPart` from the SA's params and marks as undoable if it
+/// has no parent ability.
+pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
+    // Set up the mana part from Produced$ parameter
+    let produced = sa
+        .params
+        .get(keys::PRODUCED)
+        .unwrap_or("Any")
+        .to_string();
+    let restriction = sa
+        .params
+        .get(keys::RESTRICT_VALID)
+        .unwrap_or("")
+        .to_string();
+    sa.mana_part = Some(crate::spellability::AbilityManaPart::new(
+        &produced,
+        &restriction,
+    ));
+    sa.is_mana_ability = true;
+}
+
 /// Resolve DB$ ManaReflected — produce mana of a color/type that reflects other cards.
 /// Mirrors Java's ManaReflectedEffect.java.
 ///

@@ -355,7 +355,7 @@ impl GameLoop {
         let active = game.active_player();
         // Skip draw on turn 1
         if game.turn.turn_number > 1 {
-            if let Some(card_id) = game.draw_card(active) {
+            if let Some(card_id) = game.player_draw_one_for_turn(active) {
                 let drawn_snapshot = game.player(active).drawn_this_turn;
                 // Fire Drawn trigger for turn draw
                 self.trigger_handler.run_trigger(

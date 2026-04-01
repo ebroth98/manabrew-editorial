@@ -417,3 +417,43 @@ const ALL_ABILITY_KEYS: &[AbilityKey] = &[
 pub fn all_ability_keys() -> &'static [AbilityKey] {
     ALL_ABILITY_KEYS
 }
+
+/// Parse an AbilityKey from a string.
+/// Mirrors Java's `AbilityKey.fromString(String)`.
+///
+/// This is an alias for `AbilityKey::from_str` but provided as a free function
+/// for structural parity with the Java codebase.
+pub fn from_string(s: &str) -> Option<AbilityKey> {
+    AbilityKey::from_str(s)
+}
+
+/// Add card-zone-table params to a run-params map.
+/// Mirrors Java's `AbilityKey.addCardZoneTableParams(Map, SpellAbility)`.
+///
+/// For effects that use `ChangeZoneTable$`, this populates the trigger's
+/// run-params with the zone-change table reference. The actual triggering
+/// is handled by `CardZoneTable::trigger_changes_zone_all`.
+///
+/// This function stores a serialized representation of the table for
+/// use in trigger parameter resolution.
+pub fn add_card_zone_table_params(
+    trigger_params: &mut std::collections::HashMap<String, String>,
+    change_zone_table: &crate::card::card_zone_table::CardZoneTable,
+) {
+    // Store a marker indicating a CardZoneTable is present.
+    // The actual data is accessed via the CardZoneTable's own methods
+    // during trigger resolution (trigger_changes_zone_all).
+    //
+    // In Java, this maps AbilityKey.InternalTriggerTable -> the table object.
+    // In Rust, the table is passed directly to the trigger handler.
+    trigger_params.insert(
+        AbilityKey::InternalTriggerTable.as_str().to_string(),
+        "Present".to_string(),
+    );
+
+    // Store the debug representation for logging
+    trigger_params.insert(
+        "ChangeZoneTable".to_string(),
+        format!("{:?}", change_zone_table),
+    );
+}

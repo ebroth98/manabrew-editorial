@@ -188,3 +188,29 @@ pub fn resolve_lki_toughness(game: &crate::game::GameState, trigger_src: CardId)
     }
     0
 }
+
+/// Resolve LKI counter count for a trigger source card.
+///
+/// Used by death triggers that reference `TriggeredCard$CardCounters.TYPE`
+/// (e.g. Servant of the Scale, Modular).
+///
+/// Checks the per-card LKI counters first, then falls back to the periodic
+/// snapshot's counter map.
+///
+/// Returns 0 if no LKI data or no counters of the given type exist.
+pub fn resolve_lki_counter_count(
+    game: &crate::game::GameState,
+    trigger_src: CardId,
+    counter_type: &crate::card::CounterType,
+) -> i32 {
+    // Check per-card LKI counters captured at zone-change time.
+    let card = game.card(trigger_src);
+    if let Some(&count) = card.lki_counters.as_ref().and_then(|c| c.get(counter_type)) {
+        return count;
+    }
+    // Fall back to periodic snapshot.
+    if let Some(snapshot) = game.get_lki_snapshot(trigger_src) {
+        return snapshot.counters.get(counter_type).copied().unwrap_or(0);
+    }
+    0
+}

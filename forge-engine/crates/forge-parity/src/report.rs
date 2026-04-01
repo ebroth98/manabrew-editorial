@@ -100,6 +100,7 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
     for r in &report.results {
         let status_str = match r.status {
             MatchupStatus::Pass => format!("{ANSI_GREEN}PASS{ANSI_RESET}"),
+            MatchupStatus::Skipped => format!("{ANSI_BLUE}SKIP{ANSI_RESET}"),
             MatchupStatus::Fail => format!("{ANSI_RED}FAIL{ANSI_RESET}"),
             MatchupStatus::Error => format!("{ANSI_RED}ERROR{ANSI_RESET}"),
         };
@@ -115,6 +116,7 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
                 r.first_divergence.as_ref().map(|d| d.turn),
                 r.finished_turn,
                 report.max_turns,
+                r.skip_reason.as_deref(),
             ),
         ));
     }
@@ -123,11 +125,24 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
     let failures: Vec<_> = report
         .results
         .iter()
-        .filter(|r| r.status != MatchupStatus::Pass)
+        .filter(|r| matches!(r.status, MatchupStatus::Skipped | MatchupStatus::Fail | MatchupStatus::Error))
         .collect();
     if !failures.is_empty() {
-        out.push_str(&format!("\nFailures:\n"));
+        out.push_str(&format!("\nNon-passing runs:\n"));
         for (i, r) in failures.iter().enumerate() {
+            if r.status == MatchupStatus::Skipped {
+                out.push_str(&format!(
+                    "  {}. {} vs {} | seed={}\n     Skipped: {}\n\n",
+                    i + 1,
+                    r.deck1,
+                    r.deck2,
+                    r.seed,
+                    r.skip_reason
+                        .as_deref()
+                        .unwrap_or("ignored by parity_ignore.json"),
+                ));
+                continue;
+            }
             match &r.error_message {
                 Some(msg) => {
                     out.push_str(&format!(
@@ -196,10 +211,11 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
         }
     }
 
-    let pass_rate = if report.total_matchups == 0 {
-        0.0
+    let evaluated_matchups = report.passed + report.failed + report.errors;
+    let pass_rate = if evaluated_matchups == 0 {
+        1.0
     } else {
-        report.passed as f64 / report.total_matchups as f64
+        report.passed as f64 / evaluated_matchups as f64
     };
     let (health_color, health_label) = if (pass_rate - 1.0).abs() < f64::EPSILON {
         (ANSI_GREEN, "HEALTHY")
@@ -210,11 +226,12 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
     };
 
     let passed_col = format!("{ANSI_GREEN}{} PASS{ANSI_RESET}", report.passed);
+    let skipped_col = format!("{ANSI_BLUE}{} SKIPPED{ANSI_RESET}", report.skipped);
     let failed_col = format!("{ANSI_RED}{} FAIL{ANSI_RESET}", report.failed);
     let errors_col = format!("{ANSI_RED}{} ERROR{ANSI_RESET}", report.errors);
     out.push_str(&format!(
-        "\nResults: {} matchups | {} | {} | {}\n",
-        report.total_matchups, passed_col, failed_col, errors_col
+        "\nResults: {} matchups | {} | {} | {} | {}\n",
+        report.total_matchups, passed_col, skipped_col, failed_col, errors_col
     ));
     out.push_str(&format!(
         "{}Overall health: {} ({:.1}% pass rate){}\n",
@@ -228,7 +245,7 @@ pub fn format_matrix_text(report: &MatrixReport) -> String {
     let failed_seeds: Vec<String> = report
         .results
         .iter()
-        .filter(|r| r.status != MatchupStatus::Pass)
+        .filter(|r| matches!(r.status, MatchupStatus::Fail | MatchupStatus::Error))
         .map(|r| r.seed.to_string())
         .collect();
     if !failed_seeds.is_empty() {
@@ -282,6 +299,7 @@ pub fn format_fuzz_text(report: &FuzzReport) -> String {
     for r in &report.results {
         let status_str = match r.result.status {
             MatchupStatus::Pass => "PASS",
+            MatchupStatus::Skipped => "SKIP",
             MatchupStatus::Fail => "FAIL",
             MatchupStatus::Error => "ERROR",
         };
@@ -296,6 +314,7 @@ pub fn format_fuzz_text(report: &FuzzReport) -> String {
                 r.result.first_divergence.as_ref().map(|d| d.turn),
                 r.result.finished_turn,
                 report.max_turns,
+                r.result.skip_reason.as_deref(),
             ),
         ));
     }
@@ -367,8 +386,12 @@ fn completion_label(
     failed_turn: Option<u32>,
     finished_turn: Option<u32>,
     max_turns: u32,
+    skip_reason: Option<&str>,
 ) -> String {
     match status {
+        MatchupStatus::Skipped => skip_reason
+            .map(|reason| format!("SKIPPED: {}", reason))
+            .unwrap_or_else(|| "SKIPPED".to_string()),
         MatchupStatus::Fail => failed_turn
             .map(|t| format!("FAILED AT TURN {}", t))
             .unwrap_or_else(|| "FAILED".to_string()),

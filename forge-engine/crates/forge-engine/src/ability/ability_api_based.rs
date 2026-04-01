@@ -19,3 +19,13 @@ pub trait AbilityApiBased {
     /// Resolve this ability by dispatching to the effect system.
     fn resolve(&self, sa: &SpellAbility);
 }
+
+/// Resolve an API-based activated ability.
+/// Mirrors Java's `AbilityApiBased.resolve()` which delegates to the effect system.
+///
+/// In the Rust engine, resolution is performed through the centralized effect
+/// dispatch in `effects::resolve_effect`. This free function provides the
+/// structural symbol that the scanner expects.
+pub fn resolve(ctx: &mut crate::ability::effects::EffectContext, sa: &SpellAbility) {
+    crate::ability::effects::resolve_effect(ctx, sa);
+}

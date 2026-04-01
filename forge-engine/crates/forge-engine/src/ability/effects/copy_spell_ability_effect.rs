@@ -5,6 +5,17 @@ use crate::replacement::replacement_handler::{apply_replacements, ReplacementEve
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
+/// Configure the spell ability during construction.
+/// Mirrors Java `CopySpellAbilityEffect.buildSpellAbility` — sets the target zone
+/// to Stack so the ability targets spells on the stack.
+pub fn build_spell_ability(sa: &mut SpellAbility) {
+    if sa.uses_targeting() {
+        if let Some(ref mut tr) = sa.target_restrictions {
+            tr.tgt_zone = vec![forge_foundation::ZoneType::Stack];
+        }
+    }
+}
+
 /// `SP$ CopySpellAbility` — copy the top spell on the stack.
 ///
 /// Mirrors Java's `CopySpellAbilityEffect.java` (basic version).

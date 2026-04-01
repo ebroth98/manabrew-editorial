@@ -11,10 +11,11 @@
 //! R$ Event$ Destroy | ValidCard$ Card.Self | Description$ ~ is indestructible.
 //! ```
 
-use forge_foundation::ZoneType;
+use forge_foundation::{PhaseType, ZoneType};
 use serde::{Deserialize, Serialize};
 
 use crate::card::{valid_filter, Card};
+use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::{keys, Params};
 pub use crate::player::GameLossReason;
@@ -63,6 +64,81 @@ impl ReplacementEffect {
         self.params
             .get(keys::DESCRIPTION)
             .unwrap_or("Replacement effect")
+    }
+
+    /// Returns `false` — effects don't track individual run state in our
+    /// architecture. The handler's `has_run` set is cleared at the start of
+    /// each `ReplacementHandler::run()` call, matching Java's reset semantics.
+    pub fn has_run(&self) -> bool {
+        false
+    }
+
+    /// Check requirements for this replacement effect against the current game state.
+    ///
+    /// - `PlayerTurn$` — verifies the active player matches the source card's controller.
+    /// - `ActivePhases$` — verifies the current phase is in the comma-separated list.
+    ///
+    /// Returns `true` if all requirements are met (or if no requirements are specified).
+    ///
+    /// Mirrors Java `ReplacementEffect.requirementsCheck()`.
+    pub fn requirements_check(&self, game: &GameState, source: &Card) -> bool {
+        // PlayerTurn$ check — active player must be the source's controller
+        if let Some(pt) = self.params.get(keys::PLAYER_TURN) {
+            if pt == "True" && game.active_player() != source.controller {
+                return false;
+            }
+        }
+
+        // ActivePhases$ check — current phase must be in the listed phases
+        if let Some(phases_str) = self.params.get(keys::ACTIVE_PHASES) {
+            let current = game.turn.phase;
+            let any_match = phases_str
+                .split(',')
+                .filter_map(|s| PhaseType::from_script_name(s.trim()))
+                .any(|p| p == current);
+            if !any_match {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Clone this replacement effect. Since `ReplacementEffect` derives `Clone`,
+    /// this delegates to `self.clone()`.
+    ///
+    /// Mirrors Java `ReplacementEffect.copy()`.
+    pub fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    /// Return the `ReplaceWith$` param value if present — this is the SVar name
+    /// of the replacement ability to execute.
+    ///
+    /// Mirrors Java `ReplacementEffect.ensureAbility()` which lazily resolves
+    /// the SVar into a SpellAbility.
+    pub fn ensure_ability(&self) -> Option<String> {
+        self.params
+            .get(keys::REPLACE_WITH)
+            .map(|s| s.to_string())
+    }
+
+    /// Check if this effect's event type matches the given event.
+    ///
+    /// For `AddCounter`, also matches `Moved` events when the effect handles
+    /// counter-on-move (i.e. has a `CounterMap` interaction).
+    ///
+    /// Mirrors Java `ReplacementEffect.modeCheck()`.
+    pub fn mode_check(&self, event: &ReplacementType) -> bool {
+        if self.event == *event {
+            return true;
+        }
+        // AddCounter effects can also intercept Moved events when they
+        // involve a counter map (e.g. moving counters with the card).
+        if self.event == ReplacementType::AddCounter && *event == ReplacementType::Moved {
+            return self.params.get("CounterMap").is_some();
+        }
+        false
     }
 }
 

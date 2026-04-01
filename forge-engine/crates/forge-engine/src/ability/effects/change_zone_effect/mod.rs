@@ -21,6 +21,21 @@ use super::{parse_zone_type, EffectContext};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
+/// Configure the spell ability during construction.
+/// Mirrors Java `ChangeZoneEffect.buildSpellAbility` — calls
+/// `adjustChangeZoneTarget` to set the target zone to the origin zone.
+pub fn build_spell_ability(sa: &mut SpellAbility) {
+    if let Some(origin_str) = sa.params.get(crate::parsing::keys::ORIGIN) {
+        if let Some(ref mut tr) = sa.target_restrictions {
+            if !tr.can_tgt_player() {
+                if let Some(zone) = parse_zone_type(origin_str) {
+                    tr.tgt_zone = vec![zone];
+                }
+            }
+        }
+    }
+}
+
 /// Top-level resolve dispatcher — mirrors Java's `resolve()` which splits on
 /// `sa.isHidden()` into hidden-origin (library search) vs known-origin paths.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {

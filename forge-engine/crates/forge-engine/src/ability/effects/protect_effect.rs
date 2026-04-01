@@ -3,6 +3,19 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
+/// End-of-turn revert for Protection. Mirrors the `GameCommand.run()` in Java
+/// `ProtectEffect` that removes the granted protection keyword when the
+/// effect duration expires.
+pub fn run(
+    game: &mut crate::game::GameState,
+    card_id: crate::ids::CardId,
+    keyword: &str,
+) {
+    if game.card(card_id).zone == ZoneType::Battlefield {
+        game.card_mut(card_id).pump_keywords.remove(keyword);
+    }
+}
+
 /// `SP$ Protection` — grant protection from a quality to a permanent.
 ///
 /// Mirrors Java's `ProtectEffect.java`.

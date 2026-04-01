@@ -60,7 +60,7 @@ import java.util.stream.Collectors;
  * {@code rng.nextInt()} to pick, consuming the RNG in the same order.
  */
 public class DeterministicController extends PlayerController {
-    private static final boolean DEBUG_ACTIONS = false;
+    private static final boolean DEBUG_ACTIONS = Boolean.getBoolean("forge.parity.rng.trace");
 
     private static final int PREFER_ACTION_WEIGHT = 3;
     private final CountingRandom rng;
@@ -174,6 +174,13 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public boolean chooseTargetsFor(final SpellAbility currentAbility) {
+        if (Boolean.getBoolean("forge.parity.rng.trace")) {
+            String name = currentAbility != null && currentAbility.getHostCard() != null
+                ? currentAbility.getHostCard().getName() : "null";
+            System.err.printf("[java-target] chooseTargetsFor: %s api=%s rng#%d%n", name,
+                currentAbility != null ? currentAbility.getApi() : "null",
+                rng.getCallCount());
+        }
         if (currentAbility == null || !currentAbility.usesTargeting()) {
             return true;
         }
@@ -386,7 +393,12 @@ public class DeterministicController extends PlayerController {
             DelayedReveal delayedReveal, SpellAbility sa, String title, boolean isOptional,
             Player relatedPlayer, Map<String, Object> params) {
         if (delayedReveal != null) reveal(delayedReveal);
-        return ChoiceSpace.pickOne(optionList, rng);
+        // Sort by (name, parityId) for deterministic cross-engine parity.
+        // Avoids HashMap/collection ordering differences between Java and Rust.
+        java.util.List<T> sorted = new java.util.ArrayList<>(optionList);
+        sorted.sort(java.util.Comparator.comparing((T e) -> e.getName())
+                .thenComparingInt(e -> (e instanceof Card) ? ParityCardMap.parityId((Card) e) : 0));
+        return ChoiceSpace.pickOne(sorted, rng);
     }
 
     @Override
@@ -1151,7 +1163,7 @@ public class DeterministicController extends PlayerController {
 
     @Override
     public ReplacementEffect chooseSingleReplacementEffect(List<ReplacementEffect> possibleReplacers) {
-        return ChoiceSpace.pickOne(possibleReplacers, rng);
+        return ChoiceSpace.pickOne(ParityOrder.sortReplacementEffects(possibleReplacers), rng);
     }
 
     @Override

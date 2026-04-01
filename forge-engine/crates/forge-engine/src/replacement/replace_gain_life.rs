@@ -70,6 +70,24 @@ pub fn execute(
         }
         return ReplacementResult::Skipped;
     }
+    // Handle built-in replacement modes before SVar chain.
+    if let Some(replace) = effect.params.get(keys::REPLACE_WITH) {
+        match replace {
+            "GainDouble" => {
+                if let ReplacementEvent::GainLife { amount, .. } = event {
+                    *amount *= 2;
+                    return ReplacementResult::Updated;
+                }
+            }
+            "NoLife" => {
+                if let ReplacementEvent::GainLife { amount, .. } = event {
+                    *amount = 0;
+                    return ReplacementResult::Skipped;
+                }
+            }
+            _ => {}
+        }
+    }
     if let Some(result) =
         execute_replace_with_numeric_update(effect, event, _game, _source_card_id, "LifeGained")
     {

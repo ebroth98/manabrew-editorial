@@ -182,6 +182,7 @@ impl Storage {
     ) -> SqlResult<i64> {
         let status_str = match result.status {
             MatchupStatus::Pass => "pass",
+            MatchupStatus::Skipped => "skipped",
             MatchupStatus::Fail => "fail",
             MatchupStatus::Error => "error",
         };
@@ -759,6 +760,7 @@ impl Storage {
         let status_str: String = row.get(5)?;
         let status = match status_str.as_str() {
             "pass" => MatchupStatus::Pass,
+            "skipped" => MatchupStatus::Skipped,
             "fail" => MatchupStatus::Fail,
             _ => MatchupStatus::Error,
         };
@@ -819,6 +821,11 @@ mod tests {
             },
             error_message: if is_error {
                 Some("test error".into())
+            } else {
+                None
+            },
+            skip_reason: if matches!(status, MatchupStatus::Skipped) {
+                Some("ignored".into())
             } else {
                 None
             },

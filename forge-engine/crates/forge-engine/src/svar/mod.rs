@@ -592,6 +592,17 @@ pub fn resolve_numeric_svar(
                     }
                     return 0;
                 }
+                // TriggeredCard$CardCounters.TYPE — LKI counter count resolution
+                // Used by Servant of the Scale, Modular creatures, etc.
+                if let Some(counter_name) = svar_expr.strip_prefix("TriggeredCard$CardCounters.") {
+                    let ct = crate::ability::effects::parse_counter_type(counter_name);
+                    if let Some(trigger_src) =
+                        parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
+                    {
+                        return crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
+                    }
+                    return 0;
+                }
                 // Discarded$Valid Filter/Times.N — check discarded cost cards
                 // Must be checked before resolve_direct_player_expr.
                 if let Some(rest) = svar_expr.strip_prefix("Discarded$Valid ") {
@@ -681,6 +692,16 @@ pub fn resolve_numeric_svar(
                     parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
                 {
                     return crate::lki::resolve_lki_toughness(game, trigger_src);
+                }
+                return 0;
+            }
+            // TriggeredCard$CardCounters.TYPE — LKI counter count resolution
+            if let Some(counter_name) = svar_expr.strip_prefix("TriggeredCard$CardCounters.") {
+                let ct = crate::ability::effects::parse_counter_type(counter_name);
+                if let Some(trigger_src) =
+                    parse_trigger_card_object(sa, "Card").or(sa.trigger_source)
+                {
+                    return crate::lki::resolve_lki_counter_count(game, trigger_src, &ct);
                 }
                 return 0;
             }

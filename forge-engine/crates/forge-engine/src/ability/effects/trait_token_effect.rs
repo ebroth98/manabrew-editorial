@@ -56,3 +56,101 @@ pub fn get_token_template<'a>(
             .map(|(_, v)| v)
     })
 }
+
+/// Add a "pump until" effect to a token — grants temporary keywords/P/T boosts
+/// that expire at end of turn or when a condition is met.
+/// Mirrors Java's `TokenEffectBase.addPumpUntil(Card, SpellAbility, String)`.
+///
+/// Sets up the token with keywords and P/T modifiers from the SA parameters
+/// that last until the specified until condition (typically end of turn).
+pub fn add_pump_until(
+    game: &mut crate::game::GameState,
+    token_id: crate::ids::CardId,
+    sa: &crate::spellability::SpellAbility,
+) {
+    // Read pump keywords from SA parameters
+    if let Some(kws) = sa.params.get("TokenKeywords") {
+        for kw in kws.split(',').map(|s| s.trim()) {
+            if !kw.is_empty() {
+                game.card_mut(token_id).granted_keywords.add(kw);
+            }
+        }
+    }
+
+    // Read pump power/toughness from SA parameters
+    if let Some(power_str) = sa.params.get("TokenPower") {
+        if let Ok(power) = power_str.parse::<i32>() {
+            let current_t = game.card(token_id).toughness();
+            let toughness = sa
+                .params
+                .get("TokenToughness")
+                .and_then(|s| s.parse::<i32>().ok())
+                .unwrap_or(current_t);
+            game.card_mut(token_id).add_new_pt(power, toughness);
+        }
+    }
+
+    // If there's an "Until" parameter, mark the token for cleanup
+    if let Some(until) = sa.params.get("TokenUntil") {
+        game.card_mut(token_id).set_s_var("TokenUntil", until);
+    }
+}
+
+/// Run the token effect — create tokens based on parsed parameters.
+/// Mirrors Java's `TokenEffectBase.run(SpellAbility)`.
+///
+/// Parses the token script, looks up the template, creates the specified
+/// number of copies, and places them on the battlefield.
+pub fn run(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+    let params = match parse_token_params(ctx, sa) {
+        Some(p) => p,
+        None => return,
+    };
+
+    let controller = sa.activating_player;
+
+    for script in &params.scripts {
+        let template = match get_token_template(ctx.token_templates, script) {
+            Some(t) => t.clone(),
+            None => continue,
+        };
+
+        for _ in 0..params.amount {
+            let mut token = template.clone();
+            token.owner = controller;
+            token.controller = controller;
+            token.is_token = true;
+
+            let token_id = ctx.game.create_card(token);
+            ctx.game.move_card(
+                token_id,
+                forge_foundation::ZoneType::Battlefield,
+                controller,
+            );
+
+            // Apply pump effects if specified
+            add_pump_until(ctx.game, token_id, sa);
+
+            // Register triggers for the new token
+            ctx.trigger_handler.register_active_trigger(ctx.game, token_id);
+
+            // Fire ETB trigger
+            super::zone_triggers::emit_zone_trigger(
+                ctx.trigger_handler,
+                token_id,
+                forge_foundation::ZoneType::None,
+                forge_foundation::ZoneType::Battlefield,
+            );
+
+            ctx.trigger_handler.run_trigger(
+                crate::event::TriggerType::TokenCreated,
+                crate::event::RunParams {
+                    card: Some(token_id),
+                    player: Some(controller),
+                    ..Default::default()
+                },
+                false,
+            );
+        }
+    }
+}

@@ -12,6 +12,37 @@ use super::replacement_handler::ReplacementEvent;
 use super::replacement_result::ReplacementResult;
 use super::replacement_type::ReplacementType;
 
+/// Check if the effect has a `ValidCounterType$` that matches the given counter type.
+///
+/// If no `ValidCounterType$` param is present, the effect applies to any counter
+/// type, so return `true`. Otherwise, check if the given counter type name
+/// matches the param value.
+///
+/// Mirrors Java `ReplaceAddCounter.hasAnyInCounterMap()`.
+pub fn has_any_in_counter_map(effect: &ReplacementEffect, counter_type: Option<&str>) -> bool {
+    match effect.params.get(keys::VALID_COUNTER_TYPE) {
+        None => true, // No restriction — matches any counter type
+        Some(valid) => match counter_type {
+            None => false, // Effect requires a specific type but none given
+            Some(ct) => valid.split(',').any(|v| v.trim().eq_ignore_ascii_case(ct)),
+        },
+    }
+}
+
+/// Check if this effect's event type matches the given event for AddCounter purposes.
+///
+/// Returns `true` if event is `AddCounter`, or if event is `Moved` and the
+/// effect handles counter-on-move (has a `CounterMap` interaction).
+///
+/// Mirrors Java `ReplaceAddCounter.modeCheck()`.
+pub fn mode_check(effect: &ReplacementEffect, event: &ReplacementType) -> bool {
+    match event {
+        ReplacementType::AddCounter => true,
+        ReplacementType::Moved => effect.params.get("CounterMap").is_some(),
+        _ => false,
+    }
+}
+
 /// Mirrors Java `ReplaceAddCounter.canReplace()`.
 pub fn can_replace(
     effect: &ReplacementEffect,
@@ -22,13 +53,28 @@ pub fn can_replace(
     if effect.event != ReplacementType::AddCounter {
         return false;
     }
-    let target = match event {
-        ReplacementEvent::AddCounter { target, .. } => *target,
+    let (target, is_effect) = match event {
+        ReplacementEvent::AddCounter { target, is_effect, .. } => (*target, *is_effect),
         _ => return false,
     };
+    // EffectOnly$ True: only apply to counters placed by effects, not ETB keywords/game rules
+    if effect.params.get("EffectOnly").map(|v| v == "True").unwrap_or(false) && !is_effect {
+        return false;
+    }
     let target_card = &game.cards[target.index()];
     if let Some(valid) = effect.params.get(keys::VALID_CARD) {
         if !matches_valid_card(valid, target_card, source_card) {
+            return false;
+        }
+    }
+    // Check ValidCounterType$ — e.g. Hardened Scales only applies to P1P1 counters.
+    if let Some(valid_ct) = effect.params.get(keys::VALID_COUNTER_TYPE) {
+        let counter_type = match event {
+            ReplacementEvent::AddCounter { counter_type, .. } => counter_type,
+            _ => return false,
+        };
+        let expected = crate::ability::effects::parse_counter_type(valid_ct);
+        if *counter_type != expected {
             return false;
         }
     }
@@ -57,6 +103,12 @@ pub fn execute(
                 return ReplacementResult::Updated;
             }
             _ => {
+                // Try SVar chain (DB$ ReplaceCounter)
+                if let Some(result) = super::replacement_handler::execute_replace_with_numeric_update(
+                    effect, event, _game, _source_card_id, "CounterNum",
+                ) {
+                    return result;
+                }
                 eprintln!(
                     "[WARN] Unknown replacement mode in AddCounter event: {:?}",
                     replace

@@ -91,7 +91,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     }
                 }
             } else {
-                ctx.game.deal_damage_to_card(cid, damage);
+                ctx.game.deal_damage_to_card_from(cid, damage, sa.source, false);
             }
             if !use_damage_map {
                 ctx.trigger_handler.run_trigger(
@@ -145,7 +145,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 }
             }
         } else {
-            let dealt = ctx.game.deal_damage_to_player(target_player, damage);
+            let dealt = ctx.game.deal_damage_to_player_from(target_player, damage, sa.source, false);
             ctx.game
                 .record_player_damage_assignment(sa.source, Some(target_player), dealt, false);
         }
@@ -229,7 +229,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                     }
                 }
             } else {
-                ctx.game.deal_damage_to_card(target_card, damage);
+                ctx.game.deal_damage_to_card_from(target_card, damage, sa.source, false);
             }
 
             // Record damage dealt by source for TotalDamageDoneByThisTurn SVar

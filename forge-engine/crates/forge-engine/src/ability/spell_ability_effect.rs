@@ -30,6 +30,64 @@ pub trait SpellAbilityEffect {
     /// Build/configure the spell ability after construction.
     /// Default is a no-op; some effects override this to add parameters.
     fn build_spell_ability(&self, _sa: &mut SpellAbility) {}
+
+    /// Tokenize a description string, replacing CARDNAME with the card's name.
+    /// Mirrors Java's `SpellAbilityEffect.tokenizeString(SpellAbility, String)`.
+    fn tokenize_string(&self, game: &GameState, sa: &SpellAbility, desc: &str) -> String {
+        tokenize_string(game, sa, desc)
+    }
+
+    /// Add a "forget on moved" trigger for remembered cards.
+    /// Mirrors Java's `SpellAbilityEffect.addForgetOnMovedTrigger(SpellAbility, Card, String)`.
+    fn add_forget_on_moved_trigger(
+        &self,
+        game: &mut GameState,
+        host_id: CardId,
+        remembered_card_id: CardId,
+    ) {
+        add_forget_on_moved_trigger(game, host_id, remembered_card_id)
+    }
+
+    /// Create a temporary effect card in the command zone.
+    /// Mirrors Java's `SpellAbilityEffect.createEffect(SpellAbility, Player, String, String)`.
+    fn create_effect(
+        &self,
+        game: &mut GameState,
+        sa: &SpellAbility,
+        name: &str,
+        image: &str,
+    ) -> CardId {
+        create_effect(game, sa, name, image)
+    }
+
+    /// Run the effect (resolve entry point).
+    /// Mirrors Java's `SpellAbilityEffect.run(SpellAbility)`.
+    fn run(&self, ctx: &mut super::effects::EffectContext, sa: &SpellAbility) {
+        run(ctx, sa)
+    }
+
+    /// Track which card exiled another card, for "exile until" effects.
+    /// Mirrors Java's `SpellAbilityEffect.handleExiledWith(SpellAbility, Card)`.
+    fn handle_exiled_with(
+        &self,
+        game: &mut GameState,
+        sa: &SpellAbility,
+        exiled_card_id: CardId,
+    ) {
+        handle_exiled_with(game, sa, exiled_card_id)
+    }
+
+    /// Execute the exile-with command.
+    /// Mirrors Java's `SpellAbilityEffect.exileEffectCommand(Game, SpellAbility, Card)`.
+    fn exile_effect_command(
+        &self,
+        game: &mut GameState,
+        trigger_handler: &mut crate::trigger::handler::TriggerHandler,
+        sa: &SpellAbility,
+        card_id: CardId,
+    ) {
+        exile_effect_command(game, trigger_handler, sa, card_id)
+    }
 }
 
 // ── Utility free functions mirroring Java's SpellAbilityEffect helpers ──
@@ -196,6 +254,164 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
         "Explorer" => parse_card_ids(sa.trigger_objects.get("Explorer")),
         "Explored" => parse_card_ids(sa.trigger_objects.get("Explored")),
         _ => ability_utils::get_defined_cards(game, sa.source, defined, Some(sa.activating_player)),
+    }
+}
+
+// ── SpellAbilityEffect utility functions ────────────────────────────
+
+/// Tokenize a description string, replacing CARDNAME with the actual card name
+/// and NICKNAME with a short version.
+/// Mirrors Java's `SpellAbilityEffect.tokenizeString(SpellAbility, String)`.
+pub fn tokenize_string(game: &GameState, sa: &SpellAbility, desc: &str) -> String {
+    let card_name = sa
+        .source
+        .map(|cid| game.card(cid).card_name.clone())
+        .unwrap_or_else(|| "CARDNAME".to_string());
+
+    let mut result = desc.to_string();
+    result = result.replace("CARDNAME", &card_name);
+    result = result.replace("NICKNAME", &card_name);
+
+    // Replace DAMAGE with the NumDmg parameter if present
+    if let Some(num_dmg) = sa.params.get("NumDmg") {
+        result = result.replace("DAMAGE", num_dmg);
+    }
+
+    // Replace AMOUNT with relevant numeric parameter
+    if let Some(amount) = sa.params.get("Amount").or_else(|| sa.params.get("NumCards")) {
+        result = result.replace("AMOUNT", amount);
+    }
+
+    result
+}
+
+/// Add a "forget on moved" trigger to a card — when the card changes zones,
+/// it is removed from its host's remembered list.
+/// Mirrors Java's `SpellAbilityEffect.addForgetOnMovedTrigger(SpellAbility, Card, String)`.
+pub fn add_forget_on_moved_trigger(
+    game: &mut GameState,
+    host_id: CardId,
+    remembered_card_id: CardId,
+) {
+    // In the Rust engine, zone-change cleanup of remembered cards is handled
+    // centrally in the zone-move logic. This function marks the card with a
+    // flag so the zone-move system knows to clean up.
+    // Store a SVar on the card so the zone-move system knows which host to clean up
+    game.card_mut(remembered_card_id)
+        .set_s_var("ForgetOnZoneChangeHost", &host_id.0.to_string());
+}
+
+/// Create a temporary "effect" card in the command zone.
+/// Mirrors Java's `SpellAbilityEffect.createEffect(SpellAbility, Player, String, String)`.
+///
+/// Effect cards are invisible game objects that hold continuous effects,
+/// delayed triggers, and other state that persists beyond a single resolution.
+/// They are placed in the Command zone and cleaned up when their effect ends.
+pub fn create_effect(
+    game: &mut GameState,
+    sa: &SpellAbility,
+    name: &str,
+    image: &str,
+) -> CardId {
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
+
+    let owner = sa.activating_player;
+    let source_name = sa
+        .source
+        .map(|cid| game.card(cid).card_name.clone())
+        .unwrap_or_default();
+
+    let effect_name = if name.is_empty() {
+        format!("{} Effect", source_name)
+    } else {
+        name.to_string()
+    };
+
+    let effect_card = crate::card::Card::new(
+        CardId(0), // will be assigned by create_card
+        effect_name,
+        owner,
+        CardTypeLine::parse("Effect"),
+        ManaCost::parse(""),
+        ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    );
+
+    let effect_id = game.create_card(effect_card);
+    game.move_card(effect_id, forge_foundation::ZoneType::Command, owner);
+
+    // Copy the image hint from the source card
+    if let Some(source_id) = sa.source {
+        let _ = image; // image parameter used in Java for UI; we track source_id instead
+        game.card_mut(effect_id).effect_source = Some(source_id);
+    }
+
+    // Mark as an effect card (not a "real" card) via SVar
+    game.card_mut(effect_id).set_s_var("IsEffectCard", "True");
+
+    effect_id
+}
+
+/// Run/resolve a spell ability effect (the main entry point for effect dispatch).
+/// Mirrors Java's `SpellAbilityEffect.run(SpellAbility)` which calls resolve().
+///
+/// In the Rust engine this delegates to the effect dispatch system.
+pub fn run(ctx: &mut super::effects::EffectContext, sa: &SpellAbility) {
+    super::effects::resolve_effect(ctx, sa);
+}
+
+/// Track which card exiled another card, for "exile until" effects.
+/// Mirrors Java's `SpellAbilityEffect.handleExiledWith(SpellAbility, Card)`.
+///
+/// Sets the `exiled_with` field on the exiled card and adds it to the
+/// source card's imprinted list.
+pub fn handle_exiled_with(game: &mut GameState, sa: &SpellAbility, exiled_card_id: CardId) {
+    let source_id = match sa.source {
+        Some(id) => id,
+        None => return,
+    };
+
+    game.card_mut(exiled_card_id).set_exiled_by(Some(source_id));
+    game.card_mut(source_id).add_imprinted_card(exiled_card_id);
+}
+
+/// Execute the "exile with" command — exile a card and track the exile source.
+/// Mirrors Java's `SpellAbilityEffect.exileEffectCommand(Game, SpellAbility, Card)`.
+///
+/// Moves the card to exile, sets up the exiled_with tracking, and optionally
+/// adds it to the source's remembered list.
+pub fn exile_effect_command(
+    game: &mut GameState,
+    trigger_handler: &mut crate::trigger::handler::TriggerHandler,
+    sa: &SpellAbility,
+    card_id: CardId,
+) {
+    let owner = game.card(card_id).owner;
+    let old_zone = game.card(card_id).zone;
+
+    // Move the card to exile
+    game.move_card(card_id, forge_foundation::ZoneType::Exile, owner);
+
+    // Register zone triggers
+    trigger_handler.register_active_trigger(game, card_id);
+    super::effects::zone_triggers::emit_zone_trigger(
+        trigger_handler,
+        card_id,
+        old_zone,
+        forge_foundation::ZoneType::Exile,
+    );
+
+    // Set up the exiled_with relationship
+    handle_exiled_with(game, sa, card_id);
+
+    // Remember the exiled card if requested
+    if sa.params.has("RememberExiled") {
+        if let Some(source_id) = sa.source {
+            game.card_mut(source_id).add_remembered_card(card_id);
+        }
     }
 }
 

@@ -13,3 +13,11 @@ pub fn sort_cards_by_name_then_id(
     });
     out
 }
+
+pub fn sort_replacement_descriptions_with_indices(
+    descriptions: &[String],
+) -> Vec<(usize, String)> {
+    let mut out: Vec<(usize, String)> = descriptions.iter().cloned().enumerate().collect();
+    out.sort_by(|a, b| a.1.cmp(&b.1).then_with(|| a.0.cmp(&b.0)));
+    out
+}

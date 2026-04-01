@@ -6,6 +6,31 @@ use super::EffectContext;
 use crate::spellability::SpellAbility;
 use forge_foundation::ZoneType;
 
+/// End-of-turn revert for text box exchange. Mirrors the `GameCommand.run()`
+/// in Java `TextBoxExchangeEffect` that restores the original abilities text
+/// on both cards when the effect duration expires.
+///
+/// Takes two card IDs and their original abilities lists to restore.
+pub fn run(
+    ctx: &mut EffectContext,
+    card1: crate::ids::CardId,
+    card2: crate::ids::CardId,
+    abilities1: Vec<String>,
+    abilities2: Vec<String>,
+) {
+    // Restore original abilities
+    if ctx.game.card(card1).zone == ZoneType::Battlefield {
+        ctx.game.card_mut(card1).set_abilities(abilities1);
+        ctx.trigger_handler
+            .register_active_trigger(ctx.game, card1);
+    }
+    if ctx.game.card(card2).zone == ZoneType::Battlefield {
+        ctx.game.card_mut(card2).set_abilities(abilities2);
+        ctx.trigger_handler
+            .register_active_trigger(ctx.game, card2);
+    }
+}
+
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let source = sa.source;
     let target = sa.target_chosen.target_card;

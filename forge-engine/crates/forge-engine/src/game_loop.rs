@@ -294,6 +294,22 @@ impl GameLoop {
         max_turns: u32,
     ) -> Option<PlayerId> {
         self.setup(game, agents, rng);
+
+        // Leyline mechanic: cards with "MayEffectFromOpeningHand" in hand
+        // may begin the game on the battlefield (e.g. Leyline of the Void).
+        // Mirrors Java's Game.handleLeylines().
+        for &pid in &game.player_order.clone() {
+            let hand: Vec<CardId> = game.cards_in_zone(ZoneType::Hand, pid).to_vec();
+            for card_id in hand {
+                let has_leyline = game.card(card_id).get_keyword_cost("MayEffectFromOpeningHand").is_some();
+                if has_leyline {
+                    // Java always puts leylines into play without consuming RNG.
+                    // Mirrors Java's Game.handleLeylines() which auto-places.
+                    game.move_card(card_id, ZoneType::Battlefield, pid);
+                }
+            }
+        }
+
         self.trigger_handler.reset_active_triggers(game);
         self.trigger_handler
             .run_trigger(TriggerType::NewGame, RunParams::default(), true);

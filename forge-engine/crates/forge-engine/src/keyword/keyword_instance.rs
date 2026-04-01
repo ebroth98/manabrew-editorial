@@ -2,6 +2,7 @@
 //!
 //! Ported from Java's `KeywordInstance.java` and `Keyword.java` in `forge/game/keyword/`.
 
+use std::collections::HashMap;
 use std::fmt;
 
 /// Base data shared by all keyword instances.
@@ -27,6 +28,155 @@ impl KeywordInstanceData {
             intrinsic: false,
             idx: -1,
         }
+    }
+}
+
+/// A keyword instance with its associated traits (triggers, replacement effects,
+/// static abilities, spell abilities).
+/// Mirrors Java's `KeywordInstance<T>` abstract class.
+#[derive(Debug, Clone)]
+pub struct KeywordInstance {
+    /// The underlying keyword data (keyword enum, original string, intrinsic flag, idx).
+    pub data: KeywordInstanceData,
+    /// Trigger definitions associated with this keyword.
+    pub triggers: Vec<String>,
+    /// Replacement effect definitions associated with this keyword.
+    pub replacements: Vec<String>,
+    /// Spell ability definitions associated with this keyword.
+    pub spell_abilities: Vec<String>,
+    /// Static ability definitions associated with this keyword.
+    pub static_abilities: Vec<String>,
+    /// SVars associated with this keyword instance.
+    pub svars: HashMap<String, String>,
+}
+
+impl KeywordInstance {
+    /// Create a new keyword instance from base data.
+    pub fn new(data: KeywordInstanceData) -> Self {
+        Self {
+            data,
+            triggers: Vec::new(),
+            replacements: Vec::new(),
+            spell_abilities: Vec::new(),
+            static_abilities: Vec::new(),
+            svars: HashMap::new(),
+        }
+    }
+
+    /// Initialize trait lists from the keyword. Clears existing traits and
+    /// re-parses them from the keyword definition.
+    /// Mirrors Java's `KeywordInstance.createTraits(Card, boolean)`.
+    pub fn create_traits(&mut self) {
+        self.triggers.clear();
+        self.replacements.clear();
+        self.spell_abilities.clear();
+        self.static_abilities.clear();
+    }
+
+    /// Add a trigger definition string.
+    /// Mirrors Java's `KeywordInstance.addTrigger(Trigger)`.
+    pub fn add_trigger(&mut self, trigger: String) {
+        self.triggers.push(trigger);
+    }
+
+    /// Add a replacement effect definition string.
+    /// Mirrors Java's `KeywordInstance.addReplacement(ReplacementEffect)`.
+    pub fn add_replacement(&mut self, replacement: String) {
+        self.replacements.push(replacement);
+    }
+
+    /// Add a spell ability definition string.
+    /// Mirrors Java's `KeywordInstance.addSpellAbility(SpellAbility)`.
+    pub fn add_spell_ability(&mut self, ability: String) {
+        self.spell_abilities.push(ability);
+    }
+
+    /// Add a static ability definition string.
+    /// Mirrors Java's `KeywordInstance.addStaticAbility(StaticAbility)`.
+    pub fn add_static_ability(&mut self, static_ab: String) {
+        self.static_abilities.push(static_ab);
+    }
+
+    /// Returns true if any traits (triggers, replacements, spell abilities,
+    /// or static abilities) are defined.
+    /// Mirrors Java's `KeywordInstance.hasTraits()`.
+    pub fn has_traits(&self) -> bool {
+        !self.triggers.is_empty()
+            || !self.replacements.is_empty()
+            || !self.spell_abilities.is_empty()
+            || !self.static_abilities.is_empty()
+    }
+
+    /// Apply this keyword's spell abilities to a card by parsing each spell
+    /// ability string and adding it to the card's abilities list.
+    /// Mirrors Java's `KeywordInstance.applySpellAbility(List)`.
+    pub fn apply_spell_ability(&self, card: &mut crate::card::Card) {
+        for sa in &self.spell_abilities {
+            card.abilities.push(sa.clone());
+        }
+    }
+
+    /// Apply this keyword's triggers to a card by parsing each trigger string
+    /// and adding it to the card's triggers list.
+    /// Mirrors Java's `KeywordInstance.applyTrigger(List)`.
+    pub fn apply_trigger(&self, card: &mut crate::card::Card) {
+        let mut next_id = card.triggers.len() as u32;
+        for trig_str in &self.triggers {
+            if let Some(trigger) = crate::trigger::trigger::parse_trigger(trig_str, &mut next_id) {
+                card.triggers.push(trigger);
+            }
+        }
+    }
+
+    /// Apply this keyword's replacement effects to a card by parsing each
+    /// replacement effect string and adding it to the card's replacement effects list.
+    /// Mirrors Java's `KeywordInstance.applyReplacementEffect(List)`.
+    pub fn apply_replacement_effect(&self, card: &mut crate::card::Card) {
+        for repl_str in &self.replacements {
+            if let Some(repl) =
+                crate::replacement::replacement_effect::parse_replacement_effect(repl_str)
+            {
+                card.replacement_effects.push(repl);
+            }
+        }
+    }
+
+    /// Apply this keyword's static abilities to a card by parsing each static
+    /// ability string and adding it to the card's static abilities list.
+    /// Mirrors Java's `KeywordInstance.applyStaticAbility(List)`.
+    pub fn apply_static_ability(&self, card: &mut crate::card::Card) {
+        for sa_str in &self.static_abilities {
+            if let Some(sa) = crate::staticability::static_ability::parse_static_ability(sa_str) {
+                card.static_abilities.push(sa);
+            }
+        }
+    }
+
+    /// Create a deep copy of this keyword instance.
+    /// Mirrors Java's `KeywordInstance.copy(Card, boolean)`.
+    pub fn copy(&self) -> Self {
+        self.clone()
+    }
+
+    /// Check if this keyword instance is redundant with another (same keyword text).
+    /// Mirrors Java's `KeywordInstance.redundant(Collection)`.
+    pub fn redundant(&self, other: &Self) -> bool {
+        if !self.data.keyword.is_multiple_redundant() {
+            return false;
+        }
+        self.data.original == other.data.original
+    }
+
+    /// Check if this keyword instance has an SVar with the given name.
+    /// Mirrors Java's `KeywordInstance.hasSVar(String)`.
+    pub fn has_s_var(&self, name: &str) -> bool {
+        self.svars.contains_key(name)
+    }
+
+    /// Remove an SVar from this keyword instance by name.
+    /// Mirrors Java's `KeywordInstance.removeSVar(String)`.
+    pub fn remove_s_var(&mut self, name: &str) {
+        self.svars.remove(name);
     }
 }
 

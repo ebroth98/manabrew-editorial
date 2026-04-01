@@ -7,6 +7,65 @@ use crate::replacement::replacement_handler::{apply_replacements, ReplacementEve
 use crate::replacement::ReplacementResult;
 use crate::spellability::SpellAbility;
 
+/// Build/configure the spell ability after construction.
+/// Mirrors Java's `CounterEffect.buildSpellAbility(SpellAbility)`.
+///
+/// For counter effects, this is a no-op since the default targeting and
+/// cost setup from `AbilityFactory` handles everything needed.
+pub fn build_spell_ability(_sa: &mut crate::spellability::SpellAbility) {
+    // No additional configuration needed for Counter effects.
+    // Targeting restrictions (TargetType$ Spell) are handled by the factory.
+}
+
+/// Check if the "would be destroyed" condition is met for a conditional counter.
+/// Mirrors Java's `CounterEffect.checkForConditionWouldDestroy(...)`.
+///
+/// Some counter effects have conditions like "Counter target spell if it would
+/// destroy a permanent you control" (e.g. Rebuff the Wicked). This checks
+/// whether the targeted spell would cause destruction.
+pub fn check_for_condition_would_destroy(
+    game: &crate::game::GameState,
+    sa: &SpellAbility,
+    target_stack_id: u32,
+) -> bool {
+    let entry = match game.stack.find_by_id(target_stack_id) {
+        Some(e) => e,
+        None => return false,
+    };
+
+    let targeted_sa = &entry.spell_ability;
+    let controller = sa.activating_player;
+
+    // Check if the targeted spell is a Destroy effect aimed at our permanents
+    if let Some(api) = targeted_sa.api {
+        match api {
+            crate::ability::api_type::ApiType::Destroy
+            | crate::ability::api_type::ApiType::DestroyAll => {
+                // Check if any of our permanents would be affected
+                if let Some(target_card) = targeted_sa.target_chosen.target_card {
+                    return game.card(target_card).controller == controller;
+                }
+                // For DestroyAll, check the ValidCards filter
+                if let Some(valid) = targeted_sa.params.get("ValidCards") {
+                    let our_permanents =
+                        game.cards_in_zone(forge_foundation::ZoneType::Battlefield, controller);
+                    return our_permanents.iter().any(|&cid| {
+                        crate::ability::ability_utils::matches_valid_cards(
+                            game.card(cid),
+                            valid,
+                            targeted_sa.activating_player,
+                        )
+                    });
+                }
+                return true; // Assume it would destroy something
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
 /// SP$ Counter — remove a targeted spell from the stack and put it into
 /// its owner's graveyard (or exile, per Destination$ if present).
 ///

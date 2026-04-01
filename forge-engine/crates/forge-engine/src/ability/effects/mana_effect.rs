@@ -4,6 +4,33 @@ use super::{mana_atom_from_produced, EffectContext};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
+/// Build/configure the spell ability after construction.
+/// Mirrors Java's `ManaEffect.buildSpellAbility(SpellAbility)`.
+///
+/// For mana effects, marks the ability as a mana ability if it doesn't
+/// use targeting.
+pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
+    // Mana abilities that don't target are mana abilities (can be activated
+    // any time you need mana, don't use the stack).
+    if !sa.uses_targeting() {
+        sa.is_mana_ability = true;
+    }
+}
+
+/// Handle special mana production types.
+/// Mirrors Java's `ManaEffect.handleSpecialMana(SpellAbility, String)`.
+///
+/// This is a public wrapper around `resolve_special_mana` for structural parity.
+pub fn handle_special_mana(
+    ctx: &mut EffectContext,
+    sa: &crate::spellability::SpellAbility,
+    source_id: crate::ids::CardId,
+    player: crate::ids::PlayerId,
+    special: &str,
+) -> Vec<String> {
+    resolve_special_mana(ctx, sa, source_id, player, special)
+}
+
 /// Resolve DB$ Mana — produce mana as a sub-ability effect.
 /// Mirrors Java's ManaEffect.java for the stack-based resolution path.
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {

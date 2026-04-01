@@ -852,6 +852,35 @@ impl PlayerAgent for CapturingAgent {
         chosen
     }
 
+    fn choose_damage_assignment_order(
+        &mut self,
+        player: PlayerId,
+        attacker: CardId,
+        blockers: &[CardId],
+    ) -> Vec<CardId> {
+        self.inner
+            .choose_damage_assignment_order(player, attacker, blockers)
+    }
+
+    fn assign_combat_damage(
+        &mut self,
+        game: &GameState,
+        player: PlayerId,
+        attacker: CardId,
+        blockers_in_order: &[CardId],
+        defender: Option<forge_engine_core::combat::DefenderId>,
+        damage_to_assign: i32,
+    ) -> Vec<(Option<CardId>, i32)> {
+        self.inner.assign_combat_damage(
+            game,
+            player,
+            attacker,
+            blockers_in_order,
+            defender,
+            damage_to_assign,
+        )
+    }
+
     fn choose_target_player(
         &mut self,
         player: PlayerId,
@@ -1474,6 +1503,9 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         _ => 20, // Constructed and other variants
     };
 
+    // Reset global state for cross-game isolation (matches Java's resetIdCounter)
+    forge_engine_core::spellability::SpellAbility::reset_id_counter();
+
     // Set up game
     let p0 = PlayerId(0);
     let p1 = PlayerId(1);
@@ -1606,17 +1638,36 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
     for &pid in &game.player_order.clone() {
         game.draw_cards(pid, 7);
     }
-    let parity_map = Arc::new(ParityCardMap::from_opening_state(&game));
-
     // Create a SEPARATE agent RNG seeded identically to Java's `new Random(seed)`.
     // This is distinct from the game RNG — both sides create a fresh Random(seed)
     // for agent decisions, ensuring the RNG state matches even though the game
     // RNG is consumed differently by each engine's internals.
+    // IMPORTANT: Must be created BEFORE Leyline placement since Java's
+    // chooseSaToActivateFromOpeningHand consumes this RNG.
     let agent_rng = Rc::new(RefCell::new({
         let mut r = JavaRandom::new(config.seed as i64);
         r.label = "agent";
         r
     }));
+
+    // Leyline mechanic: cards with "MayEffectFromOpeningHand" in hand
+    // may begin the game on the battlefield. Java's DeterministicController
+    // calls ChoiceSpace.pickBool(rng) for each eligible card, consuming RNG.
+    // We must match that consumption pattern for parity.
+    for &pid in &game.player_order.clone() {
+        let hand: Vec<forge_engine_core::ids::CardId> = game.cards_in_zone(forge_foundation::ZoneType::Hand, pid).to_vec();
+        for card_id in hand {
+            if game.card(card_id).get_keyword_cost("MayEffectFromOpeningHand").is_some() {
+                // Java: ChoiceSpace.pickBool(rng) → rng.nextInt(2) == 1
+                let place = agent_rng.borrow_mut().next_int(2) == 1;
+                if place {
+                    game.move_card(card_id, forge_foundation::ZoneType::Battlefield, pid);
+                }
+            }
+        }
+    }
+
+    let parity_map = Arc::new(ParityCardMap::from_opening_state(&game));
 
     // Create deterministic agents — player 0 uses CapturingAgent to collect
     // turn-start snapshots (matching Java's GameEventTurnBegan timing).

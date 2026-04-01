@@ -8,6 +8,20 @@ use super::EffectContext;
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
+/// Configure the spell ability during construction.
+/// Mirrors Java `EarthbendEffect.buildSpellAbility` — sets up targeting to
+/// require "Land.YouCtrl" (a land you control).
+pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
+    use crate::parsing::Params;
+    use crate::spellability::TargetRestrictions;
+
+    // Build target restrictions for "Land.YouCtrl"
+    let params = Params::from_raw("ValidTgts$ Land.YouCtrl | TgtPrompt$ land you control");
+    if let Some(tr) = TargetRestrictions::new(&params) {
+        sa.target_restrictions = Some(tr);
+    }
+}
+
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let num = super::resolve_numeric_svar(ctx.game, sa, "Num", 1).max(0);
 

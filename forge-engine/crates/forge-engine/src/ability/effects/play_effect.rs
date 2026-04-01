@@ -137,6 +137,66 @@ fn push_spell_to_stack(
     crate::agent::notify_all_agents(ctx.agents, event);
 }
 
+/// Create a replacement effect that exiles a card instead of putting it into
+/// the graveyard from the stack. Mirrors Java `PlayEffect.addReplaceGraveyardEffect`.
+///
+/// Used by effects like Flashback, Escape, and similar — when the card would go
+/// to the graveyard after resolving, exile it instead (to the specified zone).
+///
+/// Creates an effect card in the command zone with a `ReplacementEffect` SVar
+/// that the replacement handler intercepts during zone transitions. The effect
+/// is removed at end of turn.
+pub fn add_replace_graveyard_effect(
+    ctx: &mut EffectContext,
+    card_id: CardId,
+    _host_card: CardId,
+    sa: &SpellAbility,
+    zone: &str,
+) {
+    let controller = sa.activating_player;
+
+    // Create a minimal effect card
+    let effect_card = crate::card::Card::new(
+        CardId(0),
+        "ReplaceGraveyard Effect".to_string(),
+        controller,
+        forge_foundation::CardTypeLine::default(),
+        forge_foundation::ManaCost::no_cost(),
+        forge_foundation::ColorSet::COLORLESS,
+        None,
+        None,
+        vec![],
+        vec![],
+    );
+    let effect_id = ctx.game.create_card(effect_card);
+
+    // Remember the card this effect applies to
+    ctx.game.card_mut(effect_id).remembered_cards.push(card_id);
+
+    // Store the replacement effect description:
+    // "If this card would go to graveyard from the stack, put it into <zone> instead"
+    let dest_zone = if zone.is_empty() { "Exile" } else { zone };
+    ctx.game.card_mut(effect_id).set_s_var(
+        "ReplacementEffect",
+        format!(
+            "Event$ Moved | ValidCard$ Card.IsRemembered | Origin$ Stack | Destination$ Graveyard | Description$ If that card would be put into your graveyard this turn, exile it instead."
+        ),
+    );
+    ctx.game.card_mut(effect_id).set_s_var(
+        "ReplacementDestination",
+        dest_zone.to_string(),
+    );
+
+    // Move to command zone
+    ctx.game
+        .move_card(effect_id, ZoneType::Command, controller);
+
+    // Mark for end-of-turn cleanup
+    ctx.game
+        .card_mut(effect_id)
+        .set_s_var("ExileAtEndOfTurn", "True".to_string());
+}
+
 // ── Madness path ──────────────────────────────────────────────────────
 
 fn resolve_madness_play(ctx: &mut EffectContext, sa: &SpellAbility, card_id: CardId) {

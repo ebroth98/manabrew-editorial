@@ -229,6 +229,7 @@ pub struct ParityReport {
 #[serde(rename_all = "snake_case")]
 pub enum MatchupStatus {
     Pass,
+    Skipped,
     Fail,
     Error,
 }
@@ -244,6 +245,7 @@ pub struct MatchupResult {
     pub divergence_count: usize,
     pub first_divergence: Option<Divergence>,
     pub error_message: Option<String>,
+    pub skip_reason: Option<String>,
     /// Full Rust-side game trace text, attached for failed matchups.
     pub trace: Option<String>,
     /// Full Java-side game trace text, attached for failed matchups.
@@ -261,6 +263,7 @@ pub struct MatchupResult {
 pub struct MatrixReport {
     pub total_matchups: usize,
     pub passed: usize,
+    pub skipped: usize,
     pub failed: usize,
     pub errors: usize,
     pub seeds: Vec<u64>,

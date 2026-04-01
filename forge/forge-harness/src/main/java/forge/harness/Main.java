@@ -312,8 +312,9 @@ public final class Main {
         rules.setAppliedVariants(appliedVariants);
         rules.setSimTimeout(120);
 
-        // Reset RNG for this game — fresh seed each time for reproducibility
+        // Reset global state for cross-game isolation in multi-game batches
         forge.util.MyRandom.setRandom(new Random(seed));
+        ParityReset.resetAllIdCounters();
 
         // Create a shared Random for agent decisions, seeded identically to
         // the Rust side's JavaRandom(seed). Both players share this instance

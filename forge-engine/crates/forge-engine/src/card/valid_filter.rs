@@ -141,7 +141,33 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
         // Split compound qualifiers on '+' (e.g. "Self+kicked" → ["Self", "kicked"])
         let sub_parts: Vec<&str> = qualifier.split('+').collect();
         for sub in &sub_parts {
-            let sub_lower = sub.to_ascii_lowercase();
+            // Handle "!" prefix as negation (e.g. "!token" → "nontoken")
+            let (negated, raw) = if let Some(stripped) = sub.strip_prefix('!') {
+                (true, stripped)
+            } else {
+                (false, *sub)
+            };
+            let sub_lower = raw.to_ascii_lowercase();
+            // If negated, invert the boolean result of the positive match.
+            // "!token" is equivalent to "nontoken", "!Creature" to "nonCreature", etc.
+            if negated {
+                let positive_match = match sub_lower.as_str() {
+                    "token" => card.is_token,
+                    "creature" => card.is_creature(),
+                    "land" => card.is_land(),
+                    "artifact" => card.type_line.is_artifact(),
+                    "enchantment" => card.type_line.is_enchantment(),
+                    "legendary" => card.type_line.is_legendary(),
+                    _ => {
+                        // Try subtype match
+                        card.type_line.has_subtype(raw)
+                    }
+                };
+                if positive_match {
+                    return false;
+                }
+                continue;
+            }
             match sub_lower.as_str() {
                 "self" => {
                     if card.id != source.id {
@@ -165,6 +191,11 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                 }
                 "oppctrl" | "opponentctrl" | "opponent" => {
                     if card.controller == source.controller {
+                        return false;
+                    }
+                }
+                "oppown" | "opponentown" => {
+                    if card.owner == source.controller {
                         return false;
                     }
                 }
@@ -225,6 +256,26 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                 }
                 "colorless" => {
                     if !card.color.is_colorless() {
+                        return false;
+                    }
+                }
+                "inzonebattlefield" => {
+                    if card.zone != forge_foundation::ZoneType::Battlefield {
+                        return false;
+                    }
+                }
+                "inzonegraveyard" => {
+                    if card.zone != forge_foundation::ZoneType::Graveyard {
+                        return false;
+                    }
+                }
+                "inzonehand" => {
+                    if card.zone != forge_foundation::ZoneType::Hand {
+                        return false;
+                    }
+                }
+                "inzoneexile" => {
+                    if card.zone != forge_foundation::ZoneType::Exile {
                         return false;
                     }
                 }
@@ -294,11 +345,29 @@ fn matches_type_and_qualifiers(filter: &str, card: &Card, source: &Card) -> bool
                             return false;
                         }
                     } else if !sub.is_empty() {
-                        // Fall through: check as creature subtype (Wall, Zombie, etc.)
-                        // Mirrors card_has_property behavior: unrecognized qualifiers
-                        // are checked against the card's type_line subtypes.
-                        if !card.type_line.has_subtype(sub) {
-                            return false;
+                        // Color source check: "RedSource", "WhiteSource", "BlackSource", etc.
+                        // Mirrors Java ForgeScript.cardStateHasProperty: strip "Source" suffix,
+                        // then check card color. Also handles "nonRedSource" via the non- prefix above.
+                        let color_name = if sub.ends_with("Source") {
+                            &sub[..sub.len() - 6]
+                        } else {
+                            sub
+                        };
+                        if let Some(color) = Color::from_name(&color_name.to_lowercase()) {
+                            if !card.color.has_color(color) {
+                                return false;
+                            }
+                        } else if color_name.eq_ignore_ascii_case("Colorless") {
+                            if !card.color.is_colorless() {
+                                return false;
+                            }
+                        } else {
+                            // Fall through: check as creature subtype (Wall, Zombie, etc.)
+                            // Mirrors card_has_property behavior: unrecognized qualifiers
+                            // are checked against the card's type_line subtypes.
+                            if !card.type_line.has_subtype(sub) {
+                                return false;
+                            }
                         }
                     }
                 }

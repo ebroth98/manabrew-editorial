@@ -75,6 +75,9 @@ impl GameLoop {
                     continue;
                 }
 
+                // NonStackingEffect is an AI hint in Java (AiController), not a game rule.
+                // Do NOT filter here — let the agent decide whether to cast duplicates.
+
                 // Aura targeting check: don't show auras as playable if no valid target exists.
                 if card.type_line.has_subtype("Aura") {
                     if let Some(ref tr) = cast_sa.target_restrictions {

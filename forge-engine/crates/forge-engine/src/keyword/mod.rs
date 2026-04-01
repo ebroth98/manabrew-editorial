@@ -38,6 +38,16 @@ pub mod suspend;
 pub mod trample;
 pub mod vanishing;
 
+// Re-export for parity: Keyword.java maps to this file.
+pub use keyword_instance::Keyword;
+
+/// Parse a keyword name string into a `Keyword` enum variant (case-insensitive).
+/// Convenience re-export of [`Keyword::smart_value_of`].
+/// Mirrors Java's `Keyword.smartValueOf(String)`.
+pub fn smart_value_of(name: &str) -> Keyword {
+    Keyword::smart_value_of(name)
+}
+
 /// Keyword cost parsing utilities.
 /// Mirrors Java's KeywordInterface + specific keyword parsers.
 

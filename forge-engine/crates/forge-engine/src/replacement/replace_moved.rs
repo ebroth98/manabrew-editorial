@@ -68,33 +68,18 @@ pub fn execute(
     mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
     mut runtime: Option<&mut ReplacementRuntime<'_>>,
 ) -> ReplacementResult {
-    if !matches!(event, ReplacementEvent::Moved { .. }) {
-        return ReplacementResult::NotReplaced;
-    }
-    let mut replace_with_failed = false;
-    if let Some(replace_with) = effect.params.get(keys::REPLACE_WITH) {
-        if execute_replace_with(
-            replace_with,
-            game,
-            source_card_id,
-            event,
-            agents.as_deref_mut(),
-            runtime.as_deref_mut(),
-        ) {
-            if let Some(result) = effect.params.get("ReplacementResult") {
-                return match result {
-                    "Replaced" => ReplacementResult::Replaced,
-                    "NotReplaced" => ReplacementResult::NotReplaced,
-                    "Prevented" => ReplacementResult::Prevented,
-                    "Skipped" => ReplacementResult::Skipped,
-                    _ => ReplacementResult::Updated,
-                };
-            }
-            return ReplacementResult::Updated;
-        }
-        replace_with_failed = true;
-    }
-    if let Some(new_dest) = effect.params.get(keys::NEW_DESTINATION) {
+    let destination = match event {
+        ReplacementEvent::Moved { destination, .. } => destination,
+        _ => return ReplacementResult::NotReplaced,
+    };
+    // Check NewDestination$ first (explicit redirect), then ReplaceWith$ (common alias).
+    // Rest in Peace uses "ReplaceWith$ Exile", while other cards use "NewDestination$ Exile".
+    let redirect = effect
+        .params
+        .get(keys::NEW_DESTINATION)
+        .or_else(|| effect.params.get(keys::REPLACE_WITH));
+
+    if let Some(new_dest) = redirect {
         let new_zone = match new_dest.trim() {
             "Exile" => Some(ZoneType::Exile),
             "Graveyard" => Some(ZoneType::Graveyard),
@@ -111,8 +96,19 @@ pub fn execute(
             return ReplacementResult::Updated;
         }
     }
-    if replace_with_failed {
-        return ReplacementResult::NotReplaced;
+    // If the redirect value wasn't a zone name, try executing it as an SVar spell ability.
+    if let Some(replace_with_key) = effect.params.get(keys::REPLACE_WITH) {
+        let succeeded = execute_replace_with(
+            replace_with_key,
+            game,
+            source_card_id,
+            event,
+            agents,
+            runtime,
+        );
+        if !succeeded {
+            return ReplacementResult::NotReplaced;
+        }
     }
     ReplacementResult::Replaced
 }

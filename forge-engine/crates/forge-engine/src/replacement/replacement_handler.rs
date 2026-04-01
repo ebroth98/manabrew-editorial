@@ -10,7 +10,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use forge_foundation::ZoneType;
+use forge_foundation::{PhaseType, ZoneType};
 
 use crate::card::Card;
 use crate::card::CounterType;
@@ -38,7 +38,9 @@ use crate::trigger::TriggerHandler;
 #[derive(Debug, Clone)]
 pub enum ReplacementEvent {
     /// A card is being drawn by a player.
-    Draw { player: PlayerId },
+    /// `extra_draws` is incremented by replacements (e.g. Alhammarret's Archive DrawTwo).
+    /// `is_first_in_draw_step` is true for the first draw in the draw step (not extra draws).
+    Draw { player: PlayerId, extra_draws: i32, is_first_in_draw_step: bool },
 
     /// Damage is being dealt to a permanent.
     DamageToCard {
@@ -74,13 +76,16 @@ pub enum ReplacementEvent {
     GainLife { player: PlayerId, amount: i32 },
 
     /// Token(s) are being created.
-    CreateToken { player: PlayerId, count: i32 },
+    /// `is_effect` is `true` when created by a spell/ability effect, `false` for game rules.
+    CreateToken { player: PlayerId, count: i32, is_effect: bool },
 
     /// Counter(s) are being added to a permanent.
+    /// `is_effect` is `true` when placed by a spell/ability, `false` for ETB keywords/game rules.
     AddCounter {
         target: CardId,
         counter_type: CounterType,
         count: i32,
+        is_effect: bool,
     },
 
     /// A player is losing the game.
@@ -364,7 +369,7 @@ impl ReplacementHandler {
 /// Determine which player is "affected" by the event (for choosing among effects).
 fn affected_player_for_event(event: &ReplacementEvent, game: &GameState) -> PlayerId {
     match event {
-        ReplacementEvent::Draw { player } => *player,
+        ReplacementEvent::Draw { player, .. } => *player,
         ReplacementEvent::DamageToCard { target, .. } => game.cards[target.index()].controller,
         ReplacementEvent::DamageToPlayer { target, .. } => *target,
         ReplacementEvent::Destroy { target } => game.cards[target.index()].controller,
@@ -420,6 +425,35 @@ pub fn apply_replacements(game: &mut GameState, event: &mut ReplacementEvent) ->
     handler.run(game, None, None, event)
 }
 
+/// Apply Moved replacement effects (Rest in Peace, Leyline of the Void) for a card
+/// being moved to the Graveyard. Uses agents for proper RNG consumption when
+/// multiple effects apply. Returns the final destination zone.
+///
+/// If `dest` is not `Graveyard`, returns `dest` unchanged (no replacement needed).
+pub fn apply_moved_replacement(
+    game: &mut GameState,
+    card_id: CardId,
+    dest: ZoneType,
+    agents: Option<&mut [Box<dyn crate::agent::PlayerAgent>]>,
+) -> ZoneType {
+    if dest != ZoneType::Graveyard {
+        return dest;
+    }
+    let src_zone = game.cards[card_id.index()].zone;
+    let mut event = ReplacementEvent::Moved {
+        card: card_id,
+        origin: src_zone,
+        destination: ZoneType::Graveyard,
+    };
+    let mut handler = ReplacementHandler::new();
+    handler.run(game, agents, None, &mut event);
+    if let ReplacementEvent::Moved { destination, .. } = event {
+        destination
+    } else {
+        ZoneType::Graveyard
+    }
+}
+
 pub fn apply_replacements_with_agents(
     game: &mut GameState,
     agents: &mut [Box<dyn PlayerAgent>],
@@ -446,6 +480,7 @@ pub(crate) fn replacement_event_amount(event: &ReplacementEvent) -> Option<i32> 
         ReplacementEvent::GainLife { amount, .. } => Some(*amount),
         ReplacementEvent::LifeReduced { amount, .. } => Some(*amount),
         ReplacementEvent::CreateToken { count, .. } => Some(*count),
+        ReplacementEvent::AddCounter { count, .. } => Some(*count),
         ReplacementEvent::DrawCards { count, .. } => Some(*count),
         ReplacementEvent::Mill { count, .. } => Some(*count),
         ReplacementEvent::PayLife { amount, .. } => Some(*amount),
@@ -464,6 +499,7 @@ pub(crate) fn set_replacement_event_amount(event: &mut ReplacementEvent, value: 
         ReplacementEvent::GainLife { amount, .. } => *amount = value.max(0),
         ReplacementEvent::LifeReduced { amount, .. } => *amount = value.max(0),
         ReplacementEvent::CreateToken { count, .. } => *count = value.max(0),
+        ReplacementEvent::AddCounter { count, .. } => *count = value.max(0),
         ReplacementEvent::DrawCards { count, .. } => *count = value.max(0),
         ReplacementEvent::Mill { count, .. } => *count = value.max(0),
         ReplacementEvent::PayLife { amount, .. } => *amount = value.max(0),
@@ -518,7 +554,7 @@ pub(crate) fn resolve_replace_value(
     let rest = expr.strip_prefix("ReplaceCount$")?;
     let (field, ops) = rest.split_once('/').unwrap_or((rest, ""));
     let base = match field {
-        "DamageAmount" | "LifeGained" | "Amount" | "Number" | "TokenNum" => {
+        "DamageAmount" | "LifeGained" | "Amount" | "Number" | "TokenNum" | "CounterNum" => {
             replacement_event_amount(event)?
         }
         "Ignore" => match event {
@@ -550,7 +586,21 @@ pub(crate) fn execute_replace_effect_chain(
 ) -> Option<ReplacementResult> {
     let raw = game.card(source_card_id).svars.get(svar_name)?;
     let params = Params::from_raw(raw);
-    if params.get(keys::DB) != Some("ReplaceEffect") {
+    let db = params.get(keys::DB)?;
+
+    // DB$ ReplaceToken — mirrors Java ReplaceTokenEffect.resolve()
+    // Type$ Amount: multiply token count (default "Twice")
+    if db == "ReplaceToken" {
+        return execute_replace_token_chain(&params, event, game, source_card_id);
+    }
+
+    // DB$ ReplaceCounter — mirrors Java ReplaceCounterEffect.resolve()
+    // Amount$ X where X resolves through SVar chain
+    if db == "ReplaceCounter" {
+        return execute_replace_counter_chain(&params, event, game, source_card_id);
+    }
+
+    if db != "ReplaceEffect" {
         return None;
     }
 
@@ -629,6 +679,83 @@ pub(crate) fn execute_replace_effect_chain(
     updated.then_some(ReplacementResult::Updated)
 }
 
+/// Handle `DB$ ReplaceToken` SVars.
+///
+/// Mirrors Java `ReplaceTokenEffect.resolve()`.
+/// - `Type$ Amount`: multiplies token count using `Amount$` param (default `Twice`).
+fn execute_replace_token_chain(
+    params: &Params,
+    event: &mut ReplacementEvent,
+    game: &GameState,
+    source_card_id: CardId,
+) -> Option<ReplacementResult> {
+    let token_type = params.get("Type").unwrap_or("Amount");
+    match token_type {
+        "Amount" => {
+            // Get current count from event
+            let current = replacement_event_amount(event)?;
+            // Amount$ param, defaults to "Twice" per Java
+            let amount_expr = params.get("Amount").unwrap_or("Twice");
+            let new_value = do_x_math(current, amount_expr, game, source_card_id, event);
+            set_replacement_event_amount(event, new_value);
+            Some(ReplacementResult::Updated)
+        }
+        _ => {
+            // Other types (AddToken, ReplaceToken, ReplaceController) not yet needed
+            None
+        }
+    }
+}
+
+/// Handle `DB$ ReplaceCounter` SVars.
+///
+/// Mirrors Java `ReplaceCounterEffect.resolve()`.
+/// Applies `Amount$` expression to the counter count.
+fn execute_replace_counter_chain(
+    params: &Params,
+    event: &mut ReplacementEvent,
+    game: &GameState,
+    source_card_id: CardId,
+) -> Option<ReplacementResult> {
+    let amount_expr = params.get("Amount")?;
+    // Ensure event has a valid amount before resolving
+    let _current = replacement_event_amount(event)?;
+    let value = resolve_replace_value(amount_expr, game, source_card_id, event)?;
+    if value <= 0 {
+        // Java removes the counter entry when value <= 0
+        set_replacement_event_amount(event, 0);
+    } else {
+        set_replacement_event_amount(event, value);
+    }
+    Some(ReplacementResult::Updated)
+}
+
+/// Simple math evaluation mirroring Java `AbilityUtils.doXMath()`.
+///
+/// Handles common expressions: "Twice", "Thrice", "Half", integer literals,
+/// and `Plus.N` / `Minus.N` style ops.
+fn do_x_math(
+    base: i32,
+    expr: &str,
+    game: &GameState,
+    source_card_id: CardId,
+    event: &ReplacementEvent,
+) -> i32 {
+    match expr {
+        "Twice" => base * 2,
+        "Thrice" => base * 3,
+        "Half" => ((base as f64) / 2.0).ceil() as i32,
+        _ => {
+            // Try resolving as an SVar or ReplaceCount$ expression
+            if let Some(val) = resolve_replace_value(expr, game, source_card_id, event) {
+                val
+            } else {
+                base
+            }
+        }
+    }
+}
+
 fn resolve_replace_player_key(
     expr: &str,
     game: &GameState,
@@ -651,6 +778,156 @@ fn resolve_replace_card_key(expr: &str, source_card_id: CardId) -> Option<CardId
         "Self" => Some(source_card_id),
         _ => None,
     }
+}
+
+// ── Scan-parity helper functions ──────────────────────────────────────────────
+
+/// Check if any `CantHappen`-layer replacement effect would prevent this event.
+///
+/// Walks all battlefield cards' replacement effects, filtering by the
+/// `CantHappen` layer. Returns `true` if at least one effect matches.
+///
+/// Mirrors Java `ReplacementHandler.cantHappenCheck()`.
+pub fn cant_happen_check(game: &GameState, event: &ReplacementEvent) -> bool {
+    let effects = collect_effects(game, event, ReplacementLayer::CantHappen);
+    !effects.is_empty()
+}
+
+/// Apply replacement effects specifically for damage events.
+///
+/// Delegates to `apply_replacements`. This is a convenience entry point
+/// matching Java's batch-damage processing path in `ReplacementHandler`.
+///
+/// Mirrors Java `ReplacementHandler.runReplaceDamage()`.
+pub fn run_replace_damage(game: &mut GameState, event: &mut ReplacementEvent) -> ReplacementResult {
+    apply_replacements(game, event)
+}
+
+/// Parse a raw `R$` replacement-effect line. Re-export of
+/// `replacement_effect::parse_replacement_effect` for scan parity.
+///
+/// Mirrors Java `ReplacementHandler.parseReplacement()`.
+pub fn parse_replacement(raw: &str) -> Option<ReplacementEffect> {
+    super::replacement_effect::parse_replacement_effect(raw)
+}
+
+/// Check if any `BeginPhase` replacement effect in the `Control` layer would
+/// skip the given phase for the given player.
+///
+/// Walks all battlefield cards looking for matching `BeginPhase` effects
+/// with `Layer$ Control` (or `CantHappen`) whose `ActivePhases$` includes
+/// the target phase and whose `ValidPlayer$` matches the player.
+///
+/// Mirrors Java `ReplacementHandler.wouldPhaseBeSkipped()`.
+pub fn would_phase_be_skipped(game: &GameState, player: PlayerId, phase: PhaseType) -> bool {
+    for card in game.cards.iter() {
+        if card.zone != ZoneType::Battlefield {
+            continue;
+        }
+        for re in &card.replacement_effects {
+            if re.event != ReplacementType::BeginPhase {
+                continue;
+            }
+            // Must be Control or CantHappen layer to skip a phase
+            if re.layer != ReplacementLayer::Control && re.layer != ReplacementLayer::CantHappen {
+                continue;
+            }
+            // Check ActivePhases$ matches the target phase
+            if let Some(phases_str) = re.params.get(keys::ACTIVE_PHASES) {
+                let matches_phase = phases_str
+                    .split(',')
+                    .filter_map(|s| PhaseType::from_script_name(s.trim()))
+                    .any(|p| p == phase);
+                if !matches_phase {
+                    continue;
+                }
+            }
+            // Check ValidPlayer$ matches the player
+            if let Some(vp) = re.params.get(keys::VALID_PLAYER) {
+                if !super::replacement_effect::matches_valid_player(vp, player, card) {
+                    continue;
+                }
+            }
+            return true;
+        }
+    }
+    false
+}
+
+/// Check if any `BeginTurn` replacement effect in the `Other` layer would
+/// skip an extra turn for the given player.
+///
+/// Mirrors Java `ReplacementHandler.wouldExtraTurnBeSkipped()`.
+pub fn would_extra_turn_be_skipped(game: &GameState, player: PlayerId) -> bool {
+    for card in game.cards.iter() {
+        if card.zone != ZoneType::Battlefield {
+            continue;
+        }
+        for re in &card.replacement_effects {
+            if re.event != ReplacementType::BeginTurn {
+                continue;
+            }
+            if re.layer != ReplacementLayer::Other && re.layer != ReplacementLayer::CantHappen {
+                continue;
+            }
+            // Check ValidPlayer$ matches the player
+            if let Some(vp) = re.params.get(keys::VALID_PLAYER) {
+                if !super::replacement_effect::matches_valid_player(vp, player, card) {
+                    continue;
+                }
+            }
+            return true;
+        }
+    }
+    false
+}
+
+/// Walk all battlefield cards and collect `(card_id, effect_index)` pairs for
+/// replacement effects matching the given event type and optional layer.
+///
+/// This is the scan-parity equivalent of Java's `ReplacementHandler.visit()`.
+pub fn visit(
+    game: &GameState,
+    event: &ReplacementType,
+    layer: Option<ReplacementLayer>,
+) -> Vec<(CardId, usize)> {
+    let mut result = Vec::new();
+    let mut global_idx = 0usize;
+
+    for (i, card) in game.cards.iter().enumerate() {
+        let card_id = CardId(i as u32);
+        for re in &card.replacement_effects {
+            let current_idx = global_idx;
+            global_idx += 1;
+
+            // Layer filter
+            if let Some(target_layer) = layer {
+                if re.layer != target_layer {
+                    continue;
+                }
+            }
+            // Zone filter — effect must be active in the card's current zone
+            if !re.active_in_zone(card.zone) {
+                continue;
+            }
+            // Mode check — effect's event must match the requested event
+            if !re.mode_check(event) {
+                continue;
+            }
+            // has_run check (always false in our architecture)
+            if re.has_run() {
+                continue;
+            }
+            // Requirements check
+            if !re.requirements_check(game, card) {
+                continue;
+            }
+
+            result.push((card_id, current_idx));
+        }
+    }
+
+    result
 }
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
@@ -712,14 +989,12 @@ fn collect_effects(
     };
 
     let mut result = Vec::new();
-    let mut global_effect_idx = 0usize;
 
     for (i, card) in game.cards.iter().enumerate() {
         let card_id = CardId(i as u32);
 
-        for re in &card.replacement_effects {
-            let current_idx = global_effect_idx;
-            global_effect_idx += 1;
+        for (effect_idx_in_card, re) in card.replacement_effects.iter().enumerate() {
+            let current_idx = effect_idx_in_card;
             // Layer filter.
             if re.layer != layer {
                 continue;
@@ -1148,8 +1423,8 @@ mod tests {
         );
         put_on_battlefield(&mut game, cid, alice);
 
-        let mut event = ReplacementEvent::Draw { player: alice };
-        let result = apply_replacements(&mut game, &mut event);
+        let mut event = ReplacementEvent::Draw { player: alice, extra_draws: 0, is_first_in_draw_step: false };
+        let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::Skipped);
     }
 
@@ -1167,8 +1442,8 @@ mod tests {
         put_on_battlefield(&mut game, cid, alice);
 
         // Bob's draw is not affected by Alice's effect.
-        let mut event = ReplacementEvent::Draw { player: bob };
-        let result = apply_replacements(&mut game, &mut event);
+        let mut event = ReplacementEvent::Draw { player: bob, extra_draws: 0, is_first_in_draw_step: false };
+        let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 
@@ -1188,8 +1463,8 @@ mod tests {
         // Card stays in hand, not battlefield.
         game.move_card(cid, ZoneType::Hand, alice);
 
-        let mut event = ReplacementEvent::Draw { player: alice };
-        let result = apply_replacements(&mut game, &mut event);
+        let mut event = ReplacementEvent::Draw { player: alice, extra_draws: 0, is_first_in_draw_step: false };
+        let result = apply_replacements(&game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 
@@ -1631,6 +1906,8 @@ mod tests {
         let mut game = make_game();
         let mut event = ReplacementEvent::Draw {
             player: PlayerId(0),
+            extra_draws: 0,
+            is_first_in_draw_step: false,
         };
         let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);

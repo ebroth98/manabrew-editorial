@@ -5,6 +5,10 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::parsing::{keys, Params};
+
+use super::replacement_effect::{ReplacementEffect, ReplacementLayer};
+
 /// The type of game event a replacement effect intercepts.
 ///
 /// Mirrors Java `ReplacementType` enum (all 36 variants).
@@ -134,6 +138,50 @@ pub enum ReplacementType {
 }
 
 impl ReplacementType {
+    /// Alias for `from_event_str`. Mirrors Java `ReplacementType.smartValueOf()`.
+    pub fn smart_value_of(value: &str) -> Self {
+        Self::from_event_str(value)
+    }
+
+    /// Factory function that creates a `ReplacementEffect` from a `ReplacementType` and params.
+    ///
+    /// Parses `ActiveZones$` and `Layer$` from the given params, then assembles a
+    /// `ReplacementEffect`. Mirrors the Java constructor path
+    /// `ReplacementType.createReplacementEffect(Map<String,String>)`.
+    pub fn create_replacement(event: &ReplacementType, params: &Params) -> ReplacementEffect {
+        use forge_foundation::ZoneType;
+
+        let layer = params
+            .get(keys::LAYER)
+            .and_then(|s| ReplacementLayer::from_layer_str(s))
+            .unwrap_or(ReplacementLayer::Other);
+
+        let active_zones = params
+            .get(keys::ACTIVE_ZONES)
+            .map(|s| {
+                s.split(|c: char| c == ',' || c == ' ')
+                    .filter_map(|tok| match tok.trim() {
+                        "Battlefield" => Some(ZoneType::Battlefield),
+                        "Graveyard" => Some(ZoneType::Graveyard),
+                        "Hand" => Some(ZoneType::Hand),
+                        "Library" => Some(ZoneType::Library),
+                        "Exile" => Some(ZoneType::Exile),
+                        "Command" => Some(ZoneType::Command),
+                        _ => None,
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+
+        ReplacementEffect {
+            event: event.clone(),
+            layer,
+            params: params.clone(),
+            active_zones,
+            suppressed: false,
+        }
+    }
+
     /// Parse an `Event$` value string into a `ReplacementType`.
     /// Mirrors Java `ReplacementType.smartValueOf()`.
     pub fn from_event_str(s: &str) -> Self {

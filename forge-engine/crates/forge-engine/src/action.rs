@@ -6,7 +6,7 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::agent::PlayerAgent;
 use crate::replacement::replacement_handler::{
-    apply_replacements, apply_replacements_with_agents, apply_replacements_with_agents_and_runtime,
+    apply_replacements, apply_replacements_with_agents,
     ReplacementEvent, ReplacementRuntime,
 };
 use crate::replacement::GameLossReason;
@@ -27,8 +27,11 @@ impl GameState {
     }
 
     /// Move a card from its current zone to a new zone.
+    /// Move a card to a new zone. For Graveyard destinations, checks for zone-redirect
+    /// replacement effects (Rest in Peace, Leyline of the Void) and redirects to the
+    /// correct zone. Use `move_card_final` to skip the replacement check.
     pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, None, None, true);
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, true);
     }
 
     pub fn move_card_with_agents(
@@ -38,7 +41,7 @@ impl GameState {
         dest_owner: PlayerId,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), None, true);
+        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true);
     }
 
     pub fn move_card_with_agents_and_replacement_runtime(
@@ -49,14 +52,7 @@ impl GameState {
         agents: &mut [Box<dyn PlayerAgent>],
         runtime: &mut ReplacementRuntime<'_>,
     ) {
-        self.move_card_internal(
-            card_id,
-            dest_zone,
-            dest_owner,
-            Some(agents),
-            Some(runtime),
-            true,
-        );
+        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true);
     }
 
     fn move_card_without_replacement(
@@ -65,7 +61,7 @@ impl GameState {
         dest_zone: ZoneType,
         dest_owner: PlayerId,
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, None, None, false);
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, false);
     }
 
     fn move_card_internal(
@@ -73,8 +69,7 @@ impl GameState {
         card_id: CardId,
         dest_zone: ZoneType,
         dest_owner: PlayerId,
-        agents: Option<&mut [Box<dyn PlayerAgent>]>,
-        runtime: Option<&mut ReplacementRuntime<'_>>,
+        mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
         apply_move_replacement: bool,
     ) {
         let (src_zone, src_owner, was_permanent, was_land, is_token) = {
@@ -94,12 +89,8 @@ impl GameState {
         };
         let tapped_before_replacement = self.card(card_id).tapped;
         if apply_move_replacement {
-            if let Some(agents) = agents {
-                if let Some(runtime) = runtime {
-                    apply_replacements_with_agents_and_runtime(self, agents, runtime, &mut moved_event);
-                } else {
-                    apply_replacements_with_agents(self, agents, &mut moved_event);
-                }
+            if let Some(agents) = agents.as_deref_mut() {
+                apply_replacements_with_agents(self, agents, &mut moved_event);
             } else {
                 apply_replacements(self, &mut moved_event);
             }
@@ -223,7 +214,28 @@ impl GameState {
                         &self.cards[card_id.index()],
                         &ct,
                     ) {
-                        self.cards[card_id.index()].add_counter(&ct, amount);
+                        // Fire AddCounter replacement (Hardened Scales, Doubling Season)
+                        // ETB counters are treated as effect-based in Java (EffectOnly=true
+                        // is set when entering the battlefield in GameAction.moveToPlay).
+                        let mut add_event = ReplacementEvent::AddCounter {
+                            target: card_id,
+                            counter_type: ct.clone(),
+                            count: amount,
+                            is_effect: true,
+                        };
+                        if let Some(agents) = agents.as_deref_mut() {
+                            apply_replacements_with_agents(self, agents, &mut add_event);
+                        } else {
+                            apply_replacements(self, &mut add_event);
+                        }
+                        let final_amount = if let ReplacementEvent::AddCounter { count, .. } = add_event {
+                            count
+                        } else {
+                            amount
+                        };
+                        if final_amount > 0 {
+                            self.cards[card_id.index()].add_counter(&ct, final_amount);
+                        }
                     }
                 }
                 // Apply +1/+1 counters from mana that adds counters (Guildmages' Forum, Opal Palace)
@@ -235,7 +247,27 @@ impl GameState {
                         &self.cards[card_id.index()],
                         &ct,
                     ) {
-                        self.cards[card_id.index()].add_counter(&ct, etb_p1p1);
+                        // Fire AddCounter replacement (Hardened Scales, Doubling Season)
+                        // ETB counters from mana are treated as effect-based in Java.
+                        let mut add_event = ReplacementEvent::AddCounter {
+                            target: card_id,
+                            counter_type: ct.clone(),
+                            count: etb_p1p1,
+                            is_effect: true,
+                        };
+                        if let Some(agents) = agents.as_deref_mut() {
+                            apply_replacements_with_agents(self, agents, &mut add_event);
+                        } else {
+                            apply_replacements(self, &mut add_event);
+                        }
+                        let final_count = if let ReplacementEvent::AddCounter { count, .. } = add_event {
+                            count
+                        } else {
+                            etb_p1p1
+                        };
+                        if final_count > 0 {
+                            self.cards[card_id.index()].add_counter(&ct, final_count);
+                        }
                     }
                     self.cards[card_id.index()].etb_counters_p1p1 = 0;
                 }
@@ -419,16 +451,43 @@ impl GameState {
     /// Runs replacement effects (e.g. damage prevention) before applying.
     /// Mirrors Java `GameAction.addDamage()` calling `ReplacementHandler.run()`.
     pub fn deal_damage_to_card(&mut self, target: CardId, amount: i32) {
+        self.deal_damage_to_card_from(target, amount, None, false);
+    }
+
+    /// Deal damage to a card with source tracking for replacement effects.
+    pub fn deal_damage_to_card_from(
+        &mut self,
+        target: CardId,
+        amount: i32,
+        source: Option<CardId>,
+        is_combat: bool,
+    ) {
+        self.deal_damage_to_card_from_with_agents(target, amount, source, is_combat, None);
+    }
+
+    /// Deal damage to a card with source tracking and optional agents for RNG parity.
+    pub fn deal_damage_to_card_from_with_agents(
+        &mut self,
+        target: CardId,
+        amount: i32,
+        source: Option<CardId>,
+        is_combat: bool,
+        agents: Option<&mut [Box<dyn crate::agent::PlayerAgent>]>,
+    ) {
         if amount <= 0 {
             return;
         }
         let mut event = ReplacementEvent::DamageToCard {
             target,
             amount,
-            source: None,
-            is_combat: false,
+            source,
+            is_combat,
         };
-        apply_replacements(self, &mut event);
+        if let Some(agents) = agents {
+            apply_replacements_with_agents(self, agents, &mut event);
+        } else {
+            apply_replacements(self, &mut event);
+        }
         if let ReplacementEvent::DamageToCard {
             amount: final_amount,
             ..
@@ -440,7 +499,7 @@ impl GameState {
                 let mut dealt_event = ReplacementEvent::DealtDamage {
                     target,
                     amount: final_amount,
-                    source: None,
+                    source,
                 };
                 apply_replacements(self, &mut dealt_event);
             }
@@ -452,6 +511,32 @@ impl GameState {
     /// Runs replacement effects (e.g. damage prevention) before applying.
     /// Mirrors Java `GameAction.addDamage()` calling `ReplacementHandler.run()`.
     pub fn deal_damage_to_player(&mut self, target: PlayerId, amount: i32) -> i32 {
+        self.deal_damage_to_player_from(target, amount, None, false)
+    }
+
+    /// Deal damage to a player with source tracking for replacement effects.
+    pub fn deal_damage_to_player_from(
+        &mut self,
+        target: PlayerId,
+        amount: i32,
+        source: Option<CardId>,
+        is_combat: bool,
+    ) -> i32 {
+        self.deal_damage_to_player_from_with_agents(target, amount, source, is_combat, None)
+    }
+
+    /// Deal damage to a player with source tracking and optional agents for RNG parity.
+    /// Used by combat damage and spell damage to pass the source card and
+    /// combat flag so replacement effects like Torbran and Furnace of Rath
+    /// can check ValidSource$ and IsCombat$.
+    pub fn deal_damage_to_player_from_with_agents(
+        &mut self,
+        target: PlayerId,
+        amount: i32,
+        source: Option<CardId>,
+        is_combat: bool,
+        agents: Option<&mut [Box<dyn crate::agent::PlayerAgent>]>,
+    ) -> i32 {
         if amount <= 0 {
             return 0;
         }
@@ -463,10 +548,14 @@ impl GameState {
         let mut event = ReplacementEvent::DamageToPlayer {
             target,
             amount,
-            source: None,
-            is_combat: false,
+            source,
+            is_combat,
         };
-        apply_replacements(self, &mut event);
+        if let Some(agents) = agents {
+            apply_replacements_with_agents(self, agents, &mut event);
+        } else {
+            apply_replacements(self, &mut event);
+        }
         if let ReplacementEvent::DamageToPlayer {
             amount: final_amount,
             ..
@@ -737,6 +826,10 @@ impl GameState {
                                 .unwrap_or(&0);
                             let lki_power = self.card(cid).power();
                             let lki_toughness = self.card(cid).toughness();
+                            // Capture LKI counters on the card for SVar resolution
+                            let lki_counters = self.card(cid).counters.clone();
+                            self.card_mut(cid).lki_counters = Some(lki_counters);
+                            self.card_mut(cid).set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
                             crate::ability::effects::emit_zone_trigger_with_lki_counters(
                                 handler,
                                 cid,
@@ -1048,6 +1141,7 @@ impl GameState {
         // Detach from previous host if any
         self.detach(aura_id);
         self.cards[aura_id.index()].attached_to = Some(target_id);
+        self.cards[aura_id.index()].attached_this_turn = true;
         self.cards[target_id.index()].attachments.push(aura_id);
     }
 

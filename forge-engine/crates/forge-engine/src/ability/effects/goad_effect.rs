@@ -5,6 +5,14 @@ use crate::ids::CardId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
+/// End-of-turn revert for goad. Mirrors the `GameCommand.run()` in Java
+/// `GoadEffect` that removes the goaded-by marker when the effect expires.
+pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
+    if game.card(card_id).zone == ZoneType::Battlefield {
+        game.card_mut(card_id).set_goaded_by(None);
+    }
+}
+
 /// `SP$ Goad` — goad target creature(s). Goaded creatures must attack each
 /// combat if able, and can't attack the player who goaded them.
 ///

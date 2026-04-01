@@ -5,6 +5,22 @@ use crate::event::{RunParams, TriggerType};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
+/// End-of-turn revert for control gain. Mirrors the `GameCommand.run()` in Java
+/// `ControlGainEffect` that restores the original controller and removes granted
+/// keywords when the effect duration expires.
+pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
+    if game.card(card_id).zone != ZoneType::Battlefield {
+        return;
+    }
+    // Restore original controller if an EOT controller was set
+    if let Some(original) = game.card(card_id).original_controller_eot {
+        game.change_controller(card_id, original);
+        game.card_mut(card_id).set_original_controller_eot(None);
+    }
+    // Clear any granted keywords that were part of the control-gain effect
+    game.card_mut(card_id).clear_granted_keywords();
+}
+
 /// SP$ ControlGain — gain control of target permanent until end of turn or permanently.
 ///
 /// Mirrors Java's `ControlGainEffect.resolve()`.

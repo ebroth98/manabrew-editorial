@@ -62,6 +62,11 @@ impl JavaRandom {
         result
     }
 
+    /// Equivalent to `java.util.Random.nextBoolean()`.
+    pub fn next_boolean(&mut self) -> bool {
+        self.next(1) != 0
+    }
+
     /// Fisher-Yates shuffle matching `java.util.Collections.shuffle(list, rng)`.
     pub fn shuffle<T>(&mut self, list: &mut [T]) {
         if std::env::var("FORGE_RNG_TRACE").is_ok() {

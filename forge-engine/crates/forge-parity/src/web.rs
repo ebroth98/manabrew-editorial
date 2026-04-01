@@ -210,6 +210,7 @@ pub struct BatchStatus {
     pub total: usize,
     pub completed: usize,
     pub passed: usize,
+    pub skipped: usize,
     pub failed: usize,
     pub errors: usize,
     pub done: bool,
@@ -226,8 +227,12 @@ impl BatchStatus {
     pub fn push_result(&mut self, result: JobResult) {
         self.results.push(result);
         if self.results.len() > Self::MAX_RESULTS {
-            // Remove oldest passing results first to keep failures visible
-            if let Some(pos) = self.results.iter().position(|r| r.status == "pass") {
+            // Remove oldest passing/skipped results first to keep failures visible.
+            if let Some(pos) = self
+                .results
+                .iter()
+                .position(|r| r.status == "pass" || r.status == "skipped")
+            {
                 self.results.remove(pos);
             } else {
                 self.results.remove(0);
@@ -942,6 +947,7 @@ async fn submit_jobs_handler(
         total: total_jobs,
         completed: 0,
         passed: 0,
+        skipped: 0,
         failed: 0,
         errors: 0,
         done: total_jobs == 0,
@@ -1013,6 +1019,7 @@ async fn run_matchup_handler(
         total: 1,
         completed: 0,
         passed: 0,
+        skipped: 0,
         failed: 0,
         errors: 0,
         done: false,

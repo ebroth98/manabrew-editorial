@@ -13,6 +13,77 @@ use crate::replacement::ReplacementResult;
 use crate::spellability::{build_spell_ability, SpellAbility};
 use crate::trigger::handler::TriggerHandler;
 
+/// Build a formatted description for a roll dice effect.
+/// Mirrors Java's `RollDiceEffect.makeFormatedDescription(SpellAbility)`.
+///
+/// Generates a human-readable description of the die roll including the
+/// number of sides and result sub-abilities.
+pub fn make_formated_description(
+    game: &GameState,
+    sa: &SpellAbility,
+) -> String {
+    let source_id = match sa.source {
+        Some(id) => id,
+        None => return "Roll a die.".to_string(),
+    };
+
+    let sides = sa.params.as_i32(crate::parsing::keys::SIDES).unwrap_or(6);
+    let card_name = game.card(source_id).card_name.clone();
+
+    let mut desc = format!("{} — Roll a d{}.", card_name, sides);
+
+    if let Some(result_str) = sa.params.get(crate::parsing::keys::RESULT_SUB_ABILITIES) {
+        desc.push('\n');
+        for entry in result_str.split(',') {
+            let parts: Vec<&str> = entry.splitn(2, ':').collect();
+            if parts.len() == 2 {
+                let threshold = parts[0].trim();
+                let svar_name = parts[1].trim();
+                if let Some(svar_text) = game.card(source_id).svars.get(svar_name) {
+                    let params = crate::parsing::Params::from_raw(svar_text);
+                    let effect_desc = params
+                        .get_cloned(crate::parsing::keys::SPELL_DESCRIPTION)
+                        .unwrap_or_else(|| svar_name.to_string());
+                    desc.push_str(&format!("  {}: {}\n", threshold, effect_desc));
+                }
+            }
+        }
+    }
+
+    desc
+}
+
+/// Roll dice for a specific player.
+/// Mirrors Java's `RollDiceEffect.rollDiceForPlayer(Player, SpellAbility, ...)`.
+///
+/// This is a public wrapper around the internal `roll_for_player` function.
+pub fn roll_dice_for_player(
+    ctx: &mut EffectContext,
+    sa: &SpellAbility,
+    source_id: crate::ids::CardId,
+    player: PlayerId,
+    sides: i32,
+    amount: i32,
+) -> i32 {
+    roll_for_player(ctx, sa, source_id, player, sides, amount)
+}
+
+/// Roll dice for a player specifically to visit attractions.
+/// Mirrors Java's `RollDiceEffect.rollDiceForPlayerToVisitAttractions(Player)`.
+///
+/// Uses the full `roll_to_visit_attractions` function which handles
+/// replacement effects, roll modifiers, and attraction visiting.
+pub fn roll_dice_for_player_to_visit_attractions(
+    game: &mut GameState,
+    trigger_handler: &mut TriggerHandler,
+    rng: &mut (impl crate::game_rng::GameRng + ?Sized),
+    agents: &mut [Box<dyn crate::agent::PlayerAgent>],
+    mana_pools: &mut Vec<crate::mana::ManaPool>,
+    player: PlayerId,
+) {
+    roll_to_visit_attractions(game, trigger_handler, rng, agents, mana_pools, player);
+}
+
 /// `SP$ RollDice` — roll a die and resolve a sub-ability based on the result.
 ///
 /// Mirrors Java's `RollDiceEffect.java`.

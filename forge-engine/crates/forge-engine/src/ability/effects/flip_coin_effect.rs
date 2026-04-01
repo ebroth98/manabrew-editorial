@@ -70,6 +70,83 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 }
 
+/// Flip `amount` coins for a player and return the number of wins.
+/// Mirrors Java `FlipCoinEffect.flipCoins(Player, SpellAbility, int)`.
+///
+/// If the SA has `FlipUntilYouLose$`, keeps flipping until a loss occurs
+/// (CR 705.3). The multiplier for coin-doubling effects (e.g. Krark's Thumb)
+/// is determined by counting the relevant keyword on the player.
+pub fn flip_coins(
+    ctx: &mut EffectContext,
+    flipper: crate::ids::PlayerId,
+    sa: &SpellAbility,
+    amount: i32,
+) -> i32 {
+    let flip_until_lose = sa
+        .params
+        .get("FlipUntilYouLose")
+        .map(|s| s.eq_ignore_ascii_case("True"))
+        .unwrap_or(false);
+
+    // Get flip multiplier (Krark's Thumb: "If you would flip a coin, instead
+    // flip two coins and ignore one.")
+    let multiplier = get_flip_multiplier(ctx, flipper);
+
+    let mut total_wins = 0;
+    let mut won = false;
+
+    loop {
+        for _ in 0..amount {
+            won = flip_single_coin(ctx, flipper, multiplier);
+            if won {
+                total_wins += 1;
+            }
+        }
+        // CR 705.3: repeat if FlipUntilYouLose and the last flip was a win
+        if !flip_until_lose || !won {
+            break;
+        }
+    }
+
+    total_wins
+}
+
+/// Flip a single coin, accounting for the multiplier (multiple flips, pick best).
+fn flip_single_coin(
+    ctx: &mut EffectContext,
+    _flipper: crate::ids::PlayerId,
+    multiplier: i32,
+) -> bool {
+    // With multiplier > 1, flip multiple coins and take the best result.
+    // (Krark's Thumb lets you flip two and pick one.)
+    let mut any_heads = false;
+    for _ in 0..multiplier {
+        let result = ctx.rng.next_int(2) == 0;
+        if result {
+            any_heads = true;
+        }
+    }
+    any_heads
+}
+
+/// Get the flip multiplier for a player. Each instance of "If you would flip
+/// a coin, instead flip two coins and ignore one." doubles the flips.
+/// Mirrors Java `FlipCoinEffect.getFlipMultiplier`.
+fn get_flip_multiplier(ctx: &EffectContext, flipper: crate::ids::PlayerId) -> i32 {
+    let keyword = "If you would flip a coin, instead flip two coins and ignore one.";
+    let count = ctx
+        .game
+        .cards
+        .iter()
+        .filter(|c| {
+            c.zone == forge_foundation::ZoneType::Battlefield
+                && c.controller == flipper
+                && c.keywords.contains_string_ignore_case(keyword)
+        })
+        .count() as u32;
+    1i32 << count
+}
+
 fn resolve_sub_chain(ctx: &mut EffectContext, initial: SpellAbility) {
     let mut cur_opt: Option<SpellAbility> = Some(initial);
     while let Some(cur_sa) = cur_opt {

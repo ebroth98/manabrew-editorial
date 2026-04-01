@@ -439,6 +439,7 @@ impl CombatState {
                             attacker_has_lifelink,
                             attacker_controller,
                             attacker_has_wither || attacker_has_infect_for_creature,
+                        Some(agents),
                         );
                         events.push(CombatDamageEvent {
                             source: attacker_id,
@@ -464,6 +465,7 @@ impl CombatState {
                             attacker_controller,
                             attacker_has_infect_for_player,
                             attacker_toxic_count,
+                            Some(agents),
                         );
                         events.push(CombatDamageEvent {
                             source: attacker_id,
@@ -518,6 +520,7 @@ impl CombatState {
                             attacker_has_lifelink,
                             attacker_controller,
                             attacker_has_wither || attacker_has_infect_for_creature,
+                        Some(agents),
                         );
                         events.push(CombatDamageEvent {
                             source: attacker_id,
@@ -550,6 +553,7 @@ impl CombatState {
                             attacker_controller,
                             attacker_has_infect_for_player,
                             attacker_toxic_count,
+                            Some(agents),
                         );
                         events.push(CombatDamageEvent {
                             source: attacker_id,
@@ -588,6 +592,7 @@ impl CombatState {
                             attacker_has_lifelink,
                             attacker_controller,
                             attacker_has_wither || attacker_has_infect_for_creature,
+                        Some(agents),
                         );
                         events.push(CombatDamageEvent {
                             source: attacker_id,
@@ -797,6 +802,7 @@ impl CombatState {
                         attacker_has_lifelink,
                         attacker_controller,
                         attacker_has_wither || attacker_has_infect_for_creature,
+                    Some(agents),
                     );
                     events.push(CombatDamageEvent {
                         source: attacker_id,
@@ -829,6 +835,7 @@ impl CombatState {
                                 attacker_controller,
                                 attacker_has_infect_for_player,
                                 attacker_toxic_count,
+                                None, // TODO: thread agents for RNG parity
                             );
                             events.push(CombatDamageEvent {
                                 source: attacker_id,
@@ -865,6 +872,7 @@ impl CombatState {
                                 attacker_has_lifelink,
                                 attacker_controller,
                                 attacker_has_wither || attacker_has_infect_for_creature,
+                            Some(agents),
                             );
                             events.push(CombatDamageEvent {
                                 source: attacker_id,
@@ -901,6 +909,7 @@ impl CombatState {
                         info.has_lifelink,
                         info.controller,
                         info.has_wither_or_infect,
+                    Some(agents),
                     );
                     events.push(CombatDamageEvent {
                         source: info.blocker_id,
@@ -1275,8 +1284,7 @@ fn validate_damage_assignment(
                 .counter_count(&crate::card::CounterType::Loyalty)
                 .max(0)
         } else {
-            let blocker = game.card(blocker_id);
-            (blocker.toughness() - blocker.damage).max(0)
+            damage_needed_to_kill_for_assignment(game, blocker_id, attacker_id, assigned.max(1))
         };
 
         if !can_move_to_next && assigned > 0 {
@@ -1351,8 +1359,7 @@ fn fallback_damage_assignment(
                 .counter_count(&crate::card::CounterType::Loyalty)
                 .max(0)
         } else {
-            let blocker = game.card(blocker_id);
-            (blocker.toughness() - blocker.damage).max(0)
+            damage_needed_to_kill_for_assignment(game, blocker_id, attacker_id, damage_left)
         };
         let assign = lethal.min(damage_left);
         if assign > 0 {
@@ -1374,6 +1381,52 @@ fn fallback_damage_assignment(
     }
 
     (assignments, 0)
+}
+
+fn damage_needed_to_kill_for_assignment(
+    game: &GameState,
+    target: CardId,
+    source: CardId,
+    max_damage: i32,
+) -> i32 {
+    if max_damage <= 0 {
+        return 0;
+    }
+
+    let target_card = game.card(target);
+    let source_card = game.card(source);
+    let mut kill_damage = (target_card.toughness() - target_card.damage).max(0);
+
+    if target_card.has_keyword("Indestructible") && !source_card.has_wither() && !source_card.has_infect() {
+        return max_damage + 1;
+    }
+    if source_card.has_deathtouch() && target_card.is_creature() {
+        kill_damage = 1;
+    }
+
+    for damage in 1..=max_damage {
+        let mut sim = game.clone();
+        let mut event =
+            crate::replacement::replacement_handler::ReplacementEvent::DamageToCard {
+                target,
+                amount: damage,
+                source: Some(source),
+                is_combat: true,
+            };
+        let _ = crate::replacement::replacement_handler::apply_replacements(&mut sim, &mut event);
+        let final_damage = match event {
+            crate::replacement::replacement_handler::ReplacementEvent::DamageToCard {
+                amount,
+                ..
+            } => amount.max(0),
+            _ => 0,
+        };
+        if final_damage >= kill_damage {
+            return damage;
+        }
+    }
+
+    max_damage + 1
 }
 
 fn defending_player_creatures(game: &GameState, defender: DefenderId) -> Vec<CardId> {
@@ -1484,6 +1537,7 @@ fn deal_combat_damage_to_player(
     source_controller: PlayerId,
     source_has_infect: bool,
     source_toxic_count: Option<i32>,
+    agents: Option<&mut [Box<dyn PlayerAgent>]>,
 ) {
     if amount > 0 {
         if source_has_infect {
@@ -1496,7 +1550,7 @@ fn deal_combat_damage_to_player(
                 game.player_add_poison(target, amount);
             }
         } else {
-            let dealt = game.deal_damage_to_player(target, amount);
+            let dealt = game.deal_damage_to_player_from_with_agents(target, amount, Some(source), true, agents);
             game.record_player_damage_assignment(Some(source), Some(target), dealt, true);
         }
         // Toxic: add poison counters in addition to normal damage
@@ -1555,6 +1609,7 @@ fn deal_combat_damage_to_card(
     lifelink: bool,
     source_controller: PlayerId,
     source_has_wither_or_infect: bool,
+    agents: Option<&mut [Box<dyn PlayerAgent>]>,
 ) {
     if amount > 0 {
         // Track damage source for DamagedBy trigger filters (Sengir Vampire, etc.)
@@ -1572,7 +1627,7 @@ fn deal_combat_damage_to_card(
                     .add_counter(&crate::card::CounterType::M1M1, amount);
             }
         } else {
-            game.deal_damage_to_card(target, amount);
+            game.deal_damage_to_card_from_with_agents(target, amount, Some(source), true, agents);
         }
         if deathtouch {
             game.card_mut(target).mark_deathtouch_damage();

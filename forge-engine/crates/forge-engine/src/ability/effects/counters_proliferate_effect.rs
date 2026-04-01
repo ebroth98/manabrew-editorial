@@ -5,7 +5,7 @@ use crate::agent::GameEntity;
 use crate::card::CounterType;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
-use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 /// `SP$ Proliferate` — choose any number of permanents and/or players that
@@ -25,7 +25,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         player: controller,
         count: 1,
     };
-    let prolif_result = apply_replacements(ctx.game, &mut prolif_event);
+    let prolif_result = apply_replacements_with_agents(&mut *ctx.game, ctx.agents, &mut prolif_event);
     if prolif_result == crate::replacement::ReplacementResult::Skipped
         || prolif_result == crate::replacement::ReplacementResult::Replaced
     {
@@ -132,8 +132,9 @@ fn proliferate_card(ctx: &mut EffectContext, cid: CardId) {
             target: cid,
             counter_type: ct.clone(),
             count: 1,
+            is_effect: true,
         };
-        apply_replacements(ctx.game, &mut add_event);
+        apply_replacements_with_agents(&mut *ctx.game, ctx.agents, &mut add_event);
         let final_count = if let ReplacementEvent::AddCounter { count, .. } = add_event {
             count
         } else {

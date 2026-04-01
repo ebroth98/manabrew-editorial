@@ -1,5 +1,6 @@
 use super::cost_payment::CostPaymentContext;
 use super::*;
+use crate::replacement::replacement_handler::apply_moved_replacement;
 use crate::spellability::TargetKind;
 
 impl GameLoop {
@@ -106,7 +107,9 @@ impl GameLoop {
                     {
                         ZoneType::Exile
                     } else {
-                        ZoneType::Graveyard
+                        // Apply Moved replacement WITH agents for proper RNG consumption
+                        // (e.g. Rest in Peace + Leyline of the Void both redirecting).
+                        apply_moved_replacement(game, card_id, ZoneType::Graveyard, Some(agents))
                     };
                     self.move_card_with_runtime(game, card_id, dest, owner, agents);
                 }
@@ -538,7 +541,7 @@ impl GameLoop {
                         );
                         ZoneType::Exile
                     } else {
-                        ZoneType::Graveyard
+                        apply_moved_replacement(game, card_id, ZoneType::Graveyard, Some(agents))
                     };
                     self.move_card_with_runtime(game, card_id, dest, owner, agents);
                 }

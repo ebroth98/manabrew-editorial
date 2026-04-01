@@ -123,6 +123,44 @@ pub fn execute(
         }
         return ReplacementResult::Prevented;
     }
+    // Handle built-in replacement modes before SVar chain.
+    if let Some(replace) = effect.params.get(keys::REPLACE_WITH) {
+        match replace {
+            "DmgTwice" | "DoubleDamage" => {
+                match event {
+                    ReplacementEvent::DamageToCard { amount, .. } => *amount *= 2,
+                    ReplacementEvent::DamageToPlayer { amount, .. } => *amount *= 2,
+                    _ => {}
+                }
+                return ReplacementResult::Updated;
+            }
+            "DmgHalf" | "HalfDamage" => {
+                match event {
+                    ReplacementEvent::DamageToCard { amount, .. } => *amount = (*amount + 1) / 2,
+                    ReplacementEvent::DamageToPlayer { amount, .. } => *amount = (*amount + 1) / 2,
+                    _ => {}
+                }
+                return ReplacementResult::Updated;
+            }
+            "DmgPlus1" => {
+                match event {
+                    ReplacementEvent::DamageToCard { amount, .. } => *amount += 1,
+                    ReplacementEvent::DamageToPlayer { amount, .. } => *amount += 1,
+                    _ => {}
+                }
+                return ReplacementResult::Updated;
+            }
+            "DmgPlus2" => {
+                match event {
+                    ReplacementEvent::DamageToCard { amount, .. } => *amount += 2,
+                    ReplacementEvent::DamageToPlayer { amount, .. } => *amount += 2,
+                    _ => {}
+                }
+                return ReplacementResult::Updated;
+            }
+            _ => {}
+        }
+    }
     if let Some(result) =
         execute_replace_with_numeric_update(effect, event, game, source_card_id, "DamageAmount")
     {

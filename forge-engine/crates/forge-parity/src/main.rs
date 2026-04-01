@@ -36,6 +36,7 @@
 //!    comparison (phase 2). Java servers are never idle waiting for Rust.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::fs;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
@@ -60,6 +61,97 @@ use forge_parity::protocol::{
 };
 use forge_parity::report;
 use forge_parity::runner::{self, available_presets, LoadedData, RunConfig, DEFAULT_DECKS_DIR};
+use serde::Deserialize;
+
+#[derive(Debug, Clone, Deserialize)]
+struct ParityIgnoreEntry {
+    command: String,
+    reason: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct IgnoredMatchup {
+    deck1: String,
+    deck2: String,
+    seed: u64,
+    max_turns: u32,
+    reason: String,
+}
+
+fn load_parity_ignores() -> Vec<IgnoredMatchup> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("parity_ignore.json");
+    let Ok(contents) = fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    let entries: Vec<ParityIgnoreEntry> = match serde_json::from_str(&contents) {
+        Ok(entries) => entries,
+        Err(e) => {
+            eprintln!("[parity] Failed to parse {}: {}", path.display(), e);
+            return Vec::new();
+        }
+    };
+    entries
+        .into_iter()
+        .filter_map(|entry| {
+            parse_ignore_command(&entry.command).map(|mut ignored| {
+                ignored.reason = entry.reason;
+                ignored
+            })
+        })
+        .collect()
+}
+
+fn parse_ignore_command(command: &str) -> Option<IgnoredMatchup> {
+    let mut deck1 = None;
+    let mut deck2 = None;
+    let mut seed = None;
+    let mut max_turns = None;
+    let mut tokens = command.split_whitespace();
+    while let Some(token) = tokens.next() {
+        match token {
+            "--deck1" => deck1 = tokens.next().map(str::to_string),
+            "--deck2" => deck2 = tokens.next().map(str::to_string),
+            "--seed" => seed = tokens.next().and_then(|s| s.parse::<u64>().ok()),
+            "--max-turns" => max_turns = tokens.next().and_then(|s| s.parse::<u32>().ok()),
+            _ => {}
+        }
+    }
+    Some(IgnoredMatchup {
+        deck1: deck1?,
+        deck2: deck2?,
+        seed: seed?,
+        max_turns: max_turns?,
+        reason: String::new(),
+    })
+}
+
+fn ignored_matchup<'a>(config: &RunConfig, ignores: &'a [IgnoredMatchup]) -> Option<&'a IgnoredMatchup> {
+    ignores.iter().find(|entry| {
+        entry.deck1 == config.deck1
+            && entry.deck2 == config.deck2
+            && entry.seed == config.seed
+            && entry.max_turns == config.max_turns
+    })
+}
+
+fn skipped_result(config: &RunConfig, reason: &str) -> MatchupResult {
+    MatchupResult {
+        deck1: config.deck1.clone(),
+        deck2: config.deck2.clone(),
+        seed: config.seed,
+        status: MatchupStatus::Skipped,
+        snapshots_compared: 0,
+        divergence_count: 0,
+        first_divergence: None,
+        error_message: None,
+        skip_reason: Some(reason.to_string()),
+        trace: None,
+        java_trace: None,
+        covered_cards: vec![],
+        mechanic_signals: vec![],
+        finished_turn: None,
+    }
+}
 
 /// Filter out decks matching any of the given prefixes.
 fn filter_decks(decks: Vec<String>, exclude_prefixes: &[String]) -> Vec<String> {
@@ -338,6 +430,7 @@ fn run_multi_game_mode(cli: &Cli) {
         );
     }
 
+    let ignores = load_parity_ignores();
     let seeds = game_seeds(cli.seed, cli.games);
     let data = match runner::load_data(cli.cards_dir.as_deref(), cli.verbose) {
         Ok(d) => d,
@@ -384,6 +477,18 @@ fn run_multi_game_mode(cli: &Cli) {
                             commanders: cli.commander.clone(),
                         };
 
+                        if let Some(entry) = ignored_matchup(&config, &ignores) {
+                            let result = skipped_result(&config, &entry.reason);
+                            if cli.verbose {
+                                let n = completed.fetch_add(1, Ordering::Relaxed) + 1;
+                                eprintln!(
+                                    "[parity] [{}/{}] seed={} ... SKIPPED: {}",
+                                    n, total, seed, entry.reason
+                                );
+                            }
+                            return (i, result);
+                        }
+
                         let t_match = Instant::now();
                         let result = run_single_matchup_pool(&config, &data, &pool);
                         perf::record("multi_game.single_matchup_total", t_match.elapsed());
@@ -395,6 +500,15 @@ fn run_multi_game_mode(cli: &Cli) {
                                     eprintln!(
                                         "[parity] [{}/{}] seed={} ... PASS ({} snapshots)",
                                         n, total, seed, result.snapshots_compared
+                                    );
+                                }
+                                MatchupStatus::Skipped => {
+                                    eprintln!(
+                                        "[parity] [{}/{}] seed={} ... SKIPPED: {}",
+                                        n,
+                                        total,
+                                        seed,
+                                        result.skip_reason.as_deref().unwrap_or("ignored")
                                     );
                                 }
                                 MatchupStatus::Fail => {
@@ -440,6 +554,18 @@ fn run_multi_game_mode(cli: &Cli) {
                         variant: cli.variant.clone(),
                         commanders: cli.commander.clone(),
                     };
+                    if let Some(entry) = ignored_matchup(&config, &ignores) {
+                        let result = skipped_result(&config, &entry.reason);
+                        if cli.verbose {
+                            let n = i + 1;
+                            eprintln!(
+                                "[parity] [{}/{}] seed={} ... SKIPPED: {}",
+                                n, total, seed, entry.reason
+                            );
+                        }
+                        results.push(result);
+                        continue;
+                    }
                     let t_match = Instant::now();
                     let result = run_single_matchup_oneshot(&config, &data, jar_path);
                     perf::record("multi_game.single_matchup_total", t_match.elapsed());
@@ -450,6 +576,15 @@ fn run_multi_game_mode(cli: &Cli) {
                                 eprintln!(
                                     "[parity] [{}/{}] seed={} ... PASS ({} snapshots)",
                                     n, total, seed, result.snapshots_compared
+                                );
+                            }
+                            MatchupStatus::Skipped => {
+                                eprintln!(
+                                    "[parity] [{}/{}] seed={} ... SKIPPED: {}",
+                                    n,
+                                    total,
+                                    seed,
+                                    result.skip_reason.as_deref().unwrap_or("ignored")
                                 );
                             }
                             MatchupStatus::Fail => {
@@ -503,6 +638,15 @@ fn run_multi_game_mode(cli: &Cli) {
                             n, total, seed, result.snapshots_compared
                         );
                     }
+                    MatchupStatus::Skipped => {
+                        eprintln!(
+                            "[parity] [{}/{}] seed={} ... SKIPPED: {}",
+                            n,
+                            total,
+                            seed,
+                            result.skip_reason.as_deref().unwrap_or("ignored")
+                        );
+                    }
                     MatchupStatus::Fail => {
                         eprintln!(
                             "[parity] [{}/{}] seed={} ... FAIL ({} divergences)",
@@ -529,6 +673,10 @@ fn run_multi_game_mode(cli: &Cli) {
         .iter()
         .filter(|r| r.status == MatchupStatus::Pass)
         .count();
+    let skipped = results
+        .iter()
+        .filter(|r| r.status == MatchupStatus::Skipped)
+        .count();
     let failed = results
         .iter()
         .filter(|r| r.status == MatchupStatus::Fail)
@@ -541,6 +689,7 @@ fn run_multi_game_mode(cli: &Cli) {
     let report_data = MatrixReport {
         total_matchups: total,
         passed,
+        skipped,
         failed,
         errors,
         seeds,
@@ -672,6 +821,26 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
         variant: cli.variant.clone(),
         commanders: cli.commander.clone(),
     };
+
+    if let Some(entry) = ignored_matchup(&config, &load_parity_ignores()) {
+        let report_data = MatrixReport {
+            total_matchups: 1,
+            passed: 0,
+            skipped: 1,
+            failed: 0,
+            errors: 0,
+            seeds: vec![config.seed],
+            decks: vec![config.deck1.clone(), config.deck2.clone()],
+            max_turns: config.max_turns,
+            results: vec![skipped_result(&config, &entry.reason)],
+        };
+        let output = match cli.format.as_str() {
+            "json" => report::format_matrix_json(&report_data),
+            _ => report::format_matrix_text(&report_data),
+        };
+        write_output(cli, &output);
+        return;
+    }
 
     let data = match runner::load_data(config.cards_dir.as_deref(), cli.verbose) {
         Ok(d) => d,
@@ -816,6 +985,7 @@ fn run_single_matchup_server(
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: Some(format!("Rust engine error: {}", e)),
+                skip_reason: None,
                 trace: None,
                 java_trace: None,
                 covered_cards: vec![],
@@ -837,6 +1007,7 @@ fn run_single_matchup_server(
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: Some(format!("Java server error: {}", e)),
+                skip_reason: None,
                 trace: None,
                 java_trace: None,
                 covered_cards: vec![],
@@ -895,6 +1066,7 @@ fn run_single_matchup_pool(
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: Some(format!("Rust engine error: {}", e)),
+                skip_reason: None,
                 trace: None,
                 java_trace: None,
                 covered_cards: vec![],
@@ -916,6 +1088,7 @@ fn run_single_matchup_pool(
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: Some(format!("Java server error: {}", e)),
+                skip_reason: None,
                 trace: None,
                 java_trace: None,
                 covered_cards: vec![],
@@ -986,6 +1159,7 @@ fn run_single_matchup_oneshot(
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: Some(format!("Rust engine error: {}", e)),
+                skip_reason: None,
                 trace: None,
                 java_trace: None,
                 covered_cards: vec![],
@@ -1007,6 +1181,7 @@ fn run_single_matchup_oneshot(
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: Some(format!("Java engine error: {}", e)),
+                skip_reason: None,
                 trace: None,
                 java_trace: None,
                 covered_cards: vec![],
@@ -1042,6 +1217,7 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
             divergence_count: 0,
             first_divergence: None,
             error_message: None,
+            skip_reason: None,
             trace: None,
             java_trace: None,
             covered_cards: trace.covered_cards,
@@ -1063,6 +1239,7 @@ fn run_single_matchup_rust_only(config: &RunConfig, data: &LoadedData) -> Matchu
             divergence_count: 0,
             first_divergence: None,
             error_message: Some(format!("Rust engine error: {}", e)),
+            skip_reason: None,
             trace: None,
             java_trace: None,
             covered_cards: vec![],
@@ -1152,6 +1329,7 @@ fn compare_snapshots(
         }),
         first_divergence,
         error_message: None,
+        skip_reason: None,
         covered_cards: vec![],
         mechanic_signals: vec![],
         finished_turn: rust_snapshots.last().and_then(|s| {
@@ -1315,6 +1493,7 @@ impl ServerPool {
 }
 
 fn run_matrix_mode(cli: &Cli) {
+    let ignores = load_parity_ignores();
     let decks_dir = cli.decks_dir.as_deref().unwrap_or(DEFAULT_DECKS_DIR);
     let seeds = cli.seeds.clone().unwrap_or_else(|| vec![42, 100, 999]);
     let deck_names: Vec<String> = filter_decks(
@@ -1363,10 +1542,32 @@ fn run_matrix_mode(cli: &Cli) {
     };
 
     // Build flat list of (d1, d2, seed) jobs for parallel execution
-    let jobs: Vec<(&str, &str, u64)> = pairs
+    let all_jobs: Vec<(&str, &str, u64)> = pairs
         .iter()
         .flat_map(|&(d1, d2)| seeds.iter().map(move |&s| (d1, d2, s)))
         .collect();
+    let mut skipped_results = Vec::new();
+    let mut jobs = Vec::new();
+    for (d1, d2, seed) in all_jobs {
+        let config = RunConfig {
+            deck1: d1.to_string(),
+            deck2: d2.to_string(),
+            seed,
+            max_turns: cli.max_turns,
+            cards_dir: cli.cards_dir.clone(),
+            decks_dir: cli.decks_dir.clone(),
+            verbose: cli.verbose,
+            prefer_actions: cli.prefer_actions,
+            java_heap: cli.java_heap.clone(),
+            variant: cli.variant.clone(),
+            commanders: cli.commander.clone(),
+        };
+        if let Some(entry) = ignored_matchup(&config, &ignores) {
+            skipped_results.push(skipped_result(&config, &entry.reason));
+        } else {
+            jobs.push((d1, d2, seed));
+        }
+    }
 
     let completed = AtomicUsize::new(0);
 
@@ -1480,7 +1681,7 @@ fn run_matrix_mode(cli: &Cli) {
     // Uses cached Java output when available, falling back to live Java.
     let cache_hits = AtomicUsize::new(0);
     let cache_misses = AtomicUsize::new(0);
-    let results: Vec<MatchupResult> = rust_phase
+    let mut results: Vec<MatchupResult> = rust_phase
         .par_iter()
         .map(|(config, rust_result)| {
             let result = match rust_result {
@@ -1526,6 +1727,7 @@ fn run_matrix_mode(cli: &Cli) {
                     divergence_count: 0,
                     first_divergence: None,
                     error_message: Some(format!("Rust engine error: {}", e)),
+                    skip_reason: None,
                     trace: None,
                     java_trace: None,
                     covered_cards: vec![],
@@ -1546,6 +1748,17 @@ fn run_matrix_mode(cli: &Cli) {
                             config.deck2,
                             config.seed,
                             result.snapshots_compared
+                        );
+                    }
+                    MatchupStatus::Skipped => {
+                        eprintln!(
+                            "[parity] [{}/{}] {} vs {} seed={} ... SKIPPED: {}",
+                            n,
+                            total,
+                            config.deck1,
+                            config.deck2,
+                            config.seed,
+                            result.skip_reason.as_deref().unwrap_or("ignored")
                         );
                     }
                     MatchupStatus::Fail => {
@@ -1576,6 +1789,13 @@ fn run_matrix_mode(cli: &Cli) {
             result
         })
         .collect();
+    results.extend(skipped_results);
+    results.sort_by(|a, b| {
+        a.deck1
+            .cmp(&b.deck1)
+            .then_with(|| a.deck2.cmp(&b.deck2))
+            .then_with(|| a.seed.cmp(&b.seed))
+    });
 
     // Shutdown pool
     if let Some(pool) = pool {
@@ -1602,6 +1822,10 @@ fn run_matrix_mode(cli: &Cli) {
         .iter()
         .filter(|r| r.status == MatchupStatus::Pass)
         .count();
+    let skipped = results
+        .iter()
+        .filter(|r| r.status == MatchupStatus::Skipped)
+        .count();
     let failed = results
         .iter()
         .filter(|r| r.status == MatchupStatus::Fail)
@@ -1614,6 +1838,7 @@ fn run_matrix_mode(cli: &Cli) {
     let matrix_report = MatrixReport {
         total_matchups: total,
         passed,
+        skipped,
         failed,
         errors,
         seeds: seeds.clone(),
@@ -1665,6 +1890,7 @@ fn run_java_compare_and_cache(
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: Some(format!("Java server error: {}", e)),
+                skip_reason: None,
                 trace: None,
                 java_trace: None,
                 covered_cards: rust_trace.covered_cards.clone(),
@@ -1759,6 +1985,7 @@ fn run_java_streaming_compare_pool(
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: Some(format!("Java server error: {}", e)),
+                skip_reason: None,
                 trace: None,
                 java_trace: None,
                 covered_cards: rust_trace.covered_cards.clone(),
@@ -1818,6 +2045,7 @@ fn run_java_streaming_compare_pool(
         }),
         first_divergence,
         error_message: None,
+        skip_reason: None,
         covered_cards: rust_trace.covered_cards.clone(),
         mechanic_signals: rust_trace.mechanic_signals.clone(),
         finished_turn: rust_snapshots.last().and_then(|s| {
@@ -1862,6 +2090,7 @@ fn run_java_streaming_compare_oneshot(
                 divergence_count: 0,
                 first_divergence: None,
                 error_message: Some(format!("Java engine error: {}", e)),
+                skip_reason: None,
                 trace: None,
                 java_trace: None,
                 covered_cards: rust_trace.covered_cards.clone(),
@@ -1895,6 +2124,7 @@ fn build_rust_only_result(
         divergence_count: 0,
         first_divergence: None,
         error_message: None,
+        skip_reason: None,
         trace: None,
         java_trace: None,
         covered_cards: trace.covered_cards.clone(),
@@ -2038,6 +2268,16 @@ fn run_fuzz_mode(cli: &Cli) {
                     eprintln!(
                         "[parity] [{}/{}] iteration={} seed={} ... PASS ({} snapshots)",
                         n, total, iteration, game_seed, matchup_result.snapshots_compared
+                    );
+                }
+                MatchupStatus::Skipped => {
+                    eprintln!(
+                        "[parity] [{}/{}] iteration={} seed={} ... SKIPPED: {}",
+                        n,
+                        total,
+                        iteration,
+                        game_seed,
+                        matchup_result.skip_reason.as_deref().unwrap_or("ignored")
                     );
                 }
                 MatchupStatus::Fail => {
@@ -2584,6 +2824,7 @@ fn run_continuous_mode(cli: &Cli) {
     let start = Instant::now();
     let mut completed = 0usize;
     let mut passed = 0usize;
+    let mut skipped = 0usize;
     let mut failed = 0usize;
     let mut errors = 0usize;
 
@@ -2624,6 +2865,7 @@ fn run_continuous_mode(cli: &Cli) {
 
         match result.status {
             MatchupStatus::Pass => passed += 1,
+            MatchupStatus::Skipped => skipped += 1,
             MatchupStatus::Fail => failed += 1,
             MatchupStatus::Error => errors += 1,
         }
@@ -2637,6 +2879,7 @@ fn run_continuous_mode(cli: &Cli) {
         if cli.verbose {
             let status_char = match result.status {
                 MatchupStatus::Pass => "\x1b[32mPASS\x1b[0m",
+                MatchupStatus::Skipped => "\x1b[34mSKIP\x1b[0m",
                 MatchupStatus::Fail => "\x1b[31mFAIL\x1b[0m",
                 MatchupStatus::Error => "\x1b[33mERROR\x1b[0m",
             };
@@ -3059,6 +3302,7 @@ fn run_serve_mode(cli: &Cli) {
 
             let status_str = match result.status {
                 MatchupStatus::Pass => "pass",
+                MatchupStatus::Skipped => "skipped",
                 MatchupStatus::Fail => "fail",
                 MatchupStatus::Error => "error",
             };
@@ -3082,6 +3326,7 @@ fn run_serve_mode(cli: &Cli) {
                     batch.active_job = None;
                     match result.status {
                         MatchupStatus::Pass => batch.passed += 1,
+                        MatchupStatus::Skipped => batch.skipped += 1,
                         MatchupStatus::Fail => batch.failed += 1,
                         MatchupStatus::Error => batch.errors += 1,
                     }
@@ -3265,6 +3510,17 @@ fn run_serve_mode(cli: &Cli) {
                     seed = job.seed,
                     ms = duration_ms,
                     "PASS"
+                );
+            }
+            MatchupStatus::Skipped => {
+                tracing::info!(
+                    game = completed,
+                    deck1 = %short_deck(&job.deck1),
+                    deck2 = %short_deck(&job.deck2),
+                    seed = job.seed,
+                    ms = duration_ms,
+                    reason = result.skip_reason.as_deref().unwrap_or("-"),
+                    "SKIPPED"
                 );
             }
             MatchupStatus::Fail => {

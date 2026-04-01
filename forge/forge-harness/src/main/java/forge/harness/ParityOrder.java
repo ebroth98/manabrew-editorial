@@ -2,6 +2,7 @@ package forge.harness;
 
 import forge.game.GameEntity;
 import forge.game.card.Card;
+import forge.game.replacement.ReplacementEffect;
 import forge.game.spellability.AlternativeCost;
 import forge.game.spellability.OptionalCost;
 import forge.game.spellability.SpellAbility;
@@ -120,7 +121,19 @@ public final class ParityOrder {
         return out;
     }
 
+    public static List<ReplacementEffect> sortReplacementEffects(final List<ReplacementEffect> effects) {
+        final List<ReplacementEffect> out = new ArrayList<>(effects);
+        out.sort(Comparator.comparing(ParityOrder::replacementSortKey));
+        return out;
+    }
+
     private static String defenderKey(final GameEntity e) {
         return e.getName() + "|" + e.getId();
+    }
+
+    private static String replacementSortKey(final ReplacementEffect effect) {
+        final String host = effect.getHostCard() == null ? "" : effect.getHostCard().getName();
+        final String desc = effect.getDescription() == null ? "" : effect.getDescription();
+        return host + ": " + desc;
     }
 }

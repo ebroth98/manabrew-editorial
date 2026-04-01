@@ -1,0 +1,27 @@
+{
+  "label": "Replacement Comprehensive",
+  "desc": "Tests replacement effects: indestructible, damage prevention/doubling, counter doubling, token doubling, zone rerouting, life gain doubling, draw replacement, graveyard exile",
+  "color": "text-zinc-300",
+  "opponent": "green_stompy",
+  "ai_eligible": false,
+  "order": 31,
+  "cards": [
+    { "name": "Plains", "count": 5, "set": "m21" },
+    { "name": "Forest", "count": 5, "set": "m21" },
+    { "name": "Swamp", "count": 4, "set": "m21" },
+    { "name": "Mountain", "count": 4, "set": "m21" },
+    { "name": "Hardened Scales", "count": 2, "set": "ktk" },
+    { "name": "Doubling Season", "count": 2, "set": "rav" },
+    { "name": "Anointed Procession", "count": 2, "set": "akh" },
+    { "name": "Rest in Peace", "count": 2, "set": "rtr" },
+    { "name": "Leyline of the Void", "count": 2, "set": "m20" },
+    { "name": "Alhammarret's Archive", "count": 2, "set": "ori" },
+    { "name": "Darksteel Myr", "count": 2, "set": "som" },
+    { "name": "Platinum Angel", "count": 1, "set": "m11" },
+    { "name": "Torbran, Thane of Red Fell", "count": 1, "set": "eld" },
+    { "name": "Furnace of Rath", "count": 1, "set": "dpa" },
+    { "name": "Servant of the Scale", "count": 2, "set": "dtk" },
+    { "name": "Raise the Alarm", "count": 2, "set": "m15" },
+    { "name": "Loxodon Smiter", "count": 1, "set": "rtr" }
+  ]
+}

@@ -378,7 +378,12 @@ fn build_spell_ability_of_type(
     }
 }
 
-fn parse_ability_cost(
+/// Parse the cost of an ability from its parameters.
+/// Mirrors Java's `AbilityFactory.parseAbilityCost(Card, MapOfParams, RecordType)`.
+///
+/// For AB$ (activated) and SP$ (spell) abilities, reads the Cost$ parameter
+/// and parses it into a Cost structure. Sub-abilities (DB$) have no cost.
+pub fn parse_ability_cost(
     _host: &Card,
     params: &Params,
     record_type: AbilityRecordType,
@@ -387,6 +392,99 @@ fn parse_ability_cost(
         return None;
     }
     params.get(keys::COST).map(parse_cost)
+}
+
+/// Adjust the change-zone target for effects that move cards between zones.
+/// Mirrors Java's `AbilityFactory.adjustChangeZoneTarget(MapOfParams, SpellAbility)`.
+///
+/// When a change-zone effect specifies `ChangeZoneTable$`, this function
+/// adjusts the target resolution to use the table mapping instead of
+/// the standard Defined$/Targeted resolution.
+pub fn adjust_change_zone_target(sa: &mut SpellAbility, game: &GameState) {
+    // If the SA has ChangeZoneTable, apply table-based targeting
+    if sa.params.has("ChangeZoneTable") {
+        // The change_zone_table is populated during resolution by the effect.
+        // This function sets up the SA to use table-based targeting by
+        // ensuring the table exists.
+        if sa.change_zone_table.is_none() {
+            sa.change_zone_table = Some(crate::card::card_zone_table::CardZoneTable::default());
+        }
+    }
+
+    // Handle "Hidden" origin — if the origin zone is hidden (Library, Hand),
+    // adjust the target validation accordingly
+    if let Some(origin) = sa.params.get("Origin") {
+        let _ = game; // May need game state for validation in future
+        if origin == "Library" || origin == "Hand" {
+            // Hidden zones use different targeting rules
+            sa.params.put("Hidden".to_string(), "True".to_string());
+        }
+    }
+}
+
+/// Build a fused spell ability for split/fused cards.
+/// Mirrors Java's `AbilityFactory.buildFusedAbility(Card)`.
+///
+/// Fuse cards (e.g. Fire // Ice with Fuse) allow casting both halves as a
+/// single spell. This function creates a combined SpellAbility that chains
+/// the left and right halves together.
+pub fn build_fused_ability(
+    game: &GameState,
+    card_id: CardId,
+    player: PlayerId,
+) -> Option<SpellAbility> {
+    let card = game.card(card_id);
+
+    // Check if the card has the Fuse keyword
+    let has_fuse = card.keywords.contains_string_ignore_case("Fuse")
+        || card.granted_keywords.contains_string_ignore_case("Fuse");
+
+    if !has_fuse {
+        return None;
+    }
+
+    // A fused card needs at least 2 ability lines (one per half)
+    if card.abilities.len() < 2 {
+        return None;
+    }
+
+    // Build the first half
+    let host = game.card(card_id);
+    let mut left_sa = build_spell_ability_from_host_card(host, &card.abilities[0], player);
+    left_sa.source = Some(card_id);
+
+    // Build the second half and append as sub-ability
+    let right_sa = build_spell_ability_from_host_card(host, &card.abilities[1], player);
+
+    // Append right half to left half
+    let mut slot = &mut left_sa.sub_ability;
+    loop {
+        match slot {
+            Some(node) => slot = &mut node.sub_ability,
+            None => {
+                *slot = Some(Box::new(right_sa));
+                break;
+            }
+        }
+    }
+
+    // Combine the costs
+    if let (Some(left_cost), Some(right_cost)) = (&left_sa.pay_costs, &card.abilities.get(1).and_then(|text| {
+        let params = Params::from_raw(text);
+        params.get(keys::COST).map(parse_cost)
+    })) {
+        let mut combined_parts = left_cost.parts.clone();
+        combined_parts.extend(right_cost.parts.clone());
+        left_sa.pay_costs = Some(Cost {
+            parts: combined_parts,
+            has_tap: left_cost.has_tap || right_cost.has_tap,
+            mandatory: false,
+        });
+    }
+
+    left_sa.description = format!("Fuse (Cast both halves of {})", card.card_name);
+
+    Some(left_sa)
 }
 
 #[cfg(test)]

@@ -154,10 +154,9 @@ impl JavaBridge {
                         || line.contains("WARNING")
                         || line.contains("[JAVA-STACK]")
                         || line.contains("[rng-java")
+                        || line.contains("[java-target")
+                        || line.contains("[det-java")
                     {
-                        if line.contains("[det-java") {
-                            continue;
-                        }
                         eprintln!("[java] {}", line);
                     }
                 }
@@ -384,10 +383,9 @@ impl JavaServer {
                         || line.contains("WARNING")
                         || line.contains("[JAVA-STACK]")
                         || line.contains("[rng-java")
+                        || line.contains("[java-target")
+                        || line.contains("[det-java")
                     {
-                        if line.contains("[det-java") {
-                            continue;
-                        }
                         eprintln!("[java] {}", line);
                     }
                 }

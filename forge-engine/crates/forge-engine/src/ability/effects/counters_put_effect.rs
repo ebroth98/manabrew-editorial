@@ -5,7 +5,7 @@ use super::{
 };
 use crate::event::{RunParams, TriggerType};
 use crate::parsing::keys;
-use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -125,8 +125,9 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         target: card_id,
         counter_type: counter_type.clone(),
         count,
+        is_effect: true,
     };
-    apply_replacements(ctx.game, &mut event);
+    apply_replacements_with_agents(&mut *ctx.game, ctx.agents, &mut event);
     let count = if let ReplacementEvent::AddCounter {
         count: final_count, ..
     } = event

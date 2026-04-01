@@ -25,6 +25,11 @@ pub enum ReplacementLayer {
 }
 
 impl ReplacementLayer {
+    /// Alias for `from_layer_str`. Mirrors Java `ReplacementLayer.smartValueOf()`.
+    pub fn smart_value_of(value: &str) -> Option<Self> {
+        Self::from_layer_str(value)
+    }
+
     /// Parse a `Layer$` value string. Returns `None` if unrecognised.
     pub fn from_layer_str(s: &str) -> Option<Self> {
         match s.trim() {

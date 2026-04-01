@@ -353,6 +353,91 @@ pub(crate) fn can_make_choices_precast(
     charm_num >= min_charm_num
 }
 
+/// Collect valid mode indices for a charm/modal spell.
+/// Mirrors Java's `CharmEffect.makePossibleOptions(SpellAbility)`.
+///
+/// Returns the indices (into the mode list) of modes that have valid targets.
+pub fn make_possible_options(
+    game: &GameState,
+    source_id: crate::ids::CardId,
+    player: PlayerId,
+    choices_str: &str,
+) -> Vec<usize> {
+    let mode_svars: Vec<&str> = choices_str.split(',').map(|s| s.trim()).collect();
+    let svars = game.card(source_id).svars.clone();
+    let mode_texts: Vec<String> = mode_svars
+        .iter()
+        .filter_map(|svar| svars.get(*svar).cloned())
+        .collect();
+
+    mode_texts
+        .iter()
+        .enumerate()
+        .filter(|(_, text)| mode_has_valid_targets_in_game(game, text, player, source_id))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Build a formatted description string for charm mode choices.
+/// Mirrors Java's `CharmEffect.makeFormatedDescription(SpellAbility)`.
+///
+/// Returns a description listing all available modes with their descriptions.
+pub fn make_formated_description(
+    game: &GameState,
+    source_id: crate::ids::CardId,
+    choices_str: &str,
+) -> String {
+    let mode_svars: Vec<&str> = choices_str.split(',').map(|s| s.trim()).collect();
+    let svars = game.card(source_id).svars.clone();
+    let mode_texts: Vec<String> = mode_svars
+        .iter()
+        .filter_map(|svar| svars.get(*svar).cloned())
+        .collect();
+
+    let mut description = String::new();
+    description.push_str("Choose one —\n");
+    for (i, text) in mode_texts.iter().enumerate() {
+        let params = Params::from_raw(text);
+        let mode_desc = params
+            .get_cloned(keys::SPELL_DESCRIPTION)
+            .unwrap_or_else(|| text.clone());
+        description.push_str(&format!("• {}\n", mode_desc));
+        let _ = i; // index for potential numbering
+    }
+    description
+}
+
+/// Make charm mode choices during pre-cast.
+/// Mirrors Java's `CharmEffect.makeChoices(SpellAbility)`.
+///
+/// This is a wrapper around `make_choices_precast` for structural parity.
+pub fn make_choices(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    sa: &mut SpellAbility,
+) -> bool {
+    make_choices_precast(game, agents, sa)
+}
+
+/// Chain a list of sub-abilities (modes) onto a root spell ability.
+/// Mirrors Java's `CharmEffect.chainAbilities(SpellAbility, List<AbilitySub>)`.
+///
+/// Appends each mode ability as a sub-ability at the end of the SA chain.
+pub fn chain_abilities(
+    game: &GameState,
+    sa: &mut SpellAbility,
+    mode_texts: &[String],
+    player: PlayerId,
+    source_id: crate::ids::CardId,
+) {
+    for mode_text in mode_texts {
+        let mut mode_sa = build_spell_ability(game, source_id, mode_text, player);
+        mode_sa.source = Some(source_id);
+        mode_sa.trigger_remembered_amount = sa.trigger_remembered_amount;
+        append_subability(sa, mode_sa);
+    }
+}
+
 /// Check whether a charm mode has valid targets (or needs no targets).
 ///
 /// Mirrors Java's pre-filtering of `possible` modes in CharmEffect before

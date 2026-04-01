@@ -4,6 +4,14 @@ use super::{matches_valid_cards, EffectContext};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
+/// End-of-turn revert for must-block. Mirrors the `GameCommand.run()` in Java
+/// `MustBlockEffect` that clears the must-block flag when the effect expires.
+pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
+    if game.card(card_id).zone == ZoneType::Battlefield {
+        game.card_mut(card_id).set_must_block(false);
+    }
+}
+
 /// `SP$ MustBlock` — target creature must block this turn if able.
 ///
 /// Mirrors Java's `MustBlockEffect.java` (simplified — sets flag only;

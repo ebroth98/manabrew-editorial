@@ -72,6 +72,24 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         .register_active_trigger(ctx.game, clone_target_id);
 }
 
+/// End-of-turn revert for clone effects. Mirrors the `GameCommand.run()`
+/// anonymous class in Java `CloneEffect` that calls `removeCloneState`,
+/// clears imprinted/remembered cards, and restores the original state.
+///
+/// Removes the clone stamp from the card, reverting copied characteristics
+/// and restoring original remembered/imprinted state.
+pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
+    if game.card(card_id).zone != ZoneType::Battlefield {
+        return;
+    }
+    // Revert copiable characteristics by clearing clone-specific state.
+    // The card's base characteristics (from the card definition) take over.
+    let card = game.card_mut(card_id);
+    card.remove_clone_state();
+    card.imprinted_cards.clear();
+    card.remembered_cards.clear();
+}
+
 /// Determine which card to copy FROM.
 fn resolve_clone_source(
     ctx: &mut EffectContext,

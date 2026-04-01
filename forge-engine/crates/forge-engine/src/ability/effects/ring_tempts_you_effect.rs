@@ -10,6 +10,21 @@ use super::EffectContext;
 use crate::ids::{CardId, PlayerId};
 use crate::spellability::SpellAbility;
 
+/// Controller-change / leaves-play callback for the Ring-bearer.
+/// Mirrors the `GameCommand.run()` in Java `RingTemptsYouEffect` that clears
+/// the ring-bearer designation when the creature changes controller or
+/// leaves the battlefield.
+pub fn run(game: &mut crate::game::GameState, player: crate::ids::PlayerId) {
+    // If the ring-bearer is no longer controlled by this player or left play,
+    // clear the ring-bearer designation.
+    if let Some(bearer_id) = game.player(player).ring_bearer {
+        let bearer = game.card(bearer_id);
+        if bearer.zone != ZoneType::Battlefield || bearer.controller != player {
+            game.player_mut(player).ring_bearer = None;
+        }
+    }
+}
+
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let controller = sa.activating_player;
     let players = if let Some(def) = sa.defined_player() {

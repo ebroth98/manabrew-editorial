@@ -651,21 +651,47 @@ impl GameState {
     }
 
     pub fn player_draw_one(&mut self, player: PlayerId) -> Option<CardId> {
+        self.player_draw_one_internal(player, false)
+    }
+
+    /// Draw a card for the draw step (sets `is_first_in_draw_step: true`).
+    pub fn player_draw_one_for_turn(&mut self, player: PlayerId) -> Option<CardId> {
+        self.player_draw_one_internal(player, true)
+    }
+
+    /// Internal draw implementation shared by normal draws and draw-step draws.
+    /// After the replacement handler runs, extra_draws are consumed by drawing
+    /// additional cards (mirrors Java Draw replacement which increments NumCards).
+    fn player_draw_one_internal(&mut self, player: PlayerId, is_first_in_draw_step: bool) -> Option<CardId> {
         if !self.player_can_draw(player) {
             return None;
         }
-        let mut event = ReplacementEvent::Draw { player };
+        let mut event = ReplacementEvent::Draw {
+            player,
+            extra_draws: 0,
+            is_first_in_draw_step,
+        };
         let result = apply_replacements(self, &mut event);
         if result == ReplacementResult::Skipped || result == ReplacementResult::Replaced {
             return None;
         }
+        // Extract extra_draws set by replacement effects (e.g. Alhammarret's Archive)
+        let extra = if let ReplacementEvent::Draw { extra_draws, .. } = &event {
+            *extra_draws
+        } else {
+            0
+        };
         let Some(card_id) = self.zone_mut(ZoneType::Library, player).take_top() else {
             self.player_mut(player).tried_to_draw_from_empty_library = true;
             return None;
         };
         self.move_card(card_id, ZoneType::Hand, player);
-        let p = self.player_mut(player);
-        p.drawn_this_turn += 1;
+        self.player_mut(player).drawn_this_turn += 1;
+        // Draw extra cards from replacement effects (each goes through its own
+        // replacement pipeline — is_first_in_draw_step is false for extras).
+        for _ in 0..extra {
+            self.player_draw_one(player);
+        }
         Some(card_id)
     }
 

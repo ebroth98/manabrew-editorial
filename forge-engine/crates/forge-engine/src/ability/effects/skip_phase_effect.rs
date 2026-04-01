@@ -2,6 +2,35 @@ use super::{resolve_defined_players, EffectContext};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
+/// Create a skip-phase effect for use by static or replacement abilities.
+/// Mirrors Java's `SkipPhaseEffect.createSkipPhaseEffect(...)`.
+///
+/// Creates an effect that will cause the specified player to skip the
+/// specified phase on their next turn. Used by cards like Stasis,
+/// Teferi's Protection, etc.
+pub fn create_skip_phase_effect(
+    game: &mut crate::game::GameState,
+    player: crate::ids::PlayerId,
+    phase: &str,
+) {
+    match phase {
+        "Draw" => game.player_mut(player).skip_next_draw = true,
+        "Combat" | "BeginCombat" => game.player_mut(player).skip_next_combat = true,
+        "Untap" => game.player_mut(player).skip_next_untap = true,
+        _ => {
+            eprintln!("SkipPhaseEffect: Unknown phase to skip: {:?}", phase);
+        }
+    }
+}
+
+/// Run the skip-phase effect (entry point for non-resolve contexts).
+/// Mirrors Java's `SkipPhaseEffect.run(SpellAbility)`.
+///
+/// Parses the Phase$ and Defined$ parameters and applies the skip.
+pub fn run(ctx: &mut EffectContext, sa: &crate::spellability::SpellAbility) {
+    resolve(ctx, sa);
+}
+
 /// Resolve `SP$ SkipPhase` — make a player skip their next occurrence of a phase.
 ///
 /// Mirrors Java `SkipPhaseEffect.java`.

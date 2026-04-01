@@ -6,7 +6,7 @@ use crate::card::Card;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
-use crate::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
+use crate::replacement::replacement_handler::{apply_replacements_with_agents, ReplacementEvent};
 use crate::spellability::SpellAbility;
 
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
@@ -72,8 +72,9 @@ fn replaced_token_amount(
     let mut event = ReplacementEvent::CreateToken {
         player: token_controller,
         count: amount as i32,
+        is_effect: true,
     };
-    apply_replacements(ctx.game, &mut event);
+    apply_replacements_with_agents(&mut *ctx.game, ctx.agents, &mut event);
     if let ReplacementEvent::CreateToken {
         count: final_count, ..
     } = event

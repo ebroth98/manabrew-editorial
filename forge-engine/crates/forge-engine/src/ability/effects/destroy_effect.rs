@@ -21,6 +21,14 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 .get(&crate::card::CounterType::P1P1)
                 .unwrap_or(&0);
 
+            // Capture LKI counters for death triggers (e.g. Servant of the Scale)
+            {
+                let lki_counters = ctx.game.card(target_card).counters.clone();
+                let lki_power = ctx.game.card(target_card).power();
+                let lki_toughness = ctx.game.card(target_card).toughness();
+                ctx.game.card_mut(target_card).lki_counters = Some(lki_counters);
+                ctx.game.card_mut(target_card).set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
+            }
             // Fire Destroyed trigger before moving to graveyard
             ctx.trigger_handler.run_trigger(
                 TriggerType::Destroyed,

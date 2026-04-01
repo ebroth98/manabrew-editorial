@@ -8,6 +8,16 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::spellability::SpellAbility;
 
+/// End-of-turn revert for damage prevention. Mirrors the `GameCommand.run()` in Java
+/// `DamagePreventEffect` that resets damage prevention shields when the effect expires.
+///
+/// Resets the `damage_prevention` counter on a card to zero.
+pub fn run(game: &mut crate::game::GameState, card_id: crate::ids::CardId) {
+    if game.card(card_id).zone == ZoneType::Battlefield {
+        game.card_mut(card_id).damage_prevention = 0;
+    }
+}
+
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let amount = super::resolve_numeric_svar(ctx.game, sa, "Amount", 1).max(0);
 

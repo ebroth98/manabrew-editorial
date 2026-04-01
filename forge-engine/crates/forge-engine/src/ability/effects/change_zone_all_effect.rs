@@ -103,6 +103,24 @@ fn matches_change_zone_all_filter(
     false
 }
 
+/// Configure the spell ability during construction.
+/// Mirrors Java `ChangeZoneAllEffect.buildSpellAbility` — calls
+/// `adjustChangeZoneTarget` to set the target zone to the origin zone.
+pub fn build_spell_ability(sa: &mut crate::spellability::SpellAbility) {
+    // If the SA has an Origin$ parameter and uses targeting, set the
+    // target restriction zone to the origin zone so that targeting
+    // looks in the correct zone (not just Battlefield).
+    if let Some(origin_str) = sa.params.get(crate::parsing::keys::ORIGIN) {
+        if let Some(ref mut tr) = sa.target_restrictions {
+            if !tr.can_tgt_player() {
+                if let Some(zone) = parse_zone_type(origin_str) {
+                    tr.tgt_zone = vec![zone];
+                }
+            }
+        }
+    }
+}
+
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let origin_str = sa.params.get(keys::ORIGIN).unwrap_or("Battlefield");
     let destination_str = sa.params.get(keys::DESTINATION).unwrap_or("Graveyard");

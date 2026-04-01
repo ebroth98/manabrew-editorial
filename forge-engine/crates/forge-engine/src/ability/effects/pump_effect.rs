@@ -6,6 +6,26 @@ use crate::card::perpetual::{perpetual_keywords, perpetual_pt_boost};
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
 
+/// End-of-turn revert for Pump. Mirrors the `GameCommand.run()` in Java
+/// `PumpEffect` that reverses the P/T bonus and removes granted keywords
+/// when the effect duration expires.
+pub fn run(
+    game: &mut crate::game::GameState,
+    card_id: crate::ids::CardId,
+    att_bonus: i32,
+    def_bonus: i32,
+    keywords: &[String],
+) {
+    if game.card(card_id).zone != ZoneType::Battlefield {
+        return;
+    }
+    game.card_mut(card_id).power_modifier -= att_bonus;
+    game.card_mut(card_id).toughness_modifier -= def_bonus;
+    for kw in keywords {
+        game.card_mut(card_id).pump_keywords.remove(kw);
+    }
+}
+
 pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     // Try direct integer first, then fall back to SVar resolution (for Count$Kicked etc.)
     let att_bonus = parse_param(&sa.ability_text, "NumAtt$ ")

@@ -30,6 +30,7 @@ use forge_engine_core::game::GameState;
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 use forge_engine_core::player::actions::{AbilityRef, PlayerAction};
+use forge_engine_core::replacement::replacement_handler::{apply_replacements, ReplacementEvent};
 use forge_engine_core::spellability::AlternativeCost;
 use forge_foundation::PhaseType;
 
@@ -38,6 +39,7 @@ use crate::combat_choice_space;
 use crate::gui_repro;
 use crate::java_random::JavaRandom;
 use crate::parity_card_map::ParityCardMap;
+use crate::parity_order;
 
 const ANSI_RESET: &str = "\x1b[0m";
 const ANSI_DIM_GRAY: &str = "\x1b[90m";
@@ -164,6 +166,60 @@ impl DeterministicAgent {
         }
     }
 
+    fn predicted_damage_to_card(
+        &self,
+        game: &GameState,
+        target: CardId,
+        amount: i32,
+        source: CardId,
+        is_combat: bool,
+    ) -> i32 {
+        if amount <= 0 {
+            return 0;
+        }
+        let mut sim = game.clone();
+        let mut event = ReplacementEvent::DamageToCard {
+            target,
+            amount,
+            source: Some(source),
+            is_combat,
+        };
+        let _ = apply_replacements(&mut sim, &mut event);
+        match event {
+            ReplacementEvent::DamageToCard { amount, .. } => amount.max(0),
+            _ => 0,
+        }
+    }
+
+    fn damage_needed_to_kill(
+        &self,
+        game: &GameState,
+        target: CardId,
+        max_damage: i32,
+        source: CardId,
+        is_combat: bool,
+    ) -> i32 {
+        let target_card = game.card(target);
+        let source_card = game.card(source);
+        let mut kill_damage = (target_card.toughness() - target_card.damage).max(0);
+
+        if target_card.has_keyword("Indestructible") && !source_card.has_wither() && !source_card.has_infect()
+        {
+            return max_damage + 1;
+        }
+        if source_card.has_deathtouch() && target_card.is_creature() {
+            kill_damage = 1;
+        }
+
+        for damage in 1..=max_damage {
+            if self.predicted_damage_to_card(game, target, damage, source, is_combat) >= kill_damage {
+                return damage;
+            }
+        }
+
+        max_damage + 1
+    }
+
     fn play_option_label(&self, play: PlayOption) -> String {
         if self.is_land(play.card_id) {
             return format!("LAND:{}", self.card_name(play.card_id));
@@ -270,6 +326,10 @@ impl DeterministicAgent {
     }
 
     fn log_decision(&self, msg: &str) {
+        if std::env::var("FORGE_RNG_TRACE").is_ok() {
+            let count = self.rng.borrow().call_count;
+            eprintln!("[agent-P{} rng#{}] {}", self.player_id.0, count, msg);
+        }
         if self.verbose {
             let styled = if msg.starts_with("Priority: PASS")
                 || msg.contains("PASS (nothing playable)")
@@ -616,6 +676,19 @@ impl PlayerAgent for DeterministicAgent {
         Some(attacker)
     }
 
+    fn choose_damage_assignment_order(
+        &mut self,
+        _player: PlayerId,
+        _attacker: CardId,
+        blockers: &[CardId],
+    ) -> Vec<CardId> {
+        parity_order::sort_cards_by_name_then_id(
+            blockers,
+            |cid| self.card_name(cid),
+            |cid| self.parity_map.id(cid),
+        )
+    }
+
     fn assign_combat_damage(
         &mut self,
         game: &GameState,
@@ -630,7 +703,6 @@ impl PlayerAgent for DeterministicAgent {
             return out;
         }
 
-        let has_deathtouch = game.card(attacker).has_deathtouch();
         let has_trample = game.card(attacker).has_trample();
         let can_assign_defender = has_trample && defender_id.is_some();
         let mut damage_left = damage_to_assign;
@@ -651,13 +723,12 @@ impl PlayerAgent for DeterministicAgent {
                 continue;
             }
             last_target = Some(blocker);
-            let lethal = if has_deathtouch {
-                1
-            } else if game.card(blocker).type_line.is_planeswalker() {
-                game.card(blocker)
+            let blocker_card = game.card(blocker);
+            let lethal = if blocker_card.type_line.is_planeswalker() {
+                blocker_card
                     .counter_count(&forge_engine_core::card::CounterType::Loyalty)
             } else {
-                (game.card(blocker).toughness() - game.card(blocker).damage).max(0)
+                self.damage_needed_to_kill(game, blocker, damage_left, attacker, true)
             };
             let assign = lethal.min(damage_left);
             if assign > 0 {
@@ -885,6 +956,7 @@ impl PlayerAgent for DeterministicAgent {
 
     fn choose_legend_keep(&mut self, _player: PlayerId, duplicates: &[CardId]) -> CardId {
         // Sort by (card_name, parity_id) for deterministic cross-engine parity.
+        // Both Java and Rust sort identically to avoid HashMap ordering issues.
         let sorted = choice_space::sort_native(duplicates, |a, b| {
             self.card_name(*a)
                 .cmp(&self.card_name(*b))
@@ -1199,7 +1271,12 @@ impl PlayerAgent for DeterministicAgent {
         _player: PlayerId,
         descriptions: &[String],
     ) -> usize {
-        choice_space::pick_index(descriptions.len(), &mut self.rng.borrow_mut())
+        let sorted = parity_order::sort_replacement_descriptions_with_indices(descriptions);
+        if sorted.is_empty() {
+            return 0;
+        }
+        let picked = choice_space::pick_index(sorted.len(), &mut self.rng.borrow_mut());
+        sorted[picked].0
     }
 }
 
@@ -1236,7 +1313,7 @@ mod tests {
             Arc::new(ParityCardMap::default()),
         );
         // With two valid targets, should randomly pick one
-        let target = agent.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
+        let target = agent.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)], None);
         assert!(target.is_some());
     }
 
@@ -1252,7 +1329,7 @@ mod tests {
             false,
             Arc::new(ParityCardMap::default()),
         );
-        let t1 = agent1.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
+        let t1 = agent1.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)], None);
 
         let rng2 = make_rng(42);
         let mut agent2 = DeterministicAgent::new(
@@ -1263,7 +1340,7 @@ mod tests {
             false,
             Arc::new(ParityCardMap::default()),
         );
-        let t2 = agent2.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)]);
+        let t2 = agent2.choose_target_player(PlayerId(0), &[PlayerId(0), PlayerId(1)], None);
 
         assert_eq!(t1, t2);
     }

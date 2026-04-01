@@ -2845,8 +2845,10 @@ impl GameLoop {
                 {
                     let sac_power = game.card(chosen).power();
                     let sac_toughness = game.card(chosen).toughness();
+                    let lki_counters = game.card(chosen).counters.clone();
                     game.card_mut(chosen)
                         .set_lki_power_toughness(Some(sac_power), Some(sac_toughness));
+                    game.card_mut(chosen).lki_counters = Some(lki_counters);
                     // Store as last sacrificed card for SVar lookup.
                     // The SVar resolver reads this from the spell source's svars.
                     // Since we don't have the source card_id here, store it

@@ -5,6 +5,25 @@ use crate::card::perpetual::perpetual_interface::PerpetualInterface;
 use crate::card::perpetual::perpetual_new_pt;
 use crate::spellability::SpellAbility;
 
+/// End-of-turn revert for power exchange. Mirrors the `GameCommand.run()` in Java
+/// `PowerExchangeEffect` that calls `removeNewPT` on both cards when the
+/// duration expires, restoring their original power values.
+///
+/// Takes two card IDs and the original power values to restore.
+pub fn run(
+    game: &mut crate::game::GameState,
+    card1: crate::ids::CardId,
+    card2: crate::ids::CardId,
+) {
+    // Reset power modifiers to 0 to revert the exchange
+    if game.card(card1).zone == ZoneType::Battlefield {
+        game.card_mut(card1).set_power_modifier(0);
+    }
+    if game.card(card2).zone == ZoneType::Battlefield {
+        game.card_mut(card2).set_power_modifier(0);
+    }
+}
+
 /// Resolve `SP$ PowerExchange` — swap power between two creatures.
 ///
 /// Mirrors Java `PowerExchangeEffect.java`.

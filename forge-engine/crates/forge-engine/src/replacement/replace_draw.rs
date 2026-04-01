@@ -23,12 +23,21 @@ pub fn can_replace(
         return false;
     }
     let player = match event {
-        ReplacementEvent::Draw { player } => *player,
+        ReplacementEvent::Draw { player, .. } => *player,
         _ => return false,
     };
     if let Some(valid) = effect.params.get(keys::VALID_PLAYER) {
         if !matches_valid_player(valid, player, source_card) {
             return false;
+        }
+    }
+    // NotFirstCardInDrawStep$ True: only replace draws that are NOT the first in the draw step.
+    // Used by Alhammarret's Archive to skip its first draw in the draw step.
+    if effect.params.get("NotFirstCardInDrawStep").map(|v| v == "True").unwrap_or(false) {
+        if let ReplacementEvent::Draw { is_first_in_draw_step, .. } = event {
+            if *is_first_in_draw_step {
+                return false;
+            }
         }
     }
     true
@@ -49,6 +58,15 @@ pub fn execute(
         || effect.params.has(keys::SKIP)
     {
         return ReplacementResult::Skipped;
+    }
+    // ReplaceWith$ DrawTwo — draw an extra card (Alhammarret's Archive).
+    if let Some(replace) = effect.params.get(keys::REPLACE_WITH) {
+        if replace == "DrawTwo" || replace == "DrawExtra" {
+            if let ReplacementEvent::Draw { extra_draws, .. } = _event {
+                *extra_draws += 1;
+                return ReplacementResult::Updated;
+            }
+        }
     }
     ReplacementResult::Replaced
 }

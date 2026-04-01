@@ -8,6 +8,8 @@ use crate::player::actions::PlayerAction;
 use crate::spellability::SpellAbility;
 use forge_foundation::PhaseType;
 
+pub mod attach_ai;
+pub mod creature_evaluator;
 pub mod game_log;
 pub mod types;
 
@@ -180,15 +182,24 @@ pub trait PlayerAgent {
             }
             last_blocker = Some(blocker_id);
 
-            let lethal = if has_deathtouch {
+            let blocker_card = game.card(blocker_id);
+            // Mirrors Java ComputerUtilCombat.getEnoughDamageToKill:
+            // indestructible creatures require maxDamage+1 (can't die from damage),
+            // so all remaining damage gets assigned to them.
+            let is_indestructible = blocker_card.has_keyword("Indestructible");
+            let attacker_has_wither = game.card(attacker).has_wither()
+                || game.card(attacker).has_infect();
+            let lethal = if is_indestructible && !attacker_has_wither {
+                // Can't kill by damage — assign all remaining (mirrors maxDamage + 1)
+                dmg_left + 1
+            } else if has_deathtouch {
                 1
-            } else if game.card(blocker_id).type_line.is_planeswalker() {
-                game.card(blocker_id)
+            } else if blocker_card.type_line.is_planeswalker() {
+                blocker_card
                     .counter_count(&crate::card::CounterType::Loyalty)
                     .max(0)
             } else {
-                let blocker = game.card(blocker_id);
-                (blocker.toughness() - blocker.damage).max(0)
+                (blocker_card.toughness() - blocker_card.damage).max(0)
             };
             let assign = lethal.min(dmg_left);
             if assign > 0 {

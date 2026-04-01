@@ -4,6 +4,21 @@ use super::{matches_valid_cards, EffectContext};
 use crate::ids::CardId;
 use crate::spellability::SpellAbility;
 
+/// End-of-turn revert for ProtectionAll. Mirrors the `GameCommand.run()` in Java
+/// `ProtectAllEffect` that removes the granted protection keywords when the
+/// effect duration expires.
+///
+/// Removes the specified protection keyword from the card's pump_keywords.
+pub fn run(
+    game: &mut crate::game::GameState,
+    card_id: crate::ids::CardId,
+    keyword: &str,
+) {
+    if game.card(card_id).zone == ZoneType::Battlefield {
+        game.card_mut(card_id).pump_keywords.remove(keyword);
+    }
+}
+
 /// `SP$ ProtectionAll` — grant protection to all matching permanents.
 ///
 /// Mirrors Java's `ProtectAllEffect.java`.

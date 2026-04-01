@@ -221,6 +221,48 @@ impl KeywordCollection {
             .unwrap_or_default()
     }
 
+    /// Check if the collection contains a keyword by string prefix match.
+    /// Mirrors Java's `KeywordCollection.contains(String)`.
+    pub fn contains(&self, keyword: &str) -> bool {
+        self.map
+            .values()
+            .any(|list| list.iter().any(|inst| inst.original.starts_with(keyword)))
+    }
+
+    /// Insert all keyword instance data from a slice.
+    /// Mirrors Java's `KeywordCollection.insertAll(Iterable<KeywordInterface>)`.
+    pub fn insert_all(&mut self, keywords: &[KeywordInstanceData]) {
+        for inst in keywords {
+            self.insert(inst.clone());
+        }
+    }
+
+    /// Remove all instances of a specific keyword string (exact match).
+    /// Mirrors Java's `KeywordCollection.removeInstances(Keyword, String)`.
+    pub fn remove_instances(&mut self, keyword: &str) {
+        for list in self.map.values_mut() {
+            list.retain(|inst| inst.original != keyword);
+        }
+        self.map.retain(|_, v| !v.is_empty());
+    }
+
+    /// Apply a batch of keyword additions and removals.
+    /// Mirrors Java's `KeywordCollection.applyChanges(KeywordsChange)`.
+    pub fn apply_changes(&mut self, additions: &[String], removals: &[String]) {
+        for r in removals {
+            self.remove(r);
+        }
+        for a in additions {
+            self.add(a);
+        }
+    }
+
+    /// Iterate over keyword strings. Alias for `iter_strings` for parity
+    /// with Java's `KeywordCollection.iterator()`.
+    pub fn iterator(&self) -> impl Iterator<Item = &str> {
+        self.iter_strings()
+    }
+
     /// Get all keywords as a list of original strings.
     pub fn as_string_list(&self) -> Vec<String> {
         self.map

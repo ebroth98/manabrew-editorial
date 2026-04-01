@@ -40,6 +40,10 @@ fn do_sacrifice(
         .unwrap_or(&0);
     let lki_power = ctx.game.card(card_id).power();
     let lki_toughness = ctx.game.card(card_id).toughness();
+    // Capture LKI counters for death triggers (e.g. Servant of the Scale)
+    let lki_counters = ctx.game.card(card_id).counters.clone();
+    ctx.game.card_mut(card_id).lki_counters = Some(lki_counters);
+    ctx.game.card_mut(card_id).set_lki_power_toughness(Some(lki_power), Some(lki_toughness));
 
     // Clear temporary Animate triggers before firing events (CR 400.7).
     {

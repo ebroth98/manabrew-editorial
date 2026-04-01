@@ -18,3 +18,11 @@ pub trait StaticAbilityApiBased {
     /// Resolve this static ability by dispatching to the effect system.
     fn resolve(&self, sa: &SpellAbility);
 }
+
+/// Resolve an API-based static ability.
+/// Mirrors Java's `StaticAbilityApiBased.resolve()` which delegates to its effect.
+///
+/// In the Rust engine, resolution is centralized in `effects::resolve_effect`.
+pub fn resolve(ctx: &mut crate::ability::effects::EffectContext, sa: &SpellAbility) {
+    crate::ability::effects::resolve_effect(ctx, sa);
+}
