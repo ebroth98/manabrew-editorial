@@ -24,7 +24,6 @@ pub enum PlayCardMode {
     Alternative(AlternativeCost),
     /// Alternative cost granted by `Mode$ AlternativeCost` static abilities.
     StaticAlternative,
-    GainLifeAlt,
     ForetellExile,
 }
 

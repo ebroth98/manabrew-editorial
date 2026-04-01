@@ -2,6 +2,7 @@ use forge_foundation::ZoneType;
 
 use crate::card::{valid_filter, Card};
 use crate::cost::{parse_cost, Cost};
+use crate::game::GameState;
 use crate::ids::PlayerId;
 use crate::parsing::keys;
 use crate::spellability::SpellAbility;
@@ -51,6 +52,7 @@ pub struct AlternativeCostEntry {
 /// cards in static-ability source zones, checking each `AlternativeCost` static
 /// ability for applicability.
 pub fn alternative_costs(
+    game: &GameState,
     cards: &[Card],
     sa: &SpellAbility,
     source: &Card,
@@ -65,14 +67,14 @@ pub fn alternative_costs(
     let source_id = source.id;
 
     // Process source card first
-    collect_from_card(source, sa, source, player, &mut result);
+    collect_from_card(game, source, sa, source, player, &mut result);
 
     // Process all cards in static ability source zones
     for ca in cards
         .iter()
         .filter(|c| c.zone.is_static_ability_source() && c.id != source_id)
     {
-        collect_from_card(ca, sa, source, player, &mut result);
+        collect_from_card(game, ca, sa, source, player, &mut result);
     }
 
     result
@@ -82,6 +84,7 @@ pub fn alternative_costs(
 /// Convenience wrapper around `alternative_costs` — returns true if at least one
 /// alternative cost is available.
 pub fn has_alternative_cost(
+    game: &GameState,
     cards: &[Card],
     sa: &SpellAbility,
     source: &Card,
@@ -95,6 +98,9 @@ pub fn has_alternative_cost(
         .iter()
         .filter(|s| s.is_active_for(StaticMode::AlternativeCost, source.zone))
     {
+        if !st_ab.check_conditions(source, game) {
+            continue;
+        }
         if apply(st_ab, sa, source, source, player) {
             return true;
         }
@@ -110,6 +116,9 @@ pub fn has_alternative_cost(
             .iter()
             .filter(|s| s.is_active_for(StaticMode::AlternativeCost, ca.zone))
         {
+            if !st_ab.check_conditions(ca, game) {
+                continue;
+            }
             if apply(st_ab, sa, source, ca, player) {
                 return true;
             }
@@ -122,6 +131,7 @@ pub fn has_alternative_cost(
 /// Process all static abilities on a single card, collecting matching
 /// alternative cost entries.
 fn collect_from_card(
+    game: &GameState,
     ca: &Card,
     sa: &SpellAbility,
     source: &Card,
@@ -133,6 +143,9 @@ fn collect_from_card(
         .iter()
         .filter(|s| s.is_active_for(StaticMode::AlternativeCost, ca.zone))
     {
+        if !st_ab.check_conditions(ca, game) {
+            continue;
+        }
         if !apply(st_ab, sa, source, ca, player) {
             continue;
         }
@@ -255,7 +268,7 @@ fn apply(
 ) -> bool {
     // Check ValidSA — mirrors Java's stAb.matchesValidParam("ValidSA", sa)
     if let Some(valid_sa) = st_ab.params.get(keys::VALID_SA) {
-        if !spell_ability_matches(valid_sa, sa) {
+        if !spell_ability_matches(valid_sa, sa, source, host) {
             return false;
         }
     }
@@ -284,7 +297,7 @@ fn apply(
 /// Recognised tokens (case-insensitive):
 /// - "Spell" — the SA must be a spell (has SP$ param or is_spell)
 /// - "Ability" — the SA must be an ability
-fn spell_ability_matches(valid_sa: &str, sa: &SpellAbility) -> bool {
+fn spell_ability_matches(valid_sa: &str, sa: &SpellAbility, source: &Card, host: &Card) -> bool {
     let tokens: Vec<&str> = valid_sa
         .split(',')
         .map(|s| s.trim())
@@ -296,19 +309,42 @@ fn spell_ability_matches(valid_sa: &str, sa: &SpellAbility) -> bool {
     }
 
     tokens.iter().all(|tok| {
-        let lower = tok.to_ascii_lowercase();
-        match lower.as_str() {
+        let parts: Vec<&str> = tok
+            .split('.')
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .collect();
+        let primary = parts.first().copied().unwrap_or("");
+        let lower = primary.to_ascii_lowercase();
+
+        let base_ok = match lower.as_str() {
             "spell" => sa.is_spell || sa.params.has(keys::SP),
             "ability" => sa.is_activated || sa.is_trigger,
             _ => {
-                // Unknown token — check if it matches the API type
                 if let Some(ref api) = sa.api {
-                    api.name().eq_ignore_ascii_case(tok)
+                    api.name().eq_ignore_ascii_case(primary)
                 } else {
                     false
                 }
             }
+        };
+        if !base_ok {
+            return false;
         }
+
+        if parts.len() >= 2 {
+            match parts[1].to_ascii_lowercase().as_str() {
+                // ValidSA$ Spell.Self should only match the source card's own spell.
+                "self" => {
+                    if sa.source != Some(source.id) || source.id != host.id {
+                        return false;
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        true
     })
 }
 

@@ -5,7 +5,7 @@
 //! [`GameTrace`].
 
 use std::cell::RefCell;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -334,7 +334,10 @@ impl PlayerAgent for CapturingAgent {
                     .insert((c.id, ab.ability_index), ab.is_mana_ability);
             }
         }
-        perf::record("agent.snapshot_state.rebuild_card_caches", t_cache.elapsed());
+        perf::record(
+            "agent.snapshot_state.rebuild_card_caches",
+            t_cache.elapsed(),
+        );
         if !self.capture_snapshots {
             perf::record("agent.snapshot_state.total", t_total.elapsed());
             return;
@@ -536,8 +539,9 @@ impl PlayerAgent for CapturingAgent {
                             PlayCardMode::Alternative(AlternativeCost::Plotted) => {
                                 "Plotted".to_string()
                             }
-                            PlayCardMode::StaticAlternative => "0".to_string(),
-                            PlayCardMode::GainLifeAlt => "GainLifeAlt".to_string(),
+                            // Host-card `Mode$ AlternativeCost` actions are
+                            // represented in Rust as `StaticAlternative`.
+                            PlayCardMode::StaticAlternative => "StaticAlternative".to_string(),
                             PlayCardMode::ForetellExile => "ForetellExile".to_string(),
                         };
                         let fallback = match cid.mode {
@@ -1211,6 +1215,28 @@ impl PlayerAgent for CapturingAgent {
         accept
     }
 
+    fn confirm_replacement_effect(
+        &mut self,
+        player: PlayerId,
+        question: &str,
+        effect_description: &str,
+        card_name: Option<&str>,
+    ) -> bool {
+        let accept =
+            self.inner
+                .confirm_replacement_effect(player, question, effect_description, card_name);
+        self.record_decision(
+            "confirm_replacement_effect",
+            vec!["DECLINE".to_string(), "ACCEPT".to_string()],
+            if accept {
+                "ACCEPT".to_string()
+            } else {
+                "DECLINE".to_string()
+            },
+        );
+        accept
+    }
+
     fn choose_binary(
         &mut self,
         player: PlayerId,
@@ -1464,19 +1490,39 @@ pub fn run_with_data(config: &RunConfig, data: &LoadedData) -> Result<GameTrace,
         "Commander" | "Oathbreaker" | "TinyLeaders" | "Brawl"
     );
     if is_commander_variant && !config.commanders.is_empty() {
-        // For each player, find commander cards in their library and move to command zone
+        let mut unique_commanders: Vec<&str> = Vec::new();
+        let mut seen = HashSet::new();
+        for commander_name in &config.commanders {
+            let key = commander_name.to_ascii_lowercase();
+            if seen.insert(key) {
+                unique_commanders.push(commander_name.as_str());
+            }
+        }
+
+        // For each player, find commander cards already present in library and move to command zone.
+        // Contract: --commander names must already be in the main deck list.
         for &pid in &[p0, p1] {
-            let lib_cards: Vec<CardId> = game.cards_in_zone(ZoneType::Library, pid).to_vec();
-            for commander_name in &config.commanders {
-                // Find first card with matching name in library
-                if let Some(&card_id) = lib_cards
+            for commander_name in &unique_commanders {
+                let card_id = game
+                    .cards_in_zone(ZoneType::Library, pid)
                     .iter()
-                    .find(|&&cid| game.card(cid).card_name == *commander_name)
-                {
-                    // Move to command zone and register as commander
-                    game.move_card(card_id, ZoneType::Command, pid);
-                    game.player_register_commander(pid, card_id);
-                }
+                    .copied()
+                    .find(|&cid| {
+                        game.card(cid)
+                            .card_name
+                            .eq_ignore_ascii_case(commander_name)
+                    })
+                    .ok_or_else(|| {
+                        format!(
+                            "Commander \"{}\" not found in player {} main deck/library",
+                            commander_name,
+                            pid.0 + 1
+                        )
+                    })?;
+
+                // Move to command zone and register as commander.
+                game.move_card(card_id, ZoneType::Command, pid);
+                game.player_register_commander(pid, card_id);
             }
         }
         // Set commander_damage_enabled based on variant

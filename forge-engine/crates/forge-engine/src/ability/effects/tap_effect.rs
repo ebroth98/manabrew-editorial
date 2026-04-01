@@ -3,6 +3,7 @@ use forge_foundation::ZoneType;
 use super::EffectContext;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
+use crate::ability::spell_ability_effect::get_target_cards;
 use crate::spellability::SpellAbility;
 
 /// Resolve `SP$ Tap` — tap target permanent(s).
@@ -22,42 +23,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     let remember_tapped = sa.params.has(crate::parsing::keys::REMEMBER_TAPPED);
     let always_remember = sa.params.has(crate::parsing::keys::ALWAYS_REMEMBER);
 
-    // Targeted: use the chosen target card.
-    if let Some(target_card) = sa.target_chosen.target_card {
-        if ctx.game.card(target_card).zone == ZoneType::Battlefield {
-            tap_card(
-                ctx,
-                target_card,
-                controller,
-                etb,
-                remember_tapped,
-                always_remember,
-                sa.source,
-            );
-        }
-        return;
-    }
-
-    // Java TapEffect uses getTargetCards(sa): for targeting SAs with zero chosen
-    // targets (e.g. TargetMin$ 0 and player picked none), this resolves to an
-    // empty set and does nothing. Do not fall back to Self in that case.
-    if sa.uses_targeting() {
-        return;
-    }
-
-    // Non-targeting Tap effects default to Self.
-    if let Some(source) = sa.source {
-        if ctx.game.card(source).zone == ZoneType::Battlefield {
-            tap_card(
-                ctx,
-                source,
-                controller,
-                etb,
-                remember_tapped,
-                always_remember,
-                sa.source,
-            );
-        }
+    // Mirrors Java TapEffect.getTargetCards(sa), including non-targeting
+    // Defined$ cases like ReplacedCard and defaulting to Self.
+    for target_card in get_target_cards(ctx.game, sa) {
+        tap_card(
+            ctx,
+            target_card,
+            controller,
+            etb,
+            remember_tapped,
+            always_remember,
+            sa.source,
+        );
     }
 }
 
@@ -70,24 +47,29 @@ fn tap_card(
     always_remember: bool,
     source: Option<CardId>,
 ) {
-    let was_untapped = !ctx.game.card(card_id).tapped;
-
     if etb {
-        // ETB: directly set tapped without firing trigger
+        // Java parity: ETB tap effects mark the card tapped even if the move
+        // replacement is executing before the card is physically on the battlefield.
         ctx.game.card_mut(card_id).set_tapped(true);
-    } else {
-        let tapped = ctx.game.tap(card_id);
-        if tapped {
-            ctx.trigger_handler.run_trigger(
-                TriggerType::Taps,
-                RunParams {
-                    card: Some(card_id),
-                    player: Some(controller),
-                    ..Default::default()
-                },
-                false,
-            );
-        }
+        return;
+    }
+
+    if ctx.game.card(card_id).zone != ZoneType::Battlefield {
+        return;
+    }
+
+    let was_untapped = !ctx.game.card(card_id).tapped;
+    let tapped = ctx.game.tap(card_id);
+    if tapped {
+        ctx.trigger_handler.run_trigger(
+            TriggerType::Taps,
+            RunParams {
+                card: Some(card_id),
+                player: Some(controller),
+                ..Default::default()
+            },
+            false,
+        );
     }
 
     // RememberTapped / AlwaysRemember

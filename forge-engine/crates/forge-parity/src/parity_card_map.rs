@@ -113,12 +113,12 @@ impl ParityCardMap {
             for cid in battlefield_cards {
                 Self::assign_if_absent(&mut inner, cid);
             }
-            let mut graveyard_cards: Vec<CardId> =
-                game.cards_in_zone(ZoneType::Graveyard, pid)
-                    .iter()
-                    .copied()
-                    .filter(|&cid| !game.card(cid).is_token)
-                    .collect();
+            let mut graveyard_cards: Vec<CardId> = game
+                .cards_in_zone(ZoneType::Graveyard, pid)
+                .iter()
+                .copied()
+                .filter(|&cid| !game.card(cid).is_token)
+                .collect();
             graveyard_cards.sort_by(|a, b| {
                 let ca = game.card(*a);
                 let cb = game.card(*b);

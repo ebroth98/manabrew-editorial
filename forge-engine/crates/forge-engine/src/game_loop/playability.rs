@@ -2,26 +2,6 @@ use super::*;
 
 use crate::cost::cost_adjustment::apply_cost_reductions;
 
-/// Check a Forge `IsPresent$` condition against the game state for the given player.
-///
-/// Supported forms:
-/// - `Forest.YouCtrl` — player controls a permanent with subtype Forest
-/// - Other forms default to `false` (conservatively unpayable).
-pub(crate) fn check_is_present(game: &GameState, player: PlayerId, condition: &str) -> bool {
-    // Handle "Type.YouCtrl" and similar
-    if let Some(type_part) = condition.strip_suffix(".YouCtrl") {
-        // Check if player controls a permanent matching type_part (treated as subtype)
-        return game
-            .cards_in_zone(forge_foundation::ZoneType::Battlefield, player)
-            .iter()
-            .any(|&cid| {
-                let card = game.card(cid);
-                card.type_line.has_subtype(type_part)
-            });
-    }
-    false
-}
-
 impl GameLoop {
     pub(super) fn mana_from_cost(cost: &crate::cost::Cost) -> forge_foundation::ManaCost {
         let mut out = forge_foundation::ManaCost::generic(0);
@@ -240,23 +220,23 @@ impl GameLoop {
                 // StaticAbilityAlternativeCost (Mode$ AlternativeCost)
                 let static_alt_ok =
                     crate::staticability::static_ability_alternative_cost::alternative_costs(
+                        game,
                         &game.cards,
                         &cast_sa,
                         card,
                         player,
                     )
                     .iter()
-                    .filter(|entry| {
-                        entry
-                            .cost
-                            .parts
-                            .iter()
-                            .all(|p| matches!(p, CostPart::Mana { .. }))
-                    })
                     .any(|entry| {
                         let base = Self::mana_from_cost(&entry.cost);
                         let adjusted = cost_adj.apply(&base).add(&raise_mana);
                         available_mana.can_pay(&adjusted)
+                            && crate::cost::can_pay_ignoring_mana_for_spell(
+                                &entry.cost,
+                                game,
+                                card_id,
+                                player,
+                            )
                     });
 
                 // Suspend: special action, pay suspend cost to exile with time counters
@@ -273,24 +253,6 @@ impl GameLoop {
                 // (This is a special action, not a cast — always costs {2})
                 let foretell_exile_ok = if card.get_foretell_cost().is_some() {
                     available_mana.can_pay(&forge_foundation::ManaCost::generic(2))
-                } else {
-                    false
-                };
-
-                // Sacrifice-based alternative cost (e.g. Fireblast: sacrifice two Mountains)
-                let sacrifice_alt_ok =
-                    if let Some((amount, ref type_filter)) = card.get_sacrifice_alt_cost() {
-                        let targets = crate::cost::get_sacrifice_targets(game, player, type_filter);
-                        targets.len() as i32 >= amount
-                    } else {
-                        false
-                    };
-
-                // GainLife alternative cost (e.g. Invigorate: free if you control a Forest
-                // and an opponent gains life as the alt cost).
-                let gainlife_alt_ok = if let Some((_life, condition)) = card.get_gainlife_alt_cost()
-                {
-                    check_is_present(game, player, &condition)
                 } else {
                     false
                 };
@@ -400,11 +362,10 @@ impl GameLoop {
                     && !dash_ok
                     && !blitz_ok
                     && !overload_ok
+                    && !static_alt_ok
                     && !suspend_ok
                     && !foretell_exile_ok
                     && !emerge_ok
-                    && !gainlife_alt_ok
-                    && !sacrifice_alt_ok
                     && !offering_ok
                     && !morph_ok
                     && !bestow_ok
@@ -514,20 +475,6 @@ impl GameLoop {
                                 card_id,
                                 mode: crate::agent::PlayCardMode::Alternative(
                                     crate::spellability::AlternativeCost::Suspend,
-                                ),
-                            });
-                        }
-                        if gainlife_alt_ok {
-                            playable.push(crate::agent::PlayOption {
-                                card_id,
-                                mode: crate::agent::PlayCardMode::GainLifeAlt,
-                            });
-                        }
-                        if sacrifice_alt_ok {
-                            playable.push(crate::agent::PlayOption {
-                                card_id,
-                                mode: crate::agent::PlayCardMode::Alternative(
-                                    crate::spellability::AlternativeCost::SacrificeAlt,
                                 ),
                             });
                         }

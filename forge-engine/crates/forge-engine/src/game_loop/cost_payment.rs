@@ -476,7 +476,7 @@ impl GameLoop {
                             lki_toughness,
                         );
                         self.trigger_handler.flush_waiting_triggers(game);
-                        game.move_card_with_agents(card_id, ZoneType::Graveyard, owner, agents);
+                        self.move_card_with_runtime(game, card_id, ZoneType::Graveyard, owner, agents);
                     } else {
                         self.pay_sacrifice_cost(game, agents, player, type_filter, *amount, sa);
                     }
@@ -496,7 +496,7 @@ impl GameLoop {
                             },
                             false,
                         );
-                        game.move_card_with_agents(card_id, ZoneType::Graveyard, owner, agents);
+                        self.move_card_with_runtime(game, card_id, ZoneType::Graveyard, owner, agents);
                     } else if !pre_picked_discards.is_empty() {
                         // Use pre-picked cards from visit phase
                         let to_discard: Vec<CardId> = pre_picked_discards
@@ -560,7 +560,7 @@ impl GameLoop {
                     from,
                 } => {
                     if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
-                        game.move_card_with_agents(card_id, ZoneType::Exile, game.card(card_id).owner, agents);
+                        self.move_card_with_runtime(game, card_id, ZoneType::Exile, game.card(card_id).owner, agents);
                         self.record_paid_cost_exile(game, card_id, card_id);
                     } else {
                         self.pay_exile_cost(
@@ -580,9 +580,9 @@ impl GameLoop {
                 } => {
                     if type_filter == "CARDNAME" {
                         let owner = game.card(card_id).owner;
-                        game.move_card_with_agents(card_id, ZoneType::Hand, owner, agents);
+                        self.move_card_with_runtime(game, card_id, ZoneType::Hand, owner, agents);
                     } else {
-                        self.pay_return_cost(game, agents, player, type_filter, *amount);
+                        self.pay_return_cost(game, agents, player, type_filter, *amount, sa);
                     }
                 }
                 CostPart::TapType {
@@ -649,7 +649,7 @@ impl GameLoop {
                 CostPart::Mill(amount) => {
                     for _ in 0..*amount {
                         if let Some(top) = game.zone_mut(ZoneType::Library, player).take_top() {
-                            game.move_card_with_agents(top, ZoneType::Graveyard, player, agents);
+                            self.move_card_with_runtime(game, top, ZoneType::Graveyard, player, agents);
                             self.trigger_handler.run_trigger(
                                 TriggerType::Milled,
                                 RunParams {
@@ -1105,7 +1105,7 @@ impl GameLoop {
                     if type_filter == "CARDNAME" || type_filter == "OriginalHost" {
                         if game.card(card_id).zone == *from {
                             let owner = game.card(card_id).owner;
-                            game.move_card_with_agents(card_id, ZoneType::Exile, owner, agents);
+                            self.move_card_with_runtime(game, card_id, ZoneType::Exile, owner, agents);
                             self.record_paid_cost_exile(game, card_id, card_id);
                         }
                     } else {
@@ -1125,7 +1125,7 @@ impl GameLoop {
                     type_filter,
                 } => {
                     if type_filter != "CARDNAME" {
-                        self.pay_return_cost(game, agents, player, type_filter, *amount);
+                        self.pay_return_cost(game, agents, player, type_filter, *amount, sa);
                     }
                 }
                 CostPart::TapType {
@@ -1192,7 +1192,7 @@ impl GameLoop {
                 CostPart::Mill(amount) => {
                     for _ in 0..*amount {
                         if let Some(top) = game.zone_mut(ZoneType::Library, player).take_top() {
-                            game.move_card_with_agents(top, ZoneType::Graveyard, player, agents);
+                            self.move_card_with_runtime(game, top, ZoneType::Graveyard, player, agents);
                             self.trigger_handler.run_trigger(
                                 TriggerType::Milled,
                                 RunParams {
@@ -1656,7 +1656,7 @@ impl GameLoop {
             }
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let owner = game.card(chosen).owner;
-                game.move_card_with_agents(chosen, ZoneType::Exile, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 self.record_paid_cost_exile(game, source, chosen);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
@@ -1709,7 +1709,7 @@ impl GameLoop {
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 chosen_owner = Some(game.card(chosen).owner);
                 let owner = game.card(chosen).owner;
-                game.move_card_with_agents(chosen, ZoneType::Exile, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 self.record_paid_cost_exile(game, source, chosen);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
@@ -1749,7 +1749,7 @@ impl GameLoop {
             // Use choose_sacrifice to pick target (reuse the choose interface)
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let owner = game.card(chosen).owner;
-                game.move_card_with_agents(chosen, ZoneType::Exile, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 self.record_paid_cost_exile(game, source, chosen);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
@@ -1794,7 +1794,7 @@ impl GameLoop {
             if let Some(entry) = game.stack.remove_by_id(chosen_entry) {
                 if let Some(chosen_card) = entry.spell_ability.source {
                     let owner = game.card(chosen_card).owner;
-                    game.move_card_with_agents(chosen_card, ZoneType::Exile, owner, agents);
+                    self.move_card_with_runtime(game, chosen_card, ZoneType::Exile, owner, agents);
                     crate::ability::effects::emit_zone_trigger(
                         &mut self.trigger_handler,
                         chosen_card,
@@ -1846,7 +1846,7 @@ impl GameLoop {
 
         for cid in chosen {
             let owner = game.card(cid).owner;
-            game.move_card_with_agents(cid, ZoneType::Exile, owner, agents);
+            self.move_card_with_runtime(game, cid, ZoneType::Exile, owner, agents);
             crate::ability::effects::emit_zone_trigger(
                 &mut self.trigger_handler,
                 cid,
@@ -1934,7 +1934,7 @@ impl GameLoop {
                 lki_toughness,
             );
             self.trigger_handler.flush_waiting_triggers(game);
-            game.move_card_with_agents(chosen, ZoneType::Graveyard, owner, agents);
+            self.move_card_with_runtime(game, chosen, ZoneType::Graveyard, owner, agents);
         } else if !foods.is_empty() {
             // Let the chooser pick between food + graveyard cards. Food means sacrifice path.
             let mut combined = foods.clone();
@@ -1972,7 +1972,7 @@ impl GameLoop {
                         lki_toughness,
                     );
                     self.trigger_handler.flush_waiting_triggers(game);
-                    game.move_card_with_agents(chosen, ZoneType::Graveyard, owner, agents);
+                    self.move_card_with_runtime(game, chosen, ZoneType::Graveyard, owner, agents);
                 } else {
                     // Graveyard path: exile chosen + two more.
                     let mut chosen_gy = vec![chosen];
@@ -1994,7 +1994,7 @@ impl GameLoop {
                     }
                     for cid in chosen_gy.into_iter().take(3) {
                         let owner = game.card(cid).owner;
-                        game.move_card_with_agents(cid, ZoneType::Exile, owner, agents);
+                        self.move_card_with_runtime(game, cid, ZoneType::Exile, owner, agents);
                         crate::ability::effects::emit_zone_trigger(
                             &mut self.trigger_handler,
                             cid,
@@ -2019,7 +2019,7 @@ impl GameLoop {
                     .choose_sacrifice(player, &remaining, None)
                     .unwrap_or(remaining[0]);
                 let owner = game.card(chosen).owner;
-                game.move_card_with_agents(chosen, ZoneType::Exile, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
                     chosen,
@@ -2180,7 +2180,7 @@ impl GameLoop {
             if game.card(source).zone == from {
                 let owner = game.card(source).owner;
                 if lib_pos == 0 {
-                    game.move_card_with_agents(source, ZoneType::Library, owner, agents);
+                    self.move_card_with_runtime(game, source, ZoneType::Library, owner, agents);
                 } else {
                     game.put_on_bottom_of_library(source, owner);
                 }
@@ -2225,7 +2225,7 @@ impl GameLoop {
             let origin = game.card(chosen).zone;
             let owner = game.card(chosen).owner;
             if lib_pos == 0 {
-                game.move_card_with_agents(chosen, ZoneType::Library, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Library, owner, agents);
             } else {
                 game.put_on_bottom_of_library(chosen, owner);
             }
@@ -2433,7 +2433,7 @@ impl GameLoop {
             if exile {
                 let origin = game.card(chosen).zone;
                 let owner = game.card(chosen).owner;
-                game.move_card_with_agents(chosen, ZoneType::Exile, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 // Track the exile-with relationship so "Defined$ ExiledWith"
                 // can find this card later (e.g. Champions of the Shoal's
                 // leave-battlefield trigger returns the exiled card to hand).
@@ -2503,7 +2503,7 @@ impl GameLoop {
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let origin = game.card(chosen).zone;
                 let owner = game.card(chosen).owner;
-                game.move_card_with_agents(chosen, ZoneType::Exile, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Exile, owner, agents);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
                     chosen,
@@ -2523,16 +2523,17 @@ impl GameLoop {
         player: PlayerId,
         type_filter: &str,
         amount: i32,
+        sa: Option<&SpellAbility>,
     ) {
         for _ in 0..amount {
             let valid = cost::get_sacrifice_targets(game, player, type_filter);
             if valid.is_empty() {
                 break;
             }
-            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
+            if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, sa) {
                 let owner = game.card(chosen).owner;
                 let from_zone = game.card(chosen).zone;
-                game.move_card_with_agents(chosen, ZoneType::Hand, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Hand, owner, agents);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
                     chosen,
@@ -2763,7 +2764,7 @@ impl GameLoop {
             }
             if let Some(chosen) = agents[player.index()].choose_sacrifice(player, &valid, None) {
                 let owner = game.card(chosen).owner;
-                game.move_card_with_agents(chosen, ZoneType::Graveyard, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Graveyard, owner, agents);
                 crate::ability::effects::emit_zone_trigger(
                     &mut self.trigger_handler,
                     chosen,
@@ -2886,7 +2887,7 @@ impl GameLoop {
                     lki_toughness,
                 );
                 self.trigger_handler.flush_waiting_triggers(game);
-                game.move_card_with_agents(chosen, ZoneType::Graveyard, owner, agents);
+                self.move_card_with_runtime(game, chosen, ZoneType::Graveyard, owner, agents);
             }
         }
     }

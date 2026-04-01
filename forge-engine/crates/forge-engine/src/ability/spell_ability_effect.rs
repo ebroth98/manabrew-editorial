@@ -113,6 +113,12 @@ fn get_players(
     defined_first: bool,
     defined_param: &str,
 ) -> Vec<PlayerId> {
+    fn unique_push(players: &mut Vec<PlayerId>, player: PlayerId) {
+        if !players.contains(&player) {
+            players.push(player);
+        }
+    }
+
     let use_targets = sa.uses_targeting() && (!defined_first || !sa.params.has(defined_param));
 
     if use_targets {
@@ -125,7 +131,9 @@ fn get_players(
             let d = d.trim();
             let players =
                 ability_utils::resolve_defined_players_with_sa(d, sa, sa.activating_player, game);
-            result.extend(players);
+            for player in players {
+                unique_push(&mut result, player);
+            }
         }
         result
     }
@@ -162,6 +170,14 @@ fn resolve_defined_cards_for_sa(game: &GameState, sa: &SpellAbility, defined: &s
             let cards = parse_card_ids(sa.trigger_objects.get("Card"));
             if cards.is_empty() {
                 sa.trigger_source.into_iter().collect()
+            } else {
+                cards
+            }
+        }
+        "ReplacedCard" => {
+            let cards = parse_card_ids(sa.trigger_objects.get("ReplacedCard"));
+            if cards.is_empty() {
+                parse_card_ids(sa.trigger_objects.get("Card"))
             } else {
                 cards
             }

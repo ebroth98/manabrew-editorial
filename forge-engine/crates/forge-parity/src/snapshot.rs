@@ -12,8 +12,8 @@ use forge_engine_core::game::GameState;
 use forge_engine_core::ids::PlayerId;
 use forge_foundation::ZoneType;
 
-use crate::protocol::{CardSnapshot, PlayerSnapshot, StateSnapshot};
 use crate::perf;
+use crate::protocol::{CardSnapshot, PlayerSnapshot, StateSnapshot};
 
 /// Extract a normalized snapshot from the current game state.
 pub fn snapshot_game(game: &GameState) -> StateSnapshot {

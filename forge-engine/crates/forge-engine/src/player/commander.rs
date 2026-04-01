@@ -13,6 +13,7 @@ impl GameState {
             self.player_mut(player).commanders.push(commander);
         }
         self.card_mut(commander).is_commander = true;
+        self.card_mut(commander).move_to_command_zone = false;
         let count = self
             .player(player)
             .commander_casts
@@ -29,6 +30,7 @@ impl GameState {
             .commander_damage_received
             .remove(&commander.0);
         self.card_mut(commander).is_commander = false;
+        self.card_mut(commander).move_to_command_zone = false;
         self.card_mut(commander).commander_cast_count = 0;
     }
 
@@ -36,6 +38,7 @@ impl GameState {
         let commanders = self.player(player).commanders.clone();
         for commander in commanders {
             self.card_mut(commander).is_commander = false;
+            self.card_mut(commander).move_to_command_zone = false;
             self.card_mut(commander).commander_cast_count = 0;
         }
         self.player_mut(player).commanders.clear();
@@ -110,11 +113,7 @@ impl GameState {
         let mut effect = new_player_effect_card(player, "Commander Effect", None);
         add_replacement_effect(
             &mut effect,
-            "R$ Event$ Moved | ActiveZones$ Command | ValidCard$ Card.IsCommander+YouOwn | Secondary$ True | Destination$ Hand,Library | NewDestination$ Command | Description$ If a commander would be put into its owner's hand or library from anywhere, its owner may put it into the command zone instead.",
-        );
-        add_replacement_effect(
-            &mut effect,
-            "R$ Event$ Moved | ActiveZones$ Command | ValidCard$ Card.IsCommander+YouOwn | Secondary$ True | Destination$ Graveyard,Exile | NewDestination$ Command | Description$ If a commander would be put into a graveyard or exile from anywhere, its owner may put it into the command zone instead.",
+            "R$ Event$ Moved | ActiveZones$ Command | ValidCard$ Card.IsCommander+YouOwn | Secondary$ True | Optional$ True | OptionalDecider$ You | CommanderMoveReplacement$ True | Destination$ Hand,Library | NewDestination$ Command | Description$ If a commander would be put into its owner's hand or library from anywhere, its owner may put it into the command zone instead.",
         );
         add_static_ability(
             &mut effect,
@@ -172,5 +171,28 @@ impl GameState {
             }
         }
         self.player_create_commander_effect(player, trigger_handler);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::game::GameState;
+    use crate::ids::PlayerId;
+
+    #[test]
+    fn commander_effect_replacements_are_optional() {
+        let mut game = GameState::new(&["Player"], 40);
+        let player = PlayerId(0);
+
+        game.player_mut(player).commanders.push(crate::ids::CardId(99));
+        let effect_id = game
+            .player_create_commander_effect(player, None)
+            .expect("commander effect");
+        let replacements = &game.card(effect_id).replacement_effects;
+        assert_eq!(replacements.len(), 1);
+        for replacement in replacements {
+            assert_eq!(replacement.params.get("Optional"), Some("True"));
+            assert_eq!(replacement.params.get("OptionalDecider"), Some("You"));
+        }
     }
 }

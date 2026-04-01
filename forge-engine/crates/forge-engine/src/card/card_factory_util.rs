@@ -3,72 +3,12 @@
 use std::collections::HashSet;
 
 use crate::card::Card;
+use crate::parsing::{keys, Params};
+use crate::replacement::parse_replacement_effect;
 use crate::replacement::ReplacementEffect;
 use crate::spellability::SpellAbility;
 use crate::staticability::StaticAbility;
 use crate::trigger::Trigger;
-
-use super::{KEYWORD_ALT_COST_GAINLIFE_PREFIX, KEYWORD_ALT_COST_SACRIFICE_PREFIX};
-
-/// Parse `Mode$ AlternativeCost | Cost$ Sac<N/Type>` from a static ability raw string
-/// and return `Some("AltCostSacrifice:N:Type")` keyword.
-pub(crate) fn parse_sacrifice_alt_cost_keyword(raw: &str) -> Option<String> {
-    if !raw.contains("AlternativeCost") {
-        return None;
-    }
-    raw.split('|').find_map(|part| {
-        let p = part.trim();
-        if let Some(rest) = p.strip_prefix("Cost$") {
-            let cost = rest.trim();
-            if let Some(inner) = cost.strip_prefix("Sac<").and_then(|s| s.strip_suffix('>')) {
-                let mut split = inner.splitn(2, '/');
-                let amount = split.next().and_then(|s| s.trim().parse::<i32>().ok())?;
-                let type_filter = split.next().unwrap_or("").trim().to_string();
-                return Some(format!(
-                    "{}{}:{}",
-                    KEYWORD_ALT_COST_SACRIFICE_PREFIX, amount, type_filter
-                ));
-            }
-        }
-        None
-    })
-}
-
-/// Parse `Mode$ AlternativeCost | Cost$ GainLife<N/...> | IsPresent$ ...` from a
-/// static ability raw string and return `Some("AltCostGainLife:N:condition")` keyword.
-pub(crate) fn parse_gainlife_alt_cost_keyword(raw: &str) -> Option<String> {
-    if !raw.contains("AlternativeCost") {
-        return None;
-    }
-    let life_amount = raw.split('|').find_map(|part| {
-        let p = part.trim();
-        if let Some(rest) = p.strip_prefix("Cost$") {
-            let cost = rest.trim();
-            if let Some(inner) = cost
-                .strip_prefix("GainLife<")
-                .and_then(|s| s.split('>').next())
-            {
-                let n = inner
-                    .split('/')
-                    .next()
-                    .and_then(|s| s.trim().parse::<i32>().ok())?;
-                return Some(n);
-            }
-        }
-        None
-    })?;
-    let condition = raw
-        .split('|')
-        .find_map(|part| {
-            let p = part.trim();
-            p.strip_prefix("IsPresent$").map(|s| s.trim().to_string())
-        })
-        .unwrap_or_default();
-    Some(format!(
-        "{}{}:{}",
-        KEYWORD_ALT_COST_GAINLIFE_PREFIX, life_amount, condition
-    ))
-}
 
 pub fn ability_cast_face_down(card: &Card, _intrinsic: bool, key: &str) -> SpellAbility {
     SpellAbility::new_simple(Some(card.id), card.controller, &format!("FaceDown:{key}"))
@@ -185,6 +125,62 @@ pub fn setup_keyworded_abilities(card: &mut Card) {
     card.generate_keyword_abilities();
     card.generate_keyword_triggers();
     card.base_ability_count = card.activated_abilities.len();
+}
+
+/// Java parity: convert `ETBReplacement:*` keywords into intrinsic
+/// `Event$ Moved` replacement effects during card construction.
+///
+/// Mirrors `CardFactoryUtil.createETBReplacement(...)` plus the
+/// `keyword.startsWith("ETBReplacement")` branch in Java.
+pub fn add_etb_keyword_replacements(card: &mut Card) {
+    let keywords = card.keywords.as_string_list();
+    for keyword in keywords {
+        if !keyword.starts_with("ETBReplacement") {
+            continue;
+        }
+        let splitkw: Vec<&str> = keyword.split(':').collect();
+        if splitkw.len() < 3 {
+            continue;
+        }
+
+        let layer = splitkw[1].trim();
+        let svar_name = splitkw[2].trim();
+        let optional = splitkw.len() >= 4 && splitkw[3].contains("Optional");
+        let zone = if splitkw.len() >= 5 {
+            splitkw[4].trim()
+        } else {
+            ""
+        };
+        let valid = if splitkw.len() >= 6 {
+            splitkw[5].trim()
+        } else {
+            "Card.Self"
+        };
+
+        let Some(svar_text) = card.svars.get(svar_name).cloned() else {
+            continue;
+        };
+        let desc = Params::from_raw(&svar_text)
+            .get(keys::SPELL_DESCRIPTION)
+            .unwrap_or("Replacement effect")
+            .replace('|', "/");
+
+        let mut raw = format!(
+            "R$ Event$ Moved | Layer$ {} | ValidCard$ {} | Destination$ Battlefield | ReplacementResult$ Updated | ReplaceWith$ {} | Description$ {}",
+            layer, valid, svar_name, desc
+        );
+        if optional {
+            raw.push_str(" | Optional$ True");
+        }
+        if !zone.is_empty() {
+            raw.push_str(" | ActiveZones$ ");
+            raw.push_str(zone);
+        }
+
+        if let Some(re) = parse_replacement_effect(&raw) {
+            card.add_replacement_effect(re);
+        }
+    }
 }
 
 pub fn make_etb_counter(_kw: &str, _card: &Card, _intrinsic: bool) -> Option<ReplacementEffect> {

@@ -23,8 +23,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use forge_engine_core::agent::{
-    BinaryChoiceKind, GameEntity, PlayCardMode, PlayOption, PlayerAgent,
-    TargetChoice,
+    BinaryChoiceKind, GameEntity, PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -209,8 +208,9 @@ impl DeterministicAgent {
             PlayCardMode::Alternative(AlternativeCost::Surge) => "Surge",
             PlayCardMode::Alternative(AlternativeCost::WebSlinging) => "WebSlinging",
             PlayCardMode::Alternative(AlternativeCost::Plotted) => "Plotted",
-            PlayCardMode::StaticAlternative => "0",
-            PlayCardMode::GainLifeAlt => "GainLifeAlt",
+            // Host-card `Mode$ AlternativeCost` actions are represented in Rust
+            // as `StaticAlternative`; parity uses the same explicit label.
+            PlayCardMode::StaticAlternative => "StaticAlternative",
             PlayCardMode::ForetellExile => "ForetellExile",
         }
     }
@@ -433,12 +433,10 @@ impl PlayerAgent for DeterministicAgent {
                     "Main phase: ACTIVATE {} [ab#{}] (random idx={})",
                     name, ability_idx, chosen_idx
                 ));
-                PlayerAction::ActivateAbility(
-                    AbilityRef {
-                        card_id,
-                        ability_index: ability_idx,
-                    },
-                )
+                PlayerAction::ActivateAbility(AbilityRef {
+                    card_id,
+                    ability_index: ability_idx,
+                })
             }
         }
     }
@@ -819,6 +817,24 @@ impl PlayerAgent for DeterministicAgent {
             mode,
             api,
             message,
+            card_name.unwrap_or("?")
+        ));
+        accept
+    }
+
+    fn confirm_replacement_effect(
+        &mut self,
+        _player: PlayerId,
+        question: &str,
+        effect_description: &str,
+        card_name: Option<&str>,
+    ) -> bool {
+        let accept = choice_space::pick_bool(&mut self.rng.borrow_mut());
+        self.log_decision(&format!(
+            "Confirm replacement {}: {} | {} [{}]",
+            if accept { "ACCEPTED" } else { "DECLINED" },
+            question,
+            effect_description,
             card_name.unwrap_or("?")
         ));
         accept

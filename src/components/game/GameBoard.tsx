@@ -287,6 +287,7 @@ export function GameBoard({
                   cards={myPermanents}
                   className="flex-1"
                   onClickCard={
+                    promptType === PT.ChooseAction ||
                     promptType === PT.ChooseAttackers ||
                     promptType === PT.ChooseBlockers ||
                     promptType === PT.ChooseTargetCard ||

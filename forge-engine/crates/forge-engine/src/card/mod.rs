@@ -47,13 +47,6 @@ pub const KEYWORD_MADNESS_EXILED: &str = "MadnessExiled";
 /// The turn number prevents casting on the same turn the card was plotted.
 pub const KEYWORD_PLOTTED_PREFIX: &str = "Plotted:";
 
-/// Prefix for the sacrifice-based alternative cost keyword.
-/// Full keyword is `"AltCostSacrifice:{amount}:{type_filter}"`.
-pub const KEYWORD_ALT_COST_SACRIFICE_PREFIX: &str = "AltCostSacrifice:";
-
-/// Prefix for the GainLife-based alternative cost keyword.
-pub const KEYWORD_ALT_COST_GAINLIFE_PREFIX: &str = "AltCostGainLife:";
-
 /// SpellAbility parameter key indicating a Madness Play effect.
 pub const PARAM_MADNESS_PLAY: &str = "MadnessPlay";
 
@@ -258,6 +251,9 @@ pub struct Card {
     // Commander tracking
     /// True if this card is designated as a commander.
     pub is_commander: bool,
+    /// True if this commander entered graveyard or exile since the last SBA check
+    /// and may still be moved to the command zone.
+    pub move_to_command_zone: bool,
     /// How many times this commander has been cast from the command zone (for tax).
     pub commander_cast_count: u32,
 
@@ -594,6 +590,7 @@ impl Card {
             triggers: Vec::new(),
             svars: BTreeMap::new(),
             is_commander: false,
+            move_to_command_zone: false,
             commander_cast_count: 0,
             is_token: false,
             replacement_effects,
@@ -2938,7 +2935,7 @@ impl Card {
         self.has_replacement_effect()
     }
     pub fn can_move_to_command_zone(&self) -> bool {
-        self.is_commander
+        self.is_commander && self.move_to_command_zone
     }
     pub fn from_paper_card(&mut self) {
         self.is_token = false;

@@ -474,8 +474,7 @@ pub fn check_svar_condition(game: &GameState, params: &Params, source: &Card) ->
         .map(|s| s.as_str())
         .unwrap_or("0");
     let value = if raw_value.starts_with("Count$") {
-        let count_expr = &raw_value["Count$".len()..];
-        crate::svar::resolve_count_svar(count_expr, game, source.id, source.controller)
+        crate::svar::resolve_count_svar(raw_value, game, source.id, source.controller)
     } else {
         raw_value.parse::<i32>().unwrap_or(0)
     };
@@ -505,8 +504,7 @@ pub fn check_named_svar_condition(
         .map(|s| s.as_str())
         .unwrap_or("0");
     let value = if raw_value.starts_with("Count$") {
-        let count_expr = &raw_value["Count$".len()..];
-        crate::svar::resolve_count_svar(count_expr, game, source.id, source.controller)
+        crate::svar::resolve_count_svar(raw_value, game, source.id, source.controller)
     } else {
         raw_value.parse::<i32>().unwrap_or(0)
     };

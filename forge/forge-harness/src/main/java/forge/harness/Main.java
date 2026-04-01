@@ -3,7 +3,6 @@ package forge.harness;
 import com.google.common.eventbus.Subscribe;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
-import forge.card.CardDb;
 import forge.deck.CardPool;
 import forge.deck.Deck;
 import forge.deck.DeckSection;
@@ -264,18 +263,37 @@ public final class Main {
                 ". Available: " + Arrays.toString(PresetDecks.availablePresets()));
         }
 
-        // Add commanders to decks if provided
+        // Assign commanders from existing main-deck cards if provided.
+        // Contract: --commander names must already be present in each player's main deck.
+        // Move one matching card per commander from Main -> Commander section.
         if (commanders != null && !commanders.isEmpty()) {
-            CardDb cardDb = FModel.getMagicDb().getCommonCards();
-            CardPool cmdSection1 = deck1.getOrCreate(DeckSection.Commander);
-            CardPool cmdSection2 = deck2.getOrCreate(DeckSection.Commander);
+            List<String> uniqueCommanders = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
             for (String cmdName : commanders) {
-                PaperCard cmd = cardDb.getCard(cmdName);
-                if (cmd != null) {
-                    cmdSection1.add(cmd, 1);
-                    cmdSection2.add(cmd, 1);
-                } else {
-                    System.err.println("[harness] WARNING: Commander not found: " + cmdName);
+                String key = cmdName.toLowerCase(Locale.ROOT);
+                if (seen.add(key)) {
+                    uniqueCommanders.add(cmdName);
+                }
+            }
+
+            for (Deck deck : Arrays.asList(deck1, deck2)) {
+                CardPool main = deck.getMain();
+                CardPool commanderSection = deck.getOrCreate(DeckSection.Commander);
+                for (String cmdName : uniqueCommanders) {
+                    PaperCard mainCommander = null;
+                    for (PaperCard c : main.toFlatList()) {
+                        if (c.getName().equalsIgnoreCase(cmdName)) {
+                            mainCommander = c;
+                            break;
+                        }
+                    }
+                    if (mainCommander == null) {
+                        throw new IllegalArgumentException(
+                            "Commander \"" + cmdName + "\" was not found in main deck for " + deck.getName()
+                        );
+                    }
+                    main.remove(mainCommander, 1);
+                    commanderSection.add(mainCommander, 1);
                 }
             }
         }

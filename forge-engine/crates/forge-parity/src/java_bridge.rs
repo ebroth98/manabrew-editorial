@@ -14,8 +14,8 @@ use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
 
-use crate::protocol::{DecisionRecord, StateSnapshot};
 use crate::perf;
+use crate::protocol::{DecisionRecord, StateSnapshot};
 
 /// Configuration for a Java bridge subprocess.
 pub struct JavaBridgeConfig {

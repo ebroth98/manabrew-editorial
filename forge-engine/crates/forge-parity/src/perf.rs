@@ -83,7 +83,10 @@ pub fn print_summary(context: &str) {
     }
     rows.sort_by(|a, b| b.1.total.cmp(&a.1.total));
 
-    eprintln!("[parity-prof] {}: timing summary (sorted by total)", context);
+    eprintln!(
+        "[parity-prof] {}: timing summary (sorted by total)",
+        context
+    );
     for (label, stat) in rows {
         let total_ms = stat.total.as_secs_f64() * 1000.0;
         let max_ms = stat.max.as_secs_f64() * 1000.0;

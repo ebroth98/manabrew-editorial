@@ -872,6 +872,43 @@ pub fn resolve_count_svar_for_sa(
         };
     }
 
+    // Count$Valid<Zone[,Zone...]> <restrictions>
+    // Examples:
+    // - Count$ValidHand Card.YouOwn
+    // - Count$ValidGraveyard Card
+    // - Count$ValidBattlefield Creature.YouCtrl
+    // Mirrors Java xCount() Valid* zone parsing.
+    if let Some(rest) = expr.strip_prefix("Count$Valid") {
+        let mut parts = rest.trim_start().splitn(2, ' ');
+        let zone_part = parts.next().unwrap_or("").trim();
+        let restrictions = parts.next().unwrap_or("").trim();
+        if !restrictions.is_empty() {
+            let zones: Vec<ZoneType> = if zone_part.is_empty() {
+                vec![ZoneType::Battlefield]
+            } else {
+                zone_part
+                    .split(',')
+                    .filter_map(crate::ability::ability_utils::parse_zone_type)
+                    .collect()
+            };
+            if !zones.is_empty() {
+                let source = game.card(source_id);
+                return game
+                    .cards
+                    .iter()
+                    .filter(|card| {
+                        zones.contains(&card.zone)
+                            && crate::card::valid_filter::matches_valid_card(
+                                restrictions,
+                                card,
+                                source,
+                            )
+                    })
+                    .count() as i32;
+            }
+        }
+    }
+
     // Count$Valid TYPE.QUALIFIERS — count permanents matching filter
     // Count$Valid TYPE.QUALIFIERS/Times.N — count × N multiplier
     // Count$Valid TYPE.QUALIFIERS$GreatestCardPower — greatest power among matching creatures

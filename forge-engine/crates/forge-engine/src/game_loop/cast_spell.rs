@@ -34,79 +34,8 @@ impl GameLoop {
             if play_mode != crate::agent::PlayCardMode::Normal {
                 return None;
             }
-            // Check for shock-land-style "pay life or enter tapped" before entering
-            let etb_life_cost =
-                crate::staticability::layer::get_etb_unless_life_cost(game.card(card_id));
-            // Check for "reveal <type> from hand or enter tapped" (e.g. Wanderwine Hub)
-            let etb_reveal_cost =
-                crate::staticability::layer::get_etb_unless_reveal_cost(game.card(card_id));
-
             // Play land — goes directly to battlefield
-            game.move_card_with_agents(card_id, ZoneType::Battlefield, player, agents);
-
-            // Handle "reveal or enter tapped" before the shock-land check
-            if let Some((_n, filter_str)) = etb_reveal_cost {
-                // Check if player has matching cards in hand to reveal
-                let type_name = filter_str.split('/').next().unwrap_or(&filter_str);
-                let has_matching = game
-                    .cards_in_zone(ZoneType::Hand, player)
-                    .iter()
-                    .any(|&cid| game.card(cid).type_line.has_subtype(type_name));
-                if has_matching {
-                    // Player can choose to reveal — DeterministicAgent always passes (no reveal)
-                    // to match Java DeterministicController which passes optional pays
-                    game.card_mut(card_id).set_tapped(true);
-                } else {
-                    // No matching card — must enter tapped
-                    game.card_mut(card_id).set_tapped(true);
-                }
-            }
-
-            // Prompt for shock land life payment (after ETB so the card is on battlefield)
-            if let Some(life_cost) = etb_life_cost {
-                let desc = format!("Pay {} life so {} enters untapped?", life_cost, card_name);
-                agents[player.index()].snapshot_state(game, &self.mana_pools);
-                let pay = agents[player.index()].choose_optional_trigger(
-                    player,
-                    &desc,
-                    Some(&card_name),
-                    None,
-                );
-                if pay {
-                    // Run PayLife replacement effects before paying life.
-                    let skip_life = {
-                        use crate::replacement::replacement_handler::{
-                            apply_replacements, ReplacementEvent,
-                        };
-                        use crate::replacement::ReplacementResult;
-                        let mut event = ReplacementEvent::PayLife {
-                            player,
-                            amount: life_cost,
-                        };
-                        let result = apply_replacements(game, &mut event);
-                        result == ReplacementResult::Skipped
-                            || result == ReplacementResult::Replaced
-                    };
-                    if !skip_life {
-                        // Player pays life — untap the card (it wasn't tapped by apply_etb_tapped
-                        // since we removed the third pass, but ensure untapped state)
-                        game.card_mut(card_id).set_tapped(false);
-                        game.player_lose_life(player, life_cost);
-                        self.trigger_handler.run_trigger(
-                            TriggerType::LifeLost,
-                            RunParams {
-                                player: Some(player),
-                                life_amount: Some(life_cost),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                    }
-                } else {
-                    // Player declines — enter tapped
-                    game.card_mut(card_id).set_tapped(true);
-                }
-            }
+            self.move_card_with_runtime(game, card_id, ZoneType::Battlefield, player, agents);
 
             game.player_record_land_play(player);
             crate::agent::notify_all_agents(
@@ -143,7 +72,6 @@ impl GameLoop {
             // Cast spell — tap lands for mana, put on stack, resolve
             let is_creature = game.card(card_id).is_creature();
             let is_permanent = game.card(card_id).is_permanent();
-
             // ── Alternative cost mode selection (from action-space choice) ──────────
             let mut is_foretell = false;
             let mut is_flashback = false;
@@ -155,8 +83,6 @@ impl GameLoop {
             let mut is_blitz = false;
             let mut is_madness = false;
             let mut is_emerge = false;
-            let mut is_gainlife_alt = false;
-            let mut is_sacrifice_alt = false;
             let mut is_plot_cast = false;
             let mut is_bestow = false;
             let mut is_warp = false;
@@ -167,9 +93,6 @@ impl GameLoop {
                 crate::agent::PlayCardMode::Normal => {}
                 crate::agent::PlayCardMode::StaticAlternative => {
                     is_static_alternative = true;
-                }
-                crate::agent::PlayCardMode::GainLifeAlt => {
-                    is_gainlife_alt = true;
                 }
                 crate::agent::PlayCardMode::ForetellExile => {
                     if game.card(card_id).get_foretell_cost().is_some()
@@ -191,7 +114,7 @@ impl GameLoop {
                         self.emit_tap_for_mana_triggers(player, &tapped);
                         self.pool_mut(player).try_pay(&foretell_exile_cost);
                         game.card_mut(card_id).set_face_down(true);
-                        game.move_card_with_agents(card_id, ZoneType::Exile, player, agents);
+                        self.move_card_with_runtime(game, card_id, ZoneType::Exile, player, agents);
                         self.trigger_handler.run_trigger(
                             TriggerType::Foretell,
                             RunParams {
@@ -224,7 +147,6 @@ impl GameLoop {
                     crate::spellability::AlternativeCost::Emerge => is_emerge = true,
                     crate::spellability::AlternativeCost::Bestow => is_bestow = true,
                     crate::spellability::AlternativeCost::Warp => is_warp = true,
-                    crate::spellability::AlternativeCost::SacrificeAlt => is_sacrifice_alt = true,
                     crate::spellability::AlternativeCost::Plot => is_plot_cast = true,
                     crate::spellability::AlternativeCost::Morph
                     | crate::spellability::AlternativeCost::Megamorph => {
@@ -252,7 +174,13 @@ impl GameLoop {
                             );
                             self.emit_tap_for_mana_triggers(player, &tapped);
                             self.pool_mut(player).try_pay(&suspend_mc);
-                            game.move_card_with_agents(card_id, ZoneType::Exile, player, agents);
+                            self.move_card_with_runtime(
+                                game,
+                                card_id,
+                                ZoneType::Exile,
+                                player,
+                                agents,
+                            );
                             game.card_mut(card_id)
                                 .add_counter(&crate::card::CounterType::Time, counters);
                             crate::agent::notify_all_agents(
@@ -279,6 +207,7 @@ impl GameLoop {
                     | crate::spellability::AlternativeCost::MTMtE
                     | crate::spellability::AlternativeCost::Mutate
                     | crate::spellability::AlternativeCost::Prowl
+                    | crate::spellability::AlternativeCost::SacrificeAlt
                     | crate::spellability::AlternativeCost::Sneak
                     | crate::spellability::AlternativeCost::Surge
                     | crate::spellability::AlternativeCost::WebSlinging
@@ -303,6 +232,7 @@ impl GameLoop {
                     crate::spellability::build_spell_ability_for_card_cast(game, card_id, player);
                 let entry =
                     crate::staticability::static_ability_alternative_cost::alternative_costs(
+                        game,
                         &game.cards,
                         &probe_sa,
                         game.card(card_id),
@@ -310,10 +240,12 @@ impl GameLoop {
                     )
                     .into_iter()
                     .find(|e| {
-                        e.cost
-                            .parts
-                            .iter()
-                            .all(|p| matches!(p, CostPart::Mana { .. }))
+                        crate::cost::can_pay_ignoring_mana_for_spell(
+                            &e.cost,
+                            game,
+                            card_id,
+                            player,
+                        )
                     });
                 if entry.is_none() {
                     return None;
@@ -398,14 +330,6 @@ impl GameLoop {
             } else if is_emerge {
                 let emerge_cost_str = game.card(card_id).get_emerge_cost().unwrap_or_default();
                 forge_foundation::ManaCost::parse(&emerge_cost_str)
-            } else if is_gainlife_alt {
-                // GainLife alternative cost: cast for free (zero mana).
-                // The side effect (opponent gains life) is applied below.
-                forge_foundation::ManaCost::generic(0)
-            } else if is_sacrifice_alt {
-                // Sacrifice-based alternative cost: cast for free (zero mana).
-                // The sacrifice is performed below.
-                forge_foundation::ManaCost::generic(0)
             } else if is_plot_cast {
                 // Plot: cast from exile for free (already paid plot cost).
                 forge_foundation::ManaCost::generic(0)
@@ -463,7 +387,13 @@ impl GameLoop {
                             ZoneType::Graveyard,
                         );
                         self.trigger_handler.flush_waiting_triggers(game);
-                        game.move_card_with_agents(sac_id, ZoneType::Graveyard, sac_owner, agents);
+                        self.move_card_with_runtime(
+                            game,
+                            sac_id,
+                            ZoneType::Graveyard,
+                            sac_owner,
+                            agents,
+                        );
                     }
                 }
                 cost
@@ -521,7 +451,13 @@ impl GameLoop {
                             ZoneType::Graveyard,
                         );
                         self.trigger_handler.flush_waiting_triggers(game);
-                        game.move_card_with_agents(sac_id, ZoneType::Graveyard, sac_owner, agents);
+                        self.move_card_with_runtime(
+                            game,
+                            sac_id,
+                            ZoneType::Graveyard,
+                            sac_owner,
+                            agents,
+                        );
                     }
                 }
                 cost
@@ -1059,7 +995,13 @@ impl GameLoop {
                         );
                         let delve_count = to_exile.len().min(max_delve) as i32;
                         for cid in &to_exile[..delve_count as usize] {
-                            game.move_card_with_agents(*cid, ZoneType::Exile, player, agents);
+                            self.move_card_with_runtime(
+                                game,
+                                *cid,
+                                ZoneType::Exile,
+                                player,
+                                agents,
+                            );
                         }
                         if delve_count > 0 {
                             // Reduce generic cost (or commander tax first, then generic)
@@ -1304,7 +1246,7 @@ impl GameLoop {
                     // handlePlayingSpellAbilityDeterministic() moves spells to stack
                     // before setupTargets(), and a setupTargets() failure is not rolled back.
                     // Net effect is the spell leaves hand without resolving.
-                    game.move_card_with_agents(card_id, ZoneType::Stack, player, agents);
+                    self.move_card_with_runtime(game, card_id, ZoneType::Stack, player, agents);
                     return None;
                 }
                 // Post-targeting validation: reject cast if MustTarget (Flagbearer)
@@ -1335,6 +1277,20 @@ impl GameLoop {
                     agents,
                     player,
                     sc,
+                    Some(&sa),
+                ) {
+                    Some(picks) => Some(picks),
+                    None => return None,
+                }
+            } else {
+                None
+            };
+            let prechosen_static_alt_sacrifices = if let Some(ref entry) = static_alt_entry {
+                match self.prechoose_additional_cost_sacrifices(
+                    game,
+                    agents,
+                    player,
+                    &entry.cost,
                     Some(&sa),
                 ) {
                     Some(picks) => Some(picks),
@@ -1392,7 +1348,6 @@ impl GameLoop {
                     mana_cost.clone()
                 };
                 let cost_str = total_cost.to_string();
-
                 // Save state for refund on cancel (recursive mana refund)
                 // Mirrors Java's ManaRefundService: save pool + permanent states
                 let saved_pool = self.pool(player).clone();
@@ -1849,6 +1804,50 @@ impl GameLoop {
                     }
                 }
             }
+            if let Some(ref entry) = static_alt_entry {
+                let has_waterbend = entry
+                    .cost
+                    .parts
+                    .iter()
+                    .any(|p| matches!(p, crate::cost::CostPart::Waterbend { .. }));
+                let untapped_before = if has_waterbend {
+                    game.cards_in_zone(ZoneType::Battlefield, player)
+                        .iter()
+                        .copied()
+                        .filter(|&cid| {
+                            let c = game.card(cid);
+                            cid != card_id
+                                && !c.tapped
+                                && (c.is_creature() || c.type_line.is_artifact())
+                        })
+                        .collect::<Vec<_>>()
+                } else {
+                    Vec::new()
+                };
+                if !self.pay_additional_costs(
+                    game,
+                    agents,
+                    player,
+                    card_id,
+                    &entry.cost,
+                    None,
+                    entry.cost.mandatory,
+                    Some(&sa),
+                    prechosen_static_alt_sacrifices.as_deref(),
+                ) {
+                    return None;
+                }
+                if has_waterbend {
+                    for cid in untapped_before
+                        .into_iter()
+                        .filter(|&cid| game.card(cid).tapped)
+                    {
+                        if !waterbend_tapped.contains(&cid) {
+                            waterbend_tapped.push(cid);
+                        }
+                    }
+                }
+            }
             if let Some(ref rc) = raise_cost {
                 let has_waterbend = rc
                     .parts
@@ -1950,23 +1949,8 @@ impl GameLoop {
                         .take(exile_count as usize)
                         .collect();
                     for cid in gy_cards {
-                        game.move_card_with_agents(cid, ZoneType::Exile, player, agents);
+                        self.move_card_with_runtime(game, cid, ZoneType::Exile, player, agents);
                     }
-                }
-            }
-
-            // Apply GainLife alternative cost side-effect: opponent gains N life.
-            if is_gainlife_alt {
-                if let Some((life_amount, _)) = game.card(card_id).get_gainlife_alt_cost() {
-                    let opp = game.opponent_of(player);
-                    game.player_gain_life(opp, life_amount);
-                }
-            }
-
-            // Apply sacrifice-based alternative cost (e.g. Fireblast: sacrifice two Mountains).
-            if is_sacrifice_alt {
-                if let Some((amount, type_filter)) = game.card(card_id).get_sacrifice_alt_cost() {
-                    self.pay_sacrifice_cost(game, agents, player, &type_filter, amount, Some(&sa));
                 }
             }
 
@@ -2122,7 +2106,7 @@ impl GameLoop {
             }
 
             // Move spell to stack zone
-            game.move_card_with_agents(card_id, ZoneType::Stack, player, agents);
+            self.move_card_with_runtime(game, card_id, ZoneType::Stack, player, agents);
 
             // Storm: create N copies where N = spells_cast_this_turn - 1.
             if game.card(card_id).has_storm() {
@@ -2287,7 +2271,7 @@ impl GameLoop {
             if top_id == CardId(0) {
                 break; // Safety: should never happen
             }
-            game.move_card_with_agents(top_id, ZoneType::Exile, player, agents);
+            self.move_card_with_runtime(game, top_id, ZoneType::Exile, player, agents);
             let card = game.card(top_id);
             let is_land = card.is_land();
             let mv = card.mana_value();
@@ -2353,7 +2337,13 @@ impl GameLoop {
                         .with_player(player)
                         .with_card(cascade_card_id),
                 );
-                game.move_card_with_agents(cascade_card_id, ZoneType::Stack, player, agents);
+                self.move_card_with_runtime(
+                    game,
+                    cascade_card_id,
+                    ZoneType::Stack,
+                    player,
+                    agents,
+                );
 
                 // Cascade spell counts as being cast
                 {

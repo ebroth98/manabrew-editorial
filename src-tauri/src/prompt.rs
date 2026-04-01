@@ -578,7 +578,7 @@ impl AgentPromptInner {
 #[serde(rename_all = "camelCase")]
 pub struct PlayOptionDto {
     pub card_id: String,
-    /// e.g. "normal", "alternative:spectacle", "alternative:evoke", "gainLifeAlt", "foretellExile"
+    /// e.g. "normal", "alternative:spectacle", "alternative:evoke", "staticAlternative", "foretellExile"
     pub mode: String,
     /// Human-readable label, e.g. "Cast normally", "Cast with Spectacle"
     pub mode_label: String,

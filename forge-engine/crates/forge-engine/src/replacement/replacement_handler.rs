@@ -12,14 +12,18 @@ use std::collections::{HashMap, HashSet};
 
 use forge_foundation::ZoneType;
 
+use crate::card::Card;
 use crate::card::CounterType;
 use crate::game::GameState;
+use crate::game_rng::GameRng;
 use crate::ids::{CardId, PlayerId};
+use crate::mana::ManaPool;
 use crate::parsing::{keys, Params};
 use crate::replacement::replacement_effect::{GameLossReason, ReplacementEffect};
 use crate::replacement::replacement_layer::ReplacementLayer;
 use crate::replacement::replacement_result::ReplacementResult;
 use crate::replacement::replacement_type::ReplacementType;
+use crate::trigger::TriggerHandler;
 
 // ── ReplacementEvent ──────────────────────────────────────────────────────────
 
@@ -207,6 +211,13 @@ pub enum ReplacementEvent {
 
 use crate::agent::PlayerAgent;
 
+pub struct ReplacementRuntime<'a> {
+    pub trigger_handler: &'a mut TriggerHandler,
+    pub token_templates: &'a HashMap<String, Card>,
+    pub mana_pools: &'a mut Vec<ManaPool>,
+    pub rng: &'a mut dyn GameRng,
+}
+
 /// Struct-based replacement handler with loop prevention and optional agent access.
 ///
 /// Mirrors Java `ReplacementHandler` class. The `has_run` set prevents infinite
@@ -240,8 +251,9 @@ impl ReplacementHandler {
     /// Mirrors Java `ReplacementHandler.run(ReplacementType, Map<AbilityKey,Object>)`.
     pub fn run(
         &mut self,
-        game: &GameState,
+        game: &mut GameState,
         mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
+        mut runtime: Option<&mut ReplacementRuntime<'_>>,
         event: &mut ReplacementEvent,
     ) -> ReplacementResult {
         for layer in [
@@ -251,13 +263,19 @@ impl ReplacementHandler {
             ReplacementLayer::Transform,
             ReplacementLayer::Other,
         ] {
-            let result = self.run_layer(game, agents.as_deref_mut(), event, layer);
+            let result = self.run_layer(
+                game,
+                agents.as_deref_mut(),
+                runtime.as_deref_mut(),
+                event,
+                layer,
+            );
             match result {
                 ReplacementResult::NotReplaced => continue,
                 ReplacementResult::Updated => {
                     // Java preserves Updated unless a later replacement fully
                     // replaces the event during the re-run.
-                    return match self.run(game, agents, event) {
+                    return match self.run(game, agents, runtime, event) {
                         ReplacementResult::NotReplaced | ReplacementResult::Updated => {
                             ReplacementResult::Updated
                         }
@@ -273,8 +291,9 @@ impl ReplacementHandler {
     /// Apply one CR 616 layer of replacement effects.
     fn run_layer(
         &mut self,
-        game: &GameState,
+        game: &mut GameState,
         mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
+        mut runtime: Option<&mut ReplacementRuntime<'_>>,
         event: &mut ReplacementEvent,
         layer: ReplacementLayer,
     ) -> ReplacementResult {
@@ -324,7 +343,14 @@ impl ReplacementHandler {
 
             let (source_card_id, ref effect, effect_idx) = eligible[chosen_idx];
             self.has_run.insert((source_card_id, effect_idx));
-            let result = execute_effect(game, source_card_id, effect, event, agents.as_deref_mut());
+            let result = execute_effect(
+                game,
+                source_card_id,
+                effect,
+                event,
+                agents.as_deref_mut(),
+                runtime.as_deref_mut(),
+            );
             if result == ReplacementResult::NotReplaced {
                 self.has_run.remove(&(source_card_id, effect_idx));
                 declined_effects.insert((source_card_id, effect_idx));
@@ -389,18 +415,28 @@ fn affected_player_for_event(event: &ReplacementEvent, game: &GameState) -> Play
 /// Used by callers that don't have access to agents (e.g. `action.rs`).
 ///
 /// Mirrors Java `ReplacementHandler.run(ReplacementType, Map<AbilityKey,Object>)`.
-pub fn apply_replacements(game: &GameState, event: &mut ReplacementEvent) -> ReplacementResult {
+pub fn apply_replacements(game: &mut GameState, event: &mut ReplacementEvent) -> ReplacementResult {
     let mut handler = ReplacementHandler::new();
-    handler.run(game, None, event)
+    handler.run(game, None, None, event)
 }
 
 pub fn apply_replacements_with_agents(
-    game: &GameState,
+    game: &mut GameState,
     agents: &mut [Box<dyn PlayerAgent>],
     event: &mut ReplacementEvent,
 ) -> ReplacementResult {
     let mut handler = ReplacementHandler::new();
-    handler.run(game, Some(agents), event)
+    handler.run(game, Some(agents), None, event)
+}
+
+pub fn apply_replacements_with_agents_and_runtime(
+    game: &mut GameState,
+    agents: &mut [Box<dyn PlayerAgent>],
+    runtime: &mut ReplacementRuntime<'_>,
+    event: &mut ReplacementEvent,
+) -> ReplacementResult {
+    let mut handler = ReplacementHandler::new();
+    handler.run(game, Some(agents), Some(runtime), event)
 }
 
 pub(crate) fn replacement_event_amount(event: &ReplacementEvent) -> Option<i32> {
@@ -788,11 +824,12 @@ fn collect_effects(
 ///
 /// Mirrors `ReplacementHandler.executeReplacement()`.
 fn execute_effect(
-    game: &GameState,
+    game: &mut GameState,
     card_id: CardId,
     effect: &ReplacementEffect,
     event: &mut ReplacementEvent,
-    agents: Option<&mut [Box<dyn PlayerAgent>]>,
+    mut agents: Option<&mut [Box<dyn PlayerAgent>]>,
+    runtime: Option<&mut ReplacementRuntime<'_>>,
 ) -> ReplacementResult {
     use super::{
         replace_add_counter,
@@ -842,7 +879,7 @@ fn execute_effect(
             .unwrap_or_else(|| affected_player_for_event(event, game));
         let host = game.card(card_id);
         let question = replacement_question(effect, host, game, event);
-        let confirmed = if let Some(agents) = agents {
+        let confirmed = if let Some(agents) = agents.as_deref_mut() {
             agents[decider.index()].confirm_replacement_effect(
                 decider,
                 &question,
@@ -861,7 +898,16 @@ fn execute_effect(
         ReplacementType::DamageDone => replace_damage::execute(effect, event, game, card_id),
         ReplacementType::Draw => replace_draw::execute(effect, event, game, card_id),
         ReplacementType::Destroy => replace_destroy::execute(effect, event, game, card_id),
-        ReplacementType::Moved => replace_moved::execute(effect, event, game, card_id),
+        ReplacementType::Moved => {
+            replace_moved::execute(
+                effect,
+                event,
+                game,
+                card_id,
+                agents.as_deref_mut(),
+                runtime,
+            )
+        }
         ReplacementType::GainLife => replace_gain_life::execute(effect, event, game, card_id),
         ReplacementType::CreateToken => replace_token::execute(effect, event, game, card_id),
         ReplacementType::AddCounter => replace_add_counter::execute(effect, event, game, card_id),
@@ -1103,7 +1149,7 @@ mod tests {
         put_on_battlefield(&mut game, cid, alice);
 
         let mut event = ReplacementEvent::Draw { player: alice };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Skipped);
     }
 
@@ -1122,7 +1168,7 @@ mod tests {
 
         // Bob's draw is not affected by Alice's effect.
         let mut event = ReplacementEvent::Draw { player: bob };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 
@@ -1143,7 +1189,7 @@ mod tests {
         game.move_card(cid, ZoneType::Hand, alice);
 
         let mut event = ReplacementEvent::Draw { player: alice };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 
@@ -1168,7 +1214,7 @@ mod tests {
             source: None,
             is_combat: false,
         };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Prevented);
         // Amount should be zeroed out.
         if let ReplacementEvent::DamageToPlayer { amount, .. } = event {
@@ -1197,7 +1243,7 @@ mod tests {
             source: None,
             is_combat: false,
         };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 
@@ -1222,7 +1268,7 @@ mod tests {
             source: None,
             is_combat: false,
         };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Prevented);
         if let ReplacementEvent::DamageToCard { amount, .. } = event {
             assert_eq!(amount, 0);
@@ -1260,7 +1306,7 @@ mod tests {
             source: Some(source),
             is_combat: false,
         };
-        let _ = apply_replacements(&game, &mut event);
+        let _ = apply_replacements(&mut game, &mut event);
         if let ReplacementEvent::DamageToPlayer { amount, .. } = event {
             assert_eq!(amount, 3);
         } else {
@@ -1298,7 +1344,7 @@ mod tests {
             source: Some(source),
             is_combat: false,
         };
-        let _ = apply_replacements(&game, &mut event);
+        let _ = apply_replacements(&mut game, &mut event);
         if let ReplacementEvent::DamageToPlayer { amount, .. } = event {
             assert_eq!(amount, 2);
         } else {
@@ -1337,7 +1383,7 @@ mod tests {
             ignore_chosen: HashMap::new(),
             dice_pt_exchanges: HashSet::new(),
         };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Updated);
         if let ReplacementEvent::RollDice { number, ignore, .. } = event {
             assert_eq!(number, 2);
@@ -1374,7 +1420,7 @@ mod tests {
             ignore_chosen: HashMap::new(),
             dice_pt_exchanges: HashSet::new(),
         };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Updated);
         if let ReplacementEvent::RollDice { ignore_chosen, .. } = event {
             assert_eq!(ignore_chosen.get(&alice), Some(&1));
@@ -1410,7 +1456,7 @@ mod tests {
             ignore_chosen: HashMap::new(),
             dice_pt_exchanges: HashSet::new(),
         };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Updated);
         if let ReplacementEvent::RollDice {
             dice_pt_exchanges, ..
@@ -1438,7 +1484,7 @@ mod tests {
         put_on_battlefield(&mut game, cid, alice);
 
         let mut event = ReplacementEvent::Destroy { target: cid };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Replaced);
     }
 
@@ -1458,7 +1504,7 @@ mod tests {
         put_on_battlefield(&mut game, other, alice);
 
         let mut event = ReplacementEvent::Destroy { target: other };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 
@@ -1482,7 +1528,7 @@ mod tests {
             origin: ZoneType::Battlefield,
             destination: ZoneType::Graveyard,
         };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::Updated);
         if let ReplacementEvent::Moved { destination, .. } = event {
             assert_eq!(destination, ZoneType::Exile);
@@ -1509,7 +1555,7 @@ mod tests {
             origin: ZoneType::Hand,
             destination: ZoneType::Graveyard,
         };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 
@@ -1537,7 +1583,7 @@ mod tests {
             origin: ZoneType::Battlefield,
             destination: ZoneType::Graveyard,
         };
-        let result = apply_replacements_with_agents(&game, agents.as_mut_slice(), &mut event);
+        let result = apply_replacements_with_agents(&mut game, agents.as_mut_slice(), &mut event);
         assert_eq!(result, ReplacementResult::Updated);
         if let ReplacementEvent::Moved { destination, .. } = event {
             assert_eq!(destination, ZoneType::Exile);
@@ -1569,7 +1615,7 @@ mod tests {
             origin: ZoneType::Battlefield,
             destination: ZoneType::Graveyard,
         };
-        let result = apply_replacements_with_agents(&game, agents.as_mut_slice(), &mut event);
+        let result = apply_replacements_with_agents(&mut game, agents.as_mut_slice(), &mut event);
         assert_eq!(result, ReplacementResult::Updated);
         if let ReplacementEvent::Moved { destination, .. } = event {
             assert_eq!(destination, ZoneType::Command);
@@ -1582,11 +1628,11 @@ mod tests {
 
     #[test]
     fn no_effects_returns_not_replaced() {
-        let game = make_game();
+        let mut game = make_game();
         let mut event = ReplacementEvent::Draw {
             player: PlayerId(0),
         };
-        let result = apply_replacements(&game, &mut event);
+        let result = apply_replacements(&mut game, &mut event);
         assert_eq!(result, ReplacementResult::NotReplaced);
     }
 }

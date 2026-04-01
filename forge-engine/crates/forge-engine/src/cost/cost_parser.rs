@@ -472,7 +472,11 @@ fn parse_exert(token: &str) -> Option<CostPart> {
 }
 
 fn parse_gain_life(inner: &str) -> Option<CostPart> {
-    let amount = inner.parse::<i32>().unwrap_or(1);
+    let amount = inner
+        .split('/')
+        .next()
+        .and_then(|s| s.trim().parse::<i32>().ok())
+        .unwrap_or(1);
     Some(CostPart::GainLife(amount))
 }
 

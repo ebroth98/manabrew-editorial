@@ -181,10 +181,10 @@ struct Cli {
     #[arg(long, default_value = "Constructed")]
     variant: String,
 
-    /// Comma-separated commander card names for Commander variants.
+    /// Commander card names for Commander variants. Repeat this flag for multiple commanders.
     /// Required when variant is Commander, Oathbreaker, TinyLeaders, or Brawl.
-    #[arg(long, value_delimiter = ',')]
-    commanders: Option<Vec<String>>,
+    #[arg(long = "commander")]
+    commander: Vec<String>,
 
     /// Run continuous parity testing: execute games, store in SQLite, exit with threshold check
     #[arg(long)]
@@ -381,7 +381,7 @@ fn run_multi_game_mode(cli: &Cli) {
                             prefer_actions: cli.prefer_actions,
                             java_heap: cli.java_heap.clone(),
                             variant: cli.variant.clone(),
-                            commanders: cli.commanders.clone().unwrap_or_default(),
+                            commanders: cli.commander.clone(),
                         };
 
                         let t_match = Instant::now();
@@ -438,7 +438,7 @@ fn run_multi_game_mode(cli: &Cli) {
                         prefer_actions: cli.prefer_actions,
                         java_heap: cli.java_heap.clone(),
                         variant: cli.variant.clone(),
-                        commanders: cli.commanders.clone().unwrap_or_default(),
+                        commanders: cli.commander.clone(),
                     };
                     let t_match = Instant::now();
                     let result = run_single_matchup_oneshot(&config, &data, jar_path);
@@ -488,7 +488,7 @@ fn run_multi_game_mode(cli: &Cli) {
                 prefer_actions: cli.prefer_actions,
                 java_heap: cli.java_heap.clone(),
                 variant: cli.variant.clone(),
-                commanders: cli.commanders.clone().unwrap_or_default(),
+                commanders: cli.commander.clone(),
             };
 
             let t_match = Instant::now();
@@ -607,7 +607,7 @@ fn run_rust_only_mode(cli: &Cli) {
         prefer_actions: cli.prefer_actions,
         java_heap: cli.java_heap.clone(),
         variant: cli.variant.clone(),
-        commanders: cli.commanders.clone().unwrap_or_default(),
+        commanders: cli.commander.clone(),
     };
 
     let data = match runner::load_data(config.cards_dir.as_deref(), cli.verbose) {
@@ -670,7 +670,7 @@ fn run_parity_mode(cli: &Cli, jar_path: &PathBuf) {
         prefer_actions: cli.prefer_actions,
         java_heap: cli.java_heap.clone(),
         variant: cli.variant.clone(),
-        commanders: cli.commanders.clone().unwrap_or_default(),
+        commanders: cli.commander.clone(),
     };
 
     let data = match runner::load_data(config.cards_dir.as_deref(), cli.verbose) {
@@ -1260,7 +1260,16 @@ impl ServerPool {
         let mut server = self.servers[0]
             .lock()
             .map_err(|e| JavaBridgeError::ProtocolError(format!("Mutex poisoned: {}", e)))?;
-        server.run_matchup_streaming(deck1, deck2, seed, max_turns, prefer_actions, variant, commanders, on_snapshot)
+        server.run_matchup_streaming(
+            deck1,
+            deck2,
+            seed,
+            max_turns,
+            prefer_actions,
+            variant,
+            commanders,
+            on_snapshot,
+        )
     }
 
     /// Run a matchup and collect all snapshots/decisions.
@@ -1274,7 +1283,16 @@ impl ServerPool {
         variant: &str,
         commanders: &[String],
     ) -> Result<JavaMatchupData, JavaBridgeError> {
-        self.run_matchup_streaming(deck1, deck2, seed, max_turns, prefer_actions, variant, commanders, |_, _| true)
+        self.run_matchup_streaming(
+            deck1,
+            deck2,
+            seed,
+            max_turns,
+            prefer_actions,
+            variant,
+            commanders,
+            |_, _| true,
+        )
     }
 
     /// Shutdown all servers in parallel.
@@ -1435,7 +1453,7 @@ fn run_matrix_mode(cli: &Cli) {
                 prefer_actions: cli.prefer_actions,
                 java_heap: cli.java_heap.clone(),
                 variant: cli.variant.clone(),
-                commanders: cli.commanders.clone().unwrap_or_default(),
+                commanders: cli.commander.clone(),
             };
             let result = runner::run_with_data(&config, &data);
             if cli.verbose {
@@ -2584,7 +2602,7 @@ fn run_continuous_mode(cli: &Cli) {
             prefer_actions: cli.prefer_actions,
             java_heap: cli.java_heap.clone(),
             variant: cli.variant.clone(),
-            commanders: cli.commanders.clone().unwrap_or_default(),
+            commanders: cli.commander.clone(),
         };
 
         let game_start = Instant::now();
@@ -2992,10 +3010,10 @@ fn run_serve_mode(cli: &Cli) {
                 cards_dir: cli_cards_dir.clone(),
                 decks_dir: cli_decks_dir.clone(),
                 verbose: cli_verbose,
-                prefer_actions: cli_prefer_actions,
+                prefer_actions: queued_job.prefer_actions,
                 java_heap: cli_java_heap.clone(),
-                variant: "Constructed".to_string(),
-                commanders: vec![],
+                variant: queued_job.variant.clone(),
+                commanders: queued_job.commanders.clone(),
             };
 
             let game_start = Instant::now();

@@ -211,10 +211,6 @@ impl TauriAgent {
                     format!("Cast with {}", name),
                 )
             }
-            PlayCardMode::GainLifeAlt => (
-                "gainLifeAlt".to_string(),
-                "Cast with alternate cost".to_string(),
-            ),
             PlayCardMode::StaticAlternative => (
                 "staticAlternative".to_string(),
                 "Cast with alternative cost".to_string(),
@@ -236,7 +232,7 @@ impl TauriAgent {
         use forge_engine_core::spellability::AlternativeCost;
         match mode_str {
             "normal" => Some(PlayCardMode::Normal),
-            "gainLifeAlt" => Some(PlayCardMode::GainLifeAlt),
+            "staticAlternative" => Some(PlayCardMode::StaticAlternative),
             "foretellExile" => Some(PlayCardMode::ForetellExile),
             s if s.starts_with("alternative:") => {
                 let alt_name = &s["alternative:".len()..];
@@ -409,8 +405,9 @@ impl PlayerAgent for TauriAgent {
                 description,
                 is_mana_ability: is_mana,
             });
-            // Add non-land activatable cards to tappable list so they get the TAP button
-            if !tappable_land_ids.contains(&id_str) {
+            // Only mana abilities should reuse the TAP affordance. Non-mana land
+            // abilities like Evolving Wilds must stay as explicit activations.
+            if is_mana && !tappable_land_ids.contains(&id_str) {
                 tappable_land_ids.push(id_str);
             }
         }

@@ -6,7 +6,8 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::agent::PlayerAgent;
 use crate::replacement::replacement_handler::{
-    apply_replacements, apply_replacements_with_agents, ReplacementEvent,
+    apply_replacements, apply_replacements_with_agents, apply_replacements_with_agents_and_runtime,
+    ReplacementEvent, ReplacementRuntime,
 };
 use crate::replacement::GameLossReason;
 use crate::replacement::ReplacementResult;
@@ -27,7 +28,7 @@ impl GameState {
 
     /// Move a card from its current zone to a new zone.
     pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, None, true);
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, None, true);
     }
 
     pub fn move_card_with_agents(
@@ -37,7 +38,25 @@ impl GameState {
         dest_owner: PlayerId,
         agents: &mut [Box<dyn PlayerAgent>],
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), true);
+        self.move_card_internal(card_id, dest_zone, dest_owner, Some(agents), None, true);
+    }
+
+    pub fn move_card_with_agents_and_replacement_runtime(
+        &mut self,
+        card_id: CardId,
+        dest_zone: ZoneType,
+        dest_owner: PlayerId,
+        agents: &mut [Box<dyn PlayerAgent>],
+        runtime: &mut ReplacementRuntime<'_>,
+    ) {
+        self.move_card_internal(
+            card_id,
+            dest_zone,
+            dest_owner,
+            Some(agents),
+            Some(runtime),
+            true,
+        );
     }
 
     fn move_card_without_replacement(
@@ -46,7 +65,7 @@ impl GameState {
         dest_zone: ZoneType,
         dest_owner: PlayerId,
     ) {
-        self.move_card_internal(card_id, dest_zone, dest_owner, None, false);
+        self.move_card_internal(card_id, dest_zone, dest_owner, None, None, false);
     }
 
     fn move_card_internal(
@@ -55,6 +74,7 @@ impl GameState {
         dest_zone: ZoneType,
         dest_owner: PlayerId,
         agents: Option<&mut [Box<dyn PlayerAgent>]>,
+        runtime: Option<&mut ReplacementRuntime<'_>>,
         apply_move_replacement: bool,
     ) {
         let (src_zone, src_owner, was_permanent, was_land, is_token) = {
@@ -72,9 +92,14 @@ impl GameState {
             origin: src_zone,
             destination: dest_zone,
         };
+        let tapped_before_replacement = self.card(card_id).tapped;
         if apply_move_replacement {
             if let Some(agents) = agents {
-                apply_replacements_with_agents(self, agents, &mut moved_event);
+                if let Some(runtime) = runtime {
+                    apply_replacements_with_agents_and_runtime(self, agents, runtime, &mut moved_event);
+                } else {
+                    apply_replacements_with_agents(self, agents, &mut moved_event);
+                }
             } else {
                 apply_replacements(self, &mut moved_event);
             }
@@ -83,6 +108,10 @@ impl GameState {
             ReplacementEvent::Moved { destination, .. } => destination,
             _ => dest_zone,
         };
+        let replacement_marked_etb_tapped =
+            dest_zone == ZoneType::Battlefield
+                && self.card(card_id).tapped
+                && !tapped_before_replacement;
         let dest_owner = if dest_zone == ZoneType::Command {
             self.card(card_id).owner
         } else {
@@ -160,6 +189,9 @@ impl GameState {
         match dest_zone {
             ZoneType::Battlefield => {
                 self.cards[card_id.index()].enter_battlefield();
+                if replacement_marked_etb_tapped {
+                    self.cards[card_id.index()].set_tapped(true);
+                }
                 // Add to destination zone first so the card is "on the
                 // battlefield" when ETB-tapped checks run against it.
                 self.zone_mut(dest_zone, dest_owner).add(card_id);
@@ -328,6 +360,12 @@ impl GameState {
 
         // Add to destination zone
         self.zone_mut(dest_zone, dest_owner).add(card_id);
+
+        // Commander 903.9a tracking: once a commander enters graveyard or exile,
+        // SBA may offer moving it to the command zone exactly once.
+        let commander_entered_gy_or_exile = self.card(card_id).is_commander
+            && matches!(dest_zone, ZoneType::Graveyard | ZoneType::Exile);
+        self.cards[card_id.index()].move_to_command_zone = commander_entered_gy_or_exile;
 
         // Forget remembered objects for command effects with ForgetOnMoved.
         let mut exile_effects = Vec::new();
@@ -732,6 +770,39 @@ impl GameState {
                         .remove_counter(&CounterType::P1P1, cancel);
                     self.card_mut(cid)
                         .remove_counter(&CounterType::M1M1, cancel);
+                    any_changes = true;
+                }
+            }
+        }
+
+        // CR 903.9a: a commander in graveyard or exile may move to command zone.
+        for &pid in &self.player_order.clone() {
+            let mut commander_candidates = self.cards_in_zone(ZoneType::Graveyard, pid).to_vec();
+            commander_candidates.extend(self.cards_in_zone(ZoneType::Exile, pid).iter().copied());
+            for cid in commander_candidates {
+                if !self.card(cid).can_move_to_command_zone() {
+                    continue;
+                }
+                self.card_mut(cid).move_to_command_zone = false;
+                let accepted = if let Some(agents) = agents.as_deref_mut() {
+                    let name = self.card(cid).card_name.clone();
+                    let message = format!(
+                        "{}: If a commander is in a graveyard or in exile and that card was put into that zone since the last time state-based actions were checked, its owner may put it into the command zone.",
+                        name
+                    );
+                    agents[pid.index()].confirm_action(
+                        pid,
+                        Some("ChangeZoneToAltDestination"),
+                        &message,
+                        &[],
+                        Some(&name),
+                        None,
+                    )
+                } else {
+                    false
+                };
+                if accepted {
+                    self.move_card_without_replacement(cid, ZoneType::Command, pid);
                     any_changes = true;
                 }
             }

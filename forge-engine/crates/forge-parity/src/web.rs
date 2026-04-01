@@ -160,6 +160,9 @@ pub struct QueuedJob {
     pub deck2: String,
     pub seed: u64,
     pub max_turns: u32,
+    pub prefer_actions: bool,
+    pub variant: String,
+    pub commanders: Vec<String>,
 }
 
 /// Per-matchup result within a batch.
@@ -269,9 +272,53 @@ struct RegressionEntry {
     args: String,
 }
 
-/// Expand a regression entry's args string into individual (deck1, deck2, seed, max_turns) matchups.
-fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, String, u64, u32)> {
-    let tokens: Vec<&str> = args.split_whitespace().collect();
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ExpandedMatchup {
+    deck1: String,
+    deck2: String,
+    seed: u64,
+    max_turns: u32,
+    prefer_actions: bool,
+    variant: String,
+    commanders: Vec<String>,
+}
+
+/// Split a shell-like argument string while honoring simple single/double quotes.
+/// This is enough for regression.json `args` fields such as:
+/// `--commander 'Neheb, the Worthy'`
+fn tokenize_arg_string(args: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    let mut quote: Option<char> = None;
+
+    for ch in args.chars() {
+        match quote {
+            Some(q) if ch == q => {
+                quote = None;
+            }
+            Some(_) => cur.push(ch),
+            None => {
+                if ch == '\'' || ch == '"' {
+                    quote = Some(ch);
+                } else if ch.is_whitespace() {
+                    if !cur.is_empty() {
+                        out.push(std::mem::take(&mut cur));
+                    }
+                } else {
+                    cur.push(ch);
+                }
+            }
+        }
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
+}
+
+/// Expand a regression entry's args string into individual matchups.
+fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<ExpandedMatchup> {
+    let tokens = tokenize_arg_string(args);
 
     let mut matrix = false;
     let mut seeds: Vec<u64> = Vec::new();
@@ -282,11 +329,15 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
     let mut max_turns = default_max_turns;
     let mut games: usize = 1;
     let mut seed_start: u64 = 42;
+    let mut prefer_actions = false;
+    let mut variant = "Constructed".to_string();
+    let mut commanders: Vec<String> = Vec::new();
 
     let mut i = 0;
     while i < tokens.len() {
-        match tokens[i] {
+        match tokens[i].as_str() {
             "--matrix" => matrix = true,
+            "--prefer-actions" => prefer_actions = true,
             "--seeds" => {
                 if i + 1 < tokens.len() {
                     i += 1;
@@ -339,6 +390,18 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
                     }
                 }
             }
+            "--variant" => {
+                if i + 1 < tokens.len() {
+                    i += 1;
+                    variant = tokens[i].clone();
+                }
+            }
+            "--commander" => {
+                if i + 1 < tokens.len() {
+                    i += 1;
+                    commanders.push(tokens[i].clone());
+                }
+            }
             _ => {} // ignore unknown flags
         }
         i += 1;
@@ -355,7 +418,15 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
             for d2 in &decks {
                 if d1 != d2 {
                     for &s in &seeds {
-                        matchups.push((d1.clone(), d2.clone(), s, max_turns));
+                        matchups.push(ExpandedMatchup {
+                            deck1: d1.clone(),
+                            deck2: d2.clone(),
+                            seed: s,
+                            max_turns,
+                            prefer_actions,
+                            variant: variant.clone(),
+                            commanders: commanders.clone(),
+                        });
                     }
                 }
             }
@@ -365,11 +436,27 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
         if !explicit_seeds {
             // Use --games to generate seed range from seed_start
             for g in 0..games {
-                matchups.push((d1.clone(), d2.clone(), seed_start + g as u64, max_turns));
+                matchups.push(ExpandedMatchup {
+                    deck1: d1.clone(),
+                    deck2: d2.clone(),
+                    seed: seed_start + g as u64,
+                    max_turns,
+                    prefer_actions,
+                    variant: variant.clone(),
+                    commanders: commanders.clone(),
+                });
             }
         } else {
             for &s in &seeds {
-                matchups.push((d1.clone(), d2.clone(), s, max_turns));
+                matchups.push(ExpandedMatchup {
+                    deck1: d1.clone(),
+                    deck2: d2.clone(),
+                    seed: s,
+                    max_turns,
+                    prefer_actions,
+                    variant: variant.clone(),
+                    commanders: commanders.clone(),
+                });
             }
         }
     } else if !decks.is_empty() && decks.len() == 2 {
@@ -378,7 +465,15 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
             seeds = vec![42];
         }
         for &s in &seeds {
-            matchups.push((decks[0].clone(), decks[1].clone(), s, max_turns));
+            matchups.push(ExpandedMatchup {
+                deck1: decks[0].clone(),
+                deck2: decks[1].clone(),
+                seed: s,
+                max_turns,
+                prefer_actions,
+                variant: variant.clone(),
+                commanders: commanders.clone(),
+            });
         }
     }
 
@@ -387,7 +482,7 @@ fn expand_regression_entry(args: &str, default_max_turns: u32) -> Vec<(String, S
 
 #[cfg(test)]
 mod tests {
-    use super::expand_regression_entry;
+    use super::{expand_regression_entry, tokenize_arg_string, ExpandedMatchup};
 
     #[test]
     fn expand_regression_entry_uses_seed_as_range_start_for_games() {
@@ -399,21 +494,27 @@ mod tests {
         assert_eq!(matchups.len(), 10);
         assert_eq!(
             matchups.first(),
-            Some(&(
-                "keyword_advanced2".into(),
-                "keyword_advanced2".into(),
-                42,
-                40
-            ))
+            Some(&ExpandedMatchup {
+                deck1: "keyword_advanced2".into(),
+                deck2: "keyword_advanced2".into(),
+                seed: 42,
+                max_turns: 40,
+                prefer_actions: false,
+                variant: "Constructed".into(),
+                commanders: vec![],
+            })
         );
         assert_eq!(
             matchups.last(),
-            Some(&(
-                "keyword_advanced2".into(),
-                "keyword_advanced2".into(),
-                51,
-                40
-            ))
+            Some(&ExpandedMatchup {
+                deck1: "keyword_advanced2".into(),
+                deck2: "keyword_advanced2".into(),
+                seed: 51,
+                max_turns: 40,
+                prefer_actions: false,
+                variant: "Constructed".into(),
+                commanders: vec![],
+            })
         );
     }
 
@@ -427,11 +528,55 @@ mod tests {
         assert_eq!(
             matchups,
             vec![
-                ("red_burn".into(), "green_stompy".into(), 42, 30),
-                ("red_burn".into(), "green_stompy".into(), 100, 30),
-                ("red_burn".into(), "green_stompy".into(), 999, 30),
+                ExpandedMatchup {
+                    deck1: "red_burn".into(),
+                    deck2: "green_stompy".into(),
+                    seed: 42,
+                    max_turns: 30,
+                    prefer_actions: false,
+                    variant: "Constructed".into(),
+                    commanders: vec![],
+                },
+                ExpandedMatchup {
+                    deck1: "red_burn".into(),
+                    deck2: "green_stompy".into(),
+                    seed: 100,
+                    max_turns: 30,
+                    prefer_actions: false,
+                    variant: "Constructed".into(),
+                    commanders: vec![],
+                },
+                ExpandedMatchup {
+                    deck1: "red_burn".into(),
+                    deck2: "green_stompy".into(),
+                    seed: 999,
+                    max_turns: 30,
+                    prefer_actions: false,
+                    variant: "Constructed".into(),
+                    commanders: vec![],
+                },
             ]
         );
+    }
+
+    #[test]
+    fn tokenize_args_keeps_quoted_commander_name() {
+        let tokens = tokenize_arg_string("--variant Commander --commander 'Neheb, the Worthy'");
+        assert_eq!(
+            tokens,
+            vec!["--variant", "Commander", "--commander", "Neheb, the Worthy"]
+        );
+    }
+
+    #[test]
+    fn expand_regression_entry_parses_variant_and_commander() {
+        let matchups = expand_regression_entry(
+            "--variant Commander --commander 'Neheb, the Worthy' --deck1 neheb_minotaur_commander --deck2 neheb_minotaur_commander --seed 42 --max-turns 22 --games 1",
+            10,
+        );
+        assert_eq!(matchups.len(), 1);
+        assert_eq!(matchups[0].variant, "Commander");
+        assert_eq!(matchups[0].commanders, vec!["Neheb, the Worthy"]);
     }
 }
 
@@ -775,14 +920,17 @@ async fn submit_jobs_handler(
         all_names.push(entry.name.clone());
         let matchups = expand_regression_entry(&entry.args, 10);
         let mut queue = jq.queue.lock().unwrap();
-        for (d1, d2, seed, mt) in matchups {
+        for matchup in matchups {
             queue.push_back(QueuedJob {
                 batch_id,
                 regression_name: entry.name.clone(),
-                deck1: d1,
-                deck2: d2,
-                seed,
-                max_turns: mt,
+                deck1: matchup.deck1,
+                deck2: matchup.deck2,
+                seed: matchup.seed,
+                max_turns: matchup.max_turns,
+                prefer_actions: matchup.prefer_actions,
+                variant: matchup.variant,
+                commanders: matchup.commanders,
             });
             total_jobs += 1;
         }
@@ -880,6 +1028,9 @@ async fn run_matchup_handler(
         deck2: req.deck2,
         seed: req.seed,
         max_turns: req.max_turns,
+        prefer_actions: false,
+        variant: "Constructed".to_string(),
+        commanders: Vec::new(),
     });
 
     Json(serde_json::json!({

@@ -4,7 +4,7 @@
 //! matches a property string used in `ValidTgts$` filters (e.g. "nonBlack",
 //! "OppCtrl", "YouCtrl").
 
-use forge_foundation::ColorSet;
+use forge_foundation::{Color, ColorSet};
 
 use crate::card::filter_constants as fc;
 use crate::card::Card;
@@ -48,6 +48,7 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
         "attackingYou" => card.attacking_player == Some(source_controller),
         fc::OTHER => true, // "Other" means "not self" — handled at call site
         // Type-based filters
+        fc::BASIC => card.type_line.is_basic(),
         fc::NON_LAND => !card.type_line.is_land(),
         fc::NON_CREATURE => !card.is_creature(),
         fc::NON_ARTIFACT => !card.type_line.is_artifact(),
@@ -84,8 +85,20 @@ fn matches_single_property(card: &Card, property: &str, source_controller: Playe
                 return false;
             }
             if let Some(color_name) = lower.strip_prefix("non") {
-                let excluded = ColorSet::from_names(color_name);
-                !card.color.shares_color_with(excluded)
+                if let Some(color) = Color::from_name(color_name) {
+                    !card.color.has_color(color)
+                } else {
+                    match color_name {
+                        "colorless" => !card.color.is_colorless(),
+                        "basic" => !card.type_line.is_basic(),
+                        "land" => !card.type_line.is_land(),
+                        "creature" => !card.is_creature(),
+                        "artifact" => !card.type_line.is_artifact(),
+                        "enchantment" => !card.type_line.is_enchantment(),
+                        "token" => !card.is_token,
+                        _ => !card.type_line.has_subtype(&property[3..]),
+                    }
+                }
             } else if let Some(keyword) = property.strip_prefix("without") {
                 !card.has_keyword(keyword)
             } else if let Some(keyword) = property.strip_prefix("with") {
@@ -179,6 +192,72 @@ mod tests {
         let caster = PlayerId(0);
         // OppCtrl.nonBlack → opponent controls + not black → true for green creature
         assert!(card_has_property(&card, "OppCtrl.nonBlack", caster));
+    }
+
+    #[test]
+    fn non_swamp_filter_checks_subtype_not_color() {
+        use crate::ids::CardId;
+
+        let swamp = Card::new(
+            CardId(4),
+            "Swamp".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Basic Land - Swamp"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        let cliffgate = Card::new(
+            CardId(5),
+            "Cliffgate".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Land - Gate"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+
+        assert!(!card_has_property(&swamp, "nonSwamp", PlayerId(0)));
+        assert!(card_has_property(&cliffgate, "nonSwamp", PlayerId(0)));
+    }
+
+    #[test]
+    fn nonbasic_filter_checks_basic_supertype() {
+        use crate::ids::CardId;
+
+        let basic_swamp = Card::new(
+            CardId(6),
+            "Swamp".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Basic Land - Swamp"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+        let cliffgate = Card::new(
+            CardId(7),
+            "Cliffgate".to_string(),
+            PlayerId(0),
+            forge_foundation::CardTypeLine::parse("Land - Gate"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        );
+
+        assert!(!card_has_property(&basic_swamp, "nonBasic", PlayerId(0)));
+        assert!(card_has_property(&cliffgate, "nonBasic", PlayerId(0)));
     }
 
     #[test]

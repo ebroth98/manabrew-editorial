@@ -513,8 +513,19 @@ pub struct EffectContext<'a> {
 
 impl EffectContext<'_> {
     pub fn move_card(&mut self, card_id: CardId, dest_zone: ZoneType, dest_owner: PlayerId) {
-        self.game
-            .move_card_with_agents(card_id, dest_zone, dest_owner, self.agents);
+        let mut runtime = crate::replacement::replacement_handler::ReplacementRuntime {
+            trigger_handler: self.trigger_handler,
+            token_templates: self.token_templates,
+            mana_pools: self.mana_pools,
+            rng: self.rng,
+        };
+        self.game.move_card_with_agents_and_replacement_runtime(
+            card_id,
+            dest_zone,
+            dest_owner,
+            self.agents,
+            &mut runtime,
+        );
     }
 }
 
@@ -819,6 +830,8 @@ fn matches_condition_filter(
         // Check qualifier
         if let Some(q) = qualifier {
             match q.to_ascii_lowercase().as_str() {
+                "basic" => card.type_line.is_basic(),
+                "nonbasic" => !card.type_line.is_basic(),
                 "youctrl" | "youown" => card.controller == player,
                 "oppctrl" => card.controller != player,
                 "chosenctrl" => {
@@ -1356,6 +1369,10 @@ fn unless_cost_part_kind(part: &CostPart) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use forge_foundation::{CardTypeLine, ColorSet, ManaCost};
+    use crate::card::Card;
+    use crate::ids::{CardId, PlayerId};
+    use crate::spellability::SpellAbility;
 
     #[test]
     fn parse_num_dmg_test() {
@@ -1381,5 +1398,46 @@ mod tests {
             helpers::parse_param("SP$ Draw | NumCards$ 2", "NumCards$ "),
             Some(2)
         );
+    }
+
+    #[test]
+    fn condition_present_targeted_nonbasic_matches_destroyed_land() {
+        let player = PlayerId(0);
+        let mut game = GameState::new(&["P1"], 20);
+        let spell_source = game.create_card(Card::new(
+            CardId(0),
+            "Choking Sands".to_string(),
+            player,
+            CardTypeLine::parse("Sorcery"),
+            ManaCost::parse("1 B B"),
+            ColorSet::BLACK,
+            None,
+            None,
+            vec![],
+            vec![],
+        ));
+        let target = game.create_card(Card::new(
+            CardId(0),
+            "Cliffgate".to_string(),
+            player,
+            CardTypeLine::parse("Land - Gate"),
+            ManaCost::parse(""),
+            ColorSet::COLORLESS,
+            None,
+            None,
+            vec![],
+            vec![],
+        ));
+
+        let mut sa = SpellAbility::new_simple(Some(spell_source), player, "DB$ DealDamage");
+        sa.params
+            .put(keys::CONDITION_DEFINED.to_string(), "Targeted".to_string());
+        sa.params
+            .put(keys::CONDITION_PRESENT.to_string(), "Land.Basic".to_string());
+        sa.params
+            .put(keys::CONDITION_COMPARE.to_string(), "EQ0".to_string());
+        sa.target_chosen.target_card = Some(target);
+
+        assert!(check_condition_present(&game, &sa, player, spell_source));
     }
 }

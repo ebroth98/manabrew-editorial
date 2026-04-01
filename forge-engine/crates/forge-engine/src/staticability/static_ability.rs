@@ -237,6 +237,19 @@ impl StaticAbility {
             }
             return zones.contains(&source_zone);
         }
+        if let Some(effect_zone) = self.params.get(keys::EFFECT_ZONE) {
+            if effect_zone.eq_ignore_ascii_case("All") {
+                return true;
+            }
+            let zones: Vec<ZoneType> = effect_zone
+                .split(',')
+                .filter_map(|z| ZoneType::from_str_compat(z.trim()))
+                .collect();
+            if zones.is_empty() {
+                return false;
+            }
+            return zones.contains(&source_zone);
+        }
         source_zone == ZoneType::Battlefield
     }
 

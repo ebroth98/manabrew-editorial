@@ -1201,6 +1201,23 @@ fn add_common_trigger_objects(sa: &mut SpellAbility, params: &RunParams) {
         sa.add_triggering_object("Target", &value);
         sa.add_triggering_object("TargetPlayer", &value);
     }
+    // Java DamageDone triggers expose the damaged entity as AbilityKey.Target.
+    // Mirror that here so TriggeredTarget resolves against trigger objects
+    // instead of depending on target_chosen fallback behavior.
+    if params.target_player.is_none() {
+        if let Some(player_id) = params.damage_target_player {
+            let value = player_id.0.to_string();
+            sa.add_triggering_object("Target", &value);
+            sa.add_triggering_object("TargetPlayer", &value);
+        }
+    }
+    if params.target_card.is_none() {
+        if let Some(card_id) = params.damage_target_card {
+            let value = card_id.0.to_string();
+            sa.add_triggering_object("Target", &value);
+            sa.add_triggering_object("TargetCard", &value);
+        }
+    }
     if let Some(card_id) = params.explored {
         sa.add_triggering_object("Explored", &card_id.0.to_string());
     }
@@ -3594,6 +3611,9 @@ pub fn parse_trigger(raw: &str, next_id: &mut u32) -> Option<Trigger> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::event::RunParams;
+    use crate::ids::{CardId, PlayerId};
+    use crate::spellability::SpellAbility;
 
     #[test]
     fn parse_pipe_params_basic() {
@@ -3791,6 +3811,44 @@ mod tests {
         } else {
             panic!("Expected DamageDone mode");
         }
+    }
+
+    #[test]
+    fn damage_done_player_populates_target_trigger_objects() {
+        let mut sa = SpellAbility::new_simple(None, PlayerId(0), "");
+        add_common_trigger_objects(
+            &mut sa,
+            &RunParams {
+                damage_source: Some(CardId(1)),
+                damage_target_player: Some(PlayerId(1)),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(sa.trigger_objects.get("Target").map(String::as_str), Some("1"));
+        assert_eq!(
+            sa.trigger_objects.get("TargetPlayer").map(String::as_str),
+            Some("1")
+        );
+    }
+
+    #[test]
+    fn damage_done_card_populates_target_trigger_objects() {
+        let mut sa = SpellAbility::new_simple(None, PlayerId(0), "");
+        add_common_trigger_objects(
+            &mut sa,
+            &RunParams {
+                damage_source: Some(CardId(1)),
+                damage_target_card: Some(CardId(7)),
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(sa.trigger_objects.get("Target").map(String::as_str), Some("7"));
+        assert_eq!(
+            sa.trigger_objects.get("TargetCard").map(String::as_str),
+            Some("7")
+        );
     }
 
     #[test]

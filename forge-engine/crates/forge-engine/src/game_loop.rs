@@ -105,6 +105,29 @@ impl GameLoop {
         &mut self.mana_pools[pid.index()]
     }
 
+    pub(crate) fn move_card_with_runtime(
+        &mut self,
+        game: &mut GameState,
+        card_id: CardId,
+        dest_zone: ZoneType,
+        dest_owner: PlayerId,
+        agents: &mut [Box<dyn PlayerAgent>],
+    ) {
+        let mut runtime = crate::replacement::replacement_handler::ReplacementRuntime {
+            trigger_handler: &mut self.trigger_handler,
+            token_templates: &self.token_templates,
+            mana_pools: &mut self.mana_pools,
+            rng: &mut *self.game_rng,
+        };
+        game.move_card_with_agents_and_replacement_runtime(
+            card_id,
+            dest_zone,
+            dest_owner,
+            agents,
+            &mut runtime,
+        );
+    }
+
     /// Create a game snapshot. Set `include_stack` false for copy-without-stack flows.
     pub fn make_snapshot(&self, game: &GameState, include_stack: bool) -> GameSnapshot {
         GameSnapshot::capture(

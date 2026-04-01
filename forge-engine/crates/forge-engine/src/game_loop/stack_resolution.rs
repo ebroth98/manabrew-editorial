@@ -108,7 +108,7 @@ impl GameLoop {
                     } else {
                         ZoneType::Graveyard
                     };
-                    game.move_card_with_agents(card_id, dest, owner, agents);
+                    self.move_card_with_runtime(game, card_id, dest, owner, agents);
                 }
             }
             apply_continuous_effects(game);
@@ -143,7 +143,13 @@ impl GameLoop {
                         if let Some(source_id) = entry.spell_ability.source {
                             if game.card(source_id).zone == ZoneType::Exile {
                                 let owner = game.card(source_id).owner;
-                                game.move_card_with_agents(source_id, ZoneType::Graveyard, owner, agents);
+                                self.move_card_with_runtime(
+                                    game,
+                                    source_id,
+                                    ZoneType::Graveyard,
+                                    owner,
+                                    agents,
+                                );
                                 crate::ability::effects::helpers::remove_madness_exiled_marker(
                                     game.card_mut(source_id),
                                 );
@@ -279,99 +285,7 @@ impl GameLoop {
                     false,
                 );
 
-                // Process ETBReplacement keywords (e.g., Clone entering as copy).
-                // Mirrors Java's CardFactoryUtil.createETBReplacement — the keyword
-                // format is ETBReplacement:Layer:SVarName[:Optional[:ValidCard[:Zone]]].
-                {
-                    let keywords = game.card(card_id).keywords.as_string_list();
-                    for kw in &keywords {
-                        if !kw.starts_with("ETBReplacement") {
-                            continue;
-                        }
-                        let parts: Vec<&str> = kw.split(':').collect();
-                        // Need at least ETBReplacement:Layer:SVarName
-                        if parts.len() < 3 {
-                            continue;
-                        }
-                        let svar_name = parts[2];
-                        let is_optional = parts
-                            .get(3)
-                            .map(|s| s.contains("Optional"))
-                            .unwrap_or(false);
-
-                        // Look up the SVar on the card
-                        let svar_text = match game.card(card_id).svars.get(svar_name).cloned() {
-                            Some(text) => text,
-                            None => continue,
-                        };
-
-                        // For Optional replacements, ask the player
-                        if is_optional {
-                            let card_name = game.card(card_id).card_name.clone();
-                            // Extract SpellDescription from the SVar for a better prompt
-                            let desc = {
-                                let params = Params::from_raw(&svar_text);
-                                params
-                                    .get(keys::SPELL_DESCRIPTION)
-                                    .map(|d| d.replace("CARDNAME", &card_name))
-                                    .unwrap_or_else(|| {
-                                        format!("Use {} replacement ability?", card_name)
-                                    })
-                            };
-                            agents[player.index()].snapshot_state(game, &self.mana_pools);
-                            let accept = agents[player.index()].choose_optional_trigger(
-                                player,
-                                &desc,
-                                Some(&card_name),
-                                None,
-                            );
-                            if !accept {
-                                continue;
-                            }
-                        }
-
-                        // Build the replacement ability from the SVar
-                        let mut etb_sa = build_spell_ability(game, card_id, &svar_text, player);
-
-                        // Set up targeting if the ability uses it
-                        if etb_sa.uses_targeting() {
-                            agents[player.index()].snapshot_state(game, &self.mana_pools);
-                            if !etb_sa.setup_targets(game, agents, &self.mana_pools) {
-                                continue; // Targeting failed
-                            }
-                        }
-
-                        // Resolve the effect chain (walk sub-abilities)
-                        let mut parent_target_card: Option<CardId> = None;
-                        let mut parent_target_player = None;
-                        let mut current_sa = Some(&etb_sa);
-                        while let Some(sa) = current_sa {
-                            let mut sa_with_ctx;
-                            let sa_ref = if parent_target_player.is_some()
-                                && sa.target_chosen.target_player.is_none()
-                            {
-                                sa_with_ctx = sa.clone();
-                                sa_with_ctx.target_chosen.target_player = parent_target_player;
-                                &sa_with_ctx
-                            } else {
-                                sa
-                            };
-                            self.resolve_single_effect(game, agents, sa_ref, parent_target_card);
-                            parent_target_card = sa_ref.target_chosen.target_card;
-                            parent_target_player = sa_ref.target_chosen.target_player;
-                            current_sa = sa.get_sub_ability();
-                        }
-                    }
-                }
-
-                // Check for shock-land-style "pay life or enter tapped" before entering
-                let etb_life_cost =
-                    crate::staticability::layer::get_etb_unless_life_cost(game.card(card_id));
-                // Check for "reveal <type> from hand or enter tapped"
-                let etb_reveal_cost =
-                    crate::staticability::layer::get_etb_unless_reveal_cost(game.card(card_id));
-
-                game.move_card_with_agents(card_id, ZoneType::Battlefield, player, agents);
+                self.move_card_with_runtime(game, card_id, ZoneType::Battlefield, player, agents);
 
                 // Attach aura to its chosen target.
                 // Mirrors Java's PermanentEffect which calls card.enchantEntity()
@@ -381,53 +295,6 @@ impl GameLoop {
                         if game.card(target_id).zone == ZoneType::Battlefield {
                             game.attach_to(card_id, target_id);
                         }
-                    }
-                }
-
-                // Handle reveal-or-enter-tapped
-                if let Some((_n, filter_str)) = etb_reveal_cost {
-                    let type_name = filter_str
-                        .split('/')
-                        .next()
-                        .unwrap_or(&filter_str)
-                        .to_string();
-                    let has_matching = game
-                        .cards_in_zone(ZoneType::Hand, player)
-                        .iter()
-                        .any(|&cid| game.card(cid).type_line.has_subtype(&type_name));
-                    if !has_matching {
-                        game.card_mut(card_id).set_tapped(true);
-                    } else {
-                        // DeterministicAgent always passes optional reveals (enter tapped)
-                        game.card_mut(card_id).set_tapped(true);
-                    }
-                }
-
-                // Prompt for shock land life payment
-                if let Some(life_cost) = etb_life_cost {
-                    let cname = game.card(card_id).card_name.clone();
-                    let desc = format!("Pay {} life so {} enters untapped?", life_cost, cname);
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    let pay = agents[player.index()].choose_optional_trigger(
-                        player,
-                        &desc,
-                        Some(&cname),
-                        None,
-                    );
-                    if pay {
-                        game.card_mut(card_id).set_tapped(false);
-                        game.player_lose_life(player, life_cost);
-                        self.trigger_handler.run_trigger(
-                            TriggerType::LifeLost,
-                            RunParams {
-                                player: Some(player),
-                                life_amount: Some(life_cost),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                    } else {
-                        game.card_mut(card_id).set_tapped(true);
                     }
                 }
 
@@ -673,7 +540,7 @@ impl GameLoop {
                     } else {
                         ZoneType::Graveyard
                     };
-                    game.move_card_with_agents(card_id, dest, owner, agents);
+                    self.move_card_with_runtime(game, card_id, dest, owner, agents);
                 }
             }
         }

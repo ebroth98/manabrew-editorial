@@ -750,7 +750,7 @@ impl GameLoop {
 
                 game.stack.push(entry);
                 self.log_stack_push(&card_name, &game.player(active).name);
-                game.move_card_with_agents(card_id, ZoneType::Stack, active, agents);
+                self.move_card_with_runtime(game, card_id, ZoneType::Stack, active, agents);
                 crate::agent::notify_all_agents(
                     agents,
                     crate::agent::GameLogEvent::stack(format!(

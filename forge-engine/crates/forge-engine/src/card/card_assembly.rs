@@ -18,7 +18,6 @@ use crate::replacement::{parse_replacement_effect, ReplacementEffect};
 use crate::staticability::{parse_static_ability, StaticAbility};
 use crate::trigger::{parse_trigger, Trigger};
 
-use super::card_factory_util::{parse_gainlife_alt_cost_keyword, parse_sacrifice_alt_cost_keyword};
 use super::{Card, CardOtherPart};
 
 // ── Phase 1: Parse ──────────────────────────────────────────────────────────
@@ -31,8 +30,6 @@ pub(crate) struct ParsedComponents {
     /// Raw trigger lines that contained `Mode$ SpellCastOrCopy`,
     /// needed for Magecraft duplication in Phase 2.
     pub spell_cast_or_copy_raw: Vec<String>,
-    /// Synthetic keywords extracted from AlternativeCost static abilities.
-    pub alt_cost_keywords: Vec<String>,
 }
 
 /// Phase 1: Parse triggers, static abilities, and replacement effects from
@@ -53,14 +50,7 @@ pub(crate) fn parse_card_components(face: &forge_carddb::CardFace) -> ParsedComp
 
     // Parse static abilities from S: lines (need S$ prefix for the parser)
     let mut static_abilities = Vec::new();
-    let mut alt_cost_keywords = Vec::new();
     for raw in &face.static_abilities {
-        if let Some(kw) = parse_gainlife_alt_cost_keyword(raw) {
-            alt_cost_keywords.push(kw);
-        }
-        if let Some(kw) = parse_sacrifice_alt_cost_keyword(raw) {
-            alt_cost_keywords.push(kw);
-        }
         let prefixed = format!("S$ {}", raw);
         if let Some(sa) = parse_static_ability(&prefixed) {
             static_abilities.push(sa);
@@ -86,7 +76,6 @@ pub(crate) fn parse_card_components(face: &forge_carddb::CardFace) -> ParsedComp
         static_abilities,
         replacement_effects,
         spell_cast_or_copy_raw,
-        alt_cost_keywords,
     }
 }
 
@@ -167,6 +156,10 @@ pub(crate) fn assemble_card(
         card.svars.entry(k.clone()).or_insert_with(|| v.clone());
     }
 
+    // Java parity: convert ETBReplacement keywords into intrinsic
+    // Event$ Moved replacement effects after SVars are available.
+    super::card_factory_util::add_etb_keyword_replacements(&mut card);
+
     // Add parsed static abilities and replacement effects.
     for sa in components.static_abilities {
         card.add_static_ability(sa);
@@ -174,12 +167,6 @@ pub(crate) fn assemble_card(
     for re in components.replacement_effects {
         card.add_replacement_effect(re);
     }
-
-    // Add synthetic alt-cost keywords.
-    for kw in components.alt_cost_keywords {
-        card.add_intrinsic_keyword(&kw);
-    }
-
     // Double-faced cards
     if rules.split_type.is_dual_faced() {
         if let Some(ref back_face) = rules.other_part {

@@ -44,6 +44,18 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         ]
     };
 
+    // Java parity: `Exclude$` removes listed colors from the choice pool
+    // before prompting (e.g. Cliffgate excludes red).
+    let mut valid_colors = valid_colors;
+    if let Some(exclude) = sa.params.get("Exclude") {
+        let excluded: Vec<String> = exclude
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        valid_colors.retain(|c| !excluded.iter().any(|e| e.eq_ignore_ascii_case(c)));
+    }
+
     if valid_colors.is_empty() {
         return;
     }

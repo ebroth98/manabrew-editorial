@@ -4,8 +4,8 @@ use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
 use super::{
-    auto_tap_lands, auto_tap_lands_generic, auto_tap_lands_with_callbacks,
-    auto_tap_lands_with_chooser, ManaPayCallbackFn, ManaPaymentContext, ManaPool, SacrificeChooser,
+    auto_tap_lands, auto_tap_lands_with_callbacks, auto_tap_lands_with_chooser,
+    ManaPayCallbackFn, ManaPaymentContext, ManaPool, SacrificeChooser,
 };
 
 /// Deterministic auto-pay entrypoint used by parity AI paths.
@@ -50,15 +50,36 @@ pub fn pay_mana_cost_auto_with_chooser(
     any_color_conversion: bool,
     sacrifice_chooser: Option<SacrificeChooser<'_>>,
 ) -> Option<Vec<CardId>> {
-    let mut tapped = if let Some(chooser) = sacrifice_chooser {
-        auto_tap_lands_with_chooser(game, pool, player, mana_cost, current_spell, chooser)
-    } else {
-        auto_tap_lands(game, pool, player, mana_cost, current_spell)
+    let mut tapped = match sacrifice_chooser {
+        Some(chooser) => {
+            let mut tapped =
+                auto_tap_lands_with_chooser(game, pool, player, mana_cost, current_spell, chooser);
+            if commander_tax > 0 {
+                tapped.extend(auto_tap_lands_with_chooser(
+                    game,
+                    pool,
+                    player,
+                    &ManaCost::generic(commander_tax),
+                    current_spell,
+                    chooser,
+                ));
+            }
+            tapped
+        }
+        None => {
+            let mut tapped = auto_tap_lands(game, pool, player, mana_cost, current_spell);
+            if commander_tax > 0 {
+                tapped.extend(auto_tap_lands(
+                    game,
+                    pool,
+                    player,
+                    &ManaCost::generic(commander_tax),
+                    current_spell,
+                ));
+            }
+            tapped
+        }
     };
-    if commander_tax > 0 {
-        let tapped_tax = auto_tap_lands_generic(game, pool, player, commander_tax);
-        tapped.extend(tapped_tax);
-    }
 
     if !pool.try_pay_for_spell_converted(mana_cost, payment_ctx, any_color_conversion) {
         return None;
@@ -85,7 +106,14 @@ pub fn pay_mana_cost_auto_with_callback(
     let mut tapped =
         auto_tap_lands_with_callbacks(game, pool, player, mana_cost, current_spell, callback);
     if commander_tax > 0 {
-        let tapped_tax = auto_tap_lands_generic(game, pool, player, commander_tax);
+        let tapped_tax = auto_tap_lands_with_callbacks(
+            game,
+            pool,
+            player,
+            &ManaCost::generic(commander_tax),
+            current_spell,
+            callback,
+        );
         tapped.extend(tapped_tax);
     }
 

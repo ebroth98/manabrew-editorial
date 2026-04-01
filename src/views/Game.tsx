@@ -162,6 +162,17 @@ export default function Game() {
     return [...castOptions, ...handAbilities];
   };
 
+  const getBattlefieldAbilityOptions = (card: XMageCard): HandActionOption[] =>
+    (currentPrompt?.activatableAbilityIds ?? [])
+      .filter((ability) => ability.cardId === card.id)
+      .map((ability) => ({
+        kind: "ability" as const,
+        cardId: ability.cardId,
+        abilityIndex: ability.abilityIndex,
+        label: ability.description,
+        isManaAbility: ability.isManaAbility,
+      }));
+
   // Wraps castSpell: if a card has multiple play modes, show picker first
   const handleCastSpell = (cardId: string) => {
     const options = currentPrompt?.playableOptions?.filter((o) => o.cardId === cardId);
@@ -211,6 +222,23 @@ export default function Game() {
       return;
     }
     startHandCardDrag(card, e);
+  };
+
+  const handleBattlefieldCardAction = (card: XMageCard) => {
+    const abilities = getBattlefieldAbilityOptions(card);
+    if (abilities.length === 0) return false;
+
+    if (abilities.length === 1) {
+      activateAbility(card.id, abilities[0].abilityIndex);
+      return true;
+    }
+
+    openAbilityPicker({
+      cardId: card.id,
+      cardName: card.name,
+      abilities,
+    });
+    return true;
   };
 
   // Combat state + battlefield/targeting click handlers
@@ -601,9 +629,18 @@ export default function Game() {
     return <GameLoadingScreen debugInfo={debugInfo} />;
   }
 
-  const myPermanents = gameView.battlefield.filter(
-    (c) => c.controllerId === me!.id,
+  const battlefieldActivatableIds = new Set(
+    promptType === PromptType.ChooseAction
+      ? (currentPrompt?.activatableAbilityIds ?? []).map((ability) => ability.cardId)
+      : [],
   );
+  const myPermanents = gameView.battlefield
+    .filter((c) => c.controllerId === me!.id)
+    .map((c) =>
+      battlefieldActivatableIds.has(c.id)
+        ? { ...c, isChoosable: true }
+        : c,
+    );
   const opponentPermanentsByPlayer = new Map(
     opponents.map((op) => [
       op.id,
@@ -684,7 +721,12 @@ export default function Game() {
           onHandCardClick={handleHandCardAction}
           onHoverCard={handleHoverCardGuarded}
           onFlipCard={handleFlipCard}
-          onBattlefieldClick={handleBattlefieldClick}
+          onBattlefieldClick={(card) => {
+            if (promptType === PromptType.ChooseAction && handleBattlefieldCardAction(card)) {
+              return;
+            }
+            handleBattlefieldClick(card);
+          }}
           onAttackerClick={handleAttackerClick}
           onTargetPlayer={handleTargetPlayer}
           onOpenZone={openZone}

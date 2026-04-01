@@ -33,7 +33,6 @@
 
 use forge_foundation::ZoneType;
 
-use crate::card::valid_filter;
 use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 use crate::parsing::keys;
@@ -128,9 +127,9 @@ pub fn apply_continuous_effects(game: &mut GameState) {
     for (source_id, sa) in &sources {
         let source_card = &game.cards[source_id.index()];
 
-        // IsPresent$ — conditional activation (e.g. "Card.Self+untapped").
-        // If the condition is not met, skip this static ability entirely.
-        if !valid_filter::check_is_present(game, &sa.params, source_card) {
+        // Full static-ability condition gate (IsPresent$, CheckSVar$, Condition$, etc.).
+        // Mirrors Java static ability checks before applying continuous effects.
+        if !sa.check_conditions(source_card, game) {
             continue;
         }
 
