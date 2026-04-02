@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { devtools } from 'zustand/middleware';
 import { tauriApi } from '@/api/tauri';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import type {
@@ -50,7 +51,7 @@ interface ServerState {
   setupListeners(): () => void;
 }
 
-export const useServerStore = create<ServerState>()((set, get) => ({
+export const useServerStore = create<ServerState>()(devtools((set, get) => ({
   connected: false,
   connecting: false,
   error: null,
@@ -255,4 +256,4 @@ export const useServerStore = create<ServerState>()((set, get) => ({
       unlisteners.forEach((fn) => fn());
     };
   },
-}));
+}), { name: "server", enabled: import.meta.env.DEV }));

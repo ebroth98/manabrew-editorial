@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, devtools } from 'zustand/middleware';
 import { STORAGE_KEYS } from '@/lib/constants';
 
 export type ZonePanelSide = 'left' | 'right';
@@ -56,7 +56,7 @@ interface PreferencesState {
 }
 
 export const usePreferencesStore = create<PreferencesState>()(
-  persist(
+  devtools(persist(
     (set) => ({
       appThemePreset: "default",
       setAppThemePreset: (appThemePreset) => set({ appThemePreset, appThemeColorOverrides: {}, gameThemeColorOverrides: {} }),
@@ -105,5 +105,5 @@ export const usePreferencesStore = create<PreferencesState>()(
       resetGameThemeColorOverrides: () => set({ gameThemeColorOverrides: {} }),
     }),
     { name: STORAGE_KEYS.PREFERENCES },
-  ),
+  ), { name: "preferences", enabled: import.meta.env.DEV }),
 );

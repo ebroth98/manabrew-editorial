@@ -1,11 +1,12 @@
 import { create } from 'zustand';
+import { devtools } from 'zustand/middleware';
 import { tauriApi } from '@/api/tauri';
 import { getFormat } from '@/lib/formats';
 import type { GameState, GameConfig } from './gameStore.types';
 
 export type { AgentPrompt, GameConfig, GameState, DisplayEvent, DeferredSnapshot } from './gameStore.types';
 
-export const useGameStore = create<GameState>((set, get) => ({
+export const useGameStore = create<GameState>()(devtools((set, get) => ({
   gameView: null,
   currentPrompt: null,
   gameLog: [],
@@ -289,4 +290,4 @@ export const useGameStore = create<GameState>((set, get) => ({
     await tauriApi.game.restoreSnapshot({ checkpointId });
     set({ debugInfo: `Requested snapshot restore: #${checkpointId}` });
   },
-}));
+}), { name: "game", enabled: import.meta.env.DEV }));

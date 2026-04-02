@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { devtools } from "zustand/middleware";
 
 export const PROMPT_ACTION_VIEW_KEYS = [
   "chooseAction",
@@ -35,7 +36,7 @@ interface GameDevState {
   resetDevSettings: () => void;
 }
 
-export const useGameDevStore = create<GameDevState>((set) => ({
+export const useGameDevStore = create<GameDevState>()(devtools((set) => ({
   promptActionOverride: null,
   setPromptActionOverride: (value) => set({ promptActionOverride: value }),
   clearPromptActionOverride: () => set({ promptActionOverride: null }),
@@ -43,4 +44,4 @@ export const useGameDevStore = create<GameDevState>((set) => ({
     set({
       promptActionOverride: null,
     }),
-}));
+}), { name: "gameDev", enabled: import.meta.env.DEV }));

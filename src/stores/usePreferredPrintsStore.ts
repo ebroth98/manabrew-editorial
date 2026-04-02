@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, devtools } from "zustand/middleware";
 import { STORAGE_KEYS } from "@/lib/constants";
 
 interface PreferredPrint {
@@ -16,7 +16,7 @@ interface PreferredPrintsState {
 }
 
 export const usePreferredPrintsStore = create<PreferredPrintsState>()(
-  persist(
+  devtools(persist(
     (set, get) => ({
       preferredPrints: {},
       setPreferredPrint: (oracleId, print) =>
@@ -31,5 +31,5 @@ export const usePreferredPrintsStore = create<PreferredPrintsState>()(
         }),
     }),
     { name: STORAGE_KEYS.PREFERRED_PRINTS },
-  ),
+  ), { name: "preferredPrints", enabled: import.meta.env.DEV }),
 );

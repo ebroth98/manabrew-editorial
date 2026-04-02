@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, devtools } from 'zustand/middleware';
 import type { User } from '@/types/openmagic';
 
 interface AuthState {
@@ -14,7 +14,7 @@ interface AuthState {
 }
 
 export const useAuthStore = create<AuthState>()(
-  persist(
+  devtools(persist(
     (set) => ({
       user: null,
       isAuthenticated: false,
@@ -33,5 +33,5 @@ export const useAuthStore = create<AuthState>()(
         token: state.token, // Maybe don't persist token for security, but usually convenient
       }),
     }
-  )
+  ), { name: "auth", enabled: import.meta.env.DEV })
 );

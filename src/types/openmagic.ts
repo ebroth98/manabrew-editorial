@@ -103,6 +103,8 @@ export interface Deck {
   coverCardName?: string;
   /** Which face of a double-faced cover card to use: 0 = front (default), 1 = back. */
   coverCardFace?: 0 | 1;
+  /** Saved stack-view section positions (section ID → {x, y} in pixels). */
+  stackPositions?: Record<string, { x: number; y: number }>;
 }
 
 export interface Player {

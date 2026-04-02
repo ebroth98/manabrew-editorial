@@ -1,10 +1,10 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useMemo } from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { ManaSymbols } from "@/components/game/ManaSymbols";
 import {
   X, Minus, Plus, Download, Upload, Crown,
-  Tag, Move, MousePointer2, Image as ImageIcon,
+  Tag, Move, MousePointer2, Image as ImageIcon, GripVertical,
 } from "lucide-react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { cn } from "@/lib/utils";
@@ -82,6 +82,12 @@ function DraggableStackCard({
   );
 }
 
+// ─── Section Drag Handle ─────────────────────────────────────────────────────
+
+interface DragHandleProps {
+  onMouseDown: (e: React.MouseEvent) => void;
+}
+
 // ─── Stack Column Component ───────────────────────────────────────────────────
 
 interface StackColumnProps {
@@ -97,12 +103,14 @@ interface StackColumnProps {
   selectedCards?: Set<string>;
   onSelectCard?: (cardName: string, addToSelection: boolean) => void;
   onShowInfo?: (cardName: string) => void;
+  dragHandleProps?: DragHandleProps;
 }
 
 function StackColumn({
   label, sectionId, groups, cardWidth,
   onAddOne, onRemoveOne, onHover, onLeave, onUntag,
   selectedCards, onSelectCard, onShowInfo,
+  dragHandleProps,
 }: StackColumnProps) {
   const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
   const cardHeight = Math.round(cardWidth * 1.4);
@@ -125,8 +133,18 @@ function StackColumn({
 
   return (
     <div className="shrink-0 flex flex-col" style={{ width: cardWidth }}>
-      <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 truncate">
-        {label} <span className="font-normal opacity-60">({count})</span>
+      <div className="flex items-center gap-1 mb-2 truncate">
+        {dragHandleProps && (
+          <div
+            className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors"
+            onMouseDown={dragHandleProps.onMouseDown}
+          >
+            <GripVertical className="h-3.5 w-3.5" />
+          </div>
+        )}
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate">
+          {label} <span className="font-normal opacity-60">({count})</span>
+        </span>
       </div>
       <div className="relative transition-[height] duration-200 ease-out" style={{ height: totalHeight }}>
         {groups.map((g, i) => (
@@ -538,6 +556,7 @@ function DroppableStackTag({
   tag, groups, cardWidth,
   onAddOne, onRemoveOne, onHover, onLeave, onRemoveTag, onUntagCard,
   selectedCards, onSelectCard,
+  dragHandleProps,
 }: {
   tag: string;
   groups: CardGroup[];
@@ -550,6 +569,7 @@ function DroppableStackTag({
   onUntagCard?: (cardName: string, tag: string) => void;
   selectedCards?: Set<string>;
   onSelectCard?: (cardName: string, addToSelection: boolean) => void;
+  dragHandleProps?: DragHandleProps;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: `${DROP_ZONE.TAG_PREFIX}${tag}` });
 
@@ -572,10 +592,19 @@ function DroppableStackTag({
           onUntag={onUntagCard ? (cardName) => onUntagCard(cardName, tag) : undefined}
           selectedCards={selectedCards}
           onSelectCard={onSelectCard}
+          dragHandleProps={dragHandleProps}
         />
       ) : (
         <div className="flex flex-col h-full" style={{ width: cardWidth }}>
           <div className="flex items-center gap-1 mb-2">
+            {dragHandleProps && (
+              <div
+                className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors touch-none"
+                onMouseDown={dragHandleProps.onMouseDown}
+              >
+                <GripVertical className="h-3.5 w-3.5" />
+              </div>
+            )}
             <Tag className="h-3 w-3 text-primary/60 shrink-0" />
             <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide truncate">{tag}</span>
             <Button
@@ -639,6 +668,8 @@ export interface DeckListViewProps {
   coverCardFace?: 0 | 1;
   onSetCover?: (card: Card) => void;
   onSetCoverBack?: (card: Card) => void;
+  stackPositions?: Record<string, { x: number; y: number }>;
+  onStackPositionsChange?: (positions: Record<string, { x: number; y: number }>) => void;
 }
 
 export function DeckListView({
@@ -653,6 +684,7 @@ export function DeckListView({
   selectedCards, onSelectCard, onSelectAll,
   onShowInfo,
   coverCardName, coverCardFace, onSetCover, onSetCoverBack,
+  stackPositions: savedStackPositions, onStackPositionsChange,
 }: DeckListViewProps) {
   const [selectMode, setSelectMode] = useState(false);
   const gridCols = GRID_COLS[cardSize] ?? "grid-cols-8";
@@ -771,127 +803,395 @@ export function DeckListView({
     />
   );
 
-  if (viewMode === "stack") {
-    return (
-      <div
-        ref={containerRef}
-        className={cn("h-full overflow-auto relative", selectMode && "cursor-crosshair")}
-        onMouseDown={wrappedHandleMouseDown}
-      >
-        {selectModeControls}
-        <div className="flex gap-5 items-start p-3 min-w-max">
-          {commanders.length > 0 && (
+  // ─── Stack Section 2D Layout & Reordering ──────────────────────────────────
+
+  // Build natural section IDs
+  const naturalSectionIds = useMemo(() => {
+    const ids: string[] = [];
+    if (commanders.length > 0) ids.push("__commander__");
+    for (const col of stackColumns) ids.push(col.id);
+    if (customTags && allMainCards) {
+      for (const tag of customTags) ids.push(`__tag__${tag}`);
+    }
+    ids.push("__sideboard__");
+    ids.push("__maybeboard__");
+    for (const s of specialSections) ids.push(`__special__${s.id}`);
+    return ids;
+  }, [commanders.length, stackColumns, customTags, allMainCards, specialSections]);
+
+  // ─── Free-position layout: each section has an {x, y} pixel position ────────
+  // Snapped to an invisible grid for alignment. Rendered with absolute positioning.
+  const GAP = 20;
+  const SNAP_W = cardWidth + GAP; // horizontal snap unit
+  const SNAP_H = 40;               // vertical snap unit (fine-grained)
+
+  const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+  const [posVersion, setPosVersion] = useState(0);
+
+  // Sync positions when natural IDs change
+  const prevNaturalRef = useRef<string[]>([]);
+  const naturalKey = naturalSectionIds.join(",");
+  if (naturalKey !== prevNaturalRef.current.join(",")) {
+    prevNaturalRef.current = naturalSectionIds;
+    const positions = positionsRef.current;
+
+    // On first load, seed from saved positions if available
+    if (positions.size === 0 && savedStackPositions) {
+      for (const [id, pos] of Object.entries(savedStackPositions)) {
+        if (naturalSectionIds.includes(id)) {
+          positions.set(id, { ...pos });
+        }
+      }
+    }
+
+    // Remove stale
+    for (const id of positions.keys()) {
+      if (!naturalSectionIds.includes(id)) positions.delete(id);
+    }
+    // Place new sections in a row at y=0
+    let nextX = 0;
+    for (const pos of positions.values()) {
+      nextX = Math.max(nextX, pos.x + SNAP_W);
+    }
+    for (const id of naturalSectionIds) {
+      if (!positions.has(id)) {
+        positions.set(id, { x: nextX, y: 0 });
+        nextX += SNAP_W;
+      }
+    }
+    // First load with no saved positions: lay out all in a single row
+    if (!savedStackPositions && positions.size === naturalSectionIds.length && ![...positions.values()].some((p) => p.y > 0)) {
+      naturalSectionIds.forEach((id, i) => positions.set(id, { x: i * SNAP_W, y: 0 }));
+    }
+    setPosVersion((v) => v + 1);
+  }
+  void posVersion;
+
+  // Compute container size from positions + rendered section heights
+  const sectionElRefs = useRef<Map<string, HTMLElement>>(new Map());
+  const stackContainerRef = useRef<HTMLDivElement>(null);
+
+  // Drag state
+  const [dragSection, setDragSection] = useState<string | null>(null);
+  const [dragPos, setDragPos] = useState<{ x: number; y: number } | null>(null);
+  const [dropSnap, setDropSnap] = useState<{ x: number; y: number } | null>(null);
+  const dropSnapRef = useRef<{ x: number; y: number } | null>(null);
+  const [justSnapped, setJustSnapped] = useState(false);
+
+  const snapToGrid = useCallback((px: number, py: number) => ({
+    x: Math.max(0, Math.round(px / SNAP_W) * SNAP_W),
+    y: Math.max(0, Math.round(py / SNAP_H) * SNAP_H),
+  }), [SNAP_W]);
+
+  const handleGripPointerDown = useCallback((sectionId: string, e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const container = stackContainerRef.current;
+    if (!container) return;
+
+    setDragSection(sectionId);
+    setDragPos({ x: e.clientX, y: e.clientY });
+    setJustSnapped(false);
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      ev.preventDefault();
+      setDragPos({ x: ev.clientX, y: ev.clientY });
+
+      const cRect = container.getBoundingClientRect();
+      const relX = ev.clientX - cRect.left + container.scrollLeft - 12; // padding offset
+      const relY = ev.clientY - cRect.top + container.scrollTop - 12;
+      const snapped = snapToGrid(relX, relY);
+      dropSnapRef.current = snapped;
+      setDropSnap(snapped);
+    };
+
+    const handleMouseUp = () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+
+      const snap = dropSnapRef.current;
+      if (snap) {
+        const positions = positionsRef.current;
+        // If another section occupies the snap position, swap
+        const srcPos = positions.get(sectionId);
+        for (const [id, pos] of positions) {
+          if (id !== sectionId && pos.x === snap.x && pos.y === snap.y && srcPos) {
+            positions.set(id, { ...srcPos });
+            break;
+          }
+        }
+        positions.set(sectionId, { x: snap.x, y: snap.y });
+        setPosVersion((v) => v + 1);
+        setJustSnapped(true);
+        setTimeout(() => setJustSnapped(false), 300);
+
+        // Persist to deck store
+        if (onStackPositionsChange) {
+          const record: Record<string, { x: number; y: number }> = {};
+          for (const [id, pos] of positions) record[id] = pos;
+          onStackPositionsChange(record);
+        }
+      }
+
+      setDragSection(null);
+      dropSnapRef.current = null;
+      setDropSnap(null);
+      setDragPos(null);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  }, [snapToGrid]);
+
+  const makeDragHandleProps = useCallback((sectionId: string): DragHandleProps => ({
+    onMouseDown: (e: React.MouseEvent) => handleGripPointerDown(sectionId, e),
+  }), [handleGripPointerDown]);
+
+  // ─── Render a single stack section by ID ──────────────────────────────────
+
+  function renderStackSection(id: string, refCallback: (el: HTMLElement | null) => void, posStyle?: React.CSSProperties) {
+    const dhProps = makeDragHandleProps(id);
+    const isDragging = dragSection === id;
+
+    const wrapperClass = cn(
+      "transition-all duration-200 ease-out",
+      isDragging && "opacity-30 scale-95 ring-2 ring-selection/50 rounded-lg",
+      justSnapped && !isDragging && "transition-all duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+    );
+
+    if (id === "__commander__") {
+      return (
+        <div key={id} ref={refCallback} className={wrapperClass} style={posStyle}>
+          <StackColumn
+            label="Commander"
+            sectionId="commander"
+            groups={commanders.map((c) => ({ card: c, count: 1 }))}
+            cardWidth={cardWidth}
+            onAddOne={() => {}}
+            onRemoveOne={(name) => { const c = commanders.find((cmd) => cmd.name === name); if (c) onRemoveCommander(c); }}
+            onHover={onHover}
+            onLeave={onLeave}
+            dragHandleProps={dhProps}
+          />
+        </div>
+      );
+    }
+
+    if (id === "__sideboard__") {
+      return (
+        <div
+          key={id}
+          ref={(el) => { refCallback(el); if (el) setSideDropRef(el); }}
+          className={cn(wrapperClass, "shrink-0 rounded-lg transition-colors p-2 -m-1 min-h-[100px]", isOverSide && "bg-primary/10 border-2 border-dashed border-primary/40")}
+          style={{ minWidth: cardWidth + 8, ...posStyle }}
+        >
+          {sideboardGroups.length > 0 ? (
             <StackColumn
-              label="Commander"
-              sectionId="commander"
-              groups={commanders.map((c) => ({ card: c, count: 1 }))}
-              cardWidth={cardWidth}
-              onAddOne={() => {}}
-              onRemoveOne={(name) => { const c = commanders.find((cmd) => cmd.name === name); if (c) onRemoveCommander(c); }}
-              onHover={onHover}
-              onLeave={onLeave}
-            />
-          )}
-
-          {stackColumns.map((col) => (
-            <StackColumn
-              key={col.id}
-              label={col.label}
-              sectionId={col.id}
-              groups={col.groups}
-              cardWidth={cardWidth}
-              onAddOne={onAddOne}
-              onRemoveOne={onRemoveOne}
-              onHover={onHover}
-              onLeave={onLeave}
-              selectedCards={selectedCards}
-              onSelectCard={onSelectCard}
-              onShowInfo={onShowInfo}
-            />
-          ))}
-
-          {customTags && customTags.length > 0 && allMainCards && customTags.map((tag) => {
-            const tagGroups = getTaggedGroups(tag, allMainCards, cardTags);
-            return (
-              <DroppableStackTag
-                key={tag}
-                tag={tag}
-                groups={tagGroups}
-                cardWidth={cardWidth}
-                onAddOne={onAddOne}
-                onRemoveOne={onRemoveOne}
-                onHover={onHover}
-                onLeave={onLeave}
-                onRemoveTag={() => onRemoveTag?.(tag)}
-                onUntagCard={onUntagCard ?? undefined}
-                selectedCards={selectedCards}
-                onSelectCard={onSelectCard}
-              />
-            );
-          })}
-
-          <div
-            ref={setSideDropRef}
-            className={cn("shrink-0 rounded-lg transition-colors p-2 -m-1 min-h-[100px]", isOverSide && "bg-primary/10 border-2 border-dashed border-primary/40")}
-            style={{ minWidth: cardWidth + 8 }}
-          >
-            {sideboardGroups.length > 0 ? (
-              <StackColumn
-                label="Sideboard"
-                sectionId="sideboard"
-                groups={sideboardGroups}
-                cardWidth={cardWidth}
-                onAddOne={(g) => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
-                onRemoveOne={onRemoveFromSide}
-                onHover={onHover}
-                onLeave={onLeave}
-              />
-            ) : (
-              <div className="flex flex-col" style={{ width: cardWidth }}>
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Sideboard</div>
-                <div className="border-2 border-dashed border-border/40 rounded-lg py-4 flex items-center justify-center">
-                  <p className="text-[10px] text-muted-foreground/40">Drop here</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="shrink-0 rounded-lg p-2 -m-1 min-h-[100px]" style={{ minWidth: cardWidth + 8 }}>
-            {maybeboardGroups.length > 0 ? (
-              <StackColumn
-                label="Maybeboard"
-                sectionId="maybeboard"
-                groups={maybeboardGroups}
-                cardWidth={cardWidth}
-                onAddOne={(g) => onAddToMaybe({ ...g.card, id: crypto.randomUUID() })}
-                onRemoveOne={onRemoveFromMaybe}
-                onHover={onHover}
-                onLeave={onLeave}
-              />
-            ) : (
-              <div className="flex flex-col" style={{ width: cardWidth }}>
-                <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Maybeboard</div>
-                <div className="border-2 border-dashed border-border/40 rounded-lg py-4 flex items-center justify-center">
-                  <p className="text-[10px] text-muted-foreground/40">Drop here</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {specialSections.length > 0 && specialSections.map((section) => (
-            <StackColumn
-              key={section.id}
-              label={section.label}
-              sectionId={section.id}
-              groups={section.groups}
+              label="Sideboard"
+              sectionId="sideboard"
+              groups={sideboardGroups}
               cardWidth={cardWidth}
               onAddOne={(g) => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
               onRemoveOne={onRemoveFromSide}
               onHover={onHover}
               onLeave={onLeave}
+              dragHandleProps={dhProps}
             />
-          ))}
+          ) : (
+            <div className="flex flex-col" style={{ width: cardWidth }}>
+              <div className="flex items-center gap-1 mb-2">
+                <div className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors " onMouseDown={dhProps.onMouseDown}>
+                  <GripVertical className="h-3.5 w-3.5" />
+                </div>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sideboard</span>
+              </div>
+              <div className="border-2 border-dashed border-border/40 rounded-lg py-4 flex items-center justify-center">
+                <p className="text-[10px] text-muted-foreground/40">Drop here</p>
+              </div>
+            </div>
+          )}
         </div>
+      );
+    }
+
+    if (id === "__maybeboard__") {
+      return (
+        <div
+          key={id}
+          ref={refCallback}
+          className={cn(wrapperClass, "shrink-0 rounded-lg p-2 -m-1 min-h-[100px]")}
+          style={{ minWidth: cardWidth + 8, ...posStyle }}
+        >
+          {maybeboardGroups.length > 0 ? (
+            <StackColumn
+              label="Maybeboard"
+              sectionId="maybeboard"
+              groups={maybeboardGroups}
+              cardWidth={cardWidth}
+              onAddOne={(g) => onAddToMaybe({ ...g.card, id: crypto.randomUUID() })}
+              onRemoveOne={onRemoveFromMaybe}
+              onHover={onHover}
+              onLeave={onLeave}
+              dragHandleProps={dhProps}
+            />
+          ) : (
+            <div className="flex flex-col" style={{ width: cardWidth }}>
+              <div className="flex items-center gap-1 mb-2">
+                <div className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/40 hover:text-muted-foreground transition-colors " onMouseDown={dhProps.onMouseDown}>
+                  <GripVertical className="h-3.5 w-3.5" />
+                </div>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Maybeboard</span>
+              </div>
+              <div className="border-2 border-dashed border-border/40 rounded-lg py-4 flex items-center justify-center">
+                <p className="text-[10px] text-muted-foreground/40">Drop here</p>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (id.startsWith("__tag__")) {
+      const tag = id.slice("__tag__".length);
+      const tagGroups = allMainCards ? getTaggedGroups(tag, allMainCards, cardTags) : [];
+      return (
+        <div key={id} ref={refCallback} className={wrapperClass} style={posStyle}>
+          <DroppableStackTag
+            tag={tag}
+            groups={tagGroups}
+            cardWidth={cardWidth}
+            onAddOne={onAddOne}
+            onRemoveOne={onRemoveOne}
+            onHover={onHover}
+            onLeave={onLeave}
+            onRemoveTag={() => onRemoveTag?.(tag)}
+            onUntagCard={onUntagCard ?? undefined}
+            selectedCards={selectedCards}
+            onSelectCard={onSelectCard}
+            dragHandleProps={dhProps}
+          />
+        </div>
+      );
+    }
+
+    if (id.startsWith("__special__")) {
+      const specialId = id.slice("__special__".length);
+      const section = specialSections.find((s) => s.id === specialId);
+      if (!section) return null;
+      return (
+        <div key={id} ref={refCallback} className={wrapperClass} style={posStyle}>
+          <StackColumn
+            label={section.label}
+            sectionId={section.id}
+            groups={section.groups}
+            cardWidth={cardWidth}
+            onAddOne={(g) => onAddToSide({ ...g.card, id: crypto.randomUUID() })}
+            onRemoveOne={onRemoveFromSide}
+            onHover={onHover}
+            onLeave={onLeave}
+            dragHandleProps={dhProps}
+          />
+        </div>
+      );
+    }
+
+    // Regular stack column
+    const col = stackColumns.find((c) => c.id === id);
+    if (!col) return null;
+    return (
+      <div key={id} ref={refCallback} className={wrapperClass} style={posStyle}>
+        <StackColumn
+          label={col.label}
+          sectionId={col.id}
+          groups={col.groups}
+          cardWidth={cardWidth}
+          onAddOne={onAddOne}
+          onRemoveOne={onRemoveOne}
+          onHover={onHover}
+          onLeave={onLeave}
+          selectedCards={selectedCards}
+          onSelectCard={onSelectCard}
+          onShowInfo={onShowInfo}
+          dragHandleProps={dhProps}
+        />
+      </div>
+    );
+  }
+
+  // Compute total size needed for the absolute container
+  const containerSize = useMemo(() => {
+    let maxX = 0, maxY = 0;
+    for (const pos of positionsRef.current.values()) {
+      maxX = Math.max(maxX, pos.x + SNAP_W);
+    }
+    // Estimate max Y from positions + a generous section height
+    for (const [id, pos] of positionsRef.current) {
+      const el = sectionElRefs.current.get(id);
+      const h = el ? el.offsetHeight : 300;
+      maxY = Math.max(maxY, pos.y + h + GAP);
+    }
+    return { width: maxX + GAP, height: maxY + GAP };
+  }, [posVersion, SNAP_W]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (viewMode === "stack") {
+    const positions = positionsRef.current;
+    const allPlacements = naturalSectionIds.filter((id) => positions.has(id));
+
+    return (
+      <div
+        ref={(el) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (containerRef as any).current = el;
+          stackContainerRef.current = el;
+        }}
+        className={cn("h-full overflow-auto relative", selectMode && "cursor-crosshair", dragSection && "cursor-grabbing select-none")}
+        onMouseDown={wrappedHandleMouseDown}
+      >
+        {selectModeControls}
+        <div
+          className="relative p-3"
+          style={{ minWidth: containerSize.width, minHeight: containerSize.height }}
+        >
+          {allPlacements.map((id) => {
+            const pos = positions.get(id)!;
+            return renderStackSection(id, (el) => {
+              if (el) sectionElRefs.current.set(id, el);
+              else sectionElRefs.current.delete(id);
+            }, {
+              position: "absolute",
+              left: pos.x,
+              top: pos.y,
+              width: cardWidth,
+              transition: justSnapped && dragSection !== id ? "all 300ms cubic-bezier(0.34,1.56,0.64,1)" : undefined,
+            });
+          })}
+
+          {/* Drop indicator — ghost outline at snap position */}
+          {dropSnap && dragSection && (
+            <div
+              className="absolute z-[100] pointer-events-none rounded-lg border-2 border-dashed border-selection"
+              style={{
+                left: dropSnap.x,
+                top: dropSnap.y,
+                width: cardWidth,
+                height: sectionElRefs.current.get(dragSection)?.offsetHeight ?? 100,
+                transition: "left 150ms ease-out, top 150ms ease-out",
+                boxShadow: "0 0 14px hsl(var(--selection) / 0.5), inset 0 0 14px hsl(var(--selection) / 0.1)",
+              }}
+            />
+          )}
+        </div>
+
+        {/* Drag ghost following cursor */}
+        {dragSection && dragPos && (
+          <div
+            className="fixed z-[200] pointer-events-none bg-selection text-selection-foreground rounded-md px-2.5 py-1 text-xs font-semibold"
+            style={{ left: dragPos.x + 12, top: dragPos.y - 8, boxShadow: "0 4px 16px hsl(var(--selection) / 0.4)" }}
+          >
+            Moving…
+          </div>
+        )}
+
         {marqueeOverlay}
       </div>
     );

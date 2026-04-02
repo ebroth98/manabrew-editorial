@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { devtools } from "zustand/middleware";
 import type { Card } from "@/types/openmagic";
 
 // ── State Shapes ──────────────────────────────────────────────────────────────
@@ -56,7 +57,7 @@ interface GameUIState {
 
 // ── Store Implementation ──────────────────────────────────────────────────────
 
-export const useGameUIStore = create<GameUIState>((set) => ({
+export const useGameUIStore = create<GameUIState>()(devtools((set) => ({
   // Initial state
   abilityPicker: null,
   playModePicker: null,
@@ -89,4 +90,4 @@ export const useGameUIStore = create<GameUIState>((set) => ({
       isActionPanelCollapsed: true,
       promptModalHidden: false,
     }),
-}));
+}), { name: "gameUI", enabled: import.meta.env.DEV }));

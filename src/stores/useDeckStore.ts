@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, devtools } from 'zustand/middleware';
 import type { Deck, Card, DeckFormatId } from '@/types/openmagic';
 import { STORAGE_KEYS, DEFAULT_DECK_NAME } from '@/lib/constants';
 import { getFormat, BASIC_LAND_NAMES, canBePartners, allowsAnyNumberOfCopies } from '@/lib/formats';
@@ -150,6 +150,8 @@ interface DeckState {
   updateDeckLabelColor: (label: string, color?: string) => void;
   /** Set the card whose art is displayed as the deck cover. Pass undefined to clear. `face` selects front (0, default) or back (1) for DFCs. */
   setCoverCard: (name: string | undefined, face?: 0 | 1) => void;
+  /** Save stack-view section positions for the current deck. */
+  setStackPositions: (positions: Record<string, { x: number; y: number }>) => void;
 }
 
 const initialDeck: Deck = {
@@ -164,7 +166,7 @@ const initialDeck: Deck = {
 };
 
 export const useDeckStore = create<DeckState>()(
-  persist(
+  devtools(persist(
     (set) => ({
       currentDeck: initialDeck,
       currentDeckId: null,
@@ -551,6 +553,10 @@ export const useDeckStore = create<DeckState>()(
             coverCardFace: name !== undefined ? (face ?? 0) : undefined,
           },
         })),
+      setStackPositions: (positions) =>
+        set((state) => ({
+          currentDeck: { ...state.currentDeck, stackPositions: positions },
+        })),
     }),
     {
       name: STORAGE_KEYS.DECK,
@@ -573,5 +579,5 @@ export const useDeckStore = create<DeckState>()(
         };
       },
     }
-  )
+  ), { name: "deck", enabled: import.meta.env.DEV }),
 );

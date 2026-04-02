@@ -83,6 +83,7 @@ function buildDeckSnapshot(deck: {
   schemes?: Card[];
   planes?: Card[];
   name: string;
+  stackPositions?: Record<string, { x: number; y: number }>;
 }): string {
   return JSON.stringify({
     format: deck.format,
@@ -95,6 +96,7 @@ function buildDeckSnapshot(deck: {
     schemes: deck.schemes ?? [],
     planes: deck.planes ?? [],
     name: deck.name,
+    stackPositions: deck.stackPositions,
   });
 }
 
@@ -285,6 +287,7 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
     tagCard,
     untagCard,
     setCoverCard,
+    setStackPositions,
   } = useDeckStore();
 
   const [editingName, setEditingName] = useState(false);
@@ -1047,6 +1050,8 @@ export function DeckBuilder({ onToggleSearch, onBack }: { onToggleSearch?: () =>
             const isSameBack = currentDeck.coverCardName === card.name && currentDeck.coverCardFace === 1;
             setCoverCard(isSameBack ? undefined : card.name, 1);
           }}
+          stackPositions={currentDeck.stackPositions}
+          onStackPositionsChange={setStackPositions}
         />
       </div>
 
