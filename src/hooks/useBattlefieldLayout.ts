@@ -167,22 +167,30 @@ export function useBattlefieldLayout({
     setDraggingCardIds(new Set(cardsToDrag));
 
     const handleMouseMove = (me: MouseEvent) => {
-      if (!dragRef.current) return;
-      const dx = me.clientX - dragRef.current.startMouseX;
-      const dy = me.clientY - dragRef.current.startMouseY;
-      if (!dragRef.current.moved && Math.sqrt(dx * dx + dy * dy) < 5) return;
-      dragRef.current.moved = true;
+      // Snapshot the mutable ref into a local ONCE — after this line,
+      // nothing in this handler reads dragRef.current again, so even if
+      // handleMouseUp nulls it before React processes queued updaters
+      // we are safe.
+      const drag = dragRef.current;
+      if (!drag) return;
+
+      const dx = me.clientX - drag.startMouseX;
+      const dy = me.clientY - drag.startMouseY;
+      if (!drag.moved && Math.sqrt(dx * dx + dy * dy) < 5) return;
+      drag.moved = true;
 
       const el = containerRef.current;
       if (!el) return;
       const xMin = Math.max(0, leftReserved);
       const xMax = Math.max(xMin, el.clientWidth - CARD_W - Math.max(0, rightReserved));
 
+      const dragCardIds = drag.cardIds;
+      const dragStartPositions = drag.startPositions;
+
       setPositions((prev) => {
-        if (!dragRef.current) return prev;
         const next = { ...prev };
-        for (const id of dragRef.current.cardIds) {
-          const start = dragRef.current.startPositions[id];
+        for (const id of dragCardIds) {
+          const start = dragStartPositions[id];
           if (!start) continue;
           next[id] = {
             x: Math.max(xMin, Math.min(xMax, start.x + dx)),
@@ -196,9 +204,10 @@ export function useBattlefieldLayout({
     const handleMouseUp = () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
-      const draggedIds = dragRef.current?.moved ? [...dragRef.current.cardIds] : [];
-      setDraggingCardIds(new Set());
+      const drag = dragRef.current;
       dragRef.current = null;
+      const draggedIds = drag?.moved ? [...drag.cardIds] : [];
+      setDraggingCardIds(new Set());
       if (draggedIds.length > 0) {
         const draggedSet = new Set(draggedIds);
         setJustDraggedCardIds(draggedSet);

@@ -704,7 +704,7 @@ export default function Game() {
   return (
     <div
       ref={containerRef}
-      className="relative flex flex-col h-full min-h-0 gap-1.5 p-1.5 overflow-visible"
+      className="relative flex flex-col h-full min-h-0 gap-1.5 p-1.5 overflow-hidden"
       style={
         {
           "--flash-duration": `${flashDurationMs}ms`,
