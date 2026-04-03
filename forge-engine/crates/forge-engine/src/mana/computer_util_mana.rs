@@ -33,6 +33,13 @@ impl ManaAbilityRef {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AutoTapChoice {
+    pub card_id: CardId,
+    pub mana_ability_index: Option<usize>,
+    pub chosen_atom: u16,
+}
+
 /// Optional callback for choosing which permanent to sacrifice during mana
 /// ability cost payment.  When `None`, the engine picks the first target after
 /// sorting by (card_name, card_id) — a deterministic fallback.  When `Some`,
@@ -159,6 +166,52 @@ pub fn auto_tap_lands_with_callbacks(
         false,
         &mut Some(callback),
     )
+}
+
+/// Determine the next mana source/ability auto-pay would use without mutating
+/// the game or pool. This lets callback-driven payment replay the exact same
+/// source choice as engine auto-pay, including multi-ability lands.
+pub fn next_auto_tap_choice(
+    game: &GameState,
+    pool: &ManaPool,
+    player: PlayerId,
+    cost: &ManaCost,
+    current_spell: Option<CardId>,
+    allow_reserved_source_reuse: bool,
+) -> Option<AutoTapChoice> {
+    let mut unpaid = ManaCostBeingPaid::from_mana_cost(cost);
+    pay_cost_from_pool(&mut unpaid, pool);
+    if unpaid.is_paid() {
+        return None;
+    }
+
+    let mana_ability_map = group_sources_by_mana_color(game, player);
+    if mana_ability_map.is_empty() {
+        return None;
+    }
+
+    let mut sources_for_shards = group_and_order_to_pay_shards(&mana_ability_map, &unpaid);
+    if sources_for_shards.is_empty() {
+        return None;
+    }
+    sort_sources_for_autopay(game, player, &mut sources_for_shards);
+
+    let to_pay = get_next_shard_to_pay(&unpaid, &sources_for_shards)?;
+    let ma_list = sources_for_shards.get(&to_pay)?;
+    let sa_payment = choose_mana_ability(
+        game,
+        player,
+        current_spell,
+        to_pay,
+        ma_list,
+        allow_reserved_source_reuse,
+    )?;
+    let chosen_atom = choose_atom_for_shard(&sa_payment, to_pay)?;
+    Some(AutoTapChoice {
+        card_id: sa_payment.card_id,
+        mana_ability_index: sa_payment.ability_index,
+        chosen_atom,
+    })
 }
 
 pub fn auto_tap_lands_allow_reserved_source_reuse_with_callbacks(

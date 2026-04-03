@@ -488,11 +488,19 @@ impl PlayerAgent for TauriAgent {
                 })
                 .map(EnginePlayerAction::CastSpell)
                 .unwrap_or(EnginePlayerAction::PassPriority),
-            PlayerAction::TapLand { card_id } => {
+            PlayerAction::TapLand {
+                card_id,
+                ability_index,
+            } => {
                 let parsed = parse_card_id(&card_id);
                 match parsed {
                     Some(cid) => {
-                        if let Some(&(id, idx)) = activatable.iter().find(|(id, _)| *id == cid) {
+                        if let Some(idx) = ability_index {
+                            EnginePlayerAction::ActivateAbility(AbilityRef {
+                                card_id: cid,
+                                ability_index: idx,
+                            })
+                        } else if let Some(&(id, idx)) = activatable.iter().find(|(id, _)| *id == cid) {
                             EnginePlayerAction::ActivateAbility(AbilityRef {
                                 card_id: id,
                                 ability_index: idx,
@@ -899,6 +907,10 @@ impl PlayerAgent for TauriAgent {
         card_id: CardId,
         card_name: &str,
         mana_cost: &str,
+        mana_cost_display: &str,
+        _mana_cost_checkpoint: &str,
+        _allow_reserved_source_reuse: bool,
+        mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         mana_pool: &ManaPool,
@@ -909,6 +921,8 @@ impl PlayerAgent for TauriAgent {
             card_id,
             card_name,
             mana_cost,
+            mana_cost_display,
+            mana_ability_options,
             tappable_lands,
             untappable_lands,
             mana_pool,

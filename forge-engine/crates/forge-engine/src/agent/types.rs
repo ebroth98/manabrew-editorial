@@ -67,13 +67,24 @@ pub enum CombatCostAction {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ManaCostAction {
     /// Tap an untapped land to add mana to the pool.
-    TapLand(CardId),
+    TapLand {
+        card_id: CardId,
+        mana_ability_index: Option<usize>,
+        express_choice: Option<u16>,
+    },
     /// Untap a tapped land and remove its mana from the pool (undo).
     UntapLand(CardId),
     /// Confirm payment from the mana pool.
     Pay,
     /// Cancel casting this spell.
     Cancel,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManaAbilityOption {
+    pub card_id: CardId,
+    pub ability_index: usize,
+    pub description: String,
 }
 
 /// Java-parity binary choice kinds (`PlayerController.BinaryChoiceType`).

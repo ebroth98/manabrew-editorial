@@ -226,7 +226,7 @@ impl GameLoop {
         };
 
         if ab.is_mana_ability {
-            self.resolve_mana_ability(game, agents, player, card_id, &ab);
+            self.resolve_mana_ability(game, agents, player, card_id, &ab, None);
             true
         } else if ab.ability_text.contains("Mode$ TurnFaceUp") {
             // Morph face-up is a special action (CR 702.36e): doesn't use the stack,
@@ -303,6 +303,7 @@ impl GameLoop {
         player: PlayerId,
         card_id: CardId,
         ab: &crate::ability::activated::ActivatedAbility,
+        express_choice: Option<u16>,
     ) {
         let api = ab
             .params
@@ -324,8 +325,9 @@ impl GameLoop {
 
         // If this is a ManaReflected ability, delegate to the effect resolver
         if ab.params.get(keys::AB) == Some("ManaReflected") {
-            let sa =
+            let mut sa =
                 crate::spellability::build_spell_ability(game, card_id, &ab.ability_text, player);
+            sa.express_mana_choice = express_choice;
             self.resolve_single_effect(game, agents, &sa, None);
             // Fire triggers
             self.trigger_handler.run_trigger(
@@ -433,6 +435,7 @@ impl GameLoop {
                 card_id,
                 produced,
                 amount_param,
+                express_choice,
             );
 
             // Add the produced mana to the pool

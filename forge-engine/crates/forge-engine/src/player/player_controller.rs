@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 
 use crate::agent::game_log::GameLogEvent;
 use crate::agent::types::{
-    BinaryChoiceKind, CombatCostAction, GameEntity, ManaCostAction, PlayOption,
+    BinaryChoiceKind, CombatCostAction, GameEntity, ManaAbilityOption, ManaCostAction, PlayOption,
     RollSwapChoice, TargetChoice,
 };
 use crate::agent::PlayerAgent;
@@ -416,6 +416,10 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
         card_id: CardId,
         card_name: &str,
         mana_cost: &str,
+        mana_cost_display: &str,
+        mana_cost_checkpoint: &str,
+        allow_reserved_source_reuse: bool,
+        mana_ability_options: &[ManaAbilityOption],
         tappable_lands: &[CardId],
         untappable_lands: &[CardId],
         mana_pool: &ManaPool,
@@ -425,6 +429,10 @@ impl<'a, A: PlayerAgent + ?Sized> PlayerController<'a, A> {
             card_id,
             card_name,
             mana_cost,
+            mana_cost_display,
+            mana_cost_checkpoint,
+            allow_reserved_source_reuse,
+            mana_ability_options,
             tappable_lands,
             untappable_lands,
             mana_pool,

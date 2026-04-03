@@ -434,6 +434,8 @@ pub enum AgentPromptInner {
         card_name: String,
         #[serde(rename = "manaCost")]
         mana_cost: String,
+        #[serde(rename = "manaAbilityOptions")]
+        mana_ability_options: Vec<ActivatableAbilityInfo>,
         #[serde(rename = "tappableLandIds")]
         tappable_land_ids: Vec<String>,
         #[serde(rename = "untappableLandIds")]
@@ -638,6 +640,8 @@ pub enum PlayerAction {
     TapLand {
         #[serde(rename = "cardId")]
         card_id: String,
+        #[serde(rename = "abilityIndex")]
+        ability_index: Option<usize>,
     },
     UntapLand {
         #[serde(rename = "cardId")]

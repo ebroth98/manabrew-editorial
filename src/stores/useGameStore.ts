@@ -146,8 +146,8 @@ export const useGameStore = create<GameState>()(devtools((set, get) => ({
     get().respond({ type: 'mulliganPutBackDecision', cardIds });
   },
 
-  tapLand: (cardId) => {
-    get().respond({ type: 'tapLand', cardId });
+  tapLand: (cardId, abilityIndex) => {
+    get().respond({ type: 'tapLand', cardId, abilityIndex: abilityIndex ?? null });
   },
 
   untapLand: (cardId) => {

@@ -513,7 +513,16 @@ public class DeterministicController extends PlayerController {
             String selectPrompt, boolean isOptional, Player decider) {
         if (delayedReveal != null) reveal(delayedReveal);
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId((List<Card>) fetchList);
-        return ChoiceSpace.pickOne(sorted, rng);
+        final Card chosen = ChoiceSpace.pickOne(sorted, rng);
+        final List<String> options = new ArrayList<>(sorted.size());
+        for (final Card card : sorted) {
+            options.add(card.getName() + "@" + ParityCardMap.parityId(card));
+        }
+        final String choice = chosen == null
+                ? "PASS"
+                : chosen.getName() + "@" + ParityCardMap.parityId(chosen);
+        DecisionLog.logChoice(player, "choose_zone_change", options, choice);
+        return chosen;
     }
 
     @Override
@@ -1230,7 +1239,24 @@ public class DeterministicController extends PlayerController {
             ManaConversionMatrix matrix,
             boolean effect
     ) {
+        if (sa != null
+                && !sa.isManaAbility()
+                && !isCheckpointSkippableManaCost(toPay)) {
+            final Card source = sa != null ? sa.getHostCard() : null;
+            final String sourceLabel = source == null
+                    ? "UNKNOWN"
+                    : source.getName() + "@" + ParityCardMap.parityId(source);
+            DecisionLog.logChoice(
+                    player,
+                    "pay_mana_cost_callback",
+                    Arrays.asList(sourceLabel, toPay.toString()),
+                    "CALLBACK");
+        }
         return autoPay.payManaCost(toPay, sa, effect);
+    }
+
+    private static boolean isCheckpointSkippableManaCost(final ManaCost toPay) {
+        return toPay == null || toPay.isNoCost() || toPay.isZero();
     }
 
     @Override
@@ -1250,6 +1276,21 @@ public class DeterministicController extends PlayerController {
         }
         final List<Card> sorted = ParityOrder.sortCardsByNameThenId(new ArrayList<Card>(fetchList));
         final CardCollection chosen = ChoiceSpace.pickManyCards(new CardCollection(sorted), min, max, rng);
+        final List<String> options = new ArrayList<>(sorted.size());
+        for (final Card card : sorted) {
+            options.add(card.getName() + "@" + ParityCardMap.parityId(card));
+        }
+        final String choice;
+        if (chosen.isEmpty()) {
+            choice = "PASS";
+        } else {
+            final List<String> picked = new ArrayList<>(chosen.size());
+            for (final Card card : chosen) {
+                picked.add(card.getName() + "@" + ParityCardMap.parityId(card));
+            }
+            choice = String.join(",", picked);
+        }
+        DecisionLog.logChoice(player, "choose_zone_change", options, choice);
         return new ArrayList<>(chosen);
     }
 

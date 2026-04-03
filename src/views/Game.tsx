@@ -229,8 +229,12 @@ export default function Game() {
     if (abilities.length === 0) return false;
 
     if (abilities.length === 1) {
-      activateAbility(card.id, abilities[0].abilityIndex);
-      return true;
+      const ability = abilities[0];
+      if (ability.kind === "ability" && ability.abilityIndex != null) {
+        activateAbility(card.id, ability.abilityIndex);
+        return true;
+      }
+      return false;
     }
 
     openAbilityPicker({
@@ -274,6 +278,33 @@ export default function Game() {
 
   // Land tap/untap handler with ability picker support
   const handleTapLand = (card: XMageCard) => {
+    if (promptType === PromptType.PayManaCost) {
+      const manaAbilities = (currentPrompt?.manaAbilityOptions ?? [])
+        .filter((a) => a.cardId === card.id)
+        .map((ability) => ({
+          kind: "ability" as const,
+          cardId: ability.cardId,
+          abilityIndex: ability.abilityIndex,
+          label: ability.description,
+          isManaAbility: true,
+        }));
+
+      if (manaAbilities.length > 1) {
+        openAbilityPicker({
+          cardId: card.id,
+          cardName: card.name,
+          abilities: manaAbilities,
+        });
+        return;
+      }
+      if (manaAbilities.length === 1) {
+        tapLand(card.id, manaAbilities[0].abilityIndex);
+        return;
+      }
+      tapLand(card.id);
+      return;
+    }
+
     if (promptType !== PromptType.ChooseAction) {
       tapLand(card.id);
       return;
@@ -852,7 +883,11 @@ export default function Game() {
           } else if (ability.abilityIndex === -1) {
             tapLand(abilityPickerState!.cardId);
           } else if (ability.abilityIndex != null) {
-            activateAbility(abilityPickerState!.cardId, ability.abilityIndex);
+            if (promptType === PromptType.PayManaCost && ability.isManaAbility) {
+              tapLand(abilityPickerState!.cardId, ability.abilityIndex);
+            } else {
+              activateAbility(abilityPickerState!.cardId, ability.abilityIndex);
+            }
           }
           closeAbilityPicker();
         }}

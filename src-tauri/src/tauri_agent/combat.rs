@@ -218,7 +218,7 @@ pub(super) fn pay_combat_cost(
         mana_pool_total,
     });
     match agent.recv_action() {
-        PlayerAction::TapLand { card_id } => parse_card_id(&card_id)
+        PlayerAction::TapLand { card_id, .. } => parse_card_id(&card_id)
             .map(CombatCostAction::TapLand)
             .unwrap_or(CombatCostAction::Decline),
         PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)

@@ -239,6 +239,7 @@ impl GameLoop {
                                 priority_player,
                                 land_id,
                                 primary,
+                                None,
                             );
                         });
                         // Resolve additional mana abilities whose tap cost was already paid
@@ -265,6 +266,7 @@ impl GameLoop {
                                             land_id,
                                             produced,
                                             ab.params.get(crate::parsing::keys::AMOUNT),
+                                            None,
                                         );
                                         if let Some(ms) = mana_string {
                                             let source_is_snow =

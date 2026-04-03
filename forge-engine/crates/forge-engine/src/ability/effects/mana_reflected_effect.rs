@@ -114,20 +114,34 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         })
         .collect();
 
-    let best_color =
-        if let Some(chosen_name) = ctx.agents[player.index()].choose_color(player, &color_names) {
-            match chosen_name.as_str() {
-                "White" => ManaAtom::WHITE,
-                "Blue" => ManaAtom::BLUE,
-                "Black" => ManaAtom::BLACK,
-                "Red" => ManaAtom::RED,
-                "Green" => ManaAtom::GREEN,
-                "Colorless" => ManaAtom::COLORLESS,
-                _ => sorted_colors[0],
-            }
-        } else {
-            sorted_colors[0]
-        };
+    let express_choice = sa
+        .express_mana_choice
+        .filter(|atom| sorted_colors.contains(atom))
+        .or_else(|| {
+            sa.mana_part
+                .as_ref()
+                .map(|part| part.last_express_choice())
+                .filter(|choice| !choice.is_empty())
+                .and_then(color_name_to_mana_atom)
+                .filter(|atom| sorted_colors.contains(atom))
+        });
+
+    let best_color = if let Some(atom) = express_choice {
+        atom
+    } else if let Some(chosen_name) = ctx.agents[player.index()].choose_color(player, &color_names)
+    {
+        match chosen_name.as_str() {
+            "White" => ManaAtom::WHITE,
+            "Blue" => ManaAtom::BLUE,
+            "Black" => ManaAtom::BLACK,
+            "Red" => ManaAtom::RED,
+            "Green" => ManaAtom::GREEN,
+            "Colorless" => ManaAtom::COLORLESS,
+            _ => sorted_colors[0],
+        }
+    } else {
+        sorted_colors[0]
+    };
 
     // Produce `amount` mana of the chosen color
     for _ in 0..amount {

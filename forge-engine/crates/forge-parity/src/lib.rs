@@ -37,6 +37,7 @@ pub mod snapshot;
 pub mod agent_loop;
 #[cfg(feature = "analyze")]
 pub mod analyzer;
+pub mod auto_pay;
 #[cfg(feature = "analyze")]
 pub mod discord;
 #[cfg(feature = "analyze")]

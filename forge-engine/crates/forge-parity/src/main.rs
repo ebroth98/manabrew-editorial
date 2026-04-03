@@ -1299,6 +1299,101 @@ fn compare_snapshots(
         }
     }
 
+    if first_divergence.is_none() {
+        let rust_payment_checkpoints: Vec<&DecisionRecord> = rust_decisions
+            .iter()
+            .filter(|d| d.kind == "pay_mana_cost_callback")
+            .collect();
+        let java_payment_checkpoints: Vec<&DecisionRecord> = java_data
+            .decisions
+            .iter()
+            .filter(|d| d.kind == "pay_mana_cost_callback")
+            .collect();
+        let max_checkpoints = rust_payment_checkpoints
+            .len()
+            .max(java_payment_checkpoints.len());
+        for i in 0..max_checkpoints {
+            match (
+                rust_payment_checkpoints.get(i),
+                java_payment_checkpoints.get(i),
+            ) {
+                (Some(rd), Some(jd)) => {
+                    if rd != jd {
+                        let (field, rust_value, java_value) = if rd.turn != jd.turn {
+                            (
+                                "payment_checkpoint.turn",
+                                rd.turn.to_string(),
+                                jd.turn.to_string(),
+                            )
+                        } else if rd.phase != jd.phase {
+                            (
+                                "payment_checkpoint.phase",
+                                rd.phase.clone(),
+                                jd.phase.clone(),
+                            )
+                        } else if rd.deciding_player != jd.deciding_player {
+                            (
+                                "payment_checkpoint.deciding_player",
+                                rd.deciding_player.to_string(),
+                                jd.deciding_player.to_string(),
+                            )
+                        } else if rd.options != jd.options {
+                            (
+                                "payment_checkpoint.options",
+                                format!("{:?}", rd.options),
+                                format!("{:?}", jd.options),
+                            )
+                        } else {
+                            (
+                                "payment_checkpoint.choice",
+                                rd.choice.clone(),
+                                jd.choice.clone(),
+                            )
+                        };
+                        first_divergence = Some(Divergence {
+                            snapshot_index: compared_until.saturating_sub(1),
+                            turn: rd.turn,
+                            phase: rd.phase.clone(),
+                            field: field.into(),
+                            rust_value,
+                            java_value,
+                        });
+                        break;
+                    }
+                }
+                (Some(rd), None) => {
+                    first_divergence = Some(Divergence {
+                        snapshot_index: compared_until.saturating_sub(1),
+                        turn: rd.turn,
+                        phase: rd.phase.clone(),
+                        field: "payment_checkpoint.exists".into(),
+                        rust_value: format!(
+                            "{} {} {:?} {}",
+                            rd.kind, rd.deciding_player, rd.options, rd.choice
+                        ),
+                        java_value: "missing".into(),
+                    });
+                    break;
+                }
+                (None, Some(jd)) => {
+                    first_divergence = Some(Divergence {
+                        snapshot_index: compared_until.saturating_sub(1),
+                        turn: jd.turn,
+                        phase: jd.phase.clone(),
+                        field: "payment_checkpoint.exists".into(),
+                        rust_value: "missing".into(),
+                        java_value: format!(
+                            "{} {} {:?} {}",
+                            jd.kind, jd.deciding_player, jd.options, jd.choice
+                        ),
+                    });
+                    break;
+                }
+                (None, None) => {}
+            }
+        }
+    }
+
     let divergence_count = usize::from(first_divergence.is_some());
     let status = if first_divergence.is_none() {
         MatchupStatus::Pass

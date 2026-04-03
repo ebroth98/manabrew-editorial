@@ -844,6 +844,7 @@ impl GameLoop {
             };
 
             // ── X mana cost handling ──────────────────────────────────
+            let original_mana_cost = mana_cost.clone();
             let x_count = mana_cost.count_x();
             let x_value;
             let mana_cost = if x_count > 0 {
@@ -891,87 +892,7 @@ impl GameLoop {
                 mana_cost
             };
 
-            // ── Phyrexian mana: per-shard greedy payment ──────────────────
-            // For each phyrexian shard, try to pay with colored mana first.
-            // If no colored mana source is available, pay 2 life instead.
-            // This is done shard-by-shard, not all-or-nothing.
-            let mana_cost = if mana_cost.has_phyrexian() {
-                let available = mana::calculate_available_mana(self.pool(player), game, player);
-                let mut remaining_shards: Vec<forge_foundation::ManaCostShard> = Vec::new();
-                let mut life_to_pay = 0i32;
-                let source_colors = available.source_colors.clone().unwrap_or_default();
-                let mut committed = vec![false; source_colors.len()];
-
-                for shard in mana_cost.shards() {
-                    if shard.is_phyrexian() {
-                        let colored = shard.to_non_phyrexian();
-                        let color_mask = (colored.shard()
-                            & (forge_foundation::ManaAtom::WHITE
-                                | forge_foundation::ManaAtom::BLUE
-                                | forge_foundation::ManaAtom::BLACK
-                                | forge_foundation::ManaAtom::RED
-                                | forge_foundation::ManaAtom::GREEN))
-                            as u16;
-                        let mut best_idx: Option<usize> = None;
-                        let mut best_pop = u32::MAX;
-                        for (i, &src) in source_colors.iter().enumerate() {
-                            if committed[i] {
-                                continue;
-                            }
-                            if (src & color_mask) != 0 {
-                                let pop = src.count_ones();
-                                if pop < best_pop {
-                                    best_idx = Some(i);
-                                    best_pop = pop;
-                                }
-                            }
-                        }
-                        if let Some(idx) = best_idx {
-                            committed[idx] = true;
-                            remaining_shards.push(colored);
-                        } else if game.player(player).life >= life_to_pay + 2 {
-                            life_to_pay += 2;
-                        } else {
-                            remaining_shards.push(colored);
-                        }
-                    } else {
-                        remaining_shards.push(*shard);
-                    }
-                }
-
-                if life_to_pay > 0 {
-                    // Run PayLife replacement effects before paying life for shards.
-                    let skip_life = {
-                        use crate::replacement::replacement_handler::{
-                            apply_replacements, ReplacementEvent,
-                        };
-                        use crate::replacement::ReplacementResult;
-                        let mut event = ReplacementEvent::PayLife {
-                            player,
-                            amount: life_to_pay,
-                        };
-                        let result = apply_replacements(game, &mut event);
-                        result == ReplacementResult::Skipped
-                            || result == ReplacementResult::Replaced
-                    };
-                    if !skip_life {
-                        game.player_lose_life(player, life_to_pay);
-                        self.trigger_handler.run_trigger(
-                            TriggerType::LifeLost,
-                            RunParams {
-                                player: Some(player),
-                                life_amount: Some(life_to_pay),
-                                ..Default::default()
-                            },
-                            false,
-                        );
-                    }
-                }
-
-                forge_foundation::ManaCost::from_parts(remaining_shards, mana_cost.generic_cost())
-            } else {
-                mana_cost
-            };
+            let mana_cost = mana_cost;
 
             // ── Delve: exile graveyard cards to reduce generic cost ──
             let mana_cost = if game.card(card_id).has_keyword("Delve") {
@@ -1330,248 +1251,260 @@ impl GameLoop {
             // Track pool size before payment for ManaExpend
             let pool_size_before = self.pool(player).total_mana();
 
-            // ── Mana payment: interactive (human) or auto-tap (AI) ──
-            // TODO(cost_payment): Replace this is_human branch with a unified flow via
-            // CostPayment + agent.decide_cost_part(). In Java, CostPartMana.payAsDecided()
-            // calls player.getController().payManaCost() which is abstract — HumanPlay
-            // does the interactive loop, PlayerControllerAi calls ComputerUtilMana.
-            // The Rust equivalent should call agent.pay_mana_cost() (interactive) or
-            // mana::pay_mana_cost_auto() (auto-tap) based on agent.pays_right_after_decision().
-            // See cost/cost_payment.rs for the CostPayment orchestrator skeleton.
-            let is_human = agents[player.index()].is_human();
-            if is_human {
-                // Interactive mana payment loop — mirrors combat cost payment pattern
-                let card_name = game.card(card_id).card_name.clone();
-                let total_cost = if commander_tax > 0 {
-                    mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
-                } else {
-                    mana_cost.clone()
-                };
-                let cost_str = total_cost.to_string();
-                // Save state for refund on cancel (recursive mana refund)
-                // Mirrors Java's ManaRefundService: save pool + permanent states
-                let saved_pool = self.pool(player).clone();
-                let saved_permanent_states: Vec<(
-                    CardId,
-                    bool,
-                    std::collections::BTreeMap<crate::card::CounterType, i32>,
-                )> = game
+            // Unified mana payment loop. Agents decide whether to pay manually or
+            // auto-pay through their `pay_mana_cost()` implementation; the engine
+            // should not branch on `is_human()` here.
+            let card_name = game.card(card_id).card_name.clone();
+            let total_cost = if commander_tax > 0 {
+                mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
+            } else {
+                mana_cost.clone()
+            };
+            let display_total_cost = if commander_tax > 0 {
+                original_mana_cost.add(&forge_foundation::ManaCost::generic(commander_tax))
+            } else {
+                original_mana_cost.clone()
+            };
+            if total_cost.is_zero() {
+                // Zero-cost spell payments have no mana-payment interaction.
+                // Skip the callback loop entirely so parity/UI only see real payments.
+            } else {
+            let cost_str = total_cost.to_string();
+            let cost_display_str = display_total_cost.to_string();
+            // Save state for refund on cancel (recursive mana refund)
+            // Mirrors Java's ManaRefundService: save pool + permanent states
+            let saved_pool = self.pool(player).clone();
+            let saved_permanent_states: Vec<(
+                CardId,
+                bool,
+                std::collections::BTreeMap<crate::card::CounterType, i32>,
+            )> = game
+                .cards_in_zone(ZoneType::Battlefield, player)
+                .iter()
+                .map(|&cid| {
+                    let c = game.card(cid);
+                    (cid, c.tapped, c.counters.clone())
+                })
+                .collect();
+
+            loop {
+                let tappable_lands: Vec<CardId> = game
                     .cards_in_zone(ZoneType::Battlefield, player)
-                    .iter()
-                    .map(|&cid| {
+                    .to_vec()
+                    .into_iter()
+                    .filter(|&cid| {
                         let c = game.card(cid);
-                        (cid, c.tapped, c.counters.clone())
+                        !c.tapped
+                            && (c.is_land()
+                                || c.activated_abilities.iter().any(|ab| {
+                                    ab.is_mana_ability
+                                        && crate::cost::can_pay_ignoring_mana(
+                                            &ab.cost, game, cid, player,
+                                        )
+                                }))
                     })
                     .collect();
-
-                loop {
-                    let tappable_lands: Vec<CardId> = game
-                        .cards_in_zone(ZoneType::Battlefield, player)
-                        .to_vec()
-                        .into_iter()
-                        .filter(|&cid| {
-                            let c = game.card(cid);
-                            !c.tapped
-                                && (c.is_land()
-                                    || c.activated_abilities.iter().any(|ab| {
-                                        ab.is_mana_ability
-                                            && crate::cost::can_pay_ignoring_mana(
-                                                &ab.cost, game, cid, player,
-                                            )
-                                    }))
-                        })
-                        .collect();
-                    let pool_snapshot = self.pool(player).clone();
-                    let untappable_lands: Vec<CardId> = game
-                        .cards_in_zone(ZoneType::Battlefield, player)
-                        .to_vec()
-                        .into_iter()
-                        .filter(|&cid| {
-                            let c = game.card(cid);
-                            if !c.tapped {
-                                return false;
-                            }
-                            let atoms = mana::land_mana_atoms(c);
-                            if !atoms.is_empty() {
-                                atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
-                            } else if let Some(atom) = basic_land_mana_atom(c) {
-                                pool_snapshot.has_atom(atom, 1)
-                            } else {
-                                false
-                            }
-                        })
-                        .collect();
-                    let pool_ref = self.pool(player).clone();
-
-                    agents[player.index()].snapshot_state(game, &self.mana_pools);
-                    let action = agents[player.index()].pay_mana_cost(
-                        player,
-                        card_id,
-                        &card_name,
-                        &cost_str,
-                        &tappable_lands,
-                        &untappable_lands,
-                        &pool_ref,
-                    );
-
-                    match action {
-                        ManaCostAction::TapLand(land_id) => {
-                            if !tappable_lands.contains(&land_id) {
-                                continue;
-                            }
-                            let mana_ab = {
-                                let c = game.card(land_id);
-                                c.activated_abilities
-                                    .iter()
-                                    .find(|ab| {
-                                        ab.is_mana_ability
-                                            && crate::cost::can_pay_ignoring_mana(
-                                                &ab.cost, game, land_id, player,
-                                            )
-                                    })
-                                    .cloned()
-                            };
-                            if let Some(ab) = mana_ab {
-                                self.resolve_mana_ability(game, agents, player, land_id, &ab);
-                            } else if let Some(atom) = basic_land_mana_atom(game.card(land_id)) {
-                                game.tap(land_id);
-                                self.pool_mut(player).add(atom, 1);
-                                self.trigger_handler.run_trigger(
-                                    TriggerType::TapsForMana,
-                                    RunParams {
-                                        card: Some(land_id),
-                                        player: Some(player),
-                                        ..Default::default()
-                                    },
-                                    false,
-                                );
-                            }
-                        }
-                        ManaCostAction::UntapLand(land_id) => {
-                            if !untappable_lands.contains(&land_id) {
-                                continue;
-                            }
-                            let atoms = {
-                                let c = game.card(land_id);
-                                if c.is_land() && c.tapped {
-                                    let a = mana::land_mana_atoms(c);
-                                    if a.is_empty() {
-                                        basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
-                                    } else {
-                                        a
-                                    }
-                                } else {
-                                    vec![]
-                                }
-                            };
-                            if !atoms.is_empty() {
-                                game.untap(land_id);
-                                for atom in atoms {
-                                    self.pool_mut(player).remove(atom, 1);
-                                }
-                            }
-                        }
-                        ManaCostAction::Pay => {
-                            // Verify pool can pay the total cost (respecting restrictions)
-                            let mut test_pool = self.pool(player).clone();
-                            if test_pool.try_pay_for_spell_converted(
-                                &mana_cost,
-                                &payment_ctx,
-                                any_color_conversion,
-                            ) && (commander_tax == 0
-                                || test_pool.try_pay_extra_generic(commander_tax))
-                            {
-                                // Actually deduct
-                                self.pool_mut(player).try_pay_for_spell_converted(
-                                    &mana_cost,
-                                    &payment_ctx,
-                                    any_color_conversion,
-                                );
-                                if commander_tax > 0 {
-                                    self.pool_mut(player).try_pay_extra_generic(commander_tax);
-                                }
-                                break;
-                            }
-                            // Not enough mana yet — stay in loop
-                        }
-                        ManaCostAction::Cancel => {
-                            // Recursive mana refund: restore pool, untap lands, restore counters
-                            // Mirrors Java's ManaRefundService two-pass undo
-                            *self.pool_mut(player) = saved_pool;
-                            for &(cid, was_tapped, ref saved_counters) in &saved_permanent_states {
-                                // Restore tapped state
-                                if !was_tapped && game.card(cid).tapped {
-                                    game.untap(cid);
-                                }
-                                // Restore counters (undo counter costs from mana abilities)
-                                game.card_mut(cid).set_counters_map(saved_counters.clone());
-                            }
-                            return None;
+                let mut mana_ability_options: Vec<crate::agent::ManaAbilityOption> = Vec::new();
+                for &cid in &tappable_lands {
+                    let c = game.card(cid);
+                    for ab in &c.activated_abilities {
+                        if ab.is_mana_ability
+                            && crate::cost::can_pay_ignoring_mana(&ab.cost, game, cid, player)
+                        {
+                            mana_ability_options.push(crate::agent::ManaAbilityOption {
+                                card_id: cid,
+                                ability_index: ab.ability_index,
+                                description: ab.ability_text.clone(),
+                            });
                         }
                     }
                 }
-            } else {
-                // AI deterministic auto-pay: preserve full state so failed payment
-                // cannot leave partial taps or partial pool mutations behind.
-                let mana_payment_snapshot = self.make_snapshot(game, true);
-                let mut callback = |kind: mana::ManaPayCallback<'_>| -> Option<CardId> {
-                    match kind {
-                        mana::ManaPayCallback::ChooseSacrifice(valid) => {
-                            agents[player.index()].choose_sacrifice(player, valid, None)
+                let pool_snapshot = self.pool(player).clone();
+                let untappable_lands: Vec<CardId> = game
+                    .cards_in_zone(ZoneType::Battlefield, player)
+                    .to_vec()
+                    .into_iter()
+                    .filter(|&cid| {
+                        let c = game.card(cid);
+                        if !c.tapped {
+                            return false;
                         }
-                        mana::ManaPayCallback::ConfirmSelfSacrifice(sacrifice_id) => {
-                            let confirmed = agents[player.index()].confirm_payment(
+                        let atoms = mana::land_mana_atoms(c);
+                        if !atoms.is_empty() {
+                            atoms.iter().any(|&a| pool_snapshot.has_atom(a, 1))
+                        } else if let Some(atom) = basic_land_mana_atom(c) {
+                            pool_snapshot.has_atom(atom, 1)
+                        } else {
+                            false
+                        }
+                    })
+                    .collect();
+                let pool_ref = self.pool(player).clone();
+
+                agents[player.index()].snapshot_state(game, &self.mana_pools);
+                let action = agents[player.index()].pay_mana_cost(
+                    player,
+                    card_id,
+                    &card_name,
+                    &cost_str,
+                    &cost_str,
+                    &cost_display_str,
+                    false,
+                    &mana_ability_options,
+                    &tappable_lands,
+                    &untappable_lands,
+                    &pool_ref,
+                );
+
+                match action {
+                    ManaCostAction::TapLand {
+                        card_id: land_id,
+                        mana_ability_index,
+                        express_choice,
+                    } => {
+                        if !tappable_lands.contains(&land_id) {
+                            continue;
+                        }
+                        let mana_ab = {
+                            let c = game.card(land_id);
+                            mana_ability_index
+                                .and_then(|idx| c.activated_abilities.get(idx))
+                                .filter(|ab| {
+                                    ab.is_mana_ability
+                                        && crate::cost::can_pay_ignoring_mana(
+                                            &ab.cost, game, land_id, player,
+                                        )
+                                })
+                                .cloned()
+                                .or_else(|| {
+                                    c.activated_abilities
+                                        .iter()
+                                        .find(|ab| {
+                                            ab.is_mana_ability
+                                                && crate::cost::can_pay_ignoring_mana(
+                                                    &ab.cost, game, land_id, player,
+                                                )
+                                        })
+                                        .cloned()
+                                })
+                        };
+                        if let Some(ab) = mana_ab {
+                            self.resolve_mana_ability(
+                                game,
+                                agents,
                                 player,
-                                "Sacrifice",
-                                "Sacrifice for mana",
-                                None,
-                                Some(crate::ability::api_type::ApiType::Mana),
+                                land_id,
+                                &ab,
+                                express_choice,
                             );
-                            if confirmed {
-                                Some(sacrifice_id)
+                        } else if let Some(atom) = basic_land_mana_atom(game.card(land_id)) {
+                            game.tap(land_id);
+                            self.pool_mut(player).add(atom, 1);
+                            self.trigger_handler.run_trigger(
+                                TriggerType::TapsForMana,
+                                RunParams {
+                                    card: Some(land_id),
+                                    player: Some(player),
+                                    ..Default::default()
+                                },
+                                false,
+                            );
+                        }
+                    }
+                    ManaCostAction::UntapLand(land_id) => {
+                        if !untappable_lands.contains(&land_id) {
+                            continue;
+                        }
+                        let atoms = {
+                            let c = game.card(land_id);
+                            if c.is_land() && c.tapped {
+                                let a = mana::land_mana_atoms(c);
+                                if a.is_empty() {
+                                    basic_land_mana_atom(c).into_iter().collect::<Vec<_>>()
+                                } else {
+                                    a
+                                }
                             } else {
-                                None
+                                vec![]
                             }
-                        }
-                        mana::ManaPayCallback::ConfirmSubCounter(source_id) => {
-                            let confirmed = agents[player.index()].confirm_payment(
-                                player,
-                                "SubCounter",
-                                "Remove counter for mana",
-                                None,
-                                Some(crate::ability::api_type::ApiType::Mana),
-                            );
-                            if confirmed {
-                                Some(source_id)
-                            } else {
-                                None
+                        };
+                        if !atoms.is_empty() {
+                            game.untap(land_id);
+                            for atom in atoms {
+                                self.pool_mut(player).remove(atom, 1);
                             }
                         }
                     }
-                };
-                let tapped = match mana::pay_mana_cost_auto_with_callback(
-                    game,
-                    self.pool_mut(player),
-                    player,
-                    &mana_cost,
-                    Some(card_id),
-                    commander_tax,
-                    &payment_ctx,
-                    any_color_conversion,
-                    &mut callback,
-                ) {
-                    Some(tapped) => tapped,
-                    None => {
-                        self.restore_snapshot(game, &mana_payment_snapshot);
+                    ManaCostAction::Pay => {
+                        let mut test_pool = self.pool(player).clone();
+                        if let Some(test_life_to_pay) = test_pool
+                            .try_pay_for_spell_converted_with_phyrexian_life(
+                                &mana_cost,
+                                &payment_ctx,
+                                any_color_conversion,
+                                game.player(player).life,
+                            )
+                        {
+                            if commander_tax > 0 && !test_pool.try_pay_extra_generic(commander_tax) {
+                                continue;
+                            }
+                            let life_to_pay = self
+                                .pool_mut(player)
+                                .try_pay_for_spell_converted_with_phyrexian_life(
+                                    &mana_cost,
+                                    &payment_ctx,
+                                    any_color_conversion,
+                                    game.player(player).life,
+                                )
+                                .expect("tested phyrexian payment should still be legal");
+                            if life_to_pay != test_life_to_pay {
+                                continue;
+                            }
+                            if commander_tax > 0 {
+                                self.pool_mut(player).try_pay_extra_generic(commander_tax);
+                            }
+                            if life_to_pay > 0 {
+                                let skip_life = {
+                                    use crate::replacement::replacement_handler::{
+                                        apply_replacements, ReplacementEvent,
+                                    };
+                                    use crate::replacement::ReplacementResult;
+                                    let mut event = ReplacementEvent::PayLife {
+                                        player,
+                                        amount: life_to_pay,
+                                    };
+                                    let result = apply_replacements(game, &mut event);
+                                    result == ReplacementResult::Skipped
+                                        || result == ReplacementResult::Replaced
+                                };
+                                if !skip_life {
+                                    game.player_lose_life(player, life_to_pay);
+                                    self.trigger_handler.run_trigger(
+                                        TriggerType::LifeLost,
+                                        RunParams {
+                                            player: Some(player),
+                                            life_amount: Some(life_to_pay),
+                                            ..Default::default()
+                                        },
+                                        false,
+                                    );
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    ManaCostAction::Cancel => {
+                        *self.pool_mut(player) = saved_pool;
+                        for &(cid, was_tapped, ref saved_counters) in &saved_permanent_states {
+                            if !was_tapped && game.card(cid).tapped {
+                                game.untap(cid);
+                            }
+                            game.card_mut(cid).set_counters_map(saved_counters.clone());
+                        }
                         return None;
                     }
-                };
-
-                // Note: Java AutoPay sets express choice on ManaReflected abilities,
-                // which restricts chooseColor to 1 option (no RNG consumed).
-                // No RNG compensation needed here.
-
-                self.emit_tap_for_mana_triggers(player, &tapped);
+                }
+            }
             }
 
             // If uncounterable mana was consumed during payment (Cavern of Souls),

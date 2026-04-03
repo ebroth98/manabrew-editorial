@@ -116,6 +116,8 @@ export interface AgentPrompt {
   cardName?: string;
   /** payManaCost: mana cost string (e.g. "{2}{R}") */
   manaCost?: string;
+  /** payManaCost: available mana abilities for the listed tappable permanents */
+  manaAbilityOptions?: ActivatableAbilityInfo[];
   /** chooseDelve/chooseConvoke: remaining cost string */
   remainingCost?: string;
   /** chooseDelve: max cards to exile */
@@ -201,7 +203,7 @@ export interface GameState {
   targetAny: (target: { kind: string; playerId?: string; cardId?: string }) => void;
   mulliganDecision: (keep: boolean) => void;
   mulliganPutBackDecision: (cardIds: string[]) => void;
-  tapLand: (cardId: string) => void;
+  tapLand: (cardId: string, abilityIndex?: number) => void;
   untapLand: (cardId: string) => void;
   activateAbility: (cardId: string, abilityIndex: number) => void;
   scryDecision: (bottomCardIds: string[]) => void;

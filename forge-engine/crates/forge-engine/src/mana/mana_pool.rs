@@ -124,6 +124,10 @@ impl ManaPool {
         self.mana.iter().map(|m| m.color).collect()
     }
 
+    pub fn mana_entries(&self) -> &[Mana] {
+        &self.mana
+    }
+
     /// Get a bitmask of all colors present in the pool.
     pub fn colors_present(&self) -> u16 {
         let mut mask = 0u16;
@@ -268,38 +272,6 @@ impl ManaPool {
             }
         }
 
-        let mut required = [0i32; 6]; // W, U, B, R, G, C
-        for shard in cost.shards() {
-            let atoms = shard.shard();
-            if (atoms & ManaAtom::WHITE) != 0 {
-                required[0] += 1;
-            }
-            if (atoms & ManaAtom::BLUE) != 0 {
-                required[1] += 1;
-            }
-            if (atoms & ManaAtom::BLACK) != 0 {
-                required[2] += 1;
-            }
-            if (atoms & ManaAtom::RED) != 0 {
-                required[3] += 1;
-            }
-            if (atoms & ManaAtom::GREEN) != 0 {
-                required[4] += 1;
-            }
-            if (atoms & ManaAtom::COLORLESS) != 0 && !shard.is_multi_color() {
-                required[5] += 1;
-            }
-        }
-        if self.white() < required[0]
-            || self.blue() < required[1]
-            || self.black() < required[2]
-            || self.red() < required[3]
-            || self.green() < required[4]
-            || self.colorless() < required[5]
-        {
-            return false;
-        }
-
         let mut pool = self.clone();
         pool.try_pay(cost)
     }
@@ -385,6 +357,33 @@ impl ManaPool {
         } else {
             self.try_pay(cost)
         };
+        self.mana.extend(ineligible);
+        result
+    }
+
+    /// Pay a spell cost with restriction filtering and phyrexian-life fallback.
+    /// Returns the life that must be paid after mana is deducted, or `None` if
+    /// the cost cannot be covered by the current pool plus phyrexian life.
+    pub fn try_pay_for_spell_converted_with_phyrexian_life(
+        &mut self,
+        cost: &forge_foundation::ManaCost,
+        ctx: &ManaPaymentContext,
+        any_color: bool,
+        player_life: i32,
+    ) -> Option<i32> {
+        let mut ineligible: Vec<Mana> = Vec::new();
+        let mut eligible: Vec<Mana> = Vec::new();
+        for m in self.mana.drain(..) {
+            if let Some(ref r) = m.restriction {
+                if !mana_meets_restriction(r, ctx) {
+                    ineligible.push(m);
+                    continue;
+                }
+            }
+            eligible.push(m);
+        }
+        self.mana = eligible;
+        let result = self.try_pay_with_phyrexian_life(cost, any_color, player_life);
         self.mana.extend(ineligible);
         result
     }
@@ -897,6 +896,53 @@ impl ManaPool {
     /// Mirrors Java's `ManaPool.payManaCostFromPool()`.
     pub fn pay_mana_cost_from_pool(&mut self, cost: &forge_foundation::ManaCost) -> bool {
         self.try_pay(cost)
+    }
+
+    fn try_pay_with_phyrexian_life(
+        &mut self,
+        cost: &forge_foundation::ManaCost,
+        any_color: bool,
+        player_life: i32,
+    ) -> Option<i32> {
+        use super::mana_cost_being_paid::ManaCostBeingPaid;
+
+        let mut unpaid = ManaCostBeingPaid::from_mana_cost(cost);
+        let mut spent_indices: Vec<usize> = Vec::new();
+
+        for idx in 0..self.mana.len() {
+            if unpaid.is_paid() {
+                break;
+            }
+            let mana = &self.mana[idx];
+            let paid = if any_color && mana.color != ManaAtom::COLORLESS {
+                unpaid.try_pay_mana(ManaAtom::COLORS_SUPERPOSITION, ManaAtom::COLORS_SUPERPOSITION as u8)
+            } else {
+                unpaid.pay_mana(mana, mana.color as u8)
+            };
+            if paid.is_some() {
+                spent_indices.push(idx);
+            }
+        }
+
+        let mut life_to_pay = 0;
+        while unpaid.contains_phyrexian_mana() {
+            if player_life < life_to_pay + 2 {
+                return None;
+            }
+            if !unpaid.pay_phyrexian() {
+                break;
+            }
+            life_to_pay += 2;
+        }
+
+        if !unpaid.is_paid() {
+            return None;
+        }
+
+        for idx in spent_indices.into_iter().rev() {
+            self.mana.remove(idx);
+        }
+        Some(life_to_pay)
     }
 
     /// Iterator over all floating mana.

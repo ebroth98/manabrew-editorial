@@ -22,8 +22,8 @@ pub use computer_util_mana::{
     auto_tap_lands, auto_tap_lands_allow_reserved_source_reuse,
     auto_tap_lands_allow_reserved_source_reuse_with_callbacks,
     auto_tap_lands_allow_reserved_source_reuse_with_chooser, auto_tap_lands_generic,
-    auto_tap_lands_with_callbacks, auto_tap_lands_with_chooser, ManaPayCallback, ManaPayCallbackFn,
-    SacrificeChooser,
+    auto_tap_lands_with_callbacks, auto_tap_lands_with_chooser, next_auto_tap_choice,
+    AutoTapChoice, ManaPayCallback, ManaPayCallbackFn, SacrificeChooser,
 };
 
 /// An individual mana object in the pool, tracking source and properties.
@@ -612,6 +612,7 @@ pub fn determine_mana_production(
     card_id: CardId,
     produced: &str,
     amount_param: Option<&str>,
+    express_choice: Option<u16>,
 ) -> Option<String> {
     let mut mana_string: Option<String> = None;
 
@@ -629,7 +630,16 @@ pub fn determine_mana_production(
         let chosen_colors = game.card(card_id).chosen_colors.clone();
         let colors = produced_to_color_names(produced, &chosen_colors);
         if colors.len() > 1 {
-            if let Some(chosen) = agents[player.index()].choose_color(player, &colors) {
+            let chosen = express_choice
+                .and_then(mana_atom_to_color_name)
+                .and_then(|forced| {
+                    colors
+                        .iter()
+                        .find(|valid| valid.eq_ignore_ascii_case(forced))
+                        .cloned()
+                })
+                .or_else(|| agents[player.index()].choose_color(player, &colors));
+            if let Some(chosen) = chosen {
                 if let Some(atom) = color_name_to_mana_atom(&chosen) {
                     mana_string = Some(ManaPool::atom_to_letter(atom).to_string());
                 }
@@ -1264,6 +1274,7 @@ mod tests {
             p0,
             commander_id,
             "Combo ColorIdentity",
+            None,
             None,
         );
 

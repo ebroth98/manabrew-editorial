@@ -139,6 +139,9 @@ pub struct SpellAbility {
     /// Mana-producing part of this ability (for mana abilities).
     /// Mirrors Java's `SpellAbility.manaPart`.
     pub mana_part: Option<AbilityManaPart>,
+    /// Express mana choice forced by callback/autopay for flexible mana abilities.
+    #[serde(default)]
+    pub express_mana_choice: Option<u16>,
     /// Cards tapped for convoke cost reduction.
     /// Mirrors Java's `SpellAbility.tappedForConvoke`.
     #[serde(default)]
@@ -336,6 +339,7 @@ impl SpellAbility {
             optional_costs: Vec::new(),
             paid_hash: HashMap::new(),
             mana_part: None,
+            express_mana_choice: None,
             convoke_tapped: Vec::new(),
             spliced_cards: Vec::new(),
             announce_vars: HashMap::new(),

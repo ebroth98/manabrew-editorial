@@ -367,7 +367,12 @@ impl GameLoop {
                                         agents,
                                         |this, game, agents| {
                                             this.resolve_mana_ability(
-                                                game, agents, controller, land_id, &ab,
+                                                game,
+                                                agents,
+                                                controller,
+                                                land_id,
+                                                &ab,
+                                                None,
                                             );
                                         },
                                     );

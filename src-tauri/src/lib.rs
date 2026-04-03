@@ -1,4 +1,5 @@
 mod ai_agent;
+mod auto_pay_feature;
 mod card_db;
 mod commands;
 mod game_log_event;

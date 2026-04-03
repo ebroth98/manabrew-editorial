@@ -12,7 +12,7 @@ use std::time::Instant;
 
 use forge_carddb::CardDatabase;
 use forge_engine_core::agent::{
-    BinaryChoiceKind, GameEntity, PlayCardMode, PlayOption, PlayerAgent,
+    BinaryChoiceKind, GameEntity, ManaCostAction, PlayCardMode, PlayOption, PlayerAgent,
 };
 use forge_engine_core::card::CardInstance;
 use forge_engine_core::combat::DefenderId;
@@ -217,6 +217,8 @@ struct CapturingAgent {
     last_game_state: Option<GameState>,
     /// If true, include verbose-only auxiliary decision records.
     verbose: bool,
+    /// Active mana-payment callback session, if we are in a multi-step payment loop.
+    active_mana_payment: Option<(u32, String, String)>,
 }
 
 impl CapturingAgent {
@@ -257,6 +259,7 @@ impl CapturingAgent {
             parity_map,
             last_game_state: None,
             verbose,
+            active_mana_payment: None,
         }
     }
 
@@ -265,6 +268,10 @@ impl CapturingAgent {
             .get(&id)
             .cloned()
             .unwrap_or_else(|| format!("Card({})", id.0))
+    }
+
+    fn card_label(&self, id: CardId) -> String {
+        format!("{}@{}", self.card_name(id), self.parity_map.id(id))
     }
 
     fn record_decision(&self, kind: &str, options: Vec<String>, choice: String) {
@@ -1344,6 +1351,52 @@ impl PlayerAgent for CapturingAgent {
 
     fn notify_state_changed(&mut self) {
         self.inner.notify_state_changed();
+    }
+
+    fn pay_mana_cost(
+        &mut self,
+        player: PlayerId,
+        card_id: CardId,
+        card_name: &str,
+        mana_cost: &str,
+        mana_cost_display: &str,
+        mana_cost_checkpoint: &str,
+        allow_reserved_source_reuse: bool,
+        mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],
+        tappable_lands: &[CardId],
+        untappable_lands: &[CardId],
+        mana_pool: &forge_engine_core::mana::ManaPool,
+    ) -> ManaCostAction {
+        let session_key = (
+            self.current_turn,
+            self.current_phase.clone(),
+            format!("{}|{}", self.card_label(card_id), mana_cost_checkpoint),
+        );
+        if self.active_mana_payment.as_ref() != Some(&session_key) {
+            self.record_decision(
+                "pay_mana_cost_callback",
+                vec![self.card_label(card_id), mana_cost_checkpoint.to_string()],
+                "CALLBACK".to_string(),
+            );
+            self.active_mana_payment = Some(session_key.clone());
+        }
+        let action = self.inner.pay_mana_cost(
+            player,
+            card_id,
+            card_name,
+            mana_cost,
+            mana_cost_display,
+            mana_cost_checkpoint,
+            allow_reserved_source_reuse,
+            mana_ability_options,
+            tappable_lands,
+            untappable_lands,
+            mana_pool,
+        );
+        if matches!(action, ManaCostAction::Pay | ManaCostAction::Cancel) {
+            self.active_mana_payment = None;
+        }
+        action
     }
 
     fn choose_single_replacement_effect(

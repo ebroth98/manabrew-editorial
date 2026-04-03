@@ -22,8 +22,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use crate::auto_pay;
 use forge_engine_core::agent::{
-    BinaryChoiceKind, GameEntity, PlayCardMode, PlayOption, PlayerAgent, TargetChoice,
+    BinaryChoiceKind, GameEntity, ManaCostAction, PlayCardMode, PlayOption, PlayerAgent,
+    TargetChoice,
 };
 use forge_engine_core::combat::DefenderId;
 use forge_engine_core::game::GameState;
@@ -499,6 +501,34 @@ impl PlayerAgent for DeterministicAgent {
                 })
             }
         }
+    }
+
+    fn pay_mana_cost(
+        &mut self,
+        _player: PlayerId,
+        card_id: CardId,
+        _card_name: &str,
+        mana_cost: &str,
+        _mana_cost_display: &str,
+        _mana_cost_checkpoint: &str,
+        allow_reserved_source_reuse: bool,
+        _mana_ability_options: &[forge_engine_core::agent::ManaAbilityOption],
+        _tappable_lands: &[CardId],
+        _untappable_lands: &[CardId],
+        mana_pool: &ManaPool,
+    ) -> ManaCostAction {
+        let Some(ref snap) = self.last_game_snapshot else {
+            return ManaCostAction::Cancel;
+        };
+        auto_pay::next_mana_cost_action(
+            &snap.game,
+            mana_pool,
+            self.player_id,
+            card_id,
+            mana_cost,
+            allow_reserved_source_reuse,
+        )
+        .action
     }
 
     fn choose_attackers(

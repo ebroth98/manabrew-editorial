@@ -1,4 +1,4 @@
-use forge_engine_core::agent::ManaCostAction;
+use forge_engine_core::agent::{ManaAbilityOption, ManaCostAction};
 use forge_engine_core::ids::{CardId, PlayerId};
 use forge_engine_core::mana::ManaPool;
 
@@ -121,10 +121,13 @@ pub(super) fn pay_mana_cost(
     card_id: CardId,
     card_name: &str,
     mana_cost: &str,
+    mana_cost_display: &str,
+    mana_ability_options: &[ManaAbilityOption],
     tappable_lands: &[CardId],
     untappable_lands: &[CardId],
     mana_pool: &ManaPool,
 ) -> ManaCostAction {
+    let _ = mana_cost;
     let card_id_s = card_id_str(card_id);
     let tappable_land_ids = TauriAgent::card_ids(tappable_lands);
     let untappable_land_ids = TauriAgent::card_ids(untappable_lands);
@@ -133,14 +136,30 @@ pub(super) fn pay_mana_cost(
         game_view: agent.view(),
         card_id: card_id_s,
         card_name: card_name.to_string(),
-        mana_cost: mana_cost.to_string(),
+        mana_cost: mana_cost_display.to_string(),
+        mana_ability_options: mana_ability_options
+            .iter()
+            .map(|opt| crate::prompt::ActivatableAbilityInfo {
+                card_id: card_id_str(opt.card_id),
+                ability_index: opt.ability_index,
+                description: opt.description.clone(),
+                is_mana_ability: true,
+            })
+            .collect(),
         tappable_land_ids,
         untappable_land_ids,
         mana_pool_total: mana_pool.total_mana(),
     });
     match agent.recv_action() {
-        PlayerAction::TapLand { card_id } => parse_card_id(&card_id)
-            .map(ManaCostAction::TapLand)
+        PlayerAction::TapLand {
+            card_id,
+            ability_index,
+        } => parse_card_id(&card_id)
+            .map(|card_id| ManaCostAction::TapLand {
+                card_id,
+                mana_ability_index: ability_index,
+                express_choice: None,
+            })
             .unwrap_or(ManaCostAction::Cancel),
         PlayerAction::UntapLand { card_id } => parse_card_id(&card_id)
             .map(ManaCostAction::UntapLand)

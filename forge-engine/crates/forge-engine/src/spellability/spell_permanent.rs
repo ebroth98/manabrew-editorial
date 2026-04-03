@@ -63,6 +63,7 @@ pub fn create_permanent_spell(
         optional_costs: Vec::new(),
         paid_hash: HashMap::new(),
         mana_part: None,
+        express_mana_choice: None,
         convoke_tapped: Vec::new(),
         spliced_cards: Vec::new(),
         announce_vars: HashMap::new(),

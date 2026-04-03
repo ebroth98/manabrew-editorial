@@ -966,7 +966,7 @@ mod tests {
 
         // Manual tap: add one mana from the Any land.
         let ab = game.card(land_any).activated_abilities[0].clone();
-        gl.resolve_mana_ability(&mut game, &mut agents, p0, land_any, &ab);
+        gl.resolve_mana_ability(&mut game, &mut agents, p0, land_any, &ab, None);
         assert_eq!(gl.pool(p0).total_mana(), 1);
         assert!(game.card(land_any).tapped);
         assert!(!game.card(land_combo).tapped);

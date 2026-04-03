@@ -3,9 +3,7 @@ use std::thread;
 
 use forge_engine_core::player::actions::PlayerAction as EnginePlayerAction;
 
-use crate::prompt::{
-    AgentPrompt, AgentPromptInner, BlockAssignment, PlayerAction, TargetAnyChoice,
-};
+use crate::prompt::{AgentPrompt, AgentPromptInner, BlockAssignment, PlayerAction, TargetAnyChoice};
 
 pub fn spawn_ai_prompt_responder(
     prompt_rx: mpsc::Receiver<AgentPrompt>,
@@ -215,15 +213,25 @@ pub fn spawn_ai_prompt_responder(
                     } else if !tappable_land_ids.is_empty() {
                         Some(PlayerAction::TapLand {
                             card_id: tappable_land_ids[0].clone(),
+                            ability_index: None,
                         })
                     } else {
                         Some(PlayerAction::DeclineCombatCost)
                     }
                 }
-                AgentPromptInner::PayManaCost { .. } => {
-                    // AI never gets this prompt (uses auto-tap); cancel if somehow received
-                    Some(PlayerAction::CancelManaCost)
-                }
+                AgentPromptInner::PayManaCost {
+                    game_view,
+                    mana_cost,
+                    tappable_land_ids,
+                    mana_ability_options,
+                    ..
+                } => crate::auto_pay_feature::choose_pay_mana_cost_action(
+                    &game_view,
+                    &mana_cost,
+                    &tappable_land_ids,
+                    &mana_ability_options,
+                )
+                .or(Some(PlayerAction::CancelManaCost)),
                 AgentPromptInner::ChooseDelve {
                     ref valid_card_ids,
                     max_cards,
