@@ -31,17 +31,22 @@ export type DevPromptActionOverride =
 
 interface GameDevState {
   promptActionOverride: DevPromptActionOverride | null;
+  devToolsEnabled: boolean;
   setPromptActionOverride: (value: DevPromptActionOverride | null) => void;
+  setDevToolsEnabled: (value: boolean) => void;
   clearPromptActionOverride: () => void;
   resetDevSettings: () => void;
 }
 
 export const useGameDevStore = create<GameDevState>()(devtools((set) => ({
   promptActionOverride: null,
+  devToolsEnabled: false,
   setPromptActionOverride: (value) => set({ promptActionOverride: value }),
+  setDevToolsEnabled: (value) => set({ devToolsEnabled: value }),
   clearPromptActionOverride: () => set({ promptActionOverride: null }),
   resetDevSettings: () =>
     set({
       promptActionOverride: null,
+      devToolsEnabled: false,
     }),
 }), { name: "gameDev", enabled: import.meta.env.DEV }));

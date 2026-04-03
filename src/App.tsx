@@ -5,6 +5,7 @@ import { queryClient } from "@/api/queryClient";
 import { router } from "@/router";
 import { Toaster } from "@/components/ui/sonner";
 import { useAppTheme } from "@/hooks/useAppTheme";
+import { useGameDevStore } from "@/stores/useGameDevStore";
 import { lazy, Suspense } from "react";
 
 const DevToolsPanel = import.meta.env.DEV
@@ -17,13 +18,15 @@ function ThemeApplicator({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
+  const devToolsEnabled = useGameDevStore((s) => s.devToolsEnabled);
+
   return (
     <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
       <ThemeApplicator>
         <QueryClientProvider client={queryClient}>
           <RouterProvider router={router} />
           <Toaster />
-          {import.meta.env.DEV && (
+          {import.meta.env.DEV && devToolsEnabled && (
             <Suspense>
               <DevToolsPanel />
             </Suspense>

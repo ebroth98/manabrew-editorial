@@ -34,7 +34,9 @@ export function RightActionPanel({
 }: RightActionPanelProps) {
   const visibleLog = gameLog.filter((entry) => entry.entryType !== "rule");
   const promptActionOverride = useGameDevStore((s) => s.promptActionOverride);
+  const devToolsEnabled = useGameDevStore((s) => s.devToolsEnabled);
   const setPromptActionOverride = useGameDevStore((s) => s.setPromptActionOverride);
+  const setDevToolsEnabled = useGameDevStore((s) => s.setDevToolsEnabled);
   const clearPromptActionOverride = useGameDevStore((s) => s.clearPromptActionOverride);
 
   const [activeTab, setActiveTab] = useState<"log" | "snapshots" | "dev">("log");
@@ -112,6 +114,33 @@ export function RightActionPanel({
           />
         ) : (
           <div className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2">
+              <div className="flex flex-col gap-0.5">
+                <span className="text-sm font-medium">Zustand DevTools</span>
+                <span className="text-xs text-muted-foreground">
+                  Default off to avoid slowing the battlefield UI.
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={devToolsEnabled}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors",
+                  devToolsEnabled
+                    ? "border-primary bg-primary"
+                    : "border-border/70 bg-muted",
+                )}
+                onClick={() => setDevToolsEnabled(!devToolsEnabled)}
+              >
+                <span
+                  className={cn(
+                    "block h-5 w-5 rounded-full bg-background shadow-sm transition-transform",
+                    devToolsEnabled ? "translate-x-5" : "translate-x-0.5",
+                  )}
+                />
+              </button>
+            </div>
             <p className="text-xs text-muted-foreground">
               Force prompt action view (UI only).
             </p>
