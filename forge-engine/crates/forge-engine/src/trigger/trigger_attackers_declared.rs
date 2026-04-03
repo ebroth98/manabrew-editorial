@@ -84,16 +84,47 @@ pub fn perform_test(
 }
 
 pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
-    if params.attacked_card.is_none() {
-        if let Some(players) = params.defenders_player_ids.as_deref() {
-            let csv = players
-                .iter()
-                .map(|player_id| player_id.0.to_string())
-                .collect::<Vec<_>>()
-                .join(",");
-            if !csv.is_empty() {
-                sa.add_triggering_object("AttackedTarget", &csv);
+    // Java: sa.setTriggeringObject(AbilityKey.Attackers, attackers);
+    if let Some(attacker_ids) = params.attacker_ids.as_ref() {
+        let csv = attacker_ids.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        sa.add_triggering_object("Attackers", &csv);
+    }
+    // Java: sa.setTriggeringObject(AbilityKey.AttackedTarget, attackedTarget);
+    // Combine defender players and defender cards into a single CSV
+    {
+        let mut parts = Vec::new();
+        if let Some(players) = params.defenders_player_ids.as_ref() {
+            for p in players {
+                parts.push(p.0.to_string());
             }
         }
+        if let Some(cards) = params.defenders_card_ids.as_ref() {
+            for c in cards {
+                parts.push(c.0.to_string());
+            }
+        }
+        if let Some(p) = params.attacked_player {
+            if parts.is_empty() {
+                parts.push(p.0.to_string());
+            }
+        } else if let Some(c) = params.attacked_card {
+            if parts.is_empty() {
+                parts.push(c.0.to_string());
+            }
+        }
+        if !parts.is_empty() {
+            sa.add_triggering_object("AttackedTarget", &parts.join(","));
+        }
     }
+    // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.AttackingPlayer);
+    if let Some(p) = params.attacking_player {
+        sa.add_triggering_object("AttackingPlayer", &p.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Number Attackers: {}",
+        sa.get_triggering_object("Attackers").unwrap_or("")
+    )
 }

@@ -547,6 +547,31 @@ impl TriggerHandler {
         }
     }
 
+    /// Force-register LTB triggers for a card that has already left the
+    /// battlefield (e.g. during SBA batch processing).  Unlike
+    /// `register_active_ltb_trigger`, this bypasses the zone check so that
+    /// triggers from cards already in the graveyard can still see other
+    /// creatures that die in the same SBA batch.
+    /// Mirrors Java's behaviour where `triggerChangesZoneAll` re-registers
+    /// LTB triggers from `lastStateBattlefield` before processing events.
+    pub fn force_register_ltb_trigger(&mut self, game: &GameState, card_id: CardId) {
+        let card = game.card(card_id);
+        for (trig_idx, trigger) in card.triggers.iter().enumerate() {
+            if self.looks_back_in_time(trigger) {
+                let already_registered = self
+                    .active_triggers
+                    .iter()
+                    .any(|at| at.card_id == card_id && at.trigger_index == trig_idx);
+                if !already_registered {
+                    self.active_triggers.push(ActiveTrigger {
+                        card_id,
+                        trigger_index: trig_idx,
+                    });
+                }
+            }
+        }
+    }
+
     /// Java parity wrapper for TriggerHandler.registerOneTrigger(...).
     pub fn register_one_trigger(
         &mut self,
@@ -859,6 +884,17 @@ impl TriggerHandler {
         {
             // LKI active-zone check for "leaves battlefield" self triggers (e.g. dies).
             ZoneType::Battlefield
+        } else if *mode == TriggerType::ChangesZone
+            && params.origin == Some(ZoneType::Battlefield)
+            && trigger.active_zones.contains(&ZoneType::Battlefield)
+            && card.zone != ZoneType::Battlefield
+            && self.looks_back_in_time(trigger)
+        {
+            // LKI active-zone check for LTB triggers seeing OTHER creatures die
+            // in the same SBA batch (e.g. Blood Artist seeing Savannah Lions die).
+            // The trigger's host card already left the battlefield but was
+            // force-registered as an LTB trigger.
+            ZoneType::Battlefield
         } else if (*mode == TriggerType::DamageDone || *mode == TriggerType::DamageDoneOnce)
             && params.damage_target_card == Some(host_card)
             && trigger.active_zones.contains(&ZoneType::Battlefield)
@@ -930,6 +966,28 @@ impl TriggerHandler {
 
     pub fn set_suppress_all_triggers(&mut self, suppress: bool) {
         self.all_suppressed = suppress;
+    }
+
+    /// Mirrors Java's TriggerHandler.getActiveTrigger(TriggerType, Map<AbilityKey, Object>).
+    /// Returns all active triggers that can run for the given mode and params.
+    pub fn get_active_trigger(
+        &self,
+        game: &GameState,
+        mode: TriggerType,
+        params: &RunParams,
+    ) -> Vec<Trigger> {
+        let mut result = Vec::new();
+        for at in &self.active_triggers {
+            let card = game.card(at.card_id);
+            if at.trigger_index >= card.triggers.len() {
+                continue;
+            }
+            let host_controller = card.controller;
+            if self.can_run_trigger(game, at.card_id, at.trigger_index, host_controller, &mode, params) {
+                result.push(card.triggers[at.trigger_index].clone());
+            }
+        }
+        result
     }
 
     pub fn is_trigger_suppressed(&self, mode: TriggerType) -> bool {

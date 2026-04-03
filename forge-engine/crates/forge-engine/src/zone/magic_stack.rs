@@ -536,6 +536,24 @@ impl MagicStack {
     pub fn get_max_distinct_sources(&self) -> usize {
         self.max_distinct_sources
     }
+
+    /// Find a stack entry whose spell ability ID matches the given stack entry ID.
+    /// Mirrors Java's `MagicStack.getInstanceMatchingSpellAbilityID()`.
+    pub fn get_instance_matching_spell_ability_id(&self, id: u32) -> Option<&StackEntry> {
+        self.entries.iter().find(|si| si.id == id)
+    }
+
+    /// Find a spell on the stack whose host card matches the given card.
+    /// Returns the spell ability if found.
+    /// Mirrors Java's `MagicStack.getSpellMatchingHost()`.
+    pub fn get_spell_matching_host(&self, host: CardId) -> Option<&SpellAbility> {
+        for si in &self.entries {
+            if si.spell_ability.is_spell && si.spell_ability.source == Some(host) {
+                return Some(&si.spell_ability);
+            }
+        }
+        None
+    }
 }
 
 impl Default for MagicStack {

@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -71,4 +72,38 @@ pub fn perform_test(
     }
 
     true
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Source, AbilityKey.Object, AbilityKey.CounterMap)
+    // Java also sets Amount = sum of CounterMap values
+    if let Some(source) = params.source_player {
+        sa.add_triggering_object("Source", &source.0.to_string());
+    } else if let Some(source) = params.source_card {
+        sa.add_triggering_object("Source", &source.0.to_string());
+    }
+    if let Some(obj) = params.object_card {
+        sa.add_triggering_object("Object", &obj.0.to_string());
+    } else if let Some(p) = params.object_player {
+        sa.add_triggering_object("Object", &p.0.to_string());
+    }
+    // TODO: Java also sets CounterMap from runParams and computes Amount as sum of CounterMap values.
+    // CounterMap is a Map<CounterType, Integer> in Java. Using counter_amount as approximation.
+    if let Some(amount) = params.counter_amount {
+        sa.add_triggering_object("Amount", &amount.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "AddedOnce: {}: {}",
+        sa.trigger_objects
+            .get("Source")
+            .cloned()
+            .unwrap_or_default(),
+        sa.trigger_objects
+            .get("Object")
+            .cloned()
+            .unwrap_or_default()
+    )
 }

@@ -212,6 +212,8 @@ pub fn parse_mode(params: &Params) -> TriggerMode {
 }
 
 pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // Java: if origin == Battlefield, Card = CardLKI, NewCard = Card
+    //        else: copy both Card and CardLKI from runParams
     if params.origin == Some(forge_foundation::ZoneType::Battlefield) {
         if let Some(card_id) = params.card_lki.or(params.card) {
             sa.add_triggering_object("Card", &card_id.0.to_string());
@@ -225,7 +227,24 @@ pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
         if let Some(card_id) = params.card {
             sa.add_triggering_object("NewCard", &card_id.0.to_string());
         }
+    } else {
+        if let Some(card_id) = params.card {
+            sa.add_triggering_object("Card", &card_id.0.to_string());
+        }
+        if let Some(card_lki) = params.card_lki {
+            sa.add_triggering_object("CardLKI", &card_lki.0.to_string());
+        }
     }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Zone Changer: {}",
+        sa.trigger_objects
+            .get("Card")
+            .cloned()
+            .unwrap_or_default()
+    )
 }
 
 #[cfg(test)]

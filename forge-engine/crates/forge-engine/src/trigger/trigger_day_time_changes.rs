@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -16,4 +17,10 @@ pub fn perform_test(
         panic!("Expected DayTimeChanges mode");
     };
     true
+}
+
+pub fn set_triggering_objects(_sa: &mut SpellAbility, _params: &RunParams) {}
+
+pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
+    String::new()
 }

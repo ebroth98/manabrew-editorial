@@ -5,6 +5,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -37,4 +38,28 @@ pub fn perform_test(
         return matches_valid_player(valid_filter, pid, host_controller);
     }
     false
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(cards) = params.cards.as_ref() {
+        let csv = cards
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        sa.add_triggering_object("Objects", &csv);
+    }
+    if let Some(amount) = params.counter_amount {
+        sa.add_triggering_object("Amount", &amount.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Amount: {}",
+        sa.trigger_objects
+            .get("Amount")
+            .cloned()
+            .unwrap_or_default()
+    )
 }

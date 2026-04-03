@@ -45,7 +45,20 @@ pub fn perform_test(
 }
 
 pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Causer)
     if let Some(card_id) = params.card {
-        sa.add_triggering_object("Destroyed", &card_id.0.to_string());
+        sa.add_triggering_object("Card", &card_id.0.to_string());
     }
+    if let Some(causer) = params.causer {
+        sa.add_triggering_object("Causer", &causer.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    // Java: "Destroyed: " + Card + ", Destroyer: " + Causer
+    format!(
+        "Destroyed: {}, Destroyer: {}",
+        sa.get_triggering_object("Card").unwrap_or(""),
+        sa.get_triggering_object("Causer").unwrap_or("")
+    )
 }

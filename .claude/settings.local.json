@@ -3,7 +3,13 @@
     "allow": [
       "Bash(xargs grep:*)",
       "Bash(npx tsc:*)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(cargo check:*)",
+      "Bash(yarn scan:*)",
+      "Bash(yarn parity:test --deck1 trigger_test --deck2 trigger_parity_opponent --seed 42 --max-turns 30 --games 20)",
+      "Bash(grep:*)",
+      "Bash(yarn parity:*)",
+      "Bash(cargo run:*)"
     ]
   }
 }

@@ -4,6 +4,7 @@ use crate::{
     event::{AbilityValue, RunParams},
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 fn split_csv(s: &str) -> impl Iterator<Item = &str> {
@@ -100,4 +101,31 @@ pub fn perform_test(
     }
 
     true
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // Java: sa.setTriggeringObject(AbilityKey.Source, triggeredSA.getHostCard());
+    // The source is the host card of the triggered SpellAbility
+    if let Some(ref triggered_sa) = params.spell_ability {
+        if let Some(source) = triggered_sa.source {
+            sa.add_triggering_object("Source", &source.0.to_string());
+        }
+    } else if let Some(card) = params.source_card {
+        sa.add_triggering_object("Source", &card.0.to_string());
+    }
+    // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.SpellAbility, AbilityKey.Cause);
+    // SpellAbility and Cause are complex objects; store what we can
+    if let Some(ref cause_cards) = params.cards {
+        let csv = cause_cards.iter().map(|c| c.0.to_string()).collect::<Vec<_>>().join(",");
+        sa.add_triggering_object("Cause", &csv);
+    } else if let Some(cause_card) = params.cause_card {
+        sa.add_triggering_object("Cause", &cause_card.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "SpellAbility: {}",
+        sa.get_triggering_object("SpellAbility").unwrap_or("")
+    )
 }

@@ -2,6 +2,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 use super::trigger::{check_card_filter, matches_valid_card, matches_valid_sa, TriggerMode};
@@ -46,4 +47,22 @@ pub fn perform_test(
         return true;
     }
     panic!("Expected Countered mode");
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause, AbilityKey.CounteredSA)
+    if let Some(card) = params.card {
+        sa.add_triggering_object("Card", &card.0.to_string());
+    }
+    // TODO: Java also sets Cause (SpellAbility) and CounteredSA (SpellAbility) from runParams.
+    // Skipping Cause and CounteredSA for now since SpellAbility is complex and stored as object in Java.
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    // Java: "Countered: " + Card + ", Cause: " + Cause
+    format!(
+        "Countered: {}, Cause: {}",
+        sa.get_triggering_object("Card").unwrap_or(""),
+        sa.get_triggering_object("Cause").unwrap_or("")
+    )
 }

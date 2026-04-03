@@ -4,6 +4,7 @@ use crate::{
     game::GameState,
     ids::{CardId, PlayerId},
     parsing::{keys, Params},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -42,4 +43,27 @@ pub fn parse_mode(params: &Params) -> TriggerMode {
         valid_player,
         this_door,
     }
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(card) = params.card {
+        sa.add_triggering_object("Card", &card.0.to_string());
+    }
+    if let Some(p) = params.player {
+        sa.add_triggering_object("Player", &p.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Player: {}, Card: {}",
+        sa.trigger_objects
+            .get("Player")
+            .map(|s| s.as_str())
+            .unwrap_or(""),
+        sa.trigger_objects
+            .get("Card")
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    )
 }

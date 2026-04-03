@@ -4,6 +4,7 @@
 
 use forge_foundation::ZoneType;
 
+use crate::game::GameState;
 use crate::ids::{CardId, PlayerId};
 
 use super::player_zone::PlayerZone;
@@ -63,6 +64,26 @@ impl PlayerZoneBattlefield {
 
     pub fn triggers_enabled(&self) -> bool {
         self.trigger
+    }
+
+    /// Get the cards on the battlefield, optionally filtering out phased-out cards.
+    /// When `filter` is true, phased-out permanents are excluded.
+    /// Mirrors Java's `PlayerZoneBattlefield.getCards(boolean)`.
+    pub fn get_cards(&self, filter: bool, game: &GameState) -> Vec<CardId> {
+        let cards = &self.zone.zone.cards;
+        if !filter {
+            return cards.clone();
+        }
+        // Check if any card is phased out before allocating a filtered list
+        let has_phased = cards.iter().any(|&c| game.card(c).phased_out);
+        if !has_phased {
+            return cards.clone();
+        }
+        cards
+            .iter()
+            .copied()
+            .filter(|&c| !game.card(c).phased_out)
+            .collect()
     }
 }
 

@@ -7,6 +7,7 @@ use crate::{
 
 use super::trigger::{check_card_filter, TriggerMode};
 use crate::card::valid_filter::matches_valid_player;
+use crate::spellability::SpellAbility;
 
 pub fn perform_test(
     mode: &TriggerMode,
@@ -45,4 +46,20 @@ pub fn perform_test(
         return true;
     }
     panic!("Expected TokenCreatedOnce mode");
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // TODO: port ValidToken filtering from Java (IterableUtil.filter with CardPredicates.restriction)
+    if let Some(cards) = params.cards.as_ref() {
+        let csv = cards
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        sa.add_triggering_object("Cards", &csv);
+    }
+}
+
+pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
+    String::new()
 }

@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -34,4 +35,32 @@ pub fn perform_test(
         host_controller,
         game,
     )
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(card) = params.damage_target_card {
+        sa.add_triggering_object("Target", &card.0.to_string());
+    } else if let Some(player) = params.damage_target_player {
+        sa.add_triggering_object("Target", &player.0.to_string());
+    }
+    if let Some(src) = params.damage_source {
+        sa.add_triggering_object("Source", &src.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    // Java: if Target != null { "Damaged: " + Target + ", " } + "Damage Source: " + Source
+    let target = sa.get_triggering_object("Target").unwrap_or("");
+    if target.is_empty() {
+        format!(
+            "Damage Source: {}",
+            sa.get_triggering_object("Source").unwrap_or("")
+        )
+    } else {
+        format!(
+            "Damaged: {}, Damage Source: {}",
+            target,
+            sa.get_triggering_object("Source").unwrap_or("")
+        )
+    }
 }

@@ -5,6 +5,7 @@ use crate::{
     ids::{CardId, PlayerId},
     parsing::keys,
     parsing::Params,
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -23,4 +24,14 @@ pub fn perform_test(
 pub fn parse_mode(params: &Params) -> TriggerMode {
     let valid_card = params.get_cloned(keys::VALID_CARD);
     TriggerMode::Abandoned { valid_card }
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(v) = params.card.as_ref() {
+        sa.add_triggering_object("Scheme", &v.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
+    String::new()
 }

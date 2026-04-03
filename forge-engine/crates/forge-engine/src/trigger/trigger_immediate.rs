@@ -1,4 +1,5 @@
 use crate::ability::effects::EffectContext;
+use crate::event::RunParams;
 use crate::spellability::SpellAbility;
 
 /// Trigger-module owned implementation of ImmediateTrigger resolution.
@@ -18,4 +19,16 @@ pub fn resolve_immediate_trigger(ctx: &mut EffectContext, sa: &SpellAbility) {
 /// Java TriggerImmediate parity hook.
 pub fn perform_test() -> bool {
     true
+}
+
+/// Mirrors Java's TriggerImmediate.setTriggeringObjects().
+/// Empty implementation — matches Java.
+pub fn set_triggering_objects(_sa: &mut SpellAbility, _params: &RunParams) {
+    // Empty - matches Java
+}
+
+/// Mirrors Java's TriggerImmediate.getImportantStackObjects().
+/// Returns empty string — matches Java.
+pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
+    String::new()
 }

@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 use super::trigger::TriggerMode;
@@ -92,4 +93,30 @@ pub fn perform_test(
         return true;
     }
     panic!("Expected BecomesTarget mode");
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // Java: sa.setTriggeringObject(AbilityKey.Source, ((SpellAbility) runParams.get(AbilityKey.SourceSA)).getHostCard());
+    if let Some(ref source_sa) = params.source_sa {
+        if let Some(source_card) = source_sa.source {
+            sa.add_triggering_object("Source", &source_card.0.to_string());
+        }
+    } else if let Some(source) = params.source_card {
+        sa.add_triggering_object("Source", &source.0.to_string());
+    }
+    // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.SourceSA, AbilityKey.Target);
+    // SourceSA is a complex object; we store what we can
+    if let Some(card) = params.target_card.or(params.card) {
+        sa.add_triggering_object("Target", &card.0.to_string());
+    } else if let Some(p) = params.target_player {
+        sa.add_triggering_object("Target", &p.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Source: {}, Target: {}",
+        sa.get_triggering_object("Source").unwrap_or(""),
+        sa.get_triggering_object("Target").unwrap_or("")
+    )
 }

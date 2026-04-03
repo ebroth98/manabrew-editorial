@@ -1,0 +1,32 @@
+{
+  "label": "Trigger Parity",
+  "desc": "Tests set_triggering_objects parity across 20+ trigger modes: ChangesZone, SpellCast, Attacks, Sacrificed, LifeGained, LifeLost, CounterAdded, DamageDone, TokenCreated, LandPlayed, Drawn, Destroyed, Taps",
+  "color": "text-orange-500",
+  "opponent": "trigger_parity_opponent",
+  "ai_eligible": false,
+  "order": 30,
+  "cards": [
+    { "name": "Mountain", "count": 4, "set": "akh" },
+    { "name": "Forest", "count": 3, "set": "akh" },
+    { "name": "Swamp", "count": 4, "set": "akh" },
+    { "name": "Plains", "count": 3, "set": "akh" },
+    { "name": "Island", "count": 2, "set": "akh" },
+
+    { "name": "Blood Artist", "count": 3, "set": "avr" },
+    { "name": "Zulaport Cutthroat", "count": 3, "set": "bfz" },
+    { "name": "Soul Warden", "count": 3, "set": "m11" },
+    { "name": "Ajani's Pridemate", "count": 3, "set": "m19" },
+    { "name": "Guttersnipe", "count": 3, "set": "rtr" },
+    { "name": "Young Pyromancer", "count": 2, "set": "m14" },
+    { "name": "Impact Tremors", "count": 2, "set": "dtk" },
+    { "name": "Bloodbriar", "count": 2, "set": "emn" },
+    { "name": "Midnight Reaper", "count": 2, "set": "grn" },
+    { "name": "Tireless Tracker", "count": 2, "set": "soi" },
+    { "name": "Lightning Bolt", "count": 4, "set": "m11" },
+    { "name": "Shock", "count": 4, "set": "m21" },
+    { "name": "Raise the Alarm", "count": 2, "set": "m15" },
+    { "name": "Savannah Lions", "count": 4, "set": "m10" },
+    { "name": "Woodland Champion", "count": 2, "set": "m20" },
+    { "name": "Raptor Hatchling", "count": 2, "set": "xln" }
+  ]
+}

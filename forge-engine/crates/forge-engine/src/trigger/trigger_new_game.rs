@@ -4,6 +4,7 @@ use crate::{
     game::GameState,
     ids::{CardId, PlayerId},
     parsing::Params,
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -21,4 +22,10 @@ pub fn perform_test(
 
 pub fn parse_mode(_params: &Params) -> TriggerMode {
     TriggerMode::NewGame
+}
+
+pub fn set_triggering_objects(_sa: &mut SpellAbility, _params: &RunParams) {}
+
+pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
+    String::new()
 }

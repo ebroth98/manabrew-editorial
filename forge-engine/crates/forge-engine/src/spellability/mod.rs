@@ -540,6 +540,12 @@ impl SpellAbility {
         self.trigger_objects.contains_key(key)
     }
 
+    /// Get a triggering object by key.
+    /// Mirrors Java's `SpellAbility.getTriggeringObject(String)`.
+    pub fn get_triggering_object(&self, key: &str) -> Option<&str> {
+        self.trigger_objects.get(key).map(|s| s.as_str())
+    }
+
     /// Clear all triggering objects.
     /// Mirrors Java's `SpellAbility.resetTriggeringObjects()`.
     pub fn reset_triggering_objects(&mut self) {

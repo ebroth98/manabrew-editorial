@@ -3,6 +3,7 @@ use crate::{
     game::GameState,
     ids::{CardId, PlayerId},
     parsing::{keys, Params},
+    spellability::SpellAbility,
 };
 
 use super::trigger::{check_card_filter, check_player_filter, TriggerMode};
@@ -117,4 +118,40 @@ pub fn parse_mode(mode_name: &str, params: &Params) -> TriggerMode {
         },
         _ => panic!("Unsupported spell/ability cast-or-copy mode: {mode_name}"),
     }
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // Java: sa.setTriggeringObject(AbilityKey.Card, cause.getHostCard())
+    if let Some(card) = params.spell_card {
+        sa.add_triggering_object("Card", &card.0.to_string());
+    }
+    // TODO: port SpellAbility triggering object (AbilityKey.SpellAbility = cause)
+    // TODO: port SpellAbilityTargets triggering object (from cause.getAllTargetChoices)
+    if let Some(amount) = params.life_amount {
+        sa.add_triggering_object("LifeAmount", &amount.to_string());
+    }
+    if let Some(lki) = params.card_lki {
+        sa.add_triggering_object("CardLKI", &lki.0.to_string());
+    }
+    if let Some(p) = params.activator {
+        sa.add_triggering_object("Activator", &p.0.to_string());
+    }
+    // TODO: port CurrentStormCount triggering object - not yet in RunParams
+    // TODO: port CurrentCastSpells triggering object - not yet in RunParams
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    // Java: "Card: {card}, Activator: {activator}, SpellAbility: {sa}"
+    // TODO: include SpellAbility in output once SpellAbility triggering object is ported
+    format!(
+        "Card: {}, Activator: {}, SpellAbility: ",
+        sa.trigger_objects
+            .get("Card")
+            .map(|s| s.as_str())
+            .unwrap_or(""),
+        sa.trigger_objects
+            .get("Activator")
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    )
 }

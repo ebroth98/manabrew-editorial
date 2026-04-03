@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -16,4 +17,27 @@ pub fn perform_test(
         panic!("Expected PayLife mode");
     };
     check_player_filter(valid_player, params.player, host_controller)
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(amount) = params.life_amount {
+        sa.add_triggering_object("LifeAmount", &amount.to_string());
+    }
+    if let Some(p) = params.player {
+        sa.add_triggering_object("Player", &p.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Player: {}, PaidAmount: {}",
+        sa.trigger_objects
+            .get("Player")
+            .map(|s| s.as_str())
+            .unwrap_or(""),
+        sa.trigger_objects
+            .get("LifeAmount")
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    )
 }

@@ -71,3 +71,7 @@ pub fn set_triggering_objects(
         sa.add_triggering_object("OpponentVotedDiff", &csv);
     }
 }
+
+pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
+    String::new()
+}

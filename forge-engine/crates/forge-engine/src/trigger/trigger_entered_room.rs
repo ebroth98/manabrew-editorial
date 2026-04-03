@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -32,4 +33,16 @@ pub fn perform_test(
             .any(|t| t.eq_ignore_ascii_case(room));
     }
     true
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(name) = params.room_name.as_ref() {
+        sa.add_triggering_object("RoomName", name);
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    sa.get_triggering_object("RoomName")
+        .map(|r| format!("Room: {}", r))
+        .unwrap_or_default()
 }

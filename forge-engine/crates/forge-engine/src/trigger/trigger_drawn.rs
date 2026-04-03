@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 use super::trigger::{check_card_filter, check_player_filter, TriggerMode};
@@ -44,4 +45,20 @@ pub fn perform_test(
             && check_player_filter(valid_player, params.player, host_controller);
     }
     panic!("Expected Drawn mode");
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(card) = params.card {
+        sa.add_triggering_object("Card", &card.0.to_string());
+    }
+    if let Some(p) = params.player {
+        sa.add_triggering_object("Player", &p.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Player: {}",
+        sa.get_triggering_object("Player").unwrap_or_default()
+    )
 }

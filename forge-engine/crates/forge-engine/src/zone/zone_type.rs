@@ -6,6 +6,18 @@
 
 pub use forge_foundation::ZoneType;
 
+/// Whether this zone holds hidden information.
+/// Mirrors Java's `ZoneType.isHidden()`.
+pub fn is_hidden(zone: ZoneType) -> bool {
+    zone.is_hidden()
+}
+
+/// Whether this zone holds known (public) information.
+/// Mirrors Java's `ZoneType.isKnown()`.
+pub fn is_known(zone: ZoneType) -> bool {
+    zone.is_known()
+}
+
 /// Parse a zone type from a string.
 /// Mirrors Java's `ZoneType.smartValueOf()`.
 pub fn smart_value_of(value: &str) -> Option<ZoneType> {

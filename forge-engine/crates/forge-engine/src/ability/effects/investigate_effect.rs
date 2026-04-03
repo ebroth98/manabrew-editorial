@@ -7,6 +7,7 @@
 use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::{emit_zone_trigger, EffectContext};
+use crate::card::card_zone_table::CardZoneTable;
 use crate::card::Card;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::CardId;
@@ -23,15 +24,29 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         vec![controller]
     };
 
+    let mut created_tokens: Vec<CardId> = Vec::new();
     for _ in 0..amount {
         for &pid in &players {
-            create_clue_token(ctx, sa, pid);
+            if let Some(tid) = create_clue_token(ctx, sa, pid) {
+                created_tokens.push(tid);
+            }
         }
+    }
+
+    // Fire ChangesZoneAll for the batch of tokens entering the battlefield.
+    // Needed for triggers like Woodland Champion (Mode$ ChangesZoneAll).
+    if !created_tokens.is_empty() {
+        let mut table = CardZoneTable::default();
+        for &tid in &created_tokens {
+            table.put(Some(ZoneType::None), Some(ZoneType::Battlefield), tid);
+        }
+        table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
     }
 }
 
-/// Create a single Clue artifact token.
-fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::ids::PlayerId) {
+/// Create a single Clue artifact token. Returns the created token ID.
+fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::ids::PlayerId) -> Option<CardId> {
+    let token_id;
     // Try to use the registered token template first
     if let Some(template) = ctx.token_templates.get("c_a_clue_draw").cloned() {
         // RNG sync
@@ -43,7 +58,7 @@ fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::
         token.set_controller(player);
         token.set_is_token(true);
 
-        let token_id = ctx.game.create_card(token);
+        token_id = ctx.game.create_card(token);
         ctx.move_card(token_id, ZoneType::Battlefield, player);
         ctx.trigger_handler
             .register_active_trigger(ctx.game, token_id);
@@ -84,7 +99,7 @@ fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::
         token.set_controller(player);
         token.set_is_token(true);
 
-        let token_id = ctx.game.create_card(token);
+        token_id = ctx.game.create_card(token);
         ctx.move_card(token_id, ZoneType::Battlefield, player);
         ctx.trigger_handler
             .register_active_trigger(ctx.game, token_id);
@@ -113,4 +128,6 @@ fn create_clue_token(ctx: &mut EffectContext, sa: &SpellAbility, player: crate::
             ctx.game.card_mut(sid).add_remembered_player(player);
         }
     }
+
+    Some(token_id)
 }

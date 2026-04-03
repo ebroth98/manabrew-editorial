@@ -2,6 +2,7 @@ use forge_foundation::{CardTypeLine, ColorSet, ManaCost, ZoneType};
 
 use super::trait_token_effect;
 use super::{emit_zone_trigger, EffectContext};
+use crate::card::card_zone_table::CardZoneTable;
 use crate::card::Card;
 use crate::event::{RunParams, TriggerType};
 use crate::ids::{CardId, PlayerId};
@@ -20,6 +21,7 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
     }
 
     // Run CreateToken replacement effects (e.g. Anointed Procession doubles tokens).
+    let mut all_created_tokens: Vec<CardId> = Vec::new();
     if !token_script.is_empty() {
         if let Some(template) =
             trait_token_effect::get_token_template(ctx.token_templates, &token_script).cloned()
@@ -29,7 +31,8 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
                 // Always call create_tokens even when amount is 0 — the function
                 // consumes 2 RNG values for Java token-art parity that must fire
                 // regardless of count.
-                create_tokens(ctx, sa, &template, final_amount, token_controller);
+                let created = create_tokens(ctx, sa, &template, final_amount, token_controller);
+                all_created_tokens.extend(created);
             }
         } else {
             eprintln!(
@@ -42,10 +45,23 @@ pub fn resolve(ctx: &mut EffectContext, sa: &SpellAbility) {
         for token_controller in token_owners {
             let final_amount = replaced_token_amount(ctx, amount, token_controller);
             let template = build_inline_token(sa, token_controller);
-            create_tokens(ctx, sa, &template, final_amount, token_controller);
+            let created = create_tokens(ctx, sa, &template, final_amount, token_controller);
+            all_created_tokens.extend(created);
         }
     } else {
         eprintln!("[effects::token] Token effect missing TokenScript$ and inline params");
+    }
+
+    // Fire ChangesZoneAll for the batch of tokens entering the battlefield.
+    // Mirrors Java's CardZoneTable.triggerChangesZoneAll() at the end of
+    // TokenEffect.  This is needed for triggers like Woodland Champion
+    // (Mode$ ChangesZoneAll | Destination$ Battlefield).
+    if !all_created_tokens.is_empty() {
+        let mut table = CardZoneTable::default();
+        for &tid in &all_created_tokens {
+            table.put(Some(ZoneType::None), Some(ZoneType::Battlefield), tid);
+        }
+        table.trigger_changes_zone_all(ctx.trigger_handler, ctx.game, Some(sa));
     }
 }
 
@@ -162,7 +178,7 @@ fn create_tokens(
     template: &Card,
     amount: usize,
     token_controller: crate::ids::PlayerId,
-) {
+) -> Vec<CardId> {
     // Java consumes 2 game-level RNG values when creating the token prototype:
     //   1. Aggregates.random() in TokenDb.getToken() — selects token art variant
     //   2. MyRandom.nextInt(artIndex) in PaperToken.getImageKey() — selects image
@@ -171,6 +187,7 @@ fn create_tokens(
     ctx.rng.next_int(1); // match Aggregates.random() in TokenDb.getToken()
     ctx.rng.next_int(1); // match MyRandom.nextInt(artIndex) in PaperToken.getImageKey()
 
+    let mut created = Vec::with_capacity(amount);
     for _ in 0..amount {
         let mut token = template.clone();
         token.set_owner(token_controller);
@@ -205,7 +222,9 @@ fn create_tokens(
             ZoneType::None,
             ZoneType::Battlefield,
         );
+        created.push(token_id);
     }
+    created
 }
 
 fn apply_token_attacking_marker(ctx: &mut EffectContext, sa: &SpellAbility, token_id: CardId) {

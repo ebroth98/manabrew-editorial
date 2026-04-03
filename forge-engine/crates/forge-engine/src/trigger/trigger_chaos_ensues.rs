@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -27,4 +28,14 @@ pub fn perform_test(
     }
 
     true
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(p) = params.player {
+        sa.add_triggering_object("Player", &p.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
+    String::new()
 }

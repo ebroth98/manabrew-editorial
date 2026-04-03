@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -39,4 +40,21 @@ pub fn perform_test(
         }
     }
     true
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // Java: sa.setTriggeringObjectsFrom(runParams, AbilityKey.Card, AbilityKey.Cause);
+    if let Some(card) = params.card {
+        sa.add_triggering_object("Card", &card.0.to_string());
+    }
+    // TODO: AbilityKey.Cause is a SpellAbility in Java, cannot be stored as String easily
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    // Java: "Discarded: " + Card + ", Cause: " + Cause
+    format!(
+        "Discarded: {}, Cause: {}",
+        sa.get_triggering_object("Card").unwrap_or_default(),
+        sa.get_triggering_object("Cause").unwrap_or_default()
+    )
 }

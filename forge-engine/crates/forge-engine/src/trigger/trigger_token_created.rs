@@ -3,13 +3,21 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
-use super::trigger::{check_card_filter, TriggerMode};
+use super::trigger::{check_card_filter, check_player_filter, TriggerMode};
 
 pub fn parse_mode(params: &Params) -> TriggerMode {
-    let valid_card = params.get_cloned(keys::VALID_CARD);
-    TriggerMode::TokenCreated { valid_card }
+    let valid_card = params
+        .get("ValidToken")
+        .or_else(|| params.get(keys::VALID_CARD))
+        .map(|s| s.to_string());
+    let valid_player = params.get_cloned(keys::VALID_PLAYER);
+    TriggerMode::TokenCreated {
+        valid_card,
+        valid_player,
+    }
 }
 
 pub fn perform_test(
@@ -19,8 +27,34 @@ pub fn perform_test(
     host_card: CardId,
     host_controller: PlayerId,
 ) -> bool {
-    if let TriggerMode::TokenCreated { valid_card } = mode {
+    if let TriggerMode::TokenCreated {
+        valid_card,
+        valid_player,
+    } = mode
+    {
+        if !check_player_filter(valid_player, params.player, host_controller) {
+            return false;
+        }
         return check_card_filter(valid_card, params.card, host_card, host_controller, game);
     }
     panic!("Expected TokenCreated mode");
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(p) = params.player {
+        sa.add_triggering_object("Player", &p.0.to_string());
+    }
+    if let Some(card) = params.card {
+        sa.add_triggering_object("Card", &card.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Player: {}",
+        sa.trigger_objects
+            .get("Player")
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    )
 }

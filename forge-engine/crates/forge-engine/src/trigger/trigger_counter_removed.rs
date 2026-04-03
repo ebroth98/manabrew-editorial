@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 use super::trigger::{check_card_filter, check_counter_type_filter, TriggerMode};
@@ -32,4 +33,20 @@ pub fn perform_test(
             && check_counter_type_filter(counter_type, &params.counter_type);
     }
     panic!("Expected CounterRemoved mode");
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(card) = params.card {
+        sa.add_triggering_object("Card", &card.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "RemovedFrom: {}",
+        sa.trigger_objects
+            .get("Card")
+            .cloned()
+            .unwrap_or_default()
+    )
 }

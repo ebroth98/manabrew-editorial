@@ -3,6 +3,7 @@ use crate::{
     game::GameState,
     ids::{CardId, PlayerId},
     parsing::{keys, Params},
+    spellability::SpellAbility,
 };
 
 use super::trigger::{check_player_filter, TriggerMode};
@@ -38,4 +39,20 @@ pub fn parse_mode(params: &Params) -> TriggerMode {
         phase,
         valid_player,
     }
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(p) = params.player {
+        sa.add_triggering_object("Player", &p.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Phase: {}",
+        sa.trigger_objects
+            .get("Player")
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    )
 }

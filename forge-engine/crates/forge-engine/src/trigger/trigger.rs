@@ -415,6 +415,7 @@ pub enum TriggerMode {
     /// A token was created.
     TokenCreated {
         valid_card: Option<String>,
+        valid_player: Option<String>,
     },
     /// A spell was copied (Storm, Replicate, etc.) — for Magecraft triggers.
     SpellCopied {
@@ -2737,17 +2738,402 @@ impl TriggerMode {
         host_controller: PlayerId,
     ) {
         match self {
-            TriggerMode::ChangesZone { .. } => {
-                super::trigger_changes_zone::set_triggering_objects(sa, params)
+            TriggerMode::Abandoned { .. } => {
+                super::trigger_abandoned::set_triggering_objects(sa, params)
+            }
+            TriggerMode::AbilityResolves { .. } => {
+                super::trigger_ability_resolves::set_triggering_objects(sa, params)
+            }
+            TriggerMode::AbilityTriggered { .. } => {
+                super::trigger_ability_triggered::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Adapt { .. } => {
+                super::trigger_adapt::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Always => {
+                super::trigger_always::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Attached { .. } => {
+                super::trigger_attached::set_triggering_objects(sa, params)
+            }
+            TriggerMode::AttackerBlocked { .. } => {
+                super::trigger_attacker_blocked::set_triggering_objects(sa, params)
+            }
+            TriggerMode::AttackerBlockedByCreature { .. } => {
+                super::trigger_attacker_blocked_by_creature::set_triggering_objects(sa, params)
+            }
+            TriggerMode::AttackerBlockedOnce { .. } => {
+                super::trigger_attacker_blocked_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::AttackerUnblocked { .. } => {
+                super::trigger_attacker_unblocked::set_triggering_objects(sa, params)
+            }
+            TriggerMode::AttackerUnblockedOnce { .. } => {
+                super::trigger_attacker_unblocked_once::set_triggering_objects(sa, params)
             }
             TriggerMode::AttackersDeclared { .. } => {
                 super::trigger_attackers_declared::set_triggering_objects(sa, params)
             }
-            TriggerMode::Explored { .. } => {
-                super::trigger_explores::set_triggering_objects(sa, params)
+            TriggerMode::Attacks { .. } => {
+                super::trigger_attacks::set_triggering_objects(sa, params)
+            }
+            TriggerMode::BecomeMonarch { .. } => {
+                super::trigger_become_monarch::set_triggering_objects(sa, params)
+            }
+            TriggerMode::BecomeMonstrous { .. } => {
+                super::trigger_become_monstrous::set_triggering_objects(sa, params)
+            }
+            TriggerMode::BecomeRenowned { .. } => {
+                super::trigger_become_renowned::set_triggering_objects(sa, params)
+            }
+            TriggerMode::BecomesCrewed { .. } => {
+                super::trigger_becomes_crewed::set_triggering_objects(sa, params)
+            }
+            TriggerMode::BecomesPlotted { .. } => {
+                super::trigger_becomes_plotted::set_triggering_objects(sa, params)
+            }
+            TriggerMode::BecomesSaddled { .. } => {
+                super::trigger_becomes_saddled::set_triggering_objects(sa, params)
+            }
+            TriggerMode::BecomesTarget { .. } => {
+                super::trigger_becomes_target::set_triggering_objects(sa, params)
+            }
+            TriggerMode::BecomesTargetOnce { .. } => {
+                super::trigger_becomes_target_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::BlockersDeclared { .. } => {
+                super::trigger_blockers_declared::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Blocks { .. } => {
+                super::trigger_blocks::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CaseSolved { .. } => {
+                super::trigger_case_solved::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Championed { .. } => {
+                super::trigger_championed::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ChangesController { .. } => {
+                super::trigger_changes_controller::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ChangesZone { .. } => {
+                super::trigger_changes_zone::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ChangesZoneAll { .. } => {
+                super::trigger_changes_zone_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ChaosEnsues { .. } => {
+                super::trigger_chaos_ensues::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ClaimPrize { .. } => {
+                super::trigger_claim_prize::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Clashed { .. } => {
+                super::trigger_clashed::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ClassLevelGained { .. } => {
+                super::trigger_class_level_gained::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CollectEvidence { .. } => {
+                super::trigger_collect_evidence::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CommitCrime { .. } => {
+                super::trigger_commit_crime::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CompletedDungeon { .. } => {
+                super::trigger_completed_dungeon::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ConjureAll { .. } => {
+                super::trigger_conjure_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CounterAdded { .. } => {
+                super::trigger_counter_added::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CounterAddedAll { .. } => {
+                super::trigger_counter_added_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CounterAddedOnce { .. } => {
+                super::trigger_counter_added_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CounterPlayerAddedAll { .. } => {
+                super::trigger_counter_player_added_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CounterRemoved { .. } => {
+                super::trigger_counter_removed::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CounterRemovedOnce { .. } => {
+                super::trigger_counter_removed_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CounterTypeAddedAll { .. } => {
+                super::trigger_counter_type_added_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Countered { .. } => {
+                super::trigger_countered::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CrankContraption { .. } => {
+                super::trigger_crank_contraption::set_triggering_objects(sa, params)
+            }
+            TriggerMode::CrewedSaddled { .. } => {
+                super::trigger_crewed_saddled::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Cycled { .. } => {
+                super::trigger_cycled::set_triggering_objects(sa, params)
+            }
+            TriggerMode::DamageAll { .. } => {
+                super::trigger_damage_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::DamageDealtOnce { .. } => {
+                super::trigger_damage_dealt_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::DamageDone { .. } => {
+                super::trigger_damage_done::set_triggering_objects(sa, params)
+            }
+            TriggerMode::DamageDoneOnce { .. } => {
+                super::trigger_damage_done_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::DamageDoneOnceByController { .. } => {
+                super::trigger_damage_done_once_by_controller::set_triggering_objects(sa, params)
+            }
+            TriggerMode::DamagePreventedOnce { .. } => {
+                super::trigger_damage_prevented_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::DayTimeChanges => {
+                super::trigger_day_time_changes::set_triggering_objects(sa, params)
             }
             TriggerMode::Destroyed { .. } => {
                 super::trigger_destroyed::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Devoured { .. } => {
+                super::trigger_devoured::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Discarded { .. } => {
+                super::trigger_discarded::set_triggering_objects(sa, params)
+            }
+            TriggerMode::DiscardedAll { .. } => {
+                super::trigger_discarded_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Discover { .. } => {
+                super::trigger_discover::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Drawn { .. } => {
+                super::trigger_drawn::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Elementalbend { .. } => {
+                super::trigger_elementalbend::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Enlisted { .. } => {
+                super::trigger_enlisted::set_triggering_objects(sa, params)
+            }
+            TriggerMode::EnteredRoom { .. } => {
+                super::trigger_entered_room::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Evolved { .. } => {
+                super::trigger_evolved::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ExcessDamage { .. } => {
+                super::trigger_excess_damage::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ExcessDamageAll { .. } => {
+                super::trigger_excess_damage_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Exerted { .. } => {
+                super::trigger_exerted::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Exiled { .. } => {
+                super::trigger_exiled::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Exploited { .. } => {
+                super::trigger_exploited::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Explored { .. } => {
+                super::trigger_explores::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Fight { .. } => {
+                super::trigger_fight::set_triggering_objects(sa, params)
+            }
+            TriggerMode::FightOnce { .. } => {
+                super::trigger_fight_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::FlippedCoin { .. } => {
+                super::trigger_flipped_coin::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Forage { .. } => {
+                super::trigger_forage::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Foretell { .. } => {
+                super::trigger_foretell::set_triggering_objects(sa, params)
+            }
+            TriggerMode::FullyUnlock { .. } => {
+                super::trigger_fully_unlock::set_triggering_objects(sa, params)
+            }
+            TriggerMode::GiveGift { .. } => {
+                super::trigger_give_gift::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Investigated { .. } => {
+                super::trigger_investigated::set_triggering_objects(sa, params)
+            }
+            TriggerMode::LandPlayed { .. } => {
+                super::trigger_land_played::set_triggering_objects(sa, params)
+            }
+            TriggerMode::LifeGained { .. } => {
+                super::trigger_life_gained::set_triggering_objects(sa, params)
+            }
+            TriggerMode::LifeLost { .. } => {
+                super::trigger_life_lost::set_triggering_objects(sa, params)
+            }
+            TriggerMode::LifeLostAll { .. } => {
+                super::trigger_life_lost_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::LosesGame { .. } => {
+                super::trigger_loses_game::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ManaAdded { .. } => {
+                super::trigger_mana_added::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ManaExpend { .. } => {
+                super::trigger_mana_expend::set_triggering_objects(sa, params)
+            }
+            TriggerMode::ManifestDread { .. } => {
+                super::trigger_manifest_dread::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Mentored { .. } => {
+                super::trigger_mentored::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Milled { .. } => {
+                super::trigger_milled::set_triggering_objects(sa, params)
+            }
+            TriggerMode::MilledAll { .. } => {
+                super::trigger_milled_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::MilledOnce { .. } => {
+                super::trigger_milled_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Mutates { .. } => {
+                super::trigger_mutates::set_triggering_objects(sa, params)
+            }
+            TriggerMode::NewGame => {
+                super::trigger_new_game::set_triggering_objects(sa, params)
+            }
+            TriggerMode::PayCumulativeUpkeep { .. } => {
+                super::trigger_pay_cumulative_upkeep::set_triggering_objects(sa, params)
+            }
+            TriggerMode::PayEcho { .. } => {
+                super::trigger_pay_echo::set_triggering_objects(sa, params)
+            }
+            TriggerMode::PayLife { .. } => {
+                super::trigger_pay_life::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Phase { .. } => {
+                super::trigger_phase::set_triggering_objects(sa, params)
+            }
+            TriggerMode::PhasedIn { .. } => {
+                super::trigger_phase_in::set_triggering_objects(sa, params)
+            }
+            TriggerMode::PhasedOut { .. } => {
+                super::trigger_phase_out::set_triggering_objects(sa, params)
+            }
+            TriggerMode::PhaseOutAll { .. } => {
+                super::trigger_phase_out_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::PlanarDice { .. } => {
+                super::trigger_planar_dice::set_triggering_objects(sa, params)
+            }
+            TriggerMode::PlaneswalkedFrom { .. } => {
+                super::trigger_planeswalked_from::set_triggering_objects(sa, params)
+            }
+            TriggerMode::PlaneswalkedTo { .. } => {
+                super::trigger_planeswalked_to::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Proliferate { .. } => {
+                super::trigger_proliferate::set_triggering_objects(sa, params)
+            }
+            TriggerMode::RingTemptsYou { .. } => {
+                super::trigger_ring_tempts_you::set_triggering_objects(sa, params)
+            }
+            TriggerMode::RolledDie { .. } => {
+                super::trigger_rolled_die::set_triggering_objects(sa, params)
+            }
+            TriggerMode::RolledDieOnce { .. } => {
+                super::trigger_rolled_die_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Sacrificed { .. } => {
+                super::trigger_sacrificed::set_triggering_objects(sa, params)
+            }
+            TriggerMode::SacrificedOnce { .. } => {
+                super::trigger_sacrificed_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Scry { .. } => {
+                super::trigger_scry::set_triggering_objects(sa, params)
+            }
+            TriggerMode::SearchedLibrary { .. } => {
+                super::trigger_searched_library::set_triggering_objects(sa, params)
+            }
+            TriggerMode::SeekAll { .. } => {
+                super::trigger_seek_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::SetInMotion { .. } => {
+                super::trigger_set_in_motion::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Shuffled { .. } => {
+                super::trigger_shuffled::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Specializes { .. } => {
+                super::trigger_specializes::set_triggering_objects(sa, params)
+            }
+            TriggerMode::SpellCastOrCopy { .. } | TriggerMode::SpellCast { .. }
+            | TriggerMode::SpellCastAll { .. } | TriggerMode::SpellCastOnce { .. }
+            | TriggerMode::SpellCastOfType { .. } | TriggerMode::AbilityCast { .. }
+            | TriggerMode::SpellAbilityCast { .. } | TriggerMode::SpellCopied { .. }
+            | TriggerMode::SpellCopy { .. } | TriggerMode::SpellAbilityCopy { .. } => {
+                super::trigger_spell_ability_cast_or_copy::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Surveil { .. } => {
+                super::trigger_surveil::set_triggering_objects(sa, params)
+            }
+            TriggerMode::TakesInitiative { .. } => {
+                super::trigger_takes_initiative::set_triggering_objects(sa, params)
+            }
+            TriggerMode::TapAll { .. } => {
+                super::trigger_tap_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Taps { .. } => {
+                super::trigger_taps::set_triggering_objects(sa, params)
+            }
+            TriggerMode::TapsForMana { .. } => {
+                super::trigger_taps_for_mana::set_triggering_objects(sa, params)
+            }
+            TriggerMode::TokenCreated { .. } => {
+                super::trigger_token_created::set_triggering_objects(sa, params)
+            }
+            TriggerMode::TokenCreatedOnce { .. } => {
+                super::trigger_token_created_once::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Trains { .. } => {
+                super::trigger_trains::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Transformed { .. } => {
+                super::trigger_transformed::set_triggering_objects(sa, params)
+            }
+            TriggerMode::TurnBegin { .. } => {
+                super::trigger_turn_begin::set_triggering_objects(sa, params)
+            }
+            TriggerMode::TurnFaceUp { .. } => {
+                super::trigger_turn_face_up::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Unattached { .. } => {
+                super::trigger_unattach::set_triggering_objects(sa, params)
+            }
+            TriggerMode::UnlockDoor { .. } => {
+                super::trigger_unlock_door::set_triggering_objects(sa, params)
+            }
+            TriggerMode::UntapAll { .. } => {
+                super::trigger_untap_all::set_triggering_objects(sa, params)
+            }
+            TriggerMode::Untaps { .. } => {
+                super::trigger_untaps::set_triggering_objects(sa, params)
+            }
+            TriggerMode::VisitAttraction { .. } => {
+                super::trigger_visit_attraction::set_triggering_objects(sa, params)
             }
             TriggerMode::Vote => {
                 super::trigger_vote::set_triggering_objects(
@@ -2759,6 +3145,150 @@ impl TriggerMode {
                 );
             }
             _ => {}
+        }
+    }
+
+    pub fn get_important_stack_objects(&self, sa: &SpellAbility) -> String {
+        match self {
+            TriggerMode::Abandoned { .. } => super::trigger_abandoned::get_important_stack_objects(sa),
+            TriggerMode::AbilityResolves { .. } => super::trigger_ability_resolves::get_important_stack_objects(sa),
+            TriggerMode::AbilityTriggered { .. } => super::trigger_ability_triggered::get_important_stack_objects(sa),
+            TriggerMode::Adapt { .. } => super::trigger_adapt::get_important_stack_objects(sa),
+            TriggerMode::Always => super::trigger_always::get_important_stack_objects(sa),
+            TriggerMode::Attached { .. } => super::trigger_attached::get_important_stack_objects(sa),
+            TriggerMode::AttackerBlocked { .. } => super::trigger_attacker_blocked::get_important_stack_objects(sa),
+            TriggerMode::AttackerBlockedByCreature { .. } => super::trigger_attacker_blocked_by_creature::get_important_stack_objects(sa),
+            TriggerMode::AttackerBlockedOnce { .. } => super::trigger_attacker_blocked_once::get_important_stack_objects(sa),
+            TriggerMode::AttackerUnblocked { .. } => super::trigger_attacker_unblocked::get_important_stack_objects(sa),
+            TriggerMode::AttackerUnblockedOnce { .. } => super::trigger_attacker_unblocked_once::get_important_stack_objects(sa),
+            TriggerMode::AttackersDeclared { .. } => super::trigger_attackers_declared::get_important_stack_objects(sa),
+            TriggerMode::Attacks { .. } => super::trigger_attacks::get_important_stack_objects(sa),
+            TriggerMode::BecomeMonarch { .. } => super::trigger_become_monarch::get_important_stack_objects(sa),
+            TriggerMode::BecomeMonstrous { .. } => super::trigger_become_monstrous::get_important_stack_objects(sa),
+            TriggerMode::BecomeRenowned { .. } => super::trigger_become_renowned::get_important_stack_objects(sa),
+            TriggerMode::BecomesCrewed { .. } => super::trigger_becomes_crewed::get_important_stack_objects(sa),
+            TriggerMode::BecomesPlotted { .. } => super::trigger_becomes_plotted::get_important_stack_objects(sa),
+            TriggerMode::BecomesSaddled { .. } => super::trigger_becomes_saddled::get_important_stack_objects(sa),
+            TriggerMode::BecomesTarget { .. } => super::trigger_becomes_target::get_important_stack_objects(sa),
+            TriggerMode::BecomesTargetOnce { .. } => super::trigger_becomes_target_once::get_important_stack_objects(sa),
+            TriggerMode::BlockersDeclared { .. } => super::trigger_blockers_declared::get_important_stack_objects(sa),
+            TriggerMode::Blocks { .. } => super::trigger_blocks::get_important_stack_objects(sa),
+            TriggerMode::CaseSolved { .. } => super::trigger_case_solved::get_important_stack_objects(sa),
+            TriggerMode::Championed { .. } => super::trigger_championed::get_important_stack_objects(sa),
+            TriggerMode::ChangesController { .. } => super::trigger_changes_controller::get_important_stack_objects(sa),
+            TriggerMode::ChangesZone { .. } => super::trigger_changes_zone::get_important_stack_objects(sa),
+            TriggerMode::ChangesZoneAll { .. } => super::trigger_changes_zone_all::get_important_stack_objects(sa),
+            TriggerMode::ChaosEnsues { .. } => super::trigger_chaos_ensues::get_important_stack_objects(sa),
+            TriggerMode::ClaimPrize { .. } => super::trigger_claim_prize::get_important_stack_objects(sa),
+            TriggerMode::Clashed { .. } => super::trigger_clashed::get_important_stack_objects(sa),
+            TriggerMode::ClassLevelGained { .. } => super::trigger_class_level_gained::get_important_stack_objects(sa),
+            TriggerMode::CollectEvidence { .. } => super::trigger_collect_evidence::get_important_stack_objects(sa),
+            TriggerMode::CommitCrime { .. } => super::trigger_commit_crime::get_important_stack_objects(sa),
+            TriggerMode::CompletedDungeon { .. } => super::trigger_completed_dungeon::get_important_stack_objects(sa),
+            TriggerMode::ConjureAll { .. } => super::trigger_conjure_all::get_important_stack_objects(sa),
+            TriggerMode::CounterAdded { .. } => super::trigger_counter_added::get_important_stack_objects(sa),
+            TriggerMode::CounterAddedAll { .. } => super::trigger_counter_added_all::get_important_stack_objects(sa),
+            TriggerMode::CounterAddedOnce { .. } => super::trigger_counter_added_once::get_important_stack_objects(sa),
+            TriggerMode::CounterPlayerAddedAll { .. } => super::trigger_counter_player_added_all::get_important_stack_objects(sa),
+            TriggerMode::CounterRemoved { .. } => super::trigger_counter_removed::get_important_stack_objects(sa),
+            TriggerMode::CounterRemovedOnce { .. } => super::trigger_counter_removed_once::get_important_stack_objects(sa),
+            TriggerMode::CounterTypeAddedAll { .. } => super::trigger_counter_type_added_all::get_important_stack_objects(sa),
+            TriggerMode::Countered { .. } => super::trigger_countered::get_important_stack_objects(sa),
+            TriggerMode::CrankContraption { .. } => super::trigger_crank_contraption::get_important_stack_objects(sa),
+            TriggerMode::CrewedSaddled { .. } => super::trigger_crewed_saddled::get_important_stack_objects(sa),
+            TriggerMode::Cycled { .. } => super::trigger_cycled::get_important_stack_objects(sa),
+            TriggerMode::DamageAll { .. } => super::trigger_damage_all::get_important_stack_objects(sa),
+            TriggerMode::DamageDealtOnce { .. } => super::trigger_damage_dealt_once::get_important_stack_objects(sa),
+            TriggerMode::DamageDone { .. } => super::trigger_damage_done::get_important_stack_objects(sa),
+            TriggerMode::DamageDoneOnce { .. } => super::trigger_damage_done_once::get_important_stack_objects(sa),
+            TriggerMode::DamageDoneOnceByController { .. } => super::trigger_damage_done_once_by_controller::get_important_stack_objects(sa),
+            TriggerMode::DamagePreventedOnce { .. } => super::trigger_damage_prevented_once::get_important_stack_objects(sa),
+            TriggerMode::DayTimeChanges => super::trigger_day_time_changes::get_important_stack_objects(sa),
+            TriggerMode::Destroyed { .. } => super::trigger_destroyed::get_important_stack_objects(sa),
+            TriggerMode::Devoured { .. } => super::trigger_devoured::get_important_stack_objects(sa),
+            TriggerMode::Discarded { .. } => super::trigger_discarded::get_important_stack_objects(sa),
+            TriggerMode::DiscardedAll { .. } => super::trigger_discarded_all::get_important_stack_objects(sa),
+            TriggerMode::Discover { .. } => super::trigger_discover::get_important_stack_objects(sa),
+            TriggerMode::Drawn { .. } => super::trigger_drawn::get_important_stack_objects(sa),
+            TriggerMode::Elementalbend { .. } => super::trigger_elementalbend::get_important_stack_objects(sa),
+            TriggerMode::Enlisted { .. } => super::trigger_enlisted::get_important_stack_objects(sa),
+            TriggerMode::EnteredRoom { .. } => super::trigger_entered_room::get_important_stack_objects(sa),
+            TriggerMode::Evolved { .. } => super::trigger_evolved::get_important_stack_objects(sa),
+            TriggerMode::ExcessDamage { .. } => super::trigger_excess_damage::get_important_stack_objects(sa),
+            TriggerMode::ExcessDamageAll { .. } => super::trigger_excess_damage_all::get_important_stack_objects(sa),
+            TriggerMode::Exerted { .. } => super::trigger_exerted::get_important_stack_objects(sa),
+            TriggerMode::Exiled { .. } => super::trigger_exiled::get_important_stack_objects(sa),
+            TriggerMode::Exploited { .. } => super::trigger_exploited::get_important_stack_objects(sa),
+            TriggerMode::Explored { .. } => super::trigger_explores::get_important_stack_objects(sa),
+            TriggerMode::Fight { .. } => super::trigger_fight::get_important_stack_objects(sa),
+            TriggerMode::FightOnce { .. } => super::trigger_fight_once::get_important_stack_objects(sa),
+            TriggerMode::FlippedCoin { .. } => super::trigger_flipped_coin::get_important_stack_objects(sa),
+            TriggerMode::Forage { .. } => super::trigger_forage::get_important_stack_objects(sa),
+            TriggerMode::Foretell { .. } => super::trigger_foretell::get_important_stack_objects(sa),
+            TriggerMode::FullyUnlock { .. } => super::trigger_fully_unlock::get_important_stack_objects(sa),
+            TriggerMode::GiveGift { .. } => super::trigger_give_gift::get_important_stack_objects(sa),
+            TriggerMode::Investigated { .. } => super::trigger_investigated::get_important_stack_objects(sa),
+            TriggerMode::LandPlayed { .. } => super::trigger_land_played::get_important_stack_objects(sa),
+            TriggerMode::LifeGained { .. } => super::trigger_life_gained::get_important_stack_objects(sa),
+            TriggerMode::LifeLost { .. } => super::trigger_life_lost::get_important_stack_objects(sa),
+            TriggerMode::LifeLostAll { .. } => super::trigger_life_lost_all::get_important_stack_objects(sa),
+            TriggerMode::LosesGame { .. } => super::trigger_loses_game::get_important_stack_objects(sa),
+            TriggerMode::ManaAdded { .. } => super::trigger_mana_added::get_important_stack_objects(sa),
+            TriggerMode::ManaExpend { .. } => super::trigger_mana_expend::get_important_stack_objects(sa),
+            TriggerMode::ManifestDread { .. } => super::trigger_manifest_dread::get_important_stack_objects(sa),
+            TriggerMode::Mentored { .. } => super::trigger_mentored::get_important_stack_objects(sa),
+            TriggerMode::Milled { .. } => super::trigger_milled::get_important_stack_objects(sa),
+            TriggerMode::MilledAll { .. } => super::trigger_milled_all::get_important_stack_objects(sa),
+            TriggerMode::MilledOnce { .. } => super::trigger_milled_once::get_important_stack_objects(sa),
+            TriggerMode::Mutates { .. } => super::trigger_mutates::get_important_stack_objects(sa),
+            TriggerMode::NewGame => super::trigger_new_game::get_important_stack_objects(sa),
+            TriggerMode::PayCumulativeUpkeep { .. } => super::trigger_pay_cumulative_upkeep::get_important_stack_objects(sa),
+            TriggerMode::PayEcho { .. } => super::trigger_pay_echo::get_important_stack_objects(sa),
+            TriggerMode::PayLife { .. } => super::trigger_pay_life::get_important_stack_objects(sa),
+            TriggerMode::Phase { .. } => super::trigger_phase::get_important_stack_objects(sa),
+            TriggerMode::PhasedIn { .. } => super::trigger_phase_in::get_important_stack_objects(sa),
+            TriggerMode::PhasedOut { .. } => super::trigger_phase_out::get_important_stack_objects(sa),
+            TriggerMode::PhaseOutAll { .. } => super::trigger_phase_out_all::get_important_stack_objects(sa),
+            TriggerMode::PlanarDice { .. } => super::trigger_planar_dice::get_important_stack_objects(sa),
+            TriggerMode::PlaneswalkedFrom { .. } => super::trigger_planeswalked_from::get_important_stack_objects(sa),
+            TriggerMode::PlaneswalkedTo { .. } => super::trigger_planeswalked_to::get_important_stack_objects(sa),
+            TriggerMode::Proliferate { .. } => super::trigger_proliferate::get_important_stack_objects(sa),
+            TriggerMode::RingTemptsYou { .. } => super::trigger_ring_tempts_you::get_important_stack_objects(sa),
+            TriggerMode::RolledDie { .. } => super::trigger_rolled_die::get_important_stack_objects(sa),
+            TriggerMode::RolledDieOnce { .. } => super::trigger_rolled_die_once::get_important_stack_objects(sa),
+            TriggerMode::Sacrificed { .. } => super::trigger_sacrificed::get_important_stack_objects(sa),
+            TriggerMode::SacrificedOnce { .. } => super::trigger_sacrificed_once::get_important_stack_objects(sa),
+            TriggerMode::Scry { .. } => super::trigger_scry::get_important_stack_objects(sa),
+            TriggerMode::SearchedLibrary { .. } => super::trigger_searched_library::get_important_stack_objects(sa),
+            TriggerMode::SeekAll { .. } => super::trigger_seek_all::get_important_stack_objects(sa),
+            TriggerMode::SetInMotion { .. } => super::trigger_set_in_motion::get_important_stack_objects(sa),
+            TriggerMode::Shuffled { .. } => super::trigger_shuffled::get_important_stack_objects(sa),
+            TriggerMode::Specializes { .. } => super::trigger_specializes::get_important_stack_objects(sa),
+            TriggerMode::SpellCastOrCopy { .. } | TriggerMode::SpellCast { .. }
+            | TriggerMode::SpellCastAll { .. } | TriggerMode::SpellCastOnce { .. }
+            | TriggerMode::SpellCastOfType { .. } | TriggerMode::AbilityCast { .. }
+            | TriggerMode::SpellAbilityCast { .. } | TriggerMode::SpellCopied { .. }
+            | TriggerMode::SpellCopy { .. } | TriggerMode::SpellAbilityCopy { .. } => {
+                super::trigger_spell_ability_cast_or_copy::get_important_stack_objects(sa)
+            }
+            TriggerMode::Surveil { .. } => super::trigger_surveil::get_important_stack_objects(sa),
+            TriggerMode::TakesInitiative { .. } => super::trigger_takes_initiative::get_important_stack_objects(sa),
+            TriggerMode::TapAll { .. } => super::trigger_tap_all::get_important_stack_objects(sa),
+            TriggerMode::Taps { .. } => super::trigger_taps::get_important_stack_objects(sa),
+            TriggerMode::TapsForMana { .. } => super::trigger_taps_for_mana::get_important_stack_objects(sa),
+            TriggerMode::TokenCreated { .. } => super::trigger_token_created::get_important_stack_objects(sa),
+            TriggerMode::TokenCreatedOnce { .. } => super::trigger_token_created_once::get_important_stack_objects(sa),
+            TriggerMode::Trains { .. } => super::trigger_trains::get_important_stack_objects(sa),
+            TriggerMode::Transformed { .. } => super::trigger_transformed::get_important_stack_objects(sa),
+            TriggerMode::TurnBegin { .. } => super::trigger_turn_begin::get_important_stack_objects(sa),
+            TriggerMode::TurnFaceUp { .. } => super::trigger_turn_face_up::get_important_stack_objects(sa),
+            TriggerMode::Unattached { .. } => super::trigger_unattach::get_important_stack_objects(sa),
+            TriggerMode::UnlockDoor { .. } => super::trigger_unlock_door::get_important_stack_objects(sa),
+            TriggerMode::UntapAll { .. } => super::trigger_untap_all::get_important_stack_objects(sa),
+            TriggerMode::Untaps { .. } => super::trigger_untaps::get_important_stack_objects(sa),
+            TriggerMode::VisitAttraction { .. } => super::trigger_visit_attraction::get_important_stack_objects(sa),
+            TriggerMode::Vote => super::trigger_vote::get_important_stack_objects(sa),
+            _ => String::new(),
         }
     }
 }

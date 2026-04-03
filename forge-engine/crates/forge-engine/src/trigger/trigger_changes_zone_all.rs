@@ -4,6 +4,7 @@ use crate::{
     event::{AbilityValue, RunParams},
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 use super::trigger::{check_card_filter, matches_amount, matches_valid_card, TriggerMode};
@@ -166,4 +167,35 @@ pub fn parse_mode(params: &Params) -> TriggerMode {
         first_time_only,
         valid_amount,
     }
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // TODO: Java calls this.filterCards(table) to filter by ValidCards param,
+    // but we don't have access to the trigger params here. Passing through all cards.
+    if let Some(cards) = params.cards.as_ref() {
+        let csv = cards
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        sa.add_triggering_object("Cards", &csv);
+        sa.add_triggering_object("Amount", &cards.len().to_string());
+        // Also set trigger_remembered_amount so TriggerCount$Amount SVars
+        // (e.g. Woodland Champion's CounterNum$ X where X = TriggerCount$Amount)
+        // resolve to the correct count instead of defaulting to 1.
+        sa.trigger_remembered_amount = cards.len() as i32;
+    }
+    // TODO: Java also sets Cause from runParams via
+    // sa.setTriggeringObjectsFrom(runParams, AbilityKey.Cause)
+    // Skipping Cause for now since SpellAbility is complex and stored as object in Java
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Amount: {}",
+        sa.trigger_objects
+            .get("Amount")
+            .cloned()
+            .unwrap_or_default()
+    )
 }

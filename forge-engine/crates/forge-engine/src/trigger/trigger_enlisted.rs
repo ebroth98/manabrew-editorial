@@ -2,6 +2,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 use super::trigger::{check_card_filter, TriggerMode};
@@ -28,4 +29,20 @@ pub fn perform_test(
             );
     }
     panic!("Expected Enlisted mode");
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(card) = params.card {
+        sa.add_triggering_object("Card", &card.0.to_string());
+    }
+    if let Some(enlisted) = params.enlisted {
+        sa.add_triggering_object("Enlisted", &enlisted.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Enlisted: {}",
+        sa.get_triggering_object("Card").unwrap_or_default()
+    )
 }

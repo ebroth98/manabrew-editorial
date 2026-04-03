@@ -102,5 +102,13 @@
   {
     "name": "nehebCommander",
     "args": "--variant Commander --commander 'Neheb, the Worthy' --commander 'Neheb, the Worthy' --deck1 neheb_minotaur_commander --deck2 neheb_minotaur_commander --seed 42 --max-turns 22 --games 1"
+  },
+  {
+    "name": "trigger_parity",
+    "args": "--deck1 trigger_parity --deck2 trigger_parity_opponent --seed 42 --max-turns 30 --games 100"
+  },
+  {
+    "name": "trigger_parity_mirror",
+    "args": "--deck1 trigger_parity --deck2 trigger_parity --seed 100 --max-turns 30 --games 100"
   }
 ]

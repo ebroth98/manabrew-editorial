@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -16,4 +17,20 @@ pub fn perform_test(
         panic!("Expected CommitCrime mode");
     };
     check_player_filter(valid_player, params.player, host_controller)
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    if let Some(p) = params.player {
+        sa.add_triggering_object("Player", &p.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Player: {}",
+        sa.trigger_objects
+            .get("Player")
+            .cloned()
+            .unwrap_or_default()
+    )
 }

@@ -177,6 +177,59 @@ impl Zone {
 
     // ── LKI tracking ────────────────────────────────────────────────
 
+    /// Get the cards in this zone.
+    /// The `_filter` parameter is ignored for non-battlefield zones (they always
+    /// return the full list). Battlefield filtering is handled by
+    /// `PlayerZoneBattlefield::get_cards()`.
+    /// Mirrors Java's `Zone.getCards(boolean)`.
+    pub fn get_cards(&self, _filter: bool) -> &[CardId] {
+        &self.cards
+    }
+
+    /// Get cards that were added to this zone this turn from the given origin zone.
+    /// Mirrors Java's `Zone.getCardsAddedThisTurn(ZoneType)`.
+    pub fn get_cards_added_this_turn(&self, origin: ZoneType) -> Vec<CardId> {
+        self.cards_added_this_turn
+            .iter()
+            .filter(|(z, _)| *z == origin)
+            .map(|(_, c)| *c)
+            .collect()
+    }
+
+    /// Get cards that were added to this zone last turn from the given origin zone.
+    /// Mirrors Java's `Zone.getCardsAddedLastTurn(ZoneType)`.
+    pub fn get_cards_added_last_turn(&self, origin: ZoneType) -> Vec<CardId> {
+        self.cards_added_last_turn
+            .iter()
+            .filter(|(z, _)| *z == origin)
+            .map(|(_, c)| *c)
+            .collect()
+    }
+
+    /// Check whether a specific card was added to this zone this turn from
+    /// the given origin zone.
+    /// Mirrors Java's `Zone.isCardAddedThisTurn(Card, ZoneType)`.
+    pub fn is_card_added_this_turn(&self, card: CardId, origin: ZoneType) -> bool {
+        self.cards_added_this_turn
+            .iter()
+            .any(|(z, c)| *z == origin && *c == card)
+    }
+
+    /// Create a shallow copy of this zone for last-known-information purposes.
+    /// The returned zone has the same type, owner, and card list.
+    /// Mirrors Java's `Zone.getLKICopy()`.
+    pub fn get_lki_copy(&self) -> Zone {
+        Zone {
+            zone_type: self.zone_type,
+            owner: self.owner,
+            cards: self.cards.clone(),
+            cards_added_this_turn: Vec::new(),
+            cards_added_last_turn: Vec::new(),
+            melded_cards: Vec::new(),
+            triggers_enabled: self.triggers_enabled,
+        }
+    }
+
     /// Save last-known-information for a card entering this zone.
     /// Mirrors Java's `Zone.saveLKI()`.
     pub fn save_lki(&mut self, card: CardId, origin_zone: ZoneType) {

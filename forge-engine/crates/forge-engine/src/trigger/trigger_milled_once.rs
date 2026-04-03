@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -28,4 +29,30 @@ pub fn perform_test(
     cards
         .iter()
         .any(|&cid| check_card_filter(valid_card, Some(cid), host_card, host_controller, game))
+}
+
+pub fn set_triggering_objects(sa: &mut SpellAbility, params: &RunParams) {
+    // TODO: port ValidCard filtering from Java (CardLists.getValidCards)
+    if let Some(cards) = params.cards.as_ref() {
+        let csv = cards
+            .iter()
+            .map(|c| c.0.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        sa.add_triggering_object("Cards", &csv);
+        sa.add_triggering_object("Amount", &cards.len().to_string());
+    }
+    if let Some(p) = params.player {
+        sa.add_triggering_object("Player", &p.0.to_string());
+    }
+}
+
+pub fn get_important_stack_objects(sa: &SpellAbility) -> String {
+    format!(
+        "Player: {}",
+        sa.trigger_objects
+            .get("Player")
+            .map(|s| s.as_str())
+            .unwrap_or("")
+    )
 }

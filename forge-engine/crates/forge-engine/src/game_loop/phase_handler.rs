@@ -623,24 +623,16 @@ impl GameLoop {
     }
 
     /// Fire DamageDone and LifeGained triggers from combat damage events.
+    /// DamageDone fires per source-target pair; DamageDoneOnce fires once per
+    /// target with aggregated damage (mirrors Java CardDamageMap.triggerDamageOnce).
     pub(crate) fn fire_combat_damage_triggers(&mut self, events: &[combat::CombatDamageEvent]) {
+        use std::collections::HashMap;
+        use crate::ids::{CardId, PlayerId};
+
+        // Per-event: fire DamageDone and LifeGained
         for event in events {
             self.trigger_handler.run_trigger(
                 TriggerType::DamageDone,
-                RunParams {
-                    damage_source: Some(event.source),
-                    damage_target_player: event.target_player,
-                    damage_target_card: event.target_card,
-                    damage_amount: Some(event.amount),
-                    is_combat_damage: Some(event.is_combat),
-                    ..Default::default()
-                },
-                false,
-            );
-            // Fire DamageDoneOnce batch trigger for each damage event.
-            // Cards like Raptor Hatchling use Mode$ DamageDoneOnce for Enrage.
-            self.trigger_handler.run_trigger(
-                TriggerType::DamageDoneOnce,
                 RunParams {
                     damage_source: Some(event.source),
                     damage_target_player: event.target_player,
@@ -665,6 +657,50 @@ impl GameLoop {
                     );
                 }
             }
+        }
+
+        // Aggregate damage by target, then fire DamageDoneOnce once per target.
+        // Mirrors Java's CardDamageMap.triggerDamageOnce() which batches damage
+        // so Enrage (e.g. Raptor Hatchling) fires only once per damage step.
+        #[derive(Hash, PartialEq, Eq, Clone, Copy)]
+        enum Target {
+            Card(CardId),
+            Player(PlayerId),
+        }
+        let mut by_target: HashMap<Target, i32> = HashMap::new();
+        for event in events {
+            if event.amount <= 0 {
+                continue;
+            }
+            let target = if let Some(cid) = event.target_card {
+                Target::Card(cid)
+            } else if let Some(pid) = event.target_player {
+                Target::Player(pid)
+            } else {
+                continue;
+            };
+            *by_target.entry(target).or_insert(0) += event.amount;
+        }
+        for (target, total) in by_target {
+            if total <= 0 {
+                continue;
+            }
+            let params = match target {
+                Target::Card(cid) => RunParams {
+                    damage_target_card: Some(cid),
+                    damage_amount: Some(total),
+                    is_combat_damage: Some(true),
+                    ..Default::default()
+                },
+                Target::Player(pid) => RunParams {
+                    damage_target_player: Some(pid),
+                    damage_amount: Some(total),
+                    is_combat_damage: Some(true),
+                    ..Default::default()
+                },
+            };
+            self.trigger_handler
+                .run_trigger(TriggerType::DamageDoneOnce, params, false);
         }
     }
 

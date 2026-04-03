@@ -3,6 +3,7 @@ use crate::{
     event::RunParams,
     game::GameState,
     ids::{CardId, PlayerId},
+    spellability::SpellAbility,
 };
 
 pub fn perform_test(
@@ -22,4 +23,12 @@ pub fn perform_test(
         return params.clash_won == Some(*expected);
     }
     true
+}
+
+pub fn set_triggering_objects(_sa: &mut SpellAbility, _params: &RunParams) {
+    // Clash has no triggered variables
+}
+
+pub fn get_important_stack_objects(_sa: &SpellAbility) -> String {
+    String::new()
 }
